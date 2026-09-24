@@ -6781,8 +6781,9 @@ void ClaudeIntegration::onMcpConnection() {
                             "locators {symbol: \"file:line\"} (a definition beats a "
                             "declaration), ambiguous {symbol: n} where more than one "
                             "place matches (never a guess), unresolved[], "
-                            "not_checked[]. No symbols[] or findings[]. Refuses with "
-                            "only. Default full.");
+                            "not_checked[], declared_only[] (declared only as a local or a "
+                            "forward declaration). No symbols[] or findings[]. "
+                            "Refuses with only. Default full.");
                     props["mode"] = dsMode;
                     schema["properties"] = props;
                     docSym["inputSchema"] = schema;
@@ -10021,8 +10022,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "source. Use instead of grep + Read cycles for \"where is Foo "
                         "defined?\". Returns {ok, symbol, lang, definitions:[{file, "
                         "line, signature, lang, kind}], definitions_count, "
-                        "files_scanned, truncated, walk_capped}; `kind` is definition "
-                        "or declaration. Refusals: bad_args (symbol missing or not a "
+                        "files_scanned, truncated, walk_capped}; `kind` is definition, "
+                        "declaration or local (inside a function body or parameter "
+                        "list; ranked last). Refusals: bad_args (symbol missing or not a "
                         "valid identifier), no_project (caller_cwd unresolved).");
                     t["detail"] = QStringLiteral(
                         "Find where a symbol is defined across the "
@@ -10032,7 +10034,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "signature, lang, kind}], definitions_count, "
                         "files_scanned, truncated, walk_capped}. `kind` "
                         "is \"definition\" or \"declaration\" (C++ "
-                        "header decls end in `;`). When there are zero "
+                        "header decls end in `;`), or \"local\" (ANTS-5313) "
+                        "for a C++/GLSL name declared inside a function "
+                        "body or a parameter list — still reported, never "
+                        "claimed as the symbol's home, ranked after every "
+                        "definition and declaration. When there are zero "
                         "definitions but the query exactly matches a "
                         "source file's base name, adds `file_stem_hint` "
                         "(the rel path) + a ready-to-read `hint` string "

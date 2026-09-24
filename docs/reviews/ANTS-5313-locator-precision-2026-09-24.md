@@ -8,6 +8,9 @@ condition on `~/.claude/docs/reviews/v2-mechanical-checks-proposal-2026-09-24.md
 
 ## Headline
 
+**Superseded in part by § Re-measure after the resolver fix, below.** The
+first measurement, kept as it was taken:
+
 **The rate is bad for bare names. Do not hand the locator to a lane as-is.**
 
 - **Overall:** 14 of 60 sampled locators point at the wrong thing — 23%
@@ -64,7 +67,7 @@ declarations of a Qt class. Seven of the fourteen cite a file under
 - **Where the locators point:** 390 cite a file under `tests/`; 79 cite a
   `class X;` / `struct X;` forward declaration.
 
-## What would fix it (not done; each needs a ruling and a fresh sample)
+## What would fix it (the ruling took candidate 2)
 
 These are candidates, not results. Each came from reading the same 60
 entries, so judging a fix against this sample would be fitting it. A fix
@@ -145,3 +148,112 @@ must be re-measured on a new seed.
 | 58 | `release_notes` | `docs/specs/ANTS-2164.md:180` | `packaging/cut-rc.sh:182` | right |
 | 59 | `Settings` | `docs/specs/ANTS-3771-id-format-declaration.md:690` | `src/projectsettings.h:22` | right |
 | 60 | `foldIn` | `docs/specs/ANTS-1727.md:269` | `src/testauditengine.cpp:1987` | right |
+
+## Re-measure after the resolver fix
+
+**Ruling (claude-ab):** candidate 2 alone — fix the resolver, do not route
+around it. Re-measured on a NEW seed, fixed before any output was read.
+
+**What changed.** The resolver tracks, per C++/GLSL line, whether it starts
+inside a function body or a parameter list, and tags a match there
+`local` instead of `definition` / `declaration`. A function-local lambda
+(`auto NAME = [`) keeps its kind, because documents cite those by name.
+The locator treats `local` rows and `class X;`-shaped forward
+declarations as no candidate, and reports a symbol that has only those in a
+new `declared_only` bucket, rather than calling it `unresolved`.
+
+**Method:** as above; seed **5313**, n = 60.
+
+| | Before (seed 20260924) | After (seed 5313) |
+|---|---|---|
+| All | 14/60 = 23% (14–35%) | 8/60 = 13% (7–24%); 7/60 lenient |
+| Function-shaped or qualified | 0/14 (0–22%) | 1/23 (1–21%) |
+| Bare | 14/46 = 30% (19–45%) | 7/37 = 19% (9–34%); 6/37 lenient |
+
+"Lenient" counts entry 8 as right: it names the struct member a local is
+copied from, where the document means the local.
+
+**Population, before → after:** located 4,431 → 4,102; ambiguous
+3,789 → 3,179; unresolved 2,550 → 2,550; declared_only — → 939. Locators
+citing a file under `tests/`: 390 → 195.
+
+**What is left, by class.**
+
+- **Test-file helper functions** (5 of 8): `compact`, `status` (twice),
+  `counts`, `stage`. Each is a real namespace-scope function in a test,
+  so the resolver is right that it is a definition. The document means a
+  field, an argument or a plain word. This is the bare-name class proper:
+  no fix to scope tracking reaches it.
+- **A qualifier not honoured** (1): `QFileSystemWatcher::fileChanged`
+  located at `ClaudeIntegration::fileChanged`. The first qualified-name
+  failure seen in either sample.
+- **An unrelated member of the same name** (1, plus borderline entry 8).
+
+**Measurement caveat.** The walk reads the working tree, and an untracked
+prototype (`tools/filemap.py`) sat in it during this run. One population
+entry (`shape`) resolved into it, and it is not in the sample.
+
+### The classified sample (seed 5313)
+
+| # | Symbol | Document | Cited | Verdict |
+|---|---|---|---|---|
+| 1 | `isGrammaticalId()` | `docs/specs/ANTS-3793-roadmap-consumer-cutover.md:273` | `src/roadmapmigrate.cpp:207` | right |
+| 2 | `ReviewDialogBase::beginRound` | `docs/specs/ANTS-5010-plaintext-prompt-warning.md:64` | `src/reviewdialogbase.cpp:290` | right |
+| 3 | `scanDoc` | `docs/specs/ANTS-3786-docsindex-header-field.md:48` | `src/docsindex.cpp:74` | right |
+| 4 | `cmdSessionMemory` | `docs/specs/ANTS-1372.md:165` | `src/remotecontrol_coldeyes.cpp:850` | right |
+| 5 | `mappedIds` | `docs/specs/ANTS-3442.md:108` | `src/feedbackfile.h:88` | right |
+| 6 | `parsePassHeadingBullets` | `docs/specs/ANTS-1583.md:185` | `src/roadmapparse.cpp:787` | right |
+| 7 | `mcp::setSpillDirOverride` | `docs/specs/ANTS-1922.md:124` | `src/mcpspill.cpp:690` | right |
+| 8 | `contract` | `docs/specs/ANTS-1415.md:125` | `src/claudeintegration.h:756` | borderline: the `RegisteredTool::contract` member, where the doc means a local copied from it |
+| 9 | `Config::aiEndpoint()` | `docs/standards/mcp-error-codes.md:130` | `src/config.cpp:1019` | right |
+| 10 | `offloadBody` | `docs/specs/ANTS-3578.md:19` | `src/mcpspill.cpp:236` | right |
+| 11 | `RemoteControl::m_main` | `docs/specs/ANTS-3572.md:595` | `src/remotecontrol.h:1585` | right |
+| 12 | `RoadmapStore::canonicalJson()` | `docs/specs/ANTS-3810-round-trip-oracle-and-acyclicity.md:185` | `src/roadmapstore.cpp:138` | right |
+| 13 | `populateChecks()` | `docs/specs/ANTS-1111.md:479` | `src/auditdialog_catalogue.cpp:25` | right |
+| 14 | `detectProjectFrameworks` | `docs/specs/ANTS-1111.md:395` | `src/audithygiene.cpp:140` | right |
+| 15 | `kBulkBusyTimeoutMs` | `docs/specs/ANTS-3781-roadmap-store-schema-upgrade.md:470` | `src/roadmapstore.h:62` | right |
+| 16 | `startPcallBudget` | `docs/specs/ANTS-2093.md:664` | `src/luaengine.cpp:296` | right |
+| 17 | `createdSchema()` | `docs/specs/ANTS-3815-store-source-format-column.md:538` | `src/roadmapstore.h:169` | right |
+| 18 | `ResolvedRoot` | `docs/specs/ANTS-1401.md:1` | `src/resolvedroot.h:26` | right |
+| 19 | `acquire` | `docs/specs/ANTS-5144-shared-socket-listener.md:131` | `src/localsockethub.cpp:49` | right |
+| 20 | `RemoteControl::dispatch` | `docs/specs/ANTS-2132-async-mcp-dispatch.md:84` | `src/remotecontrol.cpp:2658` | right |
+| 21 | `totalSaved` | `docs/specs/ANTS-3579.md:136` | `src/tokenusageengine.cpp:173` | right |
+| 22 | `discoveredContractFiles` | `docs/specs/ANTS-1619.md:54` | `src/coldeyesengine.h:108` | right |
+| 23 | `changedFilesCount` | `docs/specs/ANTS-1504.md:234` | `src/auditrunner.h:167` | right |
+| 24 | `surfacesResolved` | `docs/specs/ANTS-4127-test-surface-resolution.md:395` | `src/speclint.h:139` | right |
+| 25 | `sentenceStop()` | `docs/specs/ANTS-3808-item-body-and-trailer-suppression.md:374` | `src/roadmapparse.cpp:657` | right |
+| 26 | `checkCallerCwd` | `docs/specs/ANTS-1630.md:215` | `src/remotecontrolgate.cpp:11` | right |
+| 27 | `shellCwd` | `docs/specs/ANTS-1435.md:381` | `src/terminalwidget.cpp:5263` | right |
+| 28 | `RemoteControl::cmdColdEyesBrief` | `docs/specs/ANTS-1634.md:110` | `src/remotecontrol_coldeyes.cpp:123` | right |
+| 29 | `sliceSection` | `docs/specs/ANTS-1287.md:207` | `src/roadmapindex.cpp:159` | right |
+| 30 | `error` | `docs/specs/ANTS-3855-roadmap-migrate-verb.md:750` | `src/scrollbackexporter.h:37` | **wrong** — `scrollbackexporter.h` accessor; doc means the migrate `Outcome::error` field |
+| 31 | `buildAppStylesheet` | `docs/specs/ANTS-1147.md:102` | `src/themedstylesheet.cpp:13` | right |
+| 32 | `detectRoadmapFormat()` | `docs/specs/ANTS-3809-roadmap-write-half.md:496` | `src/roadmapparse.cpp:1660` | right |
+| 33 | `defaultSocketPath()` | `docs/specs/ANTS-1117.md:54` | `src/remotecontrol.cpp:2388` | right |
+| 34 | `applyPlanFields()` | `docs/specs/ANTS-3822-consumer-write-history.md:300` | `src/roadmapmigrateload.cpp:633` | right |
+| 35 | `m_pcallTimer` | `docs/specs/ANTS-1750.md:260` | `src/luaengine.h:255` | right |
+| 36 | `compact` | `docs/specs/ANTS-3578.md:397` | `tests/features/mcp_result_offload/test_mcp_result_offload.cpp:464` | **wrong** — test-file helper function; doc means the `compact` argument |
+| 37 | `Options::excludedNames` | `docs/specs/ANTS-3661.md:667` | `src/docsymbols.h:66` | right |
+| 38 | `mcp::setHintLatchEnabled` | `docs/standards/mcp-config-keys.md:143` | `src/mcpprojection.cpp:52` | right |
+| 39 | `status` | `docs/specs/ANTS-3809-roadmap-write-half.md:526` | `tests/features/doc_citations/fixture.h:59` | **wrong** — test-fixture helper function; doc means a roadmap `status` field |
+| 40 | `QFileSystemWatcher::fileChanged` | `docs/specs/ANTS-1117.md:153` | `src/claudeintegration.h:635` | **wrong** — `ClaudeIntegration::fileChanged`; the qualifier `QFileSystemWatcher::` was not honoured |
+| 41 | `counts` | `docs/specs/ANTS-1254.md:54` | `tests/features/doc_symbols_only_filter/test_doc_symbols_only_filter.cpp:68` | **wrong** — test-file helper function; doc means the reply's `counts` field |
+| 42 | `roadmapExpandedSections` | `docs/specs/ANTS-1154.md:488` | `src/config.cpp:759` | right |
+| 43 | `RemoteControl::cmdRoadmapQuery()` | `docs/specs/ANTS-1244.md:300` | `src/remotecontrol_roadmap_query.cpp:1932` | right |
+| 44 | `RcGate::checkCallerCwd` | `docs/specs/ANTS-1435.md:96` | `src/remotecontrolgate.cpp:11` | right |
+| 45 | `m_timedOut` | `docs/specs/ANTS-1750.md:260` | `src/luaengine.h:243` | right |
+| 46 | `cmdColdEyesPartition` | `docs/specs/ANTS-1619.md:126` | `src/remotecontrol_coldeyes.cpp:20` | right |
+| 47 | `RoadmapStore::db()` | `docs/specs/ANTS-3765-roadmap-migration-load.md:31` | `src/roadmapstore.h:171` | right |
+| 48 | `cmdApplyEdits` | `docs/specs/ANTS-2161.md:315` | `src/remotecontrol_workspace.cpp:2601` | right |
+| 49 | `status` | `docs/specs/ANTS-1407.md:186` | `tests/features/doc_citations/fixture.h:59` | **wrong** — test-fixture helper function; doc means a task's `status` field |
+| 50 | `rcStatusEmoji` | `docs/specs/ANTS-4977-dropped-status.md:50` | `src/remotecontrol.cpp:1038` | right |
+| 51 | `IndieReviewEngine::kMaxScanBytes` | `docs/specs/ANTS-1344.md:23` | `src/indiereviewengine.h:55` | right |
+| 52 | `m_filterDone` | `docs/specs/ANTS-1106.md:70` | `src/roadmapdialog.h:628` | right |
+| 53 | `kRoadmapMinParseableSize` | `docs/specs/ANTS-1437.md:203` | `src/remotecontrol.h:1547` | right |
+| 54 | `kKinds` | `docs/specs/ANTS-1238.md:294` | `src/roadmapdialog.cpp:139` | right |
+| 55 | `pathTokensIn()` | `docs/specs/ANTS-4065-import-mapping-contract.md:816` | `src/roadmapmigrate.cpp:1197` | right |
+| 56 | `stage` | `docs/specs/ANTS-1896.md:963` | `tests/features/docsindex_header_field/test_docsindex_header_field.cpp:56` | **wrong** — test-file helper function; doc means the English word "stage" |
+| 57 | `cmdProjectSettings` | `docs/specs/ANTS-3833-remotecontrol-decomposition.md:107` | `src/remotecontrol_docs.cpp:1529` | right |
+| 58 | `cmdCurrentState` | `docs/specs/ANTS-2160.md:180` | `src/remotecontrol_state.cpp:1109` | right |
+| 59 | `RoadmapStore::reassignItemId()` | `docs/specs/ANTS-3765-roadmap-migration-load.md:376` | `src/roadmapstore.cpp:1981` | right |
+| 60 | `compactResolved` | `docs/specs/ANTS-3447.md:34` | `src/feedbackfile.cpp:1034` | right |

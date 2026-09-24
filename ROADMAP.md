@@ -18883,10 +18883,31 @@ fixes don't address. Roadmapped here as their own design tasks.
   docs/reviews/ANTS-5313-locator-precision-2026-09-24.md. Held on branch
   ants-5313-locator, not merged, pending a ruling on the fix and a re-measure
   on a fresh seed.
+  Progress (2026-09-24): ruling (b) — root cause. The resolver now tags a
+  C++/GLSL match inside a function body or parameter list `local` (lambdas
+  keep their kind); the locator ignores locals and forward declarations and
+  reports a symbol with only those as declared_only. Re-measured on a new
+  seed (5313, n=60): 8/60 wrong (13%), was 14/60; bare names 7/37 (19%), was
+  30%. What remains is test-file helper functions sharing a common word, and
+  one qualifier not honoured. Full suite 5065/5065 green.
   **Layman:** A compact answer to "where in the code is each name this document mentions?", so a reviewer never has to search for it.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
   Lanes: mcp, docs.
+
+- 🚧 [ANTS-5314] **File map prototype — every tracked file with a quoted purpose or "no stated purpose".**
+  Prototype: tools/filemap.py. Purpose lines quoted from a header comment,
+  docstring, Purpose: line, H1 title, directory README or docs/subsystems.md,
+  each tagged; otherwise the literal "no stated purpose". Uniform directories
+  collapse to one line that says it collapsed, with a count. The map records a
+  digest of its body; --check regenerates and fails on any difference.
+  Ships only if a token test shows sessions reading it spend fewer tokens
+  answering "where does X live" than sessions that do not. Machine-wide home
+  (~/.claude) is claude-ab's decision.
+  **Layman:** A one-page guide to what every file in a project is for, so a new session does not have to open three files to find the one it wanted.
+  Kind: research.
+  Source: claude-ab-request-2026-09-24.
+  Lanes: tools, docs.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

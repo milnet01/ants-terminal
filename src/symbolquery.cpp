@@ -500,22 +500,130 @@ void needleSlots(const QHash<QStringView, int> &bySymbol, const QString &line,
     }
 }
 
+// ANTS-5313 — where a C++/GLSL line starts: inside a function body, inside a
+// parenthesised list, or neither. The ladder matches a local variable or a
+// parameter on purpose (reporting where a name is declared beats reporting
+// that it does not exist), but with no scope it tagged them `definition` or
+// `declaration` — so a document naming a common word (`scope`, `internal`)
+// "resolved" to whatever function happened to declare one. Measured at 11 of
+// 14 wrong locator answers over 292 documents.
+//
+// Line-based and approximate by design: strings, character literals and
+// comments are skipped so a brace inside one opens nothing; raw strings and
+// preprocessor branches that duplicate an opening brace are not modelled. A
+// brace opens CODE when it is nested in code, or when the text since the last
+// statement boundary reads as a function head, a lambda or a control keyword
+// — and never when that text carries a class-key, `namespace` or `enum`,
+// because a type body holds members, not locals.
+class CppScope {
+public:
+    bool local() const { return m_codeDepth > 0 || m_paren > 0; }
+
+    void consume(const QString &line) {
+        const qsizetype n = line.size();
+        for (qsizetype i = 0; i < n; ++i) {
+            const QChar c = line.at(i);
+            if (m_inComment) {
+                if (c == QLatin1Char('*') && i + 1 < n && line.at(i + 1) == QLatin1Char('/')) {
+                    m_inComment = false;
+                    ++i;
+                }
+                continue;
+            }
+            if (c == QLatin1Char('/') && i + 1 < n) {
+                if (line.at(i + 1) == QLatin1Char('/')) break;
+                if (line.at(i + 1) == QLatin1Char('*')) { m_inComment = true; ++i; continue; }
+            }
+            if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
+                // A `'` inside a number token is a digit separator (1'000,
+                // 0xFF'FF), not a literal; `L'x'` / `u8'x'` still open one.
+                if (c == QLatin1Char('\'') && i > 0 && line.at(i - 1).isLetterOrNumber()) {
+                    qsizetype t = i - 1;
+                    while (t > 0 && line.at(t - 1).isLetterOrNumber()) --t;
+                    if (line.at(t).isDigit()) continue;
+                }
+                qsizetype j = i + 1;
+                while (j < n && line.at(j) != c) j += (line.at(j) == QLatin1Char('\\')) ? 2 : 1;
+                i = j;          // past the closing quote, or the end of the line
+                m_head += QLatin1Char('x');
+                continue;
+            }
+            switch (c.unicode()) {
+            case '(': ++m_paren; break;
+            case ')': if (m_paren > 0) --m_paren; break;
+            case '{': {
+                const bool code = m_codeDepth > 0 || headOpensCode();
+                m_stack.push_back(code);
+                if (code) ++m_codeDepth;
+                m_head.clear();
+                continue;
+            }
+            case '}':
+                if (!m_stack.isEmpty() && m_stack.takeLast()) --m_codeDepth;
+                // Back at file scope nothing can still be open: a paren left
+                // unbalanced by a macro would otherwise mark the rest of the
+                // file local.
+                if (m_stack.isEmpty()) m_paren = 0;
+                m_head.clear();
+                continue;
+            case ';':
+                if (m_paren == 0) { m_head.clear(); continue; }
+                break;
+            default: break;
+            }
+            m_head += c;
+        }
+        m_head += QLatin1Char(' ');
+        if (m_head.size() > 512) m_head = m_head.right(512);
+    }
+
+private:
+    bool headOpensCode() const {
+        static const QRegularExpression typeKey(QStringLiteral(
+            "\\b(?:class|struct|union|enum|namespace)\\b"));
+        static const QRegularExpression ctlKey(QStringLiteral(
+            "(?:^|\\W)(?:else|do|try)$"));
+        const QString h = m_head.trimmed();
+        if (typeKey.match(h).hasMatch()) return false;
+        return h.contains(QLatin1Char(')')) || h.endsWith(QLatin1Char(']'))
+            || ctlKey.match(h).hasMatch();
+    }
+
+    QVector<bool> m_stack;   // true = the brace opened code
+    int m_codeDepth = 0;
+    int m_paren = 0;
+    bool m_inComment = false;
+    QString m_head;          // text since the last statement boundary
+};
+
+// ANTS-4358's function-local lambda is a name documents cite
+// (makeFieldsProp and its siblings), so it keeps its kind inside a body.
+bool isLambdaDef(const QString &trimmed) {
+    static const QRegularExpression re(QStringLiteral("\\bauto\\s+\\w+\\s*=\\s*\\["));
+    return re.match(trimmed).hasMatch();
+}
+
 // Record one definition or declaration row. `trimmed` is the signature as
-// reported; its shape decides the C++ kind.
+// reported; its shape decides the C++ kind. `local` — the line starts inside
+// a function body or a parameter list (CppScope), so the row is tagged
+// `local` and ranks after every definition.
 void recordDef(ScanState &st, const Anchors &an, const QString &rel,
-               const QString &trimmed, int lineNo) {
+               const QString &trimmed, int lineNo, bool local = false) {
     ++st.defsTotal;
     QString kind = QStringLiteral("definition");
     if (an.cppKind) {
         if (trimmed.startsWith(QLatin1String("namespace"))) {
             // ANTS-4346 — neither a body nor a prototype.
             kind = QStringLiteral("namespace");
+        } else if (local && !isLambdaDef(trimmed)) {
+            kind = QStringLiteral("local");
         } else if (looksLikeDeclaration(trimmed)) {
             kind = QStringLiteral("declaration");
         }
     }
     QVector<DefMatch> &bucket =
-        (kind == QStringLiteral("declaration")) ? st.defsDecl : st.defsDefn;
+        (kind == QStringLiteral("declaration") || kind == QStringLiteral("local"))
+            ? st.defsDecl : st.defsDefn;
     if (bucket.size() < st.defCap) {
         DefMatch d;
         d.file = rel;
@@ -535,7 +643,7 @@ void recordDef(ScanState &st, const Anchors &an, const QString &rel,
 void matchLine(ScanState &st, const Anchors &an, const QString &rel,
                const QString &line, const QString &thisLine,
                const QString &prevLine, int lineNo,
-               bool *splitName = nullptr) {
+               bool *splitName = nullptr, bool localScope = false) {
     bool isDef = false;
     for (const QRegularExpression &re : an.def) {
         if (re.match(line).hasMatch()) { isDef = true; break; }
@@ -561,7 +669,7 @@ void matchLine(ScanState &st, const Anchors &an, const QString &rel,
         // the symbol is, which is what a reader jumps to.
         recordDef(st, an, rel,
                   isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine,
-                  lineNo);
+                  lineNo, localScope);
     }
 
     // ANTS-4828 — the name alone under a return type may begin a signature
@@ -602,9 +710,13 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     QString prevLine;   // ANTS-4603 — previous line, trimmed; "" at file start
     // ANTS-4828 — split signatures waiting for their parameter list. `slot`
     // is the batch needle, or -1 on the single-symbol path.
-    struct Pending { int slot; int line; int span; QString sig; bool open; };
+    struct Pending { int slot; int line; int span; QString sig; bool open; bool local; };
     QList<Pending> pending;
     constexpr int kMaxSplitLines = 16;
+    // ANTS-5313 — keyed on the language, not on `an.cppKind`: in batch mode
+    // this walk state builds no anchors of its own.
+    const bool trackScope = lang == Lang::Cpp || lang == Lang::Glsl;
+    CppScope scope;
     while (!f.atEnd()) {
         QByteArray raw = f.readLine();
         ++lineNo;
@@ -627,6 +739,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
         }
         const QString line = QString::fromUtf8(raw);
         const QString thisLine = line.trimmed();
+        const bool local = trackScope && scope.local();
 
         // ANTS-4828 — resolve split signatures. The line after the name must
         // open the parameter list with `(`; lines then join until one holds
@@ -644,7 +757,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
             if (!thisLine.contains(QLatin1Char(')'))) { ++k; continue; }
             ScanState &target = p.slot < 0 ? st : (*st.batch)[p.slot];
             if (target.collectDefs)
-                recordDef(target, target.anchors[langOrd], rel, p.sig, p.line);
+                recordDef(target, target.anchors[langOrd], rel, p.sig, p.line, p.local);
             pending.removeAt(k);
         }
 
@@ -661,20 +774,21 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
                 ScanState &sl = (*st.batch)[idx];
                 bool split = false;
                 matchLine(sl, sl.anchors[langOrd], rel, line, thisLine,
-                          prevLine, lineNo, &split);
+                          prevLine, lineNo, &split, local);
                 if (split)
                     pending.append({idx, lineNo, 0,
                                     prevLine + QLatin1Char(' ') + thisLine,
-                                    false});
+                                    false, local});
             }
         } else if (st.symbol.isEmpty() || line.contains(st.symbol)) {
             bool split = false;
-            matchLine(st, an, rel, line, thisLine, prevLine, lineNo, &split);
+            matchLine(st, an, rel, line, thisLine, prevLine, lineNo, &split, local);
             if (split)
                 pending.append({-1, lineNo, 0,
-                                prevLine + QLatin1Char(' ') + thisLine, false});
+                                prevLine + QLatin1Char(' ') + thisLine, false, local});
         }
 
+        if (trackScope) scope.consume(line);
         prevLine = thisLine;
     }
     f.close();

@@ -132,6 +132,9 @@ struct Locators {
     QMap<QString, int>     ambiguous;  // symbol → candidate count (≥ 2)
     QStringList            unresolved;
     QStringList            notChecked; // never looked up — not "absent"
+    // Declared, but only as a function-local name or a forward declaration:
+    // real, so not `unresolved`, and still no place to point a reader.
+    QStringList            declaredOnly;
 };
 
 Locators locate(const QVector<Symbol> &symbols);

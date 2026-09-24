@@ -15,14 +15,14 @@ Origin: `~/.claude/docs/reviews/v2-mechanical-checks-proposal-2026-09-24.md`
 `doc_symbols {path, mode:"locator"}` returns
 `{ok, mode:"locator", locators:{<symbol>:"<file>:<line>"},
 ambiguous:{<symbol>:n}, unresolved:[<symbol>], not_checked:[<symbol>],
-counts, truncated, checked_docs, docs_digest}`.
+declared_only:[<symbol>], counts, truncated, checked_docs, docs_digest}`.
 
 The reduction is `DocSymbols::locate()` (engine, pure); the JSON is
 `RemoteControl::docSymbolsBuildLocatorResponse()` (pure).
 
 - **INV-1 one entry per distinct symbol** — a symbol written N times appears
-  once, in exactly one of the four buckets. `counts.symbols` is the distinct
-  count and equals the sum of the four bucket counts.
+  once, in exactly one of the five buckets. `counts.symbols` is the distinct
+  count and equals the sum of the five bucket counts.
 - **INV-2 a definition beats a declaration** — where a symbol has one
   `definition` match and any number of `declaration` matches, its locator is
   the definition.
@@ -39,6 +39,13 @@ The reduction is `DocSymbols::locate()` (engine, pure); the JSON is
 - **INV-7 refusals** — an unknown `mode` refuses `bad_args`; `mode:"locator"`
   with an `only` other than `all` refuses `bad_args`, since `only` filters rows
   this mode does not emit. The schema lists `mode` with both values.
+
+- **INV-8 a local or a forward declaration is never a candidate** — a
+  `local` row (declared inside a function body or a parameter list, the
+  resolver kind ANTS-5313 added) and a `class X;`-shaped forward declaration
+  are not places a reader wants. They neither locate a symbol nor make it
+  ambiguous. A symbol with only such rows goes to `declared_only`: it is
+  declared, so `unresolved` would be false, but there is no place to point.
 
 ## Reload
 

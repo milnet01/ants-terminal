@@ -322,8 +322,19 @@ Locators locate(const QVector<Symbol> &symbols) {
         if (s.resolution == Resolution::Unresolved) { out.unresolved << name; continue; }
 
         // Distinct file:line per kind — a repeated match is one candidate.
+        // A `local` row and a forward declaration are real declarations but
+        // no place to send a reader (spec INV-8), so they are not candidates.
+        static const QRegularExpression forwardDecl(QStringLiteral(
+            "^(?:template\\s*<[^>]*>\\s*)?(?:class|struct|union|enum(?:\\s+class|\\s+struct)?)"
+            "\\s+(?:[A-Z_][A-Z0-9_]*\\s+)?[A-Za-z_]\\w*\\s*;"));
         QStringList defs, decls;
+        bool declaredElsewhere = false;
         for (const SymbolQuery::DefMatch &d : s.definitions) {
+            if (d.kind == QLatin1String("local")
+                || forwardDecl.match(d.signature).hasMatch()) {
+                declaredElsewhere = true;
+                continue;
+            }
             const QString loc = d.file + QLatin1Char(':') + QString::number(d.line);
             QStringList &bucket =
                 d.kind == QLatin1String("definition") ? defs : decls;
@@ -332,6 +343,7 @@ Locators locate(const QVector<Symbol> &symbols) {
         const QStringList &pick = defs.isEmpty() ? decls : defs;
         if (pick.size() == 1)      out.located.insert(name, pick.first());
         else if (pick.size() > 1) out.ambiguous.insert(name, int(pick.size()));
+        else if (declaredElsewhere) out.declaredOnly << name;
         else                       out.unresolved << name;  // resolved with no match
     }
     return out;

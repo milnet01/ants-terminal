@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
         out["locators"] = loc; out["ambiguous"] = amb;
         out["unresolved"] = QJsonArray::fromStringList(l.unresolved);
         out["not_checked"] = QJsonArray::fromStringList(l.notChecked);
+        out["declared_only"] = QJsonArray::fromStringList(l.declaredOnly);
         out["doc_line"] = at;
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
         std::fflush(stdout);

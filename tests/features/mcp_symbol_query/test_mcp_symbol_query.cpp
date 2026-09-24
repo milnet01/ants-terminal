@@ -1320,9 +1320,11 @@ TEST(McpSymbolQuery, Ants4880WrappedLocalInitIsNotADefinition) {
 
     // The rows are not dropped — the ladder reports where a name is declared
     // on purpose. They are just no longer claiming to be the definition.
+    // ANTS-5313 — as `local`: the row is kept, and its kind now says where
+    // it was declared rather than only that it is not the definition.
     EXPECT_TRUE(hasDef(d, QStringLiteral("src/user_a.cpp"),
-                       QStringLiteral("declaration")))
-        << "the local should still be reported, as a declaration";
+                       QStringLiteral("local")))
+        << "the local should still be reported, as a local";
 }
 
 // ---------------------------------------------------------------------------
@@ -1393,4 +1395,85 @@ TEST(McpSymbolQuery, Ants4924OperatorLedLinesAreNotDeclarations) {
     EXPECT_EQ(userRows, 1)
         << "only the local `int rootField = ...;` declares the name in "
            "fields_user.cpp; `out << rootField;` is a use";
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-5313 — a name declared inside a function body or a parameter list is
+// tagged `local`, not `definition` / `declaration`.
+//
+// Measured over 292 docs (docs/reviews/ANTS-5313-locator-precision-
+// 2026-09-24.md): a common word a document names (`internal`, `scope`) came
+// back as a definition because some function happened to declare a local or
+// a parameter of that name — 11 of 14 wrong locator answers. The ladder keeps
+// reporting those rows (where a name is declared beats "does not exist"); it
+// just stops claiming they are the symbol's home.
+
+TEST(McpSymbolQuery, Ants5313FunctionScopeNamesAreLocal) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // The real homes: a class member, a namespace-scope table, a free
+    // function, a type.
+    writeFile(root, QStringLiteral("src/model.h"),
+              QStringLiteral("struct Item {\n"
+                             "    bool internal = false;\n"
+                             "    QString scope;\n"
+                             "};\n"
+                             "static const QStringList testGlobs = {\n"
+                             "    QStringLiteral(\"*_test.c\"),\n"
+                             "};\n"
+                             "int build(int n);\n"));
+    // The impostors, every shape the measurement found.
+    writeFile(root, QStringLiteral("src/user.cpp"),
+              QStringLiteral(
+                  "int run(const QString &path,\n"
+                  "        const QString &scope = QStringLiteral(\"auto\")) {\n"
+                  "    auto internal = make(path, scope,\n"
+                  "                         1);\n"
+                  "    const QStringList testGlobs = {\n"
+                  "        QStringLiteral(\"x\"),\n"
+                  "    };\n"
+                  "    struct build { int n = 0; };\n"
+                  "    if (internal) {\n"
+                  "        int scope = 2;\n"
+                  "        (void)scope;\n"
+                  "    }\n"
+                  "    auto keepMe = [](int n) { return n; };\n"
+                  "    return keepMe(1);\n"
+                  "}\n"
+                  "// a brace in a comment { and a string \"{\" do not open scope\n"
+                  "int build(int n) { return n; }\n"));
+
+    SymbolQuery::Options o;
+    auto kindsIn = [&](const char *sym, const char *file) {
+        QStringList k;
+        for (const auto &d : SymbolQuery::findDefinition(
+                 root, QString::fromUtf8(sym), o).definitions)
+            if (d.file.endsWith(QLatin1String(file))) k << d.kind;
+        return k;
+    };
+
+    // The impostors are still reported, and every one says `local`.
+    EXPECT_EQ(kindsIn("internal", "user.cpp"), QStringList{QStringLiteral("local")})
+        << "a local whose initialiser wraps";
+    EXPECT_EQ(kindsIn("scope", "user.cpp"),
+              (QStringList{QStringLiteral("local"), QStringLiteral("local")}))
+        << "a defaulted parameter on a continuation line, and a nested-block local";
+    EXPECT_EQ(kindsIn("testGlobs", "user.cpp"), QStringList{QStringLiteral("local")})
+        << "a brace-initialised local";
+    EXPECT_EQ(kindsIn("build", "user.cpp"),
+              (QStringList{QStringLiteral("definition"), QStringLiteral("local")}))
+        << "the real out-of-line definition, then a function-local struct";
+
+    // The real homes keep their kinds.
+    EXPECT_EQ(kindsIn("internal", "model.h"), QStringList{QStringLiteral("declaration")});
+    EXPECT_EQ(kindsIn("scope", "model.h"), QStringList{QStringLiteral("declaration")});
+    EXPECT_EQ(kindsIn("testGlobs", "model.h"), QStringList{QStringLiteral("definition")})
+        << "a namespace-scope table is not local (its kind predates ANTS-5313)";
+    EXPECT_EQ(kindsIn("build", "model.h"), QStringList{QStringLiteral("declaration")});
+
+    // ANTS-4358's function-local lambda stays a definition: documents cite
+    // those by name (makeFieldsProp and its siblings).
+    EXPECT_EQ(kindsIn("keepMe", "user.cpp"), QStringList{QStringLiteral("definition")});
 }

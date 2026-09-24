@@ -23,8 +23,10 @@ namespace {
 
 using R = DocSymbols::Resolution;
 
-SymbolQuery::DefMatch def(const char *file, int line, const char *kind) {
+SymbolQuery::DefMatch def(const char *file, int line, const char *kind,
+                          const char *sig = "") {
     SymbolQuery::DefMatch d;
+    d.signature = QString::fromUtf8(sig);
     d.file = QString::fromUtf8(file);
     d.line = line;
     d.kind = QString::fromUtf8(kind);
@@ -57,6 +59,16 @@ QVector<DocSymbols::Symbol> fixture() {
                                       def("src/g.h", 2, "declaration")}),
         sym("dupMatch", R::Resolved, {def("src/h.cpp", 3, "definition"),
                                       def("src/h.cpp", 3, "definition")}),
+        // ANTS-5313 — rows the resolver reports but that are no place to
+        // point a reader: a function-local name and a forward declaration.
+        sym("defAndLocal", R::Resolved, {def("src/i.cpp", 9, "definition"),
+                                         def("src/j.cpp", 4, "local"),
+                                         def("src/k.cpp", 5, "local")}),
+        sym("memberAndLocal", R::Resolved, {def("src/l.h", 3, "declaration", "int memberAndLocal;"),
+                                            def("tests/t.cpp", 8, "local")}),
+        sym("localOnly", R::Resolved, {def("tests/t.cpp", 2, "local")}),
+        sym("QFile", R::Resolved, {def("src/m.h", 1, "declaration", "class QFile;"),
+                                   def("src/n.h", 2, "declaration", "class QFile;")}),
         sym("gone", R::Unresolved),
         sym("gone", R::Unresolved),
         sym("unasked", R::NotChecked),
@@ -75,21 +87,24 @@ QJsonObject build() {
 TEST(DocSymbolsLocator, Inv1OneEntryPerDistinctSymbol) {
     expect_reset();
     const DocSymbols::Locators l = DocSymbols::locate(fixture());
-    expect(l.located.size() == 4, "INV-1: four located", QString::number(l.located.size()));
+    expect(l.located.size() == 6, "INV-1: six located", QString::number(l.located.size()));
     expect(l.ambiguous.size() == 2, "INV-1: two ambiguous", QString::number(l.ambiguous.size()));
     expect(l.unresolved == QStringList{QStringLiteral("gone")},
            "INV-1: `gone` once in unresolved despite two occurrences");
     expect(l.notChecked == QStringList{QStringLiteral("unasked")},
            "INV-1: `unasked` in not_checked");
     const QJsonObject c = build().value(QStringLiteral("counts")).toObject();
-    expect(c.value(QStringLiteral("symbols")).toInt() == 8,
+    expect(l.declaredOnly == (QStringList{QStringLiteral("localOnly"), QStringLiteral("QFile")}),
+           "INV-1: local-only and forward-only names are declared_only");
+    expect(c.value(QStringLiteral("symbols")).toInt() == 12,
            "INV-1: counts.symbols is the distinct count");
     expect(c.value(QStringLiteral("located")).toInt()
                + c.value(QStringLiteral("ambiguous")).toInt()
                + c.value(QStringLiteral("unresolved")).toInt()
                + c.value(QStringLiteral("not_checked")).toInt()
+               + c.value(QStringLiteral("declared_only")).toInt()
            == c.value(QStringLiteral("symbols")).toInt(),
-           "INV-1: the four buckets sum to counts.symbols");
+           "INV-1: the five buckets sum to counts.symbols");
     EXPECT_EQ(0, expect_finish());
 }
 
@@ -125,6 +140,22 @@ TEST(DocSymbolsLocator, Inv4DuplicateMatchesCollapse) {
     const DocSymbols::Locators l = DocSymbols::locate(fixture());
     expect(l.located.value(QStringLiteral("dupMatch")) == QLatin1String("src/h.cpp:3"),
            "INV-4: a repeated match is one candidate, so it locates");
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-8 — a local or a forward declaration is never a candidate.
+TEST(DocSymbolsLocator, Inv8LocalsAndForwardDeclarationsAreNotCandidates) {
+    expect_reset();
+    const DocSymbols::Locators l = DocSymbols::locate(fixture());
+    expect(l.located.value(QStringLiteral("defAndLocal")) == QLatin1String("src/i.cpp:9"),
+           "INV-8: two locals do not make a definition ambiguous");
+    expect(l.located.value(QStringLiteral("memberAndLocal")) == QLatin1String("src/l.h:3"),
+           "INV-8: a member declaration beats a test-local of the same name");
+    expect(!l.located.contains(QStringLiteral("QFile"))
+               && !l.ambiguous.contains(QStringLiteral("QFile")),
+           "INV-8: forward declarations locate nothing");
+    const QJsonArray d = build().value(QStringLiteral("declared_only")).toArray();
+    expect(d.size() == 2, "INV-8: declared_only on the wire");
     EXPECT_EQ(0, expect_finish());
 }
 

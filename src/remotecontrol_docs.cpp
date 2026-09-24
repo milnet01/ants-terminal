@@ -533,9 +533,10 @@ QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
     counts[QStringLiteral("ambiguous")]   = int(l.ambiguous.size());
     counts[QStringLiteral("unresolved")]  = int(l.unresolved.size());
     counts[QStringLiteral("not_checked")] = int(l.notChecked.size());
+    counts[QStringLiteral("declared_only")] = int(l.declaredOnly.size());
     counts[QStringLiteral("symbols")] =
         int(l.located.size() + l.ambiguous.size() + l.unresolved.size()
-            + l.notChecked.size());
+            + l.notChecked.size() + l.declaredOnly.size());
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;
@@ -544,6 +545,7 @@ QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
     o[QStringLiteral("ambiguous")]    = ambiguous;
     o[QStringLiteral("unresolved")]   = QJsonArray::fromStringList(l.unresolved);
     o[QStringLiteral("not_checked")]  = QJsonArray::fromStringList(l.notChecked);
+    o[QStringLiteral("declared_only")] = QJsonArray::fromStringList(l.declaredOnly);
     o[QStringLiteral("counts")]       = counts;
     o[QStringLiteral("truncated")]    = truncated;
     o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
