@@ -65551,11 +65551,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   One limit must survive into the description or the number will be misread: a
   lane's own tokens are not in the parent transcript, so the figure is the
   parent's usage including the reports it was handed.
+  Progress (2026-09-24): the record half shipped inside `run_trace`
+  op:"finish" `cost` (ANTS-5299, 30e48050), refusing
+  `coverage_required`. Still open: op:"report", the live-vs-draft
+  verdict run-cost-report.py computes. Held by the v2 orchestrator.
   **Layman:** Record what a review cost and what it caught, together, so cheaper is never mistaken for better.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5299] **A gate_log verb: a review run records its trace, and what was gated becomes queryable.**
+- ✅ [ANTS-5299] **A gate_log verb: a review run records its trace, and what was gated becomes queryable.**
   A gate whose only evidence is the session's own claim did not happen. The
   run appends a row citing an id; a query answers what was gated, when, and
   with what verdict. Structured beats the grep over a markdown file that does
@@ -65564,6 +65568,11 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   The enforcement half is a commit hook, which cannot call a verb (ANTS-4734,
   and ANTS-4932 is the unblock). So the row format must stay greppable enough
   that a script can do the hook's job while a query does it better.
+  Shipped (2026-09-24, 30e48050) as `run_trace`, the name the v2
+  orchestrator approved (docs/reviews/v2-mcp-verb-proposal-2026-09-24.md
+  § V3 in claude-config). Ops start / finish / get; the row is the v2
+  documents.md header. The query side is `get` by id; a listing query
+  was not asked for.
   **Layman:** Keep a checkable record of which documents were reviewed and when.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
