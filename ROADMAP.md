@@ -74468,6 +74468,16 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-24.
   Lanes: mcp.
 
+- 📋 [ANTS-5311] **Count the calls ants-mcpd serves in token_usage and the status-bar savings.**
+  Deferred from the ANTS-4932 spec (§ 2.3). token_usage stays terminal-scoped
+  because it reads the terminal's own counters, so project-scoped calls served
+  by ants-mcpd never reach them. Needs a report channel from ants-mcpd to the
+  terminal, or a shared counter file both processes write. Blocked by ANTS-4932.
+  **Layman:** Once the separate MCP helper answers most requests, the terminal's savings counter would only see the few it forwards, so the helper needs a way to report its own numbers.
+  Kind: enhancement.
+  Source: review-contract-ANTS-4932-loop-2.
+  Lanes: mcp.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 [ANTS-4274] **Trust-model gaps in IPC sockets.**
