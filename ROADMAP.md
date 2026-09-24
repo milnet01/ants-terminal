@@ -74454,6 +74454,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
+- 📋 [ANTS-5310] **workspace_search gives also_at rows no enclosing symbol, so a dedup group reads as one function.**
+  Seen 2026-09-24 in the ANTS-4932 review gate. With enclosing_symbol:true and
+  dedup on, a search for `resolveRootCanonical(m_main, req)` returned one
+  primary row annotated `RemoteControl::cmdMutationProbe` and twenty `also_at`
+  entries in other functions and files, none annotated. The reader has to
+  open every one to learn where it is.
+
+  Fix: give each `also_at` entry its own `enclosing` when enclosing_symbol is
+  set. The outline scan is already paid per matched file.
+  **Layman:** When a code search groups identical lines together, only the first one says which function it is in, so the others look like they are in the same place.
+  Kind: enhancement.
+  Source: in-session-2026-09-24.
+  Lanes: mcp.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 [ANTS-4274] **Trust-model gaps in IPC sockets.**
