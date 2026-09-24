@@ -213,21 +213,24 @@ Listed only where behavior isn't obvious from the name.
   **The class is split across `remotecontrol_*.cpp` translation units
   (ANTS-3833, ANTS-3855, ANTS-4620, ANTS-4622), each with its own entry
   below.** `src/remotecontrol.h` is unchanged; only the bodies were cut, and
-  `remotecontrol.cpp` keeps the `dispatch` chain and the shared `rcdetail`
-  helper pool. `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names the TUs in
-  slice order, `ants_core_lib` consumes that list, and the `ANTS_RC_SOURCES`
-  compile definition carries the same order to the test tree, where
-  `ants_test::slurpRemoteControl()` reads the whole set. A new verb's body
+  `remotecontrol.cpp` keeps the shared `rcdetail` helper pool.
+  `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names the TUs in slice order, and
+  the `ANTS_RC_SOURCES` compile definition carries the same order to the test
+  tree, where `ants_test::slurpRemoteControl()` reads the whole set. ANTS-4932
+  splits the list by filter: `remotecontrol_terminal.cpp`, which holds the
+  `dispatch` chain and the `--remote` socket, goes to `ants_core_lib`; every
+  other TU is window-free and goes to `ants_mcpcore_lib`. A new verb's body
   goes in its family's TU, its `dispatch` routing entry in
-  `remotecontrol.cpp`. Cross-TU helpers are declared in
+  `remotecontrol_terminal.cpp`. Cross-TU helpers are declared in
   `src/remotecontrol_internal.h`, which nothing outside the list may include.
   **Position in that list is load-bearing**, and the `TU n/N` header ordinals
   track it: a TU that is a SLICE of the pre-split file is inserted at its
   slice position, one that never existed there is appended, so the
   two-anchor scrape windows the tests use do not silently move.
-- `remotecontrol_terminal` — terminal and window verbs: tabs, windows, text
-  send and capture, plus the `--e2e` input-injection and screenshot verbs
-  (`cmdSendText`, `cmdGetText`, `cmdTabList`, `cmdInjectKey`, `cmdGrabImage`).
+- `remotecontrol_terminal` — the `--remote` socket and `dispatch()`, then the
+  terminal and window verbs: tabs, windows, text send and capture, plus the
+  `--e2e` input-injection and screenshot verbs (`cmdSendText`, `cmdGetText`,
+  `cmdTabList`, `cmdInjectKey`, `cmdGrabImage`). The one GUI-side TU.
 - `remotecontrol_roadmap_query` — the roadmap READ surface (bullets, bundles,
   reports) and, despite the name, the `cmdRoadmapLog` op dispatcher plus the
   `rl*` helpers the write TUs share.
@@ -284,6 +287,17 @@ Listed only where behavior isn't obvious from the name.
   budget (atomic `m_abortRequested`); a wedged worker is detached into
   `m_zombies` (never joined). Spec ANTS-1750; veto contract ANTS-1736
   §2.6; process-isolation follow-up ANTS-1795.
+- `mcpcore` / `mcpd` (ANTS-4932) — `ants_mcpcore_lib` is every project-scoped
+  MCP verb and the engines behind them, with no GUI library. `ants-mcpd`
+  (`src/mcpdmain.cpp`) serves those verbs to Claude Code over stdio and
+  forwards the terminal-scoped ones to a running terminal
+  (`src/mcpdforwarder.cpp`, socket picker and uid checks in
+  `src/mcpdsocket.cpp`). The one registration list is
+  `mcp::registerProjectScopedVerbs()` in `src/mcptoolregistry.cpp`; both
+  hosts run it. Verbs reach their host only through `ants::RootProvider`
+  (`src/rootprovider.h`). A rebuilt `ants-mcpd` reaches a session on its
+  next MCP reconnect, with no terminal relaunch. Spec:
+  `docs/specs/ANTS-4932-standalone-mcp-server.md`.
 - `claudeintegration` — singleton owning the Claude Code hook server
   (one UDS shared across all tabs), `m_pollTimer` (2 s) PID detection,
   `sessionPathForCwd` (project-scoped JSONL resolver, ANTS-1163),

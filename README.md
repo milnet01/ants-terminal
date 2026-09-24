@@ -217,16 +217,19 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Getting started
 
 1. **Open Ants Terminal.** It works like any terminal straight away.
-2. **Connect Claude Code to it — once per computer.** For now this needs a
+2. **Connect Claude Code to it — once per computer.** Claude Code talks to
+   Ants through a small helper program, `ants-mcpd`. For now this needs a
    copy of the source code (see [Build it yourself](#build-it-yourself)):
-   the small connector script is not yet included in the packages or the
-   AppImage. From the source folder, run:
+   the helper is not yet in a released package or the AppImage. After
+   building, run this from the source folder:
 
    ```bash
-   claude mcp add ants -- "$PWD/tools/mcp-bridge.py"
+   claude mcp add ants -- "$PWD/build/ants-mcpd"
    ```
 
-   It needs Python 3, which most Linux systems already have.
+   When `ants-mcpd` is rebuilt, reconnect Claude Code (`/mcp`) to pick it
+   up. Ants itself keeps running, and so do your other sessions. The older
+   connector, `tools/mcp-bridge.py`, still works for one more release.
 3. **Start Claude Code in an Ants tab** by typing `claude`. At the top of
    the session you should see a note that starts "Ants MCP is connected."
 4. **Watch the savings.** Once Claude has used a few of the tools, a

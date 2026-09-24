@@ -266,9 +266,12 @@ an obligation this rule imposes.
 **The standing exception, stated honestly.** Compiled C++ cannot hot
 reload in-process, and this project is compiled C++. So the rule is about
 where BEHAVIOUR lives and how the process is DIVIDED, not about pretending
-the language is something else. ANTS-4932 is the structural instance;
-`config.json`, `audit_rules.json` and the Lua sandbox are the cases that
-already work this way and are the models to copy.
+the language is something else. ANTS-4932 is the structural instance:
+`ants-mcpd` serves the project-scoped MCP verbs from a process the client
+starts, so a verb change needs a rebuild and an MCP reconnect, never a
+terminal relaunch (`docs/specs/ANTS-4932-standalone-mcp-server.md`).
+`config.json`, `audit_rules.json` and the Lua sandbox are the other cases
+that work this way and are the models to copy.
 
 ## Conventions
 

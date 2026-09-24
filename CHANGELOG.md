@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **ants-mcpd, a standalone MCP server: changes to the project tools now reach Claude Code without restarting the terminal** (ANTS-4932)
+  Claude Code launches `ants-mcpd` in place of `tools/mcp-bridge.py`. It
+  serves every project-scoped verb itself and passes the tab and terminal
+  verbs to a running Ants Terminal. A rebuilt `ants-mcpd` takes effect on
+  the next MCP reconnect, so no Claude Code session in any tab is killed.
+  With no terminal running, the forwarded verbs answer `no_terminal` and
+  the rest keep working. Roadmap writes from both programs share one lock.
+  Register it once: `claude mcp add ants -- <build>/ants-mcpd`.
+
 - **`doc_symbols` gains `mode:"locator"`: one file:line per name a document mentions, with its measured error rate stated.** (ANTS-5313)
   Where more than one place could be meant it gives a count, never a guess.
   Measured over 292 documents: about one locator in eight points at the

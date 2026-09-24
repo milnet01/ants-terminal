@@ -352,6 +352,8 @@ cd ..
 %license LICENSE
 %doc README.md CHANGELOG.md ROADMAP.md
 %{_bindir}/%{name}
+# ANTS-4932 — the standalone MCP server Claude Code launches.
+%{_bindir}/ants-mcpd
 %{_datadir}/applications/za.co.antsprojectshub.AntsTerminal.desktop
 %{_datadir}/metainfo/za.co.antsprojectshub.AntsTerminal.metainfo.xml
 %{_datadir}/icons/hicolor/16x16/apps/%{name}.png

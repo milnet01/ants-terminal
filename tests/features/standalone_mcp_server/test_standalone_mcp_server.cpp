@@ -53,6 +53,9 @@ QString deadSocket(const QTemporaryDir &tmp) {
     return tmp.filePath(QStringLiteral("no-terminal.sock"));
 }
 
+// readelf ships in binutils, which the compiler toolchain every suite-running
+// carrier installs already depends on, so it is not in ci_workflow_deps'
+// REQUIRED set. An empty result fails the case rather than skipping it.
 QString readelfNeeded(const QString &binary) {
     QProcess p;
     p.start(QStringLiteral("readelf"), {QStringLiteral("-d"), binary});

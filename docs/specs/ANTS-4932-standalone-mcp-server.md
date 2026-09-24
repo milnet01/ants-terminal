@@ -111,20 +111,24 @@ under `ANTS_ENABLE_HELPER_CLI`.
 
 - **The `remotecontrol_*` TUs**, except `src/remotecontrol_terminal.cpp`, which
   is the tab-verb file and stays GUI-side. `src/remotecontrol.cpp` holds the
-  `RemoteControl` class and moves too. Its GUI-using members (it includes
-  `QApplication`, `QWidget`, `QPixmap`, `QScreen`) move to a GUI-side TU first.
-  So do `dispatch()` and the `--remote` socket members, because `dispatch()`
-  routes to `remotecontrol_terminal.cpp` members such as `cmdGetText` and
-  `cmdTabList`. `ants-mcpd` reaches `RemoteControl` only through the registered
-  handlers.
+  `RemoteControl` class and moves too. `dispatch()` and the `--remote` socket
+  members move to the head of `remotecontrol_terminal.cpp`, because
+  `dispatch()` routes to its members such as `cmdGetText` and `cmdTabList`.
+  That TU's window-free tail (the `roadmap_log` helpers) moves to the head of
+  `remotecontrol_roadmap_query.cpp`, and `enrichLikelyFixes` to beside
+  `cmdBuildStatus`. No TU is added, so every `TU k/N` ordinal holds. `ants-mcpd`
+  reaches `RemoteControl` only through the registered handlers.
 - **The engine sources those TUs call** — `speclint`, `codebaseindex`,
   `config`, `pathvalidation` and the rest. They compile into `ants_core_lib`
   today. Checked: none of them includes a Qt GUI header.
-- **The `ants_audit_lib` sources they call**, such as `indiereviewdispatcher`.
-  `ants_audit_lib` links `ants_core_lib` PUBLIC, so it cannot be linked as it
-  stands.
-- **The `ClaudeIntegration` statics and nested types they name** — `etagFor`,
-  `applyEtagPattern`, and the types § 2.3 lists.
+- **`ClaudeIntegration` itself** (`src/claudeintegration.cpp`), which holds
+  the `tools/call` pipeline and the `tools/list` builder. It is window-free, so
+  it moves whole rather than piecemeal, and `ants-mcpd` hosts it.
+
+`ants_audit_lib` and `ants_lua_lib` stay separate libraries and link
+`ants_mcpcore_lib` instead of `ants_core_lib`; both are window-free.
+`ants-mcpd` links the three in one `--start-group`, which resolves their
+references to each other.
 - **`src/mcptoolregistry.cpp`** (§ 2.3).
 
 The build is the completeness check: `ants-mcpd` fails to link while any
@@ -172,7 +176,10 @@ ANTS-1253 INV-8's cross-grep. A second host would make them three.
 namespace mcp {
 // Registers every verb that does not require a terminal, against any host.
 // The ONLY enumeration of the project-scoped verb set.
-void registerProjectScopedVerbs(ToolSink &sink, RemoteControl *rc);
+// `rc` is read on every call: the terminal registers before it has built its
+// RemoteControl. `host` carries what the inline handlers need.
+void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
+                                RegistryHost host = {});
 
 // The verbs that DO require a terminal. The GUI host registers these
 // directly; ants-mcpd registers a forwarder for each (§ 2.5).
@@ -198,14 +205,15 @@ Read each handler's body. An `rcDelegate` handler is decided by its `cmd*`
 body; an inline `mainwindow.cpp` lambda is decided by the lambda itself.
 Assigned by this spec:
 
-- **Terminal-scoped:** every `cmd*` in `remotecontrol_terminal.cpp`; the
-  inline `get_cwd`, `get_scrollback`, `get_last_command`, `get_environment`
-  and `tab_list` lambdas; `token_usage` (it reads the terminal's own counters,
+- **Terminal-scoped:** every `cmd*` in `remotecontrol_terminal.cpp` except
+  `cmdFindSources`, which reads no tab state and moves to the workspace TU; the
+  inline `get_cwd`, `get_scrollback`, `get_last_command`, `get_environment`,
+  `get_git_status` and `tab_list` lambdas; `token_usage` (it reads the terminal's own counters,
   so its body moves from `remotecontrol_review.cpp` to the GUI side);
   `get_session_info`, dispatched inline by the pipeline.
 - **Served by `ants-mcpd`:** `caller_cwd_info`, whose lambda moves to
   `mcptoolregistry.cpp` so it can report `ServerCwd` (§ 2.4).
-- **Served by both hosts:** `tool_info`, from `mcp::toolDescriptors()`.
+- **Served by both hosts:** `tool_info`, which the shared pipeline answers.
 - **Every other inline lambda** is classified by the same reading when it is
   moved. A lambda that reads no tab or terminal state moves to
   `mcptoolregistry.cpp`.
@@ -237,11 +245,11 @@ cache, ETag, `fields=` and the wrap, because the terminal's own pipeline has
 already applied them. The pipeline's inline `get_session_info` branch forwards
 in `ants-mcpd`.
 
-**The schema builder moves with the list**, into `mcp::toolDescriptors()`, so
-one function answers `tools/list` in both hosts. This takes up ANTS-1253 § 9's
-explicitly deferred "auto-generation of `tools/list` from registry" only so far
-as *sharing* it; the schema text stays hand-written, not generated from the
-registry. Without this move `ants-mcpd` cannot answer `tools/list` at all.
+**The schema builder moves with the pipeline.** `tools/list` is built in
+`ClaudeIntegration`, which both hosts run (§ 2.2), so one builder answers it in
+both. This takes up ANTS-1253 § 9's explicitly deferred "auto-generation of
+`tools/list` from registry" only so far as *sharing* it; the schema text stays
+hand-written, not generated from the registry.
 
 ### 2.4 Root resolution without a window
 
@@ -420,7 +428,8 @@ INV-9 locks the writes and INV-13 locks the hold.
   scrapes `mainwindow.cpp`'s `registerToolProvider("<name>"` calls and asserts
   every name is in that set. Broken by: registering a project-scoped verb in
   `mainwindow.cpp` again.
-- **INV-3** — Both hosts answer `tools/list` from `mcp::toolDescriptors()`, and
+- **INV-3** — Both hosts answer `tools/list` from the one builder in
+  `ClaudeIntegration`, and
   the two lists agree on every shared verb's name and input schema. *Test:*
   `tests/features/standalone_mcp_server/` spawns `ants-mcpd`, sends
   `tools/list`, and compares the reply field-by-field with the GUI pipeline's
@@ -572,8 +581,9 @@ successful hot path from a relaunch nobody noticed.
   likely to be followed from memory, so it changes in the same commit.
 - **`README.md`** — the MCP setup line changes from `tools/mcp-bridge.py` to
   `ants-mcpd`. `tools/check-readme-claims.sh` runs in the pre-push hook.
-- **`tests/features/ci_workflow_deps`** — only if a packaging carrier ships
-  `ants-mcpd`; § 8 says it does.
+- **`tests/features/ci_workflow_deps`** — unchanged. Every carrier builds
+  `ants-mcpd` from source, so there is no tool to declare. INV-1's `readelf`
+  comes with binutils, which each carrier's compiler already pulls in.
 - **Packaging** — the RPM spec, Arch PKGBUILD and Debian control each gain the
   new binary.
 - **CHANGELOG** — one entry stating what shipped, not the defect.
@@ -588,7 +598,7 @@ that the design contradicts as written. None is silently overridden:
 | ANTS-1253 INV-1 | every tool is registered exactly once **in `MainWindow::setupClaudeMcpProviders`** | the project-scoped verbs move to `mcp::registerProjectScopedVerbs`; "exactly once" is preserved and strengthened by INV-2 |
 | ANTS-1253 INV-8 | cross-grep binds the `tools/list` builder to registrations **in `mainwindow.cpp`** | the grep's registration side becomes `mcptoolregistry.cpp` **and** `mainwindow.cpp`, which keeps the terminal-scoped registrations; the binding itself is kept, by INV-3 |
 | ANTS-3833 INV-11 | a `remotecontrol` TU is named only in the `ANTS_RC_SOURCES_REL` block | kept. The block now holds two lists, one per library (§ 2.2) |
-| ANTS-1642 INV-1 | `mcp_dispatch_forward_completeness` pairs each schema entry in `claudeintegration.cpp` with its `registerToolProvider` lambda in `mainwindow.cpp` | re-pointed at `mcp::toolDescriptors()` and at both `mcptoolregistry.cpp` and `mainwindow.cpp`. Left on the old files it finds no tools and passes |
+| ANTS-1642 INV-1 | `mcp_dispatch_forward_completeness` pairs each schema entry in `claudeintegration.cpp` with its `registerToolProvider` lambda in `mainwindow.cpp` | re-pointed at both `mcptoolregistry.cpp` and `mainwindow.cpp`; the schema side stays `claudeintegration.cpp`, where the builder still is. Left on the old files it finds no tools and passes |
 | ANTS-2132 § 2.10, the factory scrape | `mcp_verb_offthread_guard` finds the one factory body at `MainWindow::rcDelegate(` | re-pointed at `rcDelegate`'s new home in `mcptoolregistry.cpp` (§ 2.3). Still one definition |
 | ANTS-2132 INV-13, INV-20 | scrapes pinned to `src/mainwindow.cpp`'s registration table | re-pointed at `mcptoolregistry.cpp`. INV-20's "exactly one `DispatchLane::Bulk`" is preserved, at the new site |
 | ANTS-2132 § 2.10 | the `roadmap_busy` hold registry is process-wide and does **not** cover a second process | the hold becomes a per-root lock file both hosts see (§ 2.7); INV-13 locks it |
@@ -619,9 +629,9 @@ is a one-way door across every project on the machine.
 ## 9. Decisions taken while drafting
 
 1. **`ants-mcpd` ships in the packages.** The bridge's retirement (ANTS-5308)
-   leaves a packaged install with no MCP server otherwise. So the AppImage and
-   the three distro recipes each gain the binary, and
-   `tests/features/ci_workflow_deps` learns about it where a carrier runs it.
+   leaves a packaged install with no MCP server otherwise. `install(TARGETS)`
+   installs it beside `ants-terminal`, which is all the Arch and Debian
+   recipes and the AppImage's AppDir need; the RPM spec names it in `%files`.
 2. **The two deferrals in § 5 are filed**: ANTS-5308 (retire the bridge) and
    ANTS-5309 (narrow `ants_core_lib`'s Widgets surface).
 3. **One `tools/call` pipeline, extracted and shared** (§ 2.3), rather than a

@@ -63,22 +63,28 @@ place when it saves a Claude session real tokens or round-trips
 ## Authoring checklist
 
 1. **Register the provider with its contract.** Add a
-   `registerToolProvider` entry in `src/mainwindow.cpp` (grep
-   `registerToolProvider` to find the existing block). Since ANTS-1419 the call is
+   `registerToolProvider` entry to `mcp::registerProjectScopedVerbs()` in
+   `src/mcptoolregistry.cpp` (ANTS-4932). That list serves both the terminal
+   and `ants-mcpd`. **Only a verb that reads tab or terminal state** is
+   registered in `MainWindow::setupClaudeMcpProviders()` in
+   `src/mainwindow.cpp`, and its name also goes in
+   `mcp::terminalScopedVerbNames()` so `ants-mcpd` forwards it; a test fails
+   when the two disagree. Since ANTS-1419 the call is
    3-arg — the per-tool caller-cwd contract is the **2nd positional
    argument**, so the security contract is visible at the registration
    site, not a separate lookup:
 
    ```cpp
    // A plain cmd*() forward — the common shape, and off-thread (step 2a).
-   m_claudeIntegration->registerToolProvider("<name>",
+   sink.registerToolProvider("<name>",
        ClaudeIntegration::CallerCwdContract::Required,   // step 2
-       rcDelegate(&RemoteControl::cmdFoo));
+       rcDelegate(rc, &RemoteControl::cmdFoo));
 
-   // A hand-written body — runs on the GUI thread (step 2a).
-   m_claudeIntegration->registerToolProvider("<name>",
+   // A hand-written body — runs on the GUI thread (step 2a). It reaches the
+   // host through `host`, never through MainWindow.
+   sink.registerToolProvider("<name>",
        ClaudeIntegration::CallerCwdContract::Required,   // step 2
-       [this](const QJsonObject &args) -> QString { /* … */ });
+       [host](const QJsonObject &args) -> QString { /* … */ });
    ```
 
    **Both forms are shown because the registration form picks your thread —
@@ -86,8 +92,8 @@ place when it saves a Claude session real tokens or round-trips
    whichever form you use.** Step 2a reads BOTH facts back off this call,
    not just the third argument. The lambda used to be
    the only form shown here while step 2a called the factory form "the
-   common case" — which it is: the factory is the majority of registrations
-   in `mainwindow.cpp`, so the documented shape was the minority one.
+   common case" — which it is: the factory is the majority of registrations,
+   so the documented shape was the minority one.
 
 2. **Choose the caller-cwd contract.** Pick one of `Required` /
    `Optional` / `TabSpecific` / `ProcessGlobal` (ANTS-1404 defined the
@@ -179,7 +185,7 @@ place when it saves a Claude session real tokens or round-trips
    (ANTS-1455, e.g. a `/tmp` `reports_dir`) — note this C++ helper param
    is distinct from the MCP-facing JSON arg, which is
    `allow_outside_project` (mapped to the request's `allowOutsideProject`
-   in `mainwindow.cpp`). Reject envelope:
+   in the registration's handler). Reject envelope:
    `{ok:false, error:"<tool>: \"<paramName>\" <reason>", code:"bad_path"}`.
    **`<reason>` is a variable, and `check.err` already carries it — return
    that rather than rebuilding the envelope.** `validatePath` has four
@@ -339,7 +345,7 @@ place when it saves a Claude session real tokens or round-trips
    **File note for steps 7–8:** a tool's `inputSchema` lives in the
    `tools/list` builder in `src/claudeintegration.cpp` — a *different*
    file from the `registerToolProvider` call in step 1
-   (`src/mainwindow.cpp`). The per-verb helpers those two steps call for —
+   (`src/mcptoolregistry.cpp`). The per-verb helpers those two steps call for —
    `makeEtagMatchProp()` and `makeCompactProp()` — are defined and used
    there. `fields` is injected by that same builder into every schema, so
    do not declare it.
@@ -505,8 +511,9 @@ MCP feature tests use (e.g.
 
 - **Registration presence** — the provider registry
   (`ClaudeIntegration::m_toolProviders`) is private, so existing tests
-  source-string-match the registration *call* in the `mainwindow.cpp`
-  source text instead:
+  source-string-match the registration *call* in the source text instead,
+  through `ants_test::slurpMainWindow()`, which reads `mainwindow.cpp` and
+  `mcptoolregistry.cpp` together:
   `EXPECT_NE(src.find("registerToolProvider(\"<name>\""),
   std::string::npos)`.
 - **`tools/list` schema validity** — assert the `tools[]` entry exists
