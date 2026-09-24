@@ -11,8 +11,9 @@
 # caller's timeout (added after CI run 30587366963 went red on an ASan-only
 # failure the Release suite structurally cannot see — see the build-asan leg
 # below for why it is conditional, and ANTS-4118 for the cost gate). Still NOT covered: --lints
-# (cppcheck / appstream / desktop / groff / version-drift / completions), the
-# qt62-baseline compile guard, and e2e/perf under either build. Those run via
+# (cppcheck / appstream / desktop / groff / version-drift / completions), a
+# cold qt62-baseline or build-test container guard (the legs at the end run
+# only over a warm cache), and e2e/perf under either build. Those run via
 # `tools/ci-parity.sh --full`, which is the exact and complete CI mirror, before
 # a release or when touching packaging- / e2e-sensitive code.
 #
@@ -345,23 +346,24 @@ fi
 # that warms the caches.
 #
 # Opt out for one push with ANTS_PREPUSH_NO_QT62=1.
+#
+# run_gate=1 means we could not compute a precise range, so we cannot rule
+# out a source change — run it rather than skip on uncertainty.
+compilable=""
+if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
+    # `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
+    # break the floor exactly as the generated file would.
+    compilable="$(grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$' \
+                  <<<"$changed" || true)"
+else
+    compilable="(range unknown)"
+fi
+
 if [[ -n "${ANTS_PREPUSH_NO_QT62:-}" ]]; then
     echo "pre-push: qt62-baseline leg skipped (ANTS_PREPUSH_NO_QT62 set)."
 elif [[ ! -x tools/qt62-guard.sh ]]; then
     echo "pre-push: ⊘ tools/qt62-guard.sh missing — Qt-floor guard did NOT run."
 else
-    # run_gate=1 means we could not compute a precise range, so we cannot rule
-    # out a source change — run it rather than skip on uncertainty.
-    compilable=""
-    if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
-        # `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
-        # break the floor exactly as the generated file would.
-        compilable="$(grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$' \
-                      <<<"$changed" || true)"
-    else
-        compilable="(range unknown)"
-    fi
-
     if [[ -z "$compilable" ]]; then
         echo "pre-push: qt62-baseline leg skipped — no compilable source in this push."
     elif ! tools/qt62-guard.sh --warm-only; then
@@ -373,6 +375,30 @@ else
         echo "          ('git push --no-verify' to override.)" >&2
         exit 1
     fi
+fi
+
+# --- build-test toolchain leg -------------------------------------------------
+# The same guard, pointed at build-test's runner: ubuntu 24.04, GCC 13, mold.
+# This box's GCC 16 links targets that GCC 13 + mold cannot — an under-linked
+# static-archive consumer links here and fails there. bench_partition_walk went
+# red on three consecutive CI pushes that way while every local leg was green.
+# Same scope and --warm-only contract as the leg above.
+#
+# Opt out for one push with ANTS_PREPUSH_NO_UBUNTU24=1.
+if [[ -n "${ANTS_PREPUSH_NO_UBUNTU24:-}" ]]; then
+    echo "pre-push: build-test toolchain leg skipped (ANTS_PREPUSH_NO_UBUNTU24 set)."
+elif [[ ! -x tools/qt62-guard.sh ]]; then
+    echo "pre-push: ⊘ tools/qt62-guard.sh missing — build-test toolchain guard did NOT run."
+elif [[ -z "$compilable" ]]; then
+    echo "pre-push: build-test toolchain leg skipped — no compilable source in this push."
+elif ! tools/qt62-guard.sh --job build-test --warm-only; then
+    echo >&2
+    echo "pre-push: build FAILED under CI's build-test toolchain — push blocked." >&2
+    echo "          It builds with this box's compiler but not with ubuntu 24.04's" >&2
+    echo "          GCC 13 + mold. Check the error above; a link error usually" >&2
+    echo "          means a target needs the full --start-group library set." >&2
+    echo "          ('git push --no-verify' to override.)" >&2
+    exit 1
 fi
 
 echo "pre-push: correctness suite green — push allowed."

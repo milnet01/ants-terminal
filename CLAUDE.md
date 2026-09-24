@@ -146,8 +146,14 @@ when it does not. So adding a source file no longer obliges a manual
 ubuntu:22.04 container exercises (packaging, distro Qt behaviour at
 runtime).
 
+**So is build-test's toolchain**: `tools/qt62-guard.sh --job build-test`
+builds in ubuntu:24.04 with its GCC 13 and mold, and the hook runs it
+`--warm-only` the same way. This box's GCC 16 links targets GCC 13 + mold
+cannot, so no host build sees that class. Warm it once by running it
+without `--warm-only`; `ci-parity.sh --ubuntu24` (in `--full`) runs it too.
+
 Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
-`ANTS_PREPUSH_NO_QT62=1`. The ASan leg is cost-gated (ANTS-4118): it runs
+`ANTS_PREPUSH_NO_QT62=1`, `ANTS_PREPUSH_NO_UBUNTU24=1`. The ASan leg is cost-gated (ANTS-4118): it runs
 only over a tree whose pending ninja edges are under
 `ANTS_PREPUSH_ASAN_MAX_EDGES`, and a pending CMake regen is resolved
 rather than skipped (ANTS-4536). A damaged deps log is reported and the

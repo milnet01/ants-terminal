@@ -45,8 +45,10 @@
 #                                      #    ctest, --version/--help smoke
 #   tools/ci-parity.sh --qt62          #  + qt62-baseline compile guard in a podman
 #                                      #    ubuntu:22.04 / Qt 6.2 container (needs podman)
-#   tools/ci-parity.sh --qt62-clean    # drop the cached qt62 image + build volume
-#   tools/ci-parity.sh --full          #  --lints + --asan + --qt62 (every CI gate)
+#   tools/ci-parity.sh --ubuntu24      #  + build-test's toolchain (ubuntu:24.04, GCC 13,
+#                                      #    mold) build guard in a podman container
+#   tools/ci-parity.sh --qt62-clean    # drop the cached qt62 + ubuntu24 images + volumes
+#   tools/ci-parity.sh --full          #  --lints + --asan + --qt62 + --ubuntu24 (every CI gate)
 #   tools/ci-parity.sh --repeat 5      # rerun each test up to 5x, fail on first flake
 #   tools/ci-parity.sh --stress        # add background CPU load (needs stress-ng)
 #   tools/ci-parity.sh -R SomeTest     # extra args pass through to ctest
@@ -59,8 +61,10 @@
 # The qt62-baseline job (ubuntu-22.04 / Qt 6.2 compile guard) needs a distro +
 # Qt older than an openSUSE dev box provides, so --qt62 runs it inside a podman
 # ubuntu:22.04 container (source bind-mounted read-only, build tree in a podman
-# volume so the host repo stays clean). It is the only gate that needs a
-# container, and SKIPs loudly when podman is absent; --full includes it.
+# volume so the host repo stays clean). It SKIPs loudly when podman is absent;
+# --full includes it. --ubuntu24 is the same guard pointed at build-test's
+# runner: the host build uses this box's newer compiler, which links targets
+# GCC 13 + mold cannot, so only a container sees that class.
 # ANTS-4131 caches both its apt layer and its build tree — see the section
 # comment above qt62_ci_packages() for the keying and the disk budget.
 #
@@ -80,6 +84,7 @@ do_lints=0
 do_asan=0
 do_qt62=0
 do_qt62_clean=0
+do_ubuntu24=0
 ctest_args=()
 
 while [[ $# -gt 0 ]]; do
@@ -90,7 +95,8 @@ while [[ $# -gt 0 ]]; do
         --asan)   do_asan=1; shift ;;
         --qt62)   do_qt62=1; shift ;;
         --qt62-clean) do_qt62_clean=1; shift ;;
-        --full)   do_lints=1; do_asan=1; do_qt62=1; shift ;;
+        --ubuntu24) do_ubuntu24=1; shift ;;
+        --full)   do_lints=1; do_asan=1; do_qt62=1; do_ubuntu24=1; shift ;;
         *) ctest_args+=("$1"); shift ;;
     esac
 done
@@ -103,7 +109,8 @@ declare -a SKIPPED=()
 # image and the build tree from cold.
 if [[ "$do_qt62_clean" == 1 ]]; then
     bash tools/qt62-guard.sh --clean
-    [[ "$do_qt62" == 1 ]] || exit 0
+    bash tools/qt62-guard.sh --job build-test --clean
+    [[ "$do_qt62" == 1 || "$do_ubuntu24" == 1 ]] || exit 0
 fi
 
 # gate <label> <cmd...> — run a CI gate; record (never abort) on failure.
@@ -262,6 +269,14 @@ fi
 if [[ "$do_qt62" == 1 ]]; then
     maybe_gate podman "qt62-baseline: Qt 6.2 compile guard (container)" \
         bash tools/qt62-guard.sh
+fi
+
+# --- build-test toolchain: ubuntu 24.04 / GCC 13 / mold build guard ----------
+# Same script, other job. bench_partition_walk linked on this box and failed to
+# link in build-test on three consecutive pushes; only this leg reproduces it.
+if [[ "$do_ubuntu24" == 1 ]]; then
+    maybe_gate podman "build-test toolchain: ubuntu 24.04 / GCC 13 / mold build (container)" \
+        bash tools/qt62-guard.sh --job build-test
 fi
 
 

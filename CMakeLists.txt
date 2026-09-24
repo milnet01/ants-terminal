@@ -1452,9 +1452,18 @@ if(ANTS_TESTS)
     add_executable(bench_partition_walk
         tests/perf/bench_partition_walk.cpp
     )
+    # ants_core_lib alone is not closed: its remotecontrol_*.o members call
+    # into MainWindow, TerminalWidget and the audit libs. GCC 16 + mold here
+    # never extracts them, but CI's GCC 13 + mold does, and the link fails.
+    # Link the whole group, as bench_transcript_walk does.
     target_link_libraries(bench_partition_walk PRIVATE
-        ants_core_lib
-        Qt6::Core
+        -Wl,--start-group
+        ants_chrome_lib ants_vt_lib ants_core_lib
+        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
+        ants_roadmapstore_lib
+        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        -Wl,--end-group
+        Qt6::Widgets Qt6::Core Qt6::Gui
     )
     target_compile_definitions(bench_partition_walk PRIVATE
         ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"

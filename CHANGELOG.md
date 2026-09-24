@@ -42,6 +42,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **CI's Release build links bench_partition_walk again, and the local gate can now reproduce CI's compiler and linker** (ANTS-5316)
+  The benchmark linked one internal library that is not self-contained;
+  it now links the full set. `tools/qt62-guard.sh --job build-test`
+  builds in CI's own ubuntu 24.04 / GCC 13 / mold toolchain, and
+  `ci-parity.sh --ubuntu24` and the pre-push hook run it.
+
 - **`find_definition` no longer reports a local variable or a parameter as a symbol's definition.** (ANTS-5313)
   Such a match is still reported, now as `local` and ranked after every
   real definition, so a common word no longer resolves to whatever function

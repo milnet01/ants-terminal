@@ -41556,6 +41556,24 @@ in each bullet, not just the reporter's symptom.
   Kind: chore.
   Source: in-session-2026-09-09.
 
+- 🚧 [ANTS-5316] **CI build-test red: bench_partition_walk under-links, and no local leg reproduces CI's toolchain.**
+  Runs 35829254077, 35958448186 and 35980440710 failed the Release
+  build: mold reported undefined MainWindow / TerminalWidget / audit
+  symbols from ants_core_lib's remotecontrol_*.o members. The trigger
+  was ci.yml starting to install mold; ubuntu 24.04's GCC 13 + mold
+  extracts those members, this box's GCC 16 + mold does not.
+  bench_partition_walk linked ants_core_lib alone, which is not closed.
+  Fix: link the --start-group set bench_transcript_walk uses.
+  Alignment: tools/qt62-guard.sh --job build-test builds in ubuntu:24.04
+  with ci.yml's build-test package set; ci-parity.sh --ubuntu24 (in
+  --full) and the pre-push hook (--warm-only) run it.
+  Run 35980440710's ASan job was a runner shutdown mid-suite, not a
+  test failure.
+  **Layman:** The automated build on GitHub broke on one benchmark program that builds fine on this machine, and our local pre-push check could not see the difference.
+  Kind: fix.
+  Source: user-request-2026-09-24.
+  Lanes: build, ci.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
