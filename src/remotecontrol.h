@@ -1062,7 +1062,9 @@ public:
     QJsonDocument cmdRoadmapMigrate(const QJsonObject &req);
 
     // ANTS-5086 — the roadmap busy guard (ANTS-2132 § 2.10). Process-wide,
-    // because each MainWindow owns its own RemoteControl. A root carries one
+    // because each MainWindow owns its own RemoteControl, and cross-process
+    // through a per-root lock file, because ants-mcpd writes the same store
+    // (ANTS-4932 § 2.7). A root carries one
     // exclusive hold (a migration) or any number of shared holds (writers),
     // never both. tryHoldRoadmapExclusive waits up to `waitMs` for shared
     // holds to be released. Every successful hold is released exactly once.

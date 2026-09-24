@@ -54,6 +54,20 @@ hatch.
 When INV-1 fails the test prints the full `(tool, missing_prop)` list
 so a fix lands in one pass instead of a re-run per prop.
 
+### ANTS-4932 INV-4 — the terminal-scoped set is what the terminal registers
+
+`mcp::terminalScopedVerbNames()` equals every `registerToolProvider("<name>"`
+in `src/mainwindow.cpp`, plus `get_session_info`, which the pipeline answers
+inline. `ants-mcpd` forwards exactly that set, so a verb moved between
+`mainwindow.cpp` and `src/mcptoolregistry.cpp` with one side left behind fails
+here. Case: `Inv4TerminalScopedSetMatchesMainWindow`. Contract:
+`docs/specs/ANTS-4932-standalone-mcp-server.md` § 3. Unrelated to this file's
+own INV-4 above.
+
+The prop scrape above reads `src/mainwindow.cpp` and `src/mcptoolregistry.cpp`
+together (`ants_test::slurpMainWindow()`), because the project-scoped lambdas
+moved to the registry.
+
 ## Maintenance
 
 When adding a new MCP tool with a selective-forward lambda, either:

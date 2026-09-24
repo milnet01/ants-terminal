@@ -2183,6 +2183,8 @@ if(ANTS_TESTS)
     tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
                 # ANTS-5144 — one socket listener per path, shared by windows.
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
+                # ANTS-4932 — ants-mcpd, run as a child process.
+                tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
                 # ANTS-5093 — a remote-control reply nobody reads does not pin the socket.
                 tests/features/rc_reply_drain_guard/test_rc_reply_drain_guard.cpp
                 # ANTS-5089 — the MCP socket answers an unparsable request.
@@ -2925,6 +2927,14 @@ if(ANTS_TESTS)
         SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
         SRC_ARCH_PKGBUILD_PATH="${CMAKE_SOURCE_DIR}/packaging/archlinux/PKGBUILD"
         SRC_DEBIAN_CONTROL_PATH="${CMAKE_SOURCE_DIR}/packaging/debian/control")
+    # ANTS-4932 — the binaries under test. Both cases that start ants-mcpd
+    # need it built first, and INV-1's positive control reads ants-terminal.
+    set_property(SOURCE tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
+                        tests/features/mcp_tabspecific_contract/test_mcp_tabspecific_contract.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>"
+        ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")
+    add_dependencies(test_claude ants-mcpd ants-terminal)
     set_property(SOURCE tests/features/prepush_docs_only_parity/test_prepush_docs_only_parity.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-4726 — the hook whose docs-only list must match ci.yml's.

@@ -26,6 +26,7 @@
 #include "roadmapmigrateverb.h"
 #include "roadmapstore.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDeadlineTimer>
 #include <QDir>
@@ -34,9 +35,16 @@
 #include <QHash>
 #include <QMutex>
 #include <QSaveFile>
+#include <QThread>
 #include <QWaitCondition>
 
 #include <algorithm>
+#include <cerrno>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // caller_cwd absent or empty is NOT this verb's refusal to make:
@@ -246,11 +254,21 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
 // RemoteControl whose MCP calls run on a second pair of workers, and a guard
 // each window kept for itself would let the two race. An empty root takes no
 // hold and is never refused; the writer that passed it refuses on its own.
+//
+// ANTS-4932 § 2.7 — and cross-process. ants-mcpd writes the same machine-global
+// store, so a process-wide registry alone cannot see its holds. Each root also
+// has a lock file, roadmap-holds/<sha1 of the root>.lock beside the store, and
+// every hold is an advisory flock on it: shared for a writer, exclusive for a
+// migration. The in-process counts below still order this process's own
+// callers; the file lock orders the processes. The file is opened close-on-exec,
+// so a child (git, rg, ctest) does not inherit the lock, and the kernel drops
+// it when its holder dies, so a crash leaves no stale hold.
 namespace {
 
 struct RoadmapHolds {
     int  shared    = 0;
     bool exclusive = false;
+    int  fd        = -1;   // this process's lock-file descriptor for the root
 };
 
 QMutex &roadmapHoldMutex() {
@@ -276,6 +294,30 @@ void dropIfFree(const QString &root) {
         roadmapHolds().erase(it);
 }
 
+// Opens the root's lock file, creating it and its 0700 directory. -1 when it
+// cannot be opened: the hold then falls back to this process alone, which is
+// the guard as it stood before ANTS-4932 and never refuses a write for it.
+int openRoadmapLockFile(const QString &root) {
+    const QString dir = QFileInfo(RoadmapStore::defaultPath()).absolutePath()
+                        + QStringLiteral("/roadmap-holds");
+    if (!QDir().mkpath(dir)) return -1;
+    ::chmod(QFile::encodeName(dir).constData(), 0700);
+    const QString path = dir + QLatin1Char('/') +
+        QString::fromLatin1(QCryptographicHash::hash(
+            root.toUtf8(), QCryptographicHash::Sha1).toHex()) +
+        QStringLiteral(".lock");
+    return ::open(QFile::encodeName(path).constData(),
+                  O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+}
+
+// Non-blocking flock; true when taken. EINTR retries.
+bool tryFlock(int fd, int op) {
+    for (;;) {
+        if (::flock(fd, op | LOCK_NB) == 0) return true;
+        if (errno != EINTR) return false;
+    }
+}
+
 }  // namespace
 
 bool RemoteControl::tryHoldRoadmapShared(const QString &root) {
@@ -283,6 +325,17 @@ bool RemoteControl::tryHoldRoadmapShared(const QString &root) {
     const QMutexLocker lock(&roadmapHoldMutex());
     RoadmapHolds &h = roadmapHolds()[root];
     if (h.exclusive) return false;
+    if (h.shared == 0) {
+        // The first writer in this process takes the shared file lock for all
+        // of them; the last one out releases it.
+        const int fd = openRoadmapLockFile(root);
+        if (fd >= 0 && !tryFlock(fd, LOCK_SH)) {
+            ::close(fd);   // another process is migrating this root
+            dropIfFree(root);
+            return false;
+        }
+        h.fd = fd;
+    }
     ++h.shared;
     return true;
 }
@@ -292,14 +345,17 @@ void RemoteControl::releaseRoadmapShared(const QString &root) {
     const QMutexLocker lock(&roadmapHoldMutex());
     const auto it = roadmapHolds().find(root);
     if (it == roadmapHolds().end() || it->shared == 0) return;
-    --it->shared;
+    if (--it->shared == 0 && it->fd >= 0) {
+        ::close(it->fd);   // releases the shared file lock
+        it->fd = -1;
+    }
     dropIfFree(root);
     roadmapHoldReleased().wakeAll();
 }
 
 bool RemoteControl::tryHoldRoadmapExclusive(const QString &root, int waitMs) {
     if (root.isEmpty()) return true;
-    const QMutexLocker lock(&roadmapHoldMutex());
+    QMutexLocker lock(&roadmapHoldMutex());
     const QDeadlineTimer deadline(std::max(0, waitMs));
     for (;;) {
         // Looked up afresh after every wait: another root's insert can rehash.
@@ -311,13 +367,42 @@ bool RemoteControl::tryHoldRoadmapExclusive(const QString &root, int waitMs) {
         }
         if (h.shared == 0) {
             h.exclusive = true;
-            return true;
+            break;
         }
         if (!roadmapHoldReleased().wait(&roadmapHoldMutex(), deadline)) {
             dropIfFree(root);
             return false;
         }
     }
+    lock.unlock();
+
+    // This process's writers are drained and refused from here on. Now the
+    // other processes: their writers are waited out to the same deadline, and
+    // another process's migration refuses at once, as it does in-process.
+    const int fd = openRoadmapLockFile(root);
+    bool taken = fd < 0;   // no lock file: this process alone decides
+    while (!taken) {
+        if (tryFlock(fd, LOCK_EX)) { taken = true; break; }
+        // EX refused. If a shared lock is also refused, the holder is a
+        // migration; otherwise it is writers, who finish.
+        const int probe = openRoadmapLockFile(root);
+        const bool migrating = probe >= 0 && !tryFlock(probe, LOCK_SH);
+        if (probe >= 0) ::close(probe);
+        if (migrating || deadline.hasExpired()) break;
+        QThread::msleep(25);
+    }
+
+    lock.relock();
+    RoadmapHolds &h = roadmapHolds()[root];
+    if (!taken) {
+        if (fd >= 0) ::close(fd);
+        h.exclusive = false;
+        dropIfFree(root);
+        roadmapHoldReleased().wakeAll();
+        return false;
+    }
+    h.fd = fd;
+    return true;
 }
 
 void RemoteControl::releaseRoadmapExclusive(const QString &root) {
@@ -326,6 +411,10 @@ void RemoteControl::releaseRoadmapExclusive(const QString &root) {
     const auto it = roadmapHolds().find(root);
     if (it == roadmapHolds().end() || !it->exclusive) return;
     it->exclusive = false;
+    if (it->fd >= 0) {
+        ::close(it->fd);   // releases the exclusive file lock
+        it->fd = -1;
+    }
     dropIfFree(root);
 }
 

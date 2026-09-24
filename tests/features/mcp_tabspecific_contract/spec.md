@@ -29,6 +29,13 @@ other four route on `caller_cwd` only.
 - **INV-4.** `tabSpecificAcceptsTabIndex` is defined, returns true for
   `get_text` and `recent_errors`, and does NOT list the four cwd-only
   tools.
+- **INV-7 (ANTS-4932).** A running `ants-mcpd` applies the same gate
+  before it forwards. With no `caller_cwd` and no `tab`, each of the seven
+  TabSpecific verbs as they stand today (the six above plus
+  `last_selection`) refuses `tab_or_cwd_required`, and a stub terminal
+  receives nothing. With an integer `tab`, the three verbs
+  `tabSpecificAcceptsTabIndex` names (`get_text`, `recent_errors`,
+  `last_selection`) are forwarded. Behavioural, not a scrape.
 - **INV-8.** The refusal branch sets
   `dispatchResult = QStringLiteral("tab_or_cwd_required")` so
   `recordDispatch` counts it as a failed call.

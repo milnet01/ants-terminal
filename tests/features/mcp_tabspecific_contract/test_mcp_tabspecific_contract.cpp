@@ -5,6 +5,10 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../standalone_mcp_server/mcpd_session.h"
+#include "../standalone_mcp_server/stub_terminal.h"
+
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -123,4 +127,42 @@ TEST(McpTabSpecificContract, Inv9SixToolsStillTabSpecific) {
             << "ANTS-1415 INV-9: " << tool
             << " must remain TabSpecific (no reclassification)";
     }
+}
+
+// ANTS-4932 INV-7 — ants-mcpd runs this gate before it forwards. With no
+// routing key every TabSpecific verb refuses tab_or_cwd_required and nothing
+// reaches the terminal; an integer `tab` is a routing key on the three verbs
+// that accept one, and those forward. The ordering (INV-3 above) holds for
+// ants-mcpd too: it runs the same pipeline source.
+TEST(McpTabSpecificContract, Inv7McpdRefusesBeforeForwarding) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::StubTerminal stub(tmp.filePath(QStringLiteral("stub.sock")));
+    ASSERT_TRUE(stub.listening());
+    ants_test::McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), stub.path());
+    ASSERT_TRUE(mcpd.started());
+
+    const QStringList tabSpecific = {
+        QStringLiteral("get_text"),       QStringLiteral("recent_errors"),
+        QStringLiteral("last_selection"), QStringLiteral("get_scrollback"),
+        QStringLiteral("get_last_command"), QStringLiteral("get_environment"),
+        QStringLiteral("get_cwd")};
+    for (const QString &verb : tabSpecific) {
+        const QJsonObject r = mcpd.call(verb, {});
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("tab_or_cwd_required"))
+            << verb.toStdString() << ": "
+            << QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString();
+    }
+    EXPECT_TRUE(stub.requests().isEmpty()) << "a refused call reached the terminal";
+
+    const QStringList acceptsTab = {QStringLiteral("get_text"),
+                                    QStringLiteral("recent_errors"),
+                                    QStringLiteral("last_selection")};
+    for (const QString &verb : acceptsTab) {
+        const QJsonObject r = mcpd.call(verb, QJsonObject{{"tab", 0}});
+        EXPECT_TRUE(r.value(QStringLiteral("stub")).toBool())
+            << verb.toStdString() << " with a tab index was not forwarded";
+    }
+    EXPECT_EQ(stub.requests().size(), acceptsTab.size());
 }

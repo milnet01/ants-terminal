@@ -11,6 +11,7 @@
 // ANTS-1586 (`include_body`).
 
 #include "../../_support/srcgrep.h"
+#include "mcptoolregistry.h"
 
 #include <gtest/gtest.h>
 
@@ -309,4 +310,28 @@ TEST(McpDispatchForwardCompleteness, EveryPropReadInLambda) {
                "directly to the cmd handler.";
         FAIL() << oss.str();
     }
+}
+
+// ANTS-4932 INV-4 — mcp::terminalScopedVerbNames() is exactly the verbs the
+// terminal registers itself (every registerToolProvider in mainwindow.cpp)
+// plus get_session_info, which its pipeline answers inline. ants-mcpd
+// forwards that list, so a verb moved between halves with only one side
+// updated is either served twice or reachable from neither host.
+TEST(McpDispatchForwardCompleteness, Inv4TerminalScopedSetMatchesMainWindow) {
+    const std::string mw =
+        ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/mainwindow.cpp");
+    ASSERT_FALSE(mw.empty());
+    std::set<std::string> registered{"get_session_info"};
+    const std::string needle = "registerToolProvider(\"";
+    for (std::size_t at = mw.find(needle); at != std::string::npos;
+         at = mw.find(needle, at + 1)) {
+        const std::size_t start = at + needle.size();
+        const std::size_t end = mw.find('"', start);
+        if (end == std::string::npos) break;
+        registered.insert(mw.substr(start, end - start));
+    }
+    std::set<std::string> listed;
+    for (const QString &n : mcp::terminalScopedVerbNames())
+        listed.insert(n.toStdString());
+    EXPECT_EQ(listed, registered);
 }
