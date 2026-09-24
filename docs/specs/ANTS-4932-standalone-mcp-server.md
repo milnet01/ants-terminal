@@ -8,7 +8,7 @@ settled by the user 2026-09-22).
 **Blocked by:** none.
 **Pairs with:** ANTS-1253 (tool-provider registry), ANTS-2132 (off-GUI-thread
 dispatch), ANTS-5144 (shared socket listener).
-**Supersedes:** no document. It *amends* six clauses named in § 8.
+**Supersedes:** no document. It *amends* the clauses named in § 8.
 
 ## 1. Problem
 
@@ -39,18 +39,18 @@ Three consequences, in the order they bite:
    `Qt6::Widgets`, `Qt6::Network`, `Qt6::DBus` and `util` **PUBLIC**, and every
    `remotecontrol_*.cpp` compiles into it.
 
-**What makes this tractable.** The GUI dependency of the whole
-`remotecontrol_*` surface is exactly eleven `MainWindow` methods — verified
-today, not recalled:
+**What makes this tractable.** Every `MainWindow` read in the
+`remotecontrol_*` surface is tab or terminal state. It arrives three ways, and
+each has its own search:
 
-```
-grep -rhoE 'm_main->[A-Za-z_]+' src/remotecontrol*.cpp | sort -u | wc -l   → 11
-```
+- **A direct call in a verb body** — `m_main->` in `src/remotecontrol*.cpp`.
+- **A call inside the root resolver** — `main->` in
+  `resolveRootCanonical` and `resolveCallerCwdRoot`
+  (`src/remotecontrol_feedback.cpp`).
+- **A refusal when there is no window** — `if (!m_main)` guards returning
+  `no_main` or `no_window`. `roadmap_log`'s `append` is one.
 
-`currentTabIndexForRemote`, `currentTerminal`, `newTabForRemote`,
-`roadmapPathForRemote`, `selectTabForRemote`, `setTabTitleForRemote`,
-`tabListForRemote`, `tabsAsJson`, `terminalAtTab`, `terminalForCaller`,
-`tokenSavingsSummary`. All tab or terminal state.
+A grep for only the first form misses the other two.
 
 **And a transport already exists.** Claude Code does not speak to the socket
 directly. It launches `tools/mcp-bridge.py` as a stdio MCP server
@@ -66,11 +66,13 @@ work drops into, which is why § 2.1 is smaller than the roadmap item predicted.
 ```
 TODAY
   Claude Code --stdio--> tools/mcp-bridge.py --unix socket--> ants-terminal
-                                                              (all ~109 verbs)
+                                                              (every verb)
 
 SPECIFIED
   Claude Code --stdio--> ants-mcpd --unix socket--> ants-terminal
-                         (project-scoped verbs)     (the 11 GUI verbs only)
+                         (serves project-scoped     (still serves every verb;
+                          verbs; forwards the        ants-mcpd only asks it for
+                          terminal-scoped ones)      the terminal-scoped ones)
 ```
 
 `ants-mcpd` is a new executable. It takes `mcp-bridge.py`'s place in the
@@ -80,8 +82,10 @@ the fallback (§ 8).
 Three properties fall out of the client launching it, rather than being
 designed:
 
-- **Its process cwd is the project directory**, because that is where the
-  client runs. This is what decision 2 below rests on.
+- **Its process cwd is the client's own working directory.** Observed on a
+  running bridge: its `/proc/<pid>/cwd` equals its `claude` parent's. That may
+  be a subdirectory of the project. § 2.4 resolves it exactly as it would a
+  `caller_cwd` naming that directory.
 - **It is the single front door.** The client connects to nothing else.
 - **No discovery problem.** `ants-mcpd` finds the terminal the same way the
   bridge does — `$ANTS_MCP_SOCKET` if set, else the newest live-PID
@@ -103,35 +107,44 @@ kept headless by design for ANTS-3794's publish path) — and a third time in an
 executable: `ants-helper`, built from `ants_helper_lib` (`PUBLIC Qt6::Core`)
 under `ANTS_ENABLE_HELPER_CLI`.
 
-```cmake
-add_library(ants_mcpcore_lib STATIC
-    src/remotecontrol_state.cpp     src/remotecontrol_docs.cpp
-    src/remotecontrol_review.cpp    src/remotecontrol_coldeyes.cpp
-    src/remotecontrol_workspace.cpp src/remotecontrol_feedback.cpp
-    src/remotecontrol_roadmap_*.cpp src/remotecontrol_changelog.cpp
-    src/mcptoolregistry.cpp)        # § 2.3
-target_link_libraries(ants_mcpcore_lib
-    PUBLIC  Qt6::Core Qt6::Network ants_roadmapparse_lib
-    PRIVATE ants_roadmapstore_lib ants_warnings)
+**What moves into it.**
 
-add_executable(ants-mcpd src/mcpdmain.cpp)
-target_link_libraries(ants-mcpd PRIVATE ants_mcpcore_lib ants_warnings)
-```
+- **The `remotecontrol_*` TUs**, except `src/remotecontrol_terminal.cpp`, which
+  is the tab-verb file and stays GUI-side. `src/remotecontrol.cpp` holds the
+  `RemoteControl` class and moves too. Its GUI-using members (it includes
+  `QApplication`, `QWidget`, `QPixmap`, `QScreen`) move to a GUI-side TU first.
+- **The engine sources those TUs call** — `speclint`, `codebaseindex`,
+  `config`, `pathvalidation` and the rest. They compile into `ants_core_lib`
+  today. Checked: none of them includes a Qt GUI header.
+- **The `ants_audit_lib` sources they call**, such as `indiereviewdispatcher`.
+  `ants_audit_lib` links `ants_core_lib` PUBLIC, so it cannot be linked as it
+  stands.
+- **The `ClaudeIntegration` statics and nested types they name** — `etagFor`,
+  `applyEtagPattern`, and the types § 2.3 lists.
+- **`src/mcptoolregistry.cpp`** (§ 2.3).
 
-`Qt6::Network` stays — it is the socket. `Qt6::Gui`, `Qt6::Widgets` and
-`Qt6::DBus` are what must not appear.
+The build is the completeness check: `ants-mcpd` fails to link while any
+dependency is left behind.
 
-`src/remotecontrol_terminal.cpp` stays in `ants_core_lib`: it is the tab-verb
-file and remains GUI-side.
+**How the list is written.** `ANTS_RC_SOURCES_REL` stays the one place a
+`remotecontrol` TU is named (ANTS-3833 INV-11). It splits into two lists in
+that block: the moved TUs, which `ants_mcpcore_lib` consumes, and
+`remotecontrol_terminal.cpp`, which `ants_core_lib` consumes. `ants_core_lib`
+then links `ants_mcpcore_lib`.
 
-**The coupling to sever is the resolver, not the verb bodies.**
-`resolveRootCanonical` has 72 call sites across 15 files
-(`grep -rho resolveRootCanonical src/ | wc -l` → 80, less 8
-declarations/definitions from `grep -rn 'QString resolveRootCanonical' src/`).
-*The roadmap item records 63; that figure is stale and this one supersedes it.*
-Most references are a `MainWindow *` **type** mention, satisfiable by a forward
-declaration — the link edge comes from dereferencing. § 2.4 puts a provider
-behind them.
+`ants_mcpcore_lib` links `Qt6::Core`, `Qt6::Network`, `ants_roadmapparse_lib`
+and `ants_roadmapstore_lib`. `Qt6::Network` stays because it is the socket.
+`Qt6::Gui`, `Qt6::Widgets` and `Qt6::DBus` must not appear. INV-1 enforces
+this.
+
+`ants-mcpd` is `src/mcpdmain.cpp` linked against `ants_mcpcore_lib`.
+
+**The coupling to sever is every `MainWindow` read in the moved TUs**, in all
+three forms § 1 names. Pointer mentions are harmless. `MainWindow *` as a
+member or parameter type needs only a forward declaration. What must go is
+every dereference and every `#include "mainwindow.h"`, `"terminalwidget.h"` or
+`"roadmapdialog.h"` in a moved TU. § 2.4 says what replaces them. A verb that
+cannot lose its read joins the terminal-scoped set instead (§ 2.3).
 
 ### 2.3 One registration list, consumed by both hosts
 
@@ -163,10 +176,35 @@ const QVector<QString> &terminalScopedVerbNames();
 }
 ```
 
-`ToolSink` is an interface with `registerToolProvider()`'s signature, so
-`ClaudeIntegration` implements it unchanged and `ants-mcpd` implements its own.
-`MainWindow::setupClaudeMcpProviders()` keeps its name and its tab-verb
-registrations, and calls `mcp::registerProjectScopedVerbs()` for the rest.
+**`ToolSink` carries all three `registerToolProvider()` overloads** — the
+`ToolHandler`, `RcHandler` and `DeferredToolHandler` forms. The types they name
+(`CallerCwdContract`, `RcHandler`, `DispatchLane` and the handler aliases) move
+out of `ClaudeIntegration` into a header in `ants_mcpcore_lib`.
+`ClaudeIntegration` keeps aliases, so existing call sites compile unchanged.
+`rcDelegate`, today a `MainWindow` member, becomes a free function in
+`mcptoolregistry.cpp`.
+
+`MainWindow::setupClaudeMcpProviders()` keeps its name and its terminal-scoped
+registrations, and calls `mcp::registerProjectScopedVerbs()` for the rest. So
+the terminal still serves every verb.
+
+**The terminal-scoped set is defined by where a handler lives.** A verb is
+terminal-scoped when its handler is registered by `mainwindow.cpp` or dispatched
+inline by `ClaudeIntegration` for terminal state. Assigned by this spec:
+
+- **Terminal-scoped:** every verb in `remotecontrol_terminal.cpp`;
+  `token_usage` (it reads the terminal's own counters, so its body moves from
+  `remotecontrol_review.cpp` to the GUI side); `get_session_info`.
+- **Served by both hosts:** `tool_info`, from `mcp::toolDescriptors()`.
+
+**Both hosts run one `tools/call` pipeline.** It is extracted from
+`ClaudeIntegration` into `ants_mcpcore_lib` as-is: the `claude.mcp_enabled`
+master gate (ANTS-1901), the `caller_cwd` and TabSpecific gates in ANTS-1415's
+order, rate limit, cache, ETag, `fields=`, the response wrap, the off-thread and
+`Bulk` workers, and `initialize`. `ants-mcpd` does not write its own. A second
+pipeline would drift from the first, and clients bind to its envelope. So
+`ants-mcpd` reads `~/.config/ants-terminal/config.json` and refuses
+`mcp_disabled` when the integration is switched off.
 
 **The schema builder moves with the list**, into `mcp::toolDescriptors()`, so
 one function answers `tools/list` in both hosts. This takes up ANTS-1253 § 9's
@@ -188,15 +226,31 @@ class RootProvider {                       // implemented by both hosts
 public:
     virtual ~RootProvider() = default;
     virtual QString fallbackRoot() const = 0;   // no caller_cwd supplied
+    virtual QString fallbackRoadmapPath() const = 0;
     virtual std::optional<int> tabForCwd(const QString &canonical) const = 0;
 };
 }
 ```
 
-- **GUI host:** `fallbackRoot()` returns today's focused-tab answer. Behaviour
+**Every `MainWindow` read in a moved TU goes through it.**
+`RemoteControl` holds a `RootProvider *`. The resolver takes it in place of
+`MainWindow *`. The three forms in § 1 map as follows:
+
+- A focused-terminal cwd fallback (`workspace_search`, `cited_by`, the
+  resolver's `EmptyFallback`) → `fallbackRoot()`.
+- `roadmap_query`'s `m_main->roadmapPathForRemote()` → `fallbackRoadmapPath()`.
+- An `if (!m_main)` refusal → a refusal on a null provider. `ants-mcpd` always
+  has one, so these verbs run there.
+
+The `ants::onGuiThread` marshals around those reads move into the GUI host's
+provider. `ants-mcpd`'s provider reads nothing on another thread.
+
+- **GUI host:** `fallbackRoot()` returns today's focused-tab answer.
+  `fallbackRoadmapPath()` returns `roadmapPathForRemote()`. Behaviour
   unchanged.
-- **`ants-mcpd`:** `fallbackRoot()` returns `QDir::currentPath()` — the
-  server's own process cwd, which is the project the client is working in.
+- **`ants-mcpd`:** `fallbackRoot()` returns `QDir::currentPath()`, the
+  server's own process cwd (§ 2.1). `fallbackRoadmapPath()` is the roadmap the
+  project settings name under that root.
 
 A new `Source::ServerCwd` is added to the `ResolvedRoot` enum so the two are
 distinguishable in diagnostics; `caller_cwd_info` reports it.
@@ -206,10 +260,13 @@ focused-tab guess can silently answer with a *different project*; the process
 cwd cannot.
 
 **The hard boundary, and it is a security one.** This fallback applies to
-**project-scoped verbs only**. The seven `CallerCwdContract::TabSpecific` verbs
+**project-scoped verbs only**. The `CallerCwdContract::TabSpecific` verbs
 (`get_text`, `recent_errors`, `last_selection`, `get_scrollback`,
-`get_last_command`, `get_environment`, `get_cwd`) **still refuse** with `tab_or_cwd_required` on an
-absent `caller_cwd`, exactly as ANTS-1415 § 4 invariants 2/5/7 require.
+`get_last_command`, `get_environment`, `get_cwd`) keep ANTS-1415's gate
+unchanged. With no `caller_cwd`, the gate refuses `tab_or_cwd_required` unless
+the verb accepts a `tab` index and an integer `tab` was supplied
+(`tabSpecificAcceptsTabIndex`, ANTS-1415 § 4 invariants 2, 6 and 7). `ants-mcpd`
+runs that same gate, from the shared pipeline (§ 2.3), before forwarding.
 `ants-mcpd` must never synthesise a `caller_cwd` before forwarding: doing so
 converts a mandated refusal into a silent cross-tenant read, which is the leak
 ANTS-1404/ANTS-1415 closed. INV-7 and INV-8 lock this.
@@ -237,12 +294,18 @@ the terminal later did not bring them back without a reconnect, which is a
 worse failure than an honest refusal. `no_terminal` joins the taxonomy in
 `docs/standards/mcp-error-codes.md`.
 
-**Peer credentials on the second hop.** ANTS-5144 INV-7 requires the
-accept-time checks — `SO_PEERCRED` same-uid failing closed, the 5 s idle timer,
-the buffer caps — ahead of reading any request. `ants-mcpd` reproduces all
-three on its own accept path. On the forward hop the peer is `ants-mcpd`, not
-the client; since both run as the same user the uid check still holds, and the
-check is not weakened. Stated because it is the obvious place to assume it is.
+**Peer credentials on the second hop.** ANTS-5144 INV-7's accept-time checks
+stay on the terminal's listener, unchanged. There the peer is now `ants-mcpd`
+rather than the bridge. Both run as the user, so the terminal's same-uid check
+still holds.
+
+`ants-mcpd` accepts nothing (§ 2.6), so it has no accept-time checks. As a
+client it checks two things before sending a request:
+
+- the picked socket file is owned by its own uid;
+- the connected peer's `SO_PEERCRED` uid is its own uid.
+
+Either failing refuses the connection.
 
 ### 2.6 Socket ownership
 
@@ -275,40 +338,51 @@ the `roadmap_busy` hold registry is *process-wide* `static` state in
 `RemoteControl`, and that a second Ants process sharing the machine-global
 store *is not covered*. `ants-mcpd` is that second process. So:
 
-- A project's roadmap writes are serialised **within** a host, not across the
-  two.
-- The protection that does span both is SQLite's own: `busy_timeout` plus the
-  single-writer WAL lock. A concurrent write is delayed, then applied — not
-  interleaved.
-- The exposure is therefore **lost-update on a read-modify-write**, not
-  corruption. `roadmap_log`'s verbs read, mutate and render inside one
-  transaction (ANTS-3809), so the window is the transaction, not the session.
+- SQLite's `busy_timeout` and single-writer WAL lock span both hosts. A
+  concurrent write is delayed, then applied, never interleaved. That rules out
+  corruption.
+- It does not cover the hold. A migration reads `ROADMAP.md` outside any store
+  transaction and commits its plan later. ANTS-2132 § 2.10 records that a write
+  landing between those two steps is silently reverted. The hold is what stops
+  it, and a process-wide hold cannot see the other host.
 
-INV-9 asserts the outcome that matters: concurrent writes from both hosts
-neither corrupt the store nor lose a committed item.
+**So the hold becomes cross-process.** It is an advisory `flock` on a per-root
+lock file, `roadmap-holds/<sha1 of the canonical root>.lock`, in the store's
+directory. Both hosts take and test the same file. The file is opened
+close-on-exec. Then the kernel releases the lock when its holder dies, so a
+crash leaves no stale hold. Without close-on-exec, a child the host spawns
+(`git`, `rg`, `ctest`) inherits the lock and keeps it alive. Both behaviours
+were observed with `flock(1)` on this machine. The `roadmap_busy` refusal and
+its fields are unchanged.
+
+INV-9 locks the writes and INV-13 locks the hold.
 
 ## 3. Invariants
 
 - **INV-1** — `ants-mcpd` links no GUI library. Its transitive link closure
   contains none of `Qt6::Gui`, `Qt6::Widgets`, `Qt6::DBus`. *Test:*
-  `tests/features/standalone_mcp_server/` greps the generated
-  `build/CMakeFiles/ants-mcpd.dir/link.txt` for those three names → 0 hits.
-  Broken by: adding a source to `ants_mcpcore_lib` that pulls in a widget.
+  `tests/features/standalone_mcp_server/` runs `readelf -d` on the built
+  `ants-mcpd` and asserts no `NEEDED` entry names `libQt6Gui`, `libQt6Widgets`
+  or `libQt6DBus`. The same command on `ants-terminal` lists all three, which
+  is the test's positive control. Broken by: adding a source to
+  `ants_mcpcore_lib` that pulls in a widget.
 - **INV-2** — There is exactly ONE enumeration of the project-scoped verb set.
   `registerToolProvider` is called for a non-terminal verb from
   `src/mcptoolregistry.cpp` and from no other translation unit. *Test:*
-  `tests/features/standalone_mcp_server/` asserts
-  `grep -rl 'registerToolProvider' src/` lists only `mcptoolregistry.cpp`,
-  `claudeintegration.{h,cpp}`, `mainwindow.cpp` — and that every name in
-  `mainwindow.cpp`'s remaining calls is in `mcp::terminalScopedVerbNames()`.
-  Broken by: registering a project-scoped verb in `mainwindow.cpp` again.
+  `tests/features/standalone_mcp_server/` runs
+  `mcp::registerProjectScopedVerbs` against a recording `ToolSink` and asserts
+  none of the recorded names is in `mcp::terminalScopedVerbNames()`. It then
+  scrapes `mainwindow.cpp`'s `registerToolProvider("<name>"` calls and asserts
+  every name is in that set. Broken by: registering a project-scoped verb in
+  `mainwindow.cpp` again.
 - **INV-3** — Both hosts answer `tools/list` from `mcp::toolDescriptors()`, and
   the two lists agree on every shared verb's name and input schema. *Test:*
   `tests/features/standalone_mcp_server/` builds both descriptor sets in-process
   and compares them field-by-field for the names in
   `mcp::registerProjectScopedVerbs`. Broken by: a second schema builder.
-- **INV-4** — `mcp::terminalScopedVerbNames()` is exactly the set of verbs whose
-  handler reaches a `MainWindow` method. *Test:* the existing
+- **INV-4** — `mcp::terminalScopedVerbNames()` is exactly the terminal-scoped
+  set as § 2.3 defines it: the verbs the GUI host registers itself or
+  dispatches inline for terminal state. *Test:* the existing
   `tests/features/mcp_dispatch_forward_completeness/` is extended to assert the
   name set equals the handlers registered in `mainwindow.cpp` outside
   `mcp::registerProjectScopedVerbs`. Broken by: moving a verb between halves and
@@ -325,10 +399,12 @@ neither corrupt the store nor lose a committed item.
   `Source::ServerCwd`. *Test:* same directory; run `ants-mcpd` with cwd set to
   a fixture project, call `roadmap_query` with no `caller_cwd`, assert the
   answer is the fixture's roadmap. Broken by: reinstating a focused-tab guess.
-- **INV-7** — On a `CallerCwdContract::TabSpecific` verb with no `caller_cwd`,
-  `ants-mcpd` refuses `tab_or_cwd_required` and forwards nothing. *Test:*
-  `tests/features/mcp_tabspecific_contract/` gains an `ants-mcpd` case for each
-  of the seven verbs. Broken by: applying § 2.4's fallback to a TabSpecific verb.
+- **INV-7** — On a `CallerCwdContract::TabSpecific` verb with no routing key
+  (§ 2.4), `ants-mcpd` refuses `tab_or_cwd_required` and forwards nothing.
+  Given an integer `tab` on a verb that accepts one, it forwards. *Test:*
+  `tests/features/mcp_tabspecific_contract/` gains `ants-mcpd` cases for every
+  TabSpecific verb, on both sides of the `tab` rule. Broken by: applying § 2.4's
+  fallback to a TabSpecific verb.
 - **INV-8** — `ants-mcpd` never adds, rewrites or synthesises a `caller_cwd`
   key in a request it forwards. *Test:* a recording stub listener captures the
   forwarded bytes; assert the `caller_cwd` key is byte-identical to the one
@@ -336,24 +412,30 @@ neither corrupt the store nor lose a committed item.
 - **INV-9** — Concurrent `roadmap_log` writes from `ants-mcpd` and from a
   terminal against one project neither corrupt the store nor lose a committed
   item. *Test:* `tests/features/standalone_mcp_server/` forks N appenders across
-  both hosts against a temp store, then asserts the item count equals the number
-  of calls that reported `ok:true`, and `PRAGMA integrity_check` → `ok`.
-  Broken by: dropping `busy_timeout`, or a write path that reads outside its
-  transaction.
+  both hosts against a temp store. It asserts that each host reported at least
+  one `ok:true`, that the item count equals the number of `ok:true` calls, and
+  that `PRAGMA integrity_check` → `ok`. Broken by: dropping `busy_timeout`, a
+  write path that reads outside its transaction, or an `append` that still
+  refuses `no_main` in `ants-mcpd`.
 - **INV-10** — Rebuilding `ants-mcpd` changes a verb's answer with no terminal
   restart. *Test:* manual recipe, § 6.2 — this is the item's whole purpose and
   the one clause a unit test cannot hold.
-- **INV-11** — `ants-mcpd`'s connection to the terminal is refused when the
-  peer uid differs. *Test:* `tests/features/standalone_mcp_server/` asserts the
-  `SO_PEERCRED` check is present on the client path by source-grep of
-  `src/mcpdmain.cpp` for `SO_PEERCRED` → at least 1 hit, and the existing
-  `tests/features/rc_socket_dir_hardening/` continues to pass unmodified.
-  Broken by: reimplementing the picker without ANTS-1322's uid check.
+- **INV-11** — `ants-mcpd` refuses a terminal socket owned by another uid, and
+  a connected peer whose uid differs (§ 2.5). *Test:* both checks are
+  functions that take the expected uid. `tests/features/standalone_mcp_server/`
+  calls each with a uid other than its own and asserts refusal, then with its
+  own and asserts acceptance. Broken by: dropping either check.
 - **INV-12** — `mainwindow.cpp`'s `startMcpServer` call site and its
   `qputenv("ANTS_MCP_SOCKET", …)` export are unchanged by this work. *Test:*
   `McpMasterToggle.INV2_StartupGate` and `McpOrientation_Inv14.MainWindowExportsSocket`
   pass unmodified (ANTS-5144 INV-8's own test surface). Broken by: moving the
   bind to `ants-mcpd`.
+- **INV-13** — While one host holds a root's migration hold, a roadmap write to
+  that root from the other host refuses `roadmap_busy` (§ 2.7). *Test:*
+  `tests/features/standalone_mcp_server/` takes the root's lock file in the test
+  process, calls `roadmap_log` through `ants-mcpd` and asserts `roadmap_busy`,
+  then releases it and asserts `ok:true`. Broken by: a hold that is process-local
+  again.
 
 ## 4. RAM / build cost
 
@@ -401,7 +483,7 @@ session.
 ### 6.1 Feature test
 
 `tests/features/standalone_mcp_server/`, label `features;fast`. Covers INV-1,
-INV-2, INV-3, INV-5, INV-6, INV-8, INV-9, INV-11.
+INV-2, INV-3, INV-5, INV-6, INV-8, INV-9, INV-11, INV-13.
 
 Extended existing directories — these gain cases rather than new dirs, because
 each already owns the contract being extended:
@@ -450,17 +532,18 @@ successful hot path from a relaunch nobody noticed.
 
 ## 8. Migration / compatibility
 
-**The six clauses this spec amends.** Each is an accepted or shipped contract
+**The clauses this spec amends.** Each is an accepted or shipped contract
 that the design contradicts as written. None is silently overridden:
 
 | Clause | What it says | What changes |
 |---|---|---|
 | ANTS-1253 INV-1 | every tool is registered exactly once **in `MainWindow::setupClaudeMcpProviders`** | the project-scoped verbs move to `mcp::registerProjectScopedVerbs`; "exactly once" is preserved and strengthened by INV-2 |
-| ANTS-1253 INV-8 | cross-grep binds the `tools/list` builder to registrations **in `mainwindow.cpp`** | the grep's registration side becomes `mcptoolregistry.cpp`; the binding itself is kept, by INV-3 |
+| ANTS-1253 INV-8 | cross-grep binds the `tools/list` builder to registrations **in `mainwindow.cpp`** | the grep's registration side becomes `mcptoolregistry.cpp` **and** `mainwindow.cpp`, which keeps the terminal-scoped registrations; the binding itself is kept, by INV-3 |
+| ANTS-3833 INV-11 | a `remotecontrol` TU is named only in the `ANTS_RC_SOURCES_REL` block | kept. The block now holds two lists, one per library (§ 2.2) |
 | ANTS-2132 INV-13, INV-20 | scrapes pinned to `src/mainwindow.cpp`'s registration table | re-pointed at `mcptoolregistry.cpp`. INV-20's "exactly one `DispatchLane::Bulk`" is preserved, at the new site |
-| ANTS-2132 § 2.10 | the `roadmap_busy` hold registry is process-wide and does **not** cover a second process | unchanged and now load-bearing; § 2.7 states the residual exposure and INV-9 bounds it |
+| ANTS-2132 § 2.10 | the `roadmap_busy` hold registry is process-wide and does **not** cover a second process | the hold becomes a per-root lock file both hosts see (§ 2.7); INV-13 locks it |
 | ANTS-1401 INV-2 | `resolveCallerCwdRoot(main, {})` → `EmptyFallback` = focused tab | remains true **for the GUI host**. `ants-mcpd` returns the new `Source::ServerCwd`. § 2.4's `RootProvider` is the seam |
-| ANTS-1415 § 4 inv. 2/5/7 | TabSpecific verbs refuse on absent `caller_cwd` | **unchanged, and explicitly extended to the new host** by INV-7. The gate runs in `ants-mcpd`, before forwarding |
+| ANTS-1415 § 4 inv. 2, 6, 7 | TabSpecific verbs refuse with no routing key | **unchanged, and explicitly extended to the new host** by INV-7. The gate runs in `ants-mcpd`, before forwarding |
 
 ANTS-1415 § 4 invariant 3 pins the gate's *order* (after the `Required` branch,
 before rate-limit and cache). `ants-mcpd` runs the same three checks in the same
@@ -491,10 +574,18 @@ is a one-way door across every project on the machine.
    `tests/features/ci_workflow_deps` learns about it where a carrier runs it.
 2. **The two deferrals in § 5 are filed**: ANTS-5308 (retire the bridge) and
    ANTS-5309 (narrow `ants_core_lib`'s Widgets surface).
+3. **One `tools/call` pipeline, extracted and shared** (§ 2.3), rather than a
+   second one in `ants-mcpd`. Taken at the review gate.
+4. **The migration hold becomes a per-root lock file** (§ 2.7), rather than
+   routing every roadmap write through the terminal. It keeps § 2.7's direct
+   writes. Taken at the review gate.
+5. **`token_usage` and `get_session_info` are terminal-scoped; `tool_info` is
+   served by both hosts** (§ 2.3). Taken at the review gate.
 
 ## Cold-eyes loop log
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-24 | 3, every lane held Q1–Q4 | 5 | 7 | 3 | 3 | Verified 18, fixed 18, dismissed 2 (INV-12's test directory; the verb-count label). Largest: the `MainWindow` coupling was undercounted (`!m_main` refusals and resolver reads missed), and the library split could not link. Design choices taken at the gate are recorded in § 9. |
 
 <!-- one row per review loop; written as the loops happen, never back-filled -->
