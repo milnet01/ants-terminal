@@ -41591,6 +41591,21 @@ in each bullet, not just the reporter's symptom.
   Source: user-report-2026-09-24.
   Lanes: claude.
 
+- 📋 [ANTS-5318] **Four mirrored standards have drifted from their committed owners in ~/.claude.**
+  Found 2026-09-24 when the pre-commit mirror check refused an
+  unrelated commit. `tools/check-standard-mirrors.sh` reports
+  DRIFTED for docs/standards/coding.md, languages/python.md,
+  security.md and testing.md. The owner repo's standards were
+  clean (committed), so the drift is real, not a review in flight.
+  Commit 408d534a (branch wip/ANTS-4932-mcpd) bypassed the check
+  with ANTS_PRECOMMIT_NO_MIRRORS=1 for that reason.
+  Fix: on main, re-check `git -C ~/.claude status --porcelain`,
+  then `tools/check-standard-mirrors.sh --write`, and commit the
+  four mirrors on their own.
+  **Layman:** Four shared rule documents copied into this project are out of date, so the commit check refuses commits until they are re-synced.
+  Kind: chore.
+  Source: in-session-2026-09-24.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
