@@ -695,16 +695,15 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         // stores it and replays it here; `walkSource()` drops the root only
         // when its source put nothing in it, and that file lands on this line.
         //
-        // ANTS-5230 — the marker is stamped on a pass-headings file too, where
-        // it is false: it says `ants-roadmap-format: 1`, and
-        // detectRoadmapFormat() returns ants-v1 the moment it sees one. The
-        // one-line guard (`!passHeadings &&`) is NOT applied here on purpose.
-        // Removing the marker exposes ANTS-5231, under which this dialect's
-        // Status line gains a copy on every render; the marker currently masks
-        // that, and INV-1's byte-stability passes because of it. The two are
-        // fixed together or the suite goes red. Measured 2026-09-18.
+        // ANTS-5230 — never on a pass-headings file. The marker says
+        // `ants-roadmap-format: 1`, and detectRoadmapFormat() returns ants-v1
+        // the moment it sees one, so a published pass-headings roadmap stopped
+        // reading as itself and every roadmap_query refused. It had been left
+        // in place because it masked ANTS-5231's compounding Status line;
+        // formatPassBlock() now fills the author's line as the slot, so the
+        // two are fixed together.
         QString text = blocks.join(QStringLiteral("\n\n"));
-        if (!sawRoot || !hasMarkerInHead(text))
+        if (!passHeadings && (!sawRoot || !hasMarkerInHead(text)))
             text = formatMarker() + QStringLiteral("\n\n") + text;
         text = withGeneratedNotice(text);   // ANTS-4555
         if (!text.endsWith(QLatin1Char('\n')))

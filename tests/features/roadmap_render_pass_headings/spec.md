@@ -72,6 +72,27 @@ INV-3 and INV-4 are boundary pins and hold in both states.
   unset. This is the regression a shared render path could cause.
   *Test:* `Inv4AntsV1StillRendersAsBullets`.
 
+- **INV-5** (ANTS-5230) — a rendered pass-headings file carries no
+  `ants-roadmap-format` marker, re-detects as `pass-headings`, and reads back
+  as its blocks. The marker made `detectRoadmapFormat()` answer ants-v1 before
+  it looked at a heading, so the first publish left every read refusing.
+  *Test:* `Inv5RenderedFileReDetectsAsPassHeadings`.
+
+- **INV-6** (ANTS-5231) — one Status line per block, across two
+  migrate-render cycles. INV-1's byte-stability cannot see a duplicate that
+  reaches a fixed point, and it used to pass only because the INV-5 marker
+  suppressed the second detection.
+  *Test:* `Inv6OneStatusLinePerBlockAcrossCycles`.
+
+- **INV-7** (ANTS-5231) — the author's Status line is the status slot. A line
+  that already classifies as the item's status is kept byte-for-byte; one
+  that classifies as another has only its word rewritten, date and prose
+  kept; a block with none gets the canonical line under the heading. The real
+  reader (`parsePassHeadingBlock`) decides what a line means.
+  *Test:* `Inv7AuthorsStatusLineIsTheSlot`.
+
+INV-5, INV-6 and INV-7 went red against the pre-fix render and pass after.
+
 The harness deletes the seed file before rendering. Without that, a render that
 never ran leaves the author's own bytes on disk and every assertion passes for
 the wrong reason.

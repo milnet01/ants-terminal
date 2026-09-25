@@ -8,6 +8,8 @@
 #include <QRegularExpression>
 #include <QStringList>
 
+#include <utility>
+
 namespace PassHeadingWrite {
 
 namespace {
@@ -167,6 +169,46 @@ QString formatPassBlock(const QString &pass, const QString &headline,
     QString head = QStringLiteral("#### Pass %1").arg(pass);
     const QString tail = headline.trimmed();
     if (!tail.isEmpty()) head += QChar(' ') + tail;
+
+    // ANTS-5231 — the author's Status line IS the status slot. The migration
+    // stores it in the body, so emitting a canonical line beside it added a
+    // copy on every render. The REAL reader decides whether the body declares
+    // a status and what it means, so this cannot disagree with it.
+    if (!body.isEmpty()) {
+        QStringList block = body.split(QChar('\n'));
+        block.prepend(head);
+        const auto rec = RoadmapParse::parsePassHeadingBlock(block);
+        if (rec && !rec->sourceStatus.isEmpty()) {
+            // Already means the item's status: byte for byte, so `planned`
+            // stays `planned` rather than churning to `todo` on every render.
+            if (rec->status == passStatusEmoji(keyword))
+                return block.join(QChar('\n'));
+            // Otherwise rewrite the word of the first line that classifies —
+            // the reader's line — and keep its date and prose.
+            for (int j = 1; j < block.size(); ++j) {
+                const QRegularExpressionMatch pm = rxStatusPrefix().match(block.at(j));
+                if (!pm.hasMatch()) continue;
+                const QString value = pm.captured(2);
+                const QRegularExpressionMatch vm = rxStatusValue().match(value);
+                const QString lead = vm.captured(1), word = vm.captured(2);
+                // A leading run that is not a status glyph (`**`) is the
+                // author's decoration: kept, never replaced by an emoji.
+                bool glyph = false;
+                for (const char *k : {"todo", "in-progress", "done", "deferred", "dropped"})
+                    glyph = glyph || lead == passStatusEmoji(QLatin1String(k));
+                if (word.isEmpty() && !glyph) continue;   // content-free: the reader skips it too
+                const qsizetype gap = vm.capturedStart(2) - lead.size();
+                block[j] = pm.captured(1)
+                         + (glyph ? passStatusEmoji(keyword) : lead)
+                         + value.mid(lead.size(), gap)
+                         + (word.isEmpty() ? QString()
+                                           : (glyph ? capitaliseFirst(keyword) : keyword))
+                         + value.mid(vm.capturedEnd(0));
+                return block.join(QChar('\n'));
+            }
+        }
+    }
+
     QString out = head + QChar('\n') +
                   QStringLiteral("- **Status**: ") + keyword;
     if (!body.isEmpty()) out += QChar('\n') + body;
@@ -230,8 +272,8 @@ WriteResult flipPassStatus(const QString &markdown,
 
     r.ok = true;
     r.markdown = lines.join(QChar('\n'));
-    r.matchedId = matchedId;
-    r.matchedHeadline = matchedTail;
+    r.matchedId = std::move(matchedId);
+    r.matchedHeadline = std::move(matchedTail);
     r.headingLine = head;
     return r;
 }
@@ -269,8 +311,8 @@ WriteResult annotatePass(const QString &markdown,
 
     r.ok = true;
     r.markdown = lines.join(QChar('\n'));
-    r.matchedId = matchedId;
-    r.matchedHeadline = matchedTail;
+    r.matchedId = std::move(matchedId);
+    r.matchedHeadline = std::move(matchedTail);
     r.headingLine = head;
     r.changedLine = insertAt;
     return r;

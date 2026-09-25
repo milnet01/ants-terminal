@@ -166,11 +166,11 @@ TEST(RoadmapRenderPassHeadings, Inv1MigrateThenRenderIsByteStable) {
     const QString second =
         migrateThenRender(tmp, QStringLiteral("b"), first.toUtf8());
     ASSERT_FALSE(second.isEmpty()) << "second render produced nothing";
-    // ANTS-5231 — this passes only because the ants-v1 format marker is stamped
-    // on the published file. Remove that marker (ANTS-5230) and the two renders
-    // differ: the `- **Status**:` line gains a copy on every cycle. Measured
-    // 2026-09-18, first render 2 copies, second 3. Byte-stability is real here
-    // but it is resting on the marker, not on the render being an inverse.
+    // ANTS-5230 / ANTS-5231 — this used to pass only because the ants-v1 format
+    // marker was stamped on the published file and suppressed the second
+    // migration's detection. INV-5 now pins that the marker is gone and INV-6
+    // that the Status line does not multiply, so equality here is the render
+    // being an inverse rather than the marker masking a compounding copy.
     EXPECT_EQ(first, second)
         << "migrate->render is not byte-stable; the render is not the "
            "migration's inverse for this dialect";
@@ -349,4 +349,70 @@ TEST(RoadmapRenderPassHeadings, Ants5087StoreRecordsMatchTheRenderedFile) {
             << "record " << i << " claims a composed trailer line, but this "
                "dialect writes none";
     }
+}
+
+// INV-5 (ANTS-5230) — a rendered pass-headings file carries no ants-v1 format
+// marker and re-detects as its own dialect. The marker made
+// detectRoadmapFormat() answer ants-v1 before it looked at a heading, so
+// RetroDB's first publish left every roadmap_query refusing.
+TEST(RoadmapRenderPassHeadings, Inv5RenderedFileReDetectsAsPassHeadings) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString rendered =
+        migrateThenRender(tmp, QStringLiteral("m"), QByteArray(kSeed));
+    ASSERT_FALSE(rendered.isEmpty());
+    EXPECT_FALSE(rendered.contains(QStringLiteral("ants-roadmap-format")))
+        << "the ants-v1 format marker was stamped on a pass-headings file:\n"
+        << rendered.toStdString();
+    EXPECT_EQ(RoadmapParse::detectRoadmapFormat(rendered.split(QLatin1Char('\n'))),
+              QStringLiteral("pass-headings"));
+    EXPECT_EQ(RoadmapParse::parseBullets(rendered).size(), 3)
+        << "the rendered file must read back as its three pass blocks";
+}
+
+// INV-6 (ANTS-5231) — one Status line per block, and it stays one across a
+// second migrate-render cycle. Before, the render emitted its own line beside
+// the author's stored one, and each cycle added a copy.
+TEST(RoadmapRenderPassHeadings, Inv6OneStatusLinePerBlockAcrossCycles) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString first =
+        migrateThenRender(tmp, QStringLiteral("s1"), QByteArray(kSeed));
+    ASSERT_FALSE(first.isEmpty());
+    const QString second =
+        migrateThenRender(tmp, QStringLiteral("s2"), first.toUtf8());
+    ASSERT_FALSE(second.isEmpty());
+    for (const QString &doc : {first, second})
+        EXPECT_EQ(doc.count(QStringLiteral("**Status**")),
+                  doc.count(QStringLiteral("#### Pass ")))
+            << "a pass block carries more than one Status line:\n"
+            << doc.toStdString();
+}
+
+// INV-7 (ANTS-5231) — the author's Status line IS the status slot. A line
+// that already means the item's status is kept byte-for-byte (`planned` stays
+// `planned`); a line that means another status has only its word rewritten,
+// its date and prose kept; a block with none gets the canonical line.
+TEST(RoadmapRenderPassHeadings, Inv7AuthorsStatusLineIsTheSlot) {
+    const QString body = QStringLiteral(
+        "- **Finding**: shipped late.\n"
+        "- **Status**: planned (2026-08-06). Lanes: parser.");
+    EXPECT_EQ(PassHeadingWrite::formatPassBlock(
+                  QStringLiteral("57.1"), QStringLiteral("Late"),
+                  QStringLiteral("todo"), body),
+              QStringLiteral("#### Pass 57.1 Late\n") + body)
+        << "a line that already classifies as the item's status was rewritten";
+    EXPECT_EQ(PassHeadingWrite::formatPassBlock(
+                  QStringLiteral("57.1"), QStringLiteral("Late"),
+                  QStringLiteral("done"), body),
+              QStringLiteral("#### Pass 57.1 Late\n"
+                             "- **Finding**: shipped late.\n"
+                             "- **Status**: done (2026-08-06). Lanes: parser."))
+        << "only the status word may change; the date and prose are the author's";
+    EXPECT_EQ(PassHeadingWrite::formatPassBlock(
+                  QStringLiteral("57.2"), QStringLiteral("None"),
+                  QStringLiteral("todo"), QStringLiteral("- **Finding**: x.")),
+              QStringLiteral("#### Pass 57.2 None\n- **Status**: todo\n"
+                             "- **Finding**: x."))
+        << "a block with no Status line gets the canonical one under the heading";
 }
