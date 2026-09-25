@@ -1683,7 +1683,9 @@ qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
 QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
                                     const QString &idPrefixArg,
                                     RoadmapSource::RoadmapText &text,
-                                    const QString &callerCanonical) {
+                                    const QString &callerCanonical,
+                                    bool *guessed) {
+    if (guessed) *guessed = false;
     if (!idPrefixArg.isEmpty())
         return idPrefixArg;
     // ANTS-3771 § 2.3 — new step 2, ABOVE the store row. The store row records
@@ -1703,7 +1705,8 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     // ANTS-3863 — the ONE full() below the seam, and it is deliberately here:
     // sniffing the prefix out of the corpus needs every byte, and a migrated
     // project normally has a stored prefix and never reaches this line.
-    return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical);
+    return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical,
+                                  guessed);
 }
 
 // ANTS-3771 — see remotecontrol_internal.h for what each of these three owes.

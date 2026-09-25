@@ -266,3 +266,31 @@ fallback, which refused every such bullet `bad_status`.
 | `Ants5358PerLocatorStatusOnTheFile` | The same mixed batch on a project the store does not serve writes ✅ and 🚧 on the two bullets in ROADMAP.md. |
 
 **Would break this:** applying the call-level status to every located item.
+
+### ANTS-5344 — append_batch takes a per-bullet section
+
+| Case | Asserts |
+|---|---|
+| `Ants5344PerBulletSectionOnTheStore` | On a migrated project, a bullet with no `section` lands under the call-level `work`, and a bullet carrying `bundles` lands under Bundles. |
+| `Ants5344UnknownPerBulletSectionSkips` | A bullet naming an unknown section lands in `skipped[]` with `bad_section`; the other bullet still applies. |
+| `Ants5344PerBulletSectionOnTheFileRefuses` | On a project the store does not serve, a bullet whose section differs from the call-level one refuses `unsupported_format` and ROADMAP.md is unchanged. |
+
+**Would break this:** filing every bullet under the call-level section.
+
+### ANTS-5353 — a folder-derived id prefix warns
+
+| Case | Asserts |
+|---|---|
+| `Ants5353GuessedPrefixWarnsOnTheFile` | On a file-served project with no ids and no declared prefix, `append` succeeds and `warnings[]` carries `id_prefix_guessed` naming `PROJ`, the folder's letters. |
+| `Ants5353GuessedPrefixWarnsOnTheStoreBatch` | The same on a migrated project with no ids, through `append_batch`. |
+| `Ants5353ChosenPrefixDoesNotWarn` | On a project whose ids already carry `DEMO`, an `append` without `id_prefix` and one with it carry no `id_prefix_guessed` warning. |
+
+**Would break this:** falling to the folder name without saying so.
+
+### ANTS-5371 — append_batch on a store-served project with no items
+
+| Case | Asserts |
+|---|---|
+| `Ants5371EmptyStoreProjectTakesABatch` | A migrated project whose roadmap has a section and no bullets takes an `append_batch`; the new item is stored `planned`. |
+
+**Would break this:** running the file path's zero-bullet format gate when the store serves the project.

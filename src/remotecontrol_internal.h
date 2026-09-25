@@ -347,7 +347,7 @@ qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &
 // store's own idPrefixFor() have both come up empty, so the common migrated
 // op:append pays no body read while the rare prefix-sniff still gets the whole
 // file.
-QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId, const QString &idPrefixArg, RoadmapSource::RoadmapText &text, const QString &callerCanonical);
+QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId, const QString &idPrefixArg, RoadmapSource::RoadmapText &text, const QString &callerCanonical, bool *guessed = nullptr);
 
 // ANTS-3771 § 2.3 — refuse a caller-supplied WRITTEN id (`stable_id`) that
 // breaches the project's own declaration. Returns "" to accept; otherwise fills
@@ -497,7 +497,12 @@ const QRegularExpression &rlStableIdShape();
 QString rlDetectStablePrefixId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 bool rlRoadmapHasAnyBulletId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
-QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
+// ANTS-5353 — `*guessed` is set when the prefix fell to the folder name:
+// nothing declared it, passed it, or sniffed it from an existing id.
+QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical, bool *guessed = nullptr);
+// ANTS-5353 — the advisory for a folder-derived prefix. Ids are permanent, so
+// the first append is the only point at which a wrong guess is cheap.
+QJsonObject rlGuessedPrefixAdvisory(const QString &prefix);
 qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapParse::BulletRecord> &bullets, const QString &pfx);
 // ANTS-5094 — the highest `^<prefix>-NNNN` caret anchor among `bullets`
 // (prefix compared case-insensitively), 0 when none; floors the GFM flip's

@@ -13923,6 +13923,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "(ANTS-2078).");
                         bulletItemProps["stable_id"] = p;
                     }
+                    {   // ANTS-5344 — per-bullet section.
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "This bullet's section slug; the call-level "
+                            "`section` is the fallback. Store-served "
+                            "projects only: a markdown or pass-headings "
+                            "roadmap refuses unsupported_format.");
+                        bulletItemProps["section"] = p;
+                    }
                     {   // ANTS-4354 — per-bullet pass designator.
                         QJsonObject p;
                         p["type"] = "string";

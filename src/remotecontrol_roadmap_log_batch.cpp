@@ -2101,6 +2101,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                         return QJsonDocument(refusal);
                     if (target)
                         return rcPassStoreWriteUnsupported(QStringLiteral("append_batch"));
+                    // ANTS-5344 — the pass writer files the batch under one
+                    // section; a per-bullet one would be ignored silently.
+                    const QString callSection =
+                        req.value(QStringLiteral("section")).toString();
+                    for (const auto &v : req.value(QStringLiteral("bullets")).toArray()) {
+                        const QString bs =
+                            v.toObject().value(QStringLiteral("section")).toString();
+                        if (!bs.isEmpty() && bs != callSection)
+                            return rlErr(QStringLiteral("unsupported_format"),
+                                QStringLiteral("roadmap_log: a per-bullet `section` is "
+                                               "not supported on a pass-headings "
+                                               "roadmap — make one call per section"));
+                    }
                     return cmdRoadmapLogPassAppendBatch(req, rp, md);
                 }
             }
@@ -2284,9 +2297,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     rf.close();
 
     // INV-9 — unrecognised_format short-circuits the whole batch.
+    // ANTS-5371 — a file-only gate: the store serves a project with no items
+    // yet, and the file it renders then has no bullets to parse.
     const auto preflightBullets = rlParse(markdown, callerCanonical);
     const qint64 markdownBytes = markdown.toUtf8().size();
-    if (preflightBullets.isEmpty() &&
+    if (!writeTarget && preflightBullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
         QJsonObject env;
         env["ok"]    = false;
@@ -2421,10 +2436,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // ANTS-3863 — fromMemory: `markdown` is the batch's own already-read text,
     // spliced below on the markdown path, so the provider costs nothing here.
     auto counterText = RoadmapSource::RoadmapText::fromMemory(markdown);
+    bool counterPfxGuessed = false;   // ANTS-5353
     const QString counterPfx = writeTarget
         ? rlStoreCounterPrefix(*writeTarget->store, writeTarget->projectId,
-                               idPrefixArg, counterText, callerCanonical)
-        : rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
+                               idPrefixArg, counterText, callerCanonical,
+                               &counterPfxGuessed)
+        : rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical,
+                                 &counterPfxGuessed);
 
     // ANTS-2179 — reconcile the (possibly lagging) .roadmap-counter against
     // the file's true max id for this prefix: a stale counter must not
@@ -2472,6 +2490,27 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     qint64 nextId = effCounter + 1;
     bool firstAccepted = true;
 
+    // ANTS-5344 — a bullet may name its own `section`; the call-level one is
+    // the fallback. The store files each item by section id and position, so
+    // on the store path each section gets its own next-position slot. The
+    // markdown path splices the whole batch at one section's end, so a bullet
+    // naming another section refuses the call rather than landing in the wrong
+    // one.
+    struct SecSlot { qint64 id = 0; int next = 0; };
+    QHash<QString, SecSlot> secSlots;
+    if (writeTarget) secSlots.insert(section, SecSlot{storeSectionId, storePosition});
+    if (!writeTarget) {
+        for (const auto &v : bullets) {
+            const QString bs = v.toObject().value(QStringLiteral("section")).toString();
+            if (!bs.isEmpty() && bs != section)
+                return rlErr(QStringLiteral("unsupported_format"),
+                    QStringLiteral("roadmap_log: a per-bullet `section` (\"%1\") is "
+                                   "supported only on a project the roadmap store "
+                                   "serves — this one is edited as a file. Make one "
+                                   "call per section.").arg(bs));
+        }
+    }
+
     for (int i = 0; i < bullets.size(); ++i) {
         QJsonObject b = bullets.at(i).toObject();
         // ANTS-4982 — the call-level `status` is the fallback for a bullet that
@@ -2515,6 +2554,40 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             skip(QStringLiteral("missing_field"),
                  QStringLiteral("source is required"));
             continue;
+        }
+        // ANTS-5344 — this bullet's own section, resolved once per slug with
+        // the same refusals the call-level one gets, before an id is taken.
+        const QString bulletSection = b.value(QStringLiteral("section")).toString();
+        if (writeTarget && !bulletSection.isEmpty() && !secSlots.contains(bulletSection)) {
+            if (!RoadmapIndex::findBySlug(index, bulletSection)) {
+                QString canonical;
+                for (const auto &s : index)
+                    if (s.slug.toLower() == bulletSection.toLower()) canonical = s.slug;
+                if (!canonical.isEmpty())
+                    skip(QStringLiteral("bad_case"),
+                         QStringLiteral("section slug case mismatch: \"%1\" — did "
+                                        "you mean \"%2\"?").arg(bulletSection, canonical));
+                else
+                    skip(QStringLiteral("bad_section"),
+                         QStringLiteral("unknown section slug \"%1\"").arg(bulletSection));
+                continue;
+            }
+            QString seamErr;
+            const auto sid = writeTarget->store->findSection(
+                writeTarget->projectId, bulletSection, &seamErr);
+            if (!sid) {
+                skip(QStringLiteral("section_not_found"),
+                     QStringLiteral("section \"%1\" is not in the roadmap store")
+                         .arg(bulletSection));
+                continue;
+            }
+            const auto elements = writeTarget->store->listElements(*sid, &seamErr);
+            if (!elements)
+                return rlErr(QStringLiteral("store_failed"), seamErr);
+            int maxPos = -1;
+            for (const RoadmapStore::ElementRow &e : *elements)
+                maxPos = std::max(maxPos, e.position);
+            secSlots.insert(bulletSection, SecSlot{*sid, maxPos + 1});
         }
 
         // ANTS-3809 § 2.5 / § 2.6 — the store path's body + trailer columns.
@@ -2700,7 +2773,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
 
         QVector<RoadmapStore::ItemWrite> writes;
         writes.reserve(accepted.size());
-        int pos = storePosition;
         for (const Accepted &a : accepted) {
             RoadmapStore::ItemWrite w = a.w;
             w.projectId = projectId;
@@ -2714,8 +2786,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             w.status    = a.bulletReq.value(QStringLiteral("status")).toString();
             w.headline  = rcSanitizeBulletField(
                 a.bulletReq.value(QStringLiteral("headline")).toString(), 500);
-            w.sectionId = storeSectionId;
-            w.position  = pos++;
+            // ANTS-5344 — the bullet's own section, or the call-level one.
+            const QString bs = a.bulletReq.value(QStringLiteral("section")).toString();
+            SecSlot &slot = secSlots[bs.isEmpty() ? section : bs];
+            w.sectionId = slot.id;
+            w.position  = slot.next++;
             // ANTS-3838 — same branch as the single-append path: an allocated
             // id is `store-generated` (roadmap-data-model.md § 7.7 over
             // § 4.1's `write (store-populated)` marking), a caller's
@@ -2839,6 +2914,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             !ev.isEmpty()) {
             rlAddWarning(env, ev);
         }
+        if (counterPfxGuessed && !useStablePrefix)             // ANTS-5353
+            rlAddWarning(env, rlGuessedPrefixAdvisory(counterPfx));
         if (rcReturnHeadlineOnly(req)) {
             QJsonArray postBullets;
             for (const Accepted &a : accepted)
@@ -2997,6 +3074,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (const QJsonObject ev = rlEvidenceAdvisory(bad); !ev.isEmpty())
             rlAddWarning(out, ev);
     }
+    if (counterPfxGuessed && !useStablePrefix)                 // ANTS-5353
+        rlAddWarning(out, rlGuessedPrefixAdvisory(counterPfx));
     // ANTS-4989 — the review-provenance advisory, rolled up the same way. One
     // warning for the batch, naming the ids rather than repeating itself per
     // bullet: a batch filing a review's findings is exactly where every bullet

@@ -66520,6 +66520,17 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: roadmap-store, mcp.
 
+- 🚧 [ANTS-5371] **append_batch refuses unrecognised_format on a store-served project that has no items yet.**
+  Found writing ANTS-5353's test. The batch reads ROADMAP.md and runs the
+  zero-bullet format gate before it branches on the store, so a migrated
+  project with no items and a file over kRoadmapMinParseableSize refuses.
+  The single append takes its store route first and is unaffected. Fix:
+  skip the gate when roadmapWriteTarget() resolved a store target.
+  **Layman:** A brand-new project whose roadmap is empty cannot add its first batch of items.
+  Kind: fix.
+  Source: in-session-2026-09-25.
+  Lanes: mcp, roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

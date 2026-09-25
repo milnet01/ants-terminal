@@ -2861,3 +2861,241 @@ TEST(RoadmapWriteHalf, Ants5358PerLocatorStatusOnTheFile) {
     EXPECT_TRUE(file.contains(QStringLiteral("✅ [DEMO-0007]"))) << file.toStdString();
     EXPECT_TRUE(file.contains(QStringLiteral("\U0001F6A7 [DEMO-0003]"))) << file.toStdString();
 }
+
+// ------------------------------------------------------------- ANTS-5344 -----
+
+namespace {
+QJsonObject sectionBullet(const QString &headline, const QString &section = QString()) {
+    QJsonObject b;
+    b[QStringLiteral("headline")] = headline;
+    b[QStringLiteral("status")]   = QStringLiteral("planned");
+    b[QStringLiteral("kind")]     = QStringLiteral("implement");
+    b[QStringLiteral("source")]   = QStringLiteral("test");
+    b[QStringLiteral("layman")]   = QStringLiteral("A new thing.");
+    if (!section.isEmpty()) b[QStringLiteral("section")] = section;
+    return b;
+}
+
+QJsonObject sectionBatchReq(const QString &root, const QJsonArray &bullets) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+    req[QStringLiteral("section")]    = QStringLiteral("work");
+    req[QStringLiteral("bullets")]    = bullets;
+    return req;
+}
+}  // namespace
+
+// A bullet's own `section` wins; the call-level one fills the rest.
+TEST(RoadmapWriteHalf, Ants5344PerBulletSectionOnTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendBatchForTest(sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("Lands in Work.")),
+            sectionBullet(QStringLiteral("Lands in Bundles."), QStringLiteral("bundles"))}))
+                   .object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped")).toArray().isEmpty())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    const int bundles = file.indexOf(QStringLiteral("## Bundles"));
+    const int work    = file.indexOf(QStringLiteral("**Lands in Work.**"));
+    const int other   = file.indexOf(QStringLiteral("**Lands in Bundles.**"));
+    ASSERT_GE(bundles, 0) << file.toStdString();
+    EXPECT_TRUE(work >= 0 && work < bundles) << file.toStdString();
+    EXPECT_GT(other, bundles) << file.toStdString();
+}
+
+// An unknown per-bullet section skips that bullet; the others still apply.
+TEST(RoadmapWriteHalf, Ants5344UnknownPerBulletSectionSkips) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendBatchForTest(sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("Lands in Work.")),
+            sectionBullet(QStringLiteral("Has no home."), QStringLiteral("nowhere"))}))
+                   .object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("ids")).toArray().size(), 1);
+    const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_section"))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// A roadmap the store does not serve refuses rather than filing every
+// bullet under the call-level section.
+TEST(RoadmapWriteHalf, Ants5344PerBulletSectionOnTheFileRefuses) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()));
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendBatchForTest(sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("Lands in Bundles."), QStringLiteral("bundles"))}))
+                   .object();
+    }
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("unsupported_format"))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+}
+
+// ------------------------------------------------------------- ANTS-5353 -----
+
+namespace {
+// A roadmap whose one bullet carries no id, so no prefix can be sniffed. (A
+// roadmap with no bullets at all refuses unrecognised_format first.)
+QByteArray noIdFixture() {
+    QByteArray b =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n";
+    b += kPad;
+    b += "\n## Work\n\n"
+         "- \xF0\x9F\x93\x8B **An item with no id.**\n"
+         "  Layman: A thing.\n"
+         "  Kind: implement.\n"
+         "  Source: seed.\n";
+    return b;
+}
+
+// A freshly initialised roadmap: one section, no bullets. The store serves it
+// once migrated; a file-served one refuses unrecognised_format instead.
+QByteArray emptyFixture() {
+    QByteArray b =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n";
+    b += kPad;
+    b += "\n## Work\n\nNothing filed yet.\n";
+    return b;
+}
+
+bool warnsGuessed(const QJsonObject &resp, const QString &prefix) {
+    for (const auto &w : resp.value(QStringLiteral("warnings")).toArray()) {
+        const QJsonObject o = w.toObject();
+        if (o.value(QStringLiteral("code")).toString() == QStringLiteral("id_prefix_guessed"))
+            return o.value(QStringLiteral("prefix")).toString() == prefix;
+    }
+    return false;
+}
+}  // namespace
+
+// A file-served project with no ids and no declared prefix: the first append
+// takes the folder's letters and says so.
+TEST(RoadmapWriteHalf, Ants5353GuessedPrefixWarnsOnTheFile) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), noIdFixture()));
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("First."))).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(warnsGuessed(resp, QStringLiteral("PROJ")))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// The same on a freshly migrated project with no items, through append_batch.
+TEST(RoadmapWriteHalf, Ants5353GuessedPrefixWarnsOnTheStoreBatch) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, emptyFixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendBatchForTest(sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("First."))})).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(warnsGuessed(resp, QStringLiteral("PROJ")))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// A prefix the caller named, or one sniffed from existing ids, is no guess.
+TEST(RoadmapWriteHalf, Ants5353ChosenPrefixDoesNotWarn) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject sniffed, named;
+    {
+        RemoteControl rc(nullptr);
+        sniffed = rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("One."))).object();
+        QJsonObject req = appendReq(root, QStringLiteral("Two."));
+        req[QStringLiteral("id_prefix")] = QStringLiteral("DEMO");
+        named = rc.cmdRoadmapLogAppendForTest(req).object();
+    }
+    ASSERT_TRUE(sniffed.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(sniffed).toJson().toStdString();
+    ASSERT_TRUE(named.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(named).toJson().toStdString();
+    for (const QJsonObject &r : {sniffed, named})
+        for (const auto &w : r.value(QStringLiteral("warnings")).toArray())
+            EXPECT_NE(w.toObject().value(QStringLiteral("code")).toString(),
+                      QStringLiteral("id_prefix_guessed"))
+                << QJsonDocument(r).toJson().toStdString();
+}
+
+// ------------------------------------------------------------- ANTS-5371 -----
+
+// A migrated project with no items takes its first batch; the zero-bullet
+// format gate belongs to the file path only.
+TEST(RoadmapWriteHalf, Ants5371EmptyStoreProjectTakesABatch) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, emptyFixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendBatchForTest(sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("First."))})).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 1);
+    EXPECT_EQ(statusOf(ids.at(0).toString(), projectId), QStringLiteral("planned"));
+}

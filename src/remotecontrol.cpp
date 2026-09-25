@@ -728,7 +728,9 @@ QString rlLeafDirPrefix(const QString &callerCanonical) {
 // against kIdPrefixShape by the caller.
 QString rlResolveCounterPrefix(const QString &idPrefixArg,
                                const QString &markdown,
-                               const QString &callerCanonical) {
+                               const QString &callerCanonical,
+                               bool *guessed) {
+    if (guessed) *guessed = false;
     if (!idPrefixArg.isEmpty()) return idPrefixArg;
     // ANTS-3771 § 2.3 — the declaration, ABOVE the sniff. It has to be HERE as
     // well as in rlStoreCounterPrefix(): that function inserts the declaration
@@ -743,7 +745,20 @@ QString rlResolveCounterPrefix(const QString &idPrefixArg,
     if (!declared.isEmpty()) return declared;
     const QString sniffed = rlDetectCounterPrefix(markdown);
     if (!sniffed.isEmpty()) return sniffed;
+    if (guessed) *guessed = true;
     return rlLeafDirPrefix(callerCanonical);
+}
+
+QJsonObject rlGuessedPrefixAdvisory(const QString &prefix) {
+    QJsonObject warn;
+    warn[QStringLiteral("code")] = QStringLiteral("id_prefix_guessed");
+    warn[QStringLiteral("prefix")] = prefix;
+    warn[QStringLiteral("message")] = QStringLiteral(
+        "This project declares no id prefix and has no ids, so \"%1\" was "
+        "taken from the folder name. Ids are permanent. To pin a different "
+        "one, run project_settings op:\"set\" id_format:{prefix:\"…\"} "
+        "before the first write, or pass id_prefix.").arg(prefix);
+    return warn;
 }
 
 // ANTS-2179 — highest numeric suffix among existing [pfx-NNNN] bullet ids

@@ -413,10 +413,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // next counter-project allocation on the same store.
             QString idStr = stableId;
             QString prefix;
+            bool prefixGuessed = false;   // ANTS-5353
             qint64 allocated = 0;
             if (!useStablePrefix) {
                 prefix = rlStoreCounterPrefix(store, projectId, idPrefixArg,
-                                              storeText, callerCanonical);
+                                              storeText, callerCanonical,
+                                              &prefixGuessed);
                 // ANTS-4631 — the store's own id columns decide this, with
                 // no reference to the rendered file. The corpus floor that
                 // used to live inside rlStoreIdHighWater() read a documented
@@ -660,6 +662,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             if (const QJsonObject rk = rlReviewKindAdvisory(kind, source);
                 !rk.isEmpty())
                 rlAddWarning(env, rk);
+            if (prefixGuessed)                              // ANTS-5353
+                rlAddWarning(env, rlGuessedPrefixAdvisory(prefix));
             if (rcReturnHeadlineOnly(req))
                 env[QStringLiteral("post_bullets")] =
                     QJsonArray{ rcCompactBullet(idStr, status, headline) };
@@ -948,6 +952,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     QString idStr;
     bool counterReconciled = false;   // ANTS-2179 — counter lagged the file
     qint64 counterAdvancedPast = 0;   // ANTS-4493 — the occupied high-water
+    QString guessedPrefix;            // ANTS-5353 — set when taken from the folder
     if (useStablePrefix) {
         idStr = stableId;
     } else {
@@ -956,8 +961,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         // existing IDs > project-dir default (DOOM_Ants → "DOOM"). No
         // longer falls back to a hardcoded "ANTS" for a fresh / id-less
         // roadmap.
-        const QString pfx =
-            rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
+        bool prefixGuessed = false;
+        const QString pfx = rlResolveCounterPrefix(idPrefixArg, markdown,
+                                                   callerCanonical, &prefixGuessed);
+        if (prefixGuessed) guessedPrefix = pfx;
         // ANTS-2179 — reconcile newId against the file's true max id for
         // this prefix so a stale .roadmap-counter can't reissue a live id.
         // preflightBullets is already in hand, so the scan is free.
@@ -1157,6 +1164,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         rlAddWarning(out, ev);                                  // ANTS-4527
     if (const QJsonObject rk = rlReviewKindAdvisory(kind, source); !rk.isEmpty())
         rlAddWarning(out, rk);                                  // ANTS-4989
+    if (!guessedPrefix.isEmpty())                               // ANTS-5353
+        rlAddWarning(out, rlGuessedPrefixAdvisory(guessedPrefix));
     // ANTS-2080 — confirm-after compact echo of the appended bullet.
     if (rcReturnHeadlineOnly(req)) {
         out["post_bullets"] =

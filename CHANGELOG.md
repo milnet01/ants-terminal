@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log` append warns when a new project's id prefix is guessed from its folder name** (ANTS-5353)
+  When a project declares no prefix, passes none and has no ids yet,
+  `append` and `append_batch` carry an `id_prefix_guessed` warning
+  naming the prefix and the `project_settings` call that pins another.
+  Ids are permanent, so the first write is the cheap time to change it.
+
+- **`roadmap_log op:"append_batch"` files each bullet under its own `section`** (ANTS-5344)
+  A bullet may name a section; the call-level `section` fills the rest,
+  so one call can file items across a roadmap. An unknown section skips
+  that bullet as `bad_section`. A roadmap edited as a file refuses
+  `unsupported_format` rather than filing everything in one section.
+
 - **One roadmap batch can now set a different status on each item** (ANTS-5358)
   op:"flip_batch" takes a `to_status` on each locator; the call-level one
   fills in for any locator without its own, and can be left out when every
@@ -104,6 +116,10 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **`roadmap_log op:"append_batch"` accepts the first items of a store-served project with an empty roadmap** (ANTS-5371)
+  The file path's format check no longer runs when the roadmap store
+  serves the project.
 
 - **The roadmap sync check now accounts for lines only the database would add** (ANTS-5350)
   roadmap_query check_sync reports them as `drift_gained`. Before, such a
