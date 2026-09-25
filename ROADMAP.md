@@ -66358,6 +66358,18 @@ project. Reported causes are claims until checked in source.
   Source: feedback-finbreak-2026-09-21.
   Lanes: mcp, roadmap.
 
+- 📋 [ANTS-5366] **session_message cannot reach a project that is not registered in the store, so a project waiting unregistered on a fix cannot be told it landed.**
+  Seen 2026-09-25 shipping ANTS-5334: RetroDB de-registered while it
+  waited for that fix, and op:"send" to:"retrodb" refused
+  unknown_project. The note went into its feedback file instead.
+  Options: address mail by project root as well as export_slug, keeping
+  a mailbox row for an unregistered root; or keep a deregistered
+  project's mailbox alive.
+  **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
+  Kind: enhancement.
+  Source: in-session-2026-09-25.
+  Lanes: mcp, roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
