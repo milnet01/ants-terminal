@@ -37,6 +37,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The automatic check before every push now runs GitHub's own CI recipe, lints included, so it catches what GitHub would** (ANTS-5322)
+
 - **The local CI check now runs GitHub's own CI recipe instead of a copy of it** (ANTS-5322)
   `tools/ci-parity.sh` executes each job's steps straight from
   `.github/workflows/ci.yml` through the new `tools/ci_workflow.py`, so
@@ -56,6 +58,14 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **Converting an old-style roadmap no longer brings back items deleted since an earlier import; it stops and lists them instead** (ANTS-5326)
+
+- **Pass-style roadmaps read an item's status line wherever it sits in the item, not only in its first 50 lines** (ANTS-5337)
+
+- **Publishing a Pass-style roadmap from the database keeps it readable as Pass-style, and keeps each item's own status line instead of adding a copy every time** (ANTS-5230)
+
+- **Importing a Pass-style roadmap now correctly reports that the database serves it** (ANTS-5335)
 
 - **The status bar shows the model for a Claude Code session in a folder whose path has a dot or a space, such as ~/.claude** (ANTS-5317)
   Ants now names a session's log folder the way Claude Code does,

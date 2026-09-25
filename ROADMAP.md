@@ -11253,6 +11253,8 @@ extends an existing item, that item carries it instead.
 
   The read-seam test added under ANTS-5087 works around this by dropping the
   marker line before it parses, and says so.
+  Landed with ANTS-5231 in 749f2b1b. Flip both once GitHub CI for
+  9c84b694 or later is green.
   **Layman:** A roadmap written in the pass-heading style gets a label saying it is the other style, so tools that check the label read the file as empty.
   Kind: fix.
   Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
@@ -11280,6 +11282,8 @@ extends an existing item, that item carries it instead.
   declares one. Whichever is chosen, INV-1 needs a case that would fail on a
   compounding duplicate — byte-stability alone cannot see one that reaches a
   fixed point.
+  Landed with ANTS-5230 in 749f2b1b. Flip both once GitHub CI for
+  9c84b694 or later is green.
   **Layman:** Every time a pass-style roadmap is written out, each item's status line is duplicated again, so the file grows a little more each time.
   Kind: fix.
   Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
@@ -41615,6 +41619,10 @@ in each bullet, not just the reporter's symptom.
   ci-parity.sh only picks jobs, and fails if ci.yml gains one it does
   not claim. Host jobs build in build/ and build-asan/, which closes
   ANTS-5193. Locked by tests/features/ci_workflow_runner.
+  Landed 2026-09-25: d9622fb1, dfd33085, 9837e3ee, 2e63db9f (hook runs
+  ci.yml). Local: hook ran build-test end to end on the 2e63db9f push,
+  5101/5101 tests + all lints. Flip to shipped once GitHub runs
+  36109814112 and 36111437270 are green.
   **Layman:** The local "check before pushing" run now follows GitHub's CI recipe directly, so the two can no longer disagree.
   Kind: fix.
   Source: user-request-2026-09-25.
@@ -65995,6 +66003,32 @@ parse, not that file.
   flip dry_run returns {file, line, format:pass-headings} with no
   would_write[]. Route pass-headings writes through the store write
   sequence as ants-v1 does. ANTS-4803 covered reads and render only.
+  Plan (2026-09-25, decided, not started). Cause: the pass-headings gate
+  at the top of cmdRoadmapLogFlip / cmdRoadmapLogAppend
+  (src/remotecontrol_roadmap_log.cpp, "ANTS-2126 — pass-headings roadmaps
+  route ...") returns to the markdown writer before any store check, and
+  the only store write path sits INSIDE the ants-v1 bullet-locate lambda
+  (applyAntsV1FlipResult), which a pass file never reaches.
+  commitAndRender already renders the stored dialect, and formatPassBlock
+  now rewrites the author's Status line in place (ANTS-5231), so the
+  store half is dialect-neutral.
+  1. Lift the store half of applyAntsV1FlipResult (rlStoreItemPk, the
+     mutate lambda, commitAndRender, the envelope) into a helper.
+  2. In the pass gate: when roadmapWriteTarget() returns a store target,
+     locate the pass by id/headline (PassHeadingWrite's locate rule) and
+     call the helper for flip and annotate, envelope format
+     "pass-headings".
+  3. Every other write op (append, append_batch, flip_batch,
+     annotate_batch) on a STORE-served pass project refuses with a clear
+     code instead of writing the file behind the store. Markdown-served
+     pass projects keep today's behaviour.
+  Before handing to RetroDB: re-run the throwaway-store check (XDG_DATA_HOME
+  scratch under /mnt/Games/Scripts/Linux/cc-jobs/, not /tmp — migrate
+  refuses temp roots) on RetroDB's CURRENT roadmap.md (main 8805974 or
+  later; it gained Pass 59.73-59.80), then message retrodb-66. Its
+  acceptance steps: migrate; render with no content-line diff;
+  check_sync source:store file_in_sync:true; flip dry_run PASS-59-78
+  shows would_write[]; one real annotate then check_sync.
   **Layman:** On a Pass-style roadmap, reads come from the database but edits bypass it, so the two drift apart on the first edit.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
@@ -66004,6 +66038,7 @@ parse, not that file.
   The envelope still carries the pre-ANTS-4803 hint 'NOTHING READS
   THEM'. A session trusting it deregisters a working migration. Compute
   store_backed from the same gate the read path uses.
+  Landed 9c84b694. Flip to shipped once GitHub CI for it is green.
   **Layman:** The migration tool says a Pass-style roadmap isn't served from the database when it actually is.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
@@ -66027,6 +66062,8 @@ parse, not that file.
   deep in the block; migration records todo with status_defaulted.
   Accept a Status line anywhere before the next heading, or refuse
   naming the item.
+  Landed 7d604649. Flip to shipped once GitHub CI for 9c84b694 or later
+  is green.
   **Layman:** A finished item on a Pass-style roadmap can be imported as still open when its status line is far down.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
@@ -77647,6 +77684,8 @@ acting on it.
   They exist to protect a running binary, which the home-copy launch of
   ANTS-2174 made unnecessary. Reuse build/ and build-asan/, keeping the CI
   locale as a test-time setting. Measure with `du -sh build*`.
+  Closed by ANTS-5322 (d9622fb1): host jobs build in build/ and
+  build-asan/; build-ci-parity* trees deleted. Flip with ANTS-5322.
   **Layman:** The full local CI check keeps duplicate copies of the build that waste disk space and go stale.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
