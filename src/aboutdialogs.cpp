@@ -4,8 +4,10 @@
 // cppcheck-suppress missingInclude  // ANTS-1682: generated at build time
 #include "build_info.h"  // ANTS-1222: configure-time build metadata
 #include "dialogchrome.h"  // ANTS-1766: theme-aware frameless chrome
+#include "mcpdversion.h"   // ANTS-5340: the ants-mcpd build line
 
 #include <QApplication>
+#include <QDir>
 #include <QDialog>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -126,15 +128,27 @@ void showAboutAnts(QWidget *parent) {
              QString::fromLatin1(ANTS_BUILD_TYPE),
              QString::fromLatin1(ANTS_BUILD_COMMIT),
              compilerInfo());
+    // ANTS-5340 — ants-mcpd is rebuilt on its own, so ask the binary Claude
+    // Code launches, fresh on every open: a rebuild shows with no relaunch.
+    const QString mcpdPath = mcpd::locateBinary(
+        QDir::homePath() + QStringLiteral("/.claude.json"),
+        QCoreApplication::applicationDirPath());
+    const QString mcpdVersion = mcpd::queryVersion(mcpdPath, 2000);
+    const QString mcpdLine = QStringLiteral("<br/><b>Ants MCP:</b> %1").arg(
+        mcpdPath.isEmpty()      ? QStringLiteral("ants-mcpd not found")
+        : mcpdVersion.isEmpty() ? QStringLiteral("no version from %1")
+                                      .arg(mcpdPath.toHtmlEscaped())
+                                : mcpdVersion.toHtmlEscaped());
     const QString body = QStringLiteral(
         "<h3>Ants Terminal</h3>"
         "<p><b>Version:</b> %1<br/>"
-        "<b>Qt runtime:</b> %2%3%4</p>"
+        "<b>Qt runtime:</b> %2%3%4%5</p>"
         "<p>A modern, themeable terminal emulator with Lua "
         "plugins. MIT-licensed.</p>"
         "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
         "https://github.com/milnet01/ants-terminal</a></p>")
-        .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine, buildLine);
+        .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine, buildLine,
+             mcpdLine);
 
     auto *dlg = makeAboutDialog(parent,
                                 QStringLiteral("About Ants Terminal"),

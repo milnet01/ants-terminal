@@ -237,7 +237,9 @@
         "src/mcpdforwarder.h",
         "src/mcpdmain.cpp",
         "src/mcpdsocket.cpp",
-        "src/mcpdsocket.h"
+        "src/mcpdsocket.h",
+        "src/mcpdversion.cpp",
+        "src/mcpdversion.h"
       ]
     },
     {

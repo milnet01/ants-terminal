@@ -65306,7 +65306,7 @@ in-process, so changing one costs a rebuild AND a hand relaunch of the terminal.
 This section holds the work to remove the relaunch. The measurements that make
 it look feasible, and the one that bounds what is achievable, are on the item.
 
-- 🚧 [ANTS-4932] **Serve the project-scoped MCP verbs from a standalone process, so changing one costs no terminal relaunch.**
+- ✅ [ANTS-4932] **Serve the project-scoped MCP verbs from a standalone process, so changing one costs no terminal relaunch.**
   NEEDS A SPEC BEFORE ANY CODE. It is a one-way change touching a library boundary, the machine-global store's concurrency model, and where every verb lives. spec-format.md § 1's "expensive to undo" test is met on three counts, not one.
 
   THE PROBLEM. `ClaudeIntegration::startMcpServer` binds a QLocalServer inside the GUI process, and every verb is a `RemoteControl` method registered by `rcDelegate` from `MainWindow`. Nothing is loaded at runtime, so a verb change is a rebuild of `ants-terminal` plus a hand relaunch. Measured today: a shipped `spec_lint` change could not be exercised over MCP in the session that wrote it.
@@ -65508,6 +65508,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   pass, four proven red by mutation. Suite 5077/5077. Spec folded back
   to the build. Open: CI on the push, and INV-10's manual recipe (spec
   6.2), which needs Claude Code re-registered to build/ants-mcpd.
+  Resolved (2026-09-25): INV-10 manual recipe (spec 6.2) passed.
+  A temporary field added to spec_lint's reply appeared after
+  rebuilding only ants-mcpd and a /mcp reconnect. The terminal and
+  the Claude Code session kept their pids; only ants-mcpd restarted.
+  The probe was reverted and ants-mcpd rebuilt from committed source.
+  CI on the build push (run 36053589908) is green.
   **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
   Kind: refactor.
   Source: user-request-2026-09-07.
@@ -65578,6 +65584,24 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: test.
   Source: in-session-2026-09-25.
   Lanes: mcp, tests.
+
+- 📋 [ANTS-5340] **Show the Ants MCP server's version and build on the About dialog.**
+  Since ANTS-4932, ants-mcpd is rebuilt and reconnected on its own,
+  so its build can differ from the terminal's. About Ants Terminal
+  (showAboutAnts, src/aboutdialogs.cpp) shows only the terminal's
+  ANTS_VERSION and build line.
+  ants-mcpd has no --version flag today (checked 2026-09-25: it
+  prints nothing and exits 0).
+  Hot-reload design: the dialog reads the version when it opens, so a
+  rebuilt ants-mcpd shows with no terminal relaunch.
+  Open design question: which ants-mcpd to report, the binary on disk
+  or the running processes. See the session's question to the user.
+  Decided (2026-09-25, user): report the ants-mcpd binary on disk,
+  read when the dialog opens. Running copies are not listed.
+  **Layman:** The About box names the terminal's version but not the separate Ants MCP program, which can now be rebuilt on its own and drift from it.
+  Kind: feature.
+  Source: user-request-2026-09-25.
+  Lanes: mcp, ui.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
@@ -74915,13 +74939,16 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: review-contract-ANTS-4932-loop-2.
   Lanes: mcp.
 
-- 📋 [ANTS-5312] **Remove the counts left in the ANTS-4932 spec, per the no-counts writing rule.**
+- ✅ [ANTS-5312] **Remove the counts left in the ANTS-4932 spec, per the no-counts writing rule.**
   Offered to the user 2026-09-24, awaiting a yes. The review gate fixed only
   the text its findings named. Remaining: § 1 point 2's `rcDelegate` and
   `registerToolProvider` grep counts. Keep the 40 MiB RSS budget in § 4, which
   is a limit and not a count. Rule source: /mnt/Games/CLAUDE.md "Writing and
   Editing Documents". An edit that changes no instruction needs no new gate
   (CLAUDE.md rule 14 No branch; record the one line).
+  Resolved (2026-09-25, b2a0513c): approved by the user. Section 1
+  point 2 now names the grep commands without their results. The
+  loop-log rows keep theirs, as landed rows are never edited.
   **Layman:** The design document for the separate MCP helper still quotes some numbers that go stale; swap them for the names or searches they stand for.
   Kind: doc-fix.
   Source: in-session-2026-09-24.

@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Help → About names the Ants MCP build Claude Code runs** (ANTS-5340)
+  The About box gains an "Ants MCP" line: the version, build time and
+  commit of the ants-mcpd that Claude Code launches. It is read each
+  time the box opens, so a rebuilt ants-mcpd shows without restarting
+  the terminal. `ants-mcpd --version` prints the same line.
+
 - **ants-mcpd, a standalone MCP server: changes to the project tools now reach Claude Code without restarting the terminal** (ANTS-4932)
   Claude Code launches `ants-mcpd` in place of `tools/mcp-bridge.py`. It
   serves every project-scoped verb itself and passes the tab and terminal

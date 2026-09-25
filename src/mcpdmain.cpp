@@ -9,11 +9,11 @@
 // stdout carries the protocol and nothing else: one JSON-RPC reply per line.
 // Diagnostics go to stderr.
 
-#include "build_info.h"
 #include "claudeintegration.h"
 #include "config.h"
 #include "debuglog.h"
 #include "mcpdforwarder.h"
+#include "mcpdversion.h"
 #include "mcpprojection.h"
 #include "mcpspill.h"
 #include "mcptoolregistry.h"
@@ -25,6 +25,7 @@
 #include <QSocketNotifier>
 
 #include <cstdio>
+#include <cstring>
 #include <unistd.h>
 
 namespace {
@@ -37,6 +38,15 @@ void writeStdout(const QByteArray &line) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    // ANTS-5340 — before anything reads stdin or the config: Help → About
+    // asks this on every open.
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--version") == 0) {
+            writeStdout(mcpd::versionLine().toUtf8() + '\n');
+            return 0;
+        }
+    }
+
     QCoreApplication app(argc, argv);
     // Same name as the terminal, so every AppConfigLocation path agrees.
     app.setApplicationName(QStringLiteral("Ants Terminal"));
@@ -114,7 +124,7 @@ int main(int argc, char **argv) {
             if (!line.isEmpty()) pipeline.handleMcpLine(line, &out);
         }
         // ANTS-1659 — the same request ceiling the socket enforces.
-        if (pending.size() > 256 * 1024) pending.clear();
+        if (pending.size() > qsizetype{256} * 1024) pending.clear();
     });
 
     return QCoreApplication::exec();

@@ -292,7 +292,8 @@ Listed only where behavior isn't obvious from the name.
   (`src/mcpdmain.cpp`) serves those verbs to Claude Code over stdio and
   forwards the terminal-scoped ones to a running terminal
   (`src/mcpdforwarder.cpp`, socket picker and uid checks in
-  `src/mcpdsocket.cpp`). The one registration list is
+  `src/mcpdsocket.cpp`). Its `--version` line, and the lookup Help → About
+  uses to find it, are in `src/mcpdversion.cpp`. The one registration list is
   `mcp::registerProjectScopedVerbs()` in `src/mcptoolregistry.cpp`; both
   hosts run it. Verbs reach their host only through `ants::RootProvider`
   (`src/rootprovider.h`). A rebuilt `ants-mcpd` reaches a session on its
