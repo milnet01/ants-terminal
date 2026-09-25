@@ -46625,7 +46625,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Fin Break).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4485] **roadmap_log locates against ROADMAP.md while roadmap_query answers from the store, so an item can be queryable and unwritable.**
+- ✅ [ANTS-4485] **roadmap_log locates against ROADMAP.md while roadmap_query answers from the store, so an item can be queryable and unwritable.**
   roadmap_query answers from the store (`source:"store"`). roadmap_log locates its target by
   matching bullets in ROADMAP.md — its refusal is literally "locator matched zero ants-v1
   bullets". For an item in the store but not in the file (an orphan, or anything added while the
@@ -46672,6 +46672,9 @@ are closed inline in the feedback files rather than filed here.
   and a message that names the divergence. Eight op names are served by four
   handlers, and there is no shared locator resolver today — each open-codes
   its own walk, which is why the spec adds one.
+  Resolved (2026-09-25): shipped in 2bc04f95 per
+  docs/specs/ANTS-4485-store-backed-locate.md;
+  tests/features/roadmap_store_locate 6/6; GitHub CI green.
 
 - ✅ [ANTS-4486] **roadmap_migrate cannot re-parse its own renderer's wrapped headline, and defaults kind/source over correct stored values.**
   The round trip is lossy in the destructive direction, and the correlation is exact rather than
@@ -49631,7 +49634,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-20, user decision.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5248] **The flip and annotate bullet echo re-emits the whole body, which is the response's entire cost on a long item.**
+- ✅ [ANTS-5248] **The flip and annotate bullet echo re-emits the whole body, which is the response's entire cost on a long item.**
   Observed while annotating ANTS-4500. ANTS-4844 makes flip and annotate
   echo the bullet the render will emit, which is the right answer for
   confirming a write without a follow-up read. On an item whose body is
@@ -49648,6 +49651,8 @@ are closed inline in the feedback files rather than filed here.
   file actually say", and a head-line-only echo cannot. Measuring a
   typical annotate response against the same call with fields set is the
   evidence this needs before a shape is chosen.
+  Resolved (2026-09-25): shipped with ANTS-5263 in 55344889; GitHub CI
+  green.
   **Layman:** After updating a roadmap item, the reply repeats the item's full text back — on a long item that is most of what the reply costs.
   Kind: perf.
   Source: in-session-2026-09-20, measured.
@@ -50359,7 +50364,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige and ai-prompts, independently).
   Lanes: mcp.
 
-- 📋 [ANTS-5263] **A roadmap_log write echoes the whole rendered bullet, so the cost compounds on exactly the items being worked hardest.**
+- ✅ [ANTS-5263] **A roadmap_log write echoes the whole rendered bullet, so the cost compounds on exactly the items being worked hardest.**
   Measured by four sessions. The echo is the RENDERED BULLET, so its size
   tracks the bullet, not the op:
 
@@ -50415,6 +50420,9 @@ are closed inline in the feedback files rather than filed here.
   The reporter's own caveat, kept: one session, no compaction, so they
   measured the accumulation and not the point where it bites. Reasoning
   from one clean case, not a measured law.
+  Resolved (2026-09-25): shipped in 55344889 — store flip/annotate echo
+  post_bullets by default, return:"full" for the whole bullet; GitHub CI
+  green.
   **Layman:** Every time you add a line to a roadmap entry, the tool sends the whole entry back — so the more you work on something, the more each small edit costs.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts, ut-monsterhunt, claude-config, Vestige).
