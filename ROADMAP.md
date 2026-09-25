@@ -66279,11 +66279,15 @@ project. Reported causes are claims until checked in source.
   Source: feedback-AI_Prompts-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5351] **roadmap_query bad_status does not point at `active` when a caller passes "planned,in-progress".**
+- ✅ [ANTS-5351] **roadmap_query bad_status does not point at `active` when a caller passes "planned,in-progress".**
   Reported by AI_Prompts: status:"planned,in-progress" refuses bad_status
   and lists `active` beside the single statuses with no hint that it is the
   union. Suggested: accept a comma list, or at least a hint naming `active`.
   The hint is the cheaper half.
+  Resolved (2026-09-25, 97d89b2d): bad_status carries a hint naming
+  `active` and `all` when the value holds a separator. Test
+  RoadmapQueryStatusHint INV-1/2, INV-1 proven red. GitHub CI green on
+  97d89b2d.
   **Layman:** Asking for open items with two status words fails without saying there is one word for both.
   Kind: enhancement.
   Source: feedback-AI_Prompts-2026-09-21.
@@ -66359,10 +66363,15 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Rolodex-2026-09-21.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5358] **roadmap_log flip_batch should take a per-locator to_status.**
+- ✅ [ANTS-5358] **roadmap_log flip_batch should take a per-locator to_status.**
   Reported by Rolodex (ROLO-0068): eight items shipped and one stayed
   in-progress, costing a second call. Suggested: an optional to_status per
   locator, defaulting to the call-level one.
+  Resolved (2026-09-25, 74802b60): flip_batch takes a per-locator
+  to_status, the call-level one the fallback. Tests RoadmapWriteHalf
+  Ants5358* (store, no-call-level, markdown), proven red. GitHub CI
+  green (run 36134508574); ASan is covered by the nightly run
+  (ANTS-5343), the local leg having skipped on a stale build-asan.
   **Layman:** Closing a batch where one item stays in progress takes two calls instead of one.
   Kind: enhancement.
   Source: feedback-Rolodex-2026-09-21.
@@ -66374,6 +66383,18 @@ project. Reported causes are claims until checked in source.
   inside a JSON array became a line break. Suggested: an advisory warning
   (literal_escape_sequences) when note, body or new_text has a literal
   backslash-n and no real newline. Advisory only: a regex can carry one.
+  Design note (2026-09-25), deferred for cost: the advisory belongs in
+  the envelope's `warnings` array via rlAddWarning (as
+  evidence_not_path_shaped), but only the append paths and amend_field
+  carry warnings today. Three routes, none cheap: (a) add it at each
+  text-taking op's success envelopes (flip/annotate markdown path alone
+  has about six); (b) post-process once in RemoteControl::cmdRoadmapLog,
+  which needs an inner/outer split and a remotecontrol.h change that
+  rebuilds most TUs; (c) wrap the roadmap_log registration in
+  mcptoolregistry.cpp, which conflicts with the source-scrape tests that
+  expect rcDelegate(&RemoteControl::...). Prefer (b) when next touching
+  cmdRoadmapLog. Check: note, body, new_text, bullets[].body,
+  locators[].note hold a literal backslash-n and no real newline.
   **Layman:** Text meant to break onto a new line can be saved with stray \n characters, and the write still reports success.
   Kind: enhancement.
   Source: feedback-OneUp-2026-09-18.

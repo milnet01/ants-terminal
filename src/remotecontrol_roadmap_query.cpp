@@ -2634,6 +2634,8 @@ bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
         if (d->restructured > 0)                           // ANTS-4965
             out[QStringLiteral("drift_restructured")] = d->restructured;
         out[QStringLiteral("drift_lost")]     = d->lost;
+        if (d->gained > 0)                                 // ANTS-5350
+            out[QStringLiteral("drift_gained")] = d->gained;
         if (!d->lostText.isEmpty())
             out[QStringLiteral("drift_lost_text")] =
                 QJsonArray::fromStringList(d->lostText);

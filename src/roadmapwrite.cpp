@@ -116,6 +116,7 @@ struct DriftBreakdown {
     int         restructured = 0;
     int         lost     = 0;
     QStringList lostText;
+    int         gained   = 0;   // ANTS-5350 — see Drift::gained
     // ANTS-4947 — the files that lost TEXT, so the publish can keep a copy of
     // each. Per file rather than a flag, because a project renders into several
     // and only the ones that actually lose prose are worth keeping.
@@ -227,6 +228,10 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         if (d.lostText.size() < kLostTextCap)
             d.lostText.append(l.trimmed().toString());
     }
+    // ANTS-5350 — render lines no file line matched: what the render adds.
+    for (auto it = renderKeys.cbegin(); it != renderKeys.cend(); ++it)
+        for (QStringView r : it.value())
+            if (!r.trimmed().isEmpty()) ++d.gained;
     return d;
 }
 
@@ -246,6 +251,7 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
         all.repunctuated += d.repunctuated;
         all.restructured += d.restructured;
         all.lost         += d.lost;
+        all.gained       += d.gained;   // ANTS-5350
         if (d.lost > 0)
             all.lostFiles.append(it.key());
         for (const QString &t : d.lostText)
@@ -400,6 +406,7 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
     out.repunctuated = d.repunctuated;
     out.restructured = d.restructured;
     out.lost         = d.lost;
+    out.gained       = d.gained;   // ANTS-5350
     out.lostText = d.lostText;
     return out;
 }

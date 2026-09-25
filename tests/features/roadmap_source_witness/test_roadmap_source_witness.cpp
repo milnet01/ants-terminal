@@ -18,6 +18,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+
+#include <algorithm>
 #include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
@@ -510,4 +512,41 @@ TEST(RoadmapSourceWitness, Inv6FreshlyMigratedProjectIsNotAheadOfItsStore) {
     EXPECT_GE(out.value(QStringLiteral("store_high_water")).toInt(),
               out.value(QStringLiteral("file_highest_id")).toInt())
         << "and the two numbers must agree, since they describe the same ids";
+}
+
+// ANTS-5350 — a line only the render carries is counted, as drift_gained.
+// AI_Prompts saw drift_lines:1 with every kind count 0 on exactly this: the
+// store's generated-file banner, missing from the file. The line is additive,
+// so drift_lost stays 0 and the render is safe, and the envelope now says so.
+TEST(RoadmapSourceWitness, Ants5350RenderOnlyLineIsCountedAsGained) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    // Drop the banner the render wrote, and nothing else.
+    const QString path = root + QStringLiteral("/ROADMAP.md");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    f.close();
+    const auto banner = std::find_if(lines.begin(), lines.end(), [](const QString &l) {
+        return l.contains(QStringLiteral("Generated from the Ants Terminal roadmap store"));
+    });
+    ASSERT_NE(banner, lines.end()) << "the render wrote no banner to remove";
+    lines.erase(banner);
+    ASSERT_TRUE(writeFile(path, lines.join(QLatin1Char('\n')).toUtf8()));
+
+    const QJsonObject out = checkSync(root);
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(out.value(QStringLiteral("file_in_sync")).toBool());
+    EXPECT_EQ(out.value(QStringLiteral("drift_lines")).toInt(), 1);
+    EXPECT_EQ(out.value(QStringLiteral("drift_gained")).toInt(), 1)
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("drift_lost")).toInt(), 0);
 }

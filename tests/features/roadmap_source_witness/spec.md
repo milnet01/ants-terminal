@@ -69,3 +69,20 @@ ANTS-4631 for this class of problem). Either alone is wrong in a different
 direction: the counter is absent until the first append, and the item-derived
 figure sits below the counter once an allocated id is deleted. A staleness
 warning whose whole value is being rare must not fire on a healthy project.
+
+## ANTS-5350 — a render-only line is counted as `drift_gained`
+
+`drift_lines` counts lines on either side, but the kind counts (`restyled`,
+`repunctuated`, `restructured`, `lost`) classify only lines the FILE holds. A
+line only the render carries — the generated-file banner, say — counted in
+`drift_lines` and in no kind, so a caller could not tell whether rendering was
+safe (AI_Prompts: `drift_lines:1`, every kind 0).
+
+- **`Ants5350RenderOnlyLineIsCountedAsGained`** — migrate, render, then
+  remove only the banner line from the file: `check_sync` reports
+  `drift_lines:1`, `drift_gained:1` and `drift_lost:0`. Fails against the
+  pre-fix tree, which emitted no `drift_gained`.
+
+Note that `drift_lines` counts BOTH sides, so a restyled line is one file line
+plus one render line there and one `drift_restyled`; the kinds do not sum to
+`drift_lines`, and `drift_lost == 0` is the render-is-safe test.

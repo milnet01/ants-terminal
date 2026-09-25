@@ -64,6 +64,13 @@ struct Drift {
     int         restructured = 0;
     int         lost     = 0;   // file lines whose TEXT the render would drop
     QStringList lostText;       // a capped sample of those lines
+    // ANTS-5350 — non-blank render lines with no file twin: what a render
+    // would ADD (a generated-file banner the file never carried). It can never
+    // destroy anything. Without it such a line counted in `total` and in no
+    // kind, so a caller could not tell whether the render was safe. `total`
+    // counts both sides, so a restyled line is one file line plus one render
+    // line there and one `restyled` here.
+    int         gained   = 0;
 };
 
 // nullopt means the measurement could not be taken — the render failed or came

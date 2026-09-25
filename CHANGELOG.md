@@ -105,6 +105,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap sync check now accounts for lines only the database would add** (ANTS-5350)
+  roadmap_query check_sync reports them as `drift_gained`. Before, such a
+  line counted as drift but in no category, so it was unclear whether
+  republishing the file was safe; `drift_lost: 0` still means it is.
+
 - **A roadmap migration's section count now matches the roadmap's section list** (ANTS-5355)
   The title and preamble are no longer counted as a section; the reply
   reports them as `preamble_written` instead.
