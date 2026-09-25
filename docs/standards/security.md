@@ -51,8 +51,12 @@ than a section of `coding.md`.
 
 ## 1. Start with the boundaries, not a checklist
 
-A **trust boundary** is any point where data or control crosses from
-somewhere you do not control into somewhere you do. Name yours before
+A **trust boundary** is any point where data or control crosses from a
+less-trusted context into a more-trusted one. **Control is not the test**
+— a component you wrote, a file your app itself created, a server you
+run: each can still be impersonated, corrupted or compromised, which is
+why §5 takes every response through §3 and §10 calls internal a boundary
+rather than an exemption. Name yours before
 defending anything: a checklist applied to a system whose boundaries
 nobody wrote down defends the wrong places thoroughly.
 
@@ -73,15 +77,18 @@ organised around boundaries rather than vulnerability classes, and did so
 independently of each other. That convergence is why this section is
 first.
 
-**Write the project's boundary list into its `SECURITY.md` or
-`CLAUDE.md`.** A boundary nobody has named is a boundary nobody is
+**Write the project's boundary list into its `SECURITY.md` where the
+project accepts external reports (`documentation.md` § 5.3 fixes that
+home), otherwise into its `CLAUDE.md`.** A boundary nobody has named is a boundary nobody is
 defending.
 
-**A project with no trust boundary records that instead, in one line.** A
-local single-user tool that reads nothing it did not write and talks to
-nothing may genuinely have none. That sentence satisfies this section; an
-empty boundary section does not, because it reads as a list nobody filled
-in.
+**A project with no trust boundary records that instead, in one line, in
+its `CLAUDE.md`.** A local single-user tool that reads nothing it did not
+write and talks to nothing may genuinely have none. The `CLAUDE.md` home
+is named because such a project ships no `SECURITY.md` and the skeleton
+tells it to delete that file — so the line has nowhere else to go. That
+sentence satisfies this section; an empty boundary section does not,
+because it reads as a list nobody filled in.
 
 ## 2. Secrets
 
@@ -210,7 +217,8 @@ decision.
   `latest`. A mutable reference executes whatever it points at on the
   day it runs, so the step is a different program each time and the diff
   that changed it does not exist. CWE-829, untrusted functionality.
-  Breach: a pipeline step on a mutable reference.
+  Breach: a pipeline action, or any container image reference, on a
+  mutable reference rather than a sha or digest.
 
 ## 9. When you find a hole
 
@@ -228,7 +236,7 @@ a sweep that turns up a real advisory hands it here.
   first**, so it cannot reopen silently. **Where it is an upstream advisory
   there is no behaviour of yours to lock down** — the check is the version
   floor in the manifest, and no test is owed. **The two below bind on both** —
-  rotate whatever an advisory says may have been exposed, and say so in the
+  rotate whatever may have been exposed, and say so in the
   CHANGELOG either way, because a user on the old version needs to upgrade
   whoever wrote the hole.
 - **Assume exploitation where you cannot rule it out**, and rotate
@@ -249,41 +257,37 @@ a sweep that turns up a real advisory hands it here.
 
 ## What checks this
 
-Named by **kind of check**, not by tool. Tools are replaced; the kind of
-check outlives them. **Which tool fills a row is the project's to record**,
-alongside its boundary list (§1). An audit configuration names the tools a
-project runs; it does not say which row each one answers. Where nothing
-records the mapping, the row's tool is unnamed — a gap, not a silence to
-read past.
+Each cell names the check and its kind (`documentation.md` § 2.9). Where
+this machine's filler is named, a project substituting its own records the
+substitution alongside its boundary list (§1).
 
-**The table names the rules something catches, not every rule here.** A
-rule with no row has no mechanical check and no reviewer assigned. Treat
-it as *nothing mechanical* by default rather than as covered.
+**A rule is owed a row wherever a reader would otherwise guess at its
+enforcement.** An absence is not coverage.
 
 | Rule | What catches a breach |
 |---|---|
-| Secrets in the repo (§2) | `check-code`'s `gitleaks` step, a secret-scanning check, on every commit or push — in CI where there is CI, otherwise a pre-commit hook. The venue moves; the check does not |
-| Injection and unsafe calls (§3) | `check-code`'s language sweep (`semgrep`, `bandit`, `ruff`, `cppcheck`), a static-analysis check |
-| Dependency vulnerabilities (§8) | `check-dependencies`, an advisory check — the ecosystem's own, run on the `dependencies.md` cadence |
-| Lockfile committed (§8) | the repository — a missing lockfile is visible |
-| Atomic writes and owner-only permissions (§4) | **nothing mechanical** — a permission bit is greppable in principle and nothing greps it |
-| Encryption of what a stolen disk would expose (§4) | **nothing mechanical** — whether a thing *should* be encrypted is a judgement about the data |
-| TLS with verification on (§5) | `check-code`'s language sweep, a static-analysis check, where the language has a rule for a disabled-verification flag — **`Partial:`**, since a verification disabled through config rather than code is invisible to it |
-| No credentials in a URL (§5) | `check-code`'s `gitleaks` step, a secret-scanning check, if its rules cover URL userinfo — otherwise **nothing** |
-| Late-acquire, early-drop privilege (§7) | **nothing mechanical** — the shape of an escalation is a design question |
-| Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row. Three do: blocklist-over-allowlist, logging a whole request object, committing a secret and removing it next commit |
-| Anti-patterns restating nothing above (§10) | **nothing mechanical** — rolling your own crypto, token format or password hashing; disabling a security check to pass a test; "it's only internal"; validating in the user interface only. These four are stated only in §10, so no row above covers them |
-| Boundary list exists (§1) | **nothing mechanical** — a human reads it |
-| What may be logged (§6) | **nothing mechanical** — reviewed at the boundary |
-| Fix-now discipline (§9) | **nothing mechanical** — social |
+| Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **working tree only**. **Nothing** catches a secret in a commit message or already in history — that step passes `--no-git`, and measurement on `gitleaks` 8.30.1 finds a committed-then-removed secret in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **A per-commit or per-push scan is the project's to install**: `check-code` is invoked by a session, so no hook or pipeline can call it |
+| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s language sweep (`semgrep`, `bandit`, `ruff`, `cppcheck`), a static-analysis check, for the injection and unsafe-call classes. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives |
+| Dependency advisories (§8) | **nothing** — `check-dependencies` reports staleness only; every command it runs is an `outdated` command and it queries no advisory database, so a package at latest stable with an open advisory is invisible to it. **The ecosystem's advisory command is the project's to run**, on the `dependencies.md` cadence |
+| Lockfile committed (§8) | `dependencies.md` § What checks this owns the answer |
+| Immutable pipeline and image references (§8) | **`Partial:`** `check-code`'s `zizmor` step, a workflow-security check, whose `unpinned-uses` rule reports a mutable `uses:` in a default run. **Nothing** catches a mutable container image outside a workflow — a `FROM` tag, an `image:` in a compose file |
+| Atomic writes and owner-only permissions (§4) | **nothing mechanical** — a code reviewer. A permission bit is greppable in principle and nothing greps it |
+| Encryption of what a stolen disk would expose (§4) | **nothing mechanical** — a code reviewer, because whether a thing *should* be encrypted is a judgement about the data |
+| TLS with verification on (§5) | **`Partial:`** `check-code`'s language sweep, a static-analysis check, where the language has a rule for a disabled-verification flag. **Nothing** catches verification disabled through config rather than code, or a language among the selected tools carrying no such rule |
+| No credentials in a URL (§5) | **nothing** — measured on `gitleaks` 8.30.1: its default rules do not match URL userinfo |
+| Late-acquire, early-drop privilege (§7) | **nothing mechanical** — a code reviewer; the shape of an escalation is a design question |
+| The CHANGELOG entry and the rotation (§9) | **nothing** — `changelog-format.md` offers a `Security` category and requires no entry, so a security fix shipped silently is caught by nothing |
+| Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row |
+| Anti-patterns restating nothing above (§10) | **nothing mechanical** — a code reviewer. Rolling your own crypto, token format or password hashing; disabling a security check to pass a test; "it's only internal"; validating in the user interface only |
+| Boundary list exists (§1) | **nothing mechanical** — whoever reviews the project's design document |
+| What may be logged (§6) | **nothing mechanical** — the reviewer of the boundary the log sits on |
+| Fix-now discipline (§9) | **nothing mechanical** — the person who found the hole, and nobody else |
 
 This standard's honest error budget is every row admitting a surface where
-a breach can pass unseen. That is the rows marked *nothing mechanical* —
-and also the two that qualify their coverage rather than deny it:
-`Partial:` on TLS verification, and *otherwise nothing* on credentials in a
-URL. Counting only the marked rows understates it. When a review
-catches the same class twice, the answer is a new rule for the analyser
-so the row moves up — not a longer standard.
+a breach can pass unseen — the **nothing** rows, and the **`Partial:`** rows
+for the half they do not reach. When a review catches the same class
+twice, the answer is a new rule for the analyser so the row moves up, not
+a longer standard.
 
 ## Cold-eyes loop log
 
