@@ -175,7 +175,7 @@ the Flathub repo name.
 9. **Flip the gating-item entry:** "No distro packages anywhere" →
    "unblocked via Flathub."
 
-- 🚧 [ANTS-5367] **Show the demo video in README.md and on the antsprojectshub.co.za Ants Terminal page.**
+- ✅ [ANTS-5367] **Show the demo video in README.md and on the antsprojectshub.co.za Ants Terminal page.**
   Approved by the user 2026-09-25. demoreel records it on a private virtual
   display from an isolated launch (fresh config, data and cache dirs, so no
   real tabs or history appear). The website part belongs to the
@@ -191,9 +191,30 @@ the Flathub repo name.
   github.com/milnet01/demoreel; demoreel told the commit (its DEMO-0093).
   Open: the antsprojectshub.co.za page, asked of ants-projects-hub-website
   (messages 26 and 29).
+  Resolved (2026-09-25): the website half is live at
+  https://antsprojectshub.co.za/p/ants-terminal.html (the
+  ants-projects-hub-website session reports demoreel sent it the video
+  directly). The README half shipped in 97d89b2d.
   **Layman:** A short video of the terminal in action goes on the project page and the website, so people can see it before installing.
   Kind: marketing.
   Source: user-request-2026-09-25.
+  Lanes: docs.
+
+- ✅ [ANTS-5370] **An "Ants Terminal" wordmark logo for the antsprojectshub.co.za landing-page card.**
+  The website session asked, at the user's direction, for a wordmark
+  rather than an app icon (spec: Ants_Projects_Hub_Website
+  src/assets/img/logos/README.md). assets/ants-terminal-logo.svg: the
+  app icon's ant redrawn as vector shapes beside "Ants" / "Terminal" in
+  Source Code Pro Semibold (OFL), text converted to outlines, transparent,
+  light colours for a dark panel, 857x300 (2.86:1). Checked rendered on a
+  dark panel. Open until the site shows it.
+  Resolved (2026-09-25): the ants-projects-hub-website session took
+  assets/ants-terminal-logo.svg as the landing-page card logo, pushed; it
+  goes live on https://antsprojectshub.co.za/ with the site's next
+  deploy. The 2.86:1 shape fits the card with no change.
+  **Layman:** The project now has a proper logo with its name written out, for the website's list of projects.
+  Kind: marketing.
+  Source: user-request-2026-09-25 (via ants-projects-hub-website).
   Lanes: docs.
 
 ### P2 — AUR publish
