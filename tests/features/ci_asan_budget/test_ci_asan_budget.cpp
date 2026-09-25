@@ -284,3 +284,19 @@ TEST(CiAsanBudget, Inv10CppcheckRunsInItsOwnGuardedJob) {
     ASSERT_GT(cap, 0) << "the cppcheck job declares no timeout-minutes";
     EXPECT_LT(budget, cap);
 }
+
+// INV-11 — ANTS-5343: the sanitized job runs nightly, not on every push; the
+// Release job still runs on every push.
+TEST(CiAsanBudget, Inv11SanitizedJobRunsNightlyNotOnPush) {
+    const std::string wf = ants_test::slurpFile(SRC_CI_WORKFLOW_PATH);
+    const std::string asan = asanJob(wf);
+    ASSERT_FALSE(asan.empty()) << "no `build-asan` job in ci.yml";
+    const std::string head = asan.substr(0, asan.find("\n    steps:"));
+    EXPECT_TRUE(has(head, "if: github.event_name != 'push'"))
+        << "build-asan still runs on every push (ANTS-5343)";
+    EXPECT_TRUE(std::regex_search(wf, std::regex(R"(\n  schedule:\n    - cron: ')")))
+        << "ci.yml has no nightly schedule, so the sanitizers would never run";
+    const std::string release = jobBlock(wf, "build-test");
+    EXPECT_FALSE(has(release.substr(0, release.find("\n    steps:")), "\n    if:"))
+        << "build-test must run on every push";
+}

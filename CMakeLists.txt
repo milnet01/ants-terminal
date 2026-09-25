@@ -1146,7 +1146,13 @@ endif()
 option(ANTS_SANITIZERS "Enable ASan+UBSan for debugging" OFF)
 if(ANTS_SANITIZERS)
     target_compile_options(ants_warnings INTERFACE
-        -fsanitize=address,undefined -fno-omit-frame-pointer)
+        -fsanitize=address,undefined -fno-omit-frame-pointer
+        # ANTS-5195 — -g1 keeps file:line in sanitizer stack traces but drops
+        # local-variable info. Measured 2026-09-25: split debug files 0.59 ->
+        # 0.15 GiB, test_claude 677 -> 524 MB. It follows Debug's `-g` on the
+        # command line, so it wins. (-O1, ANTS-5196, measured no faster
+        # sanitized suite here and was not kept.)
+        -g1)
     # Match link option to compile option: every consumer of ants_warnings
     # (main exe + test bundles) needs the sanitizer runtime libs pulled in
     # by the linker, otherwise STATIC-lib .o files instrumented with

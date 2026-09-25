@@ -160,3 +160,5 @@ build-obs/
 # ANTS-5322 — ccache dir ci.yml names (${{ github.workspace }}/.ccache);
 # tools/ci_workflow.py honours it, separate from the machine's own cache.
 .ccache/
+# ANTS-5192 — tools/qt62-guard.sh's compile cache, one subdir per guarded job.
+.ccache-guard/

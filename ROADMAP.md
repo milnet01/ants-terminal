@@ -65604,7 +65604,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: in-session-2026-09-25.
   Lanes: mcp, tests.
 
-- 📋 [ANTS-5340] **Show the Ants MCP server's version and build on the About dialog.**
+- ✅ [ANTS-5340] **Show the Ants MCP server's version and build on the About dialog.**
   Since ANTS-4932, ants-mcpd is rebuilt and reconnected on its own,
   so its build can differ from the terminal's. About Ants Terminal
   (showAboutAnts, src/aboutdialogs.cpp) shows only the terminal's
@@ -65617,12 +65617,15 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   or the running processes. See the session's question to the user.
   Decided (2026-09-25, user): report the ants-mcpd binary on disk,
   read when the dialog opens. Running copies are not listed.
+  Resolved (2026-09-25, 3195fe93): ants-mcpd --version; About shows the
+  build of the binary Claude Code launches. Tests:
+  tests/features/mcpd_about_version INV-1..5.
   **Layman:** The About box names the terminal's version but not the separate Ants MCP program, which can now be rebuilt on its own and drift from it.
   Kind: feature.
   Source: user-request-2026-09-25.
   Lanes: mcp, ui.
 
-- 🚧 [ANTS-5341] **Help → About warns when a Claude Code session runs an older ants-mcpd than the one on disk.**
+- ✅ [ANTS-5341] **Help → About warns when a Claude Code session runs an older ants-mcpd than the one on disk.**
   Follows ANTS-5340, which shows the build of the ants-mcpd on disk.
   Each Claude Code session runs its own ants-mcpd until it reconnects.
   Linux keeps a running program's original file reachable at
@@ -65634,6 +65637,9 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   /mcp".
   Assumption: every tab in this window is checked, not only the
   focused one.
+  Resolved (2026-09-25, a38d848f): About names tabs whose session runs a
+  stale ants-mcpd. Tests INV-6..8. Dialog rendering unverified until the
+  next terminal relaunch.
   **Layman:** After Ants MCP is rebuilt, sessions keep the old copy until they reconnect; the About box says which tabs to reconnect.
   Kind: feature.
   Source: user-request-2026-09-25.
@@ -77757,12 +77763,16 @@ acting on it.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 💭 [ANTS-5194] **Run the sanitized suite one process per gtest suite instead of one per test.**
+- 🚫 [ANTS-5194] **Run the sanitized suite one process per gtest suite instead of one per test.**
   ANTS-5014 measured this as its option (b), and the user chose option
   (a), so reopening it needs the user. The ASan job's test step is what
   every CI run waits on, and most of each test's time there is process
   start-up under the sanitizer. Trade-offs: a failure names a suite, each
   process holds more memory, and leak reports cover a whole suite.
+  Dropped (2026-09-25, user delegated the CI choices): it reverses the
+  user's ANTS-5014 choice, and ANTS-5343 moves build-asan off the push
+  path, so its payoff there is gone. Reopen only if the nightly ASan run
+  outgrows its budget.
   **Layman:** The memory-checking tests spend most of their time starting up; grouping them would cut that, but it reverses an earlier choice.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -77785,11 +77795,14 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 💭 [ANTS-5197] **Size the pre-push sanitizer test leg by available memory instead of a fixed -j2.**
+- 🚫 [ANTS-5197] **Size the pre-push sanitizer test leg by available memory instead of a fixed -j2.**
   tools/hooks/pre-push runs the sanitized ctest at -j2 whatever the
   machine has free. Derive -j from available memory with a floor of two.
   This leg has a recorded history of out-of-memory kills while a browser
   was open, which is why it stays considered.
+  Dropped (2026-09-25, user delegated the CI choices): this leg has a
+  recorded history of out-of-memory kills, and -j2 is the setting that
+  stopped them. The speed gain does not justify a flaky push gate.
   **Layman:** The local memory-checking tests could run faster when the machine has spare memory.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -77802,11 +77815,14 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 💭 [ANTS-5199] **Reuse a compile cache for release builds.**
+- 🚫 [ANTS-5199] **Reuse a compile cache for release builds.**
   release.yml uses no ccache. Restoring an existing cache read-only needs
   matching configure flags, and release adds its own install prefix. The
   trade-off is supply chain: a cache written by ordinary runs would feed a
   shipped binary, and a weekly release cadence gains little.
+  Dropped (2026-09-25, user delegated the CI choices): a cache written
+  by ordinary runs would feed a shipped binary, a supply-chain cost, for
+  a small gain on a weekly release.
   **Layman:** Release builds recompile everything; reusing a cache would be faster but has a safety cost.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).

@@ -292,11 +292,22 @@ trap 'echo "qt62-guard: interrupted — stopping $qt62_container; the build tree
       exit 130' INT TERM HUP
 mkdir -p "$qt62_state_dir" && : > "$qt62_interrupted_marker" || {
     echo "qt62-guard: cannot write $qt62_interrupted_marker" >&2; exit 1; }
+# ANTS-5192 — a compile cache that outlives the build volume, so a cold tree
+# (new package set, or a tree discarded after an interruption) still compiles
+# from cache. Inside the checkout, so on the same drive as the source rather
+# than under $HOME; gitignored. ccache is in both jobs' ci.yml package lists.
+qt62_ccache="$PWD/.ccache-guard/$qt62_prefix"
+mkdir -p "$qt62_ccache" || {
+    echo "qt62-guard: cannot create $qt62_ccache" >&2; exit 1; }
 echo "qt62-guard: compiling for $qt62_what ($qt62_base, tag $qt62_tag)…"
 podman run --rm --security-opt label=disable --init --name "$qt62_container" \
-    -v "$PWD:/src:ro" -v "$qt62_volume:/build" -w /src "$qt62_image" \
+    -v "$PWD:/src:ro" -v "$qt62_volume:/build" -v "$qt62_ccache:/ccache" \
+    -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2G -e CCACHE_COMPRESS=1 \
+    -w /src "$qt62_image" \
     bash -euo pipefail -c '
-        cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         cmake --build /build --parallel
     ' &
 wait $!

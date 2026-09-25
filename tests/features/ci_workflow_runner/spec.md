@@ -33,7 +33,14 @@ understand at workflow, job or step level (`defaults`, `strategy`,
 `container`, `continue-on-error` and the rest); and a `run:` that reads a
 `GITHUB_*` or `RUNNER_*` variable the runner does not set, which includes
 writing `$GITHUB_ENV`, `$GITHUB_PATH` or `$GITHUB_OUTPUT`. A refused job fails
-`tools/ci-parity.sh`; it is never skipped.
+`tools/ci-parity.sh`; it is never skipped. A job-level `if:` other than the
+one INV-5 names is refused too.
+
+**INV-5 — a job gated off push still runs locally (ANTS-5343).** A job whose
+`if:` is exactly `github.event_name != 'push'` is planned and run, and the
+plan names the condition as `not on push`. GitHub skips such a job on a push;
+locally the caller chose the job by name (the pre-push hook, `ci-parity.sh`),
+so the condition has already been decided.
 
 ## Not covered
 

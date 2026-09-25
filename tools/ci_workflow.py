@@ -77,7 +77,15 @@ BASH = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
 # needs, container, services, continue-on-error — changes what GitHub runs,
 # so ignoring it would turn a divergence into a silent green.
 WORKFLOW_KEYS = {"name", "on", True, "permissions", "concurrency", "env", "jobs"}
-JOB_KEYS = {"name", "runs-on", "timeout-minutes", "env", "steps"}
+JOB_KEYS = {"name", "runs-on", "timeout-minutes", "env", "steps", "if"}
+
+# Job-level `if:` values, each with its local meaning. ANTS-5343: build-asan
+# is skipped on a GitHub push and runs nightly; locally the caller picked the
+# job by name (the pre-push hook, ci-parity.sh), so it runs. Any other job
+# condition is refused.
+JOB_CONDITIONS = {
+    "github.event_name != 'push'": "not on push — runs here because it was asked for",
+}
 STEP_KEYS = {"name", "uses", "with", "run", "env", "working-directory", "if",
              "shell"}
 
@@ -120,6 +128,9 @@ def plan(job_id):
         raise Refused(f"no job '{job_id}' in ci.yml (have: {', '.join(jobs)})")
     job = jobs[job_id]
     unknown(job, JOB_KEYS, job_id)
+    job_cond = str(job.get("if", "")).strip()
+    if job_cond and job_cond not in JOB_CONDITIONS:
+        raise Refused(f"{job_id}: no local meaning for job if: {job_cond}")
     job_env = {k: expand(str(v), f"env.{k}")
                for k, v in (wf.get("env") or {}).items()}
     job_env.update({k: expand(str(v), f"{job_id}.env.{k}")
@@ -233,7 +244,11 @@ def main(argv):
     try:
         if argv[1] == "run":
             return run(argv[2])
-        for name, kind, detail, always, env, cwd in plan(argv[2]):
+        steps = plan(argv[2])
+        cond = str(load()["jobs"][argv[2]].get("if", "")).strip()
+        if cond:
+            print(f"[job if] {cond}: {JOB_CONDITIONS[cond]}")
+        for name, kind, detail, always, env, cwd in steps:
             print(f"[{kind}{' always' if always else ''}] {name}")
             if kind == "run":
                 print(f"  cwd: {os.path.relpath(cwd, ROOT)}")

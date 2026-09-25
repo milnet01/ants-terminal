@@ -50,6 +50,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **GitHub CI checks a push in about 8 minutes instead of about 30** (ANTS-5343)
+  The memory-safety (ASan/UBSan) job now runs nightly, on pull
+  requests and on demand, not on every push; the pre-push hook still
+  runs it locally. The sanitizer build carries lighter debug info
+  (ANTS-5195). The Qt 6.2 job's packages are cached (ANTS-5198), the
+  local Qt 6.2 guard keeps a compile cache (ANTS-5192), and CI reports
+  its slowest build steps (ANTS-5190).
+
 - **The automatic check before every push now runs GitHub's own CI recipe, lints included, so it catches what GitHub would** (ANTS-5322)
 
 - **The local CI check now runs GitHub's own CI recipe instead of a copy of it** (ANTS-5322)

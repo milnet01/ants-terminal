@@ -124,3 +124,10 @@ cap.
 Compiled into the **`test_claude`** bundle, which already carries the
 `SRC_CI_WORKFLOW_PATH` compile definition for `ci_workflow_deps`. Label
 `features;fast`.
+
+**INV-11 — the sanitized job runs nightly, not on every push (ANTS-5343).**
+`build-asan` carries the job condition `if: github.event_name != 'push'`, and
+ci.yml has a `schedule:` trigger. `build-test` carries no job condition, so it
+runs on every push. Decided by the user 2026-09-25: a push waited about half an
+hour on this job. The pre-push hook still runs it locally when `build-asan/` is
+warm, and an ASan-only failure can surface up to a day late.

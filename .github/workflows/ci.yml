@@ -32,6 +32,12 @@ on:
       - '.roadmap-counter'
   pull_request:
     branches: [main]
+  # ANTS-5343 — build-asan runs here, not on every push. 01:17 UTC is 03:17 in
+  # South Africa; the off-the-hour minute avoids GitHub's top-of-hour queue.
+  schedule:
+    - cron: '17 1 * * *'
+  # Run the whole workflow, build-asan included, on demand (Actions tab).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -44,8 +50,10 @@ permissions:
 # an abnormal outcome. A run still PENDING when a newer push joins the
 # group is cancelled with no jobs even here, which is normal: the newer
 # run carries its commits (ANTS-5149).
+# ANTS-5343 — the event is part of the group, so the nightly run neither
+# waits behind a push's run nor is cancelled by one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -126,6 +134,16 @@ jobs:
         # and 17m12s / 17m54s against a cache frozen by cancelled runs; the
         # budget is ~1.4x that worst case. A colder build should go red.
         run: timeout 25m cmake --build build --parallel
+
+      # ANTS-5190 — where a warm build's minutes go. The ccache hit rate is
+      # near 100%, so the time is in steps ccache cannot serve (links, moc).
+      # Latest entry per output, slowest first. CI's tree is fresh, so every
+      # entry is this build's; a reused local tree also lists older outputs.
+      - name: Slowest build steps (release)
+        if: always()
+        run: |
+          awk '!/^#/ { t[$4] = $2 - $1 } END { for (o in t) printf "%7.1fs  %s\n", t[o] / 1000, o }' \
+            build/.ninja_log | sort -rn | awk 'NR <= 20'
 
       - name: Save ccache (release)
         # always(): must survive the overrun it exists to prevent recurring.
@@ -208,6 +226,10 @@ jobs:
   build-asan:
     name: Build and test (ASan/UBSan)
     runs-on: ubuntu-24.04
+    # ANTS-5343 — nightly, on PRs and on demand; not on a push to main, which
+    # waited about half an hour on this job. The pre-push hook still runs it
+    # locally when build-asan/ is warm (tools/ci_workflow.py runs it there).
+    if: github.event_name != 'push'
     # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
     # the sum of the per-step `timeout` guards below (24m + 22m), because a
     # job killed by timeout-minutes concludes `cancelled` rather than
@@ -278,6 +300,13 @@ jobs:
         # 7 days) is slower still and SHOULD go red: that is a real signal,
         # not a false alarm.
         run: timeout 24m cmake --build build-asan --parallel
+
+      # ANTS-5190 — see "Slowest build steps (release)".
+      - name: Slowest build steps (asan)
+        if: always()
+        run: |
+          awk '!/^#/ { t[$4] = $2 - $1 } END { for (o in t) printf "%7.1fs  %s\n", t[o] / 1000, o }' \
+            build-asan/.ninja_log | sort -rn | awk 'NR <= 20'
 
       - name: Save ccache (asan)
         # `always()` is the point of the split: this must survive the overrun
@@ -364,19 +393,23 @@ jobs:
           # ANTS-4773 — nothing here runs git.
           persist-credentials: false
 
+      # ANTS-5198 — cached like the other jobs' installs; this was the one
+      # uncached apt step. tools/qt62-guard.sh reads this step's package list
+      # to build its container, and parses this `packages: >-` form as well.
       - name: Install Qt6 + build deps (release baseline)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ccache \
-            build-essential cmake ninja-build pkg-config \
-            qt6-base-dev qt6-base-dev-tools \
-            libqt6opengl6-dev libqt6openglwidgets6 \
-            qt6-wayland qt6-wayland-dev \
-            liblua5.4-dev \
-            libgl-dev libglx-dev libegl-dev libglu1-mesa-dev \
-            libfontconfig1-dev libfreetype-dev \
+        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
+        with:
+          packages: >-
+            ccache
+            build-essential cmake ninja-build pkg-config
+            qt6-base-dev qt6-base-dev-tools
+            libqt6opengl6-dev libqt6openglwidgets6
+            qt6-wayland qt6-wayland-dev
+            liblua5.4-dev
+            libgl-dev libglx-dev libegl-dev libglu1-mesa-dev
+            libfontconfig1-dev libfreetype-dev
             libxkbcommon-dev libxkbcommon-x11-dev
+          version: 1.0
 
       - name: Restore ccache (qt62)
         # Split restore/save, per ANTS-4533's finding on build-asan: the

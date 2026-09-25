@@ -128,6 +128,8 @@ with tempfile.TemporaryDirectory() as tmp:
              "jobs:\n  j:\n    steps:\n      - run: echo ${{ github.sha }}\n"),
             ("unknown if",
              "jobs:\n  j:\n    steps:\n      - if: success()\n        run: true\n"),
+            ("unknown job if",
+             "jobs:\n  j:\n    if: github.event_name == 'schedule'\n" + ok_steps),
             ("workflow defaults",
              "defaults:\n  run:\n    shell: sh\njobs:\n  j:\n" + ok_steps),
             ("job strategy (matrix)",
@@ -144,6 +146,17 @@ with tempfile.TemporaryDirectory() as tmp:
             f.write(text)
         rc, out = runner("plan", "j", workflow=wf)
         check(rc == 3 and "refused" in out, f"INV-4 {label} is refused")
+
+    # INV-5
+    with open(wf, "w") as f:
+        f.write("jobs:\n  j:\n    if: github.event_name != 'push'\n"
+                "    steps:\n      - run: echo MARK-GATED-RAN\n")
+    rc, out = runner("plan", "j", workflow=wf)
+    check(rc == 0 and "not on push" in out,
+          f"INV-5 the not-on-push job condition is planned and named (got {rc}: {out[-200:]})")
+    rc, out = runner("run", "j", workflow=wf)
+    check(rc == 0 and "MARK-GATED-RAN" in out,
+          "INV-5 a not-on-push job still runs locally when asked for")
 
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)
