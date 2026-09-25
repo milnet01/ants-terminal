@@ -80,6 +80,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Editing a "Pass"-style roadmap that lives in the database now updates the database** (ANTS-5334)
+  On a `#### Pass N.M` roadmap served from the roadmap store, flipping or
+  annotating a pass now writes through the store and republishes the file.
+  Before, the edit went to the file alone and the next update discarded it.
+  Adding passes or batch edits on such a roadmap now refuse clearly instead
+  of writing behind the store.
+
 - **Converting an old-style roadmap no longer brings back items deleted since an earlier import; it stops and lists them instead** (ANTS-5326)
 
 - **Pass-style roadmaps read an item's status line wherever it sits in the item, not only in its first 50 lines** (ANTS-5337)

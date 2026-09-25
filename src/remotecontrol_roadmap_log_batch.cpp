@@ -197,9 +197,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // ANTS-4470 — the pass writer takes the mode too, so annotate_batch reaches
     // a pass-headings roadmap rather than silently flipping every located pass
     // to a status the caller never named.
-    if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical)))
+    if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical))) {
+        // ANTS-5334 — no store route for a pass batch yet; op:flip and
+        // op:annotate have one.
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto target =
+            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target)
+            return rcPassStoreWriteUnsupported(annotateMode
+                ? QStringLiteral("annotate_batch") : QStringLiteral("flip_batch"));
         return cmdRoadmapLogPassFlipBatch(req, roadmapPath, markdown,
                                           annotateMode);
+    }
     const RoadmapParse::IdFormat batchFlipIdFormat = rlDecl(callerCanonical);
     const bool isGfm = !walkGfmBullets(lines, batchFlipIdFormat).isEmpty();
     // ANTS-3565 — a mixed GFM+ants-v1 roadmap (GFM-majority with appended
@@ -2020,8 +2034,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(rlParse(md, cc)))   // ANTS-3771
+                if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                    // ANTS-5334 — no store route for a pass append yet.
+                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+                    QString seamErr;
+                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
+                    const auto target = roadmapWriteTarget(cc, seamText, &why, &seamErr);
+                    QJsonObject refusal;
+                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
+                        return QJsonDocument(refusal);
+                    if (target)
+                        return rcPassStoreWriteUnsupported(QStringLiteral("append_batch"));
                     return cmdRoadmapLogPassAppendBatch(req, rp, md);
+                }
             }
         }
     }

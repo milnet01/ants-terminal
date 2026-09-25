@@ -77966,7 +77966,7 @@ acting on it.
   Kind: fix.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5192] **Give the local Qt 6.2 guard container a persistent compile cache.**
+- ✅ [ANTS-5192] **Give the local Qt 6.2 guard container a persistent compile cache.**
   tools/qt62-guard.sh compiles inside a container with no ccache, and its
   build volume is discarded whenever ci.yml's package list changes or a
   run is interrupted (ANTS-5124), so those runs compile from nothing.
@@ -77974,6 +77974,9 @@ acting on it.
   /mnt/Games, not under the home directory, and set it as the compiler
   launcher inside the container. Extends ANTS-4131, which cached the
   image and the build volume but no compile cache.
+  Resolved (2026-09-25, cda932ec): .ccache-guard/<job> is mounted into
+  the guard container and holds entries after a run; both guards
+  compiled green in about 40 s each on a warm tree.
   **Layman:** The pre-push Qt 6.2 check sometimes rebuilds everything from nothing; a cache would make those runs quick.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -78038,10 +78041,13 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 💭 [ANTS-5198] **Cache apt packages in the qt62-baseline CI job.**
+- ✅ [ANTS-5198] **Cache apt packages in the qt62-baseline CI job.**
   The qt62-baseline job's package install step is uncached, unlike the
   other jobs. tools/qt62-guard.sh parses that job's apt-get block to build
   its container, so the script must change in the same commit.
+  Resolved (2026-09-25, cda932ec): Qt 6.2 floor build green on run
+  36124535707 with the cached apt step (6m23s). tools/qt62-guard.sh
+  parses the new form; its image tag is unchanged.
   **Layman:** One GitHub job downloads its build tools fresh every time while the others reuse a cache.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -78058,7 +78064,7 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5343] **Run the ASan CI job nightly and before releases instead of on every push.**
+- ✅ [ANTS-5343] **Run the ASan CI job nightly and before releases instead of on every push.**
   Decided by the user 2026-09-25, with ANTS-5190 measured alongside.
   Measured on run 36111437270: the ASan job is the long pole, a build
   step of about 12 minutes and a test step of about 18. The other jobs
@@ -78069,6 +78075,10 @@ acting on it.
   an `if:` it has no local meaning for. The move must keep the local
   ASan leg working.
   Cost accepted: an ASan-only failure can surface up to a day late.
+  Resolved (2026-09-25, cda932ec): push run 36124535707 took 8m56s start
+  to finish with build-asan skipped, against about 48 min before (17 min
+  queue + 31 min ASan job). The workflow_dispatch run started beside it,
+  not queued.
   **Layman:** Each push waits about half an hour for the memory-safety check; running it nightly brings a push's check down to about eight minutes.
   Kind: perf.
   Source: user-request-2026-09-25.
@@ -85637,6 +85647,21 @@ contributors don't duplicate research.
   **Layman:** Tidy up warnings a code checker raises in the Claude integration code; two may hide number overflows.
   Kind: audit-fix.
   Source: in-session-2026-09-19.
+  Lanes: mcp.
+
+- 📋 [ANTS-5365] **Triage clang-tidy warnings in remotecontrol_docs.cpp, remotecontrol_roadmap_log.cpp and remotecontrol_roadmap_log_batch.cpp.**
+  Seen 2026-09-25 while editing these files for ANTS-5340 and ANTS-5334;
+  none comes from those changes. Classes: `static` functions that belong in
+  an anonymous namespace (misc-use-anonymous-namespace), range-for loop
+  variables bound with an implicit QJsonValue conversion
+  (performance-implicit-conversion-in-loop), const copies of const
+  references (performance-unnecessary-copy-initialization), a movable
+  local (performance-use-std-move), and one unused include
+  (falseposledger.h in remotecontrol_docs.cpp). Waits for the performance
+  review findings, per the 2026-09-17 rule. Same pattern as ANTS-5227.
+  **Layman:** An automatic code checker flags small style and efficiency issues in three files; none is a bug.
+  Kind: chore.
+  Source: in-session-2026-09-25.
   Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)

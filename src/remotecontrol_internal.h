@@ -161,6 +161,10 @@ QJsonDocument cmdRoadmapLogPassFlip(const QJsonObject &req, const QString &roadm
 // ANTS-4470 — `annotateMode` omits the status flip, leaving the per-locator
 // note as the whole operation (op:"annotate_batch").
 QJsonDocument cmdRoadmapLogPassFlipBatch(const QJsonObject &req, const QString &roadmapPath, const QString &markdown, bool annotateMode = false);
+// ANTS-5334 — the refusal for a write op with no store route on a
+// store-served pass-headings project. op:flip and op:annotate have one; the
+// pass file writers above must not run there, or they write behind the store.
+QJsonDocument rcPassStoreWriteUnsupported(const QString &op);
 bool rcRoadmapIdLess(const QString &a, const QString &b);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);

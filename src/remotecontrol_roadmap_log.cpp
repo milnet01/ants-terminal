@@ -5,6 +5,7 @@
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the injectable "today"
 #include "wrapmatch.h"     // ANTS-4550 — the wrapped-match rule
 #include "readregion.h"   // ANTS-4556 — the shared section-slug ranker
+#include "passheadingwrite.h"   // ANTS-5334 — locating a pass on the store path
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -147,8 +148,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(rlParse(md, cc)))   // ANTS-3771
+                if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                    // ANTS-5334 — no store route for a pass append yet.
+                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+                    QString seamErr;
+                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
+                    const auto target = roadmapWriteTarget(cc, seamText, &why, &seamErr);
+                    QJsonObject refusal;
+                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
+                        return QJsonDocument(refusal);
+                    if (target)
+                        return rcPassStoreWriteUnsupported(QStringLiteral("append"));
                     return cmdRoadmapLogPassAppend(req, rp, md);
+                }
             }
         }
     }
@@ -1190,6 +1202,289 @@ static QVector<int> rcRankIdsBySharedPrefix(const QStringList &candidateIds,
 // `^prefix-NNNN` caret anchor on the last line of the headline
 // content. Counter consumes only on anchor injection. See
 // docs/specs/ANTS-1428.md § Tier 2.
+QJsonDocument rcdetail::rcPassStoreWriteUnsupported(const QString &op) {
+    QJsonObject env;
+    env[QStringLiteral("ok")]     = false;
+    env[QStringLiteral("code")]   = QStringLiteral("unsupported_format");
+    env[QStringLiteral("format")] = QStringLiteral("pass-headings");
+    env[QStringLiteral("error")]  = QStringLiteral(
+        "roadmap_log: op:\"%1\" has no store route on a pass-headings roadmap "
+        "the store serves, so it writes nothing. The file writer would put the "
+        "file behind the store, and the next render would discard the edit. "
+        "op:\"flip\" and op:\"annotate\" do write through the store here "
+        "(ANTS-5334).").arg(op);
+    return QJsonDocument(env);
+}
+
+// ANTS-5334 — the store half of op:flip / op:annotate, shared by the ants-v1
+// bullet path and the pass-headings path. Lifted unchanged from the ants-v1
+// locate lambda; the located item arrives as `id` + `headline` (rlStoreItemPk's
+// two-step locate), and the dialect-specific envelope values as fields.
+namespace {
+
+struct RlStoreFlipCall {
+    const QJsonObject *req = nullptr;
+    RoadmapStore *store = nullptr;
+    qint64 projectId = 0;
+    QString id;
+    QString headline;
+    QString fileStatus;   // the file's status emoji; empty skips file_status
+    QString format;       // "ants-v1" / "pass-headings"
+    QString fileName;     // the envelope's `file`
+    bool annotateMode = false;
+    bool dryRun = false;
+    QString note;         // already scrubbed, trailer-guarded and wrapped
+    QStringList noteScrubbedNames;
+    QString targetStatusWord;
+    QString targetEmoji;
+    QString callerCanonical;
+    QString roadmapPath;
+};
+
+QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+    const QJsonObject &req = *c.req;
+    RoadmapStore &store = *c.store;
+    const qint64 projectId = c.projectId;
+    const bool annotateMode = c.annotateMode;
+    const bool dryRun = c.dryRun;
+    const QString &note = c.note;
+    const QStringList &noteScrubbedNames = c.noteScrubbedNames;
+    const QString &targetStatusWord = c.targetStatusWord;
+    const QString &targetEmoji = c.targetEmoji;
+    const QString &callerCanonical = c.callerCanonical;
+    const QString &roadmapPath = c.roadmapPath;
+    QString seamErr;
+
+
+    // § 2.2's two-step locate. AntsV1Bullet::headline is the
+    // post-strip headline with its `**` wrappers removed, which is
+    // the form ItemRef::headline holds, so the step-2 fallback
+    // compares equal without a truncation allowance.
+    RoadmapParse::BulletRecord rec;
+    rec.id           = c.id;
+    rec.headlineFull = c.headline;
+    QString pkCode, pkErr;
+    const auto itemPk =
+        rlStoreItemPk(store, projectId, rec, &pkCode, &pkErr);
+    if (!itemPk)
+        return rlErr(pkCode, QStringLiteral("roadmap_log: %1").arg(pkErr));
+    const auto before = store.readItem(*itemPk, &seamErr);
+    if (!before)
+        return rlErr(QStringLiteral("store_failed"), seamErr);
+
+    // Idempotent re-annotate, mirroring appendBodyNote()'s
+    // noteAlreadyPresent: the markdown path does not append a note
+    // the bullet already carries, and a caller re-running an
+    // annotate must not get a second copy for having migrated.
+    const bool alreadyPresent =
+        !note.isEmpty() && before->body.contains(note);
+    const QString newBody =
+        (note.isEmpty() || alreadyPresent)
+            ? before->body
+            : rlAppendBodyNote(before->body, note);
+
+    // ANTS-3822 § 2.5 — one stamp for the whole op, computed before
+    // mutate() runs rather than per row, so a write that straddles a
+    // second boundary is still one revision.
+    HistoryContext hist;
+    hist.changedAt = rlHistoryStamp();
+
+    // ANTS-4577 — carries the derivation's own refusal code out of
+    // the mutate, where the return type is a bare bool.
+    QString deriveCode;
+
+    const auto mutate = [&](QString *err) -> bool {
+        // ANTS-4501 § 2.2 — `wrote` is what decides the
+        // `last_modified` stamp. An annotate whose note is already
+        // present writes nothing at all, and an item nothing
+        // touched must not read as modified today.
+        bool wrote = false;
+        if (!annotateMode) {
+            if (!store.setItemField(*itemPk, QStringLiteral("status"),
+                                    targetStatusWord,
+                                    QStringLiteral("asserted"), err))
+                return false;
+            hist.record(*itemPk, QStringLiteral("status"),
+                        before->status, targetStatusWord);
+            // ANTS-4501 § 2.2 — set entering shipped, cleared
+            // leaving it; a same-status write moves nothing.
+            if (!rlStampShipped(store, *itemPk, before->status,
+                                targetStatusWord, err))
+                return false;
+            wrote = true;
+        }
+        if (newBody == before->body) {
+            if (wrote && !rlStampModified(store, *itemPk, err))
+                return false;
+            return rlFlushHistory(store, hist, err);
+        }
+        if (!store.setItemField(*itemPk, QStringLiteral("body"),
+                                newBody, QStringLiteral("asserted"), err))
+            return false;
+        hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
+        // § 2.6 — a body write re-derives every trailer column the
+        // request did not supply, which for flip/annotate is all
+        // five. This is what keeps `Layman:` from being a body line
+        // the render's gate can never see.
+        if (!rlDeriveTrailerColumns(store, *itemPk, *before,
+                                    newBody, {}, &hist, err,
+                                    nullptr, &deriveCode))
+            return false;
+        // ANTS-4501 § 2.2 — after every column this op writes,
+        // including the trailer columns above.
+        if (!rlStampModified(store, *itemPk, err))
+            return false;
+        // ANTS-3822 — flushed here, after every column this op
+        // writes has been recorded, because the cap is asked once
+        // for the whole set (§ 2.3).
+        return rlFlushHistory(store, hist, err);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun,
+        mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+        // ANTS-4577 — applied AFTER the mapper, because the mapper
+        // is what fills `code` and it has only the commitAndRender
+        // result to go on.
+        if (!deriveCode.isEmpty())
+            env[QStringLiteral("code")] = deriveCode;
+        return QJsonDocument(env);
+    }
+    rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
+
+    env[QStringLiteral("ok")]          = true;
+    env[QStringLiteral("op")]          = annotateMode
+                                            ? QStringLiteral("annotate")
+                                            : QStringLiteral("flip");
+    env[QStringLiteral("format")]      = c.format;
+    // ANTS-4466 — from the STORE, not from the located bullet, which is the
+    // parsed FILE. On this path the file is the render's output, so
+    // the two normally agree; where they do not — a `git checkout --`
+    // that reverted ROADMAP.md while the store kept the flip — the
+    // file is the stale one, and reporting it described the op's
+    // INPUT while the render had already committed the correct
+    // RESULT. A caller confirming a write from the envelope got the
+    // wrong answer in exactly the divergence case where confirming
+    // matters most.
+    const QString storeFromEmoji = rcStatusEmoji(before->status);
+    env[QStringLiteral("from_status")] = storeFromEmoji;
+    env[QStringLiteral("to_status")]   = annotateMode
+                                            ? storeFromEmoji
+                                            : targetEmoji;
+    // Rides on the true arm only, like ANTS-4463/4465's fields: a
+    // divergence is news, and a key present on every write restating
+    // from_status is a key nobody reads.
+    if (!c.fileStatus.isEmpty() && c.fileStatus != storeFromEmoji)
+        env[QStringLiteral("file_status")] = c.fileStatus;
+    env[QStringLiteral("file")]        = c.fileName;
+    env[QStringLiteral("id")]          = c.id;
+    // No `line` / `bytes` / `note_line`: a store has no lines
+    // (ANTS-3793 INV-2's declared field difference), and the render
+    // decides placement. anchor_injected stays, and stays false —
+    // ants-v1 never injects one.
+    env[QStringLiteral("anchor_injected")] = false;
+    // ANTS-4844 — what the bullet will LOOK like. op:"append"'s
+    // dry run has echoed its would-be bullet since ANTS-2077;
+    // op:"flip" EDITS an existing bullet, which makes it the
+    // higher-stakes of the two, and it echoed nothing — so the only
+    // way to see what a flip produced was to run it for real and
+    // read the file back, which is what dry_run exists to avoid.
+    //
+    // `bytes` was no substitute and is not one here: this path
+    // emits none at all (a store has no lines), and on the markdown
+    // path it measures something different from append's, so it
+    // cannot be read as a change magnitude either.
+    //
+    // `would_be_bullet` on a preview, never `bullet`: ANTS-4508's
+    // rule, whose cost is already measured — a previewed value
+    // reported under the key a real write uses reads as a
+    // commitment, and two commits had to be amended over it.
+    //
+    // Covers op:"annotate" too, which shares this block: a note
+    // lands in the body and the body is part of the rendered
+    // bullet, so the echo answers "where did my note go?" as well.
+    // ANTS-5263 — SUPPRESSED under return:"headline_only". That
+    // flag adds `post_bullets`, the compact {id, status,
+    // headline} shape, and until now it ADDED it beside the full
+    // bullet rather than instead of it — so a caller asking for
+    // the compact form got both, which is incoherent and is not
+    // what anyone passing it expects.
+    //
+    // Measured by FinBreak: their project's rules mandate a
+    // dry_run before every write, so an item with accumulated
+    // notes echoed its ENTIRE rendered bullet twice per status
+    // change — once as `would_be_bullet`, once as `bullet` — for
+    // a call appending eight lines they had just composed. Five
+    // scalars were used from the two replies.
+    //
+    // The echo's own coverage (ANTS-4097: see the JOINT result of
+    // several edits to one body) is untouched on the default path,
+    // which is what every existing caller is on. This only obeys a
+    // flag the caller had to opt into.
+    if (!rcReturnHeadlineOnly(req)) {
+        if (const auto bullet = outcome.touchedBullets.constFind(c.id);
+            bullet != outcome.touchedBullets.constEnd()) {
+            env[dryRun ? QStringLiteral("would_be_bullet")
+                       : QStringLiteral("bullet")] = bullet.value();
+        }
+    }
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    if (!note.isEmpty()) {
+        // ANTS-4463 — same rule as the file list: on a dry run the
+        // note was NOT appended, so the past-tense key is absent.
+        env[dryRun ? QStringLiteral("note_would_append")
+                   : QStringLiteral("note_appended")] =
+            !alreadyPresent;
+        if (alreadyPresent)
+            env[QStringLiteral("note_already_present")] = true;
+    }
+    if (!noteScrubbedNames.isEmpty()) {
+        QJsonArray dropped;
+        for (const QString &n : noteScrubbedNames) dropped.append(n);
+        env[QStringLiteral("note_scrubbed_params")] = dropped;
+    }
+    // ANTS-4464 — name the path that ran. The two paths declare
+    // different field sets on purpose (ANTS-3793 INV-2: a store has
+    // no lines, so `line` / `note_line` / `bytes_written` cannot be
+    // resolved without re-reading the file the render just wrote,
+    // which ANTS-3863 exists to avoid). What was missing is not the
+    // fields but the STATEMENT: a caller reading `note_line`
+    // unconditionally got null on a successful write with nothing
+    // saying why, and identical calls returned two shapes across a
+    // migration. Named `write_path` rather than the reported
+    // `path` — this envelope already carries `file`, and `path` is
+    // a filesystem word everywhere else in the verb layer.
+    env[QStringLiteral("write_path")] = QStringLiteral("render");
+    // ANTS-4464 — the file path emits this under
+    // return:"headline_only"; the store path did not, so a
+    // documented echo went silently missing on migrated projects.
+    // Same divergence class as the fields above.
+    if (rcReturnHeadlineOnly(req)) {
+        env[QStringLiteral("post_bullets")] = QJsonArray{
+            rcCompactBullet(
+                c.id,
+                rcStatusWord(env.value(QStringLiteral("to_status"))
+                                 .toString()),
+                c.headline) };
+    }
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
 QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -1235,6 +1530,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     // a missing to_status / locator, INV-8 bad_args for an empty annotate
     // note — deliberately the documented code, where the GFM guard at the
     // note-empty check still emits missing_field; ANTS-2128 converges it).
+    // ANTS-5334 — except where the store serves the project: then the pass is
+    // written through the store like any other item (below, after the shared
+    // to_status / note / locator guards), and the file is the render's output.
+    // Writing the file there would put it behind the store, which the next
+    // render then discards.
+    std::optional<RoadmapWriteTarget> passStoreTarget;
     {
         const QString cc = QFileInfo(callerRaw).canonicalFilePath();
         const QString rp = cc.isEmpty() ? QString() : findRoadmapUnder(cc);
@@ -1243,8 +1544,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(rlParse(md, cc)))   // ANTS-3771
-                    return cmdRoadmapLogPassFlip(req, rp, md);
+                if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+                    QString seamErr;
+                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
+                    passStoreTarget = roadmapWriteTarget(cc, seamText, &why, &seamErr);
+                    QJsonObject refusal;
+                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
+                        return QJsonDocument(refusal);
+                    if (!passStoreTarget)
+                        return cmdRoadmapLogPassFlip(req, rp, md);
+                }
             }
         }
     }
@@ -1418,9 +1728,42 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     rf.close();
     const qint64 markdownBytes = markdown.toUtf8().size();
 
-    // ANTS-2126 — a pass-headings roadmap was already routed to
-    // cmdRoadmapLogPassFlip by the early gate above (before the GFM
-    // to_status/note guards), so by here the roadmap is GFM / ants-v1.
+    // ANTS-2126 — a markdown-served pass-headings roadmap was already routed
+    // to cmdRoadmapLogPassFlip by the early gate above, so by here the roadmap
+    // is GFM / ants-v1, or a STORE-served pass-headings roadmap (ANTS-5334).
+    if (passStoreTarget) {
+        // A pass has no anchor: it is addressed by its synthesised PASS-N-M id
+        // or its heading tail, the pass writer's own locate rule.
+        if (!locAnchor.isEmpty())
+            return rlErr(QStringLiteral("bad_op_combo"),
+                QStringLiteral("roadmap_log: a pass-headings roadmap has no "
+                               "anchors — address the pass by `id` (PASS-N-M) "
+                               "or `headline`"));
+        // Only the locate is used. The markdown these compute is discarded:
+        // the store is written, and its render publishes the file.
+        const PassHeadingWrite::WriteResult located = annotateMode
+            ? PassHeadingWrite::annotatePass(markdown, locId, locHeadline, note)
+            : PassHeadingWrite::flipPassStatus(
+                  markdown, locId, locHeadline,
+                  PassHeadingWrite::passStatusKeyword(targetStatusWord));
+        if (!located.ok)
+            return rlErr(located.code.isEmpty() ? QStringLiteral("bullet_not_found")
+                                                : located.code,
+                QStringLiteral("roadmap_log: no pass matched the locator"));
+        return rlStoreFlipOrAnnotate({
+            .req = &req, .store = passStoreTarget->store,
+            .projectId = passStoreTarget->projectId,
+            .id = located.matchedId, .headline = located.matchedHeadline,
+            .fileStatus = QString(),   // a pass's Status line is a keyword
+            .format = QStringLiteral("pass-headings"),
+            .fileName = QFileInfo(roadmapPath).fileName(),
+            .annotateMode = annotateMode, .dryRun = dryRun,
+            .note = note, .noteScrubbedNames = noteScrubbedNames,
+            .targetStatusWord = targetStatusWord,
+            .targetEmoji = targetEmoji,
+            .callerCanonical = callerCanonical,
+            .roadmapPath = roadmapPath});
+    }
 
     // 6. Walk GFM bullets first. If none found AND the file is big
     //    enough to be a real roadmap, fall through to ANTS-1441's
@@ -1468,227 +1811,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (rcRoadmapSourceRefused(refusal, why, seamErr))
                 return QJsonDocument(refusal);
             if (target) {
-                RoadmapStore &store = *target->store;
-                const qint64 projectId = target->projectId;
-
-                // § 2.2's two-step locate. AntsV1Bullet::headline is the
-                // post-strip headline with its `**` wrappers removed, which is
-                // the form ItemRef::headline holds, so the step-2 fallback
-                // compares equal without a truncation allowance.
-                RoadmapParse::BulletRecord rec;
-                rec.id           = v1target.id;
-                rec.headlineFull = v1target.headline;
-                QString pkCode, pkErr;
-                const auto itemPk =
-                    rlStoreItemPk(store, projectId, rec, &pkCode, &pkErr);
-                if (!itemPk)
-                    return rlErr(pkCode, QStringLiteral("roadmap_log: %1").arg(pkErr));
-                const auto before = store.readItem(*itemPk, &seamErr);
-                if (!before)
-                    return rlErr(QStringLiteral("store_failed"), seamErr);
-
-                // Idempotent re-annotate, mirroring appendBodyNote()'s
-                // noteAlreadyPresent: the markdown path does not append a note
-                // the bullet already carries, and a caller re-running an
-                // annotate must not get a second copy for having migrated.
-                const bool alreadyPresent =
-                    !note.isEmpty() && before->body.contains(note);
-                const QString newBody =
-                    (note.isEmpty() || alreadyPresent)
-                        ? before->body
-                        : rlAppendBodyNote(before->body, note);
-
-                // ANTS-3822 § 2.5 — one stamp for the whole op, computed before
-                // mutate() runs rather than per row, so a write that straddles a
-                // second boundary is still one revision.
-                HistoryContext hist;
-                hist.changedAt = rlHistoryStamp();
-
-                // ANTS-4577 — carries the derivation's own refusal code out of
-                // the mutate, where the return type is a bare bool.
-                QString deriveCode;
-
-                const auto mutate = [&](QString *err) -> bool {
-                    // ANTS-4501 § 2.2 — `wrote` is what decides the
-                    // `last_modified` stamp. An annotate whose note is already
-                    // present writes nothing at all, and an item nothing
-                    // touched must not read as modified today.
-                    bool wrote = false;
-                    if (!annotateMode) {
-                        if (!store.setItemField(*itemPk, QStringLiteral("status"),
-                                                targetStatusWord,
-                                                QStringLiteral("asserted"), err))
-                            return false;
-                        hist.record(*itemPk, QStringLiteral("status"),
-                                    before->status, targetStatusWord);
-                        // ANTS-4501 § 2.2 — set entering shipped, cleared
-                        // leaving it; a same-status write moves nothing.
-                        if (!rlStampShipped(store, *itemPk, before->status,
-                                            targetStatusWord, err))
-                            return false;
-                        wrote = true;
-                    }
-                    if (newBody == before->body) {
-                        if (wrote && !rlStampModified(store, *itemPk, err))
-                            return false;
-                        return rlFlushHistory(store, hist, err);
-                    }
-                    if (!store.setItemField(*itemPk, QStringLiteral("body"),
-                                            newBody, QStringLiteral("asserted"), err))
-                        return false;
-                    hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
-                    // § 2.6 — a body write re-derives every trailer column the
-                    // request did not supply, which for flip/annotate is all
-                    // five. This is what keeps `Layman:` from being a body line
-                    // the render's gate can never see.
-                    if (!rlDeriveTrailerColumns(store, *itemPk, *before,
-                                                newBody, {}, &hist, err,
-                                                nullptr, &deriveCode))
-                        return false;
-                    // ANTS-4501 § 2.2 — after every column this op writes,
-                    // including the trailer columns above.
-                    if (!rlStampModified(store, *itemPk, err))
-                        return false;
-                    // ANTS-3822 — flushed here, after every column this op
-                    // writes has been recorded, because the cap is asked once
-                    // for the whole set (§ 2.3).
-                    return rlFlushHistory(store, hist, err);
-                };
-
-                RoadmapRender::Outcome outcome;
-                QString writeErr;
-                const auto r = RoadmapWrite::commitAndRender(
-                    store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun,
-                    mutate, &outcome, &writeErr);
-                QJsonObject env;
-                if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
-                    // ANTS-4577 — applied AFTER the mapper, because the mapper
-                    // is what fills `code` and it has only the commitAndRender
-                    // result to go on.
-                    if (!deriveCode.isEmpty())
-                        env[QStringLiteral("code")] = deriveCode;
-                    return QJsonDocument(env);
-                }
-                rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
-
-                env[QStringLiteral("ok")]          = true;
-                env[QStringLiteral("op")]          = annotateMode
-                                                        ? QStringLiteral("annotate")
-                                                        : QStringLiteral("flip");
-                env[QStringLiteral("format")]      = QStringLiteral("ants-v1");
-                // ANTS-4466 — from the STORE, not from `v1target`, which is the
-                // parsed FILE. On this path the file is the render's output, so
-                // the two normally agree; where they do not — a `git checkout --`
-                // that reverted ROADMAP.md while the store kept the flip — the
-                // file is the stale one, and reporting it described the op's
-                // INPUT while the render had already committed the correct
-                // RESULT. A caller confirming a write from the envelope got the
-                // wrong answer in exactly the divergence case where confirming
-                // matters most.
-                const QString storeFromEmoji = rcStatusEmoji(before->status);
-                env[QStringLiteral("from_status")] = storeFromEmoji;
-                env[QStringLiteral("to_status")]   = annotateMode
-                                                        ? storeFromEmoji
-                                                        : targetEmoji;
-                // Rides on the true arm only, like ANTS-4463/4465's fields: a
-                // divergence is news, and a key present on every write restating
-                // from_status is a key nobody reads.
-                if (v1target.status != storeFromEmoji)
-                    env[QStringLiteral("file_status")] = v1target.status;
-                env[QStringLiteral("file")]        = QStringLiteral("ROADMAP.md");
-                env[QStringLiteral("id")]          = v1target.id;
-                // No `line` / `bytes` / `note_line`: a store has no lines
-                // (ANTS-3793 INV-2's declared field difference), and the render
-                // decides placement. anchor_injected stays, and stays false —
-                // ants-v1 never injects one.
-                env[QStringLiteral("anchor_injected")] = false;
-                // ANTS-4844 — what the bullet will LOOK like. op:"append"'s
-                // dry run has echoed its would-be bullet since ANTS-2077;
-                // op:"flip" EDITS an existing bullet, which makes it the
-                // higher-stakes of the two, and it echoed nothing — so the only
-                // way to see what a flip produced was to run it for real and
-                // read the file back, which is what dry_run exists to avoid.
-                //
-                // `bytes` was no substitute and is not one here: this path
-                // emits none at all (a store has no lines), and on the markdown
-                // path it measures something different from append's, so it
-                // cannot be read as a change magnitude either.
-                //
-                // `would_be_bullet` on a preview, never `bullet`: ANTS-4508's
-                // rule, whose cost is already measured — a previewed value
-                // reported under the key a real write uses reads as a
-                // commitment, and two commits had to be amended over it.
-                //
-                // Covers op:"annotate" too, which shares this block: a note
-                // lands in the body and the body is part of the rendered
-                // bullet, so the echo answers "where did my note go?" as well.
-                // ANTS-5263 — SUPPRESSED under return:"headline_only". That
-                // flag adds `post_bullets`, the compact {id, status,
-                // headline} shape, and until now it ADDED it beside the full
-                // bullet rather than instead of it — so a caller asking for
-                // the compact form got both, which is incoherent and is not
-                // what anyone passing it expects.
-                //
-                // Measured by FinBreak: their project's rules mandate a
-                // dry_run before every write, so an item with accumulated
-                // notes echoed its ENTIRE rendered bullet twice per status
-                // change — once as `would_be_bullet`, once as `bullet` — for
-                // a call appending eight lines they had just composed. Five
-                // scalars were used from the two replies.
-                //
-                // The echo's own coverage (ANTS-4097: see the JOINT result of
-                // several edits to one body) is untouched on the default path,
-                // which is what every existing caller is on. This only obeys a
-                // flag the caller had to opt into.
-                if (!rcReturnHeadlineOnly(req)) {
-                    if (const auto bullet = outcome.touchedBullets.constFind(v1target.id);
-                        bullet != outcome.touchedBullets.constEnd()) {
-                        env[dryRun ? QStringLiteral("would_be_bullet")
-                                   : QStringLiteral("bullet")] = bullet.value();
-                    }
-                }
-                rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
-                if (!note.isEmpty()) {
-                    // ANTS-4463 — same rule as the file list: on a dry run the
-                    // note was NOT appended, so the past-tense key is absent.
-                    env[dryRun ? QStringLiteral("note_would_append")
-                               : QStringLiteral("note_appended")] =
-                        !alreadyPresent;
-                    if (alreadyPresent)
-                        env[QStringLiteral("note_already_present")] = true;
-                }
-                if (!noteScrubbedNames.isEmpty()) {
-                    QJsonArray dropped;
-                    for (const QString &n : noteScrubbedNames) dropped.append(n);
-                    env[QStringLiteral("note_scrubbed_params")] = dropped;
-                }
-                // ANTS-4464 — name the path that ran. The two paths declare
-                // different field sets on purpose (ANTS-3793 INV-2: a store has
-                // no lines, so `line` / `note_line` / `bytes_written` cannot be
-                // resolved without re-reading the file the render just wrote,
-                // which ANTS-3863 exists to avoid). What was missing is not the
-                // fields but the STATEMENT: a caller reading `note_line`
-                // unconditionally got null on a successful write with nothing
-                // saying why, and identical calls returned two shapes across a
-                // migration. Named `write_path` rather than the reported
-                // `path` — this envelope already carries `file`, and `path` is
-                // a filesystem word everywhere else in the verb layer.
-                env[QStringLiteral("write_path")] = QStringLiteral("render");
-                // ANTS-4464 — the file path emits this under
-                // return:"headline_only"; the store path did not, so a
-                // documented echo went silently missing on migrated projects.
-                // Same divergence class as the fields above.
-                if (rcReturnHeadlineOnly(req)) {
-                    env[QStringLiteral("post_bullets")] = QJsonArray{
-                        rcCompactBullet(
-                            v1target.id,
-                            rcStatusWord(env.value(QStringLiteral("to_status"))
-                                             .toString()),
-                            v1target.headline) };
-                }
-                if (dryRun)
-                    env[QStringLiteral("dry_run")] = true;
-                return QJsonDocument(env);
+                return rlStoreFlipOrAnnotate({
+                    .req = &req, .store = target->store,
+                    .projectId = target->projectId,
+                    .id = v1target.id, .headline = v1target.headline,
+                    .fileStatus = v1target.status,
+                    .format = QStringLiteral("ants-v1"),
+                    .fileName = QStringLiteral("ROADMAP.md"),
+                    .annotateMode = annotateMode, .dryRun = dryRun,
+                    .note = note, .noteScrubbedNames = noteScrubbedNames,
+                    .targetStatusWord = targetStatusWord,
+                    .targetEmoji = targetEmoji,
+                    .callerCanonical = callerCanonical,
+                    .roadmapPath = roadmapPath});
             }
         }
 
