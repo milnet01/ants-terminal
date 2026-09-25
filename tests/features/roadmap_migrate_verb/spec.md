@@ -197,3 +197,26 @@ written against the **source**, which is the only place both halves are visible.
   completions never surfaces the op at all.
 - **`Ants4621HandlerReadsOnlyDeclaredArgs`** — INV-11 in general form. Both
   assertions fail against the pre-fix tree.
+
+## ANTS-5354 — a served migration names the call that publishes the file
+
+`markdown_rewritten:false` said the file was not rewritten but not what
+rewrites it, and until the first render the file carries no generated-file
+header, so it looks hand-editable.
+
+- **`Ants5354ServedMigrationPointsAtRender`** — a store-served migration's
+  envelope carries a `next_call_hint` naming `roadmap_log op:"render"`; a dry
+  run and a migration of a dialect the store does not serve carry none. Fails
+  against the pre-fix tree, which emitted no hint.
+
+## ANTS-5355 — the preamble is not counted as a section
+
+`sections_written` counted the level-0 section that carries the title and
+preamble, so a roadmap with one heading reported 2 against one section in
+`roadmap_query mode:"section_index"` (Groundwork).
+
+- **`Ants5355PreambleIsNotCountedAsASection`** — a title, a preamble and one
+  `##` heading: the first run reports `sections_written:1` and
+  `preamble_written:true`; an unchanged re-run reports `sections_written:0`,
+  `sections_unchanged:1` and `preamble_written:false`. Fails against the
+  pre-fix tree, which reported 2 and had no `preamble_written`.

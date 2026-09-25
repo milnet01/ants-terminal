@@ -638,6 +638,15 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // migration that had not run. The first re-render is the next roadmap_log
     // write.
     env[QStringLiteral("markdown_rewritten")] = false;
+    // ANTS-5354 — and say what does write it. Until the first render the file
+    // lacks the "generated from the store" header, so it looks hand-editable,
+    // and a hand edit made in that window is discarded by the next write.
+    if (storeBacked && !req.dryRun)
+        env[QStringLiteral("next_call_hint")] = QStringLiteral(
+            "roadmap_log op:\"render\" publishes the canonical file now; until "
+            "then the roadmap file carries no generated-file header and looks "
+            "hand-editable, and the next roadmap_log write discards any hand "
+            "edit made to it.");
 
     // ANTS-4499 — where the pre-migration snapshot went, so a caller that has
     // to roll back knows the path without reconstructing the default. False on
@@ -660,6 +669,9 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // what happened; `0` alone reads as a broken counter, which is how Vestige
     // reported it.
     env[QStringLiteral("sections_unchanged")] = out.sectionsUnchanged;
+    // ANTS-5355 — the title/preamble is not a heading: counted here, not above,
+    // so the two figures match roadmap_query mode:"section_index".
+    env[QStringLiteral("preamble_written")] = out.preambleWritten;
     env[QStringLiteral("elements_written")] = out.elementsWritten;
     // ANTS-4694 — what those numbers MEAN, on the one shape where they mislead.
     //

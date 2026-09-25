@@ -343,7 +343,10 @@ bool Loader::resolveSections() {
             if (!store.setSectionSource(*sid, wantSource, &err))
                 return fail(err);
             sectionIds.insert(s->slug, *sid);
-            ++out.sectionsWritten;
+            // ANTS-5355 — the level-0 title/preamble section is reported apart
+            // from the headed ones, matching roadmap_query's section_index.
+            if (s->level == 0) out.preambleWritten = true;
+            else               ++out.sectionsWritten;
             continue;
         }
 
@@ -386,10 +389,13 @@ bool Loader::resolveSections() {
         // ANTS-4490 — the else branch is the whole point: `sectionsWritten: 0`
         // on an idempotent re-run is indistinguishable from a counter that
         // never moved, and "0 written, 236 unchanged" says what happened.
-        if (changed)
+        if (s->level == 0) {           // ANTS-5355
+            if (changed) out.preambleWritten = true;
+        } else if (changed) {
             ++out.sectionsWritten;
-        else
+        } else {
             ++out.sectionsUnchanged;
+        }
     }
     return true;
 }

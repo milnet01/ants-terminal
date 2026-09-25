@@ -60,6 +60,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Moving a roadmap into the database now says how to publish the file** (ANTS-5354)
+  After a migration the file still looks hand-editable until it is
+  republished. roadmap_migrate's reply now names roadmap_log op:"render",
+  the call that publishes it with its generated-file header.
+
 - **Asking the roadmap for two statuses at once now explains the one-word way to do it** (ANTS-5351)
   roadmap_query with a list such as "planned,in-progress" still refuses,
   but now says that "active" means planned plus in-progress and "all"
@@ -99,6 +104,10 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **A roadmap migration's section count now matches the roadmap's section list** (ANTS-5355)
+  The title and preamble are no longer counted as a section; the reply
+  reports them as `preamble_written` instead.
 
 - **Filing several roadmap items at once no longer needs the status repeated on each** (ANTS-4982)
   op:"append_batch" takes the call-level `status` as the default for

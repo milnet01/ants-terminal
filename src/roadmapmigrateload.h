@@ -112,9 +112,14 @@ struct Outcome {
     int     sectionsWritten = 0, elementsWritten = 0, historyRows = 0;
     // ANTS-4490 (ANTS-3855 § 2.4) — `sectionsWritten`'s partner. `0 written`
     // alone is illegible: it is the proof of an idempotent re-run and reads as
-    // a counter that never moved. Every plan section takes one branch or the
-    // other, so the two sum to the plan's section count on every run.
+    // a counter that never moved. Every HEADED plan section takes one branch or
+    // the other, so the two sum to the plan's headed-section count on every run.
     int     sectionsUnchanged = 0;
+    // ANTS-5355 — the level-0 section carrying the title and preamble is not a
+    // heading, and roadmap_query's section_index does not list it. Counting it
+    // in the two figures above made them disagree with that index (Groundwork:
+    // sections_written 2 against one listed section), so it is reported here.
+    bool    preambleWritten = false;
 
     // ANTS-4483 — the ids the render's INV-5 Layman gate would refuse once this
     // migration has landed. Measured INSIDE the transaction, which is the whole

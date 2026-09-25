@@ -50583,7 +50583,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
   Lanes: mcp.
 
-- 📋 [ANTS-5267] **render_gate_unmet lists every offending id inline and truncates mid-list, so the refusal is neither complete nor summarised.**
+- ✅ [ANTS-5267] **render_gate_unmet lists every offending id inline and truncates mid-list, so the refusal is neither complete nor summarised.**
   Measured on the op:"convert" refusal before ANTS-5256 exempted it: 460
   ids inline, ~4 KB visible, then TRUNCATED MID-LIST with 1,947 characters
   cut. The reporter wanted the count and a sample and got the worst of
@@ -50604,6 +50604,9 @@ are closed inline in the feedback files rather than filed here.
 
   Still live for any other whole-project write, so the exemption did not
   fix this — it moved one caller off the path.
+  Shipped 2026-09-21 (fcc4daf5); its regression test
+  Ants5267GateProseCapsTheNamedIds and CHANGELOG entry landed 2026-09-25
+  (cb42d5ca), test proven red. CI green incl. ASan (run 36131379596).
   **Layman:** When the roadmap refuses a write it names every entry at fault, runs out of room, and stops mid-sentence — giving you neither the full list nor a usable summary.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
@@ -65177,7 +65180,7 @@ than re-filed; everything else lands here.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4982] **op:"append_batch" refuses every bullet when `status` is given at the call level, where `pass` falls back.**
+- ✅ [ANTS-4982] **op:"append_batch" refuses every bullet when `status` is given at the call level, where `pass` falls back.**
   HIT IN THIS SESSION. An append_batch of 8 bullets carrying a
   call-level `status:"planned"` and no per-bullet status refused all
   8 into skipped[], each with bad_status and 'unknown status ""'.
@@ -65204,6 +65207,10 @@ than re-filed; everything else lands here.
 
   If neither, then say it in the `status` description — that it is
   op:"append" only and append_batch requires it per bullet.
+  Resolved (2026-09-25, cb42d5ca): append_batch takes the call-level
+  status as the per-bullet fallback. Test
+  Ants4982CallLevelStatusIsTheFallback, proven red. CI green on cb42d5ca
+  incl. ASan (run 36131379596).
   **Layman:** Filing eight roadmap items at once fails entirely if the status is written once instead of eight times.
   Kind: enhancement.
   Source: in-session-2026-09-08, hit while triaging the feedback corpus.
@@ -66292,12 +66299,21 @@ project. Reported causes are claims until checked in source.
   Source: feedback-LocalWebServerManager-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5353] **roadmap_migrate cannot pin a project's chosen id prefix, so the first append derives one from the folder name.**
+- 📋 [ANTS-5353] **A project's first id silently takes a prefix guessed from its folder name when it declares none.**
   Reported by Groundwork: declared GRND, but a dry-run append without
   id_prefix gave GROU-0001 with no warning. Ids are permanent, so one
   forgetful append fixes the wrong prefix for good. Suggested: id_prefix on
   roadmap_migrate (migrate and init), stored on the project row; or refuse
   id_prefix_required on a first append with no prefix. Related: ANTS-2076.
+  Re-scoped (2026-09-25). Pinning is already possible: project_settings
+  op:"set" id_format:{prefix} (ANTS-3771) writes .ants/project.json, and
+  both counter paths check it above the store's id_prefix row
+  (rlStoreCounterPrefix, rlResolveCounterPrefix). Verified on a
+  throwaway folder named Groundwork: GRND-0001 after the set, GROU
+  before. Groundwork told (mail). What remains: when a project declares
+  nothing and has no ids, the first append falls to rlLeafDirPrefix
+  with no warning. Add a warning to the append / append_batch envelope
+  on both paths naming the derived prefix and the project_settings call.
   **Layman:** A new project's item numbers can start with the wrong letters if one session forgets a setting on its first entry.
   Kind: enhancement.
   Source: feedback-Groundwork-2026-09-25.
@@ -66431,13 +66447,17 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: mcp, roadmap.
 
-- 🚧 [ANTS-5368] **The roadmap dialog's title says whether it shows the roadmap store or the ROADMAP.md file.**
+- ✅ [ANTS-5368] **The roadmap dialog's title says whether it shows the roadmap store or the ROADMAP.md file.**
   User request 2026-09-25: the title read "Roadmap — ROADMAP.md" even
   on a store-served project, where the file is only the store's render.
   RoadmapDialog::rebuild() already records the backend of each fresh read
   (m_source.fromStore); the title now follows it: "Roadmap — from the
   roadmap store" or "Roadmap — from ROADMAP.md". Reaches a running
   terminal on the next relaunch only: the dialog is compiled in.
+  Resolved (2026-09-25, cb42d5ca): the roadmap dialog's title follows
+  m_source.fromStore. Tests RoadmapDialogSourceTitle INV-1/2, proven
+  red. GitHub CI green on cb42d5ca, push run 36131356258 and ASan run
+  36131379596. Visible in a running terminal after its next relaunch.
   **Layman:** The roadmap window's title now tells you whether you are looking at the database or the plain file.
   Kind: ux.
   Source: user-request-2026-09-25.

@@ -1284,6 +1284,74 @@ TEST(RoadmapMigrateVerb, Ants5335PassHeadingsIsStoreBacked) {
         << "the envelope and the consumer dispatch disagree";
 }
 
+// ANTS-5354 — a store-served migration names the call that publishes the
+// file, because until the first render the file looks hand-editable. Not on a
+// dry run (nothing was written) and not on a dialect the store does not serve
+// (there is nothing to render).
+TEST(RoadmapMigrateVerb, Ants5354ServedMigrationPointsAtRender) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString antsRoot = makeProjectRoot(dir, QStringLiteral("ants"), demoRoadmap());
+    const QString gfmRoot  = makeProjectRoot(dir, QStringLiteral("gfm"), gfmRoadmap());
+    ASSERT_FALSE(antsRoot.isEmpty());
+    ASSERT_FALSE(gfmRoot.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    RoadmapMigrateVerb::Request preview =
+        request(antsRoot, QStringLiteral("ants"), QStringLiteral("Ants"));
+    preview.dryRun = true;
+    const QJsonObject dry = RoadmapMigrateVerb::run(storePath, preview);
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(dry.contains(QStringLiteral("next_call_hint")))
+        << "a dry run wrote nothing, so there is nothing to publish";
+
+    const QJsonObject served = RoadmapMigrateVerb::run(
+        storePath, request(antsRoot, QStringLiteral("ants"), QStringLiteral("Ants")));
+    ASSERT_TRUE(served.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(served.value(QStringLiteral("store_backed")).toBool());
+    EXPECT_TRUE(served.value(QStringLiteral("next_call_hint")).toString()
+                    .contains(QStringLiteral("op:\"render\"")))
+        << QJsonDocument(served).toJson().toStdString();
+
+    const QJsonObject inert = RoadmapMigrateVerb::run(
+        storePath, request(gfmRoot, QStringLiteral("gfm"), QStringLiteral("Gfm")));
+    ASSERT_TRUE(inert.value(QStringLiteral("ok")).toBool());
+    ASSERT_FALSE(inert.value(QStringLiteral("store_backed")).toBool());
+    EXPECT_FALSE(inert.contains(QStringLiteral("next_call_hint")));
+}
+
+// ANTS-5355 — the title/preamble section is reported apart from the headed
+// ones, so sections_written matches roadmap_query's section_index. Groundwork's
+// shape: a title, a preamble paragraph, one `##` heading.
+TEST(RoadmapMigrateVerb, Ants5355PreambleIsNotCountedAsASection) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("gw"), QByteArray(
+        "# Groundwork \xE2\x80\x94 Roadmap\n\n"
+        "A preamble paragraph about how this roadmap is kept.\n\n"
+        "## 0.1.0 \xE2\x80\x94 (first release)\n\n"
+        "- \xF0\x9F\x93\x8B [GRND-0001] **A first item.**\n"
+        "  Layman: A thing.\n  Kind: implement.\n  Source: seed.\n"));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    const QJsonObject first = RoadmapMigrateVerb::run(
+        storePath, request(root, QStringLiteral("gw"), QStringLiteral("Groundwork")));
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool())
+        << first.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(first.value(QStringLiteral("sections_written")).toInt(), 1)
+        << QJsonDocument(first).toJson().toStdString();
+    EXPECT_TRUE(first.value(QStringLiteral("preamble_written")).toBool());
+
+    const QJsonObject second = RoadmapMigrateVerb::run(
+        storePath, request(root, QStringLiteral("gw"), QStringLiteral("Groundwork")));
+    ASSERT_TRUE(second.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(second.value(QStringLiteral("sections_written")).toInt(), 0);
+    EXPECT_EQ(second.value(QStringLiteral("sections_unchanged")).toInt(), 1);
+    EXPECT_FALSE(second.value(QStringLiteral("preamble_written")).toBool())
+        << "an unchanged re-run rewrote the preamble";
+}
+
 // --------------------------------------------------------------- INV-13 -----
 //
 // updated_items names exactly the items items_updated counted, with the fields
