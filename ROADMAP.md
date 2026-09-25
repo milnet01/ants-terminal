@@ -66581,7 +66581,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5375] **The pre-push hook now runs perf-labelled wall-clock benchmarks, which fail under this machine's shared load.**
+- 🚧 [ANTS-5375] **The pre-push hook now runs perf-labelled wall-clock benchmarks, which fail under this machine's shared load.**
   ci.yml's build-test step runs `ctest -j2` with no `-LE perf`, so
   RoadmapReadSeam.Inv3Latency (p95 < 50 ms) runs there on purpose. Since
   ANTS-5322 the pre-push hook executes that job, so the benchmark now
@@ -66594,6 +66594,10 @@ project. Reported causes are claims until checked in source.
   enforce a wall-clock budget at all, or leave it to the GitHub runner.
   The second is a change to ANTS-5322's no-copy rule and to ANTS-3793's
   § 4, so it wants a decision, not a quiet patch.
+  Progress (2026-09-25): perf-labelled tests now run in their own serial
+  build-test step (56 s locally), so they no longer contend with the -j2
+  run, in CI or in the hook. Open: whether a local gate on a shared
+  machine should enforce a wall-clock budget at all. User decision.
   **Layman:** Pushing code can fail because a speed test ran while the computer was busy, not because anything broke.
   Kind: fix.
   Source: in-session-2026-09-25.

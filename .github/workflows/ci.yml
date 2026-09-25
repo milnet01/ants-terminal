@@ -162,7 +162,13 @@ jobs:
         # ANTS-5188 — was serial, measured 3m42s. -j2 matches build-asan and the
         # pre-push hook; --timeout 300 turns a hung test into one failure. The
         # step budget is ~2x the serial cost, so it holds even without speedup.
-        run: timeout 8m ctest -j2 --output-on-failure --timeout 300
+        # ANTS-5375 — perf-labelled tests run in their own serial step below,
+        # so a wall-clock budget never shares the machine with this -j2 run.
+        run: timeout 8m ctest -j2 --output-on-failure --timeout 300 -LE perf
+
+      - name: Run perf tests (serial)
+        working-directory: build
+        run: timeout 5m ctest --output-on-failure --timeout 300 -L perf
 
       # ANTS-4518 — nothing checked this project's shell, and it ships a lot of
       # load-bearing shell. BLOCKING at -S warning, where the surface is clean
