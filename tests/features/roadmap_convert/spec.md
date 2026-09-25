@@ -141,6 +141,24 @@ the commit to be one transaction.
   dropping it loses no meaning — the case logs a note rather than failing, so
   a reviewer seeing it in a before/after diff knows it is not a defect.
 
+- **INV-15** — a github-task-list convert refuses `orphans_present` when the
+  re-import leaves store items the file no longer carries, and writes nothing.
+  The refusal carries `items_orphaned` and the orphaned ids (capped, with
+  `orphaned_ids_shown` when cut). Dry run and real run refuse alike.
+  *Test:* `orphansRefuseInsteadOfResurrecting`.
+  *Why:* ANTS-5326. The load keeps orphans on purpose — for a store-served
+  project a row missing from the file is a hand deletion the store must not
+  accept silently. The convert then publishes every store row, so on a
+  github-task-list source, where the FILE is the truth, a stale snapshot's
+  rows came back as live items. Vestige measured 680 of them against 1102
+  bullets.
+  *Remedy the refusal names:* `roadmap_migrate op:"deregister"` and a fresh
+  migrate. Dropping orphans in place is not offered: the store has no
+  single-item delete, and one would touch every table that references an
+  item.
+  *Breaks when:* a github-task-list convert with orphans succeeds, or a
+  refused one changes the file or the stored format.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

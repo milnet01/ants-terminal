@@ -749,7 +749,7 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
     QString discErr;
     const auto disc = RoadmapMigrate::findRoadmaps(projectRoot, &discErr);
     if (!disc) {
-        out.error = discErr;
+        out.error = std::move(discErr);
         return out;
     }
 
@@ -811,11 +811,15 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
             out.plannedIds[i].ambiguous       = m.ambiguous;
         }
     }
-    out.idsAllocated = loaded.idsAllocated;
+    out.idsAllocated  = loaded.idsAllocated;
+    out.itemsOrphaned = loaded.itemsOrphaned;
     for (const auto &n : loaded.notes) {
         if (n.code == QLatin1String("id_allocated")
             && out.allocatedIds.size() < maxEchoedIds)
             out.allocatedIds.append(n.detail);
+        else if (n.code == QLatin1String("orphaned_item")
+                 && out.orphanedIdFolds.size() < maxEchoedIds)
+            out.orphanedIdFolds.append(n.detail);
     }
     out.ok = true;
     return out;

@@ -65844,6 +65844,101 @@ parse, not that file.
   Source: in-session-2026-09-25.
   Lanes: mcp.
 
+- 📋 [ANTS-5325] **Migrate and convert adopt a prose bold lead-in as a github-task-list bullet's id.**
+  fillBulletRecord takes any id-shaped `**...**` lead-in as boldId; makeItem
+  then keeps a non-grammatical one as a `quarantined` id. On Vestige 455
+  bullets render as `[Terrain System] **wrap ...**`. Fix: for a
+  github-task-list source, adopt a bold lead-in only when it matches the
+  declared id_format.pattern; otherwise keep it at the head of the
+  headline and owe allocation. Vestige measured quarantined_id 427 -> 3
+  by stripping the bold by hand, with every line surviving. Changes
+  ANTS-3757's identity rules (§ 2.4-2.6), so it is a spec amendment.
+  Triage (2026-09-25): not a code fix as filed. ANTS-3757 § 2.6
+  quarantines an off-grammar id and says it clears "in source, and by
+  no other route"; ANTS-1438's parser contract treats `Terrain System`
+  as a real id (roadmap_parse_widening test). Changing either is a spec
+  decision with cross-project reach. Vestige unblocked by stripping its
+  prose captions in source, the route § 2.6 prescribes. Open question
+  for a spec amendment: a per-project declaration that bold lead-ins
+  are prose, so no project has to edit its file to say so.
+  **Layman:** Converting an old-style roadmap turns bold captions like 'Terrain System' into fake item ids and cuts them out of the item's text.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5326] **convert re-publishes a stale store's orphaned items into ROADMAP.md.**
+  Vestige (project 13): items_rendered 1782 vs bullets_total 1102;
+  roadmap_migrate dry_run reports items_orphaned 680. A fresh
+  registration of the same file renders 1102. convert re-imports the
+  file, so for a file-sourced dialect it should drop orphans, or refuse
+  `orphans_present` listing them, and report the orphan count in its
+  envelope either way.
+  **Layman:** Converting a roadmap can bring back hundreds of old, deleted items from an out-of-date copy the tool kept.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5327] **convert's text_lost signal fires on a faithful reflow as well as on real loss.**
+  Vestige: 890 lines flagged on the original file; 996 flagged after a
+  convert where a normalised containment check found every original
+  line. Compare at word level with headlines and bodies re-joined across
+  wraps, or report text_lost_words separately. Where real loss remains,
+  convert should refuse unless the caller acknowledges it.
+  **Layman:** The safety check meant to warn about lost roadmap text also fires when nothing was lost, so nobody can trust it.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5328] **convert dry_run cannot be read on a large roadmap: planned[] has no cap or filter argument.**
+  Vestige: 121,826-character envelope, over the tool-result ceiling;
+  planned[] shows 200 of 1102 rows. `fields` including `ids` brings
+  planned[] back. Add max_planned (clamped, echoed) and a planned_filter
+  for rows needing a decision (origin absent, id_inferred,
+  ambiguous_rematch), and let `fields` exclude planned[].
+  **Layman:** On a big roadmap the conversion preview is too large to read, so the per-item check it exists for is impossible.
+  Kind: enhancement.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-5329] **convert's ambiguous_rematch rows do not say what they resolve to.**
+  Vestige: 11 origin:absent rows, seven on the bare headline
+  `Phase 9E-2:`. Emit the candidate store ids per row, and refuse while
+  any remain unless the caller passes an explicit override, since the
+  binding is permanent.
+  **Layman:** When several items share a title, the conversion guesses which old item each one is and doesn't say which guess it made.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5330] **convert's top-level layman_missing disagrees with the per-row flags in planned[].**
+  Same Vestige envelope: layman_missing {count:0} while 164 of 200
+  planned[] rows carry layman_missing:true. Make them agree, or name
+  and document the different population the scalar counts.
+  **Layman:** Two counts in the same conversion report contradict each other about how many items lack a plain-English summary.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5331] **Caret anchors in the project's id grammar are not read as ids by migrate and convert.**
+  Vestige has ten `^3d_e-NNNN` anchors injected by earlier op:flip
+  calls; convert allocates fresh 3D_E-S ids and leaves the anchor text
+  in the headline. Some anchors sit on sub-bullets and Progress lines.
+  Parse an anchor in the id grammar as the id; report anchors on
+  non-item lines for a human.
+  **Layman:** Ids the tool itself once attached to items are ignored when converting, so those items get new ids instead.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5332] **roadmap_log's op enum text does not mark which section ops are store-only.**
+  move_section, delete_section, set_intro and amend_field
+  field:section are store-only, stated only in their own prose. Name
+  the backend in the enum description itself.
+  **Layman:** The tool's help text doesn't say some roadmap operations only work on converted roadmaps, so callers find out by failing.
+  Kind: doc-fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

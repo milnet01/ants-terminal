@@ -13603,6 +13603,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "first), `unrecognised_format` on a file carrying no "
                         "dialect signal at all, and `dialect_out_of_scope` on "
                         "a recognised THIRD dialect such as pass-headings. "
+                        "ANTS-5326 — on a github-task-list source it also "
+                        "refuses `orphans_present` (with `items_orphaned` and "
+                        "`orphaned_ids`) when the store holds items the file "
+                        "no longer carries, which the render would otherwise "
+                        "publish back; deregister and re-migrate first. "
                         "Nothing is written on any of them.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";

@@ -160,6 +160,11 @@ struct InTransactionLoad {
     // carries the true count either way, so a truncated list is always
     // detectable rather than merely suspected.
     QVector<PlannedId> plannedIds;
+    // ANTS-5326 — store items the source no longer carries. The TRUE count,
+    // and their ids case-folded as the loader notes them (the store's id_fold),
+    // capped by the caller's budget.
+    int         itemsOrphaned = 0;
+    QStringList orphanedIdFolds;
 };
 InTransactionLoad loadInOpenTransaction(RoadmapStore &store,
                                         const QString &projectRoot,

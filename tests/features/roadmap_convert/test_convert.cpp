@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -420,6 +421,46 @@ TEST(RoadmapConvert, staleMirrorDoesNotDuplicate) {
            "item instead of matching the one it names";
     EXPECT_TRUE(readFile(roadmap).contains("[PROJ-0900]"))
         << "the author's hand-written id did not survive the republish";
+}
+
+// ---------------------------------------------------------------- INV-15 ----
+
+TEST(RoadmapConvert, orphansRefuseInsteadOfResurrecting) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+
+    // The author deletes a bullet the store already holds. The store keeps the
+    // row — an orphan — which is Vestige's stale-snapshot case in miniature.
+    QByteArray fewer = readFile(roadmap);
+    const QByteArray gone = "- [ ] The second checklist bullet.\n"
+                            "  Layman: A plain-language line.\n"
+                            "  Kind: chore.\n"
+                            "  Source: ants-4491-test.\n";
+    ASSERT_TRUE(fewer.contains(gone));
+    fewer.replace(gone, QByteArray());
+    ASSERT_TRUE(writeFile(roadmap, fewer));
+    const QByteArray hashBefore = hashOf(roadmap);
+
+    for (const bool dryRun : {true, false}) {
+        const QJsonObject resp = convert(root, dryRun);
+        const std::string dump = QJsonDocument(resp).toJson().toStdString();
+        EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+            << (dryRun ? "dry run" : "real run")
+            << " converted a file with orphans, which republishes them:\n" << dump;
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("orphans_present")) << dump;
+        EXPECT_EQ(resp.value(QStringLiteral("items_orphaned")).toInt(), 1) << dump;
+        EXPECT_EQ(resp.value(QStringLiteral("orphaned_ids")).toArray().size(), 1)
+            << dump;
+    }
+    EXPECT_EQ(hashOf(roadmap), hashBefore) << "a refused convert changed the file";
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("github-task-list"))
+        << "a refused convert changed the stored format";
 }
 
 // ----------------------------------------------------------------- INV-7 ----

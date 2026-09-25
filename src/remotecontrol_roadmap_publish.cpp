@@ -33,6 +33,7 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -282,6 +283,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     QString     loadError;
     // ANTS-5252 — the per-bullet id report Vestige asked for.
     QVector<RoadmapMigrateVerb::PlannedId> plannedIds;
+    // ANTS-5326 — orphans the re-import left, for the refusal below.
+    int         itemsOrphaned = 0;
+    QStringList orphanedIdFolds;
+    const bool  fileIsTruth = detected == QLatin1String("github-task-list");
 
     // § 4.3 — what mutate() does, in order. A mutate that only wrote the column
     // would be a different operation: it would leave the store holding whatever
@@ -312,6 +317,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         idsParsed    = loaded.idsParsed;
         plannedIds   = loaded.plannedIds;
 
+        // ANTS-5326 — the load keeps orphans on purpose: for a store-served
+        // project a row missing from the file is a hand deletion the store must
+        // not accept silently. But the render below publishes every store row,
+        // so on a github-task-list source — where the FILE is the truth — a
+        // stale snapshot's rows would come back as live items. Refuse, and let
+        // the rollback leave everything as it was.
+        if (fileIsTruth && loaded.itemsOrphaned > 0) {
+            itemsOrphaned   = loaded.itemsOrphaned;
+            orphanedIdFolds = loaded.orphanedIdFolds;
+            if (err) *err = QStringLiteral("orphans_present");
+            return false;
+        }
+
         // Step 4. Last, so a load failure above leaves the column alone — though
         // the rollback would undo it anyway; the ordering is for the reader.
         return store->setProjectSourceFormat(projectId, QStringLiteral("ants-v1"), err);
@@ -338,6 +356,35 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     const auto rc = RoadmapWrite::commitAndRender(
         *store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &err,
         RoadmapWrite::LaymanGate::Exempt);
+
+    if (itemsOrphaned > 0) {
+        // The rows are still in the store — the refusal rolled back the load,
+        // not them — so their ids come back in the author's own case rather
+        // than the loader's folded form.
+        QHash<QString, QString> idByFold;
+        if (const auto items = store->readItems(projectId, &storeErr))
+            for (const auto &it : *items)
+                idByFold.insert(it.id.toLower(), it.id);
+        QJsonArray ids;
+        for (const QString &fold : std::as_const(orphanedIdFolds))
+            ids.append(idByFold.value(fold, fold));
+        QJsonObject e = refuseWith(QStringLiteral("orphans_present"),
+            QStringLiteral("roadmap_log: the store holds %1 item(s) for this "
+                           "project that \"%2\" no longer carries. A "
+                           "github-task-list convert publishes every store row, "
+                           "so it would put them back into the file. To convert "
+                           "from the file alone, run roadmap_migrate "
+                           "op:\"deregister\" (confirm:true), then roadmap_migrate, "
+                           "then convert. Nothing was written.")
+                .arg(itemsOrphaned).arg(roadmapPath)).object();
+        e[QStringLiteral("items_orphaned")] = itemsOrphaned;
+        e[QStringLiteral("orphaned_ids")]   = ids;
+        if (itemsOrphaned > ids.size())
+            e[QStringLiteral("orphaned_ids_shown")] = int(ids.size());
+        if (dryRun)
+            e[QStringLiteral("dry_run")] = true;
+        return QJsonDocument(e);
+    }
 
     QJsonObject env;
     if (rcRoadmapWriteRefused(env, rc, err, outcome)) {
@@ -394,17 +441,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     // item by headline, and `ids.allocated_ids[]` names the ids actually
     // issued. The row does not claim an allocation it cannot know happened.
     QJsonArray planned;
-    for (const auto &row : plannedIds) {
+    for (const auto &pid : plannedIds) {
         QJsonObject o;
-        o[QStringLiteral("id")]      = row.id;
-        o[QStringLiteral("origin")]  = row.origin;
-        o[QStringLiteral("in_file")] = row.inFile;
-        o[QStringLiteral("line")]    = row.firstLine;
+        o[QStringLiteral("id")]      = pid.id;
+        o[QStringLiteral("origin")]  = pid.origin;
+        o[QStringLiteral("in_file")] = pid.inFile;
+        o[QStringLiteral("line")]    = pid.firstLine;
         // Gated to the true arm, like id_inferred is everywhere else: a key
         // present on every row saying `false` is a key nobody reads.
-        if (row.inferred)
+        if (pid.inferred)
             o[QStringLiteral("id_inferred")] = true;
-        if (!row.hasLayman)
+        if (!pid.hasLayman)
             o[QStringLiteral("layman_missing")] = true;
         // ANTS-5258 — what the load DID with it. `origin` says what the file
         // holds; this says what became of it, and the matched arm is the one
@@ -412,14 +459,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         // EXISTING id into the file and every prior citation of that id then
         // resolves to the wrong work. Gated to the true arm like the flags
         // above — `matched` absent means a fresh id.
-        if (row.matched) {
+        if (pid.matched) {
             o[QStringLiteral("matched")]          = true;
-            o[QStringLiteral("matched_id")]       = row.matchedId;
-            o[QStringLiteral("matched_headline")] = row.matchedHeadline;
+            o[QStringLiteral("matched_id")]       = pid.matchedId;
+            o[QStringLiteral("matched_headline")] = pid.matchedHeadline;
         }
         // The pairing rested on ORDER alone — several stored rows satisfied
         // the key. Reproducible, and still the one arm a human should check.
-        if (row.ambiguous)
+        if (pid.ambiguous)
             o[QStringLiteral("ambiguous_rematch")] = true;
         planned.append(o);
     }
@@ -427,9 +474,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     // row rather than the capped echo, so a truncated list still reports the
     // true size of each arm. `ambiguous` is the one that should be zero.
     int matchedCount = 0, ambiguousCount = 0;
-    for (const auto &row : plannedIds) {
-        if (row.matched)   ++matchedCount;
-        if (row.ambiguous) ++ambiguousCount;
+    for (const auto &pid : plannedIds) {
+        if (pid.matched)   ++matchedCount;
+        if (pid.ambiguous) ++ambiguousCount;
     }
     ids[QStringLiteral("matched")]           = matchedCount;
     ids[QStringLiteral("ambiguous_rematch")] = ambiguousCount;
