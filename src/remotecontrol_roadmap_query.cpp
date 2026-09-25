@@ -926,6 +926,10 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
         out[QStringLiteral("dry_run")]    = true;
         out[QStringLiteral("would_write")] =
             QJsonArray::fromStringList(outcome.filesWritten);
+        // ANTS-5283 — would_write names only files whose bytes differ
+        // (ANTS-5016), so this is the answer to "is a render owed?". Stated
+        // outright because would_discard_external_edits:false was read as it.
+        out[QStringLiteral("would_change")] = !outcome.filesWritten.isEmpty();
     } else {
         out[QStringLiteral("files_written")] =
             QJsonArray::fromStringList(outcome.filesWritten);

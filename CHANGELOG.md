@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap write's dry run reports `would_change`, saying whether the render would alter any file** (ANTS-5283)
+  `roadmap_log op:"render" dry_run:true` now answers "is a render
+  owed?" directly, instead of leaving it to be inferred from
+  `would_write`.
+
 - **`roadmap_log op:"amend_intro"` edits one passage of a section's intro, and `set_intro` accepts `####` and deeper headings** (ANTS-5373)
   `amend_intro` replaces one unique `old_text` and keeps the rest of the
   intro. `set_intro` now writes back the intros migration stores, which

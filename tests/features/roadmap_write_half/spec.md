@@ -294,3 +294,12 @@ fallback, which refused every such bullet `bad_status`.
 | `Ants5371EmptyStoreProjectTakesABatch` | A migrated project whose roadmap has a section and no bullets takes an `append_batch`; the new item is stored `planned`. |
 
 **Would break this:** running the file path's zero-bullet format gate when the store serves the project.
+
+### ANTS-5283 — a dry run says whether the render would change anything
+
+| Case | Asserts |
+|---|---|
+| `Ants5283DryRunSaysWhetherTheRenderWouldChange` | On a freshly migrated project, `op:"render" dry_run:true` reports `would_change:true`; after a real render, the same dry run reports `would_change:false`. |
+
+**Would break this:** leaving the caller to infer the answer from `would_write`, or deriving it from `would_discard_external_edits`.
+

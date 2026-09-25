@@ -3099,3 +3099,39 @@ TEST(RoadmapWriteHalf, Ants5371EmptyStoreProjectTakesABatch) {
     ASSERT_EQ(ids.size(), 1);
     EXPECT_EQ(statusOf(ids.at(0).toString(), projectId), QStringLiteral("planned"));
 }
+
+// ------------------------------------------------------------- ANTS-5283 -----
+
+// A dry run says whether the render would change any bytes: true before the
+// first publish of a migrated file, false straight after it.
+TEST(RoadmapWriteHalf, Ants5283DryRunSaysWhetherTheRenderWouldChange) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("op")]         = QStringLiteral("render");
+    QJsonObject dry = r;
+    dry[QStringLiteral("dry_run")] = true;
+
+    const QJsonObject owed = rc.cmdRoadmapLogRenderForTest(dry).object();
+    ASSERT_TRUE(owed.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(owed).toJson().toStdString();
+    EXPECT_TRUE(owed.value(QStringLiteral("would_change")).toBool())
+        << QJsonDocument(owed).toJson().toStdString();
+
+    ASSERT_TRUE(rc.cmdRoadmapLogRenderForTest(r).object()
+                    .value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject clean = rc.cmdRoadmapLogRenderForTest(dry).object();
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(clean.contains(QStringLiteral("would_change")))
+        << QJsonDocument(clean).toJson().toStdString();
+    EXPECT_FALSE(clean.value(QStringLiteral("would_change")).toBool())
+        << QJsonDocument(clean).toJson().toStdString();
+}
