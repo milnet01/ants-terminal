@@ -32,8 +32,8 @@ Three consequences, in the order they bite:
    without a relaunch.
 2. **The registration list is a GUI method.** `setupClaudeMcpProviders()` is a
    `MainWindow` member, so no non-GUI host can enumerate the verbs at all.
-   (`grep -c 'rcDelegate(&RemoteControl::' src/mainwindow.cpp` → 74;
-   `grep -c registerToolProvider src/mainwindow.cpp` → 94, the difference being
+   (Compare `grep -c 'rcDelegate(&RemoteControl::' src/mainwindow.cpp` with
+   `grep -c registerToolProvider src/mainwindow.cpp`; the difference is the
    inline handlers.)
 3. **The library carries the GUI.** `ants_core_lib` links `Qt6::Gui`,
    `Qt6::Widgets`, `Qt6::Network`, `Qt6::DBus` and `util` **PUBLIC**, and every
