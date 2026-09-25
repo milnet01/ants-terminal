@@ -50,6 +50,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap window's title says where its contents come from** (ANTS-5368)
+  It reads "Roadmap — from the roadmap store" on a project the store
+  serves, and "Roadmap — from ROADMAP.md" otherwise. It used to name
+  the file even when the file was only the store's rendered copy.
+
 - **GitHub CI checks a push in about 8 minutes instead of about 30** (ANTS-5343)
   The memory-safety (ASan/UBSan) job now runs nightly, on pull
   requests and on demand, not on every push; the pre-push hook still
@@ -79,6 +84,15 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **Filing several roadmap items at once no longer needs the status repeated on each** (ANTS-4982)
+  op:"append_batch" takes the call-level `status` as the default for
+  any item that carries none, as it already did for `pass`. Before, every
+  such item was refused.
+
+- **A refused roadmap write lists at most 25 items and says how many more there are** (ANTS-5267)
+  The full list stays in `gate_failures`. Before, the message named every
+  item and could be cut off mid-list with no sign of it.
 
 - **Editing a "Pass"-style roadmap that lives in the database now updates the database** (ANTS-5334)
   On a `#### Pass N.M` roadmap served from the roadmap store, flipping or

@@ -39,8 +39,11 @@ nothing.
 
 ### Layout
 
-- `QDialog` titled "Roadmap — <basename of canonical path>", non-modal
-  (so the user can read while typing in the terminal).
+- `QDialog`, non-modal (so the user can read while typing in the
+  terminal). After each fresh read its title names the source (ANTS-5368):
+  "Roadmap — from the roadmap store" on a store-served project, else
+  "Roadmap — from <basename of canonical path>". Contract and test:
+  `tests/features/roadmap_dialog_source_title/`.
 - Top row: five `QCheckBox` filters in a `QHBoxLayout`. All
   default-checked. They are *peer categories* combined inclusively
   (a bullet renders iff ANY of its category memberships is enabled):

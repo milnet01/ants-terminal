@@ -238,3 +238,21 @@ and no `readItems(`.
   read that does not need the write lock does not take it.
 - Reverting the render to a `readItem()` per item → the second case, and § 4's
   walk cost with it.
+
+### ANTS-5267 — the gate's prose caps the ids it names
+
+| Case | Asserts |
+|---|---|
+| `Ants5267GateProseCapsTheNamedIds` | A `flip_batch` over 30 open items with no `Layman:` line refuses `render_gate_unmet`. `gate_failures` holds all 30; the `error` prose states the true total (`30 open item(s)`), says `+5 more`, and does not name the 30th id. |
+
+Shipped 2026-09-21 (fcc4daf5) without a test; this case was added
+2026-09-25. **Would break this:** joining every id into the prose again.
+
+### ANTS-4982 — append_batch falls back to the call-level status
+
+| Case | Asserts |
+|---|---|
+| `Ants4982CallLevelStatusIsTheFallback` | An `append_batch` with a call-level `status:"planned"` applies a bullet that carries no status as `planned`, and a bullet carrying `in-progress` as `in-progress`; nothing lands in `skipped[]`. |
+
+**Would break this:** reading each bullet's status without the call-level
+fallback, which refused every such bullet `bad_status`.

@@ -2662,3 +2662,102 @@ TEST(RoadmapWriteHalf, Ants5263HeadlineOnlySuppressesTheBulletEcho) {
         << "a real write under headline_only still echoed the bullet: "
         << QJsonDocument(real).toJson().toStdString();
 }
+
+// ------------------------------------------------------------- ANTS-5267 -----
+
+// The gate's prose names at most 25 ids (kNameCap), states the true total and
+// says how many it left out; `gate_failures` carries every one. Before the cap
+// the prose joined every id unbounded, and a whole-project write (460 ids on
+// Vestige) was cut mid-list by the transport with no marker.
+TEST(RoadmapWriteHalf, Ants5267GateProseCapsTheNamedIds) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n";
+    md += kPad;
+    md += "\n## Work\n\n";
+    QJsonArray locators;
+    for (int i = 10; i < 40; ++i) {   // 30 open items with no Layman: line
+        const QString id = QStringLiteral("DEMO-00%1").arg(i);
+        md += "- \xF0\x9F\x93\x8B [" + id.toUtf8() + "] **Item " +
+              QByteArray::number(i) + ".**\n  Kind: chore.\n  Source: seed.\n\n";
+        QJsonObject loc;
+        loc[QStringLiteral("id")] = id;
+        locators.append(loc);
+    }
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, md, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+        req[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+        req[QStringLiteral("locators")]   = locators;
+        resp = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+    }
+    ASSERT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("render_gate_unmet"))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("gate_failures")).toArray().size(), 30)
+        << "the structured list must carry every offender";
+    const QString error = resp.value(QStringLiteral("error")).toString();
+    EXPECT_TRUE(error.contains(QStringLiteral("30 open item(s)"))) << error.toStdString();
+    EXPECT_TRUE(error.contains(QStringLiteral("+5 more"))) << error.toStdString();
+    EXPECT_FALSE(error.contains(QStringLiteral("DEMO-0039")))
+        << "the 30th id is past the cap and must not be named in the prose: "
+        << error.toStdString();
+}
+
+// ------------------------------------------------------------- ANTS-4982 -----
+
+// append_batch's call-level `status` is the fallback for a bullet that carries
+// none, as the call-level `pass` is; a bullet's own status still wins. Before,
+// every bullet without one refused bad_status 'unknown status ""'.
+TEST(RoadmapWriteHalf, Ants4982CallLevelStatusIsTheFallback) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    auto bullet = [](const QString &headline) {
+        QJsonObject b;
+        b[QStringLiteral("headline")] = headline;
+        b[QStringLiteral("kind")]     = QStringLiteral("implement");
+        b[QStringLiteral("source")]   = QStringLiteral("test");
+        b[QStringLiteral("layman")]   = QStringLiteral("A new thing.");
+        return b;
+    };
+    QJsonObject own = bullet(QStringLiteral("Carries its own status."));
+    own[QStringLiteral("status")] = QStringLiteral("in-progress");
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("bullets")]    =
+            QJsonArray{bullet(QStringLiteral("Takes the call-level status.")), own};
+        resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped")).toArray().isEmpty())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(statusOf(ids.at(0).toString(), projectId), QStringLiteral("planned"));
+    EXPECT_EQ(statusOf(ids.at(1).toString(), projectId), QStringLiteral("in-progress"));
+}

@@ -13168,7 +13168,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     statusProp["description"] = QStringLiteral(
                         "Lifecycle status. Mapped to 📋/🚧/✅/💭/🚫 "
                         "emoji by the verb. `dropped` (🚫) is closed, "
-                        "deliberately not done.");
+                        "deliberately not done. Under op:\"append_batch\" the "
+                        "call-level value is the fallback for any bullet "
+                        "that carries none, as `pass` is (ANTS-4982).");
 
                     QJsonObject headlineProp;
                     headlineProp["type"]      = "string";

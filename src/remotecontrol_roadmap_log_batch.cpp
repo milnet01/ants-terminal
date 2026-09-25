@@ -2417,7 +2417,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     bool firstAccepted = true;
 
     for (int i = 0; i < bullets.size(); ++i) {
-        const QJsonObject b = bullets.at(i).toObject();
+        QJsonObject b = bullets.at(i).toObject();
+        // ANTS-4982 — the call-level `status` is the fallback for a bullet that
+        // carries none, as the call-level `pass` already is (ANTS-4354). A batch
+        // filed in one call almost always shares one status, and without this
+        // every bullet refused bad_status for a value the caller did supply.
+        if (!b.contains(QStringLiteral("status")) && req.contains(QStringLiteral("status")))
+            b[QStringLiteral("status")] = req.value(QStringLiteral("status"));
         auto skip = [&](const QString &code, const QString &msg) {
             QJsonObject s;
             s["bullet_index"] = i;

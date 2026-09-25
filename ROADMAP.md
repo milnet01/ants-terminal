@@ -34676,7 +34676,7 @@ against current source before filing.
 
   Unblocks ANTS-4491.
 
-- 📋 [ANTS-3772] **3D_Engine and RetroDB carry roadmap ids that collide, so neither migrates.**
+- ✅ [ANTS-3772] **3D_Engine and RetroDB carry roadmap ids that collide, so neither migrates.**
   Found by running ANTS-3765's loader over the ten-project corpus
   (2026-08-01). Not this project's files -- filed here so the finding is
   not lost, and to be actioned from each project's own session.
@@ -34696,6 +34696,13 @@ against current source before filing.
 
   Re-measure with the loader after ANTS-3773 lands before doing anything
   else to either project.
+  Resolved (2026-09-25, re-measured): both projects migrate. 3D_Engine
+  is now Vestige, registered in the store (slug vestige) and fully
+  migrated. RetroDB's roadmap.md at 8805974 has no duplicate pass number
+  (checked: no repeated `#### Pass N.M` designator), and a rehearsal
+  migration of a clone into a throwaway store succeeded (240 items; the
+  241st heading, "Pass 2 —", has no N.M designator and stays prose). The
+  fixes were made in those projects' own files, as this item asked.
   **Layman:** Two other projects have duplicate IDs in their roadmap files, which stops them being imported until fixed.
   Kind: fix.
   Source: in-session-2026-08-01.
@@ -63629,6 +63636,17 @@ than re-filed; everything else lands here.
   step 6, a failed commit returns before any file is written, and the
   publishing render (steps 7-8) reads the committed store. So the file
   cannot carry text a failed write's store lost. Still no live lead.
+  Progress (2026-09-25): every discarded_backup_paths copy since the
+  backup half shipped was read (28 files in
+  ~/.local/share/ants-terminal/discarded, named by sha256 of the file
+  path). None shows this defect: no annotate or flip note was lost.
+  25 are UT_MonsterHunt, 2026-09-09..10: the store held a stale
+  preamble; the session restored the header by hand after each write and
+  the next write discarded it again. Every body note added in that
+  series is present in the current file and the store. 3 are Vestige's
+  convert rehearsals and convert (expected restyling). So there is no
+  recurrence since 2026-09-08 in 17 days of backups, and still no live
+  lead. The repeating-discard pattern is filed as its own item.
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -66078,7 +66096,7 @@ parse, not that file.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5334] **roadmap_log writes on a store-backed pass-headings project still take the markdown path.**
+- ✅ [ANTS-5334] **roadmap_log writes on a store-backed pass-headings project still take the markdown path.**
   After ANTS-4803, roadmap_query answers source:store on RetroDB, but
   flip dry_run returns {file, line, format:pass-headings} with no
   would_write[]. Route pass-headings writes through the store write
@@ -66109,6 +66127,16 @@ parse, not that file.
   acceptance steps: migrate; render with no content-line diff;
   check_sync source:store file_in_sync:true; flip dry_run PASS-59-78
   shows would_write[]; one real annotate then check_sync.
+  Resolved (2026-09-25, ab560ae4): flip and annotate on a store-served
+  pass-headings roadmap write through the store (rlStoreFlipOrAnnotate,
+  lifted from the ants-v1 path); append, append_batch, flip_batch and
+  annotate_batch refuse unsupported_format there. Tests:
+  tests/features/roadmap_pass_store_write, INV-1..4 proven red. Default
+  suite 5099/5099; the pre-push ASan leg ran green (5101) on 3a8ac28a;
+  GitHub CI green on a939cb11 (run 36126971038). Rehearsed on a clone of
+  RetroDB at 8805974 with a throwaway store. RetroDB was told through its
+  feedback-file note (mail cannot reach it while unregistered,
+  ANTS-5366); its own acceptance steps are its to run.
   **Layman:** On a Pass-style roadmap, reads come from the database but edits bypass it, so the two drift apart on the first edit.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
@@ -66356,6 +66384,12 @@ project. Reported causes are claims until checked in source.
   read_spill names the array `rows`, so fields:["bullets"] returns ok:true
   with no data. Suggested: accept the source key as an alias, or have the
   hint name `rows`. Related: ANTS-4877.
+  Second instance, seen 2026-09-25 in this session: roadmap_query with
+  bullet_fields and encoding:"tabular" spilled, and the hint said
+  "row-paged ... over the \"bullet_fields\" array" with
+  head_rows_key:"bullet_fields". The rows live under `bullets` (as
+  __cols__/__rows__), and bullet_fields is the ARGUMENT name. So the spill
+  hint names the wrong key on this path too; fix both together.
   **Layman:** Following the tool's own hint for paging a large reply returns an empty page.
   Kind: fix.
   Source: feedback-finbreak-2026-09-21.
@@ -66382,6 +66416,33 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: in-session-2026-09-25.
   Lanes: mcp, roadmap.
+
+- 🚧 [ANTS-5368] **The roadmap dialog's title says whether it shows the roadmap store or the ROADMAP.md file.**
+  User request 2026-09-25: the title read "Roadmap — ROADMAP.md" even
+  on a store-served project, where the file is only the store's render.
+  RoadmapDialog::rebuild() already records the backend of each fresh read
+  (m_source.fromStore); the title now follows it: "Roadmap — from the
+  roadmap store" or "Roadmap — from ROADMAP.md". Reaches a running
+  terminal on the next relaunch only: the dialog is compiled in.
+  **Layman:** The roadmap window's title now tells you whether you are looking at the database or the plain file.
+  Kind: ux.
+  Source: user-request-2026-09-25.
+  Lanes: roadmap, ui.
+
+- 📋 [ANTS-5369] **A write that discards the same text as the previous write does not say that a session keeps hand-restoring text the store lacks.**
+  Found 2026-09-25 reading ANTS-4947's backups: UT_MonsterHunt wrote 25
+  times on 2026-09-09..10 and each write reported the SAME six-line
+  discarded_text, the project's own preamble. The store held a stale
+  preamble; the session restored the header by hand after every write.
+  The tool behaved correctly each time but never said the text was the
+  same as last time, or that the remedy is op:"set_preamble" (or
+  set_intro / amend_body for a section or item). Suggested: when a
+  write's discarded text equals the previous discard for the project,
+  add a hint naming the op that writes that text into the store.
+  **Layman:** When someone keeps re-adding the same lines by hand and the tool keeps removing them, the tool should point out the loop and how to fix it properly.
+  Kind: enhancement.
+  Source: in-session-2026-09-25.
+  Lanes: roadmap-store, mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
@@ -85700,6 +85761,11 @@ contributors don't duplicate research.
   local (performance-use-std-move), and one unused include
   (falseposledger.h in remotecontrol_docs.cpp). Waits for the performance
   review findings, per the 2026-09-17 rule. Same pattern as ANTS-5227.
+  Also src/claudeintegration.cpp (seen 2026-09-25 editing it for
+  ANTS-4982): misc-use-anonymous-namespace on file statics,
+  bugprone-implicit-widening-of-multiplication-result, a lowercase `ll`
+  literal suffix (cert-dcl16-c), and range-for QJsonValue conversions.
+  Coordinate with ANTS-4919, which splits that file.
   **Layman:** An automatic code checker flags small style and efficiency issues in three files; none is a bug.
   Kind: chore.
   Source: in-session-2026-09-25.

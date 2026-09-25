@@ -3378,6 +3378,8 @@ if(ANTS_TESTS)
                 ants_roadmapstore_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
+                # ANTS-5368 — the roadmap dialog's title names its source.
+                tests/features/roadmap_dialog_source_title/test_roadmap_dialog_source_title.cpp
                 # ANTS-1727 — review-dialog foundation scaffold.
                 tests/features/review_dialog_base/test_review_dialog_base.cpp
                 # ANTS-1721 — ColdEyesDialog (native cold-eyes review).

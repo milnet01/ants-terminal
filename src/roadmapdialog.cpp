@@ -3649,6 +3649,12 @@ void RoadmapDialog::rebuild() {
         if (m_source.fromStore) m_source.legend = storeLegend();
         m_source.markdown = std::move(text);
         m_source.stamp = stamp;
+        // ANTS-5368 — say which backend this read came from. On a migrated
+        // project ROADMAP.md is only the store's rendered copy, and a title
+        // naming the file suggested it was the source (user request).
+        setWindowTitle(m_source.fromStore
+            ? tr("Roadmap — from the roadmap store")
+            : tr("Roadmap — from %1").arg(QFileInfo(m_roadmapPath).fileName()));
     }
     const QString &markdown = m_source.markdown;
 
