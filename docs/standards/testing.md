@@ -199,8 +199,9 @@ language lives in `languages/<name>.md` — the same split as `coding.md`.
 Governs **every change that ships behaviour, whatever its `Kind`** — §1's
 test-first order and §8's conformance test bind an `implement` or `feature`
 item exactly as they bind a `test` one.
-The regression-test follow-through specifically covers `fix`,
-`audit-fix` and `review-fix`.
+`roadmap-format.md` § 3.5.3 owns that enum; enumerating a subset here
+left `security`, `perf`, `optimize` and `accessibility` outside a rule
+§8 states for every fix.
 
 ---
 
@@ -237,9 +238,12 @@ would be satisfied by a test asserting nothing at all.
 **Breach:** a compile error, missing fixture or crash quoted as the red
 run.
 
+**A pure refactor with no behaviour change, and a documentation-only
+change, ship no behaviour and are outside this section** — they are not
+exceptions to it and owe no commit-body line.
+
 **Exceptions**, each stated in the commit body so a reader can tell a
-decision from an omission: a pure refactor with no behaviour change; a
-documentation-only change; generated code, where the consumer is what is
+decision from an omission: generated code, where the consumer is what is
 tested; a clearly-marked exploratory spike.
 
 ## 2. Proving a test that arrived late
@@ -251,10 +255,20 @@ This section is for the other case: a test that already exists alongside
 the code it tests, so nobody has seen it fail. A test written after its
 fix, one inherited with a codebase, one added during a review.
 
-For those, reproduce §1's evidence backwards: **remove the fix, run the
-test and see it fail; restore the fix, run it and see it pass.** Only the
-code changes between the two runs. `languages/<name>.md` has the
-commands.
+For those, reproduce §1's evidence backwards: **remove the fix, rebuild
+where the language has a build step, run the test and see it fail;
+restore the fix, rebuild, run it and see it pass.** Only the code changes
+between the two runs. `languages/<name>.md` has the commands.
+
+**The rebuild is part of the shape, not a spelling.** A project whose
+plain build target does not build its tests runs the previous binary and
+sees a pass — the false green this step exists to prevent, reached by
+following it faithfully.
+
+**§1's definition of red governs this run too.** Removing a fix often
+breaks the build rather than failing an assertion, so remove the fix's
+*effect* and not its declarations: the test must still compile and fail
+on the assertion that locks the behaviour.
 
 If it passes against the broken code it is not testing what you think,
 and rewriting it is the only remedy.
@@ -293,8 +307,9 @@ move between the two without guessing which assertion covers what.
 **Invariant ids take `spec-format.md` §3.7's `INV-N` form, and are
 append-only.** They are cited from commit messages, changelog entries and
 sibling documents, so renumbering silently breaks references that nothing
-checks. A dropped invariant is marked **withdrawn**, with the version and
-reason, rather than deleted.
+checks. A dropped invariant is marked **withdrawn** in `spec-format.md` § 3.7's
+exact spelling — em dash included, because the exemption is a literal
+match on that character — rather than deleted.
 
 That word is [spec-format.md](spec-format.md) §3.7's, which owns the
 Invariants section the marking lives in — this section said *retired*
@@ -373,10 +388,14 @@ broken.
 `coding.md` applies to them: named for what they mean, no dead branches,
 no cleverness that costs legibility.
 
-The one place tests differ: **`coding.md` §1.3 does not apply inside a
-test body — none of it, including anything added to it later.** So
-duplication between tests needs no commit-body justification, and a
-helper called from one test is not a breach there. The exclusion was
+The one place tests differ: **`coding.md` §1.3 does not apply to test
+code — a test file, its fixtures and its helpers — none of it,
+including anything added to it later.** Scoped to test code rather than
+to a test *body*, because both consequences are about code outside one:
+duplication *between* tests is in neither body, and a helper's
+definition sits beside the tests, which is where §1.3's breach would
+fire. So duplication between tests needs no commit-body justification,
+and a helper called from one test is not a breach. The exclusion was
 written as a list of §1.3's parts, and §1.3 grew; two cold readers then
 read the list as exhaustive and one read the headline as governing. Extract
 only where the duplicated block is itself the thing under test, or where a
@@ -411,7 +430,8 @@ are wrong in the same way**.
 So it is not a correctness test. Two sides sharing a formula, constant or
 derivation are wrong together, and a copy carries its source's defect.
 
-**Every parity test names, in its header, the reference test that pins
+**Every parity test names, in the comment or docstring directly above
+it, the reference test that pins
 the shared value.** That reference tests the value against something
 other than the other implementation: a published formula, cited; a
 hand-computed value with the working recorded; measured data or a fitted
@@ -419,7 +439,7 @@ reference case; or a limit the formula must reach, such as zero at a
 threshold or continuity at a join.
 
 Where no reference exists, the value is a choice rather than a
-derivation. Record it as one at its site, and say in the parity header
+derivation. Record it as one at its site, and say in that same comment
 what the test does not prove.
 
 A parity failure says the two sides differ. It does not say which is
@@ -429,23 +449,29 @@ wrong; the reference breaks the tie.
 
 **Breach:** a parity test cited as evidence that a value is correct.
 
-**Breach:** a chosen constant presented at its site as derived.
+**Breach:** a constant a parity test pins, chosen rather than derived,
+presented at its site as derived.
 
 ## What checks this
 
 | Rule | What catches a breach |
 |---|---|
-| Tests pass (§1) | the test runner — **`Partial:`** locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one nothing checks this except the person who remembers to run it |
-| Determinism (§7) | repeated runs, and a shuffled run order where the runner supports it |
-| Network isolation (§7) | running the fast set with no connection |
-| Speed labels honoured (§5) | the runner's own timing report |
-| **The test was seen failing before the code existed (§1)** | **nothing mechanical** — once both are green, nothing distinguishes a test written first from one written after |
+| Tests pass (§1) | **`Partial:`** the test runner, locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one **nothing** checks this but the person who remembers to run it |
+| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — `ctest --schedule-random` and `pytest-randomly`, both present on this machine. **Nothing** catches dependence on time of day or machine speed, which repeated runs on one machine reproduce rather than expose |
+| Network isolation (§7) | **`Partial:`** running the fast set with no connection. **Nothing** reaches the slow set, or checks that an opted-in test carries its label and gate |
+| Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations`). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
+| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable. **Nothing** checks that the tracked item behind one exists or is still open |
+| **The test was seen failing before the code changed (§1)** | **nothing** — once both are green, no artifact distinguishes a test written first from one written after. Not a person either: nobody present can see it afterwards |
+| The backwards proof was actually run (§2) | **nothing** — the two runs leave nothing behind, and a build error quoted as the red run looks identical to a real one in a transcript |
 | Tests the contract, not the implementation (§3) | **nothing mechanical** — a reader, helped by the naming rule |
+| An invariant's tombstone spelling (§4) | **`Partial:`** `spec_lint` exempts the § 3.7 spelling and reports the others. **Nothing** catches a renumbered id, which is what §4 forbids |
+| A failing test explains itself (§6) | **nothing mechanical** — whoever next reads a failure log. An uninformative assertion message is valid code |
 | Every fix has a regression test (§8) | **nothing mechanical** — visible in review as a fix commit with no test beside it |
-| A disabled test has a tracked cause (§7) | skip markers are greppable; whether the tracked item is real is not |
+| Tests obey `coding.md`, minus §1.3 (§9) | **nothing mechanical** — a code reviewer, who also has to know §9's carve-out exists |
+| A parity test names its reference (§11) | **nothing mechanical** — a code reviewer. All three of §11's breaches compile, run and pass |
 
-**The first `nothing` row is the largest hole in this standard**, and it
-is unclosable by tooling: the whole discipline of §1 and §2 rests on
+**The two `nothing` rows on §1 and §2 are the largest hole in this
+standard**, and it is unclosable by tooling: that discipline rests on
 something no artifact records. That is why both sections state *why* the
 order matters rather than merely requiring it — a rule only habit
 enforces has to be understood to survive.
