@@ -1250,6 +1250,40 @@ TEST(RoadmapMigrateVerb, Ants4802NotStoreBackedSaysWhatItCosts) {
     EXPECT_TRUE(hint.contains(QStringLiteral("deregister"))) << hint.toStdString();
 }
 
+// ANTS-5335 — a pass-headings migration is store-backed, and says so. ANTS-4803
+// taught migratedProject() to serve the dialect while this verb still tested
+// for ants-v1 alone, so RetroDB was told "NOTHING READS THEM" about rows
+// roadmap_query was already answering from. Both now ask one predicate.
+TEST(RoadmapMigrateVerb, Ants5335PassHeadingsIsStoreBacked) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // Two Pass headings and two Status lines: the detector's pass-headings bar.
+    const QString root = makeProjectRoot(dir, QStringLiteral("pass"), QByteArray(
+        "# Roadmap\n\n## Phase 1\n\n"
+        "#### Pass 1.1 The first pass.\n- **Status**: done\n\n"
+        "#### Pass 1.2 The second pass.\n- **Status**: todo\n"));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    const QJsonObject env =
+        RoadmapMigrateVerb::run(storePath, request(root, QStringLiteral("pass"),
+                                                   QStringLiteral("Pass")));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("items_inserted")).toInt(), 2);
+    EXPECT_TRUE(env.value(QStringLiteral("store_backed")).toBool())
+        << "a pass-headings project the store serves reported store_backed:false";
+    EXPECT_FALSE(env.contains(QStringLiteral("store_backed_hint")))
+        << "the 'NOTHING READS THEM' hint on a served dialect";
+
+    auto store = openStore(storePath, RoadmapStore::Access::Interactive);
+    ASSERT_TRUE(store);
+    auto text = RoadmapSource::RoadmapText::fromMemory(
+        readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(RoadmapSource::migratedProject(*store, root, text).has_value())
+        << "the envelope and the consumer dispatch disagree";
+}
+
 // --------------------------------------------------------------- INV-13 -----
 //
 // updated_items names exactly the items items_updated counted, with the fields

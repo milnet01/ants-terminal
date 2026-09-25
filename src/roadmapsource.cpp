@@ -436,11 +436,15 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
     // open. Any OTHER dialect still returns here: this list and the render's
     // are the same set, and a format that can be stored but not published is
     // the trap this item was filed about.
-    if (format != QStringLiteral("ants-v1")
-        && format != QStringLiteral("pass-headings"))
+    if (!isStoreServedDialect(format))
         return std::nullopt;   // legitimately markdown-served (§ 5)
 
     return row->projectId;
+}
+
+bool isStoreServedDialect(const QString &format) {
+    return format == QLatin1String("ants-v1")
+        || format == QLatin1String("pass-headings");
 }
 
 std::optional<QVector<BulletRecord>>

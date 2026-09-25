@@ -20,6 +20,7 @@
 #include "projectsettings.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapsource.h"
 #include "roadmapstore.h"
 
 #include <QDir>
@@ -590,9 +591,10 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
 
     // ANTS-4490 — will roadmap_query and roadmap_log serve this project from
     // the store after this call? RoadmapSource::migratedProject() returns
-    // nullopt for every dialect but ants-v1 ("legitimately markdown-served"),
-    // so a github-task-list project migrates ok:true with faithful counts and
-    // is still answered from markdown. Vestige could detect that only by
+    // nullopt for every dialect the store does not serve ("legitimately
+    // markdown-served"), so a github-task-list project migrates ok:true with
+    // faithful counts and is still answered from markdown. ANTS-5335 — asked
+    // through the same predicate, which this used to restate as ants-v1 only. Vestige could detect that only by
     // noticing which fields a LATER roadmap_query response did not carry.
     //
     // Index 0 is the live roadmap and is what project.source_format records
@@ -600,7 +602,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // question about the source DIALECT, which a rollback cannot change.
     const bool storeBacked =
         !plan.sources.isEmpty()
-        && plan.sources.first().format == QLatin1String("ants-v1");
+        && RoadmapSource::isStoreServedDialect(plan.sources.first().format);
     env[QStringLiteral("store_backed")] = storeBacked;
 
     // ANTS-4802 — the bare flag was not enough. A reader sees ok:true, a
@@ -615,7 +617,8 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     if (!storeBacked) {
         env[QStringLiteral("store_backed_hint")] = QStringLiteral(
             "Rows were written and are faithful, but NOTHING READS THEM: only "
-            "the ants-v1 dialect is served from the store, and this roadmap is "
+            "the ants-v1 and pass-headings dialects are served from the store, "
+            "and this roadmap is "
             "%1. roadmap_query keeps answering from markdown, roadmap_log keeps "
             "editing the file, and roadmap_log op:\"render\" has nothing to "
             "publish. Re-running this verb will not change that — it writes the "

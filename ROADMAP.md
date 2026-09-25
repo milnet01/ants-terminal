@@ -76231,6 +76231,44 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Spec signed off 2026-07-20 (cold-eyes converged loop 5; H-1 visibility confirmed by user: show a history-only project's pill). Implementing test-first per spec §5.
   Shipped 2026-07-20 (test-first; cold-eyes converged loop 5; H-1 confirmed by user). 5 layers: TokenUsageEngine foldProjectBucket/pruneProjectBuckets + public kCharsPerToken; Config claudeTokensSavedByProject; ClaudeIntegration per-project live maps + memo + recordDispatch attribution (caller_cwd canonicalised, no MainWindow) + 2 getters + clear-after-fold (INV-12); MainWindow per-project fold loop (thread foldProjectBucket → single pruneProjectBuckets → single save, INV-4/6); ClaudeStatusBarController refreshTokensSavedChip (stored+session visibility, per-project tooltip + All-projects line, wired into refreshStatusBarForActiveTab, INV-7). 8 pure + 4 wiring tests; full suite green (2794 features). ANTS-3572 tokens_saved_chip regression green (TSC-3 updated).
 
+- 📋 [ANTS-5338] **Daily, weekly and monthly token report across all sessions, broken down by activity and by where tokens were saved.**
+  User ask 2026-09-25: "a daily, weekly, monthly report of all sessions
+  showing what used up the tokens and how much (for example, coding used
+  up 3 million tokens, reviews used up 15 million tokens) and also what /
+  where the savings took place."
+
+  Builds on ANTS-1245 (capture + daily/weekly/monthly totals), which
+  lists per-skill / per-tool breakdown as out of scope. This item is
+  that breakdown, plus savings attribution.
+
+  1. Spend by activity. Attribute each turn's `usage` to an activity:
+     the active Skill (write-code, review-code, review-contract ...), a
+     subagent's type (review-lane, test-writer, Explore) from its own
+     transcript, else the dominant tool family of the turn (Edit/Write =
+     coding, Bash build/ctest = build and test, Read/search = reading).
+     Totals per activity per period, across every project's sessions.
+  2. Savings by source. Per period: MCP verbs vs the raw read they
+     replaced (ANTS-3572's tokens-saved figure, broken out per verb),
+     ETag 304 short-circuits, spill offloads, `fields` / compact trims.
+     Both "saved" and "spent" in the same units, so the net is visible.
+  3. Output: a report verb (MCP) returning the table for a window, and
+     the ANTS-1245 dialog gaining an "By activity" and a "Savings" tab.
+
+  Hot reload: the activity rules (which skill, agent type or tool maps to
+  which category) live in a JSON file the report re-reads per call, so a
+  new skill or category needs no rebuild. The report verb is file and
+  sqlite work, so it sits in ants-mcpd: a change needs a rebuild and an
+  MCP reconnect, never a terminal relaunch.
+
+  Open questions for the design: how to attribute a turn that mixes
+  activities; whether subagent tokens count toward the parent's activity
+  or their own; the measurement basis for "saved" (the estimate ANTS-3572
+  already uses, or a measured counterfactual).
+  **Layman:** A report showing, for every Claude session, what used the tokens (coding, reviews, specs and so on) and where the tools saved tokens, by day, week and month.
+  Kind: feature.
+  Source: user-request-2026-09-25.
+  Lanes: claudeintegration, mcp, tokenusage.
+
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
 - 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal for creating the Claude Code hooks, skills, sub-agents, and MCP server(s) required for the terminal ↔ Claude bidirectional surface.**

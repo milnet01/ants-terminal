@@ -5,6 +5,7 @@
 // ANTS-4483 — the migrate-time gate report reuses the render's own gate. Same
 // library (ants_roadmapstore_lib), so this costs no new link edge.
 #include "roadmaprender.h"
+#include "roadmapsource.h"
 #include "roadmapparse.h"
 
 #include <QDir>
@@ -1228,7 +1229,7 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
     // pass-headings roadmap needs no exception — ANTS-4803 waives the gate for
     // a dialect with no Layman slot, so the render reports none of its own.
     if (!plan.sources.isEmpty()
-        && plan.sources.first().format == QLatin1String("ants-v1")) {
+        && RoadmapSource::isStoreServedDialect(plan.sources.first().format)) {
         RoadmapRender::Options gopts;
         gopts.dryRun          = true;
         gopts.liveRoadmapPath = plan.sources.first().path;
