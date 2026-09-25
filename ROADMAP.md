@@ -66138,6 +66138,226 @@ parse, not that file.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
+## Ants MCP feedback from CC sessions — 2026-09-25 triage
+
+Filed from the feedback corpus on 2026-09-25. Each item names the reporting
+project. Reported causes are claims until checked in source.
+
+- 📋 [ANTS-5344] **roadmap_log append_batch should take a per-bullet `section`, as it takes a per-bullet `pass`.**
+  Reported by UT_Ants (UTA-0090): a batch holding items for two release
+  sections filed both into the call's one section, with a clean reply.
+  Moving an item afterwards is now possible (ANTS-4948), so this is about
+  filing it right the first time. The call-level `section` becomes the
+  fallback, as `pass` already works.
+  **Layman:** Filing several items at once puts them all in one section, even when they belong in different ones.
+  Kind: enhancement.
+  Source: feedback-UT_Ants-2026-09-10.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5345] **read_region `section` should resolve a title past a leading section number.**
+  Reported by UT_Ants: section:"As built" refused section_not_found on
+  `### 4.8 As built (2026-09-10)`, though the ranker listed it first.
+  ANTS-2234 forgives a trailing parenthetical only. Suggested: strip a
+  leading `\d+(\.\d+)*\.?\s+` before the prefix match, keeping the
+  uniqueness guard. Numbered headings are the norm in specs.
+  **Layman:** Asking for a document section by its name fails when the heading starts with a number like 4.8.
+  Kind: enhancement.
+  Source: feedback-UT_Ants-2026-09-12.
+  Lanes: mcp.
+
+- 📋 [ANTS-5346] **spec_log append_loop cannot write a loop log kept outside the spec, the layout documentation.md 9.1 prescribes.**
+  Reported by UT_Ants (UTA-0014): section 12 holds a one-line pointer to
+  docs/reviews/<ID>-loop-log.md; the verb read the pointer as a bullet log
+  and refused bad_args. Suggested, in order: follow a single relative-path
+  pointer; accept an explicit `path`; at least name the file found in the
+  refusal. Related: ANTS-4934, ANTS-4935.
+  **Layman:** The tool that records review rounds refuses when the record lives in its own file, which the project rules require.
+  Kind: enhancement.
+  Source: feedback-UT_Ants-2026-09-12.
+  Lanes: mcp, spec.
+
+- 💭 [ANTS-5347] **No verb searches a file in a remote GitHub repository at a tag.**
+  Reported by UT_Ants (UTA-0016, pinning SDL3): the session used
+  `gh api .../contents/<path>?ref=<tag> | base64 -d | grep`. Suggested: a
+  remote mode on workspace_search or read_region taking repo, ref and path.
+  Considered, not planned: it needs network access and credentials, which no
+  verb has today.
+  **Layman:** Checking a library's files at a release version means dropping to hand-written shell commands.
+  Kind: feature.
+  Source: feedback-UT_Ants-2026-09-12.
+  Lanes: mcp.
+
+- 📋 [ANTS-5348] **workspace_search cannot return the last N matches of a file.**
+  Reported by UT_Ants: finding the last loop-log row across dated records
+  needed `grep | tail -2` per file. Suggested: `from_end:true` or `last:N`,
+  returning the last N matches per file in file order with a per-file
+  count. The user asked 2026-09-25 that any grep Ants MCP cannot do be
+  built into it.
+  **Layman:** Finding the newest entry in an append-only log means reading every older entry first.
+  Kind: enhancement.
+  Source: feedback-UT_Ants-2026-09-12.
+  Lanes: mcp.
+
+- 📋 [ANTS-5349] **file_outline finds no symbols in a Catch2 test file.**
+  Reported by UT_Ants: file_outline on tests/device/RenderOffscreenTest.cpp
+  returned parse_empty:true. Suggested: TEST_CASE("name", "[tags]") and
+  SECTION("name") as symbols, and functions inside an anonymous namespace.
+  **Layman:** The file summary tool sees nothing in test files written with the common Catch2 library.
+  Kind: enhancement.
+  Source: feedback-UT_Ants-2026-09-12.
+  Lanes: mcp.
+
+- 📋 [ANTS-5350] **roadmap_query check_sync can report a drift line that neither drift_lost nor drift_restyled counts.**
+  Reported by AI_Prompts (AIPR-0049): drift_lines:1 with both kind counts
+  0; the line was a store-only banner a render adds. Suggested: a third
+  bucket (drift_gained, lines only the store has) so the kind counts always
+  sum to drift_lines, which a caller can then assert.
+  **Layman:** The sync check can say the roadmap file changed without saying how, so nobody can tell if updating it is safe.
+  Kind: fix.
+  Source: feedback-AI_Prompts-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5351] **roadmap_query bad_status does not point at `active` when a caller passes "planned,in-progress".**
+  Reported by AI_Prompts: status:"planned,in-progress" refuses bad_status
+  and lists `active` beside the single statuses with no hint that it is the
+  union. Suggested: accept a comma list, or at least a hint naming `active`.
+  The hint is the cheaper half.
+  **Layman:** Asking for open items with two status words fails without saying there is one word for both.
+  Kind: enhancement.
+  Source: feedback-AI_Prompts-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5352] **The write verbs' wire text does not name `fields` as the way to skip the bullet echo.**
+  Reported by LocalWebServerManager: flip_batch with fields:["ok",
+  "flipped_count","skipped"] returned about sixty bytes against a default
+  that echoes each bullet whole. Related: ANTS-5263, ANTS-5248 (the echo
+  itself), ANTS-5282 (other wire-text items).
+  **Layman:** Callers only learn about the biggest saving on roadmap writes when another session tells them.
+  Kind: doc.
+  Source: feedback-LocalWebServerManager-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5353] **roadmap_migrate cannot pin a project's chosen id prefix, so the first append derives one from the folder name.**
+  Reported by Groundwork: declared GRND, but a dry-run append without
+  id_prefix gave GROU-0001 with no warning. Ids are permanent, so one
+  forgetful append fixes the wrong prefix for good. Suggested: id_prefix on
+  roadmap_migrate (migrate and init), stored on the project row; or refuse
+  id_prefix_required on a first append with no prefix. Related: ANTS-2076.
+  **Layman:** A new project's item numbers can start with the wrong letters if one session forgets a setting on its first entry.
+  Kind: enhancement.
+  Source: feedback-Groundwork-2026-09-25.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5354] **roadmap_migrate's reply does not point at op:render when the rendered file would differ.**
+  Reported by Groundwork: markdown_rewritten:false left ROADMAP.md without
+  the generated-file header until a separate op:render. ANTS-4482 made the
+  reply say it did not render; this asks for a next_call_hint naming
+  op:render, or an opt-in render:true on the same call.
+  **Layman:** After moving a roadmap into the database, the file looks hand-editable until someone runs a second command.
+  Kind: enhancement.
+  Source: feedback-Groundwork-2026-09-25.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5355] **roadmap_migrate's sections_written counts the preamble, so it disagrees with section_index.**
+  Reported by Groundwork: a title, a preamble and one `##` heading gave
+  sections_written:2 against one section in section_index. Suggested: count
+  headed sections only, or split out preamble_written.
+  **Layman:** Two tools report different section counts for the same roadmap, so a migration cannot be checked by comparing them.
+  Kind: fix.
+  Source: feedback-Groundwork-2026-09-25.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5356] **A spilled reply's handle does not survive `fields`, so a narrowed call cannot fetch it.**
+  Reported by Rolodex: roadmap_query ids= spilled; fields:["handle"] then
+  reported handle unmatched, because fields applies before the offload.
+  Suggested: let handle and offloaded survive fields, as etag does, or add
+  max_total_bytes to ids=. Related: ANTS-5266, ANTS-5292.
+  **Layman:** Asking for just the reference to a large saved reply returns nothing, costing an extra call.
+  Kind: enhancement.
+  Source: feedback-Rolodex-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5357] **doc_symbols reports standard-library flags, library exceptions and byte literals as unresolved.**
+  Reported by Rolodex: on docs/security-standards.md, O_TRUNC, O_EXCL,
+  InvalidToken and a bytes literal (MAGIC = b"VLT1") came back
+  unresolved_symbol. Suggested: classify external module symbols as
+  not_checked, and match a quoted token against string or bytes literals
+  assigned to a constant. Related: ANTS-3688, ANTS-4379.
+  **Layman:** The document checker flags ordinary library names as mistakes, so its results need sorting by hand.
+  Kind: fix.
+  Source: feedback-Rolodex-2026-09-21.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-5358] **roadmap_log flip_batch should take a per-locator to_status.**
+  Reported by Rolodex (ROLO-0068): eight items shipped and one stayed
+  in-progress, costing a second call. Suggested: an optional to_status per
+  locator, defaulting to the call-level one.
+  **Layman:** Closing a batch where one item stays in progress takes two calls instead of one.
+  Kind: enhancement.
+  Source: feedback-Rolodex-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5359] **A literal backslash-n in a scalar note or body is stored verbatim with no warning.**
+  Reported by OneUp: a note passed as a plain string holding the two
+  characters backslash and n was stored as-is, while the same spelling
+  inside a JSON array became a line break. Suggested: an advisory warning
+  (literal_escape_sequences) when note, body or new_text has a literal
+  backslash-n and no real newline. Advisory only: a regex can carry one.
+  **Layman:** Text meant to break onto a new line can be saved with stray \n characters, and the write still reports success.
+  Kind: enhancement.
+  Source: feedback-OneUp-2026-09-18.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5360] **mutation_probe reports a mutation that breaks the file's syntax as killed.**
+  Reported by Pressless: a mutant that made pytest fail at collection
+  (exit 2, counts -1) came back outcome "killed". Suggested: outcome
+  "broken" when the counts are unreadable, the evidence ANTS-4401 already
+  uses to refuse a baseline. Related: ANTS-4974 (crash kill vs assertion
+  kill).
+  **Layman:** A test-strength check counts a broken file as a caught bug, so the score looks better than it is.
+  Kind: fix.
+  Source: feedback-Pressless-2026-09-21.
+  Lanes: mcp, test.
+
+- 📋 [ANTS-5361] **A roadmap migration silently turns an unrecognised checkbox line such as `- [~]` into narration.**
+  Reported by Vestige: a top-level `- [~] R2. ...` line stopped being an
+  item with no note. Suggested: an unrecognised_checkbox note with the line
+  number. Not accepting `[~]`: GitHub task-list syntax does not define it.
+  **Layman:** Moving a roadmap into the database can quietly drop an item written with an unusual checkbox.
+  Kind: fix.
+  Source: feedback-Vestige-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5362] **A headline ending in an italic span renders `.***`, and a re-import moves the closing `*` into the body.**
+  Reported by Vestige (3D_E-S0513, 3D_E-S0575): parse(render(x)) != x for
+  this shape, so an unrelated migrate edits these items. Suggested: separate
+  a trailing `*` from the bold close in the render, or take the last `**`
+  as the close in the parser; add a round-trip test. Related: ANTS-4506.
+  **Layman:** Headlines ending in italics change slightly every time the roadmap is reloaded.
+  Kind: fix.
+  Source: feedback-Vestige-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5363] **read_spill's `fields` rejects the row key its own spill hint names.**
+  Reported by finbreak: the hint and rows_preview_key say "bullets", but
+  read_spill names the array `rows`, so fields:["bullets"] returns ok:true
+  with no data. Suggested: accept the source key as an alias, or have the
+  hint name `rows`. Related: ANTS-4877.
+  **Layman:** Following the tool's own hint for paging a large reply returns an empty page.
+  Kind: fix.
+  Source: feedback-finbreak-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5364] **An explicit max_body_bytes does not raise the spill threshold, so a one-item fetch under the cap still spills.**
+  Reported by finbreak (FIBR-0159): max_body_bytes:20000 spilled a 19,617-
+  byte reply. Suggested: let an explicit max_body_bytes raise the spill
+  threshold for that call; failing that, say so in the hint and drop the
+  duplicated head preview. Related: ANTS-4630, ANTS-4981.
+  **Layman:** Asking for one roadmap item's full text can still take two calls even when a size was given.
+  Kind: fix.
+  Source: feedback-finbreak-2026-09-21.
+  Lanes: mcp, roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -77708,6 +77928,10 @@ acting on it.
   raise it again. Weigh a larger cap against GitHub's per-repository
   cache limit, or shrink the ASan objects first (the lighter debug info
   item in this section). Re-read `ccache -s` in the ASan job log.
+  Progress (2026-09-25): run 36111437270 showed the ASan cache at
+  2.0/2.0 GB. -g1 (ANTS-5195, cda932ec) shrank split debug files by
+  about 75% locally. Re-read the nightly run's cache size before raising
+  the cap.
   **Layman:** The memory-checking build's cache is too small, so it keeps throwing away work it will need again.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -77720,6 +77944,10 @@ acting on it.
   does not set CCACHE_SLOPPINESS=pch_defines,time_macros. First run the
   stats step as `ccache -sv` and one build with CCACHE_DEBUG=1, then act.
   Related: ANTS-1559 (one shared precompiled header), ANTS-1383.
+  Progress (2026-09-25, cda932ec): CI prints its slowest build steps
+  after each build. Local first read: precompiled headers are the
+  slowest steps, about ten at 15-39 s each; ccache does not cache PCH
+  creation by default. Next: read the CI step's output, then act.
   **Layman:** Even when almost everything is cached, the GitHub build is still slow, and nobody knows why yet.
   Kind: investigate.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -77786,11 +78014,14 @@ acting on it.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 💭 [ANTS-5196] **Build sanitizer objects at -O1 instead of -O0.**
+- 🚫 [ANTS-5196] **Build sanitizer objects at -O1 instead of -O0.**
   The sanitizer build uses the Debug build type, so it compiles without
   optimisation, while ASan's own guidance recommends -O1. Unmeasured, and
   the gain shrinks if per-test start-up cost is removed first. Costs:
   slightly longer compiles and less exact debugger stepping.
+  Dropped (2026-09-25, measured): the whole sanitized suite at -O1 -g1
+  took 713 s locally, against 673 s and 726 s at -O0 before. No gain,
+  so -O1 was not kept (cda932ec keeps -g1 only).
   **Layman:** The memory-checking build runs unoptimised; light optimisation is the recommended way to run it faster.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
