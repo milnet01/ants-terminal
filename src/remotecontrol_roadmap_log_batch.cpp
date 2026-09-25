@@ -420,6 +420,47 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             continue;
         }
 
+        // ANTS-4485 — on a store-backed ants-v1 project an id or headline
+        // locates in the STORE, so an item absent from the file is still
+        // writable. The target has no file line; its dedup key is the item's
+        // negated pk, which no file line can equal.
+        if (writeTarget && !isGfm && locAnchor.isEmpty() &&
+            (!locId.isEmpty() || !locHeadline.isEmpty())) {
+            QStringList fileIds, fileHeads;
+            for (const AntsV1Bullet &b : vbs) {
+                fileIds << b.id;
+                fileHeads << b.headline;
+            }
+            const LocateOutcome at = rlLocateTarget(
+                *writeTarget->store, writeTarget->projectId, locId, locHeadline,
+                fileIds, fileHeads);
+            if (!at.itemPk) {
+                if (at.code == QLatin1String("store_failed"))
+                    return rlErr(at.code, at.error);
+                skip(li, at.code, at.error);
+                continue;
+            }
+            const int key = -int(at.itemPk) - 1;
+            if (claimedFirstLines.contains(key)) continue;
+            Target t;
+            t.firstLine    = key;
+            t.headlineLine = key;
+            t.note         = note;
+            t.noteScrubbed = noteScrubbed;
+            t.locatorIndex = li;
+            t.toEmoji      = locEmoji;
+            t.toWord       = locWord;
+            t.isV1Bullet   = true;
+            t.id           = at.id;
+            t.headline     = at.headline;
+            t.fromStatus   = rcStatusEmoji(at.status);
+            for (const AntsV1Bullet &b : vbs)
+                if (!at.id.isEmpty() && b.id == at.id) t.fromStatus = b.status;
+            claimedFirstLines.insert(key);
+            targets.append(t);
+            continue;
+        }
+
         // Collect candidate firstLines for this locator (precedence
         // id > anchor > headline > line_range; range may match many).
         QVector<int> candFirstLines;

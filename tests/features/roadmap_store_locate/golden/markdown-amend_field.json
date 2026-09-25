@@ -1,0 +1,5 @@
+{
+    "code": "unsupported_format",
+    "error": "roadmap_log: op:\"amend_field\" writes a STORE column, so it needs a store-migrated project. On a markdown-backed project the trailer line is body text — use op:\"amend_body\" on the `layman:` line itself.",
+    "ok": false
+}

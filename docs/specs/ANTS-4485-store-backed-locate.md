@@ -1,6 +1,6 @@
 # ANTS-4485 — Locate a write target in the store on a store-backed project
 
-**Status:** accepted, cold-eyes loops 1 + 2 folded (2026-09-20).
+**Status:** implemented (2026-09-25); cold-eyes loops 1 + 2 folded (2026-09-20).
 **Kind:** implement.
 **Source:** ROADMAP ANTS-4485 (cc-feedback-2026-08-18, Fin Break).
 
@@ -85,14 +85,18 @@ project, beside the existing `rcdetail::rlStoreItemPk()` in
 namespace rcdetail {
 struct LocateOutcome {
     qint64  itemPk   = 0;       // 0 = not resolved
+    QString id;                 // the stored item's, when resolved
+    QString headline;
+    QString status;             // the stored status word
     QString code;               // refusal code when itemPk == 0
     QString error;              // human-facing message
     bool    inFileOnly = false; // found in the file, absent from the store
 };
 
 LocateOutcome rlLocateTarget(RoadmapStore &store, qint64 projectId,
-                             const QJsonObject &req,
-                             const QVector<RoadmapParse::BulletRecord> &fileBullets);
+                             const QString &locId, const QString &locHeadline,
+                             const QStringList &fileIds,
+                             const QStringList &fileHeadlines);
 }
 ```
 
@@ -103,11 +107,13 @@ selects.
 - **id** — `RoadmapStore::findItem(projectId, id)`, whose query is
   `SELECT item_pk FROM item WHERE project_id = ? AND id_fold = lower(?)`.
 - **headline** — `RoadmapStore::listItems(projectId)`, comparing the
-  **request's** `headline` against each row's stored `headline`. This reuses
-  step 2's comparison *rule*, not its signature: `rlStoreItemPk()` takes a
-  parsed file bullet, and taking one here would reintroduce the file
-  dependency this spec removes. More than one match is `bullet_ambiguous`;
-  none is `bullet_not_found`.
+  **request's** `headline` against each row's stored `headline` as the file
+  walk compares them: normalised, then hashed (`rcNormaliseHeadline`,
+  `rcFnv1a64`). A headline that matched a rendered bullet therefore still
+  matches its row. The resolver takes the locator strings and the file's ids
+  and headlines, never a parsed file bullet, so the file is consulted only on
+  a miss. More than one match is `bullet_ambiguous`; none is
+  `bullet_not_found`.
 - **anchor** — resolved through the file, then mapped to a row by id. An
   anchor is a file artefact and the store holds no anchor column, so this
   locator keeps its present behaviour.

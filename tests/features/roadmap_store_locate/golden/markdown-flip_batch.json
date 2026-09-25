@@ -1,0 +1,23 @@
+{
+    "bytes_written": 0,
+    "file": "ROADMAP.md",
+    "file_bytes": 1419,
+    "flipped": [
+        {
+            "format": "ants-v1",
+            "from_status": "📋",
+            "id": "DEMO-0007",
+            "line": 22,
+            "to_status": "🚧"
+        }
+    ],
+    "flipped_count": 1,
+    "format": "ants-v1",
+    "ok": true,
+    "op": "flip_batch",
+    "skipped": [
+    ],
+    "skipped_count": 0,
+    "to_status": "🚧",
+    "write_path": "patch"
+}

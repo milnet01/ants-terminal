@@ -1639,6 +1639,78 @@ std::optional<qint64> rcdetail::rlStoreItemPk(RoadmapStore &store, qint64 projec
     return hit;
 }
 
+rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 projectId,
+                                                 const QString &locId,
+                                                 const QString &locHeadline,
+                                                 const QStringList &fileIds,
+                                                 const QStringList &fileHeadlines) {
+    LocateOutcome out;
+    QString err;
+    const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
+    if (!locId.isEmpty()) {
+        const auto pk = store.findItem(projectId, locId, &err);
+        if (!pk && !err.isEmpty()) {
+            out.code  = QStringLiteral("store_failed");
+            out.error = err;
+            return out;
+        }
+        if (pk) out.itemPk = *pk;
+    } else if (!locHeadline.isEmpty()) {
+        const auto refs = store.listItems(projectId, &err);
+        if (!refs) {
+            out.code  = QStringLiteral("store_failed");
+            out.error = err;
+            return out;
+        }
+        int hits = 0;
+        for (const auto &ref : *refs) {
+            if (rcFnv1a64(rcNormaliseHeadline(ref.headline)) != need)
+                continue;
+            ++hits;
+            out.itemPk = ref.itemPk;
+        }
+        if (hits > 1) {
+            out.itemPk = 0;
+            out.code   = QStringLiteral("bullet_ambiguous");
+            out.error  = QStringLiteral(
+                "roadmap_log: that headline matches %1 items in this project's "
+                "store — narrow with `id`").arg(hits);
+            return out;
+        }
+    }
+    if (out.itemPk) {
+        const auto item = store.readItem(out.itemPk, &err);
+        if (!item) {
+            out.itemPk = 0;
+            out.code   = QStringLiteral("store_failed");
+            out.error  = err;
+            return out;
+        }
+        out.id       = item->id;
+        out.headline = item->headline;
+        out.status   = item->status;
+        return out;
+    }
+    // § 4.4 — the file is ahead of the store, which the render's divergence
+    // guard would refuse anyway; say so instead of reporting absence.
+    const QString locator = locId.isEmpty() ? locHeadline : locId;
+    if (!locId.isEmpty()) {
+        out.inFileOnly = fileIds.contains(locId);
+    } else {
+        for (const QString &h : fileHeadlines)
+            if (rcFnv1a64(rcNormaliseHeadline(h)) == need) out.inFileOnly = true;
+    }
+    out.code  = QStringLiteral("bullet_not_found");
+    out.error = out.inFileOnly
+        ? QStringLiteral("roadmap_log: \"%1\" is in ROADMAP.md but not in this "
+                         "project's store. The store is the source of truth for "
+                         "this project, so the write would drop it. Run "
+                         "roadmap_migrate to import it, then retry.").arg(locator)
+        : QStringLiteral("roadmap_log: no item in this project's roadmap store "
+                         "matches \"%1\"").arg(locator);
+    return out;
+}
+
 // § 2.3 — the high-water the store path allocates from. Two store columns,
 // no text scan: the next id is the highest this project has, plus one.
 //

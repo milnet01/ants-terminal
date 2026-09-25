@@ -133,6 +133,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log` edits find their item in the roadmap store, so anything `roadmap_query` shows can be edited** (ANTS-4485)
+  On a store-backed project, flip, annotate, their batch forms, amend_body,
+  amend_headline and set_body locate an id or headline in the store
+  rather than in ROADMAP.md. An item the file has but the store lacks
+  now refuses with a message saying so and naming `roadmap_migrate`.
+
 - **A roadmap headline ending in italics keeps its closing `*` through a render and re-import** (ANTS-5362)
   The parser now takes the last two stars of a `***` run as the end of
   the bold headline, so migrating again no longer edits such items.

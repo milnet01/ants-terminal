@@ -1,0 +1,13 @@
+{
+    "amended": true,
+    "body_line": 23,
+    "body_paragraph": "  Layman: Another thing.\n  Kind: implement.\n  Source: seed.",
+    "bytes_written": 6,
+    "file": "ROADMAP.md",
+    "file_bytes": 1425,
+    "format": "ants-v1",
+    "id": "DEMO-0007",
+    "line": 22,
+    "ok": true,
+    "op": "amend_body"
+}

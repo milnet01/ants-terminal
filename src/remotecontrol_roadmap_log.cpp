@@ -1204,6 +1204,50 @@ static QVector<int> rcRankIdsBySharedPrefix(const QStringList &candidateIds,
     return out;
 }
 
+// ANTS-4485 § 4.5 — the same rankers, over the STORE's items: on a store-backed
+// project a suggestion drawn from the file could name a bullet the write
+// cannot reach. An ambiguous headline lists the items it matched.
+static QJsonArray rlStoreSuggestions(RoadmapStore &store, qint64 projectId,
+                                     const QString &locId,
+                                     const QString &locHeadline) {
+    QJsonArray out;
+    QString err;
+    const auto refs = store.listItems(projectId, &err);
+    if (!refs) return out;
+    QStringList ids, heads;
+    for (const auto &ref : *refs) {
+        const auto item = store.readItem(ref.itemPk, &err);
+        ids   << (item ? item->id : QString());
+        heads << ref.headline;
+    }
+    auto add = [&](int i) {
+        QJsonObject s;
+        s["headline"] = heads.at(i);
+        s["id"]       = ids.at(i);
+        out.append(s);
+    };
+    if (!locId.isEmpty()) {
+        for (const int i : rcRankIdsBySharedPrefix(ids, locId, 3)) add(i);
+        return out;
+    }
+    const QString norm = rcNormaliseHeadline(locHeadline);
+    QVector<QPair<int, int>> scored;
+    for (int i = 0; i < heads.size(); ++i) {
+        const QString h = rcNormaliseHeadline(heads.at(i));
+        int shared = 0;
+        const int lim = std::min(h.size(), norm.size());
+        while (shared < lim && h.at(shared) == norm.at(shared)) ++shared;
+        if (shared > 0) scored.append(qMakePair(shared, i));
+    }
+    std::stable_sort(scored.begin(), scored.end(),
+        [](const QPair<int, int> &a, const QPair<int, int> &b) {
+            return a.first > b.first;
+        });
+    for (int k = 0; k < scored.size() && out.size() < 3; ++k)
+        add(scored.at(k).second);
+    return out;
+}
+
 // ANTS-1428 — roadmap_log op:"flip". Adapter-mode write path for
 // GFM-format ROADMAP.md files. Locator: bold-ID → caret anchor →
 // headline-hash; on first touch of a bullet that has neither a
@@ -1683,8 +1727,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         req.value(QStringLiteral("anchor")).toString();
     const QString locHeadline =
         req.value(QStringLiteral("headline")).toString();
+    // ANTS-4485 INV-6 — a lone `line_range` is refused locator_unsupported
+    // on a store-backed project, which is not known until the roadmap is
+    // read; a markdown project keeps this refusal unchanged.
+    const bool lineRangeOnly = locId.isEmpty() && locAnchor.isEmpty() &&
+        locHeadline.isEmpty() && req.contains(QStringLiteral("line_range"));
     if (locId.isEmpty() && locAnchor.isEmpty() &&
-        locHeadline.isEmpty()) {
+        locHeadline.isEmpty() && !lineRangeOnly) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"flip\" needs at least "
                            "one locator — `id`, `anchor`, or "
@@ -1749,6 +1798,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     // to cmdRoadmapLogPassFlip by the early gate above, so by here the roadmap
     // is GFM / ants-v1, or a STORE-served pass-headings roadmap (ANTS-5334).
     if (passStoreTarget) {
+        if (lineRangeOnly)   // ANTS-4485 INV-6
+            return rlErr(QStringLiteral("locator_unsupported"),
+                QStringLiteral("roadmap_log: line_range cannot be served by "
+                               "this project's roadmap store — locate by id "
+                               "or headline"));
         // A pass has no anchor: it is addressed by its synthesised PASS-N-M id
         // or its heading tail, the pass writer's own locate rule.
         if (!locAnchor.isEmpty())
@@ -1782,10 +1836,75 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             .roadmapPath = roadmapPath});
     }
 
+    QStringList lines = markdown.split(QChar('\n'));
+
+    // ANTS-4485 — on a store-backed ants-v1 project, locate in the STORE.
+    // (`lineRangeOnly` falls to the markdown refusal after this block.)
+    // The file is the render's output and can be behind it; an item
+    // roadmap_query returns must be writable. `anchor` keeps its file route,
+    // where ants-v1 refuses it as a format error.
+    if (locAnchor.isEmpty() &&
+        RoadmapParse::detectRoadmapFormat(lines) == QStringLiteral("ants-v1")) {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto target =
+            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target) {
+            if (lineRangeOnly)
+                return rlErr(QStringLiteral("locator_unsupported"),
+                    QStringLiteral("roadmap_log: line_range cannot be served by "
+                                   "this project's roadmap store — locate by id "
+                                   "or headline"));
+            const QVector<AntsV1Bullet> fileBullets = walkAntsV1Bullets(lines);
+            QStringList fileIds, fileHeads;
+            for (const AntsV1Bullet &b : fileBullets) {
+                fileIds << b.id;
+                fileHeads << b.headline;
+            }
+            const LocateOutcome at = rlLocateTarget(
+                *target->store, target->projectId, locId, locHeadline,
+                fileIds, fileHeads);
+            if (!at.itemPk) {
+                if (at.code == QLatin1String("store_failed"))
+                    return rlErr(at.code, at.error);
+                return rlSugErr(at.code, at.error,
+                    at.inFileOnly ? QJsonArray()
+                                  : rlStoreSuggestions(*target->store,
+                                        target->projectId, locId, locHeadline),
+                    at.code == QLatin1String("bullet_ambiguous") ? 2 : 0);
+            }
+            QString fileStatus;
+            for (const AntsV1Bullet &b : fileBullets)
+                if (!at.id.isEmpty() && b.id == at.id) fileStatus = b.status;
+            return rlStoreFlipOrAnnotate({
+                .req = &req, .store = target->store,
+                .projectId = target->projectId,
+                .id = at.id, .headline = at.headline,
+                .fileStatus = fileStatus,
+                .format = QStringLiteral("ants-v1"),
+                .fileName = QStringLiteral("ROADMAP.md"),
+                .annotateMode = annotateMode, .dryRun = dryRun,
+                .note = note, .noteScrubbedNames = noteScrubbedNames,
+                .targetStatusWord = targetStatusWord,
+                .targetEmoji = targetEmoji,
+                .callerCanonical = callerCanonical,
+                .roadmapPath = roadmapPath});
+        }
+    }
+
+    if (lineRangeOnly)
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"flip\" needs at least "
+                           "one locator — `id`, `anchor`, or "
+                           "`headline`"));
+
     // 6. Walk GFM bullets first. If none found AND the file is big
     //    enough to be a real roadmap, fall through to ANTS-1441's
     //    ants-v1 native walker before refusing.
-    QStringList lines = markdown.split(QChar('\n'));
     const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
 
     // ANTS-3561 — apply an op:flip / op:annotate to a single, already-located
@@ -2754,12 +2873,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     const QString locAnchor   = req.value(QStringLiteral("anchor")).toString();
     const QString locHeadline =
         req.value(QStringLiteral("headline")).toString();
-    if (locId.isEmpty() && locAnchor.isEmpty() && locHeadline.isEmpty()) {
+    // ANTS-4485 INV-6 — as in op:"flip": a lone `line_range` is refused
+    // locator_unsupported once the project is known to be store-backed.
+    const bool lineRangeOnly = locId.isEmpty() && locAnchor.isEmpty() &&
+        locHeadline.isEmpty() && req.contains(QStringLiteral("line_range"));
+    const auto noLocator = [&] {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"%1\" needs at least one "
                            "locator — `id`, `anchor`, or `headline`")
                 .arg(opName));
-    }
+    };
+    if (locId.isEmpty() && locAnchor.isEmpty() && locHeadline.isEmpty() &&
+        !lineRangeOnly)
+        return noLocator();
     if (!locHeadline.isEmpty() &&
         (!locId.isEmpty() || !locAnchor.isEmpty())) {
         return rlErr(QStringLiteral("bad_op_combo"),
@@ -2817,6 +2943,54 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     QString matchedHeadline;
     QString format;
 
+    // ANTS-4485 — on a store-backed ants-v1 project an id or headline locates
+    // in the STORE, so an item absent from the file is still editable. The
+    // store branch below needs only the id, headline and format.
+    bool storeLocated = false;
+    if (locAnchor.isEmpty() &&
+        RoadmapParse::detectRoadmapFormat(lines) == QStringLiteral("ants-v1")) {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto target =
+            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target) {
+            if (lineRangeOnly)
+                return rlErr(QStringLiteral("locator_unsupported"),
+                    QStringLiteral("roadmap_log: line_range cannot be served by "
+                                   "this project's roadmap store — locate by id "
+                                   "or headline"));
+            QStringList fileIds, fileHeads;
+            for (const AntsV1Bullet &b : walkAntsV1Bullets(lines)) {
+                fileIds << b.id;
+                fileHeads << b.headline;
+            }
+            const LocateOutcome at = rlLocateTarget(
+                *target->store, target->projectId, locId, locHeadline,
+                fileIds, fileHeads);
+            if (!at.itemPk) {
+                if (at.code == QLatin1String("store_failed"))
+                    return rlErr(at.code, at.error);
+                QJsonObject env = rlSugErr(at.code, at.error,
+                    at.code == QLatin1String("bullet_ambiguous") ? 2 : 0).object();
+                if (!at.inFileOnly)
+                    env["suggestions"] = rlStoreSuggestions(*target->store,
+                        target->projectId, locId, locHeadline);
+                return QJsonDocument(env);
+            }
+            matchedId       = at.id;
+            matchedHeadline = at.headline;
+            format          = QStringLiteral("ants-v1");
+            storeLocated    = true;
+        }
+    }
+    if (lineRangeOnly)
+        return noLocator();
+
+    if (!storeLocated) {
     const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
     if (!bullets.isEmpty()) {
         format = QStringLiteral("gfm");
@@ -2951,6 +3125,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                            "GFM-task-list nor ants-v1 native format)")
                 .arg(roadmapPath));
     }
+
+    }   // !storeLocated
 
     // ANTS-3809 § 2.2 — the store path, after the locate and before the
     // markdown patch below. ants-v1 only (§ 5), which the format gate above

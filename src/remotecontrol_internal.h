@@ -341,6 +341,26 @@ bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapSto
 std::optional<QString> rlRedundantTrailerRunStripped(const RoadmapStore::ItemWrite &w, bool *conflict);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
+// ANTS-4485 — resolve an `id` or `headline` locator against the STORE on a
+// store-backed project (docs/specs/ANTS-4485-store-backed-locate.md § 4.3).
+// An id never falls through to the headline: a miss goes to the file check
+// and refuses. `fileIds` / `fileHeadlines` are ROADMAP.md's, consulted only on
+// a miss, to tell "absent everywhere" from "in the file, not the store".
+// Headlines compare as the file walk compares them (normalised FNV-1a), so a
+// locator that matched a rendered bullet still matches its row.
+struct LocateOutcome {
+    qint64  itemPk = 0;     // 0 = not resolved
+    QString id;             // the stored item's, when resolved
+    QString headline;
+    QString status;         // the stored status word
+    QString code;           // refusal code when itemPk == 0
+    QString error;
+    bool    inFileOnly = false;
+};
+LocateOutcome rlLocateTarget(RoadmapStore &store, qint64 projectId,
+                             const QString &locId, const QString &locHeadline,
+                             const QStringList &fileIds,
+                             const QStringList &fileHeadlines);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &prefix);
 // ANTS-3863 § 2.4 — the one helper BELOW the seam this item touches. `text` is
 // consulted only on the last fallback, after an explicit id_prefix and the

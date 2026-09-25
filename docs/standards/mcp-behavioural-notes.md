@@ -825,7 +825,14 @@ which heading you expect it under.
     **ANTS-4844 adds `bullet` (`would_be_bullet` on a preview)** to
     `op:"flip"` and `op:"annotate"`: the bullet the render will emit for the
     item. **ANTS-5263 makes it opt-in** with `return:"full"`; by default the
-    reply carries only `post_bullets` {id, status, headline}. `op:"append"` has echoed its would-be bullet since ANTS-2077, and
+    reply carries only `post_bullets` {id, status, headline}.
+    **ANTS-4485 — on a store-backed ants-v1 project, `flip`, `annotate`,
+    `flip_batch`, `annotate_batch`, `amend_body`, `amend_headline` and
+    `set_body` locate an `id` or `headline` in the STORE**, so an item absent
+    from `ROADMAP.md` is still writable. A locator found in the file and not
+    the store refuses `bullet_not_found` naming the store and
+    `roadmap_migrate`. Not-found suggestions come from the store. A lone
+    `line_range` refuses `locator_unsupported` on all three handlers. `op:"append"` has echoed its would-be bullet since ANTS-2077, and
     flip EDITS an existing bullet rather than adding one — the higher-stakes
     of the two, with the weaker preview. It is not a substitute for the
     dropped `bytes`, and does not restore it: `bytes` measured different

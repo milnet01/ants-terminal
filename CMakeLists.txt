@@ -2621,6 +2621,9 @@ if(ANTS_TESTS)
                 # re-renders on a migrated project. Behavioural through the
                 # verbs, against stores the migration actually built.
                 tests/features/roadmap_write_half/test_roadmap_write_half.cpp
+                # ANTS-4485 — on a store-backed project the locating writes
+                # find their target in the store, not in ROADMAP.md.
+                tests/features/roadmap_store_locate/test_store_locate.cpp
                 # ANTS-5334 — flip/annotate on a store-served pass-headings
                 # roadmap write through the store; other writes refuse there.
                 tests/features/roadmap_pass_store_write/test_roadmap_pass_store_write.cpp
