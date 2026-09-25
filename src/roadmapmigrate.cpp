@@ -826,6 +826,24 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
                         lines.at(k - 1).trimmed(), k, ctx.index);
     }
 
+    // ANTS-5361 — a top-level checkbox the task-list grammar does not define
+    // (`- [~]`, `- [-]`) is not an item. It is carried as narration like any
+    // other unparsed line; this note is what stops that being silent.
+    if (src.format == QLatin1String("github-task-list")) {
+        static const QRegularExpression rxBox(
+            QStringLiteral("^[-*] \\[([^\\]])\\]"));
+        for (int k = 1; k <= n; ++k) {
+            if (inFence[k]) continue;
+            const auto m = rxBox.match(lines.at(k - 1));
+            if (!m.hasMatch()) continue;
+            const QString box = m.captured(1);
+            if (box != QLatin1String(" ") && box != QLatin1String("x") &&
+                box != QLatin1String("X"))
+                addNote(plan.notes, "unrecognised_checkbox",
+                        lines.at(k - 1).trimmed(), k, ctx.index);
+        }
+    }
+
     // The synthetic root is dropped when this source put nothing in it. Safe
     // to erase mid-vector: items and elements reference a section by SLUG, not
     // by index, and this source's walk is finished.

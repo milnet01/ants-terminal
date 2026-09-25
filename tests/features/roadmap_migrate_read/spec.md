@@ -93,3 +93,13 @@ One `TEST()` per invariant, named `InvNShortName`, in
 Each was shown RED under the mutation its own *Breaks when* clause names before
 being accepted green; the results, including the clauses that did not redden,
 are in the spec's loop log.
+
+## ANTS-5361 — an unrecognised checkbox is reported
+
+`Ants5361UnrecognisedCheckboxIsReported` plans an inline task-list roadmap
+holding `- [ ]`, `- [~]` and `- [x]` lines, plus a `- [~]` line inside a fence.
+It asserts two items and one `unrecognised_checkbox` note, on the `- [~]` line
+outside the fence.
+
+**Would break this:** carrying the line as narration without the note.
+

@@ -117,6 +117,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_migrate` reports a task-list line with an unrecognised checkbox, such as `- [~]`** (ANTS-5361)
+  The line is still kept as narration, and now raises an
+  `unrecognised_checkbox` note naming its line, so it is no longer
+  dropped as an item without a word.
+
 - **`roadmap_log op:"append_batch"` accepts the first items of a store-served project with an empty roadmap** (ANTS-5371)
   The file path's format check no longer runs when the roadmap store
   serves the project.

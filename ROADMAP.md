@@ -66290,11 +66290,12 @@ project. Reported causes are claims until checked in source.
   Source: feedback-UT_Ants-2026-09-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5350] **roadmap_query check_sync can report a drift line that neither drift_lost nor drift_restyled counts.**
+- ✅ [ANTS-5350] **roadmap_query check_sync can report a drift line that neither drift_lost nor drift_restyled counts.**
   Reported by AI_Prompts (AIPR-0049): drift_lines:1 with both kind counts
   0; the line was a store-only banner a render adds. Suggested: a third
   bucket (drift_gained, lines only the store has) so the kind counts always
   sum to drift_lines, which a caller can then assert.
+  Resolved (2026-09-25): shipped in 654b4a15; GitHub CI green.
   **Layman:** The sync check can say the roadmap file changed without saying how, so nobody can tell if updating it is safe.
   Kind: fix.
   Source: feedback-AI_Prompts-2026-09-21.
@@ -66344,20 +66345,22 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Groundwork-2026-09-25.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5354] **roadmap_migrate's reply does not point at op:render when the rendered file would differ.**
+- ✅ [ANTS-5354] **roadmap_migrate's reply does not point at op:render when the rendered file would differ.**
   Reported by Groundwork: markdown_rewritten:false left ROADMAP.md without
   the generated-file header until a separate op:render. ANTS-4482 made the
   reply say it did not render; this asks for a next_call_hint naming
   op:render, or an opt-in render:true on the same call.
+  Resolved (2026-09-25): shipped in 5050f2f8; GitHub CI green.
   **Layman:** After moving a roadmap into the database, the file looks hand-editable until someone runs a second command.
   Kind: enhancement.
   Source: feedback-Groundwork-2026-09-25.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5355] **roadmap_migrate's sections_written counts the preamble, so it disagrees with section_index.**
+- ✅ [ANTS-5355] **roadmap_migrate's sections_written counts the preamble, so it disagrees with section_index.**
   Reported by Groundwork: a title, a preamble and one `##` heading gave
   sections_written:2 against one section in section_index. Suggested: count
   headed sections only, or split out preamble_written.
+  Resolved (2026-09-25): shipped in 5050f2f8; GitHub CI green.
   **Layman:** Two tools report different section counts for the same roadmap, so a migration cannot be checked by comparing them.
   Kind: fix.
   Source: feedback-Groundwork-2026-09-25.

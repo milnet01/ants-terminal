@@ -1402,3 +1402,23 @@ TEST(roadmap_migrate_read, Ants5086SourceByteCeiling) {
     EXPECT_EQ(err, QStringLiteral("too_large"))
         << "the archives count toward the ceiling, before any is read";
 }
+
+// ------------------------------------------------------------- ANTS-5361 ---
+// A top-level checkbox the task-list grammar does not define is carried as
+// narration and reported, never silently. One inside a fence is not.
+TEST(roadmap_migrate_read, Ants5361UnrecognisedCheckboxIsReported) {
+    const MigrationPlan plan = planText(QStringLiteral(
+        "# R\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- [ ] **R1. First.**\n"
+        "- [~] R2. Partly done.\n"
+        "- [x] **R3. Done.**\n"
+        "\n"
+        "```\n"
+        "- [~] an example, not an item\n"
+        "```\n"));
+    EXPECT_EQ(plan.items.size(), 2);
+    EXPECT_EQ(noteLines(plan, "unrecognised_checkbox"), QList<int>({6}));
+}
