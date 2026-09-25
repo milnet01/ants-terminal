@@ -13549,27 +13549,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "run is recorded in history. "
                         "Refusals: `project_not_registered` "
                         "(run roadmap_migrate first), `store_failed`. "
-                        "ECHO COST, and it applies to every op here that "
-                        "writes. A successful write echoes the WHOLE "
-                        "RENDERED BULLET back — head line, entire "
-                        "accumulated body, every trailer — as `bullet`, or "
-                        "`would_be_bullet` on a dry run. It is there so a "
-                        "caller can confirm the JOINT result of several "
-                        "edits to one body (ANTS-4097): worth having while "
-                        "you are BUILDING a body, worth nothing when you "
-                        "are appending a line you just composed. The cost "
-                        "COMPOUNDS — each annotate lengthens the body the "
-                        "next annotate echoes back — so it is dearest on "
-                        "the items you work hardest, and a project whose "
-                        "rules mandate a dry run before each write pays it "
-                        "TWICE per change. Measured across five projects on "
-                        "2026-09-21: 6.5x on a small item, ~250x on a large "
-                        "one. Remedy, no other change needed: pass "
-                        "`fields:[\"ok\",\"id\"]` (or whichever scalars you "
-                        "actually read). `return:\"headline_only\"` now "
-                        "SUPPRESSES the bullet rather than adding "
-                        "`post_bullets` beside it (ANTS-5263). Keep the "
-                        "default echo where you need the joint result. "
+                        "ECHO COST (ANTS-5263). A store-served flip or "
+                        "annotate echoes only `post_bullets` {id, status, "
+                        "headline} by default; `return:\"full\"` echoes the "
+                        "whole rendered bullet as `bullet` (`would_be_bullet` "
+                        "on a dry run), which grows with every note. "
+                        "`fields:[\"ok\",\"id\"]` trims any reply. "
                         "\"convert\" (ANTS-4491) re-imports a "
                         "`github-task-list` roadmap and republishes it as "
                         "canonical ants-v1, in ONE atomic commit+render — the "
@@ -14155,6 +14140,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonArray e;
                         e.append("default");
                         e.append("headline_only");
+                        e.append("full");   // ANTS-5263
                         returnProp["enum"] = e;
                     }
                     returnProp["description"] = QStringLiteral(
@@ -14166,7 +14152,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "mode:\"headline_only\" emits — so a confirm-after "
                         "read folds into the write (no follow-up "
                         "roadmap_query). \"default\" (omitted) keeps the "
-                        "lean envelope (ANTS-2080 append; ANTS-2089 flip).");
+                        "lean envelope (ANTS-2080 append; ANTS-2089 flip). "
+                        "On a store-served flip or annotate the default "
+                        "already carries `post_bullets`, and \"full\" "
+                        "echoes the whole rendered bullet instead "
+                        "(ANTS-5263).");
 
                     // ANTS-3432 — op:"bundle_row" params. The handler
                     // (cmdRoadmapLogBundleRow) has always read these, but

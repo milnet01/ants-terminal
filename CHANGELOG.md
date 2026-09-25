@@ -83,6 +83,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` flip and annotate reply with a compact summary by default; `return:"full"` brings back the whole bullet** (ANTS-5263)
+  On a store-served project the reply now carries `post_bullets`
+  {id, status, headline} instead of the entire rendered bullet, whose size
+  grew with every note added. Pass `return:"full"` to see the whole bullet.
+
 - **Moving a roadmap into the database now says how to publish the file** (ANTS-5354)
   After a migration the file still looks hand-editable until it is
   republished. roadmap_migrate's reply now names roadmap_log op:"render",

@@ -1437,11 +1437,17 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // a call appending eight lines they had just composed. Five
     // scalars were used from the two replies.
     //
-    // The echo's own coverage (ANTS-4097: see the JOINT result of
-    // several edits to one body) is untouched on the default path,
-    // which is what every existing caller is on. This only obeys a
-    // flag the caller had to opt into.
-    if (!rcReturnHeadlineOnly(req)) {
+    // ANTS-5263, second half — the whole bullet is now OPT-IN, via
+    // return:"full". Flip and annotate APPEND at most one line the
+    // caller has just composed, and each note lengthens the body the
+    // next echo carries, so the cost compounded on the items worked
+    // hardest. The default is the compact post_bullets below, which
+    // still shows the post-flip status ANTS-4844 asked a preview to
+    // show. ANTS-4097's joint-result echo belongs to amend_body and
+    // is untouched.
+    const bool fullEcho =
+        req.value(QStringLiteral("return")).toString() == QStringLiteral("full");
+    if (fullEcho) {
         if (const auto bullet = outcome.touchedBullets.constFind(c.id);
             bullet != outcome.touchedBullets.constEnd()) {
             env[dryRun ? QStringLiteral("would_be_bullet")
@@ -1479,7 +1485,9 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // return:"headline_only"; the store path did not, so a
     // documented echo went silently missing on migrated projects.
     // Same divergence class as the fields above.
-    if (rcReturnHeadlineOnly(req)) {
+    // ANTS-5263 — and the default, unless return:"full" asked for the
+    // whole bullet instead.
+    if (!fullEcho) {
         env[QStringLiteral("post_bullets")] = QJsonArray{
             rcCompactBullet(
                 c.id,

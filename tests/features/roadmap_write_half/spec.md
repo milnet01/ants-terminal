@@ -168,6 +168,15 @@ preview and the write must agree. *Tests:*
 status is the post-flip one and fails against a pre-state render, and
 `Ants4844AnnotateEchoesTheBulletCarryingTheNote`.
 
+ANTS-5263 — that whole-bullet echo is OPT-IN, via `return:"full"`. With no
+`return`, a store-served flip or annotate carries only `post_bullets`, the
+compact {id, status, headline} shape, which still shows the post-flip status.
+`return:"headline_only"` gives the same compact form. *Tests:*
+`Ants5263DefaultEchoIsCompact` (preview and write carry no `bullet` or
+`would_be_bullet`, and `post_bullets` names the item as `shipped`) and
+`Ants5263HeadlineOnlySuppressesTheBulletEcho`. The two ANTS-4844 cases pass
+`return:"full"`.
+
 ANTS-4839 — a lost-text arm also carries `discard_hint`
 (`would_discard_hint`): the discarded lines belong to bullets the store
 holds, so they are an older publication of this same store. The claim is

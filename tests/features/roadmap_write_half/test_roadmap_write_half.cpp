@@ -2508,6 +2508,8 @@ TEST(RoadmapWriteHalf, Ants4844FlipDryRunEchoesThePostFlipBullet) {
     flip[QStringLiteral("op")]         = QStringLiteral("flip");
     flip[QStringLiteral("id")]         = id;
     flip[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    // ANTS-5263 — the whole bullet is opt-in since the echo went compact.
+    flip[QStringLiteral("return")]     = QStringLiteral("full");
 
     // --- the preview ---
     QJsonObject dry = flip;
@@ -2576,6 +2578,7 @@ TEST(RoadmapWriteHalf, Ants4844AnnotateEchoesTheBulletCarryingTheNote) {
     req[QStringLiteral("id")]         = id;
     req[QStringLiteral("note")]       = QStringLiteral("A distinctive closure line.");
     req[QStringLiteral("dry_run")]    = true;
+    req[QStringLiteral("return")]     = QStringLiteral("full");   // ANTS-5263
 
     const QJsonObject preview = rc.cmdRoadmapLogFlipForTest(req).object();
     ASSERT_TRUE(preview.value(QStringLiteral("ok")).toBool())
@@ -2626,19 +2629,19 @@ TEST(RoadmapWriteHalf, Ants5263HeadlineOnlySuppressesTheBulletEcho) {
         r[QStringLiteral("id")]         = id;
         r[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
         if (dryRun)       r[QStringLiteral("dry_run")] = true;
-        if (headlineOnly) r[QStringLiteral("return")]  = QStringLiteral("headline_only");
+        r[QStringLiteral("return")] = headlineOnly ? QStringLiteral("headline_only")
+                                                   : QStringLiteral("full");
         return r;
     };
 
-    // The DEFAULT still echoes. Asserted first and in the same case, so a
-    // change that suppressed the echo unconditionally cannot pass by deleting
-    // the coverage ANTS-4097 added.
+    // return:"full" still echoes. Asserted first and in the same case, so a
+    // change that removed the echo outright cannot pass by deleting the way
+    // back to it (ANTS-5263 made it opt-in, not gone).
     const QJsonObject loud = rc.cmdRoadmapLogFlipForTest(flipReq(false, true)).object();
     ASSERT_TRUE(loud.value(QStringLiteral("ok")).toBool())
         << loud.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_FALSE(loud.value(QStringLiteral("would_be_bullet")).toString().isEmpty())
-        << "the default preview must still echo the bullet — ANTS-4097's "
-           "coverage is not being removed";
+        << "return:\"full\" must still echo the bullet";
 
     // Opted in: the compact shape INSTEAD OF the bullet, not beside it.
     const QJsonObject lean = rc.cmdRoadmapLogFlipForTest(flipReq(true, true)).object();
@@ -3134,4 +3137,42 @@ TEST(RoadmapWriteHalf, Ants5283DryRunSaysWhetherTheRenderWouldChange) {
         << QJsonDocument(clean).toJson().toStdString();
     EXPECT_FALSE(clean.value(QStringLiteral("would_change")).toBool())
         << QJsonDocument(clean).toJson().toStdString();
+}
+
+// ANTS-5263, second half — with no `return`, a store-served flip or annotate
+// echoes the compact post_bullets and not the whole bullet, which grows with
+// every note. The compact form still shows the post-flip status (ANTS-4844).
+TEST(RoadmapWriteHalf, Ants5263DefaultEchoIsCompact) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    QJsonObject flip;
+    flip[QStringLiteral("caller_cwd")] = root;
+    flip[QStringLiteral("op")]         = QStringLiteral("flip");
+    flip[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    flip[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    flip[QStringLiteral("note")]       = QStringLiteral("Closed in a test.");
+    QJsonObject dry = flip;
+    dry[QStringLiteral("dry_run")] = true;
+
+    for (const QJsonObject &req : {dry, flip}) {
+        const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_FALSE(resp.contains(QStringLiteral("bullet")) ||
+                     resp.contains(QStringLiteral("would_be_bullet")))
+            << QJsonDocument(resp).toJson().toStdString();
+        const QJsonArray post = resp.value(QStringLiteral("post_bullets")).toArray();
+        ASSERT_EQ(post.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(post.at(0).toObject().value(QStringLiteral("id")).toString(),
+                  QStringLiteral("DEMO-0007"));
+        EXPECT_EQ(post.at(0).toObject().value(QStringLiteral("status")).toString(),
+                  QStringLiteral("shipped"))
+            << QJsonDocument(resp).toJson().toStdString();
+    }
 }

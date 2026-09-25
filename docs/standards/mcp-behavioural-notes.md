@@ -824,7 +824,8 @@ which heading you expect it under.
     instead of sent meaningless.
     **ANTS-4844 adds `bullet` (`would_be_bullet` on a preview)** to
     `op:"flip"` and `op:"annotate"`: the bullet the render will emit for the
-    item. `op:"append"` has echoed its would-be bullet since ANTS-2077, and
+    item. **ANTS-5263 makes it opt-in** with `return:"full"`; by default the
+    reply carries only `post_bullets` {id, status, headline}. `op:"append"` has echoed its would-be bullet since ANTS-2077, and
     flip EDITS an existing bullet rather than adding one — the higher-stakes
     of the two, with the weaker preview. It is not a substitute for the
     dropped `bytes`, and does not restore it: `bytes` measured different
