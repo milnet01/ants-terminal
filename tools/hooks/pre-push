@@ -235,7 +235,9 @@ else
         echo "          is a false pass, not a cheap one. Heal the tree and clear"
         echo "          the marker in one go:"
         echo "            cmake --build $asan_dir --clean-first && rm $asan_marker"
-        echo "          CI's build-asan job still covers this push."
+        echo "          CI runs build-asan nightly, not on push (ANTS-5343): until"
+        echo "          then nothing sanitizes this push. To run it on GitHub now:"
+        echo "            gh workflow run CI --ref main"
     elif [[ -z "$asan_edges" ]]; then
         # No ninja, no build.ninja, or a regen that would not resolve. An
         # unmeasured build is the one a caller timeout kills.
@@ -250,8 +252,9 @@ else
         echo "          (ANTS_PREPUSH_ASAN_MAX_EDGES). That is a cold or stale"
         echo "          tree: minutes of build, which a caller timeout would kill"
         echo "          mid-ninja. Run it yourself (cmake --build $asan_dir) or"
-        echo "          tools/ci-parity.sh --full; CI's build-asan job still"
-        echo "          covers this push."
+        echo "          tools/ci-parity.sh --full. CI runs build-asan nightly, not"
+        echo "          on push (ANTS-5343): until then nothing sanitizes this"
+        echo "          push. To run it on GitHub now: gh workflow run CI --ref main"
     else
         echo "pre-push: build-asan gate ($asan_edges pending build steps +"
         echo "          sanitized suite in $asan_dir) — expect a few minutes."
