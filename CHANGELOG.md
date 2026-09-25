@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log op:"amend_intro"` edits one passage of a section's intro, and `set_intro` accepts `####` and deeper headings** (ANTS-5373)
+  `amend_intro` replaces one unique `old_text` and keeps the rest of the
+  intro. `set_intro` now writes back the intros migration stores, which
+  can hold phase headings. A dry run of either echoes `previous_intro`,
+  so a caller can see what a replace would remove.
+
 - **`roadmap_log` append warns when a new project's id prefix is guessed from its folder name** (ANTS-5353)
   When a project declares no prefix, passes none and has no ids yet,
   `append` and `append_batch` carry an `id_prefix_guessed` warning

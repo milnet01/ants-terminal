@@ -5725,7 +5725,9 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         return cmdRoadmapLogAmendField(req);
     }
     // ANTS-4949 / ANTS-4968 — a section's intro, and the roadmap's preamble.
-    if (op == QStringLiteral("set_intro") || op == QStringLiteral("set_preamble"))
+    // ANTS-5373 — amend_intro patches one match inside a section's intro.
+    if (op == QStringLiteral("set_intro") || op == QStringLiteral("set_preamble") ||
+        op == QStringLiteral("amend_intro"))
         return cmdRoadmapLogSetIntro(req, op == QStringLiteral("set_preamble"));
     // ANTS-4958 — remove an emptied section; move a section with its subsections.
     if (op == QStringLiteral("delete_section"))

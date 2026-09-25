@@ -13305,6 +13305,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("render");  // ANTS-4614
                     opEnum.append("set_intro");     // ANTS-4949
                     opEnum.append("set_preamble");  // ANTS-4968
+                    opEnum.append("amend_intro");   // ANTS-5373
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
                     // ANTS-5253 — convert shipped dispatched, described in the
@@ -13318,11 +13319,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
                         "\"set_intro\" (ANTS-4949) replaces a section's intro "
-                        "prose: `section` + `new_text`, stored verbatim, no "
-                        "heading lines. \"set_preamble\" (ANTS-4968) replaces "
+                        "prose: `section` + `new_text`, stored verbatim, "
+                        "no `#` to `###` headings (`####` and deeper are "
+                        "intro text). \"amend_intro\" (ANTS-5373) replaces "
+                        "one unique `old_text` inside that intro with "
+                        "`new_text`. \"set_preamble\" (ANTS-4968) replaces "
                         "the roadmap's title and preamble: `new_text` only, "
-                        "one `# ` title line allowed. Both store-only, "
-                        "dry_run previewable, and echo replaced_intro_chars. "
+                        "one `# ` title line allowed. All three store-only, "
+                        "dry_run previewable (echoing previous_intro), and "
+                        "echo replaced_intro_chars. "
                         "\"delete_section\" (ANTS-4958) removes a section by "
                         "`section`, refusing section_not_empty while it files "
                         "an item; its intro and narration come back in the "

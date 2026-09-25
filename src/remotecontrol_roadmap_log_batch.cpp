@@ -3572,9 +3572,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
 // section on the next import, so set_intro refuses every one and set_preamble
 // allows the single `# ` title line only. The format marker needs no care:
 // the render prepends it whenever the root intro does not open with one.
+//
+// ANTS-5373 — "every one" means the levels the import reads as a section,
+// `#` to `###`. Migration stores `####` and deeper as intro text, so refusing
+// them left set_intro unable to write back the intro it holds. amend_intro
+// replaces one unique `old_text` inside the stored intro, so a small edit
+// cannot drop the rest, and a dry run echoes the intro it would replace.
 QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
                                                    bool preamble) {
+    const bool amend = !preamble &&
+        req.value(QStringLiteral("op")).toString() == QStringLiteral("amend_intro");
     const QString opName = preamble ? QStringLiteral("set_preamble")
+                         : amend    ? QStringLiteral("amend_intro")
                                     : QStringLiteral("set_intro");
     // The live root's slug is the EMPTY string, and a null QString binds as
     // SQL NULL, which matches nothing — hence QStringLiteral("").
@@ -3582,41 +3591,63 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
         preamble ? QStringLiteral("") : req.value(QStringLiteral("section")).toString().trimmed();
     if (!preamble && slug.isEmpty())
         return rcSectionOpErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: set_intro requires `section`. The "
-                           "roadmap's title and preamble are op:\"set_preamble\"."));
+            QStringLiteral("roadmap_log: %1 requires `section`. The "
+                           "roadmap's title and preamble are op:\"set_preamble\".")
+                .arg(opName));
     if (!req.contains(QStringLiteral("new_text")))
         return rcSectionOpErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: %1 requires `new_text` (an empty string "
-                           "removes the intro)").arg(opName));
+                           "%2)").arg(opName, amend
+                               ? QStringLiteral("deletes the matched text")
+                               : QStringLiteral("removes the intro")));
+    const QString oldText = req.value(QStringLiteral("old_text")).toString();
+    if (amend && oldText.isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: amend_intro requires `old_text`, the "
+                           "exact text to replace inside the stored intro"));
 
-    QString text = req.value(QStringLiteral("new_text")).toString();
-    text.remove(QChar('\r'));
-    QStringList lines = text.split(QChar('\n'));
-    for (QString &ln : lines) {
-        while (!ln.isEmpty() && ln.back().isSpace())
-            ln.chop(1);
-    }
-    while (!lines.isEmpty() && lines.first().isEmpty()) lines.removeFirst();
-    while (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
+    // Normalise and check the text the section will hold. Returns a refusal,
+    // or a null document with *intro set.
+    const auto normalise = [&](QString text, QString *intro) -> QJsonDocument {
+        text.remove(QChar('\r'));
+        QStringList lines = text.split(QChar('\n'));
+        for (QString &ln : lines) {
+            while (!ln.isEmpty() && ln.back().isSpace())
+                ln.chop(1);
+        }
+        while (!lines.isEmpty() && lines.first().isEmpty()) lines.removeFirst();
+        while (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
 
-    static const QRegularExpression kHeading(QStringLiteral("^#{1,6}\\s"));
-    static const QRegularExpression kTitle(QStringLiteral("^#\\s"));
-    int titles = 0;
-    for (const QString &ln : std::as_const(lines)) {
-        if (!kHeading.match(ln).hasMatch())
-            continue;
-        if (preamble && kTitle.match(ln).hasMatch() && ++titles == 1)
-            continue;
-        return rcSectionOpErr(QStringLiteral("bad_intro"),
-            QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, which "
-                           "the next import reads as a new section. %2")
-                .arg(ln, preamble
-                             ? QStringLiteral("The preamble may hold one `# ` title "
-                                              "line and no other heading.")
-                             : QStringLiteral("An intro holds no heading; reword the "
-                                              "line.")));
+        // `#` to `###` only: the import makes `##` and `###` sections, and a
+        // `#` is the title. Deeper headings stay intro text (ANTS-5373).
+        static const QRegularExpression kHeading(QStringLiteral("^#{1,3}\\s"));
+        static const QRegularExpression kTitle(QStringLiteral("^#\\s"));
+        int titles = 0;
+        for (const QString &ln : std::as_const(lines)) {
+            if (!kHeading.match(ln).hasMatch())
+                continue;
+            if (preamble && kTitle.match(ln).hasMatch() && ++titles == 1)
+                continue;
+            return rcSectionOpErr(QStringLiteral("bad_intro"),
+                QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, "
+                               "which the next import reads as a new section. %2")
+                    .arg(ln, preamble
+                                 ? QStringLiteral("The preamble may hold one `# ` "
+                                                  "title line and no other heading "
+                                                  "above `####`.")
+                                 : QStringLiteral("An intro may hold `####` and "
+                                                  "deeper headings, not `#` to "
+                                                  "`###`.")));
+        }
+        *intro = lines.join(QChar('\n'));
+        return QJsonDocument();
+    };
+    QString intro;
+    if (!amend) {
+        const QJsonDocument bad =
+            normalise(req.value(QStringLiteral("new_text")).toString(), &intro);
+        if (!bad.isNull()) return bad;
     }
-    const QString intro = lines.join(QChar('\n'));
 
     QString root, roadmapPath;
     QJsonDocument refusal;
@@ -3654,6 +3685,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     if (!row)
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
     const QString previous = row->intro;
+    if (amend) {
+        const int hits = int(previous.count(oldText));
+        if (hits != 1)
+            return rcSectionOpErr(hits == 0 ? QStringLiteral("intro_match_not_found")
+                                            : QStringLiteral("intro_match_ambiguous"),
+                QStringLiteral("roadmap_log: `old_text` occurs %1 times in section "
+                               "\"%2\"'s intro; it must occur exactly once")
+                    .arg(hits).arg(slug));
+        QString replaced = previous;
+        replaced.replace(oldText, req.value(QStringLiteral("new_text")).toString());
+        const QJsonDocument bad = normalise(replaced, &intro);
+        if (!bad.isNull()) return bad;
+    }
 
     const auto mutate = [&](QString *mErr) -> bool {
         return store.setSectionIntro(*sectionId, intro, mErr);
@@ -3674,6 +3718,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     // What was destroyed, as set_body's replaced_body_chars says it.
     env[QStringLiteral("replaced_intro_chars")] = int(previous.size());
     env[QStringLiteral("intro_chars")]          = int(intro.size());
+    // ANTS-5373 — on a preview, the text replaced_intro_chars counts, so a
+    // caller can see what the write would remove before making it.
+    if (dryRun) env[QStringLiteral("previous_intro")] = previous;
     rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
     return QJsonDocument(env);
 }

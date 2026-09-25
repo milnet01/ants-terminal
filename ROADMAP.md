@@ -66534,6 +66534,35 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: mcp, roadmap.
 
+- 📋 [ANTS-5372] **workspace_search over this repo hit its wall budget while a pre-push hook was building.**
+  Seen 2026-09-25 during a push hook. A whole-repo literal search
+  was hard-killed at 5 s and again at 25 s, and a glob of src, docs and
+  tests took about 20 s. The same kind of search normally returns in
+  about 3 s. Measure it with and without the hook running, and check
+  whether build trees or other large ignored paths are being walked. If
+  load alone explains it, an advisory naming the load would do.
+  **Layman:** Code search in the terminal's tools sometimes times out when the machine is busy building.
+  Kind: investigate.
+  Source: in-session-2026-09-25.
+  Lanes: mcp.
+
+- 📋 [ANTS-5373] **roadmap_log op:"set_intro" refuses an intro holding deeper headings, which migration itself stores.**
+  Reported by Vestige: `## 0.5.0`'s migrated intro holds `#### Phase 11A`
+  and `##### Camera Shake System` before its first item, and set_intro
+  refuses any heading with bad_intro. So the verb cannot write back the
+  intro it stores. The dry run of a two-line edit also reported
+  replaced_intro_chars 1012, so a caller retyping only part of the intro
+  would have deleted the phase text. Suggested: accept headings deeper
+  than the section's own level, or add amend_intro with old_text and
+  new_text. Prefer both: the level rule matches what migration stores,
+  and amend_intro makes a small edit small.
+  Also asked: a set_intro dry run should echo the current intro, so a
+  caller can see what replaced_intro_chars counts.
+  **Layman:** A section's opening text cannot be edited through the tool when it contains sub-headings.
+  Kind: fix.
+  Source: feedback-Vestige-2026-09-25.
+  Lanes: mcp, roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

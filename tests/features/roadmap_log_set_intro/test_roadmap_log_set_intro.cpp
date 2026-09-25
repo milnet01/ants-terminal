@@ -294,3 +294,79 @@ TEST(RoadmapLogSetPreamble, Ants4555GeneratedNoticeAppearsOnce) {
             << md.toStdString();
     }
 }
+
+// ------------------------------------------------------------- ANTS-5373 -----
+
+namespace {
+QJsonObject amendReq(const QString &root, const QString &oldText, const QString &newText) {
+    QJsonObject req = introReq(root, QStringLiteral("work"), newText);
+    req[QStringLiteral("op")]       = QStringLiteral("amend_intro");
+    req[QStringLiteral("old_text")] = oldText;
+    return req;
+}
+}  // namespace
+
+// `####` and deeper are intro text, which is what migration stores; the
+// import makes sections of `##` and `###` only.
+TEST(RoadmapLogSetIntro, Ants5373DeepHeadingsAccepted) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("work"),
+                 QStringLiteral("Goal.\n\n#### Phase 11A\n\n##### Camera Shake\n")),
+        false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_TRUE(has(md, "## Work\n\nGoal.\n\n#### Phase 11A\n\n##### Camera Shake\n")) << md;
+}
+
+// amend_intro replaces one match and keeps the rest of the intro.
+TEST(RoadmapLogSetIntro, Ants5373AmendIntroKeepsTheRest) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("work"),
+                 QStringLiteral("First line.\n\n#### Phase\n\nPhase text.")), false)
+                    .object().value(QStringLiteral("ok")).toBool());
+    const QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(
+        amendReq(fx.root, QStringLiteral("First line."), QStringLiteral("Better line.")),
+        false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("op")).toString(), QStringLiteral("amend_intro"));
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_TRUE(has(md, "## Work\n\nBetter line.\n\n#### Phase\n\nPhase text.\n")) << md;
+}
+
+// The match must be unique, and a refusal writes nothing.
+TEST(RoadmapLogSetIntro, Ants5373AmendIntroNeedsOneMatch) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    RemoteControl rc(nullptr);
+    const QJsonObject none = rc.cmdRoadmapLogSetIntroForTest(
+        amendReq(fx.root, QStringLiteral("absent"), QStringLiteral("x")), false).object();
+    EXPECT_EQ(none.value(QStringLiteral("code")).toString(),
+              QStringLiteral("intro_match_not_found"));
+    const QJsonObject many = rc.cmdRoadmapLogSetIntroForTest(
+        amendReq(fx.root, QStringLiteral("o"), QStringLiteral("x")), false).object();
+    EXPECT_EQ(many.value(QStringLiteral("code")).toString(),
+              QStringLiteral("intro_match_ambiguous"));
+    const QJsonObject noOld = rc.cmdRoadmapLogSetIntroForTest(
+        amendReq(fx.root, QString(), QStringLiteral("x")), false).object();
+    EXPECT_EQ(noOld.value(QStringLiteral("code")).toString(),
+              QStringLiteral("missing_field"));
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}
+
+// A preview echoes the intro that replaced_intro_chars counts.
+TEST(RoadmapLogSetIntro, Ants5373DryRunEchoesPreviousIntro) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req = introReq(fx.root, QStringLiteral("work"), QStringLiteral("Preview."));
+    req[QStringLiteral("dry_run")] = true;
+    const QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(req, false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("previous_intro")).toString(),
+              QStringLiteral("The old work intro."));
+}
