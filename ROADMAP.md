@@ -61216,8 +61216,14 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 DOOM.
 
-- 📋 [ANTS-4829] **changelog_log op:"add_from_roadmap" has no headline override, so a defect-phrased roadmap headline lands verbatim in the release notes.**
+- 🚫 [ANTS-4829] **changelog_log op:"add_from_roadmap" has no headline override, so a defect-phrased roadmap headline lands verbatim in the release notes.**
   Three projects hit this independently and each rewrote a whole batch by hand. ANTS-4759 gave tools/check-shipped-coverage.sh a byte-identity report; the verb side is untouched, and op:"add_batch" reaches the same path for an id-only entry. `body` already overrides the reused Layman line, so accepting `headline` the same way keeps the id, the Kind-to-category derivation and the citation. A refusal would not help: the verb cannot tell a defect-phrased headline from a feature-phrased one.
+  Dropped (2026-09-25) as a duplicate of ANTS-4360, shipped 2026-08-14:
+  under add_from_roadmap an explicit `summary` overrides the reused
+  headline while the id and category stay. Checked live: a dry run with
+  summary set returned the override as the bullet's headline, cited
+  (ANTS-4829). Filed 2026-09-03, after that fix; the reporters likely
+  used an older build or did not know `summary` works there.
   **Layman:** Release notes generated from roadmap items describe the bug instead of the fix.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 DOOM/Slipcase/Snatch.
@@ -72199,7 +72205,7 @@ shipped.
   Source: finbreak_Ants_MCP_Feedback.md (2026-07-25 triage).
   Resolved (2026-07-25) via fix (1), the pre-call qualification, which the bullet identified as the whole win. Both pre-call surfaces now name the limit: the SessionStart hook menu line (mcporientation.cpp) reads `find_sources -> "who calls bar?" (C/C++ ONLY -- else use codebase_index / workspace_search)`, and the neighbouring find_definition line gained its language list so the asymmetry that caused the trap is visible rather than inferred. The tool_info catalog selection_hint now LEADS with the limit. Note the hint had to be rewritten twice: ANTS-1897 INV-7 requires it start with "Use " and stay under 280 chars, and ANTS-1453 HINT-3 caps it at 240 — the first draft was 490 and failed both. Final is 236. Fix (2) (a distinct lang_unsupported refusal) NOT built: it is a behaviour change to an ok:true path, and (1) closes the reported trap.
 
-- 📋 [ANTS-3620] **changelog_log op:add_from_roadmap carries an imperative roadmap headline verbatim into a `### Added` block ("Add a … button" under Added).**
+- 🚫 [ANTS-3620] **changelog_log op:add_from_roadmap carries an imperative roadmap headline verbatim into a `### Added` block ("Add a … button" under Added).**
   Filed as CONSIDERED, not planned — the reporter explicitly flagged it as take-or-leave and near-zero severity, and verbatim reuse is the entire point of add_from_roadmap.
   Observation: closing a feature bullet with `add_from_roadmap category:"Added"` produced `- **Add a one-click 'copy diagnostics for a bug report' button.** (ONEUP-0031)` under `### Added` — the roadmap format mandates imperative headlines, while a Keep-a-Changelog `### Added` entry conventionally reads as a delivered thing, so the verb doubles the section name.
   Options if ever picked up: (a) when add_from_roadmap targets Added/Removed, strip a leading imperative verb that duplicates the section name — clever but lossy and surprising; (b) note in the verb help that add_from_roadmap pairs most cleanly with Changed/Fixed, and that op:add with a hand-written summary is preferred when the headline is imperative and the category is Added. (b) is the honest, cheap one. Decide explicitly rather than leave the behaviour undocumented.
@@ -72242,6 +72248,11 @@ shipped.
   the point of the verb, since for fixes it is the problem.
 
   Source: DOOM_Ants_MCP_Feedback.md 2026-08-20.
+  Dropped (2026-09-25): its fix option is what ANTS-4360 shipped
+  2026-08-14 (an explicit `summary` overrides the reused headline under
+  add_from_roadmap). Checked live with a dry run on ANTS-4829. The
+  remaining wording concern (an imperative headline under ### Added) is
+  answered by passing a summary.
 
 - ✅ [ANTS-3621] **feedback_log op:compact_resolved refuses a v4 feedback file as `not_v2` and tells the caller to run migrate_v2 — a version gate that reads `!= 2` instead of `>= 2`.**
   Hit while running the maintainer compaction sweep across all 13 *_Ants_MCP_Feedback.md files. OneUp_Ants_MCP_Feedback.md carries `<!-- ants-mcp-feedback: 4 -->` and compact_resolved refused: `{code:"not_v2", error:"compact_resolved requires a v2 file (...); this file is v4 — run op:migrate_v2 first"}`.

@@ -2690,6 +2690,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["error"] = QStringLiteral("unknown status filter: %1").arg(verbatim);
         out["code"] = QStringLiteral("bad_status");
         out["accepted"] = QJsonArray::fromStringList(kAcceptedStatusFilters);
+        // ANTS-5351 — a list ("planned,in-progress") is the natural first try,
+        // and `accepted` lists the union it wanted without saying so.
+        if (statusArg.contains(QRegularExpression(QStringLiteral("[,|\\s]"))))
+            out["hint"] = QStringLiteral(
+                "status takes ONE value. \"active\" is planned + in-progress; "
+                "\"all\" is every status. For any other combination, make one "
+                "call per status.");
         return QJsonDocument(out);
     }
 

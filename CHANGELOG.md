@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **The README shows a short demo of Ants Terminal in action** (ANTS-5367)
+  A 25-second clip, recorded by demoreel on a private virtual screen, plays
+  below the main screenshot.
+
 - **Help → About names tabs whose Claude Code session runs an older Ants MCP** (ANTS-5341)
   Each Claude Code session keeps the Ants MCP copy it started with
   until it reconnects. The About box now asks every running copy for
@@ -49,6 +53,11 @@ for security-relevant changes.
   summing the log's lines counted it two to four times.
 
 ### Changed
+
+- **Asking the roadmap for two statuses at once now explains the one-word way to do it** (ANTS-5351)
+  roadmap_query with a list such as "planned,in-progress" still refuses,
+  but now says that "active" means planned plus in-progress and "all"
+  means every status.
 
 - **The roadmap window's title says where its contents come from** (ANTS-5368)
   It reads "Roadmap — from the roadmap store" on a project the store

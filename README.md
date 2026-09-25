@@ -29,6 +29,14 @@
        width="900">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/ants-terminal-demo.gif"
+       alt="Ants Terminal opens with a plain prompt, lists source files, then prints the words colour and Unicode in green, blue and magenta with a tick, a lambda and a sparkle"
+       width="900">
+  <br><sub>Recorded with <a href="https://github.com/milnet01/demoreel">demoreel</a>
+  on a private virtual screen.</sub>
+</p>
+
 ---
 
 ## What is this?
