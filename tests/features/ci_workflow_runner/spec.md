@@ -22,7 +22,7 @@ its own start-up check enforces at run time.
 **INV-3 — a step runs with the runner's semantics.** On a fixture workflow:
 the workflow's, the job's and the step's `env` apply, and job keys matching `CCACHE_*`
 do not; `working-directory` sets the cwd; `CI=true` and `LC_ALL=C.UTF-8` are
-set and `DISPLAY` is not; `timeout <duration> cmd` runs `cmd`; after a failing
+set and `DISPLAY` and `BASH_ENV` are not; `timeout <duration> cmd` runs `cmd`; after a failing
 step a later step runs only if it has `if: always()`; the run exits non-zero.
 
 **INV-4 — what has no local meaning is refused, not guessed.** Each of these

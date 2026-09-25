@@ -101,10 +101,14 @@ with tempfile.TemporaryDirectory() as tmp:
     with open(wf, "w") as f:
         f.write(FIXTURE)
     os.environ["DISPLAY"] = ":99"
+    benv = os.path.join(tmp, "benv.sh")
+    with open(benv, "w") as f:
+        f.write("exit 7\n")
+    os.environ["BASH_ENV"] = benv
     rc, out = runner("run", "j", workflow=wf)
     check("MARK-ENV-OK" in out,
           "INV-3 workflow/job/step env, CCACHE_ drop, cwd, CI/LC_ALL, "
-          "no DISPLAY, timeout shim")
+          "no DISPLAY, no BASH_ENV, timeout shim")
     check("MARK-SKIPPED-RAN" not in out, "INV-3 a step after a failure is skipped")
     check("MARK-ALWAYS-RAN" in out, "INV-3 an if: always() step still runs")
     check(rc != 0, "INV-3 a failing step fails the run")

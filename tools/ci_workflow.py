@@ -51,6 +51,8 @@ DROPPED_ENV = re.compile(r"^CCACHE_")
 # What the GitHub runner's environment sets that ci.yml relies on without
 # declaring. LC_ALL: the runner is C.UTF-8, and a dev box's Unicode collation
 # has changed a test outcome (ANTS-2120). No display: the runner has none.
+# No BASH_ENV: a non-interactive bash sources it whatever --noprofile/--norc
+# say, and the runner leaves it unset (found by games-hub, relayed by UT_Ants).
 RUNNER_ENV = {
     "CI": "true",
     "GITHUB_ACTIONS": "true",
@@ -58,7 +60,7 @@ RUNNER_ENV = {
     "RUNNER_OS": "Linux",
     "LC_ALL": os.environ.get("CI_PARITY_LOCALE", "C.UTF-8"),
 }
-RUNNER_UNSET = ("DISPLAY", "WAYLAND_DISPLAY")
+RUNNER_UNSET = ("DISPLAY", "WAYLAND_DISPLAY", "BASH_ENV")
 
 # Prepended to every step. The step budgets in ci.yml are sized for the
 # GitHub runner, and a `timeout` that fires here SIGTERMs ninja, which
