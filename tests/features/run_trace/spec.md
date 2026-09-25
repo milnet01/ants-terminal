@@ -65,7 +65,9 @@ clock and the random source passed in.
   key moves the index. A malformed file falls back to the default path and
   says so in `config_warning`. A path escaping the root refuses `bad_path`. The
   root is the nearest ancestor holding `.git`, which is where `gate-record`
-  looks.
+  looks. (`gate-record` is the claude-config v2 draft's commit-msg hook,
+  readable at ~/.claude commit 1b5847a; it was never installed, so nothing
+  checks the index today — CFG-0596.)
 - **INV-13 — the transcript is named, never guessed.** A `session_id` resolves
   to `<projects dir>/<slug of cwd>/<session_id>.jsonl`. A transcript path
   outside the projects directory refuses. No code path picks "the newest"

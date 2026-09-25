@@ -3,8 +3,16 @@
 // Three ops. `start` mints the id and parks a pending record OUTSIDE the
 // project, so a run in flight dirties nothing git can see. `finish` writes the
 // detail file, the optional cost row and the index row, in that order: the row
-// is what the gate-record hook checks, so it lands last and a failure before it
-// leaves no row claiming a run that recorded nothing. `get` reads either state.
+// is what the draft gate-record hook would check, so it lands last and a
+// failure before it leaves no row claiming a run that recorded nothing. `get`
+// reads either state.
+//
+// `gate-record` and `draft/v2` below name the claude-config v2 workflow draft,
+// deleted from ~/.claude on 2026-09-25 and still readable at its commit 1b5847a
+// (`git -C ~/.claude show 1b5847a:draft/v2/hooks/gate-record`). The hook was
+// never installed to ~/.claude/hooks, and this repo's tools/hooks run no
+// commit-msg hook, so nothing checks the index today (CFG-0596). Each mention
+// records a rule this verb shares with that draft, not a check that runs.
 //
 // Refusal codes: docs/standards/mcp-error-codes.md (`already_recorded` and
 // `coverage_required` were minted here).
@@ -32,7 +40,8 @@ const char kCostTsv[] = "docs/reviews/run-costs.tsv";
 const char kKinds[] = "GCVEFRAL";
 
 // The run-costs.tsv columns, identical to draft/v2/tools/run-cost.py's
-// COLUMNS so a table either tool wrote is readable by the other.
+// COLUMNS (~/.claude commit 1b5847a) so a table either tool wrote is readable
+// by the other.
 const QStringList &costColumns() {
     static const QStringList c{
         QStringLiteral("date"), QStringLiteral("arm"), QStringLiteral("subject"),
