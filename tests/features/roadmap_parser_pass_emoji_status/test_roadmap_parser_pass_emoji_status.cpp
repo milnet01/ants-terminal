@@ -5,11 +5,13 @@
 // session-5 symptom (✅ Done lines reading as 📋) and locks in the
 // leading-emoji skip.
 
+#include "passheadingwrite.h"
 #include "roadmapdialog.h"
 
 #include <gtest/gtest.h>
 
 #include <QString>
+#include <QStringList>
 #include <QStringLiteral>
 
 namespace {
@@ -57,6 +59,23 @@ QString emojiStatusDoc() {
         "- **Finding**: keyword only.\n");
 }
 
+// ANTS-5337 — RetroDB's PASS-57-1 shape: the block's only Status line sits 61
+// lines below its heading, past the reader's and the writer's old 50-line
+// window. The second block keeps the sniffer's ≥2 Pass + ≥2 Status signal.
+QString lateStatusDoc() {
+    QStringList l;
+    l << QStringLiteral("## Active") << QString()
+      << QStringLiteral("#### Pass 57.1 (HIGH, M) Late status line");
+    for (int k = 0; k < 60; ++k)
+        l << QStringLiteral("- finding line %1").arg(k);
+    l << QStringLiteral("- **Status**: done (2026-08-06). Filed from a review.")
+      << QString()
+      << QStringLiteral("#### Pass 57.2 (LOW, S) Early status line")
+      << QStringLiteral("- **Status**: todo")
+      << QString();
+    return l.join(QLatin1Char('\n'));
+}
+
 }  // namespace
 
 // INV-1 — `✅ Done (v3.6.3x)` reads as shipped, not planned.
@@ -101,4 +120,30 @@ TEST(roadmap_parser_pass_emoji_status, Inv4BareKeywordUnchanged) {
         EXPECT_NE(b.status, kPlanned)
             << "INV-4: no fixture status should fall through to 📋";
     }
+}
+
+// INV-5 (ANTS-5337) — the reader finds a Status line anywhere in its block.
+TEST(roadmap_parser_pass_emoji_status, Inv5StatusLineAnywhereInBlock) {
+    const auto bullets = RoadmapDialog::parseBullets(lateStatusDoc());
+    ASSERT_EQ(bullets.size(), 2) << "precondition: two pass-heading bullets";
+    EXPECT_EQ(bullets[0].status, kShipped)
+        << "INV-5: a `done` Status line 61 lines into its block must read ✅; "
+           "RetroDB's PASS-57-1 migrated as open";
+    EXPECT_EQ(bullets[1].status, kPlanned) << "INV-5: the early line still reads";
+}
+
+// INV-6 (ANTS-5337) — the writer rewrites that same line rather than
+// inserting a second one under the heading.
+TEST(roadmap_parser_pass_emoji_status, Inv6FlipRewritesTheLateLine) {
+    const auto r = PassHeadingWrite::flipPassStatus(
+        lateStatusDoc(), QStringLiteral("PASS-57-1"), QString(),
+        QStringLiteral("todo"));
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.markdown.count(QStringLiteral("**Status**")),
+              lateStatusDoc().count(QStringLiteral("**Status**")))
+        << "INV-6: the flip added a Status line instead of rewriting the "
+           "block's own";
+    const auto bullets = RoadmapDialog::parseBullets(r.markdown);
+    ASSERT_EQ(bullets.size(), 2);
+    EXPECT_EQ(bullets[0].status, kPlanned) << "INV-6: the flip did not take";
 }

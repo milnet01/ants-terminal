@@ -409,7 +409,8 @@ Two rules the corpus forced that the model does not state:
 
 - **A pass block's status is the FIRST `- **Status**:` line that classifies.**
   Not merely the first such line: the shipped reader scans forward from the
-  heading, bounded by the next heading of level ≤ 4 or 50 lines, and a
+  heading, bounded by the next heading of level ≤ 4 (ANTS-5337 removed a
+  50-line cap that missed a late line), and a
   content-free `- **Status**:` line (no emoji and no keyword) does not stop the
   scan. First-match-wins is not a new convention — `PassHeadingWrite::
   flipPassStatus()` already works that way ("rewrite its FIRST `- **Status**:`
@@ -418,7 +419,7 @@ Two rules the corpus forced that the model does not state:
   first such line whatever it holds, the reader takes the first that
   *classifies*. On a block whose first Status line is content-free — INV-10's
   fixture — they pick different lines. Migration takes the **reader's** answer,
-  including its 50-line bound, because the reader is what decided the status
+  including its block bound, because the reader is what decided the status
   this plan is filing.
 
   § 1.1 records more Status lines than pass headings, and the command below is

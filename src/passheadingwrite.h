@@ -70,8 +70,9 @@ struct WriteResult {
 // else whose heading tail matches `locatorHeadline`, and rewrite its
 // FIRST `- **Status**:` line to `keyword`, preserving the line's style
 // (keyword-only / emoji-only / emoji+keyword). If the located pass has
-// no Status line within the lookahead window, insert one directly under
-// the heading. First match wins; every other byte is unchanged.
+// no Status line in its block (to the next heading of level <= 4), insert
+// one directly under the heading. First match wins; every other byte is
+// unchanged.
 // code: bullet_not_found.
 WriteResult flipPassStatus(const QString &markdown,
                            const QString &locatorId,

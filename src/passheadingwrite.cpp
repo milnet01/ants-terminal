@@ -7,7 +7,6 @@
 
 #include <QRegularExpression>
 #include <QStringList>
-#include <algorithm>
 
 namespace PassHeadingWrite {
 
@@ -188,12 +187,13 @@ WriteResult flipPassStatus(const QString &markdown,
         return r;
     }
 
-    // Scan the lookahead window for the first `- **Status**:` line,
-    // bounded by the next heading (level ≤ 4) or 50 lines — same window
-    // as the reader (RoadmapParse::parsePassHeadingBullets, roadmapparse.cpp).
-    const int probeCap = std::min<int>(lines.size(), head + 51);
+    // Scan the block for the first `- **Status**:` line, bounded by the next
+    // heading (level ≤ 4) or EOF — the same span as the reader
+    // (RoadmapParse::parsePassHeadingBullets, roadmapparse.cpp). ANTS-5337:
+    // both were capped at 50 lines, which missed a late line and inserted a
+    // second one here.
     int statusLine = -1;
-    for (int j = head + 1; j < probeCap; ++j) {
+    for (int j = head + 1; j < lines.size(); ++j) {
         if (isHeadingLeQ4(lines.at(j))) break;
         if (rxStatusPrefix().match(lines.at(j)).hasMatch()) {
             statusLine = j;

@@ -18,7 +18,6 @@
 #include <QSet>
 #include <QStringView>
 
-#include <algorithm>
 
 // ANTS-1287: headingLevel + slugifyHeading + uniqueSlug live in RoadmapIndex.
 // File-scope using-declarations preserve the unqualified call surface the
@@ -830,9 +829,13 @@ parsePassHeadingBullets(const QStringList &lines) {
         const QString sub  = m.captured(3).trimmed();   // "B" (sub-pass)
         const QString meta = m.captured(4).trimmed();   // "CRITICAL, S"
         const QString tail = m.captured(5).trimmed();
-        // Status lookahead. 50-line cap keeps the scan bounded on
-        // sparse docs; a heading without a Status marker within the
-        // window defaults to planned (📋).
+        // Status lookahead over the whole block: to the next heading of
+        // level ≤ 4, or EOF. A heading with no Status marker in its block
+        // defaults to planned (📋). ANTS-5337 — this was capped at 50 lines,
+        // and RetroDB's PASS-57-1 carries its only Status line 61 lines down,
+        // so a shipped item migrated as open. The heading stop already bounds
+        // the scan: each block is read once, so the whole pass stays linear.
+        // PassHeadingWrite::flipPassStatus scans the same span and must.
         QString statusWord;
         // ANTS-3764 — the author's Status value, verbatim. The reader
         // classifies on a lowercased keyword and throws the rest away;
@@ -843,9 +846,7 @@ parsePassHeadingBullets(const QStringList &lines) {
         // STORAGE strips nothing, so `**un-gated (2026-07-05).**` keeps its
         // asterisks.
         QString statusValue;
-        const int probeCap = std::min<int>(
-            lines.size(), i + 51);
-        for (int j = i + 1; j < probeCap; ++j) {
+        for (int j = i + 1; j < lines.size(); ++j) {
             const QString &peek = lines[j];
             // Stop at any heading level ≤ 4 (next sibling/parent).
             if (peek.startsWith(QStringLiteral("#")) &&

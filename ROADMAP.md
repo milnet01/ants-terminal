@@ -65873,6 +65873,12 @@ parse, not that file.
   file, so for a file-sourced dialect it should drop orphans, or refuse
   `orphans_present` listing them, and report the orphan count in its
   envelope either way.
+  Fixed 154a4a71: github-task-list convert refuses orphans_present
+  inside mutate(), rolls back, reports items_orphaned + orphaned_ids in
+  original case. Verified end to end on the real Vestige project via
+  rebuilt ants-mcpd (dry run, 1122 orphans, file unchanged). Vestige
+  then migrated via deregister + fresh migrate + convert (Vestige
+  9905f92, 1105 items, 0 orphans, file_in_sync). Ship after CI green.
   **Layman:** Converting a roadmap can bring back hundreds of old, deleted items from an out-of-date copy the tool kept.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
@@ -65884,6 +65890,10 @@ parse, not that file.
   line. Compare at word level with headlines and bodies re-joined across
   wraps, or report text_lost_words separately. Where real loss remains,
   convert should refuse unless the caller acknowledges it.
+  Measured again (2026-09-25, Vestige real convert 9905f92): tool
+  flagged 996 text_lost lines; Vestige's normalised containment check
+  found 0 real losses. The two near-misses were a leading 🚧 prefix and
+  removed inner bold.
   **Layman:** The safety check meant to warn about lost roadmap text also fires when nothing was lost, so nobody can trust it.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
@@ -65938,6 +65948,62 @@ parse, not that file.
   Kind: doc-fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
   Lanes: mcp.
+
+- 🚫 [ANTS-5333] **Render stamps the ants-v1 format marker on a pass-headings file, which makes the project unreadable.**
+  op:render writes `<!-- ants-roadmap-format: 1 -->` as line 1 of
+  RetroDB's roadmap.md; the store says pass-headings, the file sniffs
+  as ants-v1, so roadmap_query refuses unrecognised_format and flip
+  refuses bullet_not_found. Emit the marker for the stored
+  source_format, or none for pass-headings, and test render then read
+  back through roadmap_query.
+  Dropped (2026-09-25): duplicate of ANTS-5230, filed before the triage
+  checked for it. Work tracks there.
+  **Layman:** Publishing a Pass-style roadmap adds a label that says it is a different format, and every read then refuses.
+  Kind: fix.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5334] **roadmap_log writes on a store-backed pass-headings project still take the markdown path.**
+  After ANTS-4803, roadmap_query answers source:store on RetroDB, but
+  flip dry_run returns {file, line, format:pass-headings} with no
+  would_write[]. Route pass-headings writes through the store write
+  sequence as ants-v1 does. ANTS-4803 covered reads and render only.
+  **Layman:** On a Pass-style roadmap, reads come from the database but edits bypass it, so the two drift apart on the first edit.
+  Kind: fix.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5335] **roadmap_migrate reports store_backed:false for pass-headings while roadmap_query serves it from the store.**
+  The envelope still carries the pre-ANTS-4803 hint 'NOTHING READS
+  THEM'. A session trusting it deregisters a working migration. Compute
+  store_backed from the same gate the read path uses.
+  **Layman:** The migration tool says a Pass-style roadmap isn't served from the database when it actually is.
+  Kind: fix.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
+
+- 🚫 [ANTS-5336] **Render adds a second Status line to every pass-headings item instead of rewriting the author's.**
+  The author's `- **Status**: planned (date). Lanes: ...` line is kept
+  and a canonical one is inserted beside it. Treat the author's line as
+  the status slot: rewrite its keyword, keep its trailing prose.
+  Dropped (2026-09-25): duplicate of ANTS-5231, filed before the triage
+  checked for it. Work tracks there; RetroDB's evidence
+  (Ants_MCP_Feedback_Files/RetroDB_render_evidence_2026-09-25/) and its
+  'rewrite the author's Status line in place' suggestion carry over.
+  **Layman:** Publishing a Pass-style roadmap gives every item two status lines, which can contradict each other.
+  Kind: fix.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5337] **Migration misses a pass-headings Status line that sits late in its block.**
+  RetroDB PASS-57-1: the only Status line, `done (2026-08-06)`, sits
+  deep in the block; migration records todo with status_defaulted.
+  Accept a Status line anywhere before the next heading, or refuse
+  naming the item.
+  **Layman:** A finished item on a Pass-style roadmap can be imported as still open when its status line is far down.
+  Kind: fix.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
+  Lanes: roadmap-store.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

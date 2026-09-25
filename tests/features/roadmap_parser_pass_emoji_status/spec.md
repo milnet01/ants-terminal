@@ -44,6 +44,20 @@ directly when no keyword follows.
 `- **Status**: in-progress` still reads as 🚧 — the fix is additive
 and does not perturb the established keyword classification.
 
+### INV-5 — a Status line anywhere in its block is found (ANTS-5337)
+
+The reader takes the first `- **Status**:` line between the `#### Pass`
+heading and the next heading of level ≤ 4, however far down it sits.
+RetroDB's PASS-57-1 carries its only Status line 61 lines into its block;
+the old 50-line window missed it and the item migrated as open.
+
+### INV-6 — a flip rewrites that same line (ANTS-5337)
+
+`PassHeadingWrite::flipPassStatus` scans the same span as the reader, so it
+rewrites the late line rather than inserting a second Status line under the
+heading. The two scans must stay identical: a writer window narrower than the
+reader's is how a flip adds a line the reader then ignores.
+
 ## Test plan
 
 Behavioural test against `RoadmapDialog::parseBullets`, which
