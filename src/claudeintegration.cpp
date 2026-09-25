@@ -13816,6 +13816,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         locItemProps["note"] = p;
                     }
                     {
+                        // ANTS-5358 — a mixed-status batch in one call.
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["enum"] = QJsonArray{QStringLiteral("planned"),
+                                               QStringLiteral("in-progress"),
+                                               QStringLiteral("shipped"),
+                                               QStringLiteral("considered"),
+                                               QStringLiteral("dropped")};
+                        p["description"] = QStringLiteral(
+                            "op:\"flip_batch\" — this locator's own target "
+                            "status; the call-level `to_status` is the "
+                            "fallback, and may be omitted when every locator "
+                            "carries one (ANTS-5358). Refused on "
+                            "op:\"annotate_batch\" and on a pass-headings "
+                            "roadmap.");
+                        locItemProps["to_status"] = p;
+                    }
+                    {
                         QJsonObject p;
                         p["type"] = "boolean";
                         p["description"] = QStringLiteral(

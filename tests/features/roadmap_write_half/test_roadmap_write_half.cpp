@@ -2761,3 +2761,103 @@ TEST(RoadmapWriteHalf, Ants4982CallLevelStatusIsTheFallback) {
     EXPECT_EQ(statusOf(ids.at(0).toString(), projectId), QStringLiteral("planned"));
     EXPECT_EQ(statusOf(ids.at(1).toString(), projectId), QStringLiteral("in-progress"));
 }
+
+// ------------------------------------------------------------- ANTS-5358 -----
+
+namespace {
+QJsonObject flipLoc(const QString &id, const QString &toStatus = QString()) {
+    QJsonObject loc;
+    loc[QStringLiteral("id")] = id;
+    if (!toStatus.isEmpty()) loc[QStringLiteral("to_status")] = toStatus;
+    return loc;
+}
+}  // namespace
+
+// A locator's own to_status wins; the call-level one fills the rest.
+TEST(RoadmapWriteHalf, Ants5358PerLocatorStatusOnTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+        req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+        req[QStringLiteral("locators")]   = QJsonArray{
+            flipLoc(QStringLiteral("DEMO-0007")),
+            flipLoc(QStringLiteral("DEMO-0003"), QStringLiteral("in-progress"))};
+        resp = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0007"), projectId), QStringLiteral("shipped"));
+    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0003"), projectId), QStringLiteral("in-progress"));
+}
+
+// With every locator carrying its own, the call-level to_status may be
+// omitted, and the envelope then carries no batch-wide one.
+TEST(RoadmapWriteHalf, Ants5358EveryLocatorOwnStatusNeedsNoCallLevel) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp, refused;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+        req[QStringLiteral("locators")]   = QJsonArray{
+            flipLoc(QStringLiteral("DEMO-0007"), QStringLiteral("in-progress")),
+            flipLoc(QStringLiteral("DEMO-0003"), QStringLiteral("considered"))};
+        resp = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+        // One locator with no status and no call-level fallback: the call
+        // refuses, naming both places a status can go.
+        req[QStringLiteral("locators")] = QJsonArray{
+            flipLoc(QStringLiteral("DEMO-0007"), QStringLiteral("shipped")),
+            flipLoc(QStringLiteral("DEMO-0003"))};
+        refused = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(resp.contains(QStringLiteral("to_status")));
+    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0007"), projectId), QStringLiteral("in-progress"));
+    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0003"), projectId), QStringLiteral("considered"));
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(), QStringLiteral("missing_field"))
+        << QJsonDocument(refused).toJson().toStdString();
+}
+
+// The markdown path (a project the store does not serve) honours it too.
+TEST(RoadmapWriteHalf, Ants5358PerLocatorStatusOnTheFile) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()));
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+        req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+        req[QStringLiteral("locators")]   = QJsonArray{
+            flipLoc(QStringLiteral("DEMO-0007")),
+            flipLoc(QStringLiteral("DEMO-0003"), QStringLiteral("in-progress"))};
+        resp = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(QStringLiteral("✅ [DEMO-0007]"))) << file.toStdString();
+    EXPECT_TRUE(file.contains(QStringLiteral("\U0001F6A7 [DEMO-0003]"))) << file.toStdString();
+}

@@ -20,6 +20,26 @@
 
 using namespace rcdetail;  // ANTS-3833
 
+namespace {
+
+// ANTS-5358 — one lifecycle word or emoji to the (emoji, word) pair a
+// flip_batch target carries. Shared by the call-level to_status and the
+// per-locator one, so the two cannot accept different spellings.
+bool rlResolveBatchStatus(const QString &s, QString *emoji, QString *word) {
+    static const struct { const char *word; const char *emoji; } kStatuses[] = {
+        {"planned",     "📋"}, {"in-progress", "🚧"}, {"shipped", "✅"},
+        {"considered",  "💭"}, {"dropped",     "🚫"},   // ANTS-4977
+    };
+    for (const auto &st : kStatuses) {
+        const QString w = QString::fromUtf8(st.word);
+        const QString e = QString::fromUtf8(st.emoji);
+        if (s == w || s == e) { *emoji = e; *word = w; return true; }
+    }
+    return false;
+}
+
+}  // namespace
+
 // ANTS-4383 — say WHY the id sequence jumped.
 //
 // A caller reported two consecutive batches of five allocating CFG-0021…0025
@@ -127,21 +147,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                "per-locator `note` to change status and "
                                "annotate in one call"));
     }
-    else if (toStatus == QStringLiteral("planned")     ||
-             toStatus == QStringLiteral("📋")) { targetEmoji = QStringLiteral("📋"); targetStatusWord = QStringLiteral("planned"); }
-    else if (toStatus == QStringLiteral("in-progress") ||
-             toStatus == QStringLiteral("🚧")) { targetEmoji = QStringLiteral("🚧"); targetStatusWord = QStringLiteral("in-progress"); }
-    else if (toStatus == QStringLiteral("shipped")     ||
-             toStatus == QStringLiteral("✅")) { targetEmoji = QStringLiteral("✅"); targetStatusWord = QStringLiteral("shipped"); }
-    else if (toStatus == QStringLiteral("considered")  ||
-             toStatus == QStringLiteral("💭")) { targetEmoji = QStringLiteral("💭"); targetStatusWord = QStringLiteral("considered"); }
-    else if (toStatus == QStringLiteral("dropped")     ||   // ANTS-4977
-             toStatus == QStringLiteral("🚫")) { targetEmoji = QStringLiteral("🚫"); targetStatusWord = QStringLiteral("dropped"); }
-    else if (toStatus.isEmpty())
-        return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: to_status is required under "
-                           "op:\"flip_batch\""));
-    else
+    else if (!toStatus.isEmpty() &&
+             !rlResolveBatchStatus(toStatus, &targetEmoji, &targetStatusWord))
         return rlErr(QStringLiteral("bad_status"),
             QStringLiteral("roadmap_log: unknown to_status \"%1\" — expected "
                            "planned / in-progress / shipped / considered / dropped")
@@ -157,6 +164,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     if (locators.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: `locators` is empty"));
+    // ANTS-5358 — a locator may carry its own to_status; the call-level one is
+    // the fallback, as `status` is on append_batch. It is required only when
+    // some locator has none.
+    if (!annotateMode && toStatus.isEmpty()) {
+        for (const auto &v : locators) {
+            if (v.toObject().value(QStringLiteral("to_status")).toString().isEmpty())
+                return rlErr(QStringLiteral("missing_field"),
+                    QStringLiteral("roadmap_log: to_status is required under "
+                                   "op:\"flip_batch\" — at call level, or on "
+                                   "every locator"));
+        }
+    }
 
     // 3. resolve caller_cwd → ROADMAP.md.
     const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
@@ -211,6 +230,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         if (target)
             return rcPassStoreWriteUnsupported(annotateMode
                 ? QStringLiteral("annotate_batch") : QStringLiteral("flip_batch"));
+        // ANTS-5358 — the pass writer takes one call-level to_status. Refused
+        // rather than ignored: a per-locator target dropped silently would
+        // leave the caller believing a status was set that was not.
+        for (const auto &v : locators) {
+            if (!v.toObject().value(QStringLiteral("to_status")).toString().isEmpty())
+                return rlErr(QStringLiteral("unsupported_format"),
+                    QStringLiteral("roadmap_log: a per-locator to_status is not "
+                                   "supported on a pass-headings roadmap yet — "
+                                   "pass one call-level to_status, one call per "
+                                   "target status"));
+        }
         return cmdRoadmapLogPassFlipBatch(req, roadmapPath, markdown,
                                           annotateMode);
     }
@@ -274,6 +304,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         QString anchorToInject;         // filled in phase 1.5
         int     locatorIndex  = -1;
         bool    isV1Bullet    = false;  // ANTS-3565 — resolved via ants-v1
+        QString toEmoji;                // ANTS-5358 — this locator's target,
+        QString toWord;                 // or the call-level one
     };
     QVector<Target> targets;
     QJsonArray skipped;
@@ -324,6 +356,25 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                 "`note` on every locator — this one has none, "
                                 "and an annotate without a note writes nothing"));
             continue;
+        }
+        // ANTS-5358 — this locator's own to_status, else the call-level one.
+        QString locEmoji = targetEmoji, locWord = targetStatusWord;
+        const QString locTo = loc.value(QStringLiteral("to_status")).toString();
+        if (!locTo.isEmpty()) {
+            if (annotateMode) {
+                skip(li, QStringLiteral("bad_op_combo"),
+                     QStringLiteral("to_status is not accepted on an "
+                                    "op:\"annotate_batch\" locator — annotate "
+                                    "leaves status unchanged"));
+                continue;
+            }
+            if (!rlResolveBatchStatus(locTo, &locEmoji, &locWord)) {
+                skip(li, QStringLiteral("bad_status"),
+                     QStringLiteral("unknown to_status \"%1\" — expected planned / "
+                                    "in-progress / shipped / considered / dropped")
+                         .arg(locTo));
+                continue;
+            }
         }
         // ANTS-4549 — per LOCATOR, so one bad note does not cost the batch the
         // other closures; the same guard op:"flip"/"annotate" runs above.
@@ -467,6 +518,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             t.note         = note;
             t.noteScrubbed = noteScrubbed;
             t.locatorIndex = li;
+            t.toEmoji      = locEmoji;
+            t.toWord       = locWord;
             t.isV1Bullet   = locViaV1;
             if (!locViaV1) {
                 const auto it = std::find_if(gbs.begin(), gbs.end(),
@@ -673,16 +726,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 bool wrote = false;
                 if (!annotateMode) {
                     if (!store.setItemField(st.itemPk, QStringLiteral("status"),
-                                            targetStatusWord,
+                                            st.t->toWord,
                                             QStringLiteral("asserted"), err))
                         return false;
                     hist.record(st.itemPk, QStringLiteral("status"),
-                                st.before.status, targetStatusWord);
+                                st.before.status, st.t->toWord);
                     // ANTS-4501 § 2.2 — per item, from that item's OWN prior
                     // status: a batch flipping ten to shipped may hold one that
                     // was already shipped, and that one's date must not move.
                     if (!rlStampShipped(store, st.itemPk, st.before.status,
-                                        targetStatusWord, err))
+                                        st.t->toWord, err))
                         return false;
                     wrote = true;
                 }
@@ -737,7 +790,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             // to_status is that status rather than a batch-wide target.
             const QString storeFromEmoji = rcStatusEmoji(st.before.status);
             o["from_status"] = storeFromEmoji;
-            o["to_status"]   = annotateMode ? storeFromEmoji : targetEmoji;
+            o["to_status"]   = annotateMode ? storeFromEmoji : t.toEmoji;
             if (t.fromStatus != storeFromEmoji)
                 o["file_status"] = t.fromStatus;
             o["format"]      = QStringLiteral("ants-v1");
@@ -768,7 +821,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // ANTS-4470 — no batch-wide target status under annotate: each item
         // keeps its own, and a single value here could only be wrong. The
         // per-item `to_status` in `flipped[]` carries the truth.
-        if (!annotateMode) env["to_status"] = targetEmoji;
+        // ANTS-5358 — likewise when every locator carried its own target.
+        if (!annotateMode && !targetEmoji.isEmpty()) env["to_status"] = targetEmoji;
         env["write_path"] = QStringLiteral("render");   // ANTS-4464
         env["flipped"]   = flipped;
         // `would_flip_count` under dry_run, mirroring the markdown preview
@@ -868,7 +922,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             // surgery is skipped. Anchor injection goes with it: it is part of
             // the flip, and op:"annotate" injects none either.
             if (!annotateMode)
-                applyGfmFlip(lines, *it, targetEmoji, t.anchorToInject);
+                applyGfmFlip(lines, *it, t.toEmoji, t.anchorToInject);
         } else {
             const QVector<AntsV1Bullet> live = walkAntsV1Bullets(lines);
             const auto it = std::find_if(live.begin(), live.end(),
@@ -876,7 +930,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             if (it == live.end()) continue;
             hlText = it->headline;
             if (!annotateMode)                       // ANTS-4470
-                applyAntsV1Flip(lines, *it, targetEmoji);
+                applyAntsV1Flip(lines, *it, t.toEmoji);
         }
         headlineByFirstLine.insert(t.firstLine, hlText);
         int noteLine = -1;
@@ -889,7 +943,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         r["line"]        = t.firstLine + 1;
         r["from_status"] = t.fromStatus;
         // ANTS-4470 — under annotate the item keeps the status it had.
-        r["to_status"]   = annotateMode ? t.fromStatus : targetEmoji;
+        r["to_status"]   = annotateMode ? t.fromStatus : t.toEmoji;
         // ANTS-3565 — tag emoji bullets resolved via the mixed-format fallback
         // so the caller can tell them apart from the file's dominant GFM rows.
         if (t.isV1Bullet) r["format"] = QStringLiteral("ants-v1");
@@ -934,7 +988,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         out["format"]           = isGfm ? QStringLiteral("gfm")
                                          : QStringLiteral("ants-v1");
         out["file"]             = QStringLiteral("ROADMAP.md");
-        if (!annotateMode) out["to_status"] = targetEmoji;   // ANTS-4470
+        if (!annotateMode && !targetEmoji.isEmpty())   // ANTS-4470, ANTS-5358
+            out["to_status"] = targetEmoji;
         out["write_path"]       = QStringLiteral("patch");   // ANTS-4464
         out["flipped"]          = previewFlipped;
         out["would_flip_count"] = previewFlipped.size();
@@ -992,7 +1047,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     out["format"]        = isGfm ? QStringLiteral("gfm")
                                  : QStringLiteral("ants-v1");
     out["file"]          = QStringLiteral("ROADMAP.md");
-    if (!annotateMode) out["to_status"] = targetEmoji;   // ANTS-4470
+    if (!annotateMode && !targetEmoji.isEmpty())   // ANTS-4470, ANTS-5358
+        out["to_status"] = targetEmoji;
     out["write_path"]    = QStringLiteral("patch");      // ANTS-4464
     out["flipped"]       = flipped;
     out["flipped_count"] = flipped.size();

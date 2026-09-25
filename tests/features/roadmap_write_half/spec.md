@@ -256,3 +256,13 @@ Shipped 2026-09-21 (fcc4daf5) without a test; this case was added
 
 **Would break this:** reading each bullet's status without the call-level
 fallback, which refused every such bullet `bad_status`.
+
+### ANTS-5358 — flip_batch takes a per-locator to_status
+
+| Case | Asserts |
+|---|---|
+| `Ants5358PerLocatorStatusOnTheStore` | On a migrated project, a call-level `shipped` with one locator carrying `in-progress`: the plain locator's item is `shipped`, the other `in-progress`. |
+| `Ants5358EveryLocatorOwnStatusNeedsNoCallLevel` | With no call-level `to_status` and a status on every locator, each item gets its own and the envelope carries no batch-wide `to_status`; one locator without a status then refuses `missing_field`. |
+| `Ants5358PerLocatorStatusOnTheFile` | The same mixed batch on a project the store does not serve writes ✅ and 🚧 on the two bullets in ROADMAP.md. |
+
+**Would break this:** applying the call-level status to every located item.

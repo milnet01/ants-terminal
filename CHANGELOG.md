@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **One roadmap batch can now set a different status on each item** (ANTS-5358)
+  op:"flip_batch" takes a `to_status` on each locator; the call-level one
+  fills in for any locator without its own, and can be left out when every
+  locator has one. Closing eight items while one stays in progress is now
+  one call.
+
 - **The README shows a short demo of Ants Terminal in action** (ANTS-5367)
   A 25-second clip, recorded by demoreel on a private virtual screen, plays
   below the main screenshot.

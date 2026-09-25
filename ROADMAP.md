@@ -175,7 +175,7 @@ the Flathub repo name.
 9. **Flip the gating-item entry:** "No distro packages anywhere" →
    "unblocked via Flathub."
 
-- 📋 [ANTS-5367] **Show the demo video in README.md and on the antsprojectshub.co.za Ants Terminal page.**
+- 🚧 [ANTS-5367] **Show the demo video in README.md and on the antsprojectshub.co.za Ants Terminal page.**
   Approved by the user 2026-09-25. demoreel records it on a private virtual
   display from an isolated launch (fresh config, data and cache dirs, so no
   real tabs or history appear). The website part belongs to the
@@ -183,6 +183,14 @@ the Flathub repo name.
   here. GitHub's README renders a playable video only from an uploaded
   attachment URL; a committed file shows as a link, so decide the form when
   the file arrives. Then mail demoreel the commit (its 1.0 cites the use).
+  Progress (2026-09-25, 97d89b2d): README half done. demoreel recorded
+  /home/ants/Videos/demoreel-demos/ants-terminal-demo.mp4 (1280x800,
+  24.9 s, 127 KB) from the isolated launch; frames checked, no name, host
+  or history. The README plays docs/screenshots/ants-terminal-demo.gif
+  (960 wide, 256 colours, 247 KB) under the main screenshot, credited to
+  github.com/milnet01/demoreel; demoreel told the commit (its DEMO-0093).
+  Open: the antsprojectshub.co.za page, asked of ants-projects-hub-website
+  (messages 26 and 29).
   **Layman:** A short video of the terminal in action goes on the project page and the website, so people can see it before installing.
   Kind: marketing.
   Source: user-request-2026-09-25.
