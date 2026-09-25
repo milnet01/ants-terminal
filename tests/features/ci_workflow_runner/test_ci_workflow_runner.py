@@ -28,6 +28,11 @@ def check(ok, msg):
 def runner(*args, workflow=None):
     env = dict(os.environ)
     env.pop("CI_WORKFLOW_FILE", None)
+    # INV-3 asserts the WORKFLOW's CCACHE_* keys are dropped. The runner keeps
+    # the caller's own on purpose, and on GitHub ci.yml's job env puts
+    # CCACHE_MAXSIZE into this process — which failed INV-3 there only.
+    for k in [k for k in env if k.startswith("CCACHE_")]:
+        del env[k]
     if workflow:
         env["CI_WORKFLOW_FILE"] = workflow
     p = subprocess.run([sys.executable, RUNNER, *args], env=env,
