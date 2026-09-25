@@ -175,24 +175,28 @@ there is one place to look.
 ## What checks this
 
 **Nearly every rule here has a `ruff` code, and that is the point of the
-table — but most are not on by default.** Measured unconfigured on `ruff`
-0.16.8: `I001`, `F401`, `E722` and `S110` fire and nothing else in this
-table does. So most rows below are conditional on `pyproject.toml`
-selecting the family, and each row says which. **A project that selects
-nothing still gets those four**, so a clean report is not proof of no
-enforcement — nor of any.
+table.** Which of them are on by default is a moving target: `ruff`'s
+default set now spans most of its families. Measured unconfigured on
+`ruff` 0.16.8, and corroborated against Astral's published default-rules
+list: `F401`, `I001`, `E722`, `S110`, `BLE001`, `UP006` and `UP007`
+fire with no configuration at all; every other code in this table needs
+selecting. **So a clean report from an unconfigured project proves
+neither that nothing is enforced nor that much is.** Each row says
+which. **Re-measure rather than trusting this paragraph** — an isolated
+`ruff check` over a file that breaks the rule answers it in one command,
+and the split moves between releases.
 
 | Rule | What catches a breach |
 |------|----------------------|
 | Version floor — Python 3.10 minimum | **`Partial:`** `requires-python` in `pyproject.toml`, which installers honour. **Nothing** stops a lower floor being declared; the idioms below then fail at runtime rather than at check time |
 | Casing — PEP 8 | `ruff`'s `N` family: `N801` for a class, `N802` for a function. **Selected, not default** |
-| Idioms — `list[int]` and `X \| Y` over `List`/`Union` | `ruff` `UP006`, `UP007`. **Selected, not default** |
+| Idioms — `list[int]` and `X \| Y` over `List`/`Union` | `ruff` `UP006`, `UP007`. **Both default** — verified unconfigured on `ruff` 0.16.8 |
 | Idioms — `pathlib` over `os.path` | `ruff`'s `PTH` family (`PTH100` and its siblings). **Selected, not default** |
 | Idioms — never `shell=True` with an f-string | `ruff` `S602`, with `S603` on the other side. **Selected, not default**, and `bandit` covers the same ground where it runs |
 | Idioms — type hints on every public signature | **`Partial:`** `ruff`'s `ANN` family, plus `mypy` or `pyright` where configured. **Nothing** enforces *public* as this rule means it — the checks fire on scope, not on what the project treats as its surface |
 | Idioms — `match`/`case`, `dataclasses`, no `setup.py` | **nothing.** Each is a design choice; a chain of `isinstance` checks and a hand-written `__init__` are both valid Python |
-| Catch what you can name — no bare `except:` | `ruff` `E722`, which **is** in the default set, with `BLE001` for `except Exception:` when selected |
-| Surface what you did not expect — never `except: pass` | **`Partial:`** `ruff` `SIM105` reaches the suppressible case. **Nothing** checks the rule's actual requirement, that a comment says why ignoring it is correct |
+| Catch what you can name — no bare `except:` | `ruff` `E722`, and `BLE001` for `except Exception:`. **Both default** — verified unconfigured on `ruff` 0.16.8 |
+| Surface what you did not expect — never `except: pass` | **`Partial:`** `ruff` `S110` catches it and is **default**; `SIM105` reaches the suppressible case when selected. **Nothing** checks the rule's actual requirement, that a comment says why ignoring it is correct |
 | Wildcard imports | `ruff` `F403`. **Selected, not default** — verified unconfigured on `ruff` 0.16.8, where `F401` fires and `F403` does not, though both are the `F` family |
 | Comments — a docstring, not a paragraph restating the code | **nothing.** `D103` catches a *missing* docstring, which is the opposite failure; no check reads one and judges it |
 | Do not pessimise — comprehensions, `join()`, generators | **nothing that decides it.** `C4` and `PERF` flag some shapes; whether the whole list was needed at once is not something a check can call a breach |
