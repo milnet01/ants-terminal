@@ -46799,6 +46799,14 @@ are closed inline in the feedback files rather than filed here.
   is reversible and loses nothing. The guarded hard delete is specified but
   gated on the user confirming it, because it is destructive on a
   machine-global store.
+  Checked (2026-09-25): the blocker ANTS-4485 is built. But the spec's
+  § 4.1 (a dropped item stops rendering) contradicts the user's
+  2026-09-19 decision recorded on ANTS-4977 and shipped: dropped items
+  show in ROADMAP.md as 🚫. That decision wins, so § 4.1 and INV-1's
+  render leg need amending before this is built. Under the shipped rule a
+  mistaken item flipped to dropped stays visible as 🚫, which answers "it
+  comes back as 📋" but not "it is still in the file". § 4.4's hard delete
+  still needs the user's go-ahead, as the spec says.
   **Layman:** A roadmap item added by mistake cannot be undone — deleting it from the file does not remove it, and the next save writes it straight back.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Fin Break).
@@ -51370,7 +51378,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-sessions finbreak-65 and doom-ants-3b, in-session-2026-09-21.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5283] **A render dry run cannot answer whether the render would change anything.**
+- ✅ [ANTS-5283] **A render dry run cannot answer whether the render would change anything.**
   Reported by peer session localwebservermanager-28, and this one cost a
   WRONG BELIEF rather than only tokens — which is why it leads the batch.
 
@@ -51396,6 +51404,9 @@ are closed inline in the feedback files rather than filed here.
   SECOND-ORDER, worth a thought while in here: if a no-op render is cheap
   to detect, the verb could report it rather than rewriting identical bytes
   and touching the mtime.
+  Resolved (2026-09-25): shipped in 95f591c3 as would_change on every
+  roadmap write dry run; the no-op render half was ANTS-5016. GitHub CI
+  green.
   **Layman:** A preview of a file rewrite does not say whether the file would actually change, which is the one thing a preview is for.
   Kind: enhancement.
   Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
@@ -66440,20 +66451,24 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Pressless-2026-09-21.
   Lanes: mcp, test.
 
-- 📋 [ANTS-5361] **A roadmap migration silently turns an unrecognised checkbox line such as `- [~]` into narration.**
+- ✅ [ANTS-5361] **A roadmap migration silently turns an unrecognised checkbox line such as `- [~]` into narration.**
   Reported by Vestige: a top-level `- [~] R2. ...` line stopped being an
   item with no note. Suggested: an unrecognised_checkbox note with the line
   number. Not accepting `[~]`: GitHub task-list syntax does not define it.
+  Resolved (2026-09-25): shipped in e2523b9a as an unrecognised_checkbox
+  plan note; GitHub CI green.
   **Layman:** Moving a roadmap into the database can quietly drop an item written with an unusual checkbox.
   Kind: fix.
   Source: feedback-Vestige-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5362] **A headline ending in an italic span renders `.***`, and a re-import moves the closing `*` into the body.**
+- ✅ [ANTS-5362] **A headline ending in an italic span renders `.***`, and a re-import moves the closing `*` into the body.**
   Reported by Vestige (3D_E-S0513, 3D_E-S0575): parse(render(x)) != x for
   this shape, so an unrelated migrate edits these items. Suggested: separate
   a trailing `*` from the bold close in the render, or take the last `**`
   as the close in the parser; add a round-trip test. Related: ANTS-4506.
+  Resolved (2026-09-25): shipped in c3e3b4d6 — rxBold closes on the last
+  two stars of a run; GitHub CI green.
   **Layman:** Headlines ending in italics change slightly every time the roadmap is reloaded.
   Kind: fix.
   Source: feedback-Vestige-2026-09-21.
@@ -66552,7 +66567,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: mcp.
 
-- 📋 [ANTS-5373] **roadmap_log op:"set_intro" refuses an intro holding deeper headings, which migration itself stores.**
+- ✅ [ANTS-5373] **roadmap_log op:"set_intro" refuses an intro holding deeper headings, which migration itself stores.**
   Reported by Vestige: `## 0.5.0`'s migrated intro holds `#### Phase 11A`
   and `##### Camera Shake System` before its first item, and set_intro
   refuses any heading with bad_intro. So the verb cannot write back the
@@ -66564,6 +66579,9 @@ project. Reported causes are claims until checked in source.
   and amend_intro makes a small edit small.
   Also asked: a set_intro dry run should echo the current intro, so a
   caller can see what replaced_intro_chars counts.
+  Resolved (2026-09-25): shipped in c3e3b4d6 — set_intro accepts ####
+  and deeper, op:amend_intro, dry runs echo previous_intro; GitHub CI
+  green.
   **Layman:** A section's opening text cannot be edited through the tool when it contains sub-headings.
   Kind: fix.
   Source: feedback-Vestige-2026-09-25.

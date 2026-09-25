@@ -83,6 +83,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log`'s help text marks delete_section and move_section as store-only** (ANTS-5332)
+
+- **`roadmap_query`'s `section` help says it plus `headline_only` and `status` lists one section's open ids** (ANTS-5285)
+
 - **`roadmap_log` flip and annotate reply with a compact summary by default; `return:"full"` brings back the whole bullet** (ANTS-5263)
   On a store-served project the reply now carries `post_bullets`
   {id, status, headline} instead of the entire rendered bullet, whose size

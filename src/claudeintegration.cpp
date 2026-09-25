@@ -3170,7 +3170,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "full reparse for partial queries. Slugs are canonically "
                         "lowercase; off-case spelling → code=bad_case "
                         "with `canonical_slug` surfaced (ANTS-1524). "
-                        "Unknown slug → code=bad_section.");
+                        "Unknown slug → code=bad_section. ANTS-5285 — with "
+                        "mode:\"headline_only\" and `status`, this is the "
+                        "cheap way to list one section's open ids.");
                     props["section"] = sectionProp;
                     // ANTS-1856 — `id` single-item selector. The
                     // one-call answer to \"show me ANTS-NNNN\" without
@@ -13328,10 +13330,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "one `# ` title line allowed. All three store-only, "
                         "dry_run previewable (echoing previous_intro), and "
                         "echo replaced_intro_chars. "
-                        "\"delete_section\" (ANTS-4958) removes a section by "
+                        "\"delete_section\" (ANTS-4958, store-only) removes a section by "
                         "`section`, refusing section_not_empty while it files "
                         "an item; its intro and narration come back in the "
-                        "reply. \"move_section\" moves `section` and its "
+                        "reply. \"move_section\" (store-only) moves `section` and its "
                         "subsections after `after_section` or before "
                         "`before_section`. "
                         "\"amend_field\" (ANTS-4667) writes ONE TRAILER "
