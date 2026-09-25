@@ -247,7 +247,11 @@ jobs:
       # the other end — locally, 5 GiB self-evicts on this Qt codebase. The
       # measurement that says whether 2G is enough is the next run's
       # `Cleanups:` line; non-zero means raise it again.
-      CCACHE_MAXSIZE: 2G
+      # ANTS-5189 — it was not, for this job: after one cold -g1 build (run
+      # 36124635817) the stats read `Cache size (GB): 2.0 / 2.0 (99.95%)`, so
+      # the build evicts its own objects. The next nightly's size line says
+      # whether 4G holds it.
+      CCACHE_MAXSIZE: 4G
       CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source

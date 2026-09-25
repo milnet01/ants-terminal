@@ -175,6 +175,19 @@ the Flathub repo name.
 9. **Flip the gating-item entry:** "No distro packages anywhere" →
    "unblocked via Flathub."
 
+- 📋 [ANTS-5367] **Show the demo video in README.md and on the antsprojectshub.co.za Ants Terminal page.**
+  Approved by the user 2026-09-25. demoreel records it on a private virtual
+  display from an isolated launch (fresh config, data and cache dirs, so no
+  real tabs or history appear). The website part belongs to the
+  ants-projects-hub-website project (asked, message 26). The README part is
+  here. GitHub's README renders a playable video only from an uploaded
+  attachment URL; a committed file shows as a link, so decide the form when
+  the file arrives. Then mail demoreel the commit (its 1.0 cites the use).
+  **Layman:** A short video of the terminal in action goes on the project page and the website, so people can see it before installing.
+  Kind: marketing.
+  Source: user-request-2026-09-25.
+  Lanes: docs.
+
 ### P2 — AUR publish
 
 **Prerequisites:** H5 ✅ (`packaging/archlinux/PKGBUILD` in tree).
@@ -77944,6 +77957,10 @@ acting on it.
   2.0/2.0 GB. -g1 (ANTS-5195, cda932ec) shrank split debug files by
   about 75% locally. Re-read the nightly run's cache size before raising
   the cap.
+  Measured 2026-09-25, run 36124635817: after a cold -g1 ASan build the
+  cache reads 2.0/2.0 GB (99.95%), hits 4/754. The build does not fit in
+  2G even with -g1, so it evicts during the build. Next: raise the
+  build-asan job's CCACHE_MAXSIZE.
   **Layman:** The memory-checking build's cache is too small, so it keeps throwing away work it will need again.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -77960,6 +77977,13 @@ acting on it.
   after each build. Local first read: precompiled headers are the
   slowest steps, about ten at 15-39 s each; ccache does not cache PCH
   creation by default. Next: read the CI step's output, then act.
+  Measured 2026-09-25, run 36124635817 (workflow_dispatch, cold ASan
+  cache after the -g1 flag change): Build 18m22s. The slowest-steps
+  report: src/claudeintegration.cpp in ants_mcpcore_lib at 145.5 s, then
+  mainwindow.cpp at 11.0 s; every precompiled header 5-9 s; no link in
+  the top 20. So one translation unit is the lever, which ANTS-4919
+  (split claudeintegration.cpp) addresses. The warm-build question still
+  needs a warm run: read the next nightly's report.
   **Layman:** Even when almost everything is cached, the GitHub build is still slow, and nobody knows why yet.
   Kind: investigate.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -78020,11 +78044,16 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 💭 [ANTS-5195] **Build the CI ASan tree with lighter debug info.**
+- ✅ [ANTS-5195] **Build the CI ASan tree with lighter debug info.**
   Configure the CI ASan build with -g1 (or line tables only), which keeps
   file and line in sanitizer stack traces while shrinking objects, links
   and the compile cache. Unmeasured; compare object size, link time and
   cache use before and after.
+  Resolved (2026-09-25, cda932ec): -g1 on the sanitizer build. Locally:
+  split debug files 0.59 -> 0.15 GiB, test_claude 677 -> 524 MB, the
+  whole sanitized suite passes. On GitHub (run 36124635817) the ASan job
+  is green; its test step took about 12 min against 18m17s before, one
+  sample only.
   **Layman:** Smaller debugging data would make the memory-checking build faster to link and cache.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
