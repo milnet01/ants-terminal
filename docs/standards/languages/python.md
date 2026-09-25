@@ -175,11 +175,12 @@ there is one place to look.
 ## What checks this
 
 **Nearly every rule here has a `ruff` code, and that is the point of the
-table — but almost none of them is on by default.** Measured on this
-machine: an isolated `ruff check` over a file with an untyped, undocumented,
-badly-cased function reported only `F401` and `I001`. So each row below is
-conditional on `pyproject.toml` selecting the family, and a project that
-selects nothing gets a clean report and no enforcement.
+table — but most are not on by default.** Measured unconfigured on `ruff`
+0.16.8: `I001`, `F401`, `E722` and `S110` fire and nothing else in this
+table does. So most rows below are conditional on `pyproject.toml`
+selecting the family, and each row says which. **A project that selects
+nothing still gets those four**, so a clean report is not proof of no
+enforcement — nor of any.
 
 | Rule | What catches a breach |
 |------|----------------------|
@@ -192,7 +193,7 @@ selects nothing gets a clean report and no enforcement.
 | Idioms — `match`/`case`, `dataclasses`, no `setup.py` | **nothing.** Each is a design choice; a chain of `isinstance` checks and a hand-written `__init__` are both valid Python |
 | Catch what you can name — no bare `except:` | `ruff` `E722`, which **is** in the default set, with `BLE001` for `except Exception:` when selected |
 | Surface what you did not expect — never `except: pass` | **`Partial:`** `ruff` `SIM105` reaches the suppressible case. **Nothing** checks the rule's actual requirement, that a comment says why ignoring it is correct |
-| Wildcard imports | `ruff` `F403`, in the default set |
+| Wildcard imports | `ruff` `F403`. **Selected, not default** — verified unconfigured on `ruff` 0.16.8, where `F401` fires and `F403` does not, though both are the `F` family |
 | Comments — a docstring, not a paragraph restating the code | **nothing.** `D103` catches a *missing* docstring, which is the opposite failure; no check reads one and judges it |
 | Do not pessimise — comprehensions, `join()`, generators | **nothing that decides it.** `C4` and `PERF` flag some shapes; whether the whole list was needed at once is not something a check can call a breach |
 | Tests — labels registered with `--strict-markers` | **`Partial:`** the flag itself, which the section calls the whole mechanism — an unregistered mark becomes a collection error. **Nothing** catches its absence from `addopts`, which is the state the section reproduced |

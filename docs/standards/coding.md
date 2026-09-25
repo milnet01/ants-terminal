@@ -163,7 +163,10 @@ or similar thing, in order of preference:
 whether to *extract* a helper, extract on the third call-site, not
 the first or second. Premature DRY costs more than duplication.
 
-**Exception — copies YOUR CHANGE touches that have diverged are
+**Touches** means your change edits that code's own lines. Editing only
+a caller does not.
+
+**Exception — a copy YOUR CHANGE touches whose twin has diverged is
 reconciled now.** Rule of Three guards against inventing a shared thing
 before the pattern is visible. Copies that were once the same and are no
 longer do not raise that question: one is already wrong and nobody knows
@@ -171,8 +174,8 @@ which. Reconciling them is how you find out; waiting for a third fixes
 the bug once and leaves it live in the other copy. **A diverged pair you
 merely found is §1.7's — surface it.**
 
-Breach: two implementations of one behaviour that disagree, both touched
-by your change, left separate on a count of call-sites.
+Breach: two implementations of one behaviour that disagree, one of which
+your change touches, left separate.
 
 **A PRIVATE helper with one call site is duplication in the other
 direction.** It adds a layer to read through and a name promising
@@ -181,11 +184,17 @@ create an abstraction; this decides one that already exists**, so the two
 never rule on the same case and a helper that has reached two call sites
 is neither's business. **One you merely found is §1.7's — surface it.**
 
-Not reached from one place: an entry point a published interface, a
-framework, or the language requires. A single caller inside this
-repository does not make it private.
+**Private** means nothing outside this project is meant to call it — not
+exported, not documented as an interface, not required by a framework or
+the language. **Reachability is not the test**: in several languages
+every module-level name is importable, which would make nothing private.
 
-Breach: a private helper your change touches, reached from one place.
+Breach: a private helper your change touches, reached from one place
+after your change.
+
+**Both repairs above are part of the request that reached the code** — so
+each is §1.7's *refactoring to satisfy the request*, not its *adjacent*
+branch.
 
 ### 1.4 Six-month test
 
@@ -265,6 +274,11 @@ functions that always change together are ONE reason to change and belong
 together. Splitting them gives every later task two files to open and buys
 nothing. **A file per function is the failure, not the goal.**
 
+**Where new code brings a second reason to change, its own file is the
+default.** That is the moment this rule decides something — not whether
+to split what exists, but where to put what you are adding. It stays a
+default rather than a breach, because a shared file is not forbidden.
+
 - **The test is co-change, not size.** A long file that only ever changes for
   one reason is fine. A short file that changes for three is not.
 - **Read the history rather than guessing.** `git log --follow -- <file>`
@@ -299,8 +313,13 @@ output declares itself in its own opening lines, or the project lists it
 somewhere a reader will look. Output identified by neither is outside
 this rule, and the generator is where to fix that.
 
-Breach: a commit changing generated output without the input that
-produces it.
+**The input of record may live outside the repository** — a store, a
+database, a remote API. So output changing without it in the same commit
+is not evidence of anything. What shows a hand edit is output that no
+longer matches what the generator produces.
+
+Breach: a hand edit to generated output that declares itself, or that
+the project lists.
 
 ## 2. Error handling
 
@@ -419,7 +438,9 @@ that language. A Python project has no reason to load C++ rules.
 **A C project reads `languages/cpp.md`.** There is no `c.md`, and that is
 deliberate rather than a gap: the rules the two share — the range-guard
 class in particular — would become two copies that drift, which
-`documentation.md` § 2.1 forbids. That file gives the C spelling wherever it differs. **Named here
+`documentation.md` § 2.1 forbids. It gives the C spelling where the two
+share a rule and differ in how it is written; the rest of that file is
+C++ and says so. **Named here
 because a C project looking for its own file finds none and would
 otherwise read nothing.**
 
@@ -427,11 +448,12 @@ A language file carries the version floor, the casing convention, the
 current idioms, the spellings of this file's, `testing.md`'s and
 `security.md`'s general rules — §7 owns where a security one goes — and
 — where the language has aged
-visibly — the retired spellings that still compile. That last part
-matters: an idiom that no longer errors is how a codebase quietly
-becomes a museum. Write a retirement as *this over that* in the idiom
-list; give it a section of its own only where there are enough of them
-to be worth listing (`qt.md`).
+visibly — its retired spellings. That last part matters: an idiom that no
+longer errors is how a codebase quietly becomes a museum. Write a
+retirement as *this over that* in the idiom list; give it a section of
+its own where there are enough to list, and split those that still
+compile from those the build now rejects — the build catches the second
+group, so only the first costs review time (`qt.md`).
 
 A framework with its own conventions gets a file too (`qt.md`). It
 carries only what differs from its language's file, and wins over that
@@ -478,8 +500,7 @@ never log a credential — are in `security.md`, stated once and in
 context. **`security.md` states them in a way that usually needs no per-language
 spelling.** Where a language genuinely needs one — an API that is the safe
 one, a flag that must be set — it goes in that language file, in its idiom
-list and its What-checks-this table. **This section does not enumerate
-them**: a second copy of a list the language files already hold is one more
+list and its What-checks-this table. **This section does not enumerate those spellings**: a second copy of a list the language files already hold is one more
 thing to keep true, and it was wrong within a day of being written.
 
 ## 8. Anti-patterns
@@ -509,28 +530,37 @@ Each of these is something that looks like care and is not.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §1.1 shortest correct implementation | **nothing** — "shorter would have worked" is a judgement about an alternative that was never written. A code review is the only reader that can raise it |
-| §1.2 no workarounds without a root-cause fix | Partial: a linter suppression, a bare `except: pass` and a disabled check are all greppable, and static analysis flags several. **Nothing** catches the commented-out branch or the silently loosened condition **Every analyser row here is conditional on the project selecting the rule family**; one that selects nothing gets a clean report and no enforcement |
-| §1.3 reuse before rewriting | **nothing** mechanical for the general case. A near-duplicate detector finds copied *text*, which is the weakest form of the rule and the one least worth catching |
+| §1.1 shortest correct implementation | **nothing mechanical** — a code review, the only reader that can raise "shorter would have worked" about an alternative nobody wrote |
+| §1.2 no workarounds without a root-cause fix | **`Partial:`** `check-code`'s language sweep, a static-analysis check. Measured unconfigured on `ruff` 0.16.8: `E722` and `S110` fire, which are §1.2's own two examples, and `ERA001` finds a commented-out branch once selected. **Nothing** catches a silently loosened condition, or a skipped test naming no tracked cause |
+| §1.3 reuse before rewriting | **nothing mechanical** for the general case — a reviewer who knows the codebase. A near-duplicate detector finds copied *text*, which is the weakest form of the rule and the one least worth catching |
 | §1.4 six-month test | **nothing** — by construction. It asks whether a stranger will understand this later, which nobody present can answer |
-| §1.6 an assumption is stated, not built on | **nothing** — the assumption is invisible once the code exists, which is the failure. Caught only by a reviewer asking "how was this decided?", or by the user recognising a choice they never made |
-| §1.7 every changed line traces to the request | The diff itself, read before committing — the cheapest check in this table and the one most often skipped. **Nothing** automates it: a reformat and a fix are the same kind of edit to any tool |
-| §1.8 one file, one reason to change | **nothing.** `git log --follow -- <file>` shows what a file HAS changed for; no tool decides whether those are one reason or three, and none can predict what an unwritten task will touch. `write-code`'s per-edit row asks the question at the one moment somebody is looking at the seam, and nothing compels it |
-| §1.5 latest stable library, current idioms | Two halves, and only one is checked. The **version** half: a dependency-currency scan reports what is behind. The **idiom** half is **nothing** — a retired spelling compiles, so nothing objects until someone reads it |
-| §2 error handling | Partial: static analysis flags swallowed exceptions and ignored return values in the languages that support it. **Nothing** checks that an error a user sees names what they can do **Every analyser row here is conditional on the project selecting the rule family**; one that selects nothing gets a clean report and no enforcement |
-| §3 comments explain why, not what | **nothing** — and the failure mode is a comment that was true when written and is now describing code that changed underneath it |
-| §4 naming — what a name COMMUNICATES | **nothing.** Abbreviations, type prefixes (`strName`), filler words (`Helper`, `Util`, `Data`) and the stranger test are judgements no checker makes. This is §4's own subject |
-| Casing — `languages/<name>.md`'s subject, not §4's | **Partial, and per language.** `ruff`'s `N` family, `clang-tidy`'s `readability-identifier-naming` — **none on by default**, so a project that configures nothing gets a clean report and no enforcement. **Nothing** catches that the choice is recorded and held |
-| §5 language notes stay in `languages/` | **nothing** — a language-specific section added to this file reads exactly like the rest of it, and only a reader who knows the split will object |
-| §6 performance | Partial: static analysis catches some allocation-in-loop and copy-by-value cases. **Nothing** catches a cache nobody measured, which is the rule here most often broken with good intentions **Every analyser row here is conditional on the project selecting the rule family**; one that selects nothing gets a clean report and no enforcement |
-| §7 security | Two halves, and only one is checked. The analysers — secret scanning, taint and pattern rules — catch the injection and secret classes. **`security.md`'s own table marks most of its rules *nothing mechanical* and calls that its honest error budget**, so it is where review attention goes rather than where it may be saved. **This section's OWN rule — a code-level security bullet re-added here, or a language spelling filed outside that language file — is caught by nothing**, exactly as §5's row records |
-| §8 anti-patterns | Partial and per-item; each anti-pattern is checked by whichever analyser covers it, and several by nothing |
+| §1.5 latest stable library, current idioms | **`Partial:`** `dependencies.md` § What checks this owns the answer for both halves — a version-staleness check for what is behind, and a person for the idiom refresh |
+| §1.6 an assumption is stated, not built on | **nothing mechanical** — a reviewer asking "how was this decided?", or the user recognising a choice they never made. The assumption is invisible once the code exists, which is the failure |
+| §1.7 every changed line traces to the request | **nothing mechanical** — the diff, read by whoever commits it. The cheapest reader in this table and the one most often skipped, and no tool separates a reformat from a fix |
+| §1.8 one file, one reason to change | **nothing mechanical** — `write-code`'s per-edit row asks the question at the seam, and nothing compels it. `git log --follow -- <file>` shows what a file HAS changed for; no tool decides whether those are one reason or three |
+| §1.9 generated output is not hand-edited | **`Partial:`** re-running the generator and comparing its output to the committed file, wherever the run is reproducible — for a store-backed `ROADMAP.md`, `roadmap_query` `check_sync:true` read-only, or `roadmap_log` `op:"render"` under `dry_run`. **Nothing** catches it where the generator cannot be re-run from the repository alone |
+| §2 error handling | **`Partial:`** `check-code`'s language sweep flags swallowed exceptions and ignored return values where the language supports it, and `security.md` § What checks this owns the boundary half. **Nothing** catches an error message that fails to say what the user can do, a guard against an impossible state, or a handler deciding for a caller that knew better |
+| §3 comments explain why, not what | **nothing mechanical** — a reader. The failure mode is a comment that was true when written and now describes code that changed underneath it |
+| §4 naming — what a name COMMUNICATES | **nothing mechanical** — a reader applying the stranger test. Abbreviations, type prefixes (`strName`) and filler words (`Helper`, `Util`, `Data`) are judgements no checker makes. This is §4's own subject |
+| Casing — `languages/<name>.md`'s subject, not §4's | **`Partial:`** each language file states its own answer, with its own codes. **Nothing** catches that the choice is recorded and held |
+| §5 language notes stay in `languages/`, and a new language gets a file first | **nothing** — a language-specific section added to this file reads exactly like the rest of it, and nothing notices a project writing in a language with no file at all |
+| §6 performance | **`Partial:`** `check-code`'s language sweep catches some allocation-in-loop and copy-by-value cases, and `cpp.md` records `-Wpessimizing-move` arriving with `-Wall`. **Nothing** catches a cache nobody measured, whether a profile came first, algorithmic shape, or an unstated cost |
+| §7 security | **`Partial:`** `security.md` § What checks this owns the answer and states its own error budget. **Nothing** catches this section's OWN rule — a code-level security bullet re-added here, or a language spelling filed outside that language file |
+| §8 anti-patterns | **`Partial:`** per item, each checked by whichever analyser covers it — `python.md` answers the wildcard-import bullet with `ruff` `F403`, selected. **Nothing** catches half-finished work behind a flag, a deferral comment with nothing tracking it, a hardcoded path or unexplained number, or a renamed orphan that should have been deleted |
+
+**An analyser row is usually conditional on the project selecting the
+rule family, and not always** — some rules arrive on by default, as the
+§1.2 and §6 rows record. So a project configuring nothing is not wholly
+unenforced, and one configuring a family is not wholly covered. Check
+your own toolchain rather than assuming either.
 
 **The pattern is worth naming: what is checked is what a tool can decide
 without judgement.** Every rule about *relationships* — is this the shortest form,
 does this duplicate something elsewhere, will this read in six months —
 is uncheckable, and those are the rules this standard exists for. That
-is an argument for spending review attention there and not on the rest.
+is an argument for spending review attention there. **It is not an
+argument for saving it on the rest**: every `Partial:` row above names
+what it misses, and `security.md` states an error budget of its own.
 
 ## Cold-eyes loop log
 
