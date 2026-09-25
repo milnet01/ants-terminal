@@ -28,9 +28,10 @@ def check(ok, msg):
 def runner(*args, workflow=None):
     env = dict(os.environ)
     env.pop("CI_WORKFLOW_FILE", None)
-    # INV-3 asserts the WORKFLOW's CCACHE_* keys are dropped. The runner keeps
-    # the caller's own on purpose, and on GitHub ci.yml's job env puts
-    # CCACHE_MAXSIZE into this process — which failed INV-3 there only.
+    # INV-3 asserts the WORKFLOW's CCACHE_* values reach the step. On GitHub
+    # ci.yml's job env already puts CCACHE_MAXSIZE into this process, so the
+    # caller's are cleared first: the fixture alone decides what the step sees,
+    # here and there alike (run 36105166384 failed on exactly that difference).
     for k in [k for k in env if k.startswith("CCACHE_")]:
         del env[k]
     if workflow:
@@ -87,7 +88,7 @@ jobs:
         run: |
           test "$WF_VAR" = workflow
           test "$JOB_VAR" = job && test "$STEP_VAR" = step
-          test -z "${CCACHE_MAXSIZE:-}"
+          test "$CCACHE_MAXSIZE" = 2G
           test "$(basename "$PWD")" = tools
           test "$CI" = true && test "$LC_ALL" = C.UTF-8
           test -z "${DISPLAY:-}"
@@ -112,7 +113,7 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["BASH_ENV"] = benv
     rc, out = runner("run", "j", workflow=wf)
     check("MARK-ENV-OK" in out,
-          "INV-3 workflow/job/step env, CCACHE_ drop, cwd, CI/LC_ALL, "
+          "INV-3 workflow/job/step env incl. CCACHE_, cwd, CI/LC_ALL, "
           "no DISPLAY, no BASH_ENV, timeout shim")
     check("MARK-SKIPPED-RAN" not in out, "INV-3 a step after a failure is skipped")
     check("MARK-ALWAYS-RAN" in out, "INV-3 an if: always() step still runs")

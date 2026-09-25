@@ -18,6 +18,8 @@ Usage:
   tools/ci_workflow.py jobs            # job ids in ci.yml, one per line
   tools/ci_workflow.py plan <job>      # what `run` would do, step by step
   tools/ci_workflow.py run <job>       # execute it in the repository root
+  tools/ci_workflow.py docs-only       # paths on stdin; exit 0 if ci.yml's push
+                                       # paths-ignore would skip them all
 """
 import os
 import re
@@ -39,14 +41,15 @@ ACTIONS = {
     "awalsh128/cache-apt-pkgs-action":
         "packages come from this machine; the podman legs of "
         "tools/ci-parity.sh install ci.yml's own list",
-    "actions/cache/restore": "local build trees and ccache are already warm",
-    "actions/cache/save": "local build trees and ccache are already warm",
+    "actions/cache/restore": "the job's CCACHE_DIR persists between local runs",
+    "actions/cache/save": "the job's CCACHE_DIR persists between local runs",
 }
 
-# Job `env` keys dropped here. CCACHE_* point ccache at the directory the
-# actions/cache steps above ferry between runs; applied locally, CCACHE_MAXSIZE
-# would shrink this machine's own cache to the runner's cap.
-DROPPED_ENV = re.compile(r"^CCACHE_")
+# The job's `env` applies as written, CCACHE_* included: they point ccache at
+# ${{ github.workspace }}/.ccache (ignored by git), a cache separate from this
+# machine's own, so ci.yml's 2G cap bounds that cache and not the developer's.
+# Dropping them instead let a test that read CCACHE_MAXSIZE pass here and fail
+# on GitHub (run 36105166384) — the one divergence this runner had chosen.
 
 # What the GitHub runner's environment sets that ci.yml relies on without
 # declaring. LC_ALL: the runner is C.UTF-8, and a dev box's Unicode collation
@@ -118,11 +121,9 @@ def plan(job_id):
     job = jobs[job_id]
     unknown(job, JOB_KEYS, job_id)
     job_env = {k: expand(str(v), f"env.{k}")
-               for k, v in (wf.get("env") or {}).items()
-               if not DROPPED_ENV.match(k)}
+               for k, v in (wf.get("env") or {}).items()}
     job_env.update({k: expand(str(v), f"{job_id}.env.{k}")
-                    for k, v in (job.get("env") or {}).items()
-                    if not DROPPED_ENV.match(k)})
+                    for k, v in (job.get("env") or {}).items()})
     steps = []
     for i, step in enumerate(job.get("steps") or []):
         name = step.get("name") or f"step {i + 1}"
@@ -180,7 +181,49 @@ def run(job_id):
     return 1 if failed else 0
 
 
+def glob_rx(pattern):
+    """GitHub's path-filter glob: `**` crosses `/`, `*` and `?` do not."""
+    out, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**", i):
+            out += ".*"
+            i += 2
+        elif pattern[i] == "*":
+            out += "[^/]*"
+            i += 1
+        elif pattern[i] == "?":
+            out += "[^/]"
+            i += 1
+        else:
+            out += re.escape(pattern[i])
+            i += 1
+    return re.compile(out + r"\Z")
+
+
+def docs_only(paths):
+    """True when ci.yml's push trigger would skip every one of `paths`.
+
+    tools/hooks/pre-push asks this instead of keeping its own copy of the list
+    (ANTS-5322): a hand twin of paths-ignore is the drift local-gate.md § 3
+    forbids.
+    """
+    on = load().get(True) or load().get("on") or {}
+    ignore = (on.get("push") or {}).get("paths-ignore") or []
+    if any(str(g).startswith("!") for g in ignore):
+        raise Refused("no local meaning for a negated paths-ignore pattern")
+    rxs = [glob_rx(str(g)) for g in ignore]
+    return bool(paths) and bool(rxs) and all(
+        any(rx.match(p) for rx in rxs) for p in paths)
+
+
 def main(argv):
+    if len(argv) == 2 and argv[1] == "docs-only":
+        paths = [l.strip() for l in sys.stdin if l.strip()]
+        try:
+            return 0 if docs_only(paths) else 1
+        except Refused as e:
+            print(f"ci_workflow: refused — {e}", file=sys.stderr)
+            return 3
     if len(argv) == 2 and argv[1] == "jobs":
         print("\n".join(load().get("jobs", {})))
         return 0

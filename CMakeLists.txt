@@ -1407,6 +1407,7 @@ if(ANTS_TESTS)
     set_tests_properties(prepush_asan_gate PROPERTIES
         LABELS "features;fast"
         TIMEOUT 60
+        SKIP_RETURN_CODE 77
         ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/hooks/pre-push")
 
     # ANTS-5322 — tools/ci-parity.sh runs ci.yml's own steps through

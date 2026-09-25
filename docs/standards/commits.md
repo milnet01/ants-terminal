@@ -67,13 +67,13 @@ answer:
   `tools/qt62-guard.sh --clean` reclaims them). A job `ci.yml` gains and the
   script does not claim fails the run; a container leg without podman SKIPs
   loudly and never reports green.
-- **`tools/hooks/pre-push`** runs the reduced form automatically (wired via
-  `core.hooksPath=tools/hooks`). It runs the Release suite against the warm
-  `build/` **without building**, plus the sanitizer suite when a warm ASan
-  tree exists, plus the Qt 6.2 floor guard when the push touches compilable
-  source.
-- **A docs-only push skips the hook entirely** — it mirrors `ci.yml`'s
-  `paths-ignore`, so a push touching nothing outside `ROADMAP.md`,
+- **`tools/hooks/pre-push`** runs automatically (wired via
+  `core.hooksPath=tools/hooks`), and runs `ci.yml` itself (ANTS-5322): its
+  `build-test` job — build, suite, lints — always, its `build-asan` job when
+  a warm ASan tree exists, then the Qt 6.2 floor and build-test toolchain
+  guards when the push touches compilable source.
+- **A docs-only push skips the hook entirely** — the hook asks `ci.yml`'s
+  `paths-ignore` itself, so a push touching nothing outside `ROADMAP.md`,
   `CHANGELOG.md`, `README.md`, `PLUGINS.md`, `LICENSE`, `.roadmap-counter` and
   `docs/` runs no gate at all. Editing *this file* and pushing it runs
   nothing. Global § 4.2's exemption then applies and **its two conditions are
@@ -124,7 +124,7 @@ written down is invisible to it. The script exits non-zero on either finding;
 
 `tools/hooks/pre-push` (automatic on every push that touches something outside
 the docs-only set above — a docs-only push is gated by nothing),
-`packaging/check-version-drift.sh` (via `ci-parity.sh --lints` and CI), and
+`packaging/check-version-drift.sh` (via the hook's and ci-parity's build-test job, and CI), and
 `ci.yml` itself. Nothing checks commit-message *format* — this project has no
 `commit-msg` hook, so § 1's mandate is read, not enforced.
 `tools/hooks/pre-commit` does exist, but it checks one thing only: that the

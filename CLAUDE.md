@@ -128,14 +128,14 @@ reads every carrier that runs the suite, not just `ci.yml` (ANTS-4717): the
 workflow, the RPM spec, the Arch PKGBUILD and the Debian control. **Adding a
 carrier that runs `ctest` means adding it to that test.**
 
-**It runs before every push automatically, in reduced form.**
-`tools/hooks/pre-push` (wired via `core.hooksPath=tools/hooks`) gates each
-push on the Release suite against the warm `build/`, plus — when a
-sanitizer tree already exists — an incremental `build-asan` build and its
-sanitized suite. Docs-only pushes skip, mirroring `ci.yml`'s
-`paths-ignore`. Not covered by the hook: `--lints`, the containerised
-`qt62-baseline` job, and `e2e`/`perf`; run `--full` before a release and
-when touching packaging- / e2e-sensitive code.
+**It runs before every push automatically, and it runs `ci.yml` too**
+(ANTS-5322). `tools/hooks/pre-push` (wired via `core.hooksPath=tools/hooks`)
+runs `ci.yml`'s `build-test` job through `tools/ci_workflow.py` — build,
+the whole suite, the lints, with the job's env — and its `build-asan` job
+when `build-asan/` exists and is warm (ANTS-4118's cost gate). A push is
+docs-only, and skips, exactly when `ci.yml`'s push `paths-ignore` says so;
+the hook keeps no copy of that list. Not in the hook: the informational
+`cppcheck` job and a cold container leg; `--full` runs every job.
 
 **The Qt-floor half IS covered** (ANTS-4131): the hook runs
 `tools/qt62-guard.sh --warm-only`, a compile guard against the Qt 6.2

@@ -74,10 +74,11 @@ sanitizer. Measured 2026-09-11: the perf-labelled tests cost 285 s of a
 and under `ctest --preset=perf`.
 
 **INV-6 — every sanitized suite run detects leaks (ANTS-3847).** The
-`build-asan` job's `ctest` step and the pre-push hook's sanitized `ctest` each
-run with `detect_leaks=1` and load `tests/lsan-suppressions.txt` through
-`LSAN_OPTIONS`, as the `debug` preset does. `tools/ci-parity.sh --asan` runs
-ci.yml's step itself (ANTS-5322), so it is not a separate carrier. With leaks
+`build-asan` job's `ctest` step runs with `detect_leaks=1` and loads
+`tests/lsan-suppressions.txt` through `LSAN_OPTIONS`, as the `debug` preset
+does. `tools/ci-parity.sh --asan` and the pre-push hook both run that step
+itself through `tools/ci_workflow.py` (ANTS-5322), so ci.yml is the only
+carrier. With leaks
 off everywhere, four leaking tests went unseen for weeks.
 Measured 2026-09-11: the whole sanitized suite passed with leaks on. The
 `--version`/`--help` smoke steps keep `detect_leaks=0` and are out of scope.

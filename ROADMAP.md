@@ -65553,6 +65553,24 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: package.
   Source: in-session-2026-09-24.
 
+- 📋 [ANTS-5339] **StandaloneMcpServer.Inv5 timed out once in the pre-push suite: spec_lint gave no reply within 20 s.**
+  Measured 2026-09-25, pre-push hook (LC_ALL=C.UTF-8, ctest -j2) at
+  HEAD 9c84b694: Inv5NoTerminalRefusesForwardedVerbsOnly failed in
+  25.08 s; the spec_lint call returned {} (McpdSession::await's 20 s
+  timeout), so `ok` read false. Alone it passes in 0.08-0.10 s, three of
+  three. GitHub CI passed it in run 36105166384. Several other sessions
+  were building at the time (Vestige's full local CI among them).
+
+  Unknown, not guessed: whether spec_lint was slow (it runs over the
+  real ANTS-4932 spec in the source tree) or blocked on a lock. Next
+  step: time each call and log a timeout distinctly from a refusal in
+  McpdSession::await. If the cost is the real-tree scan, point the verb
+  at a small fixture so the test's cost does not grow with the repo.
+  **Layman:** One of the new tests for the standalone MCP server failed once while the machine was busy, though it passes on its own.
+  Kind: test.
+  Source: in-session-2026-09-25.
+  Lanes: mcp, tests.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
@@ -65839,6 +65857,15 @@ parse, not that file.
   5 s budget it would have been cut short. So slowness is not a one-off
   cold start, and the default budget is below what ordinary regex
   searches on this repo need.
+  Progress (2026-09-25): the budget has TWO outcomes, which narrows the
+  defect. `store_backed` over lane tests with enclosing_symbol and the
+  default 5 s returned a proper refusal: code rg_failed, "rg exceeded 5 s
+  wall budget, hard-killed", with a hint to raise timeout_sec. The first
+  report (ANTS-4392, no lane) returned ok:true, 6 of 14 rows,
+  truncated:true, no reason. So one path reports the kill and another
+  returns the rows gathered so far as a success. The fix is to make the
+  second path take the first path's refusal, or at least say
+  truncated_reason:"timeout".
   **Layman:** A code search that runs out of time quietly returns only some results, and nothing says the rest were lost to the time limit.
   Kind: fix.
   Source: in-session-2026-09-25.

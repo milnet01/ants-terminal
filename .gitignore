@@ -157,3 +157,6 @@ build-obs/
 # ANTS-5322 — cppcheck analysis cache; ci.yml's cppcheck job writes it in the
 # workspace root, and tools/ci-parity.sh runs that job here.
 .cppcheck-build/
+# ANTS-5322 — ccache dir ci.yml names (${{ github.workspace }}/.ccache);
+# tools/ci_workflow.py honours it, separate from the machine's own cache.
+.ccache/

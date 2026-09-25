@@ -11,15 +11,19 @@ class is a static check that the two recipes agree, never a more careful copy.
 
 ## Invariants
 
-- **INV-1** — Every entry in `ci.yml`'s push `paths-ignore` is matched by the
-  hook's `docs_only_re`, and every alternative in that regex appears in
-  `paths-ignore`. Agreement is checked in BOTH directions: an entry only CI
-  ignores makes the hook run a gate CI will not, which is merely wasteful; an
-  alternative only the hook holds makes it skip a gate CI will run, which is
-  the failure ANTS-4726 observed.
+**ANTS-5322 retired the twin.** The hook no longer keeps a list: it pipes the
+changed paths to `tools/ci_workflow.py docs-only`, which reads ci.yml's push
+`paths-ignore` and applies GitHub's glob rules. So there is nothing left to
+agree, and the invariants are about the one decision.
 
-- **INV-2** — The regex is anchored at the start of the path. Unanchored, a
-  path containing `docs/` anywhere would read as documentation.
+- **INV-1** — the hook holds no docs-only list of its own (`docs_only_re` is
+  gone) and asks the runner with the changed paths.
+
+- **INV-2** — the decision follows ci.yml and is anchored at the start of the
+  path: every literal `paths-ignore` entry reads as docs-only, a file under
+  `docs/` does, `src/docs/x.md` does not, and a push mixing a docs path with a
+  code path runs the gate. Skipped when python3 or PyYAML is absent, since the
+  hook itself refuses then.
 
 ## Out of scope
 

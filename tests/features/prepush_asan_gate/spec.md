@@ -114,4 +114,16 @@ regen edge, after which the dry run reports real edges. A stateless stub
 would report the regen forever and could not tell INV-6's two arms apart.
 Mode `regen_fails` never clears, which is the arm that still skips.
 
+**INV-10 (ANTS-5322)** — the Release leg runs ci.yml's `build-test` job
+through `tools/ci_workflow.py`, so its own build step runs (`cmake --build
+build --parallel` appears in the stub's log), and a failing step in that job
+blocks the push, naming the job, before the sanitizer leg runs. The fixture
+repo carries the real runner and a small `ci.yml` whose jobs call the stubbed
+tools; the case turns one step into `false` to take the failing arm. Red
+against the hook before ANTS-5322, which ran its own `ctest` over an unbuilt
+tree and read no `ci.yml`.
+
+The suite exits 77 (skipped) when python3 or PyYAML is missing, because the
+hook itself refuses without them.
+
 Label: `features;fast`.

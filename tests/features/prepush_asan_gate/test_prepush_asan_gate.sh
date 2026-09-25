@@ -81,8 +81,33 @@ EOF
 chmod +x "$tmp/bin/ctest" "$tmp/bin/cmake" "$tmp/bin/ninja"
 
 # --- throwaway repo with a Release build tree and a warm-looking ASan tree ---
+# ANTS-5322 — the hook runs the pushed repo's OWN ci.yml through its own
+# tools/ci_workflow.py, so the fixture carries both. The jobs call the stubbed
+# cmake/ctest exactly as the real ci.yml does, which keeps "was the sanitizer
+# tree built?" an assertion on cmake's argv.
+command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' 2>/dev/null \
+    || { echo "SKIP: python3 + PyYAML not available"; exit 77; }
 repo="$tmp/repo"
-mkdir -p "$repo"
+mkdir -p "$repo/tools" "$repo/.github/workflows"
+cp "$(dirname "$PREPUSH_HOOK")/../ci_workflow.py" "$repo/tools/"
+cat > "$repo/.github/workflows/ci.yml" <<'EOF'
+on:
+  push:
+    paths-ignore: ['docs/**']
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: cmake --build build --parallel
+      - working-directory: build
+        run: ctest -j2 --output-on-failure --timeout 300
+  build-asan:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: cmake --build build-asan --parallel
+      - working-directory: build-asan
+        run: ctest -j2 --output-on-failure --timeout 300 -LE perf
+EOF
 git init -q "$repo"
 git -C "$repo" config user.email t@t; git -C "$repo" config user.name t
 echo hi > "$repo/f.txt"
@@ -218,6 +243,22 @@ check "the leg STILL RUNS (a gate on this would never clear)" \
       "$(grep -q -- '--build build-asan' <<<"$calls" && echo 0 || echo 1)"
 check "the warning is surfaced to the caller" \
       "$(grep -qi 'deps log' <<<"$out" && echo 0 || echo 1)"
+
+echo "INV-10 — the Release leg runs ci.yml's build-test job, and its failure blocks (ANTS-5322)"
+run_hook 0
+check "build-test's own build step ran (cmake --build build --parallel)" \
+      "$(grep -q -- '--build build --parallel' <<<"$calls" && echo 0 || echo 1)"
+sed -i 's/ctest -j2 --output-on-failure --timeout 300$/false/' "$repo/.github/workflows/ci.yml"
+run_hook 0
+check "a failing build-test step blocks the push (exit non-zero)" \
+      "$([[ $rc -ne 0 ]] && echo 0 || echo 1)"
+check "the block names ci.yml's build-test job" \
+      "$(grep -q "build-test job FAILED" <<<"$out" && echo 0 || echo 1)"
+check "the sanitizer leg did not run after the block" \
+      "$(grep -q -- '--build build-asan' <<<"$calls" && echo 1 || echo 0)"
+git -C "$repo" checkout -q -- .github/workflows/ci.yml 2>/dev/null \
+    || sed -i 's/^        run: false$/        run: ctest -j2 --output-on-failure --timeout 300/' \
+           "$repo/.github/workflows/ci.yml"
 
 if [[ $failures -gt 0 ]]; then
     echo "FAILED: $failures assertion(s)"

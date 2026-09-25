@@ -1,12 +1,14 @@
-// ANTS-4726 — the pre-push hook's docs-only path set is a hand-maintained twin
-// of ci.yml's push `paths-ignore`. Nothing checked they agree, and a twin that
-// drifts makes the hook skip a gate CI will run. See spec.md.
-//
-// Static, and it has to be: locally the two files are only ever read by the
-// hook at push time, so no test run can catch a disagreement between them.
+// ANTS-4726 / ANTS-5322 — the pre-push hook's docs-only decision comes from
+// ci.yml's push `paths-ignore`. It used to be a hand-maintained twin of that
+// list; since ANTS-5322 the hook asks tools/ci_workflow.py, which reads ci.yml,
+// so the invariant is that no second list exists and that the one decision is
+// anchored the way the old regex was. See spec.md.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
+
+#include <QProcess>
+#include <QString>
 
 #include <algorithm>
 #include <set>
@@ -17,6 +19,9 @@
 
 #ifndef SRC_CI_WORKFLOW_PATH
 #error "SRC_CI_WORKFLOW_PATH compile definition required"
+#endif
+#ifndef ANTS_SOURCE_DIR
+#error "ANTS_SOURCE_DIR compile definition required"
 #endif
 #ifndef SRC_PREPUSH_HOOK_PATH
 #error "SRC_PREPUSH_HOOK_PATH compile definition required"
@@ -67,99 +72,59 @@ std::set<std::string> ciPathsIgnore(const std::string &yaml) {
     return out;
 }
 
-// The hook's docs_only_re, as the set of paths it names. `docs/**` and the
-// regex's `docs/` are the same statement about a directory, so both normalise
-// to the directory prefix and the comparison is about paths, not syntax.
-std::set<std::string> hookDocsOnly(const std::string &sh, bool *anchored) {
-    std::set<std::string> out;
-    *anchored = false;
-    const size_t k = sh.find("docs_only_re=");
-    if (k == std::string::npos) return out;
-    const size_t open  = sh.find('\'', k);
-    const size_t close = open == std::string::npos ? open : sh.find('\'', open + 1);
-    if (close == std::string::npos) return out;
-    std::string re = sh.substr(open + 1, close - open - 1);
-
-    if (re.rfind("^(", 0) == 0 && re.back() == ')') {
-        *anchored = true;
-        re = re.substr(2, re.size() - 3);
-    }
-    std::string cur;
-    for (size_t i = 0; i <= re.size(); ++i) {
-        if (i == re.size() || re[i] == '|') {
-            if (!cur.empty()) out.insert(cur);
-            cur.clear();
-            continue;
-        }
-        if (re[i] == '\\') continue;          // `\.` is a literal dot here
-        cur += re[i];
-    }
-    return out;
+// Asks the runner, as the hook does. -1 when python3 or PyYAML is missing.
+int docsOnly(const QString &paths) {
+    QProcess p;
+    p.start(QStringLiteral("python3"),
+            {QStringLiteral(ANTS_SOURCE_DIR "/tools/ci_workflow.py"),
+             QStringLiteral("docs-only")});
+    if (!p.waitForStarted(5000)) return -1;
+    p.write(paths.toUtf8());
+    p.closeWriteChannel();
+    if (!p.waitForFinished(20000)) return -1;
+    return p.exitCode();
 }
 
-std::string join(const std::set<std::string> &s) {
-    std::string out;
-    for (const std::string &v : s) { if (!out.empty()) out += ", "; out += v; }
-    return out.empty() ? std::string("<none>") : out;
-}
-
-// A ci.yml glob and a regex alternative naming the same directory must compare
-// equal: `docs/**` and `docs/` both mean "everything under docs".
-std::string normalise(std::string p) {
-    if (p.size() > 2 && p.compare(p.size() - 2, 2, "**") == 0)
-        p.erase(p.size() - 2);
-    return p;
-}
-
-std::set<std::string> normaliseAll(const std::set<std::string> &in) {
-    std::set<std::string> out;
-    for (const std::string &v : in) out.insert(normalise(v));
-    return out;
+bool pyyamlPresent() {
+    QProcess p;
+    p.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral("import yaml")});
+    return p.waitForFinished(10000) && p.exitCode() == 0;
 }
 
 }  // namespace
 
-// INV-1 — the two lists agree, in both directions.
-TEST(PrepushDocsOnlyParity, Inv1HookAndWorkflowNameTheSamePaths) {
-    expect_reset();
-    const std::string yaml = ants_test::slurpFile(SRC_CI_WORKFLOW_PATH);
-    const std::string sh   = ants_test::slurpFile(SRC_PREPUSH_HOOK_PATH);
-    ASSERT_FALSE(yaml.empty());
-    ASSERT_FALSE(sh.empty());
-
-    bool anchored = false;
-    const std::set<std::string> ci   = normaliseAll(ciPathsIgnore(yaml));
-    const std::set<std::string> hook = normaliseAll(hookDocsOnly(sh, &anchored));
-
-    expect(!ci.empty(), "4726/ci-paths-ignore-parsed",
-           QString::fromStdString(join(ci)));
-    expect(!hook.empty(), "4726/hook-regex-parsed",
-           QString::fromStdString(join(hook)));
-
-    std::set<std::string> ciOnly, hookOnly;
-    std::set_difference(ci.begin(), ci.end(), hook.begin(), hook.end(),
-                        std::inserter(ciOnly, ciOnly.begin()));
-    std::set_difference(hook.begin(), hook.end(), ci.begin(), ci.end(),
-                        std::inserter(hookOnly, hookOnly.begin()));
-
-    // Only the hook: it skips a gate CI will run — the ANTS-4726 failure.
-    expect(hookOnly.empty(), "4726/hook-skips-what-ci-runs",
-           QString::fromStdString(join(hookOnly)));
-    // Only ci.yml: merely wasteful, but it is still drift and it is still a
-    // twin that has stopped agreeing.
-    expect(ciOnly.empty(), "4726/ci-ignores-what-hook-gates",
-           QString::fromStdString(join(ciOnly)));
-    ASSERT_EQ(0, expect_finish());
-}
-
-// INV-2 — anchored at the start of the path. Unanchored, any path containing
-// `docs/` reads as documentation.
-TEST(PrepushDocsOnlyParity, Inv2RegexIsAnchoredAtPathStart) {
+// INV-1 — the hook keeps no list of its own; it asks the runner, which reads
+// ci.yml. A second list is the drift ANTS-4726 was filed about.
+TEST(PrepushDocsOnlyParity, Inv1HookAsksTheWorkflowAndKeepsNoList) {
     expect_reset();
     const std::string sh = ants_test::slurpFile(SRC_PREPUSH_HOOK_PATH);
     ASSERT_FALSE(sh.empty());
-    bool anchored = false;
-    hookDocsOnly(sh, &anchored);
-    expect(anchored, "4726/anchored", QString());
+    expect(sh.find("docs_only_re") == std::string::npos,
+           "5322/no-hand-list", QString());
+    expect(sh.find("docs-only <<<\"$changed\"") != std::string::npos,
+           "5322/asks-the-runner", QString());
+    ASSERT_EQ(0, expect_finish());
+}
+
+// INV-2 — the decision is anchored at the start of the path, and every literal
+// ci.yml entry is honoured. Unanchored, any path containing `docs/` would read
+// as documentation and skip a gate CI will run.
+TEST(PrepushDocsOnlyParity, Inv2DecisionIsAnchoredAndFollowsTheWorkflow) {
+    if (!pyyamlPresent()) GTEST_SKIP() << "python3 + PyYAML not available";
+    expect_reset();
+    const std::set<std::string> ci =
+        ciPathsIgnore(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH));
+    expect(!ci.empty(), "4726/ci-paths-ignore-parsed", QString());
+    for (const std::string &g : ci) {
+        if (g.find('*') != std::string::npos) continue;   // globs: below
+        expect(docsOnly(QString::fromStdString(g) + QStringLiteral("\n")) == 0,
+               "5322/literal-entry-honoured", QString::fromStdString(g));
+    }
+    expect(docsOnly(QStringLiteral("docs/specs/x.md\n")) == 0,
+           "5322/docs-subtree-is-docs", QString());
+    expect(docsOnly(QStringLiteral("src/docs/x.md\n")) == 1,
+           "4726/anchored", QStringLiteral("src/docs/x.md read as docs"));
+    expect(docsOnly(QStringLiteral("ROADMAP.md\nsrc/a.cpp\n")) == 1,
+           "5322/code-path-runs-the-gate", QString());
     ASSERT_EQ(0, expect_finish());
 }

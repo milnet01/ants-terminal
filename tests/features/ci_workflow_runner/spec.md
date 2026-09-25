@@ -20,8 +20,9 @@ in ci.yml appears in its `host_jobs` or `container_jobs` list, which is what
 its own start-up check enforces at run time.
 
 **INV-3 — a step runs with the runner's semantics.** On a fixture workflow:
-the workflow's, the job's and the step's `env` apply, and job keys matching `CCACHE_*`
-do not; `working-directory` sets the cwd; `CI=true` and `LC_ALL=C.UTF-8` are
+the workflow's, the job's and the step's `env` apply, `CCACHE_*` included
+(ci.yml points them at its own `.ccache/`, so its cap bounds that cache and not
+the developer's); `working-directory` sets the cwd; `CI=true` and `LC_ALL=C.UTF-8` are
 set and `DISPLAY` and `BASH_ENV` are not; `timeout <duration> cmd` runs `cmd`; after a failing
 step a later step runs only if it has `if: always()`; the run exits non-zero.
 
