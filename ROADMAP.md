@@ -66226,12 +66226,13 @@ parse, not that file.
 Filed from the feedback corpus on 2026-09-25. Each item names the reporting
 project. Reported causes are claims until checked in source.
 
-- 📋 [ANTS-5344] **roadmap_log append_batch should take a per-bullet `section`, as it takes a per-bullet `pass`.**
+- ✅ [ANTS-5344] **roadmap_log append_batch should take a per-bullet `section`, as it takes a per-bullet `pass`.**
   Reported by UT_Ants (UTA-0090): a batch holding items for two release
   sections filed both into the call's one section, with a clean reply.
   Moving an item afterwards is now possible (ANTS-4948), so this is about
   filing it right the first time. The call-level `section` becomes the
   fallback, as `pass` already works.
+  Resolved (2026-09-25): shipped in 6510bef0; GitHub CI green.
   **Layman:** Filing several items at once puts them all in one section, even when they belong in different ones.
   Kind: enhancement.
   Source: feedback-UT_Ants-2026-09-10.
@@ -66325,7 +66326,7 @@ project. Reported causes are claims until checked in source.
   Source: feedback-LocalWebServerManager-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5353] **A project's first id silently takes a prefix guessed from its folder name when it declares none.**
+- ✅ [ANTS-5353] **A project's first id silently takes a prefix guessed from its folder name when it declares none.**
   Reported by Groundwork: declared GRND, but a dry-run append without
   id_prefix gave GROU-0001 with no warning. Ids are permanent, so one
   forgetful append fixes the wrong prefix for good. Suggested: id_prefix on
@@ -66340,6 +66341,10 @@ project. Reported causes are claims until checked in source.
   nothing and has no ids, the first append falls to rlLeafDirPrefix
   with no warning. Add a warning to the append / append_batch envelope
   on both paths naming the derived prefix and the project_settings call.
+  Resolved (2026-09-25): shipped in 6510bef0 as an id_prefix_guessed
+  warning on append and append_batch; GitHub CI green. roadmap_migrate's
+  own id synthesis still takes the folder prefix silently on an id-less
+  roadmap; not in this item's scope.
   **Layman:** A new project's item numbers can start with the wrong letters if one session forgets a setting on its first entry.
   Kind: enhancement.
   Source: feedback-Groundwork-2026-09-25.
@@ -66523,12 +66528,13 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: roadmap-store, mcp.
 
-- 🚧 [ANTS-5371] **append_batch refuses unrecognised_format on a store-served project that has no items yet.**
+- ✅ [ANTS-5371] **append_batch refuses unrecognised_format on a store-served project that has no items yet.**
   Found writing ANTS-5353's test. The batch reads ROADMAP.md and runs the
   zero-bullet format gate before it branches on the store, so a migrated
   project with no items and a file over kRoadmapMinParseableSize refuses.
   The single append takes its store route first and is unaffected. Fix:
   skip the gate when roadmapWriteTarget() resolved a store target.
+  Resolved (2026-09-25): shipped in 6510bef0; GitHub CI green.
   **Layman:** A brand-new project whose roadmap is empty cannot add its first batch of items.
   Kind: fix.
   Source: in-session-2026-09-25.
@@ -66562,6 +66568,36 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: feedback-Vestige-2026-09-25.
   Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5374] **roadmap_migrate gives id-less bullets ids under a folder-derived prefix without a note.**
+  Found writing ANTS-5353's test. Migrating a roadmap whose only
+  bullet has no id allocates an id under the folder's first four letters
+  and records that prefix in the store, so later appends treat it as
+  chosen and ANTS-5353's warning never fires. Add a plan or load note
+  naming the derived prefix and the project_settings call, the same
+  advice ANTS-5353 gives.
+  **Layman:** Importing a roadmap whose items have no numbers can give them the wrong letters without saying so.
+  Kind: enhancement.
+  Source: in-session-2026-09-25.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5375] **The pre-push hook now runs perf-labelled wall-clock benchmarks, which fail under this machine's shared load.**
+  ci.yml's build-test step runs `ctest -j2` with no `-LE perf`, so
+  RoadmapReadSeam.Inv3Latency (p95 < 50 ms) runs there on purpose. Since
+  ANTS-5322 the pre-push hook executes that job, so the benchmark now
+  gates every push, at -j2, on a workstation shared with many sessions.
+  Two pushes on 2026-09-25 failed on it (p95 54 ms and 66 ms, load
+  average about 18-25); alone at the same load it failed one run in
+  three and passed the others. Options: run perf-labelled tests in their
+  own serial ci.yml step after the rest, so the hook stops contending
+  with itself; and decide whether a local gate on a shared machine should
+  enforce a wall-clock budget at all, or leave it to the GitHub runner.
+  The second is a change to ANTS-5322's no-copy rule and to ANTS-3793's
+  § 4, so it wants a decision, not a quiet patch.
+  **Layman:** Pushing code can fail because a speed test ran while the computer was busy, not because anything broke.
+  Kind: fix.
+  Source: in-session-2026-09-25.
+  Lanes: ci, roadmap.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

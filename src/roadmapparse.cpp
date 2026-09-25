@@ -1151,8 +1151,11 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     // next `**Layman:**` bold token and emit headline:"Layman:" — the
     // contract `headline_oneline` advertises (one-line summary) was
     // violated for every multi-line-headline bullet.
+    // ANTS-5362 — `(?!\*)`: the close is the LAST two stars of a run. A
+    // headline ending in an italic span renders `*style.***`, and the first two
+    // stars of that run closed the bold, leaving `*` for the body.
     static const QRegularExpression rxBold(
-        QStringLiteral("\\*\\*(.+?)\\*\\*"),
+        QStringLiteral("\\*\\*(.+?)\\*\\*(?!\\*)"),
         QRegularExpression::DotMatchesEverythingOption);
     // ANTS-4066 — rxBold has no notion of Markdown code spans, so a headline
     // that legitimately QUOTES a bold marker inside backticks used to end at

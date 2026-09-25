@@ -672,6 +672,26 @@ TEST(RoadmapRender, Ants4977DroppedItemRoundTripsAsDropped) {
     EXPECT_EQ(rec->status, QString::fromUtf8(RoadmapParse::kEmojiDropped));
 }
 
+// ANTS-5362 — a headline ending in an italic span renders `*style.***`. The
+// parser took the first `**` of that run as the bold close, so a re-import
+// kept `Done with *style.` as the headline and moved a `*` into the body.
+TEST(RoadmapRender, Ants5362ItalicTailHeadlineRoundTrips) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    auto it = mkItem(f->projectId, QStringLiteral("ANTS-3"),
+                     QStringLiteral("Done with *style.*"), f->rootSection, 3);
+    it.body = QStringLiteral("Body line.");
+
+    const QString text = RoadmapRender::bulletText(it);
+    ASSERT_TRUE(text.contains(QStringLiteral("**Done with *style.***")))
+        << text.toStdString();
+    const auto rec = RoadmapParse::parseAntsV1Bullet(text);
+    ASSERT_TRUE(rec.has_value()) << text.toStdString();
+    EXPECT_EQ(rec->headlineFull, it.headline);
+    EXPECT_FALSE(rec->bodyProse.startsWith(QLatin1Char('*')))
+        << rec->bodyProse.toStdString();
+}
+
 TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
     const QDir srcDir(QStringLiteral(ANTS_SRC_DIR));
     ASSERT_TRUE(srcDir.exists()) << srcDir.absolutePath().toStdString();

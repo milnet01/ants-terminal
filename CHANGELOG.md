@@ -123,6 +123,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap headline ending in italics keeps its closing `*` through a render and re-import** (ANTS-5362)
+  The parser now takes the last two stars of a `***` run as the end of
+  the bold headline, so migrating again no longer edits such items.
+
 - **`roadmap_migrate` reports a task-list line with an unrecognised checkbox, such as `- [~]`** (ANTS-5361)
   The line is still kept as narration, and now raises an
   `unrecognised_checkbox` note naming its line, so it is no longer

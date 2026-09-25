@@ -53,3 +53,11 @@ and is listed in `Outcome::filesUnchanged` instead of `filesWritten`; the two
 lists are disjoint and together name every owned file. A dry run makes the same
 comparison, read-only, so it still changes nothing (INV-14). *Test:*
 `RoadmapRender.Ants5016UnchangedFilesAreNotRewritten`.
+
+## ANTS-5362 — a headline ending in italics round-trips
+
+A stored headline `Done with *style.*` renders as `**Done with *style.***`.
+Parsing that line back gives the same headline, and the body does not start
+with a stray `*`. The bold close is the last two stars of a run. *Test:*
+`RoadmapRender.Ants5362ItalicTailHeadlineRoundTrips`, red with the parser's
+`(?!\*)` removed.
