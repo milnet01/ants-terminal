@@ -72,8 +72,24 @@ on a metered repository it costs the minutes twice.
 **A repository with a pipeline and a gate script that no push actually
 runs is in breach of this standard**, not merely unlucky. Two ways in: no
 reachable `pre-push` hook, or a reachable one that cannot find the script.
-§ 6.2's `ants.gate.command` is the second. The hook announces that nothing
-was checked and exits 0, without saying which of the two you are in.
+§ 6.2's `ants.gate.command` is the second.
+
+**Both `ants.gate.*` keys live in `.git/config` and no clone inherits
+them.** Setting them once satisfies § 6.2 on that machine only; a fresh
+clone, a colleague's box and CI are each back in breach with nothing said.
+So a repository meeting this section through the shared hook owes something
+a clone executes — a setup step in its README, or a script — rather than a
+command somebody ran once.
+
+**Only the second announces itself, and that asymmetry is the diagnostic.**
+A hook that is not reached runs nothing and prints nothing, so a silent
+push is the breach rather than the evidence against it. A hook that IS
+reached and finds no gate script says so and exits 0. So: silence means
+audit `core.hooksPath` and whether a `pre-push` reaches the shared hook;
+the announcement means set `ants.gate.command` or write a gate. **The pair
+the announcement cannot tell apart is a different pair** — no gate script
+at all, against a script the hook cannot find — and § What checks this
+states it in those terms.
 
 **A repository with a pipeline and no way to run it locally has a gap
 worth fixing** before the next feature, not a rule to argue with.
@@ -111,6 +127,17 @@ control, a job matrix with no single entry point —
 [`act`](https://github.com/nektos/act) runs the real workflow in a
 container and is the fallback.
 
+**Give `act` its runner image explicitly, or it cannot run unattended.**
+With no `~/.config/act/actrc` it opens an interactive image picker, and
+on any stdin that is not a terminal it exits `fatal msg=EOF` — which is
+every hook, every CI step and every agent session, the whole setting this
+standard is about. `--dryrun` does not avoid it; the picker comes first.
+Pass `-P ubuntu-latest=<image>`, or write the `actrc` once. Measured
+2026-09-25 on `act` 0.2.89: bare `act push` and `act push --dryrun` both
+died at the picker, and the same run with `-P` completed. A container
+runtime that is not Docker is not the obstacle — `act` found rootless
+Podman's socket unaided.
+
 ## 4. Jobs that cannot run locally
 
 **Where a job genuinely cannot run locally** — a self-hosted runner, a
@@ -144,11 +171,21 @@ reads it for one and not the other is already half right.
 ### 5.1 Route 1 — check the pushed commits out somewhere else
 
 ```bash
-tree=$(mktemp -d)
+# NOT /tmp: it is tmpfs on many machines (15.6G of RAM here, measured
+# 2026-09-25), so a build tree lands in memory. One fixed parent and one
+# mktemp level also keeps ccache's base_dir keyed on a stable path depth.
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/pre-push
+mkdir -p "$cache"
+tree=$(mktemp -d "$cache/tmp.XXXXXX")
 trap 'git worktree remove --force "$tree" 2>/dev/null' EXIT
 git worktree add --detach --quiet "$tree" "$local_sha"
-( cd "$tree" && ./scripts/local-ci.sh )
+( cd "$tree" && ./scripts/local-ci.sh )   # a RELATIVE path, so it stays here
 ```
+
+**Keep the gate's path relative.** An absolute one resolves to the script
+in the real checkout, and a script that repositions itself from `$0` then
+leaves the worktree entirely — the breach this route exists to prevent,
+returning green.
 
 That runs against what the remote will see and never touches the working
 tree. The cost is a checkout with none of your ignored files in it, so a
@@ -231,7 +268,11 @@ documentation, and they are not symmetric.
 COVERAGE**: the hook falls back to an extension list, which is what § 6.1
 forbids and what produced the 2026-08-19 failure above. So a repository
 **relying on a shared hook** that has not set `ants.gate.docsGlob` has not
-satisfied this standard. A repository keeping its own hook satisfies this
+satisfied this standard. **A hook that only hands off is not a hook of its
+own**: the skeleton's `.githooks/pre-push` execs the machine-wide one, so
+such a repository relies on the shared hook and owes the key. `ci-gate`
+tests it the same way, calling a delegator *the machine-wide hook wearing a
+shim*. A repository keeping its own hook satisfies this
 section by encoding the answer in that hook instead; it never reads the
 key.
 
@@ -302,7 +343,10 @@ machine implements the skip, so by hand is the only route there is today.
 
 **A release push is never documentation-only, whatever its diff looks
 like** — so neither this skip nor § 6's documentation mode is available to
-one. [releases.md](releases.md) § 6 step 5 owns the reason.
+one. **The reason: a release publishes an artefact built from that tree, so
+what the diff touches says nothing about what is being shipped.**
+[releases.md](releases.md) § 6 step 5 states the same rule; neither
+document carried the reason until now, each pointing at the other.
 
 **Condition 2 is the one that matters, and it is why this is not simply
 "docs are safe".** Plenty of pipelines lint markdown, check links,
@@ -346,9 +390,9 @@ proof, not uncertainty.
 | Rule | What catches a breach |
 |------|----------------------|
 | § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. **That branch cannot tell § 2's two cases apart** — no gate script at all, which is the gap worth fixing, and a script the hook cannot find, which is the breach — so it prints the same thing for both. What it lacks there is a *block*, not a voice: it exits 0, so both are announced on every push and neither is stopped |
-| § 3 the local run executes the pipeline's own definition | **nothing** — whether `ci.yml` calls the repository's gate script is readable, and no check reads it |
+| § 3 the local run executes the pipeline's own definition | `~/.claude/tools/ci-gate`, an on-demand audit — it greps the repository's workflows for the gate script's basename and reports `NOT MAPPED` with a non-zero exit, per repository or over a tree with `--all`. **It is not on `PATH`**: call it by that path. **`Partial:`** because nothing runs it on a push, so a repository that stops calling its gate stays broken until somebody sweeps |
 | § 4 uncovered jobs are named | **nothing** — the absence of a sentence is what would have to be detected |
-| § 5 the run is over the pushed commits, not the working tree | `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally, so where either runs the rule cannot be breached. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
+| § 5 the run is over the pushed commits, not the working tree | **`Partial:`** `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally. **Route 1 is not by itself enough**: the gate runs as `( cd "$WORKTREE" && "$GATE" )`, and an absolute `ants.gate.command` resolves to the script in the real checkout, whose own `cd "$(dirname "$0")/.."` then walks back to the working tree. Measured 2026-09-25 — the gate reported the real repository as its `PWD`, an uncommitted file was present, and the hook exited 0. The machine-wide hook now re-anchors an absolute path inside the repository and refuses one outside it; a hook that does not is still exposed. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
 | § 6.2 a repository sets `ants.gate.docsGlob` | **nothing** — the machine-wide hook falls back to an extension list with no word said, and § 6.2 says so in its own text. **It is the only one of the three that is silent.** An unset `ants.gate.command` is named where no gate script is discoverable (`NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE`, then the key), and an unset `ants.gate.docsMode` is named on a documentation-only push (`has no documentation mode — running all of it`, then the key) — each in the branch where its absence bites. So for those two an unset key and a set one do NOT produce the same push, and only `docsGlob` reaches § 2's breach unannounced |
 | § 7 all three conditions hold before the skip | **nothing** — no hook on this machine implements this skip. `~/.claude/githooks/pre-push` classifies a push as documentation-only, but it does that to select § 6's documentation mode: it holds no `gh` call, and after classifying it always runs the gate. So condition 1 is checked by nothing, condition 2 is a read of the pipeline's definition, and the skip is taken by hand or not at all |
 
