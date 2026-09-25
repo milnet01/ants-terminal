@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QProcess>
@@ -102,6 +103,79 @@ TEST(McpdAboutVersion, Inv4FallsBackToPath) {
     EXPECT_EQ(mcpd::locateBinary(tmp.filePath(QStringLiteral("none.json")),
                                  tmp.path()),
               expected);
+}
+
+namespace {
+
+// A running ants-mcpd child. It serves stdio, so it runs until stdin closes.
+struct RunningChild {
+    QProcess p;
+    explicit RunningChild(const QString &binary) {
+        p.start(binary, {});
+        p.waitForStarted(5000);
+    }
+    ~RunningChild() {
+        p.closeWriteChannel();  // EOF: ants-mcpd quits on its own
+        if (!p.waitForFinished(5000)) p.kill();
+    }
+};
+
+const mcpd::RunningCopy *findPid(const QList<mcpd::RunningCopy> &copies, qint64 pid) {
+    for (const auto &c : copies)
+        if (c.pid == pid) return &c;
+    return nullptr;
+}
+
+}  // namespace
+
+// INV-6
+TEST(McpdAboutVersion, Inv6ListsARunningCopy) {
+    RunningChild child{QStringLiteral(ANTS_MCPD_BIN)};
+    ASSERT_EQ(child.p.state(), QProcess::Running);
+    const auto copies = mcpd::runningCopies(5000);
+    const mcpd::RunningCopy *c = findPid(copies, child.p.processId());
+    ASSERT_NE(c, nullptr) << "the child ants-mcpd was not listed";
+    EXPECT_EQ(c->version, mcpd::versionLine());
+    EXPECT_FALSE(c->replaced);
+    EXPECT_TRUE(c->ancestors.contains(QCoreApplication::applicationPid()));
+    EXPECT_FALSE(mcpd::isStale(*c, mcpd::versionLine()));
+}
+
+// INV-7
+TEST(McpdAboutVersion, Inv7ReplacedCopyKeepsItsVersion) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString copy = tmp.filePath(QStringLiteral("ants-mcpd"));
+    ASSERT_TRUE(QFile::copy(QStringLiteral(ANTS_MCPD_BIN), copy));
+    RunningChild child{copy};
+    ASSERT_EQ(child.p.state(), QProcess::Running);
+    // Replace the file the way a rebuild does: a new file renamed over it.
+    const QString next = tmp.filePath(QStringLiteral("next"));
+    makeExecutable(next);
+    ASSERT_TRUE(QFile::remove(copy));
+    ASSERT_TRUE(QFile::rename(next, copy));
+
+    const auto copies = mcpd::runningCopies(5000);
+    const mcpd::RunningCopy *c = findPid(copies, child.p.processId());
+    ASSERT_NE(c, nullptr) << "the replaced copy was not listed";
+    EXPECT_TRUE(c->replaced);
+    EXPECT_EQ(c->version, mcpd::versionLine());
+    EXPECT_TRUE(mcpd::isStale(*c, mcpd::versionLine()));
+}
+
+// INV-8
+TEST(McpdAboutVersion, Inv8IsStale) {
+    const QString disk = QStringLiteral("ants-mcpd 1.0.0 · a");
+    mcpd::RunningCopy c;
+    c.version = disk;
+    EXPECT_FALSE(mcpd::isStale(c, disk)) << "matching copy";
+    c.replaced = true;
+    EXPECT_TRUE(mcpd::isStale(c, disk)) << "replaced";
+    c.replaced = false;
+    c.version.clear();
+    EXPECT_TRUE(mcpd::isStale(c, disk)) << "no version line";
+    c.version = QStringLiteral("ants-mcpd 1.0.0 · b");
+    EXPECT_TRUE(mcpd::isStale(c, disk)) << "different version";
 }
 
 // INV-5

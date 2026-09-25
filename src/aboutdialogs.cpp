@@ -104,7 +104,7 @@ QString compilerInfo() {
 
 namespace AboutDialogs {
 
-void showAboutAnts(QWidget *parent) {
+void showAboutAnts(QWidget *parent, const QList<TabShells> &tabs) {
     const QString qtVer = QString::fromLatin1(qVersion());
     QString luaLine;
 #ifdef ANTS_LUA_PLUGINS
@@ -139,6 +139,34 @@ void showAboutAnts(QWidget *parent) {
         : mcpdVersion.isEmpty() ? QStringLiteral("no version from %1")
                                       .arg(mcpdPath.toHtmlEscaped())
                                 : mcpdVersion.toHtmlEscaped());
+    // ANTS-5341 — each Claude Code session runs its own ants-mcpd until it
+    // reconnects. Name the tabs still on an older copy than the one above.
+    QString staleLine;
+    if (!mcpdVersion.isEmpty()) {
+        QStringList staleTabs;
+        int staleElsewhere = 0;
+        for (const mcpd::RunningCopy &copy : mcpd::runningCopies(2000)) {
+            if (!mcpd::isStale(copy, mcpdVersion)) continue;
+            QString tabTitle;
+            for (const TabShells &tab : tabs) {
+                for (qint64 shell : tab.shellPids)
+                    if (copy.ancestors.contains(shell)) tabTitle = tab.title;
+                if (!tabTitle.isEmpty()) break;
+            }
+            if (tabTitle.isEmpty()) ++staleElsewhere;
+            else if (!staleTabs.contains(tabTitle)) staleTabs.append(tabTitle);
+        }
+        if (!staleTabs.isEmpty())
+            staleLine += QStringLiteral(
+                "<br/>⚠ Older Ants MCP in: %1. Type <code>/mcp</code> there "
+                "and reconnect <b>ants</b> to update.")
+                .arg(staleTabs.join(QStringLiteral(", ")).toHtmlEscaped());
+        if (staleElsewhere > 0)
+            staleLine += QStringLiteral(
+                "<br/>⚠ Claude Code sessions outside this window running an "
+                "older Ants MCP: %1. Reconnect them with <code>/mcp</code>.")
+                .arg(staleElsewhere);
+    }
     const QString body = QStringLiteral(
         "<h3>Ants Terminal</h3>"
         "<p><b>Version:</b> %1<br/>"
@@ -148,7 +176,7 @@ void showAboutAnts(QWidget *parent) {
         "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
         "https://github.com/milnet01/ants-terminal</a></p>")
         .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine, buildLine,
-             mcpdLine);
+             mcpdLine + staleLine);
 
     auto *dlg = makeAboutDialog(parent,
                                 QStringLiteral("About Ants Terminal"),

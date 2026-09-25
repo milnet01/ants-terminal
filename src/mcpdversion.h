@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <QList>
 #include <QString>
 
 namespace mcpd {
@@ -23,5 +24,26 @@ QString locateBinary(const QString &claudeJsonPath, const QString &appDir);
 // Runs `<binary> --version` and returns its first stdout line, or an empty
 // string when it does not start, times out, or exits non-zero.
 QString queryVersion(const QString &binary, int timeoutMs);
+
+// ANTS-5341 — one running ants-mcpd. Each Claude Code session runs its own
+// until it reconnects, so after a rebuild some still run the older one.
+struct RunningCopy {
+    qint64 pid = 0;
+    // Its own `--version` line, asked of /proc/<pid>/exe, which still runs
+    // the original program after a rebuild replaces the file. Empty for a
+    // build older than ANTS-5340.
+    QString version;
+    // Its file was replaced or removed after it started.
+    bool replaced = false;
+    // Parent, grandparent, ... up to pid 1: how a copy is matched to a tab.
+    QList<qint64> ancestors;
+};
+
+// This user's running ants-mcpd processes (Linux /proc).
+QList<RunningCopy> runningCopies(int timeoutMs);
+
+// True when `copy` is not the build `diskVersion` names: replaced, no
+// version line, or a different one.
+bool isStale(const RunningCopy &copy, const QString &diskVersion);
 
 }  // namespace mcpd

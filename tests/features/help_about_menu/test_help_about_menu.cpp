@@ -169,7 +169,8 @@ TEST(HelpAboutMenu, Main) {    auto loadFile = [](const QString &path) -> QStrin
     };
 
     const QString aboutBlock = extractFunctionBody(
-        aboutSrc, QStringLiteral("void showAboutAnts(QWidget *parent)"));
+        // Prefix: ANTS-5341 added a tab-list parameter after `parent`.
+        aboutSrc, QStringLiteral("void showAboutAnts(QWidget *parent"));
     expect(!aboutBlock.isEmpty(), "I2b/handler-block-located",
            QStringLiteral("Could not locate showAboutAnts() body in "
                           "aboutdialogs.cpp — has the function been "

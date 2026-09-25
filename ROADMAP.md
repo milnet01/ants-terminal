@@ -11236,7 +11236,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-18 (found while fixing ANTS-5087's allocator floor).
   Lanes: roadmap.
 
-- 📋 [ANTS-5230] **A rendered pass-headings roadmap is stamped with the ants-v1 format marker, so nothing can re-detect its dialect.**
+- ✅ [ANTS-5230] **A rendered pass-headings roadmap is stamped with the ants-v1 format marker, so nothing can re-detect its dialect.**
   The render prepends `ants-roadmap-format: 1` to any file whose head
   lacks it, whatever the dialect. detectRoadmapFormat() returns ants-v1 the
   moment it sees that marker, before examining a bullet, and the ants-v1
@@ -11255,12 +11255,13 @@ extends an existing item, that item carries it instead.
   marker line before it parses, and says so.
   Landed with ANTS-5231 in 749f2b1b. Flip both once GitHub CI for
   9c84b694 or later is green.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** A roadmap written in the pass-heading style gets a label saying it is the other style, so tools that check the label read the file as empty.
   Kind: fix.
   Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
   Lanes: roadmap.
 
-- 📋 [ANTS-5231] **Each render of a pass-headings roadmap adds another copy of every Status line, without bound.**
+- ✅ [ANTS-5231] **Each render of a pass-headings roadmap adds another copy of every Status line, without bound.**
   Measured 2026-09-18 on the roadmap_render_pass_headings seed. The seed
   carries one `- **Status**: done` line per block. The first render emits
   two. Migrating that output and rendering again emits three. It compounds
@@ -11284,6 +11285,7 @@ extends an existing item, that item carries it instead.
   fixed point.
   Landed with ANTS-5230 in 749f2b1b. Flip both once GitHub CI for
   9c84b694 or later is green.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** Every time a pass-style roadmap is written out, each item's status line is duplicated again, so the file grows a little more each time.
   Kind: fix.
   Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
@@ -41610,7 +41612,7 @@ in each bullet, not just the reporter's symptom.
   Kind: chore.
   Source: in-session-2026-09-24.
 
-- 🚧 [ANTS-5322] **tools/ci-parity.sh executes ci.yml's own steps instead of a hand-maintained copy.**
+- ✅ [ANTS-5322] **tools/ci-parity.sh executes ci.yml's own steps instead of a hand-maintained copy.**
   local-gate.md § 3 requires the local run to execute the pipeline's own
   definition; ci-parity.sh re-stated ci.yml's steps in shell (ANTS-4392),
   so the two could drift. tools/ci_workflow.py now runs each host job's
@@ -41623,6 +41625,7 @@ in each bullet, not just the reporter's symptom.
   ci.yml). Local: hook ran build-test end to end on the 2e63db9f push,
   5101/5101 tests + all lints. Flip to shipped once GitHub runs
   36109814112 and 36111437270 are green.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** The local "check before pushing" run now follows GitHub's CI recipe directly, so the two can no longer disagree.
   Kind: fix.
   Source: user-request-2026-09-25.
@@ -41640,6 +41643,22 @@ in each bullet, not just the reporter's symptom.
   **Layman:** The two container checks still write out their build commands by hand instead of taking them from GitHub's CI recipe.
   Kind: refactor.
   Source: in-session-2026-09-25 (user chose roadmap over now).
+  Lanes: build, ci.
+
+- 📋 [ANTS-5342] **The pre-push hook tests the working tree, not the commits being pushed.**
+  Seen 2026-09-25 pushing 3195fe93: tools/hooks/pre-push built
+  build/ from a tree holding uncommitted edits to
+  tests/features/mcpd_about_version/test_mcpd_about_version.cpp,
+  and compiled them into test_claude. The hook has no check for a
+  dirty tree. The pushed commits had passed the suite on their own, so
+  no bad push resulted. The same shape can pass a push whose committed
+  content is red, or fail one that is green.
+  Options: refuse on a dirty tracked tree with a clear message, or
+  test the pushed commit in a separate worktree. The first is cheap;
+  the second costs a second build tree.
+  **Layman:** The safety check before a push can pass on edits that were never committed, so it can approve a push whose real content it never tested.
+  Kind: fix.
+  Source: in-session-2026-09-25.
   Lanes: build, ci.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
@@ -65603,6 +65622,23 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-request-2026-09-25.
   Lanes: mcp, ui.
 
+- 🚧 [ANTS-5341] **Help → About warns when a Claude Code session runs an older ants-mcpd than the one on disk.**
+  Follows ANTS-5340, which shows the build of the ants-mcpd on disk.
+  Each Claude Code session runs its own ants-mcpd until it reconnects.
+  Linux keeps a running program's original file reachable at
+  /proc/<pid>/exe even after a rebuild replaces it, so that copy can be
+  asked for its own --version.
+  Plan: find this user's running ants-mcpd processes, ask each for its
+  version, map each to a tab through its parent processes, and name the
+  tabs whose version differs from the one on disk, with "reconnect with
+  /mcp".
+  Assumption: every tab in this window is checked, not only the
+  focused one.
+  **Layman:** After Ants MCP is rebuilt, sessions keep the old copy until they reconnect; the About box says which tabs to reconnect.
+  Kind: feature.
+  Source: user-request-2026-09-25.
+  Lanes: mcp, ui.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
@@ -65925,7 +65961,7 @@ parse, not that file.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5326] **convert re-publishes a stale store's orphaned items into ROADMAP.md.**
+- ✅ [ANTS-5326] **convert re-publishes a stale store's orphaned items into ROADMAP.md.**
   Vestige (project 13): items_rendered 1782 vs bullets_total 1102;
   roadmap_migrate dry_run reports items_orphaned 680. A fresh
   registration of the same file renders 1102. convert re-imports the
@@ -65938,6 +65974,7 @@ parse, not that file.
   rebuilt ants-mcpd (dry run, 1122 orphans, file unchanged). Vestige
   then migrated via deregister + fresh migrate + convert (Vestige
   9905f92, 1105 items, 0 orphans, file_in_sync). Ship after CI green.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** Converting a roadmap can bring back hundreds of old, deleted items from an out-of-date copy the tool kept.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
@@ -66058,11 +66095,12 @@ parse, not that file.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5335] **roadmap_migrate reports store_backed:false for pass-headings while roadmap_query serves it from the store.**
+- ✅ [ANTS-5335] **roadmap_migrate reports store_backed:false for pass-headings while roadmap_query serves it from the store.**
   The envelope still carries the pre-ANTS-4803 hint 'NOTHING READS
   THEM'. A session trusting it deregisters a working migration. Compute
   store_backed from the same gate the read path uses.
   Landed 9c84b694. Flip to shipped once GitHub CI for it is green.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** The migration tool says a Pass-style roadmap isn't served from the database when it actually is.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
@@ -66081,13 +66119,14 @@ parse, not that file.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5337] **Migration misses a pass-headings Status line that sits late in its block.**
+- ✅ [ANTS-5337] **Migration misses a pass-headings Status line that sits late in its block.**
   RetroDB PASS-57-1: the only Status line, `done (2026-08-06)`, sits
   deep in the block; migration records todo with status_defaulted.
   Accept a Status line anywhere before the next heading, or refuse
   naming the item.
   Landed 7d604649. Flip to shipped once GitHub CI for 9c84b694 or later
   is green.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** A finished item on a Pass-style roadmap can be imported as still open when its status line is far down.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
@@ -77705,7 +77744,7 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5193] **tools/ci-parity.sh keeps its own build trees beside build/ and build-asan/.**
+- ✅ [ANTS-5193] **tools/ci-parity.sh keeps its own build trees beside build/ and build-asan/.**
   build-ci-parity and build-ci-parity-asan duplicate the main trees on
   disk and go stale between runs, so a --full run starts from an old tree.
   They exist to protect a running binary, which the home-copy launch of
@@ -77713,6 +77752,7 @@ acting on it.
   locale as a test-time setting. Measure with `du -sh build*`.
   Closed by ANTS-5322 (d9622fb1): host jobs build in build/ and
   build-asan/; build-ci-parity* trees deleted. Flip with ANTS-5322.
+  Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
   **Layman:** The full local CI check keeps duplicate copies of the build that waste disk space and go stale.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -77770,6 +77810,22 @@ acting on it.
   **Layman:** Release builds recompile everything; reusing a cache would be faster but has a safety cost.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5343] **Run the ASan CI job nightly and before releases instead of on every push.**
+  Decided by the user 2026-09-25, with ANTS-5190 measured alongside.
+  Measured on run 36111437270: the ASan job is the long pole, a build
+  step of about 12 minutes and a test step of about 18. The other jobs
+  finish in about 8. Runs on main queue behind each other, so a push
+  also waits for the previous run.
+  Constraint: tools/hooks/pre-push and tools/ci-parity.sh --asan run
+  ci.yml's build-asan job through tools/ci_workflow.py, which refuses
+  an `if:` it has no local meaning for. The move must keep the local
+  ASan leg working.
+  Cost accepted: an ASan-only failure can surface up to a day late.
+  **Layman:** Each push waits about half an hour for the memory-safety check; running it nightly brings a push's check down to about eight minutes.
+  Kind: perf.
+  Source: user-request-2026-09-25.
+  Lanes: ci, build.
 
 ## Memory and performance pass (2026-09-14)
 

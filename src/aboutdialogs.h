@@ -8,14 +8,24 @@
 
 #pragma once
 
+#include <QList>
+#include <QString>
+
 class QWidget;
 
 namespace AboutDialogs {
 
+// ANTS-5341 — one tab's title and the shells in it (a split tab has several),
+// so a Claude Code session running an older ants-mcpd can be named by tab.
+struct TabShells {
+    QString title;
+    QList<qint64> shellPids;
+};
+
 // Show the "About Ants Terminal" dialog. Parents to `parent` so the WM
 // keeps it on top via xdg_toplevel transient_for; non-modal so Wayland's
 // missing ApplicationModal doesn't drop OK clicks (QTBUG-79126).
-void showAboutAnts(QWidget *parent);
+void showAboutAnts(QWidget *parent, const QList<TabShells> &tabs = {});
 
 // Show the "About Qt" dialog. Custom variant of QMessageBox::aboutQt
 // that avoids the modal exec() Wayland silently breaks.

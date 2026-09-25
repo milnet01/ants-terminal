@@ -2165,7 +2165,20 @@ void MainWindow::setupHelpMenu() {
 
     QAction *aboutAction = helpMenu->addAction("&About Ants Terminal...");
     connect(aboutAction, &QAction::triggered, this, [this]() {
-        AboutDialogs::showAboutAnts(this);
+        // ANTS-5341 — each tab's shells, so the dialog can name a tab whose
+        // Claude Code session runs an older ants-mcpd. A split tab has several.
+        QList<AboutDialogs::TabShells> tabs;
+        for (int i = 0; i < m_tabWidget->count(); ++i) {
+            QWidget *root = m_tabWidget->widget(i);
+            AboutDialogs::TabShells tab;
+            tab.title = m_tabWidget->tabText(i);
+            QList<TerminalWidget *> terms = root->findChildren<TerminalWidget *>();
+            if (auto *self = qobject_cast<TerminalWidget *>(root)) terms.append(self);
+            for (TerminalWidget *t : terms)
+                if (t->shellPid() > 0) tab.shellPids.append(t->shellPid());
+            tabs.append(tab);
+        }
+        AboutDialogs::showAboutAnts(this, tabs);
     });
 
     QAction *aboutQtAction = helpMenu->addAction("About &Qt...");

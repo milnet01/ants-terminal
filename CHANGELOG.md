@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Help → About names tabs whose Claude Code session runs an older Ants MCP** (ANTS-5341)
+  Each Claude Code session keeps the Ants MCP copy it started with
+  until it reconnects. The About box now asks every running copy for
+  its build and names the tabs still on an older one, with the fix:
+  type /mcp there and reconnect "ants". Sessions outside the window
+  are counted.
+
 - **Help → About names the Ants MCP build Claude Code runs** (ANTS-5340)
   The About box gains an "Ants MCP" line: the version, build time and
   commit of the ants-mcpd that Claude Code launches. It is read each
