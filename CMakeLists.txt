@@ -1409,6 +1409,16 @@ if(ANTS_TESTS)
         TIMEOUT 60
         ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/hooks/pre-push")
 
+    # ANTS-5322 — tools/ci-parity.sh runs ci.yml's own steps through
+    # tools/ci_workflow.py rather than a copy; see
+    # tests/features/ci_workflow_runner/spec.md. Exits 77 without PyYAML.
+    add_test(NAME ci_workflow_runner
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/ci_workflow_runner/test_ci_workflow_runner.py")
+    set_tests_properties(ci_workflow_runner PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
     # ANTS-3794 — the weekly export's publish script and the backup records,
     # over throwaway git repos with a stub binary; see
     # tests/features/roadmap_export_publish/spec.md. Exits 77 when git, flock

@@ -41606,6 +41606,34 @@ in each bullet, not just the reporter's symptom.
   Kind: chore.
   Source: in-session-2026-09-24.
 
+- 🚧 [ANTS-5322] **tools/ci-parity.sh executes ci.yml's own steps instead of a hand-maintained copy.**
+  local-gate.md § 3 requires the local run to execute the pipeline's own
+  definition; ci-parity.sh re-stated ci.yml's steps in shell (ANTS-4392),
+  so the two could drift. tools/ci_workflow.py now runs each host job's
+  run: steps from ci.yml (env, working-directory, if: always()), mapping
+  runner-only actions by an explicit table and refusing anything else.
+  ci-parity.sh only picks jobs, and fails if ci.yml gains one it does
+  not claim. Host jobs build in build/ and build-asan/, which closes
+  ANTS-5193. Locked by tests/features/ci_workflow_runner.
+  **Layman:** The local "check before pushing" run now follows GitHub's CI recipe directly, so the two can no longer disagree.
+  Kind: fix.
+  Source: user-request-2026-09-25.
+  Lanes: build, ci.
+
+- 📋 [ANTS-5324] **tools/qt62-guard.sh runs its own configure and build commands instead of ci.yml's.**
+  ANTS-5322 made the host jobs run ci.yml's own steps. The podman legs
+  take their package list from ci.yml, but the compile inside the
+  container is the guard's own cmake configure + build, without ci.yml's
+  ccache launcher flags or build directory. It cannot change a pass or
+  fail today. Route the container through tools/ci_workflow.py, mounting
+  the build volume at the directory ci.yml names. Moving the volume's
+  mount point invalidates the cached trees, and tools/hooks/pre-push runs
+  the guard with --warm-only, so re-key the volume and warm it once.
+  **Layman:** The two container checks still write out their build commands by hand instead of taking them from GitHub's CI recipe.
+  Kind: refactor.
+  Source: in-session-2026-09-25 (user chose roadmap over now).
+  Lanes: build, ci.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -65792,6 +65820,29 @@ parse, not that file.
   **Layman:** Items end up with a link fragment where their reference number should be.
   Kind: fix.
   Source: vestige-via-claude-config-2026-09-21.
+
+- 📋 [ANTS-5323] **workspace_search that hits its time budget returns partial rows flagged only truncated:true, indistinguishable from the row cap.**
+  Measured 2026-09-25: pattern ANTS-4392, default timeout_sec 5,
+  max_results 30. Reply: 6 matches, truncated:true, elapsed_ms 5066, no
+  next_offset, no hint, no reason field. Re-run with count_only and
+  timeout_sec 30: 14 matches in 10 files in 26 ms, matching rg -c. The
+  missing rows included all five ROADMAP.md hits. The description says a
+  hard-kill returns rg_failed with a hint; here it returned ok:true.
+  A caller doing a completeness check reads 6 rows under a 30-row cap
+  as the whole answer. Fix: when the wall budget ends the scan, say so
+  (e.g. truncated_reason:"timeout" plus a hint naming timeout_sec), and
+  keep truncated_reason:"row_cap" for the other case. Also worth asking
+  why a 26 ms scan took 5 s on the first call (cold index or page cache).
+  Progress (2026-09-25): second slow call. A regex alternation
+  (three terms) with headline_only took elapsed_ms 23050 under
+  timeout_sec 30 and returned 2 rows, truncated:false. Under the default
+  5 s budget it would have been cut short. So slowness is not a one-off
+  cold start, and the default budget is below what ordinary regex
+  searches on this repo need.
+  **Layman:** A code search that runs out of time quietly returns only some results, and nothing says the rest were lost to the time limit.
+  Kind: fix.
+  Source: in-session-2026-09-25.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

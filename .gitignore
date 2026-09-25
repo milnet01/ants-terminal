@@ -153,3 +153,7 @@ packaging/flatpak/flathub-submission/
 
 # OBS package working copy (osc checkout; packaging/obs/obs-submit.sh)
 build-obs/
+
+# ANTS-5322 — cppcheck analysis cache; ci.yml's cppcheck job writes it in the
+# workspace root, and tools/ci-parity.sh runs that job here.
+.cppcheck-build/

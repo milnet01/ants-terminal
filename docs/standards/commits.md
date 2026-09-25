@@ -59,12 +59,14 @@ Global § 4.2 requires running the pipeline locally before a push and requires
 the local run to *execute* the workflow rather than mirror it. This project's
 answer:
 
-- **`tools/ci-parity.sh --full`** is the complete mirror — all three `ci.yml`
-  jobs. `build-test` and `build-asan` run in isolated `build-ci-parity*/`
-  trees; `qt62-baseline` runs in a podman container against a cached image and
-  build volume (needs podman; `tools/qt62-guard.sh --clean` reclaims them). A
-  gate whose tool is absent SKIPs loudly and is listed as incomplete parity;
-  it never reports silently green.
+- **`tools/ci-parity.sh --full`** runs every `ci.yml` job, and executes
+  `ci.yml` itself rather than a copy (ANTS-5322). `build-test`, `build-asan`
+  and `cppcheck` run their own `run:` steps through `tools/ci_workflow.py`, in
+  `build/` and `build-asan/`. `qt62-baseline` and build-test's toolchain run
+  in podman containers against a cached image and build volume (needs podman;
+  `tools/qt62-guard.sh --clean` reclaims them). A job `ci.yml` gains and the
+  script does not claim fails the run; a container leg without podman SKIPs
+  loudly and never reports green.
 - **`tools/hooks/pre-push`** runs the reduced form automatically (wired via
   `core.hooksPath=tools/hooks`). It runs the Release suite against the warm
   `build/` **without building**, plus the sanitizer suite when a warm ASan

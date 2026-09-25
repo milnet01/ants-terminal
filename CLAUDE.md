@@ -107,27 +107,26 @@ elsewhere that flag breaks the parse and the TU loses all coverage
 ### Local CI: `tools/ci-parity.sh` + the pre-push hook
 
 **`tools/ci-parity.sh --full` IS this project's local CI check** — it
-covers all four jobs of `.github/workflows/ci.yml` (`build-test` incl. the
-packaging/lint gates, `build-asan`, `qt62-baseline` in a podman
-ubuntu:22.04 container, and the informational `cppcheck` job, whose local
-leg runs under `--lints`). There is no second script; anything calling
-itself `local-CI.sh` would be a duplicate of this one. A gate whose tool is
-absent SKIPs loudly and is listed as incomplete parity — never silently
-green.
+runs every job of `.github/workflows/ci.yml`, and it EXECUTES that file
+rather than copying it (ANTS-5322). `tools/ci_workflow.py` runs each host
+job's own `run:` steps — `build-test` (default), `cppcheck` (`--lints`),
+`build-asan` (`--asan`) — with the job's env and working directories, in
+`build/` and `build-asan/`. It refuses any action, expression or `if:` it
+has no local meaning for, so a change to `ci.yml` reaches the local run or
+stops it. `qt62-baseline` and build-test's toolchain run in podman
+(`--qt62`, `--ubuntu24`). A job `ci.yml` gains that the script does not
+claim fails the run. There is no second script; anything calling itself
+`local-CI.sh` would be a duplicate of this one. `--stress` adds CPU load.
+To hunt a flaky test, run ctest directly:
+`ctest --test-dir build --repeat until-fail:5 -R <test>`.
 
-**It is a hand-maintained PARALLEL IMPLEMENTATION, not a runner for
-`ci.yml`** (ANTS-4392), so the two can drift. What it cannot catch by
-construction is anything *declared* in `ci.yml` that the script never knew
-to assume — a runner package, an env var, an action version. The repair
-for that class is a *static* check that the recipes agree with the source
-(`tests/features/ci_workflow_deps`). That test reads every carrier that
-runs the suite, not just `ci.yml` (ANTS-4717): the workflow, the RPM spec,
-the Arch PKGBUILD and the Debian control. **Adding a carrier that runs
-`ctest` means adding it to that test.**
-
-Builds + runs in isolated `build-ci-parity*/` trees so the live `build/`
-is untouched; `--repeat N` (ctest `until-fail`) flushes flakes, `--stress`
-adds CPU load.
+**What no local run can catch** is a tool the GitHub runner lacks and this
+machine has — the runner's packages are declared in `ci.yml`, and here they
+come from the host. The repair for that class is a *static* check that the
+recipes agree with the source (`tests/features/ci_workflow_deps`). That test
+reads every carrier that runs the suite, not just `ci.yml` (ANTS-4717): the
+workflow, the RPM spec, the Arch PKGBUILD and the Debian control. **Adding a
+carrier that runs `ctest` means adding it to that test.**
 
 **It runs before every push automatically, in reduced form.**
 `tools/hooks/pre-push` (wired via `core.hooksPath=tools/hooks`) gates each

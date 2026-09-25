@@ -37,6 +37,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The local CI check now runs GitHub's own CI recipe instead of a copy of it** (ANTS-5322)
+  `tools/ci-parity.sh` executes each job's steps straight from
+  `.github/workflows/ci.yml` through the new `tools/ci_workflow.py`, so
+  the local run and GitHub can no longer drift apart. It builds in the
+  existing `build/` and `build-asan/` trees instead of separate copies.
+
 - **The review dialogs' code is clear of three clang-tidy warnings.** (ANTS-5022)
 
 - **roadmap-data-model.md names cut-release where it named the deleted /bump skill.** (ANTS-4990)

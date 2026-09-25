@@ -128,9 +128,10 @@ TEST(CiAsanBudget, Inv5SanitizedCtestSkipsThePerfLabel) {
            "-LE 'e2e|perf'.";
 }
 
-// INV-6 — every sanitized suite run detects leaks (ANTS-3847). The three
+// INV-6 — every sanitized suite run detects leaks (ANTS-3847). The
 // carriers are sliced to the one command that runs the suite, so a flag on a
 // smoke step or elsewhere in the file cannot satisfy the check.
+// tools/ci-parity.sh is not a carrier: it runs ci.yml's step (ANTS-5322).
 TEST(CiAsanBudget, Inv6SanitizedSuiteDetectsLeaks) {
     const auto checkLeaksOn = [](const std::string &where,
                                  const std::string &cmd) {
@@ -154,10 +155,6 @@ TEST(CiAsanBudget, Inv6SanitizedSuiteDetectsLeaks) {
     checkLeaksOn("ci.yml build-asan", stepBlockContaining(job, "ctest "));
 
     const std::string root = ANTS_SOURCE_DIR;
-    checkLeaksOn("tools/ci-parity.sh asan_ctest",
-                 ants_test::regionBetween(
-                     ants_test::slurpFile(root + "/tools/ci-parity.sh"),
-                     "asan_ctest() {", "\n}"));
     checkLeaksOn("tools/hooks/pre-push",
                  ants_test::regionBetween(
                      ants_test::slurpFile(root + "/tools/hooks/pre-push"),

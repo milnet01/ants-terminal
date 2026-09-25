@@ -91,7 +91,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache mold
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev cppcheck ripgrep shellcheck
+            liblua5.4-dev cppcheck ripgrep shellcheck python3-yaml
             appstream desktop-file-utils groff zsh fish
           version: 1.0
 
@@ -241,7 +241,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache mold
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev ripgrep
+            liblua5.4-dev ripgrep python3-yaml
           version: 1.0
 
       - name: Restore ccache (asan)
@@ -457,9 +457,8 @@ jobs:
       # Re-enable by deleting that line once the convention is adopted.
       #
       # -j 4 matches the 4-vCPU runner; unusedFunction, which -j disables, is
-      # already suppressed. KEEP IN STEP with the same invocation in
-      # tools/ci-parity.sh — that script is a hand-maintained parallel
-      # implementation, not a runner for this file, so the two drift silently.
+      # already suppressed. tools/ci-parity.sh --lints runs this step as
+      # written, through tools/ci_workflow.py (ANTS-5322); there is no copy.
       - name: "Run cppcheck (audit rule: Qt-aware static analysis)"
         run: |
           mkdir -p .cppcheck-build
