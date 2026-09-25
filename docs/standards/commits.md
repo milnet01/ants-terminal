@@ -189,6 +189,19 @@ prefix.
 is no ID to lead with and §1.2's last row replaces it — and that row
 owns the test for which repos those are.
 
+**A commit closing several items names them all**, where splitting it
+would break the build. Write a comma-separated list, or a range:
+
+```
+PROJ-1234, PROJ-1235: split the loader in two
+PROJ-1234..1236: retire the old config path
+```
+
+The test is whether the commits could stand alone, not whether the work
+felt related — §2.1 still refuses unrelated work batched together. Where
+one cross-cutting ROADMAP item already covers the change, name that item
+alone; a group is for items that have no such parent.
+
 ### 1.2 Exception — commits without a ROADMAP item
 
 A few commit types don't ship a ROADMAP-tracked work item; they
@@ -229,7 +242,9 @@ Measured on `~/.claude`: five commits needed it. More than two parts is
 usually a commit holding more than one concern (§2.1).
 
 **Where it genuinely is §2.1's cross-cutting exception, name the two
-largest parts and say so in the body.** The ` + ` list never runs past
+parts with the most changed lines and say so in the body.** By changed
+lines, because *largest* has as many answers as it has readers and two
+authors named different pairs for one diff. The ` + ` list never runs past
 two — a longer one stops being readable in `git log --oneline`, which is
 the whole reason the component name is there. §2.1 sends this case here
 for repos with no roadmap, and without this sentence it went back and
@@ -241,11 +256,18 @@ category prefix, and everything else takes the part's name.** So a
 gitignore tweak or a dependency bump is still `chore:` and a typo fix is
 still `docs:`, as their rows show.
 
+**The docs row is scoped to its own parenthetical — a typo, a README
+tweak — and not to documentation in general.** In a repo with no roadmap
+nothing is tracked on one, so read the wider way that row swallows every
+change in a documentation repository and leaves `<component>:`
+unreachable in the repository it was added for. A substantive
+documentation change takes the part's name.
+
 **`fix:` comes without its trailer there.** Its row pairs the form with
 a `Refs: PROJ-NNNN` naming an allocated ID, and a repo with no roadmap
 has none — §5 makes inventing one an anti-pattern. So the form stays and
-the trailer does not apply. A hotfix touching an identifiable part still
-reads better as that part's name.
+the trailer does not apply, and a hotfix keeps `fix:` like any other row
+the rule above names.
 
 In a repo that has a roadmap: if the work was substantive enough to
 be tracked on it (any feature, any non-trivial fix, any refactor), it
@@ -326,14 +348,21 @@ enough that copying is the likely failure.
 
 ### 2.1 One concern per commit
 
-If a single commit touches three unrelated subsystems, split it.
-The git log is read by the next contributor — make their life
-easier.
+One concern, not a count. If a commit holds two changes that could
+each have landed alone, split it. The numbers that stood here before
+— three subsystems, and §5's five changes — read as thresholds and
+left a two-subsystem commit undecided. The git log is read by the
+next contributor; make their life easier.
 
 Exception: cross-cutting refactors (rename, signature change)
 that genuinely span the codebase. Note the cross-cutting nature
 in the body. The commit ID is the cross-cutting ROADMAP item, where the
 repo has one (§1.2).
+
+That exception resolves the ID by naming one cross-cutting item, so it
+needs such an item to exist. Where the change closes several items that
+have no shared parent and cannot be separated, §1.1's grouped subject is
+the form instead.
 
 ### 2.2 Always create new commits, don't amend
 
@@ -359,8 +388,12 @@ skip with X"* authorises that push; a blanket *"fix it, or bypass with
 X"* printed on every failure authorises nothing, because it names no case
 to be in. Without this, a gate that prints its own escape hatch
 self-authorises every bypass of itself, which empties this section for
-exactly the gates that have one. So **a bypass of a check that actually
-FAILED always needs the user** — that failure is the thing the check
+exactly the gates that have one.
+
+The two are told apart by what the message reports. A check that could
+not RUN — no network, a tool absent — may name its own escape, and that
+is the authorising case. So **a bypass of a check that RAN and reported
+a breach always needs the user** — that breach is the thing the check
 exists to report.
 
 **Every bypass says why in the commit body, whichever it was.**
@@ -369,8 +402,10 @@ names `--no-verify` in its list, so a user-authorised skip owes one too.
 The body note is the only trace either leaves.
 
 **Scope: a bypass at COMMIT time. A push-time bypass has no commit body
-to be written in**, because every commit already exists by then and §2.2
-forbids amending one to add the note. Skipping the local-run gate
+to be written in**, because every commit already exists by then. §2.2
+permits amending your own unpublished commit, which these are — but an
+amend at push time rewrites the sha the gate just tested, so the note
+goes in the next commit's body instead. Skipping the local-run gate
 ([local-gate.md](local-gate.md)) —
 `git push --no-verify`, or a `SKIP_LOCAL_CI=1` form a hook offers in its
 own documentation — **still needs the user under the rule above**, since
@@ -529,8 +564,8 @@ contexts.
 - ❌ Subject over 72 characters.
 - ❌ "Update files" / "Various changes" / "WIP" as the only
   description.
-- ❌ Bundle 5 unrelated changes into one commit because "they
-  were all in the working tree".
+- ❌ Bundle unrelated changes into one commit because "they
+  were all in the working tree" (§2.1).
 - ❌ `git commit --amend` after a failed pre-commit hook.
 - ❌ `git add -A` / `git add .` instead of naming the paths you
   changed.
@@ -559,7 +594,7 @@ the rows below say so.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`.githooks/commit-msg`, enabled via `core.hooksPath`; `skeleton/files/` ships an identical copy). **`~/.claude/githooks/` holds a `pre-push` and no `commit-msg`**, so the 13 repositories pointed at it by the global `core.hooksPath` get the §4.2 gate and **no subject-shape check at all** — deliberately, since most of them are not roadmap projects. Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists |
+| §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`.githooks/commit-msg`, enabled via `core.hooksPath`; `skeleton/files/` ships an identical copy). **`~/.claude/githooks/` holds a `pre-push` and no `commit-msg`**, so the 13 repositories pointed at it by the global `core.hooksPath` get the §4.2 gate and **no subject-shape check at all** — deliberately, since most of them are not roadmap projects. Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists. §1.1's grouped form is accepted, and the no-ID-repeated check runs against each member of a group. **What it cannot see is whether a group was earned** — that the commit could not have been split — so that half of §1.1 is **nothing** |
 | §1.3 single line | **nothing**, and it defeats the length check too. The hook reads `head -1`; git's subject is the whole first paragraph, joined. Measured: a 70-character line 1 with a second line under it passes the hook and produces a 134-character subject in `git log --oneline` |
 | §1.3 present tense, and the description's capitalisation | **nothing** — both are judgements about wording rather than shape, and a hook cannot make them |
 | §9.0 of `documentation.md` — the mechanical checks ran while writing | Partial: the `pre-commit` hook (`.githooks/pre-commit`, enabled via `core.hooksPath`). **Passing it is not §9.0 satisfied** — that section says so, and names quoted fragments and census counts as not checked at all. `check-doc-facts` runs the rest. **What it blocks on is [documentation.md](documentation.md) §9.0's to state, not this table's** — that section owns the class list, and says which classes the weaker copy in `skeleton/files/` does not carry. A restatement lived here until 2026-08-14 and had already drifted from it (ROADMAP CFG-0098) |
@@ -569,15 +604,15 @@ the rows below say so.
 | §1.5 trailers, and naming the model that did the work | **nothing** — and the failure is silent: a trailer copied from an older commit names a superseded model and reads as correct |
 | §2.1 one concern per commit | **nothing** — a judgement about the diff's contents, not its shape |
 | §2.2 don't amend | **nothing** for the case §2.2 leads with — an amend after a failed hook is local and leaves no trace. On a published commit it depends on the branch: on a shared one `git push` rejects the non-fast-forward and §3.3 refuses the force-push, but on a **personal** branch §3.3 permits it and §4.4 asks for no confirmation, so there it is **nothing** as well — and that is where most amending happens |
-| §2.3 don't skip hooks | **nothing mechanical** — `--no-verify` leaves no trace in the commit itself, so §2.3's required body note is the only one there is, and nothing checks that it was written. A **push**-time bypass (`--no-verify`, or a hook's own `SKIP_LOCAL_CI=1` form) is worse: it belongs in the next commit's body, and where there is no next commit it is recorded **nowhere at all** |
+| §2.3 don't skip hooks | **nothing** — not a person either, since nobody is named to read the note. `--no-verify` leaves no trace in the commit itself, so §2.3's required body note is the only one there is, and nothing checks that it was written. A **push**-time bypass (`--no-verify`, or a hook's own `SKIP_LOCAL_CI=1` form) is worse: it belongs in the next commit's body, and where there is no next commit it is recorded **nowhere at all** |
 | §2.4 commit only files you mean to | Partial: a well-maintained `.gitignore` catches the common cases. An allowlist-style ignore file catches more and creates the opposite failure — a file silently never committed (`docs/draft-area-record.md` records seven lost that way) |
-| §2.5 don't commit half-finished work | CI, where the project has it — and [local-gate.md](local-gate.md)'s local run catches it earlier and cheaper |
+| §2.5 don't commit half-finished work | **`Partial:`** CI, where the project has it, and [local-gate.md](local-gate.md)'s local run earlier and cheaper — **but both answer for the TIP of what is pushed, not for each commit**. `githooks/pre-push` builds one worktree per pushed ref, and a `push`-triggered workflow runs at the ref's head, so in a batch every commit below the tip is checked by **nothing** — and §4.1 asks a metered repository to batch. Per-commit is the project's to add (`git rebase --exec`) |
 | §2.6 don't commit generated files | The same `.gitignore`, when it has patterns for that project's build outputs. **Nothing** catches a generated file the ignore file does not name |
 | §3.1–3.2 trunk-based default, branch naming | **nothing** — branch names are never validated, and nothing reads the branching shape |
 | §3.3 don't force-push a shared branch | Branch protection, **where the plan allows it**. Checked 2026-08-10: unavailable on a private repo without GitHub Pro, so on this machine's private repos it is **nothing** |
 | §4.1 push cadence on a metered repo | **nothing** — nothing counts queued commits or asks before spending quota |
 | §4.2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. [local-gate.md](local-gate.md) § What checks this owns the row and its three failure modes — the rules it enforces live there |
-| §4.3 annotated tags, never lightweight | **nothing** — and a lightweight tag is invisible until someone reads its absent message |
+| §4.3 annotated tags, never lightweight | the repository — `git for-each-ref --format='%(objecttype)' refs/tags/<name>` prints `tag` for an annotated one and `commit` for a lightweight one. Verified 2026-09-25. [releases.md](releases.md) § What checks this carries the same answer; a cell here reading **nothing** disagreed with it until then |
 | §4.4 confirm before a destructive operation | **nothing** — by construction: the confirmation is the check, and nothing checks the confirmation happened |
 
 ## Cold-eyes loop log

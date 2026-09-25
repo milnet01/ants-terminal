@@ -203,6 +203,14 @@ item exactly as they bind a `test` one.
 left `security`, `perf`, `optimize` and `accessibility` outside a rule
 §8 states for every fix.
 
+**The Kind selects nothing; the change does.** §8's bullets key on what a
+change IS — a fix, a new feature, a fixed audit finding, a refactor — so
+read the change and not its label. A `perf`, `optimize` or `chore` item
+that alters behaviour is a fix or a feature here whatever § 3.5.3's
+follow-through column suggests, and one that alters none is outside this
+standard entirely. That column records the ordinary case; it does not
+carve an exemption out of this one.
+
 ---
 
 ## 1. Test first, code second
@@ -235,8 +243,10 @@ times out or crashes. Each of those proves the harness is wrong, not that
 the test binds the behaviour — and a step 2 satisfied by any of them
 would be satisfied by a test asserting nothing at all.
 
-**Breach:** a compile error, missing fixture or crash quoted as the red
-run.
+**Breach:** anything the paragraph above calls broken, quoted as the red
+run — it does not compile; a fixture, asset or dependency is missing; it
+failed in setup or on a different assertion; it errored, timed out or
+crashed. Naming only some of them cleared the rest.
 
 **A pure refactor with no behaviour change, and a documentation-only
 change, ship no behaviour and are outside this section** — they are not
@@ -271,7 +281,9 @@ breaks the build rather than failing an assertion, so remove the fix's
 on the assertion that locks the behaviour.
 
 If it passes against the broken code it is not testing what you think,
-and rewriting it is the only remedy.
+and rewriting it is the remedy — but establish first that it ran against
+the reverted code, because the stale-binary false green above looks
+identical here and a rewrite will not fix it.
 
 **The temptation to skip this is strongest exactly where it matters
 most** — closing a bug, where the fix is already in the tree and the test
@@ -356,7 +368,10 @@ noise.
   a labelled performance test (§5), whose measurement is exactly that.
 - **Isolated** — no shared state, so one test's failure cannot cause
   another's.
-- **No network unless explicitly opted in**, with a label and a gate,
+- **No network unless explicitly opted in**, with a label and a gate —
+  the gate being whatever makes the opt-in explicit at run time, an
+  environment variable read by the test or a job condition, as against
+  the label, which only lets a filter find it —
   because a test that fails when the connection drops is not testing your
   code.
 
@@ -445,7 +460,11 @@ what the test does not prove.
 A parity failure says the two sides differ. It does not say which is
 wrong; the reference breaks the tie.
 
-**Breach:** a parity test with no named reference test.
+**Breach:** a parity test that names neither a reference test nor, where
+none exists, the choice the paragraph above requires. Naming the
+reference is the ordinary discharge; recording the choice is the other
+one, and an unscoped breach put a conformer who did as instructed in
+breach anyway.
 
 **Breach:** a parity test cited as evidence that a value is correct.
 
@@ -457,9 +476,9 @@ presented at its site as derived.
 | Rule | What catches a breach |
 |---|---|
 | Tests pass (§1) | **`Partial:`** the test runner, locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one **nothing** checks this but the person who remembers to run it |
-| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — `ctest --schedule-random` and `pytest-randomly`, both present on this machine. **Nothing** catches dependence on time of day or machine speed, which repeated runs on one machine reproduce rather than expose |
+| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — `ctest --schedule-random`, present on this machine. **Nothing** on the Python side by default — `pytest-randomly` is **not** installed here, so a project wanting a shuffled order installs it; measured 2026-09-25. **Nothing** catches dependence on time of day or machine speed, which repeated runs on one machine reproduce rather than expose |
 | Network isolation (§7) | **`Partial:`** running the fast set with no connection. **Nothing** reaches the slow set, or checks that an opted-in test carries its label and gate |
-| Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations`). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
+| Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations=N` — the count is required, and a bare `--durations` is an argument error rather than a report). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
 | A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable. **Nothing** checks that the tracked item behind one exists or is still open |
 | **The test was seen failing before the code changed (§1)** | **nothing** — once both are green, no artifact distinguishes a test written first from one written after. Not a person either: nobody present can see it afterwards |
 | The backwards proof was actually run (§2) | **nothing** — the two runs leave nothing behind, and a build error quoted as the red run looks identical to a real one in a transcript |
@@ -467,7 +486,7 @@ presented at its site as derived.
 | An invariant's tombstone spelling (§4) | **`Partial:`** `spec_lint` exempts the § 3.7 spelling and reports the others. **Nothing** catches a renumbered id, which is what §4 forbids |
 | A failing test explains itself (§6) | **nothing mechanical** — whoever next reads a failure log. An uninformative assertion message is valid code |
 | Every fix has a regression test (§8) | **nothing mechanical** — visible in review as a fix commit with no test beside it |
-| Tests obey `coding.md`, minus §1.3 (§9) | **nothing mechanical** — a code reviewer, who also has to know §9's carve-out exists |
+| Tests obey `coding.md`, minus §1.3 (§9) | **`Partial:`** `check-code`'s language sweep reaches test files by its own rule — *"a tool-decided finding that happens to sit in a test file is this skill's"* — so `coding.md` § What checks this answers for whatever it names there. **nothing mechanical** for the rest: a code reviewer, who also has to know §9's carve-out exists |
 | A parity test names its reference (§11) | **nothing mechanical** — a code reviewer. All three of §11's breaches compile, run and pass |
 
 **The two `nothing` rows on §1 and §2 are the largest hole in this
