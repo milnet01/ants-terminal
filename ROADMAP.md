@@ -65672,11 +65672,16 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).
   Lanes: build.
 
-- 📋 [ANTS-5319] **Split remotecontrol_roadmap_query.cpp before it reaches the 6,000-line TU cap.**
+- ✅ [ANTS-5319] **Split remotecontrol_roadmap_query.cpp before it reaches the 6,000-line TU cap.**
   ANTS-4932 moved the roadmap_log helpers from TU 2 to the head of this
   TU to keep the concatenated order, leaving it at 5,895 lines against
   rc_tu_split INV-6's 6,000. Cut it at a member boundary as ANTS-4620 did,
   inserting the new TU at its slice position.
+  Resolved (2026-09-26, e1a29ae1): cut at a member boundary into TU 3
+  (2,122 lines) and new TU 4 remotecontrol_roadmap_query_verb.cpp
+  (3,888), markers k/19, inserted after TU 3. Follow-ons:
+  RoadmapReadSeam.Ants4431 path, partition.json lane,
+  docs/subsystems.md. Full suite green; GitHub CI green.
   **Layman:** One of the MCP code files is nearly at its size limit, so the next addition to it would fail a build check.
   Kind: refactor.
   Source: in-session-2026-09-24.
@@ -65699,7 +65704,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: package.
   Source: in-session-2026-09-24.
 
-- 📋 [ANTS-5339] **StandaloneMcpServer.Inv5 timed out once in the pre-push suite: spec_lint gave no reply within 20 s.**
+- ✅ [ANTS-5339] **StandaloneMcpServer.Inv5 timed out once in the pre-push suite: spec_lint gave no reply within 20 s.**
   Measured 2026-09-25, pre-push hook (LC_ALL=C.UTF-8, ctest -j2) at
   HEAD 9c84b694: Inv5NoTerminalRefusesForwardedVerbsOnly failed in
   25.08 s; the spec_lint call returned {} (McpdSession::await's 20 s
@@ -65712,6 +65717,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   step: time each call and log a timeout distinctly from a refusal in
   McpdSession::await. If the cost is the real-tree scan, point the verb
   at a small fixture so the test's cost does not grow with the repo.
+  Resolved (2026-09-26, 3f630fa7): Inv5 lints a one-file fixture (16 ms)
+  instead of the repo's own spec; McpdSession returns {test_timeout,
+  elapsed_ms, server_running} on no reply. Cause of the original timeout
+  (slow vs blocked) was not measured. Test
+  StandaloneMcpServer.HarnessReportsATimeoutAsSuch, proven red. GitHub
+  CI green.
   **Layman:** One of the new tests for the standalone MCP server failed once while the machine was busy, though it passes on its own.
   Kind: test.
   Source: in-session-2026-09-25.
@@ -66787,22 +66798,40 @@ project. Reported causes are claims until checked in source.
   rule first. The tool description could instead say that absence means
   none found.
 
-- 📋 [ANTS-5394] **roadmap_migrate reports pass-headings blocks it could not read as items at the top level of its reply.**
+- ✅ [ANTS-5394] **roadmap_migrate reports pass-headings blocks it could not read as items at the top level of its reply.**
   RetroDB: seven `####` blocks (`FU.1`-`FU.6`, `Pass 2 — ...`) carry a Status line but no parsable `Pass N.M`, so they become prose. The only trace is an `orphan_status_line` note; items_inserted says nothing, and the open FU.6 left every query. Add a top-level `unparsed_headings[]`, or accept `FU.N` and `Pass N —` as ids. Related: ANTS-5383 (the same gap on ants-v1).
+  Resolved (2026-09-26, 9ce8117b + 07d3f3d3): migrate names each id-less
+  `####` block with a Status line as note unparsed_heading and lifts
+  them to top-level unparsed_headings[] {heading, line, status_line};
+  unparsed_headings_count is on every reply, 0 included. RetroDB chose
+  to rename its headings rather than widen the id grammar. Tests
+  roadmap_migrate_read.Ants5394UnparsedPassHeadingIsNamed and
+  roadmap_migrate_verb.Ants5394UnparsedHeadingsReachTheTopLevel, proven
+  red. GitHub CI green on both.
   **Layman:** Warns when a roadmap import quietly leaves open tasks out of the task list.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
 
-- 📋 [ANTS-5395] **On a store-served pass-headings roadmap, flip stamps today's date and keeps its note inside the item.**
+- ✅ [ANTS-5395] **On a store-served pass-headings roadmap, flip stamps today's date and keeps its note inside the item.**
   RetroDB, flip PASS-59-41 to shipped with a note, dry run: `- **Status**: planned (2026-09-01)` becomes `done (2026-09-01)`, keeping the planning date, and the note lands after the item's `---`, as prose between items. The roadmap's own convention is `- **Status**: shipped (<ship date>)` plus a `- **Resolution** (date, version):` bullet inside the item.
   Verified by RetroDB 2026-09-26 on PASS-59-72: `done (2026-09-26).
   Lanes: media, packaging.`, note inside the item above `---`.
+  Resolved (2026-09-26, aed564c1): store-route flip re-dates the Status
+  line's date and keeps the rest; notes go above a trailing rule
+  (file-path annotate too). Tests RoadmapPassStoreWrite.Ants5395*,
+  proven red. GitHub CI green; verified by RetroDB on PASS-59-72.
   **Layman:** Makes closing a task record the right date and keep the closing note with the task.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
 
-- 📋 [ANTS-5396] **Pass-headings amend_body and flip_batch get a store route, or their refusal names the working one.**
+- ✅ [ANTS-5396] **Pass-headings amend_body and flip_batch get a store route, or their refusal names the working one.**
   RetroDB: amend_body refuses `unsupported_format ... edit it with a text edit`, and flip_batch refuses with no store route. What works is a hand edit of roadmap.md then roadmap_migrate (items_updated 13, check_sync in sync), but nothing says so, and the store-first model suggests the next render discards the edit. At least name that remedy in the refusal. Separately, body_shadowed refuses this format's own Status line, which carries `Lanes:` mid-line by design.
+  Resolved (2026-09-26, aed564c1) on its `or` branch: every
+  pass-headings refusal (amend_body included) names the working route,
+  hand edit then roadmap_migrate. A real store route for
+  amend_body/flip_batch is not built. The Lanes-mid-line guard is
+  ANTS-5397. Test RoadmapPassStoreWrite.Inv4, proven red. GitHub CI
+  green.
   **Layman:** Gives sessions a supported way to edit and close items on this roadmap style.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
