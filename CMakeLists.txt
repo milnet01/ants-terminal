@@ -2638,6 +2638,8 @@ if(ANTS_TESTS)
                 # ANTS-5334 — flip/annotate on a store-served pass-headings
                 # roadmap write through the store; other writes refuse there.
                 tests/features/roadmap_pass_store_write/test_roadmap_pass_store_write.cpp
+                # ANTS-5311 — ants-mcpd usage snapshots (drives cmdTokenUsage).
+                tests/features/mcpd_usage_snapshots/test_mcpd_usage_snapshots.cpp
                 # ANTS-5351 — bad_status hints at `active` for a list value.
                 tests/features/roadmap_query_status_hint/test_roadmap_query_status_hint.cpp
                 # ANTS-4141 — the divergence guard: a render that would delete

@@ -4294,6 +4294,27 @@ void MainWindow::setupStatusBarChrome() {
     connect(m_claudeIntegration, &ClaudeIntegration::tokenSessionEnding,
             this, &MainWindow::foldTokenSavingsIntoConfig);
 
+    // ANTS-5311 — ants-mcpd serves most calls and writes its counts to a
+    // snapshot here; the terminal's own tokensSavedUpdated never fires for
+    // them. A helper's writes and its final one are renames in this
+    // directory, so watching it both refreshes the chip and folds a helper's
+    // snapshot moments after it exits. Created first: a watcher on a missing
+    // directory never fires.
+    {
+        const QString peerDir = TokenUsageEngine::peerSnapshotDir();
+        if (QDir().mkpath(peerDir)) {
+            QFile::setPermissions(peerDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                           | QFileDevice::ExeOwner);
+            m_peerUsageWatcher = new QFileSystemWatcher({peerDir}, this);
+            connect(m_peerUsageWatcher, &QFileSystemWatcher::directoryChanged, this, [this] {
+                foldDeadPeers();
+                if (m_claudeStatusBarController)
+                    m_claudeStatusBarController->refreshTokensSavedChip();
+            });
+        }
+        foldDeadPeers();   // snapshots left while no terminal was running
+    }
+
     setupClaudeMcpProviders();
 
     // 0.7.39 — Roadmap button. Sibling to Background Tasks; same size/
@@ -5180,17 +5201,55 @@ void MainWindow::foldTokenSavingsIntoConfig() {
             dirty = true;
         }
     }
+    // ANTS-5311 — exited ants-mcpd helpers' snapshots, in the same single
+    // write (their INV-9); the files go only after the save.
+    const QString peerDir = TokenUsageEngine::peerSnapshotDir();
+    TokenUsageEngine::PeerUsage dead;
+    QList<int> locks;
+    TokenUsageEngine::readPeerSnapshots(peerDir, true, &dead, &locks);
+    if (foldClaimedPeersIntoConfig(dead)) dirty = true;
     if (dirty) m_config.save();  // single write, global + per-project (INV-6)
+    TokenUsageEngine::releaseClaimed(peerDir, dead, locks);
+}
+
+void MainWindow::foldDeadPeers() {
+    const QString peerDir = TokenUsageEngine::peerSnapshotDir();
+    TokenUsageEngine::PeerUsage dead;
+    QList<int> locks;
+    TokenUsageEngine::readPeerSnapshots(peerDir, true, &dead, &locks);
+    if (foldClaimedPeersIntoConfig(dead)) m_config.save();
+    TokenUsageEngine::releaseClaimed(peerDir, dead, locks);
+}
+
+bool MainWindow::foldClaimedPeersIntoConfig(const TokenUsageEngine::PeerUsage &dead) {
+    if (dead.sessions == 0) return false;
+    QJsonObject monthly = m_config.claudeTokensSavedMonthly();
+    qint64 lifetime = m_config.claudeTokensSavedLifetime();
+    QJsonObject byProject = m_config.claudeTokensSavedByProject();
+    if (!TokenUsageEngine::foldPeerUsage(
+            dead, monthly, lifetime, byProject,
+            QDate::currentDate().toString(QStringLiteral("yyyy-MM")),
+            QDateTime::currentDateTime().toString(Qt::ISODate)))
+        return false;
+    m_config.setClaudeTokensSavedMonthly(monthly);
+    m_config.setClaudeTokensSavedLifetime(lifetime);
+    m_config.setClaudeTokensSavedByProject(byProject);
+    if (m_config.claudeTokensSavedSince().isEmpty())
+        m_config.setClaudeTokensSavedSince(QDate::currentDate().toString(Qt::ISODate));
+    return true;
 }
 
 // ANTS-3572 — assemble the tokens-saved summary for the token_usage MCP verb.
 // Each period = stored + live session; monthly[] is the folded buckets only,
 // recent-first. Reads the same single ClaudeIntegration the verb's `ci` points
 // at, so verb numbers are mutually consistent (INV-1).
-TokenSavingsSummary MainWindow::tokenSavingsSummary() const {
+TokenSavingsSummary MainWindow::tokenSavingsSummary(
+        const TokenUsageEngine::PeerUsage &peers) const {
     TokenSavingsSummary out;
-    const qint64 session = m_claudeIntegration
-        ? m_claudeIntegration->tokenUsageReport(false).totalSaved : 0;
+    // ANTS-5311 — the live session is the terminal's own plus every ants-mcpd
+    // snapshot not yet folded, each derived per snapshot.
+    const qint64 session = (m_claudeIntegration
+        ? m_claudeIntegration->tokenUsageReport(false).totalSaved : 0) + peers.savedTokens;
     const QJsonObject monthly = m_config.claudeTokensSavedMonthly();
     const QString curMonth = QDate::currentDate().toString("yyyy-MM");
     const QString curYear  = QDate::currentDate().toString("yyyy");

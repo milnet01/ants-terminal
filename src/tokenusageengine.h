@@ -2,8 +2,8 @@
 // dispatch byte sizes and reports an est_tokens_saved delta against
 // per-tool static baselines. See docs/specs/ANTS-1284.md.
 //
-// Qt6::Core only. Lives in ants_core_lib alongside verifyengine,
-// plantemplateengine, indiereviewengine, debtsweepengine,
+// Qt6::Core only. Lives in ants_mcpcore_lib (ANTS-4932) alongside
+// verifyengine, plantemplateengine, indiereviewengine, debtsweepengine,
 // roadmapfoldin.
 
 #pragma once
@@ -80,6 +80,8 @@ public:
     void reset();
 
     Snapshot buildReport(bool includeZero) const;
+    // ANTS-5311 — the raw counters, for ants-mcpd's snapshot writer.
+    const QHash<QString, ToolCounter> &counters() const { return m_counters; }
     // ANTS-5104 — buildReport(false).totalSaved without building the report.
     qint64 totalSaved() const;
 
@@ -133,5 +135,58 @@ qint64 sumYear(const QJsonObject &monthly, const QString &yearPrefix);
 // "820" / "1K" / "12.4K" / "1.2M" / "1B" — one decimal, trailing ".0"
 // trimmed. UI-agnostic so the chip and any other surface share one format.
 QString humanizeCount(qint64 n);
+
+// ---- ANTS-5311 — ants-mcpd usage snapshots --------------------------------
+// Each ants-mcpd writes its own counters to a snapshot file; the terminal reads
+// every snapshot for display and folds one into config once its writer exits.
+// Contract: docs/specs/ANTS-5311-mcpd-usage-snapshots.md.
+
+// The floor-at-0 saving of one counter set, in tokens — Tracker::totalSaved()'s
+// arithmetic, callable on a snapshot's counters alone.
+qint64 totalSavedOf(const QHash<QString, ToolCounter> &counters);
+
+// § 2.6 — what one snapshot may contribute. 64 matches the writer's
+// ClaudeIntegration::kMaxTokenProjects, which is private.
+constexpr int kMaxPeerProjects = 64;
+constexpr int kMaxPeerTools    = 512;
+
+// GenericDataLocation + "/ants-terminal/mcpd-usage".
+QString peerSnapshotDir();
+
+QJsonObject snapshotToJson(const QHash<QString, ToolCounter> &tools,
+                           const QHash<QString, qint64> &savedBytesByProject,
+                           qint64 pid, qint64 startedMs, qint64 updatedMs);
+// The inverse, with § 2.6's checks. False and `why` set on any rejection.
+bool snapshotFromJson(const QJsonObject &o, QHash<QString, ToolCounter> *tools,
+                      QHash<QString, qint64> *savedBytesByProject, QString *why);
+// Field-wise sum; min/max combine. Used by the writer's accumulator.
+void addCounters(QHash<QString, ToolCounter> &into,
+                 const QHash<QString, ToolCounter> &from);
+
+// The peer total. Every figure is a sum of per-snapshot figures, each derived
+// from that snapshot alone, so removing one snapshot removes exactly its own
+// addends (§ 2.3, INV-4).
+struct PeerUsage {
+    qint64 savedTokens = 0;                       // Σ each snapshot's totalSavedOf()
+    QHash<QString, qint64> savedTokensByProject;  // Σ each snapshot's bytes / kCharsPerToken
+    qint64 calls = 0;                             // Σ n_calls
+    qint64 failedCalls = 0;                       // Σ failed_calls
+    int sessions = 0;                             // snapshots summed
+    QStringList stems;                            // their stems
+    QStringList skipped;                          // "<file>: <reason>"
+};
+// Read every snapshot in `dir`. With `claimDead`, each snapshot whose writer
+// has exited is ALSO summed into `dead`, its lock held in `heldLocks` until
+// releaseClaimed().
+PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
+                            PeerUsage *dead, QList<int> *heldLocks);
+// Unlinks each claimed snapshot's files and closes the held locks.
+void releaseClaimed(const QString &dir, const PeerUsage &dead,
+                    const QList<int> &heldLocks);
+// Folds `dead` into the three config values through foldMonthlyBucket /
+// foldProjectBucket / pruneProjectBuckets. Pure. True when a value changed.
+bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime,
+                   QJsonObject &byProject, const QString &month,
+                   const QString &nowIso);
 
 }  // namespace TokenUsageEngine

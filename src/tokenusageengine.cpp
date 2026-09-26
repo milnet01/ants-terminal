@@ -2,8 +2,20 @@
 
 #include "tokenusageengine.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QRegularExpression>
+#include <QSet>
+#include <QStandardPaths>
 #include <QStringList>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 #include <algorithm>
 
@@ -173,9 +185,13 @@ Snapshot Tracker::buildReport(bool includeZero) const {
 qint64 Tracker::totalSaved() const {
     // ANTS-5104 — buildReport(false).totalSaved without the per-tool list or
     // the sort: the same floor-at-0 arithmetic, summed.
+    return totalSavedOf(m_counters);
+}
+
+qint64 totalSavedOf(const QHash<QString, ToolCounter> &counters) {
     qint64 total = 0;
-    for (auto it = m_counters.cbegin(); it != m_counters.cend(); ++it) {
-        const qint64 saved = baselineFor(it.key()) * it.value().nCalls
+    for (auto it = counters.cbegin(); it != counters.cend(); ++it) {
+        const qint64 saved = Tracker::baselineFor(it.key()) * it.value().nCalls
                              - (it.value().bytesIn + it.value().bytesOut);
         if (saved > 0) total += saved / kCharsPerToken;
     }
@@ -270,6 +286,283 @@ QString humanizeCount(qint64 n) {
     }
     if (s.endsWith(QLatin1String(".0"))) s.chop(2);  // "1.0K" → "1K"
     return s + suffix;
+}
+
+// ---- ANTS-5311 — ants-mcpd usage snapshots --------------------------------
+
+namespace {
+
+constexpr qint64 kMaxSnapshotBytes = qint64{256} * 1024;   // § 2.6
+constexpr qint64 kLoneLockAgeSecs  = 60;           // § 2.5
+constexpr int    kSnapshotFormat   = 1;
+
+const char *const kCounterKeys[] = {
+    "n_calls", "bytes_in", "bytes_out", "wrap_bytes", "duration_us_min",
+    "duration_us_max", "duration_us_sum", "failed_calls", "failed_bytes_in",
+    "failed_bytes_out"};
+
+qint64 *counterField(ToolCounter &c, int i) {
+    switch (i) {
+    case 0: return nullptr;   // nCalls is an int; handled by the caller
+    case 1: return &c.bytesIn;
+    case 2: return &c.bytesOut;
+    case 3: return &c.wrapBytes;
+    case 4: return &c.durationUsMin;
+    case 5: return &c.durationUsMax;
+    case 6: return &c.durationUsSum;
+    case 7: return &c.failedCalls;
+    case 8: return &c.failedBytesIn;
+    case 9: return &c.failedBytesOut;
+    default: return nullptr;
+    }
+}
+
+// One snapshot's own figures (§ 2.3): derived from that file alone.
+void addSnapshotTo(PeerUsage &u, const QString &stem,
+                   const QHash<QString, ToolCounter> &tools,
+                   const QHash<QString, qint64> &bytesByRoot) {
+    u.savedTokens += totalSavedOf(tools);
+    for (auto it = bytesByRoot.cbegin(); it != bytesByRoot.cend(); ++it)
+        u.savedTokensByProject[it.key()] += it.value() / kCharsPerToken;
+    for (const ToolCounter &c : tools) {
+        u.calls += c.nCalls;
+        u.failedCalls += c.failedCalls;
+    }
+    ++u.sessions;
+    u.stems.append(stem);
+}
+
+// § 2.6 — read one file as untrusted input. Empty `why` on success.
+bool readSnapshotFile(const QString &path, QHash<QString, ToolCounter> *tools,
+                      QHash<QString, qint64> *bytesByRoot, QString *why) {
+    const QFileInfo fi(path);
+    if (fi.isSymLink())  { *why = QStringLiteral("a symlink"); return false; }
+    if (!fi.isFile())    { *why = QStringLiteral("not a regular file"); return false; }
+    if (fi.size() > kMaxSnapshotBytes) {
+        *why = QStringLiteral("over %1 KiB").arg(kMaxSnapshotBytes / 1024);
+        return false;
+    }
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) { *why = QStringLiteral("unreadable"); return false; }
+    QJsonParseError pe;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+        *why = QStringLiteral("not a JSON object");
+        return false;
+    }
+    return snapshotFromJson(doc.object(), tools, bytesByRoot, why);
+}
+
+// Non-blocking exclusive lock on `path`, never creating it. The fd, or -1 when
+// the lock is held elsewhere or the file is gone.
+int tryLock(const QString &path) {
+    const QByteArray p = QFile::encodeName(path);
+    const int fd = ::open(p.constData(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) return -1;
+    if (::flock(fd, LOCK_EX | LOCK_NB) != 0) { ::close(fd); return -1; }
+    return fd;
+}
+
+}  // namespace
+
+QString peerSnapshotDir() {
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+           + QStringLiteral("/ants-terminal/mcpd-usage");
+}
+
+QJsonObject snapshotToJson(const QHash<QString, ToolCounter> &tools,
+                           const QHash<QString, qint64> &savedBytesByProject,
+                           qint64 pid, qint64 startedMs, qint64 updatedMs) {
+    QJsonObject t;
+    for (auto it = tools.cbegin(); it != tools.cend(); ++it) {
+        ToolCounter c = it.value();
+        QJsonObject o;
+        o[QLatin1String(kCounterKeys[0])] = c.nCalls;
+        for (int i = 1; i < 10; ++i)
+            o[QLatin1String(kCounterKeys[i])] = double(*counterField(c, i));
+        t[it.key()] = o;
+    }
+    QJsonObject roots;
+    for (auto it = savedBytesByProject.cbegin(); it != savedBytesByProject.cend(); ++it)
+        roots[it.key()] = double(it.value());
+    QJsonObject out;
+    out[QStringLiteral("format")]                 = kSnapshotFormat;
+    out[QStringLiteral("pid")]                    = double(pid);
+    out[QStringLiteral("started_unix_ms")]        = double(startedMs);
+    out[QStringLiteral("updated_unix_ms")]        = double(updatedMs);
+    out[QStringLiteral("tools")]                  = t;
+    out[QStringLiteral("saved_bytes_by_project")] = roots;
+    return out;
+}
+
+bool snapshotFromJson(const QJsonObject &o, QHash<QString, ToolCounter> *tools,
+                      QHash<QString, qint64> *savedBytesByProject, QString *why) {
+    tools->clear();
+    savedBytesByProject->clear();
+    if (o.value(QStringLiteral("format")).toInt(-1) != kSnapshotFormat) {
+        *why = QStringLiteral("format is not %1").arg(kSnapshotFormat);
+        return false;
+    }
+    const QJsonObject t = o.value(QStringLiteral("tools")).toObject();
+    const QJsonObject roots = o.value(QStringLiteral("saved_bytes_by_project")).toObject();
+    if (t.size() > kMaxPeerTools) {
+        *why = QStringLiteral("more than %1 tools").arg(kMaxPeerTools);
+        return false;
+    }
+    if (roots.size() > kMaxPeerProjects) {
+        *why = QStringLiteral("more than %1 projects").arg(kMaxPeerProjects);
+        return false;
+    }
+    for (auto it = t.constBegin(); it != t.constEnd(); ++it) {
+        const QJsonObject c = it.value().toObject();
+        ToolCounter tc;
+        for (int i = 0; i < 10; ++i) {
+            const qint64 v = c.value(QLatin1String(kCounterKeys[i])).toInteger();
+            if (v < 0) {
+                *why = QStringLiteral("negative %1 for %2")
+                           .arg(QLatin1String(kCounterKeys[i]), it.key());
+                return false;
+            }
+            if (i == 0) tc.nCalls = int(v);
+            else        *counterField(tc, i) = v;
+        }
+        tools->insert(it.key(), tc);
+    }
+    for (auto it = roots.constBegin(); it != roots.constEnd(); ++it) {
+        const qint64 v = it.value().toInteger();
+        if (v < 0) {
+            *why = QStringLiteral("negative bytes for %1").arg(it.key());
+            return false;
+        }
+        savedBytesByProject->insert(it.key(), v);
+    }
+    why->clear();
+    return true;
+}
+
+void addCounters(QHash<QString, ToolCounter> &into,
+                 const QHash<QString, ToolCounter> &from) {
+    for (auto it = from.cbegin(); it != from.cend(); ++it) {
+        ToolCounter &a = into[it.key()];
+        const ToolCounter &b = it.value();
+        if (b.nCalls > 0) {
+            a.durationUsMin = a.nCalls > 0 ? std::min(a.durationUsMin, b.durationUsMin)
+                                           : b.durationUsMin;
+            a.durationUsMax = std::max(a.durationUsMax, b.durationUsMax);
+        }
+        a.nCalls         += b.nCalls;
+        a.bytesIn        += b.bytesIn;
+        a.bytesOut       += b.bytesOut;
+        a.wrapBytes      += b.wrapBytes;
+        a.durationUsSum  += b.durationUsSum;
+        a.failedCalls    += b.failedCalls;
+        a.failedBytesIn  += b.failedBytesIn;
+        a.failedBytesOut += b.failedBytesOut;
+    }
+}
+
+PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
+                            PeerUsage *dead, QList<int> *heldLocks) {
+    static const QRegularExpression rxJson(QStringLiteral("^([0-9]+-[0-9]+)\\.json$"));
+    static const QRegularExpression rxLock(QStringLiteral("^([0-9]+-[0-9]+)\\.lock$"));
+    PeerUsage all;
+    const QDir d(dir);
+    const QStringList names = d.entryList(QDir::Files | QDir::System | QDir::Hidden,
+                                          QDir::Name);
+    const QSet<QString> present(names.cbegin(), names.cend());
+    const QString claimedSuffix =
+        QStringLiteral(".claimed-%1").arg(QCoreApplication::applicationPid());
+
+    for (const QString &name : names) {
+        // A lone lock (§ 2.5): a writer between its lock and its first write,
+        // or one that died there. Only an old one whose lock is free is removed.
+        if (const auto lm = rxLock.match(name); lm.hasMatch()) {
+            if (!claimDead || present.contains(lm.captured(1) + QStringLiteral(".json")))
+                continue;
+            const QString path = d.filePath(name);
+            if (QFileInfo(path).lastModified().secsTo(QDateTime::currentDateTime())
+                    <= kLoneLockAgeSecs)
+                continue;
+            if (const int fd = tryLock(path); fd >= 0) {
+                QFile::remove(path);
+                ::close(fd);
+            }
+            continue;
+        }
+        const auto jm = rxJson.match(name);
+        if (!jm.hasMatch()) continue;
+        const QString stem = jm.captured(1);
+        const QString path = d.filePath(name);
+
+        QHash<QString, ToolCounter> tools;
+        QHash<QString, qint64> bytes;
+        QString why;
+        if (!readSnapshotFile(path, &tools, &bytes, &why)) {
+            all.skipped.append(name + QStringLiteral(": ") + why);
+            continue;
+        }
+        addSnapshotTo(all, stem, tools, bytes);
+        if (!claimDead || !dead || !heldLocks) continue;
+
+        const QString lockPath = d.filePath(stem + QStringLiteral(".lock"));
+        if (QFileInfo::exists(lockPath)) {
+            const int fd = tryLock(lockPath);
+            if (fd < 0) continue;                      // live, or claimed elsewhere
+            // INV-10 — re-read under the lock: another reader may have
+            // released (and unlinked) this stem since the first read.
+            if (!readSnapshotFile(path, &tools, &bytes, &why)) { ::close(fd); continue; }
+            heldLocks->append(fd);
+            addSnapshotTo(*dead, stem, tools, bytes);
+        } else {
+            // No lock file: dead. Claimed by an atomic rename, so only the
+            // reader whose rename wins folds it.
+            const QString claimed = d.filePath(stem + claimedSuffix);
+            if (!QFile::rename(path, claimed)) continue;
+            if (!readSnapshotFile(claimed, &tools, &bytes, &why)) {
+                QFile::rename(claimed, path);          // put it back as found
+                continue;
+            }
+            addSnapshotTo(*dead, stem, tools, bytes);
+        }
+    }
+    return all;
+}
+
+void releaseClaimed(const QString &dir, const PeerUsage &dead,
+                    const QList<int> &heldLocks) {
+    const QDir d(dir);
+    const QString claimedSuffix =
+        QStringLiteral(".claimed-%1").arg(QCoreApplication::applicationPid());
+    for (const QString &stem : dead.stems) {
+        QFile::remove(d.filePath(stem + QStringLiteral(".json")));
+        QFile::remove(d.filePath(stem + claimedSuffix));
+        QFile::remove(d.filePath(stem + QStringLiteral(".lock")));
+    }
+    for (const int fd : heldLocks) ::close(fd);
+}
+
+bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime,
+                   QJsonObject &byProject, const QString &month,
+                   const QString &nowIso) {
+    bool changed = false;
+    if (dead.savedTokens > 0) {
+        monthly = foldMonthlyBucket(monthly, month, dead.savedTokens, /*keepMonths=*/24);
+        lifetime += dead.savedTokens;
+        changed = true;
+    }
+    bool folded = false;
+    for (auto it = dead.savedTokensByProject.cbegin();
+         it != dead.savedTokensByProject.cend(); ++it) {
+        if (it.value() <= 0) continue;
+        byProject = foldProjectBucket(byProject, it.key(), it.value(), month, nowIso,
+                                      /*keepMonths=*/24);
+        folded = true;
+    }
+    if (folded) {
+        byProject = pruneProjectBuckets(byProject, /*keepProjects=*/64);
+        changed = true;
+    }
+    return changed;
 }
 
 }  // namespace TokenUsageEngine

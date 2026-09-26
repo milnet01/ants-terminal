@@ -12214,9 +12214,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "total_wrap_bytes, tools_called}; per-tool "
                         "entry adds {wrap_bytes, duration_us_min/"
                         "max/mean}. Sorted by est_tokens_saved "
-                        "descending. Pure read by default; pass "
-                        "reset:true to read-and-clear in one "
-                        "round-trip. No required args.");
+                        "descending. `mcpd` counts calls served by "
+                        "ants-mcpd processes (ANTS-5311). Pure read "
+                        "by default; pass reset:true to read-and-clear "
+                        "in one round-trip. No required args.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to inspect this session's MCP-call "
                         "cost. Control-plane (no caller_cwd); "

@@ -34,6 +34,7 @@ class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
 class ClaudeIntegration;
 #include "rootprovider.h"   // ANTS-4932 — complete type for m_rootProvider
+#include "tokenusageengine.h"   // ANTS-5311 — PeerUsage in tokenSavingsSummary()
 class ClaudeTabTracker;
 class ClaudeBgTaskTracker;
 class ClaudeStatusBarController;
@@ -80,6 +81,10 @@ private slots:
     // Connected to ClaudeIntegration::tokenSessionEnding (synchronous, before
     // the counter resets) and called from closeEvent at app quit.
     void foldTokenSavingsIntoConfig();
+    // ANTS-5311 — fold the usage snapshots of ants-mcpd processes that have
+    // exited. Runs on every change to the snapshot directory and once at
+    // construction; saves config only when a value changed.
+    void foldDeadPeers();
     void toggleMaximize();
 
     void newTab();
@@ -155,7 +160,9 @@ public:
     // ANTS-3572 — exposed to RemoteControl::cmdTokenUsage for the verb's
     // month_saved / ytd_saved / lifetime_saved / monthly[] fields. Reads
     // m_config + the engine; each period is stored + live session.
-    TokenSavingsSummary tokenSavingsSummary() const;
+    // ANTS-5311 — `peers` is the caller's one read of the ants-mcpd snapshots;
+    // their savings add to the live-session term.
+    TokenSavingsSummary tokenSavingsSummary(const TokenUsageEngine::PeerUsage &peers) const;
 
     // `tabListForRemote()` returns one JSON object per tab with
     // `index`, `title`, `cwd`, `active` (used by the `ls` command).
@@ -649,6 +656,11 @@ private:
 
     // Hot-reload: watch config.json for external changes
     QFileSystemWatcher *m_configWatcher = nullptr;
+    // ANTS-5311 — the ants-mcpd usage snapshot directory.
+    QFileSystemWatcher *m_peerUsageWatcher = nullptr;
+    // ANTS-5311 — fold claimed dead snapshots into m_config's three values
+    // (no save). True when a value changed.
+    bool foldClaimedPeersIntoConfig(const TokenUsageEngine::PeerUsage &dead);
     void onConfigFileChanged(const QString &path);
     // Re-entrancy guard for onConfigFileChanged. Set true on entry, cleared
     // by a deferred singleShot that fires after Qt's event loop has had a

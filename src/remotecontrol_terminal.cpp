@@ -1158,10 +1158,14 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
     // the truth is "nobody looked", and this verb exists to report a number.
     // A null m_main is a DIFFERENT case and still defaults — there is no
     // window to ask, which is not a refusal.
+    // ANTS-5311 — the ants-mcpd snapshots, read ONCE here and handed to the
+    // summary, so the `mcpd` block and the period figures see one read.
+    const TokenUsageEngine::PeerUsage peers = TokenUsageEngine::readPeerSnapshots(
+        TokenUsageEngine::peerSnapshotDir(), /*claimDead=*/false, nullptr, nullptr);
     TokenSavingsSummary savings;
     if (m_main) {
         const auto got = ants::onGuiThread(
-            [this]() { return m_main->tokenSavingsSummary(); });
+            [this, &peers]() { return m_main->tokenSavingsSummary(peers); });
         if (!got) {
             QJsonObject env;
             env[QStringLiteral("ok")]    = false;
@@ -1222,5 +1226,16 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
     env["ytd_saved"]      = savings.ytd;
     env["lifetime_saved"] = savings.lifetime;
     env["monthly"]        = savings.monthly;
+    // ANTS-5311 — calls served by ants-mcpd, in their own block: calls[] and
+    // total_saved above stay this process's session, so ANTS-1284's
+    // total_saved = Σ calls[].est_tokens_saved still holds.
+    QJsonObject mcpd;
+    mcpd["sessions"]     = peers.sessions;
+    mcpd["calls"]        = static_cast<qint64>(peers.calls);
+    mcpd["failed_calls"] = static_cast<qint64>(peers.failedCalls);
+    mcpd["total_saved"]  = static_cast<qint64>(peers.savedTokens);
+    env["mcpd"] = mcpd;
+    if (!peers.skipped.isEmpty())
+        env["snapshots_skipped"] = QJsonArray::fromStringList(peers.skipped);
     return QJsonDocument(env);
 }

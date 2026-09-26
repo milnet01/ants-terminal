@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **The tokens-saved chip and token_usage count the calls ants-mcpd serves** (ANTS-5311)
+  Since ants-mcpd began answering most MCP calls, the terminal's savings
+  figures only saw the few it served itself. Each ants-mcpd now writes a
+  small usage snapshot; the terminal adds every snapshot to the chip and to
+  `token_usage` (a new `mcpd` block), and folds a helper's snapshot into
+  the saved totals once that helper exits. The helper half goes live on an
+  MCP reconnect; the terminal half needs one relaunch.
+
 - **roadmap_log convert previews can be filtered and sized** (ANTS-5328)
   `planned_filter:"needs_decision"` shows only the items a person must
   check, and `max_planned` sets how many rows come back (0 for counts

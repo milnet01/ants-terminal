@@ -1350,11 +1350,18 @@ void ClaudeStatusBarController::refreshTokensSavedChip()
         }
     }
 
+    // ANTS-5311 — ants-mcpd serves most calls; its snapshots add to the live
+    // session, each already in tokens (divided per snapshot, never after
+    // summing, so a fold cannot move this figure).
+    const TokenUsageEngine::PeerUsage peers = TokenUsageEngine::readPeerSnapshots(
+        TokenUsageEngine::peerSnapshotDir(), /*claimDead=*/false, nullptr, nullptr);
+
     // Live session (bytes→tokens, divided ONCE here) + persisted bucket.
     const qint64 sessionTokens = root.isEmpty()
         ? 0
         : m_integration->sessionSavedBytesForProject(root)
-              / TokenUsageEngine::kCharsPerToken;
+              / TokenUsageEngine::kCharsPerToken
+          + peers.savedTokensByProject.value(root);
     const QJsonObject bucket = root.isEmpty()
         ? QJsonObject()
         : cfg.claudeTokensSavedByProject().value(root).toObject();
@@ -1391,7 +1398,8 @@ void ClaudeStatusBarController::refreshTokensSavedChip()
 
     // "All projects" line = the untouched global aggregate + global live session
     // (M-c) — NOT a sum of the per-project buckets (INV-4).
-    const qint64 globalSession = m_integration->tokenUsageReport(false).totalSaved;
+    const qint64 globalSession =
+        m_integration->tokenUsageReport(false).totalSaved + peers.savedTokens;
     const qint64 globalLife = cfg.claudeTokensSavedLifetime() + globalSession;
 
     QString tip = tr("This session: %1\n"

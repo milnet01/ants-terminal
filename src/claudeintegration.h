@@ -467,6 +467,10 @@ public:
     TokenUsageEngine::Snapshot tokenUsageReport(bool includeZero) const {
         return m_tokenUsage.buildReport(includeZero);
     }
+    // ANTS-5311 — the raw counters ants-mcpd writes to its usage snapshot.
+    const QHash<QString, TokenUsageEngine::ToolCounter> &tokenUsageCounters() const {
+        return m_tokenUsage.counters();
+    }
     void resetTokenUsage() { endTokenSession(); }  // ANTS-3572 — folds first
     // ANTS-3572 — the single production reset path: emits tokenSessionEnding
     // (a synchronous fold on MainWindow), resets the counter, then blanks the
