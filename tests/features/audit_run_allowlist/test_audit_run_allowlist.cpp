@@ -344,3 +344,32 @@ TEST(AuditRunAllowlist, Inv8bUnderDocumentCapNotTruncated) {
         out, byTool, findingsByTool, &docTruncated));
     EXPECT_FALSE(docTruncated) << "INV-8b: 200 findings must not truncate";
 }
+
+// RC-40 (audit 2026-09-26) — a finding with no line emits no region, never
+// startLine 0, which SARIF's schema forbids (minimum 1).
+TEST(AuditRunAllowlist, LinelessFindingEmitsNoZeroStartLine) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QHash<QString, AuditRunner::ToolResult>  byTool;
+    QHash<QString, QJsonArray>               findingsByTool;
+    AuditRunner::ToolResult tr;
+    tr.tool   = QStringLiteral("gitleaks");
+    tr.status = QStringLiteral("ok");
+    byTool.insert(tr.tool, tr);
+    QJsonArray one = syntheticFindings(1, tr.tool);
+    QJsonObject o = one.at(0).toObject();
+    o.remove(QStringLiteral("line"));
+    one[0] = o;
+    findingsByTool.insert(tr.tool, one);
+
+    bool docTruncated = false;
+    const QString out = dir.path() + QStringLiteral("/o.sarif");
+    ASSERT_TRUE(AuditRunner::internal::writeSarifForTest(
+        out, byTool, findingsByTool, &docTruncated));
+    QFile f(out);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray bytes = f.readAll();
+    EXPECT_FALSE(bytes.contains("\"startLine\":0") || bytes.contains("\"startLine\": 0"))
+        << "a line-less finding was written with startLine 0";
+    EXPECT_TRUE(bytes.contains("src/f0.cpp")) << "the finding itself was dropped";
+}

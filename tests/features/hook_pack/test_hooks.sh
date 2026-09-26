@@ -598,6 +598,27 @@ else
     skip "read-roadmap-veto behaviour (jq not available)"
 fi
 
+# ---------- audit TL-11: TodoWrite beside another block ----------
+# A message whose content holds a TodoWrite block AND another block used to
+# emit the todos then `null`; `tail -n 1` kept the null and wrote
+# {todos:null} over a good snapshot.
+if command -v jq >/dev/null 2>&1; then
+    tl11="$(mktemp -d -t ants-hook-tl11.XXXXXX)"
+    printf '%s\n' '{"message":{"content":[{"type":"tool_use","name":"TodoWrite","input":{"todos":[{"content":"keep me"}]}},{"type":"text","text":"done"}]}}' \
+        > "$tl11/t.jsonl"
+    (cd "$REPO_ROOT" && printf '{"session_id":"tl11sid","transcript_path":"%s"}' "$tl11/t.jsonl" \
+        | HOME="$tl11" timeout 5 bash "$HOOKS_DIR/ants-precompact-snapshot.sh" >/dev/null 2>&1)
+    snap="$tl11/.cache/ants-terminal/precompact_tl11sid.json"
+    if [ -f "$snap" ] && jq -e '.todos[0].content == "keep me"' "$snap" >/dev/null 2>&1; then
+        pass "TL-11 precompact keeps todos when another block follows"
+    else
+        fail "TL-11 precompact snapshot lost its todos: $(cat "$snap" 2>/dev/null)"
+    fi
+    rm -rf "$tl11"
+else
+    skip "TL-11 precompact (jq not available)"
+fi
+
 # ---------- INV-9: silent outside project ----------
 outside="$(mktemp -d -t ants-hook-pack-out.XXXXXX)"
 for f in "$HOOKS_DIR"/ants-*.sh; do

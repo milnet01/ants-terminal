@@ -621,6 +621,27 @@ TEST(McpSpecLog, Ants3651RefusesWhenTheLoopLogSectionIsDuplicated) {
         << "the refusal must name what it found: " << r.error.toStdString();
 }
 
+// RC-30 (audit 2026-09-26) — append_inv carries the same guard.
+TEST(McpSpecLog, AppendInvRefusesWhenTheInvariantsSectionIsDuplicated) {
+    const QString before = QStringLiteral(
+        "# ANTS-9999 — Fixture\n"
+        "\n"
+        "## Invariants\n"
+        "\n"
+        "- **INV-1** — first.\n"
+        "\n"
+        "## Invariants\n"
+        "\n"
+        "- **INV-2** — stranded under a duplicate heading.\n");
+
+    const SpecLog::EditResult r = SpecLog::appendInv(
+        before, QStringLiteral("INV-3"), QStringLiteral("body"), {});
+    EXPECT_FALSE(r.ok) << "two Invariants sections is ambiguous";
+    EXPECT_EQ(r.code, QStringLiteral("unrecognised_format"));
+    EXPECT_TRUE(r.error.contains(QStringLiteral("Invariants")))
+        << r.error.toStdString();
+}
+
 // ANTS-4136 — `preserve_body` keeps a wrapped Status field's prose.
 //
 // A spec's Status is a wrapped field and this corpus routinely carries a

@@ -487,7 +487,10 @@ void testMcpWiring() {
         ants_test::slurpFunctionBody(rc, "RemoteControl::cmdVerifyChangesImpl");
     const std::string body = wrapper + "\n" + impl;
     expect(!wrapper.empty(), "MC-1 cmdVerifyChanges body slurped");
-    if (!body.empty()) {
+    // CC-T2 (audit 2026-09-26) — `body` always holds the joining newline, so
+    // testing it could never fail; each half is checked on its own.
+    expect(!impl.empty(), "MC-1 cmdVerifyChangesImpl body slurped");
+    if (!wrapper.empty() && !impl.empty()) {
         // MC-2: response envelope carries the new field.
         expect(body.find("\"verify_untrusted\"") != std::string::npos,
                "MC-2 cmdVerifyChanges emits verify_untrusted field");

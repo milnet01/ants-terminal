@@ -81,15 +81,21 @@ void KWinPositionTracker::setPosition(int x, int y) {
         scriptPath = f.fileName();
     }
 
+    // RC-52 (audit 2026-09-26) — the KWin script name is per process, as the
+    // temp file is: under one fixed name, a second instance's unloadScript
+    // could drop the first's position restore mid-flight.
+    const QString scriptNameArg = QStringLiteral("string:ants_terminal_pos_%1")
+                                      .arg(QCoreApplication::applicationPid());
+
     auto *proc = new QProcess(m_window);
     proc->start("dbus-send", {
         "--session", "--dest=org.kde.KWin", "--print-reply",
         "/Scripting", "org.kde.kwin.Scripting.loadScript",
         QString("string:%1").arg(scriptPath),
-        "string:ants_terminal_pos"
+        scriptNameArg
     });
     QObject::connect(proc, &QProcess::finished, m_window,
-                     [proc, scriptPath](int exitCode,
+                     [proc, scriptPath, scriptNameArg](int exitCode,
                                          QProcess::ExitStatus status) {
         proc->deleteLater();
         if (status != QProcess::NormalExit || exitCode != 0) {
@@ -103,13 +109,13 @@ void KWinPositionTracker::setPosition(int x, int y) {
         // ANTS-5081 — a second stage that fails to start never emits
         // finished: unload the script and remove the file here instead.
         QObject::connect(proc2, &QProcess::errorOccurred, proc2,
-                         [proc2, scriptPath](QProcess::ProcessError error) {
+                         [proc2, scriptPath, scriptNameArg](QProcess::ProcessError error) {
             if (error != QProcess::FailedToStart) return;
             proc2->deleteLater();
             QProcess::startDetached("dbus-send", {
                 "--session", "--dest=org.kde.KWin", "--print-reply",
                 "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                "string:ants_terminal_pos"
+                scriptNameArg
             });
             QFile::remove(scriptPath);
         });
@@ -118,12 +124,12 @@ void KWinPositionTracker::setPosition(int x, int y) {
             "/Scripting", "org.kde.kwin.Scripting.start"
         });
         QObject::connect(proc2, &QProcess::finished, proc2,
-                         [proc2, scriptPath]() {
+                         [proc2, scriptPath, scriptNameArg]() {
             proc2->deleteLater();
             QProcess::startDetached("dbus-send", {
                 "--session", "--dest=org.kde.KWin", "--print-reply",
                 "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                "string:ants_terminal_pos"
+                scriptNameArg
             });
             QFile::remove(scriptPath);
         });

@@ -277,7 +277,7 @@ static int runMain() {
         QComboBox *combo = dlg.findChild<QComboBox *>(
             QStringLiteral("roadmap-density-combo"));
         if (!combo)
-            fail("INV-7",
+            return fail("INV-7",
                 "Density combo not found by objectName "
                 "\"roadmap-density-combo\" — ctor wiring is broken.");
         if (combo->accessibleName() != QStringLiteral("Roadmap card density"))
@@ -291,13 +291,13 @@ static int runMain() {
         QLineEdit *search = dlg.findChild<QLineEdit *>(
             QStringLiteral("roadmap-search-box"));
         if (!search)
-            fail("INV-5", "search box not found");
+            return fail("INV-5", "search box not found");
         search->setText(QStringLiteral("sample-density-probe"));
 
         QCheckBox *filterDone = dlg.findChild<QCheckBox *>(
             QStringLiteral("roadmap-filter-done"));
         if (!filterDone)
-            fail("INV-5", "filter-done checkbox not found");
+            return fail("INV-5", "filter-done checkbox not found");
         const bool doneBefore = filterDone->isChecked();
         filterDone->setChecked(!doneBefore);  // flip
         const bool doneSeed = filterDone->isChecked();

@@ -421,6 +421,14 @@ AuditCache::SidecarLoad readFindingsSidecar(const QString &canonProject,
     QFile f(abs);
     if (!f.exists()) return s;
     s.present = true;
+    // RC-39 (audit 2026-09-26) — reapOne's containment, for the read: a
+    // tampered manifest must not point this at a file outside the cache.
+    // Present but not valid, so the caller treats it as a damaged sidecar.
+    const QString canonAbs = QFileInfo(abs).canonicalFilePath();
+    const QString canonDir = QFileInfo(d).canonicalFilePath();
+    if (canonAbs.isEmpty() || canonDir.isEmpty()
+        || !canonAbs.startsWith(canonDir + QLatin1Char('/')))
+        return s;
     if (!f.open(QIODevice::ReadOnly)) return s;
     const QByteArray bytes = f.readAll();
     f.close();

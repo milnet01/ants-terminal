@@ -94,12 +94,13 @@ lane_terminal() {
 
     # Long-line integrity: a 200-char line survives without truncation. It wraps
     # across rows, so count the W's rather than expecting one contiguous run
-    # (get-text joins wrapped rows with a newline). ≥200 = nothing dropped (the
-    # extra one is the literal W in the echoed printf command).
+    # (get-text joins wrapped rows with a newline). The echoed printf command
+    # carries one literal W, so 200 output W's read as 201; ≥201 = nothing
+    # dropped (audit TL-30 — ≥200 let a line missing one W pass).
     send_cmd terminal "printf 'W%.0s' \$(seq 1 200); printf '\\n'; echo LL_\$((2+3))_END"
     local wc; wc=$(wait_text terminal 'LL_5_END' 60 | tr -cd 'W' | wc -c)
-    (( wc >= 200 )) && pass "terminal: 200-char long line intact (W count=$wc)" \
-        || fail "terminal: long line truncated (W count=$wc, want ≥200)"
+    (( wc >= 201 )) && pass "terminal: 200-char long line intact (W count=$wc)" \
+        || fail "terminal: long line truncated (W count=$wc, want ≥201)"
 }
 
 # ── Lane: scrollback ──────────────────────────────────────────────────────

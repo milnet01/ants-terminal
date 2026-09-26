@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
+#include <atomic>
 #include <mutex>
 #include <utility>
 
@@ -85,7 +86,9 @@ private:
 
     static std::mutex s_mutex;
     static QFile s_file;
-    static quint32 s_active;
+    // RC-45 (audit 2026-09-26) — atomic: every ANTS_LOG call site reads it
+    // unlocked, while setActive() writes it under s_mutex.
+    static std::atomic<quint32> s_active;
     static bool s_alsoStderr;
 };
 

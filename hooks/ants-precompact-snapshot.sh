@@ -40,12 +40,15 @@ mkdir -p "$cache_dir" 2>/dev/null || exit 0
 out="$cache_dir/precompact_${sid}.json"
 tmp="$out.tmp"
 
-# Walk the JSONL transcript; remember the last TodoWrite payload.
+# Walk the JSONL transcript; remember the last TodoWrite payload. Audit TL-11 —
+# each content element is read on its own, so a message holding a TodoWrite
+# block AND another block no longer emits a trailing `null` that `tail -n 1`
+# then wrote over a good snapshot.
 # Bounded by `tail -n 5000` so a runaway transcript can't make this
 # hook block compaction (caller's perceptible latency budget: 30 ms).
 last_todos="$(tail -n 5000 "$transcript" 2>/dev/null \
-    | jq -c 'select(.message.content[]?.input.todos? != null)
-             | .message.content[].input.todos' 2>/dev/null \
+    | jq -c '.message.content[]? | objects | .input.todos? // empty' \
+        2>/dev/null \
     | tail -n 1)"
 
 [ -z "$last_todos" ] && exit 0

@@ -76,7 +76,15 @@ fi
 
 q() { sqlite3 "file:${DB}?mode=ro" "$1" 2>/dev/null; }
 
-PROJECT_ID="$(q "SELECT project_id FROM project WHERE root='${ROOT}' LIMIT 1;")"
+# Audit TL-22 — a FAILED query (locked, corrupt, schema moved) must not read
+# as an empty answer, which the checks below turn into a clean pass.
+query_failed() {
+    echo "shipped-coverage: ⊘ SKIPPED — the roadmap store query failed ($1),"
+    echo "                  so nothing was checked."
+    exit 0
+}
+PROJECT_ID="$(q "SELECT project_id FROM project WHERE root='${ROOT}' LIMIT 1;")" \
+    || query_failed "project lookup"
 if [[ -z "$PROJECT_ID" ]]; then
     echo "shipped-coverage: ⊘ SKIPPED — this project is not registered in the"
     echo "                  store, so it has no shipped dates. Run roadmap_migrate"
@@ -158,11 +166,12 @@ if [[ -z "$SINCE" ]]; then
 fi
 
 # --- What the store says shipped in the window.
-mapfile -t SHIPPED < <(q "
+shipped_out="$(q "
     SELECT id FROM item
     WHERE project_id=${PROJECT_ID}
       AND shipped IS NOT NULL AND shipped >= '${SINCE}'
-    ORDER BY id;")
+    ORDER BY id;")" || query_failed "shipped items"
+mapfile -t SHIPPED <<< "$shipped_out"
 
 # --- Honesty about what the dates cannot see. The store stamps `shipped`
 #     going forward from 2026-08-20; rows closed before that are NULL unless
@@ -201,7 +210,10 @@ UNCOVERED=()
 DECIDED=()
 for ID in "${SHIPPED[@]}"; do
     [[ -z "$ID" ]] && continue
-    grep -qE "^[[:space:]]*[-*][[:space:]].*\(${ID}\)" "$CHANGELOG" && continue
+    # Audit TL-23 — an id anywhere inside the bullet's parentheses covers it,
+    # so `(ANTS-1, ANTS-2)` covers both; the digit guard stops ANTS-12
+    # matching ANTS-123.
+    grep -qE "^[[:space:]]*[-*][[:space:]].*\([^)]*${ID}([^0-9][^)]*)?\)" "$CHANGELOG" && continue
     if [[ -n "${DECIDED_SET[$ID]:-}" ]]; then
         DECIDED+=("$ID")
     else

@@ -250,8 +250,31 @@ Check validatePath(const QString &rawPath,
             pc.resolved = resolved;
         } else {
             const QString cleaned = QDir::cleanPath(joined);
-            if (!anchoredUnder(cleaned, rootCanonical)
-                && !isFeedbackFile(cleaned, rootCanonical)) {
+            // RC-43 (audit 2026-09-26) — a lexical check alone let a missing
+            // leaf under a symlinked ancestor (`root/link/new`, link → /etc)
+            // pass. So the deepest EXISTING ancestor is canonicalised and the
+            // missing tail re-attached; a dangling symlink on the way is an
+            // escape, since a write through it lands wherever it points.
+            QString probe = cleaned;
+            QString tail;
+            QString effective = cleaned;
+            bool dangling = false;
+            while (!probe.isEmpty() && probe != QLatin1String("/")) {
+                const QFileInfo fi(probe);
+                const QString canon = fi.canonicalFilePath();
+                if (!canon.isEmpty()) {
+                    effective = tail.isEmpty()
+                        ? canon : canon + QLatin1Char('/') + tail;
+                    break;
+                }
+                if (fi.isSymLink()) { dangling = true; break; }
+                tail = tail.isEmpty() ? fi.fileName()
+                                      : fi.fileName() + QLatin1Char('/') + tail;
+                probe = fi.path();
+            }
+            if (dangling
+                || (!anchoredUnder(effective, rootCanonical)
+                    && !isFeedbackFile(effective, rootCanonical))) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"), cleaned);

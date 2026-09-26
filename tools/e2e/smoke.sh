@@ -47,6 +47,10 @@ for _ in $(seq 1 12); do   # ~3 s
 done
 if [[ "$dlg" == yes && -s "$(e2e_art)/dlg.png" ]]; then
     pass "3 roadmap dialog opened + grabbed (PNG non-zero)"
+elif [[ "$dlg" == yes ]]; then
+    # Audit TL-31 — the grab said ok:true and wrote nothing: the ANTS-5132
+    # class case 7b exists for, so it fails rather than skips.
+    fail "3 grab reported ok but $(e2e_art)/dlg.png is missing or empty"
 else
     skip "3 dialog open+grab (no visible RoadmapDialog — expected under offscreen)"
 fi

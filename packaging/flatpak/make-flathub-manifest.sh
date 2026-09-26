@@ -85,9 +85,12 @@ cat <<HEADER
 
 HEADER
 
+# Audit TL-34 — the swap must happen exactly once and must find its end. A
+# dev manifest whose source block changed shape was emitted unswapped, or lost
+# everything after the block, and both exited 0.
 awk -v tag="v${version}" -v commit="$commit" '
 /^[[:space:]]+-[[:space:]]*type:[[:space:]]*dir[[:space:]]*$/ {
-    skip = 1
+    skip = 1; swapped++
     print "      - type: git"
     print "        url: https://github.com/milnet01/ants-terminal"
     print "        tag: " tag
@@ -100,4 +103,8 @@ skip && /^[[:space:]]+path:[[:space:]]*\.\.\/\.\.[[:space:]]*$/ {
 }
 skip { next }
 { print }
+END {
+    if (swapped != 1) { print "make-flathub-manifest: expected one `type: dir` source block, found " swapped + 0 > "/dev/stderr"; exit 3 }
+    if (skip)         { print "make-flathub-manifest: the `type: dir` block has no `path: ../..` line" > "/dev/stderr"; exit 4 }
+}
 ' "$dev"

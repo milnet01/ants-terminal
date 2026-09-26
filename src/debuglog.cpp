@@ -1,5 +1,6 @@
 #include "debuglog.h"
 
+#include "secretredact.h"
 #include "secureio.h"
 
 #include <QCoreApplication>
@@ -23,7 +24,7 @@ constexpr qint64 kMaxLogBytes = 10 * 1024 * 1024;
 
 std::mutex DebugLog::s_mutex;
 QFile DebugLog::s_file;
-quint32 DebugLog::s_active = 0;
+std::atomic<quint32> DebugLog::s_active{0};
 bool DebugLog::s_alsoStderr = false;
 
 static const struct {
@@ -71,7 +72,7 @@ quint32 DebugLog::parseCategories(const QString &spec) {
     return mask;
 }
 
-quint32 DebugLog::active() { return s_active; }
+quint32 DebugLog::active() { return s_active.load(std::memory_order_relaxed); }
 
 void DebugLog::openLogFileLocked() {
     if (s_active == 0 || s_file.isOpen()) return;
@@ -122,7 +123,7 @@ void DebugLog::openLogFileLocked() {
             "\n=== debug log opened at %1 (pid %2, categories=0x%3) ===\n")
             .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs))
             .arg(QCoreApplication::applicationPid())
-            .arg(s_active, 0, 16);
+            .arg(s_active.load(), 0, 16);
         s_file.write(header.toUtf8());
         s_file.flush();
     }
@@ -163,13 +164,13 @@ void DebugLog::write(Category c, const QString &message) {
     // The enabled() check happens in the macro — by the time we're
     // here, we know the category is active or it's an ANTS_LOG_ALWAYS.
     // Still, guard against stray calls with no active bits.
-    if (c != None && (s_active & c) == 0) return;
+    if (c != None && (active() & c) == 0) return;
 
     std::lock_guard<std::mutex> lk(s_mutex);
     const QByteArray line = QStringLiteral("[%1] %2  %3\n")
         .arg(QDateTime::currentDateTime().toString("yyyy-MM-ddTHH:mm:ss.zzz"))
         .arg(QString::asprintf("%-8s", nameFor(c)))
-        .arg(escapeForLog(message))
+        .arg(escapeForLog(SecretRedact::scrub(message).text))
         .toUtf8();
 
     if (s_file.isOpen()) {

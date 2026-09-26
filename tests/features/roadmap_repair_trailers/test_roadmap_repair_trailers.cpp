@@ -21,6 +21,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSqlQuery>
 #include <QString>
 #include <QStringLiteral>
 #include <QTemporaryDir>
@@ -233,6 +234,38 @@ TEST(RoadmapRepairTrailers, Inv1AbbreviationStopIsRepaired) {
 
     EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0001"), QStringLiteral("layman")).toStdString(),
               std::string("A plain config.yaml file gets no checking at all"));
+}
+
+// RC-21 (audit 2026-09-26) — a repaired COLUMN is recorded in history, as a
+// stripped body already was, so the value it replaced is recoverable.
+TEST(RoadmapRepairTrailers, RepairedColumnIsRecordedInHistory) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(damage(projectId, QStringLiteral("DEMO-0001"),
+                       QStringLiteral("layman"), QStringLiteral("A plain config")));
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(repair(rc, root, false).value(QStringLiteral("ok")).toBool());
+
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    ASSERT_TRUE(store);
+    QString err;
+    const auto pk = store->findItem(projectId, QStringLiteral("DEMO-0001"), &err);
+    ASSERT_TRUE(pk);
+    QSqlQuery q(store->db());
+    q.prepare(QStringLiteral("SELECT old_value, new_value FROM history "
+                             "WHERE item_pk = ? AND field = 'layman'"));
+    q.addBindValue(*pk);
+    ASSERT_TRUE(q.exec());
+    ASSERT_TRUE(q.next()) << "the layman repair left no history row";
+    EXPECT_EQ(q.value(0).toString().toStdString(), std::string("A plain config"));
+    EXPECT_EQ(q.value(1).toString().toStdString(),
+              std::string("A plain config.yaml file gets no checking at all"));
+    EXPECT_FALSE(q.next()) << "one repair, one history row";
 }
 
 TEST(RoadmapRepairTrailers, Inv2HardWrapIsRepaired) {

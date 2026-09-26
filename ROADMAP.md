@@ -19108,6 +19108,44 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code RC-11).
   Lanes: terminal-widget.
 
+- 📋 [ANTS-5419] **Plugin settings store caps key length, value length and per-plugin total, so ants.settings.set cannot grow config.json without bound.**
+  lua_ants_settings_set (luaengine.cpp) takes any key and value, and the
+  plugin_settings store in config.json has no quota. Each value is bounded by
+  the 10 MiB Lua heap, but a plugin can accumulate unboundedly many keys
+  across a session. Needs: a key-length and value-length cap in the setter, a
+  per-plugin total-bytes quota at the store layer, a refusal the plugin can
+  see, and PLUGINS.md stating the limits. Queued, not fixed inline: the
+  limits are a design choice and change the documented plugin surface.
+  **Layman:** A plugin can save settings forever with no limit, slowly bloating the config file; add sensible size limits.
+  Kind: security.
+  Source: code-audit-2026-09-26 (review-code RC-47).
+  Lanes: lua.
+
+- 📋 [ANTS-5420] **Two roadmap_log writers on an unmigrated markdown ROADMAP.md cannot silently lose one update.**
+  RoadmapWriteHold makes SHARED and EXCLUSIVE holds mutually exclusive, but
+  two SHARED holders never block each other. On a project the store does NOT
+  serve, the markdown write ops (flip_batch, append_batch, create_section,
+  bundle_row) read, modify and QSaveFile::commit with no other lock, so two
+  concurrent calls both return ok:true and the second commit discards the
+  first. Store-served projects are unaffected. Fix direction: take an
+  exclusive per-file hold (or compare-and-retry on the file's mtime/hash)
+  around the markdown read-modify-write.
+  **Layman:** If two sessions edit an old-style roadmap file at the same moment, one edit can vanish while both are told it worked.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (review-code RC-49).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5421] **build_target_for accepts paths[] and answers several files in one call.**
+  Passing paths:[...] is reported in ignored_args and only `path` is
+  answered, so mapping four touched test files to their bundles took four
+  calls (or a CMakeLists.txt awk fallback). file_outline already takes
+  paths[]; mirror its shape: files:[{path, targets, ctest_filter}] plus one
+  merged `cmake --build --target a b c` line.
+  **Layman:** Looking up which test build owns several files takes one call per file today; let it take a list.
+  Kind: enhancement.
+  Source: in-session-2026-09-26 (close-findings audit pass).
+  Lanes: mcp.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -41851,6 +41889,31 @@ in each bullet, not just the reporter's symptom.
   Kind: fix.
   Source: in-session-2026-09-25.
   Lanes: build, ci.
+
+- 📋 [ANTS-5422] **The pre-push gate builds and tests the commits being pushed, not whatever the working tree holds.**
+  tools/hooks/pre-push runs build-test over the working tree (the
+  `python3 "$runner" run build-test` call) and reads ci.yml's paths-ignore
+  from the working tree too. Nothing compares local_sha to HEAD or requires a
+  clean tree, so a dirty tree, or pushing a branch other than the one checked
+  out, can go green for a commit that fails in CI. Options: refuse a push whose
+  local_sha is not HEAD or whose tree is dirty (cheap, strict), or run the gate
+  in a worktree at local_sha (exact, costs a cold build tree).
+  **Layman:** The safety check before an upload tests your current files, which may differ from what you are actually uploading.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 1 #1; ledger TL-1).
+  Lanes: ci.
+
+- 📋 [ANTS-5423] **tools/qt62-guard.sh cannot mistake a concurrent run for a failed build, and keeps its warm marker after an OOM kill.**
+  The "already running" check is a TOCTOU against `podman run --name`: a
+  second run reports "FAILED to build ... newer than the Qt floor" and removes
+  the first run's marker. The marker is also removed on any exit code,
+  including 137 (OOM kill), so a killed run looks cold next time. Fix: take a
+  flock around the run instead of probing podman, and remove the marker only
+  on a real build failure.
+  **Layman:** Two copies of the Qt 6.2 check running at once can report a misleading failure and wipe each other's progress marker.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 2 #16; ledger TL-29).
+  Lanes: ci.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
@@ -74922,6 +74985,33 @@ starts 2026-05-27.
   Kind: fix.
   Source: in-session-2026-09-22.
 
+- 📋 [ANTS-5424] **cut-rc.sh hotfix --continue refuses an unclean main or uncommitted [H] notes before it tags.**
+  hotfix --continue has no require_clean_main or clean-tree guard. Phase 1
+  says to bump and write the [H] notes but never to commit them. If they are
+  uncommitted, H=$(base_version), the drift check, the build and the [H]
+  extraction read the working tree, but `git tag -a "v${H}"` tags HEAD, which
+  still says N. Then `git checkout -q main` fails under set -e after the tag
+  push and publish, so the [H] record on main is never written. Peer rated it
+  MED-HIGH and re-read the code. Needs a guard before tagging, plus a check
+  that HEAD's CMakeLists version equals H.
+  **Layman:** The emergency-release path can tag the wrong version and then fail halfway, leaving the release record incomplete.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 1 #4; ledger TL-4).
+  Lanes: release.
+
+- 📋 [ANTS-5425] **cut-rc.sh promote and new-rc resume after a failure past the tag instead of skipping or double-cutting.**
+  promote checks only the LOCAL tag (`git rev-parse -q --verify
+  refs/tags/v${base}`), so a failure after `git tag -a "${pub}"` (push, gh
+  release create, OBS) makes a re-run exit "no RC in flight to promote",
+  leaving an unpushed tag, no release and no OBS submit. Same class as
+  ANTS-4872, which fixed only hotfix. Sibling: new-rc failing after its tag
+  push re-runs as rc(N+1) on the same commit. Needs per-step state (tag local?
+  pushed? release exists? OBS submitted?) so a re-run resumes.
+  **Layman:** If a release step fails after tagging, re-running it either does nothing or cuts a duplicate release candidate.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 1 #5; ledger TL-5).
+  Lanes: release.
+
 ### 🔌 MCP — general Claude Code workflows (2026-05-13)
 
 The MCP work shipped so far targets three power-user workflows
@@ -86490,6 +86580,45 @@ contributors don't duplicate research.
   Kind: chore.
   Source: in-session-2026-09-25.
   Lanes: mcp.
+
+- 📋 [ANTS-5426] **roadmap-store-backup.sh refuses to rotate out good snapshots when a new one is suspiciously smaller.**
+  The only test of a new snapshot is PRAGMA integrity_check, which a valid but
+  emptied store passes (and `[ -f "$STORE" ]` accepts a recreated empty file).
+  After KEEP runs (8 weekly) every good snapshot has rotated out. Compare the
+  new copy's item count against the newest kept snapshot and, below a
+  threshold, keep the snapshot but skip the prune and fail loudly. The
+  threshold is a design choice under ANTS-3794's spec, hence queued.
+  **Layman:** If the roadmap database were ever emptied, eight weekly backups later every good copy would have been deleted.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 1 #8; ledger TL-8).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5427] **rotate-roadmap.sh archives every block it cuts, including a closed minor split across non-adjacent sections.**
+  END_LINE stops at the first `## ` heading that does not match the minor, so
+  only the first contiguous run of that minor is cut. A re-run finds the next
+  block, sees the archive exists, keeps it (INV-14b no-clobber) and still cuts,
+  so that content is written nowhere. INV-14b mandates keep-and-cut on the
+  assumption a re-run only meets re-pasted text, so the fix is a spec
+  amendment: append to the archive, or refuse when the block is absent from
+  it. The generated-roadmap refusal (audit TL-15, 2026-09-26) already stops
+  it on this repo's own ROADMAP.md.
+  **Layman:** Re-running the roadmap archiving script can delete old roadmap sections without saving them anywhere.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 2 #1; ledger TL-14).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5428] **OSC 133 shell integration computes its HMAC without putting the key on a command line.**
+  ants-osc133.bash runs `openssl dgst -sha256 -hmac "$ANTS_OSC133_KEY"`,
+  which puts the key in /proc/<pid>/cmdline, readable via ps by other local
+  users for the life of the process. The required `export` also hands the key
+  to every process in the terminal, the attacker the file header names.
+  openssl takes an HMAC key only as an argument, so the fix is a design
+  change: a helper that reads the key from a file descriptor, or a signing
+  primitive the terminal itself provides.
+  **Layman:** The secret that signs prompt markers is briefly visible to other programs on the machine while each prompt is drawn.
+  Kind: security.
+  Source: code-audit-2026-09-26 (peer tooling lane, part 2 #13; ledger TL-26).
+  Lanes: shell-integration.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

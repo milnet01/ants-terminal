@@ -1122,11 +1122,17 @@ QJsonObject sarifResultFromFinding(const QJsonObject &s, bool carried) {
     result["message"] = msg;
     QJsonObject artLoc;
     artLoc["uri"] = s.value(QStringLiteral("file")).toString();
-    QJsonObject region;
-    region["startLine"] = s.value(QStringLiteral("line")).toInt();
     QJsonObject physLoc;
     physLoc["artifactLocation"] = artLoc;
-    physLoc["region"]          = region;
+    // RC-40 (audit 2026-09-26) — SARIF requires startLine >= 1. A finding
+    // with no line (a file-level result) carries no region at all rather
+    // than an invalid 0, which strict consumers reject.
+    const int line = s.value(QStringLiteral("line")).toInt();
+    if (line >= 1) {
+        QJsonObject region;
+        region["startLine"] = line;
+        physLoc["region"]   = region;
+    }
     QJsonObject loc;
     loc["physicalLocation"] = physLoc;
     QJsonArray locs;

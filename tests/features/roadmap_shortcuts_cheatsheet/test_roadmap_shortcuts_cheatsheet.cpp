@@ -203,7 +203,7 @@ static int runMain() {
         QApplication::processEvents();
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
         if (!cheat)
-            fail("INV-3",
+            return fail("INV-3",
                 "pressing `?` on RoadmapDialog did NOT create a "
                 "RoadmapShortcutsDialog child.");
         if (!cheat->isVisible())
@@ -227,10 +227,10 @@ static int runMain() {
     // contains `?` + the localised "Show this cheatsheet" string.
     {
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
-        if (!cheat) fail("INV-5", "cheatsheet child missing");
+        if (!cheat) return fail("INV-5", "cheatsheet child missing");
         auto *table = cheat->findChild<QTableWidget *>();
         if (!table)
-            fail("INV-5",
+            return fail("INV-5",
                 "cheatsheet must host a QTableWidget (not a "
                 "QTextBrowser) — native widgets carry their own a11y "
                 "per ANTS-1235.");
@@ -273,7 +273,7 @@ static int runMain() {
     // INV-3: pressing `?` on the cheatsheet closes it.
     {
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
-        if (!cheat) fail("INV-3", "cheatsheet child missing");
+        if (!cheat) return fail("INV-3", "cheatsheet child missing");
         QTest::keyClick(cheat, Qt::Key_Question);
         QApplication::processEvents();
         if (cheat->isVisible())
@@ -286,7 +286,7 @@ static int runMain() {
     {
         auto *firstInstance = dialog.findChild<RoadmapShortcutsDialog *>();
         if (!firstInstance)
-            fail("INV-6", "no cheatsheet instance after close");
+            return fail("INV-6", "no cheatsheet instance after close");
         QTest::keyClick(&dialog, Qt::Key_Question);
         QApplication::processEvents();
         auto *secondInstance = dialog.findChild<RoadmapShortcutsDialog *>();
@@ -309,7 +309,7 @@ static int runMain() {
         auto *searchBox = dialog.findChild<QLineEdit *>(
             QStringLiteral("roadmap-search-box"));
         if (!searchBox)
-            fail("INV-4",
+            return fail("INV-4",
                 "could not locate roadmap-search-box — has its "
                 "objectName drifted?");
         const QString before = searchBox->text();

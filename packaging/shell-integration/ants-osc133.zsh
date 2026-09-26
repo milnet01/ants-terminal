@@ -27,7 +27,8 @@
 [ "${TERM_PROGRAM:-}" != "ants-terminal" ] && return 0
 command -v openssl >/dev/null 2>&1 || return 0
 
-typeset -g __ants_osc133_promptid=""
+# Audit TL-28 — kept across a re-source, or the open block's D is skipped.
+typeset -g __ants_osc133_promptid="${__ants_osc133_promptid:-}"
 
 __ants_osc133_hmac() {
     local marker="$1"

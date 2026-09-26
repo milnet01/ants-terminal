@@ -1,4 +1,6 @@
 #include "themes.h"
+
+#include <algorithm>
 #include <QDateTime>
 #include <QDebug>
 #include <QStringList>
@@ -282,12 +284,25 @@ static std::vector<Theme> buildThemes() {
     return t;
 }
 
+// RC-36 (audit 2026-09-26) — a user theme whose name matches one already in
+// the list REPLACES it in place. Appended, it was listed twice and byName()
+// always returned the first, so the user's copy could never be selected.
+static void mergeUserThemes(std::vector<Theme> &themes) {
+    for (auto &u : Themes::loadUserThemes()) {
+        auto it = std::find_if(themes.begin(), themes.end(),
+                               [&](const Theme &t) { return t.name == u.name; });
+        if (it != themes.end())
+            *it = std::move(u);
+        else
+            themes.push_back(std::move(u));
+    }
+}
+
 static std::vector<Theme> &allThemes() {
     static std::vector<Theme> themes;
     if (themes.empty()) {
         themes = buildThemes();
-        auto user = Themes::loadUserThemes();
-        themes.insert(themes.end(), user.begin(), user.end());
+        mergeUserThemes(themes);
     }
     return themes;
 }
@@ -424,6 +439,5 @@ std::vector<Theme> Themes::loadUserThemes() {
 void Themes::reload() {
     auto &themes = allThemes();
     themes = buildThemes();
-    auto user = loadUserThemes();
-    themes.insert(themes.end(), user.begin(), user.end());
+    mergeUserThemes(themes);
 }

@@ -1974,7 +1974,25 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     // ANTS-5096 — both writes go through QSaveFile. A truncating QFile write
     // that failed part-way (a full disk, a crash) left the source file cut
     // short, with the only copy of the original in this process's memory.
-    auto restore = [&]() -> bool {
+    //
+    // RC-33 (audit 2026-09-26) — the file is re-read first. Bytes that are
+    // neither the mutant just written nor the baseline mean someone edited it
+    // while the tests ran, and writing the baseline would destroy that edit.
+    // It is left alone, reported, and the batch stops: every later mutant was
+    // built from the same stale baseline.
+    bool concurrentEdit = false;
+    auto restore = [&](const QByteArray &written) -> bool {
+        {
+            QFile cur(check.resolved);
+            if (cur.open(QIODevice::ReadOnly)) {
+                const QByteArray now = cur.readAll();
+                if (now == baselineBytes) return true;
+                if (now != written) {
+                    concurrentEdit = true;
+                    return false;
+                }
+            }
+        }
         QSaveFile w(check.resolved);
         if (!w.open(QIODevice::WriteOnly)) return false;
         if (w.write(baselineBytes) != baselineBytes.size() || !w.commit())
@@ -2101,6 +2119,18 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         QJsonObject r;
         r[QStringLiteral("label")] = m.label;
 
+        // RC-33 — after a concurrent edit nothing more is written.
+        if (concurrentEdit) {
+            ++notRun;
+            r[QStringLiteral("applied")] = false;
+            r[QStringLiteral("outcome")] = QStringLiteral("not_run");
+            r[QStringLiteral("summary")] = QStringLiteral(
+                "the file was edited by someone else during an earlier run, so "
+                "this mutation was NOT applied and no test was run.");
+            results.append(r);
+            continue;
+        }
+
         // ANTS-4736 — spend the deadline before applying anything. The gate
         // needs one completed run to estimate from, so the first is always
         // taken; a batch of one therefore behaves exactly as before.
@@ -2194,7 +2224,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         const QByteArray patched = ap.patched.toUtf8();
         const bool wrote = (w.write(patched) == patched.size()) && w.commit();
         if (!wrote) {
-            if (!restore()) restoredClean = false;
+            if (!restore(patched)) restoredClean = false;
             r[QStringLiteral("applied")] = false;
             r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
             results.append(r);
@@ -2204,7 +2234,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         const RunOut run = runTests();
         // Restore BEFORE interpreting anything, so no early return can leak a
         // mutated file.
-        if (!restore()) restoredClean = false;
+        if (!restore(patched)) restoredClean = false;
 
         r[QStringLiteral("applied")]     = true;
         r[QStringLiteral("inert")]       = false;
@@ -2258,7 +2288,14 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     out[QStringLiteral("path")]           = rawPath;
     out[QStringLiteral("results")]        = results;
     out[QStringLiteral("restored_clean")] = restoredClean;
-    if (!restoredClean) {
+    if (concurrentEdit) {
+        out[QStringLiteral("concurrent_edit")] = true;
+        out[QStringLiteral("restore_hint")] = QStringLiteral(
+            "\"%1\" changed during a test run to bytes that are neither the "
+            "mutant nor the baseline, so it was NOT restored — that would have "
+            "destroyed the other edit. Check it with git: it may still hold "
+            "the mutation as well as the edit.").arg(rawPath);
+    } else if (!restoredClean) {
         out[QStringLiteral("restore_hint")] = QStringLiteral(
             "the source file could NOT be restored to its baseline — check "
             "\"%1\" with git before doing anything else. This is the failure "

@@ -57,3 +57,28 @@ TEST(UserThemeLoading, MistypedColourAndOversizedFile) {
     EXPECT_EQ(findTheme(themes, QStringLiteral("Huge")), nullptr)
         << "an oversized theme file was read and loaded";
 }
+
+// RC-36 (audit 2026-09-26) — a user theme named like a built-in replaces it:
+// listed once, and byName() returns the user's copy.
+TEST(UserThemeLoading, UserThemeReplacesSameNamedBuiltIn) {
+    QTemporaryDir cfg;
+    ASSERT_TRUE(cfg.isValid());
+    ants_test::XdgGuard g;
+    g.setTestMode(false);
+    g.setEnv("XDG_CONFIG_HOME", cfg.path().toUtf8());
+    const QString themesDir = cfg.path() + QStringLiteral("/ants-terminal/themes");
+    ASSERT_TRUE(QDir().mkpath(themesDir));
+    ASSERT_TRUE(writeTheme(themesDir, QStringLiteral("dark.json"),
+        R"({"name":"Dark","bg_primary":"#123456","text_primary":"#ffffff"})"));
+
+    Themes::reload();
+    const QColor got = Themes::byName(QStringLiteral("Dark")).bgPrimary;
+    const qsizetype listed = Themes::names().count(QStringLiteral("Dark"));
+
+    // Leave the process-wide list as the other tests expect it.
+    QFile::remove(themesDir + QStringLiteral("/dark.json"));
+    Themes::reload();
+
+    EXPECT_EQ(got, QColor(0x12, 0x34, 0x56)) << "byName returned the built-in";
+    EXPECT_EQ(listed, 1) << "the name is listed more than once";
+}

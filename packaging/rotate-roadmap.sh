@@ -40,6 +40,15 @@ if [[ ! -f "$ROADMAP" ]]; then
     exit 1
 fi
 
+# Audit TL-15 — a roadmap generated from the store is rewritten from the store
+# on the next roadmap_log write, so a cut made here comes back and the rotation
+# is not durable. Rotation belongs in the store; refuse rather than pretend.
+if head -n 5 "$ROADMAP" | grep -q 'Generated from the Ants Terminal roadmap store'; then
+    echo "rotate-roadmap.sh: $ROADMAP is generated from the roadmap store; a cut" >&2
+    echo "  here is undone by the next roadmap_log write. Not rotating." >&2
+    exit 1
+fi
+
 # Validate the minor format — must be ^[0-9]+\.[0-9]+$ to match
 # INV-4a's archive-naming filter.
 if ! [[ "$CLOSED" =~ ^[0-9]+\.[0-9]+$ ]]; then

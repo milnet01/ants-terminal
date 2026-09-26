@@ -13,7 +13,8 @@
 #   --repeat N        run each benchmark N times, keep the best (default: 1)
 #   --baseline FILE   baseline path (default: tests/perf/baseline.tsv)
 #
-# Exit codes: 0 all within threshold; 1 a regression; 2 a setup problem.
+# Exit codes: 0 all within threshold; 1 a regression or a benchmark that exited
+# non-zero; 2 a setup problem.
 #
 # HOW IT FINDS WORK. Benchmarks are discovered from ctest's `perf` label, and
 # their numbers are read from the uniform ANTSPERF lines tests/perf/perf_metric.h
@@ -83,8 +84,8 @@ if [[ ${#TESTS[@]} -eq 0 ]]; then
 fi
 
 declare -A VALUE UNIT DIR
-ran=0 metric_count=0 skipped_count=0
-skipped=()
+ran=0 metric_count=0 skipped_count=0 crashed_count=0
+skipped=() crashed=()
 
 for t in "${TESTS[@]}"; do
     [[ -n "$FILTER" && ! "$t" =~ $FILTER ]] && continue
@@ -95,6 +96,12 @@ for t in "${TESTS[@]}"; do
         continue
     fi
     for ((i = 0; i < REPEAT; i++)); do
+        # Audit TL-24 — the exit status was ignored, so a benchmark that
+        # crashed part-way counted as run and its missing metrics went unsaid.
+        if ! out="$(QT_QPA_PLATFORM=offscreen "$exe" 2>/dev/null)"; then
+            crashed+=("bench_$t — exited non-zero (run $((i + 1)) of $REPEAT)")
+            ((crashed_count++))
+        fi
         while IFS=$'\t' read -r tag name val unit dir; do
             [[ "$tag" == "ANTSPERF" ]] || continue
             # Keep the best of REPEAT runs. A benchmark's worst runs are the
@@ -110,7 +117,7 @@ for t in "${TESTS[@]}"; do
             fi
             [[ -n "${VALUE[$name]:-}" ]] || ((metric_count++))
             VALUE[$name]="$val"; UNIT[$name]="$unit"; DIR[$name]="$dir"
-        done < <(QT_QPA_PLATFORM=offscreen "$exe" 2>/dev/null)
+        done <<< "$out"
     done
     ((ran++))
 done
@@ -126,8 +133,11 @@ if [[ "$SAVE" == 1 ]]; then
     # ANTS-5137 — under -R only the matching benchmarks ran, so VALUE[] holds
     # only their metrics. Keep every other metric's saved row, or recording one
     # benchmark would delete the rest of the baseline.
+    # Audit TL-25 — likewise when a benchmark was not built or exited
+    # non-zero: its saved rows are kept rather than deleted.
     declare -A KEEP=()
-    if [[ -n "$FILTER" && -f "$BASELINE" ]]; then
+    if [[ ( -n "$FILTER" || "$skipped_count" -gt 0 || "$crashed_count" -gt 0 ) \
+          && -f "$BASELINE" ]]; then
         while IFS= read -r line; do
             [[ "$line" == \#* || -z "$line" ]] && continue
             n="${line%%$'\t'*}"
@@ -186,6 +196,7 @@ if [[ "$JSON" == 1 ]]; then
                "$n" "${VALUE[$n]}" "${UNIT[$n]}" "${DIR[$n]}" "${BASE[$n]:-null}"
     done
     printf '\n  }\n}\n'
+    [[ "$crashed_count" -gt 0 ]] && exit 1
     exit 0
 fi
 
@@ -203,6 +214,13 @@ case "$COMPARABLE" in
   *) echo "baseline: $BASE_DATE ($BASE_COMMIT), threshold ±${THRESHOLD}%" ;;
 esac
 [[ "$skipped_count" -gt 0 ]] && { echo; echo "not run:"; printf '  %s\n' "${skipped[@]}"; }
+[[ "$crashed_count" -gt 0 ]] && { echo; echo "FAILED:"; printf '  %s\n' "${crashed[@]}"; }
+# Audit TL-24 — on a full run, a baseline metric nobody reported is named.
+if [[ -z "$FILTER" && "$COMPARABLE" == 1 ]]; then
+    missing=()
+    for n in "${!BASE[@]}"; do [[ -n "${VALUE[$n]:-}" ]] || missing+=("$n"); done
+    [[ ${#missing[@]} -gt 0 ]] && { echo; echo "in the baseline, not reported this run:"; printf '  %s\n' "${missing[@]}" | sort; }
+fi
 echo
 
 printf '%-42s %12s %-9s %10s\n' "metric" "value" "unit" "vs base"
@@ -239,4 +257,5 @@ if [[ "$COMPARABLE" == 1 ]]; then
 else
     echo "$metric_count metrics recorded (not compared)"
 fi
+[[ "$crashed_count" -gt 0 ]] && exit 1
 exit 0

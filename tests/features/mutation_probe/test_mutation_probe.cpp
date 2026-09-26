@@ -243,6 +243,7 @@ TEST(MutationProbe, Ants4401RefusalIsWiredAndDistinguishesTheTwoCauses) {
 #include <QIODevice>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonDocument>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
@@ -475,4 +476,46 @@ TEST(MutationProbe, Ants4852CollectionFailureIsDidNotRun) {
     const std::string rc = ants_test::slurpRemoteControl();
     EXPECT_NE(rc.find("baseline_did_not_run"), std::string::npos)
         << "the verb must emit the new refusal";
+}
+
+// RC-33 (audit 2026-09-26) — an edit made to the file WHILE a test runs is not
+// overwritten by the restore. `cp` stands in for the person editing: it
+// replaces the mutant with bytes that are neither the mutant nor the baseline.
+// The edit must survive, the envelope must say so, and the second mutation —
+// built from the now-stale baseline — must not be written.
+TEST(MutationProbe, ConcurrentEditIsNotClobberedByTheRestore) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString src = seedProject(tmp);
+    const QByteArray edited("palette_a = {'edited': 'by someone else'}\n");
+    const QString editedPath = QDir(tmp.path()).filePath(QStringLiteral("edited.py"));
+    {
+        QFile e(editedPath);
+        ASSERT_TRUE(e.open(QIODevice::WriteOnly));
+        e.write(edited);
+    }
+    const QString cp = QStandardPaths::findExecutable(QStringLiteral("cp"));
+    ASSERT_FALSE(cp.isEmpty());
+    QJsonArray argv; argv.append(cp); argv.append(editedPath); argv.append(src);
+    QJsonArray muts; muts.append(mutation(0)); muts.append(mutation(0));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = argv;
+    req[QStringLiteral("mutations")]    = muts;
+    const QJsonObject env = rc.cmdMutationProbe(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+
+    QFile f(src);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    EXPECT_EQ(f.readAll(), edited) << "the restore overwrote a concurrent edit";
+    EXPECT_FALSE(env.value(QStringLiteral("restored_clean")).toBool());
+    EXPECT_TRUE(env.value(QStringLiteral("concurrent_edit")).toBool());
+    const QJsonArray rs = env.value(QStringLiteral("results")).toArray();
+    ASSERT_EQ(rs.size(), 2);
+    EXPECT_EQ(rs.at(1).toObject().value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("not_run"));
 }

@@ -43,7 +43,11 @@ allow_csv=""   # no intentional cross-section cites (ANTS-1118 deduped 2026-05-2
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
-        --allow)   allow_csv="${2:-}"; shift 2 ;;
+        --allow)   # Audit TL-35 — a trailing --allow is a usage error (exit 2),
+                   # not `shift 2` failing into exit 1, which means "duplicates".
+                   [ "$#" -ge 2 ] || { printf 'check-roadmap: --allow needs a value\n' >&2
+                                       usage >&2; exit 2; }
+                   allow_csv="$2"; shift 2 ;;
         --) shift; break ;;
         -*) printf 'check-roadmap: unknown flag %s\n' "$1" >&2
             usage >&2; exit 2 ;;

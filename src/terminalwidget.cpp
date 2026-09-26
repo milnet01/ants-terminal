@@ -3175,11 +3175,15 @@ void TerminalWidget::copySelectionRich() {
     // Build both plain text and HTML
     QString plainText = selectedText();
 
-    // m_selStart/m_selEnd: x() = globalLine, y() = col
-    int startLine = std::min(m_selStart.x(), m_selEnd.x());
-    int endLine = std::max(m_selStart.x(), m_selEnd.x());
-    int startCol = (m_selStart.x() <= m_selEnd.x()) ? m_selStart.y() : m_selEnd.y();
-    int endCol = (m_selStart.x() <= m_selEnd.x()) ? m_selEnd.y() : m_selStart.y();
+    // m_selStart/m_selEnd: x() = globalLine, y() = col. RC-44 (audit
+    // 2026-09-26) — ordered by (line, col) as selectedText() orders them;
+    // ordering by line alone left a right-to-left selection on one line with
+    // startCol > endCol, and the HTML half came out empty.
+    QPoint s = m_selStart, e = m_selEnd;
+    if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
+        std::swap(s, e);
+    const int startLine = s.x(), endLine = e.x();
+    const int startCol = s.y(), endCol = e.y();
 
     auto *mimeData = new QMimeData();
     mimeData->setText(plainText);

@@ -20,7 +20,14 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-LOG_FILE="${XDG_RUNTIME_DIR:-/tmp}/ants-terminal-$(id -u).log"
+# Audit TL-10 — without XDG_RUNTIME_DIR, the user's own state dir rather than
+# a predictable name in shared /tmp.
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    LOG_FILE="$XDG_RUNTIME_DIR/ants-terminal-$(id -u).log"
+else
+    LOG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/ants-terminal/launch.log"
+    mkdir -p "$(dirname "$LOG_FILE")"
+fi
 
 # Where the live binary runs from — a bin/ subdir of the app's XDG data
 # dir, on the system drive and fully outside the project tree. Kept
@@ -60,4 +67,10 @@ if [ ! -x "$RUN_BIN" ]; then
     exit 127
 fi
 
-exec "$RUN_BIN" "$@" 2>"$LOG_FILE"
+# Audit TL-10 — append, so a second launch does not wipe a running instance's
+# stderr; rotate once past 1 MiB so appending stays bounded.
+if [ -f "$LOG_FILE" ] && [ "$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+    mv -f "$LOG_FILE" "$LOG_FILE.1" 2>/dev/null || true
+fi
+printf '\n=== launch %s (pid %s) ===\n' "$(date -Iseconds)" "$$" >> "$LOG_FILE"
+exec "$RUN_BIN" "$@" 2>>"$LOG_FILE"

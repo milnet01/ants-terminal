@@ -42,10 +42,18 @@ command -v osc >/dev/null 2>&1 || { echo "obs-submit: osc not installed" >&2; ex
 # build breaks at source fetch rather than at compile — a confusing failure to
 # debug from the build log alone. Check it here where the message can be clear.
 REV="$(sed -n 's/.*<param name="revision">\(.*\)<\/param>.*/\1/p' "$HERE/_service")"
+URL="$(sed -n 's/.*<param name="url">\(.*\)<\/param>.*/\1/p' "$HERE/_service")"
 if [ -n "$REV" ] && command -v git >/dev/null 2>&1; then
     if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$REV" >/dev/null 2>&1; then
         echo "obs-submit: _service pins tag '$REV', which does not exist locally." >&2
         echo "            Cut/fetch that tag first, or update _service's <revision>." >&2
+        exit 1
+    fi
+    # Audit TL-32 — a local tag is not a pushed one, and obs_scm clones from
+    # the URL, so ask the remote the service actually fetches from.
+    if [ -n "$URL" ] && ! git ls-remote --exit-code --tags "$URL" "refs/tags/$REV" >/dev/null 2>&1; then
+        echo "obs-submit: tag '$REV' is not on $URL (or it could not be reached)." >&2
+        echo "            Push the tag first: git push origin $REV" >&2
         exit 1
     fi
 fi

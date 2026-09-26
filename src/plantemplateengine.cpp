@@ -8,7 +8,10 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QRegularExpression>
-#include <QSaveFile>
+#include <QTemporaryFile>
+
+#include <cerrno>
+#include <unistd.h>
 
 namespace PlanTemplateEngine {
 
@@ -334,19 +337,33 @@ PlanResult buildPlan(const QString &projectRoot, const PlanOptions &opts) {
         return r;
     }
 
-    // Atomic write via QSaveFile (same idiom as RoadmapFoldIn).
-    QSaveFile out(absPath);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // Atomic AND no-clobber. RC-31 (audit 2026-09-26) — QSaveFile's rename
+    // replaces whatever another writer created after the exists() check
+    // above, which breaks INV-5. The skeleton is written to a temporary file
+    // beside the target and hard-linked into place: link(2) fails with EEXIST
+    // rather than replace, and the file appears whole or not at all.
+    QTemporaryFile tmp(QFileInfo(absPath).absolutePath()
+                       + QStringLiteral("/.plan-XXXXXX.tmp"));
+    const QByteArray bytes = r.planMarkdown.toUtf8();
+    // QTemporaryFile creates 0600; a plan is an ordinary document.
+    if (!tmp.open()
+        || !tmp.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                               | QFileDevice::ReadGroup | QFileDevice::ReadOther)
+        || tmp.write(bytes) != bytes.size() || !tmp.flush()) {
         r.errorCode = QStringLiteral("write_failed");
         r.errorMessage = QStringLiteral(
-            "plan_template: could not open plan file for writing");
+            "plan_template: could not write the plan file");
         return r;
     }
-    const QByteArray bytes = r.planMarkdown.toUtf8();
-    if (out.write(bytes) != bytes.size() || !out.commit()) {
-        r.errorCode = QStringLiteral("write_failed");
-        r.errorMessage = QStringLiteral(
-            "plan_template: write or commit failed");
+    if (::link(QFile::encodeName(tmp.fileName()).constData(),
+               QFile::encodeName(absPath).constData()) != 0) {
+        const bool exists = errno == EEXIST;
+        r.errorCode = exists ? QStringLiteral("plan_exists")
+                             : QStringLiteral("write_failed");
+        r.errorMessage = exists
+            ? QStringLiteral("refusing to overwrite existing plan; pass "
+                             "save:false to retrieve the skeleton only")
+            : QStringLiteral("plan_template: could not place the plan file");
         return r;
     }
 

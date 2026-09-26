@@ -218,6 +218,36 @@ TEST(AuditRunDelta, Inv4SidecarRoundTrip) {
         proj, QStringLiteral("findings-v2.json")).isEmpty());
 }
 
+// RC-39 (audit 2026-09-26) — a manifest naming a sidecar OUTSIDE the cache
+// dir, absolute or by `..`, is not read: the reaper's containment, for reads.
+TEST(AuditRunDelta, SidecarOutsideTheCacheIsNotRead) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString proj = tmp.path();
+    const QJsonArray merged{
+        mk(QStringLiteral("x.cpp"), 1, QStringLiteral("cppcheck"),
+           QStringLiteral("m"))};
+    QJsonObject lastRun;
+    lastRun["iso_timestamp"] = QStringLiteral("2026-06-17T18:30:00Z");
+    lastRun["commit"]        = QStringLiteral("abc1234");
+    QJsonObject prior;
+    ASSERT_TRUE(AuditCache::recordRun(proj, lastRun, &prior, merged).ok);
+
+    const QString outside = proj + QStringLiteral("/outside.json");
+    QFile f(outside);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(QJsonDocument(QJsonObject{{QStringLiteral("version"), 1},
+        {QStringLiteral("findings"), QJsonArray{merged.at(0)}}})
+            .toJson(QJsonDocument::Compact));
+    f.close();
+
+    EXPECT_FALSE(AuditCache::readFindingsSidecar(proj, outside).valid)
+        << "an absolute path outside the cache was read";
+    EXPECT_FALSE(AuditCache::readFindingsSidecar(
+        proj, QStringLiteral("../outside.json")).valid)
+        << "a ../ path out of the cache was read";
+}
+
 // ── INV-5 — reaper deletes dropped findings sidecars ──────────────────
 
 TEST(AuditRunDelta, Inv5ReaperDeletesSidecars) {

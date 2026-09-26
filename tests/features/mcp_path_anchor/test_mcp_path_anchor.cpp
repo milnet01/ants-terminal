@@ -686,3 +686,33 @@ TEST(McpPathAnchor, Ants4899NoRouteForAnAbsentFile) {
     ASSERT_TRUE(check.bad);
     EXPECT_FALSE(check.err.contains(QStringLiteral("hint")));
 }
+
+// RC-43 (audit 2026-09-26) — a path that does not exist yet is checked through
+// its deepest EXISTING ancestor, so a symlinked directory inside the root that
+// points outside it cannot carry a new file out. A dangling symlink on the way
+// is refused too. An ordinary new file, even two levels deep, still passes.
+TEST(McpPathAnchor, MissingLeafUnderSymlinkedAncestorRejects) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(outside.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QFile::link(outside.path(), root + QStringLiteral("/link")));
+    ASSERT_TRUE(QFile::link(outside.path() + QStringLiteral("/nowhere"),
+                            root + QStringLiteral("/dangling")));
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("real")));
+
+    const auto viaLink = PathValidation::validatePath(
+        QStringLiteral("link/new/file.txt"), root,
+        QStringLiteral("apply_edits"), QStringLiteral("path"));
+    EXPECT_TRUE(viaLink.bad) << "a new file under a symlink out of the root passed";
+
+    const auto viaDangling = PathValidation::validatePath(
+        QStringLiteral("dangling"), root,
+        QStringLiteral("apply_edits"), QStringLiteral("path"));
+    EXPECT_TRUE(viaDangling.bad) << "a dangling symlink out of the root passed";
+
+    const auto ordinary = PathValidation::validatePath(
+        QStringLiteral("real/sub/new.txt"), root,
+        QStringLiteral("apply_edits"), QStringLiteral("path"));
+    EXPECT_FALSE(ordinary.bad) << "an ordinary new file inside the root was refused";
+}

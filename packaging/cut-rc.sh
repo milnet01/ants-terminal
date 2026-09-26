@@ -289,7 +289,9 @@ release_body_is_placeholder() {
 # real content (idempotent). Pure awk + atomic rename (ANTS-2164 §2.1).
 roll_unreleased() {
     local v=$1 tmp
-    tmp=$(mktemp)
+    # Beside the target, not in /tmp: /tmp is tmpfs here, where mv is a copy
+    # plus unlink and the "atomic rename" below would not be one (audit TL-6).
+    tmp=$(mktemp "${CHANGELOG_FILE}.XXXXXX")
     # A && B || C is intended here and is not a mis-written if-then-else: C is
     # cleanup-on-any-failure, wanted whether awk failed or the rename did.
     # Neither arm can leave a half-written file — awk writes to "$tmp" and the
@@ -343,7 +345,8 @@ roll_unreleased() {
                 print lines[i]
             }
         }
-    ' "$CHANGELOG_FILE" > "$tmp" && mv "$tmp" "$CHANGELOG_FILE" \
+    ' "$CHANGELOG_FILE" > "$tmp" && chmod --reference="$CHANGELOG_FILE" "$tmp" \
+        && mv "$tmp" "$CHANGELOG_FILE" \
         || { rm -f "$tmp"; echo "cut-rc: roll_unreleased failed" >&2; exit 1; }
 }
 
@@ -354,9 +357,10 @@ roll_unreleased() {
 # nothing (ANTS-2164 INV-3). Used by stamp_release_date.
 apply_rewrite() {
     local file=$1; shift
-    local tmp; tmp=$(mktemp)
+    local tmp; tmp=$(mktemp "${file}.XXXXXX")   # same filesystem (TL-6)
     if awk "$@" "$file" > "$tmp"; then
         if [ "$DO_PUSH" = 1 ]; then
+            chmod --reference="$file" "$tmp"
             mv "$tmp" "$file"
         else
             echo "  [rehearsal] would stamp ${file}"
@@ -831,7 +835,7 @@ cmd_cycle() {
 # (ANTS-2165 INV-4). awk + atomic rename.
 record_hotfix_on_main() {
     local N=$2 block=$3 tmp
-    tmp=$(mktemp)
+    tmp=$(mktemp "${CHANGELOG_FILE}.XXXXXX")   # same filesystem (TL-6)
     # A && B || C is intended here and is not a mis-written if-then-else: C is
     # cleanup-on-any-failure, wanted whether awk failed or the rename did.
     # Neither arm can leave a half-written file — awk writes to "$tmp" and the
@@ -845,6 +849,7 @@ record_hotfix_on_main() {
         { print }
         END { if (!done) exit 3 }
     ' "$CHANGELOG_FILE" > "$tmp" \
+        && chmod --reference="$CHANGELOG_FILE" "$tmp" \
         && mv "$tmp" "$CHANGELOG_FILE" \
         || { rm -f "$tmp"; echo "cut-rc: record_hotfix_on_main failed — [${N}] anchor not found, or the CHANGELOG could not be replaced" >&2; exit 1; }
 }

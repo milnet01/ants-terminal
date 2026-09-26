@@ -65,4 +65,5 @@ EOF
 #   - Aggregate per-prompt + composite mean + stdev across the N runs.
 #   - Write the journal artifact via a Python/jq pipeline.
 
-exit 0
+# Audit TL-36 — nothing was measured, so do not report success.
+exit 3

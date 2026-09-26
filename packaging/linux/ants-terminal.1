@@ -74,6 +74,70 @@ in the source tree for the full
 .B ants.*
 API reference.
 .
+.TP
+.BI \-\-export\-roadmaps " DIR"
+Export every project in the roadmap store to
+.IR DIR / project .jsonl
+(one file per project), remove files there for projects no longer in the
+store, and exit. Runs without a display, so a service with no desktop
+session can use it.
+.TP
+.B \-\-e2e
+End-to-end test mode: forces the remote-control socket on and enables the
+synthetic input verbs (key and click injection, window resize, screenshot).
+For the
+.I tools/e2e/
+test harness only; never for normal use.
+.TP
+.BI \-\-remote " CMD"
+Send one remote-control command to the running instance, print its JSON
+reply and exit. The socket is
+.BR $ANTS_REMOTE_SOCKET ,
+else
+.IR $XDG_RUNTIME_DIR/ants\-terminal.sock .
+.TP
+.BI \-\-remote\-socket " PATH"
+Use
+.I PATH
+as the remote-control socket instead of the default.
+.TP
+.BI \-\-remote\-tab " INDEX"
+Target tab (0-based) for tab-scoped commands such as
+.BR send\-text " and " get\-text ;
+omit it to target the active tab.
+.TP
+.BI \-\-remote\-text " STRING"
+Text for
+.BR send\-text .
+Without it,
+.B send\-text
+reads standard input until end of file.
+.TP
+.BI \-\-remote\-cwd " PATH"
+Working directory for
+.BR new\-tab " and " launch ;
+by default the focused terminal's.
+.TP
+.BI \-\-remote\-command " STRING"
+Command for
+.BR new\-tab " or " launch
+to run in the new shell. Include any trailing newline yourself.
+.TP
+.BI \-\-remote\-title " STRING"
+Title for
+.BR set\-title .
+An empty string clears it and restores the automatic title.
+.TP
+.BI \-\-remote\-lines " N"
+How many trailing lines
+.B get\-text
+returns (default 100, at most 10 000).
+.TP
+.BI \-\-remote\-json " JSON"
+Send a raw JSON command object (it must carry a string
+.B cmd
+field) to the remote-control socket and print the reply. Exit status 0 on
+success, 2 when the command is refused, 1 on a connection error.
 .SH ENVIRONMENT
 .TP
 .B SHELL

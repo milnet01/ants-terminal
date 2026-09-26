@@ -84,6 +84,7 @@ struct RlRepairWrite {
     qint64 pk = 0;
     QString field;   // "layman" | "source" | "lanes"
     QString value;   // already in the column's stored form
+    QString before;  // the stored value it replaces, for history
 };
 
 // ANTS-4507 — one redundant trailing run removed from a body.
@@ -174,7 +175,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
                 skippedHere = true;
                 return;
             }
-            plan.push_back({pk, field, reparsed});
+            plan.push_back({pk, field, reparsed, stored});
             charsRecovered += reparsed.size() - stored.size();
             ++(*counter);
         };
@@ -183,7 +184,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
 
         if (!rec->lanes.isEmpty() && rec->lanes != w.lanes) {
             if (rlIsStrictExtension(w.lanes, rec->lanes)) {
-                plan.push_back({pk, QStringLiteral("lanes"), rlLanesJson(rec->lanes)});
+                plan.push_back({pk, QStringLiteral("lanes"), rlLanesJson(rec->lanes),
+                                rlLanesJson(w.lanes)});
                 ++lanesFixed;
             } else {
                 skippedHere = true;
@@ -231,6 +233,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
                 store.rollback(nullptr);
                 return rpErr(QStringLiteral("store_failed"), err);
             }
+            hist.record(wr.pk, wr.field, wr.before, wr.value);
         }
         for (const RlBodyWrite &bw : bodyPlan) {
             // Recorded in history as set_body records a replaced body, so the

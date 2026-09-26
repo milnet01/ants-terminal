@@ -82,7 +82,7 @@ static int runMain() {
     auto *searchBox = dialog.findChild<QLineEdit *>(
         QStringLiteral("roadmap-search-box"));
     if (!searchBox)
-        fail("Setup",
+        return fail("Setup",
             "could not locate roadmap-search-box — has its "
             "objectName drifted?");
 

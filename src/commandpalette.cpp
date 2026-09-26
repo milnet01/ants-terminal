@@ -212,15 +212,17 @@ void CommandPalette::executeSelected() {
     auto *item = m_list->currentItem();
     if (!item) return;
 
-    int idx = item->data(Qt::UserRole).toInt();
+    // RC-35 (audit 2026-09-26) — resolve the action BEFORE emit closed(): a
+    // slot on closed() may call setActions(), and an index read afterwards
+    // would name whatever now sits at that position.
+    const int idx = item->data(Qt::UserRole).toInt();
+    const QPointer<QAction> action =
+        (idx >= 0 && idx < m_allActions.size()) ? m_allActions[idx] : nullptr;
     hide();
     emit closed();
 
-    if (idx >= 0 && idx < m_allActions.size()) {
-        QAction *action = m_allActions[idx].data();
-        if (action && action->isEnabled())
-            action->trigger();
-    }
+    if (action && action->isEnabled())
+        action->trigger();
 }
 
 bool CommandPalette::eventFilter(QObject *obj, QEvent *event) {

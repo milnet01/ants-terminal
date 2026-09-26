@@ -167,3 +167,27 @@ TEST(CommandPaletteGhostCompletion, Main) {
     ASSERT_EQ(0, expect_finish());
 }
 
+
+// RC-35 (audit 2026-09-26) — the chosen action is resolved BEFORE closed()
+// fires. A slot on closed() that replaces the action list must not change
+// which action runs.
+TEST(CommandPaletteGhostCompletion, ClosedSlotReplacingActionsDoesNotRetarget) {
+    auto *palette = new CommandPalette(nullptr);
+    QAction chosen(QStringLiteral("Alpha Chosen"));
+    QAction other(QStringLiteral("Zulu Other"));
+    palette->setActions({&chosen});
+    palette->show();
+    auto *input = palette->findChild<GhostLineEdit *>("commandPaletteInput");
+    ASSERT_NE(input, nullptr);
+    input->setText(QStringLiteral("Alpha"));
+
+    QObject::connect(palette, &CommandPalette::closed, palette,
+                     [&]() { palette->setActions({&other, &chosen}); });
+    QSignalSpy chosenSpy(&chosen, &QAction::triggered);
+    QSignalSpy otherSpy(&other, &QAction::triggered);
+    sendKey(input, Qt::Key_Return);
+
+    EXPECT_EQ(chosenSpy.count(), 1) << "the selected action did not run";
+    EXPECT_EQ(otherSpy.count(), 0) << "the action at the reused index ran instead";
+    delete palette;
+}

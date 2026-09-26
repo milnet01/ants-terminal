@@ -37,7 +37,13 @@ fail() {
 [[ "$KEEP" =~ ^[1-9][0-9]*$ ]] || fail "KEEP must be a positive integer, got '$KEEP'"
 command -v sqlite3 >/dev/null || fail "sqlite3 is not installed"
 [ -f "$STORE" ] || fail "no store at $STORE"
+# Audit TL-9 — the path goes inside a quoted sqlite3 dot-command below.
+case "$DEST" in *"'"*) fail "DEST must not contain a single quote: $DEST" ;; esac
 mkdir -p "$DEST" || fail "cannot create $DEST"
+# Audit TL-9 — two runs in one second shared one .partial name, and one run's
+# EXIT trap deleted the other's copy. Serialise runs on a lock in DEST.
+exec 9>"$DEST/.roadmap-store-backup.lock" || fail "cannot open the lock in $DEST"
+flock -w 60 9 || fail "another backup into $DEST is still running"
 
 out="$DEST/roadmap-$(date +%Y%m%d-%H%M%S).sqlite"
 tmp="$out.partial"
@@ -46,15 +52,17 @@ trap 'rm -f "$tmp"' EXIT
 sqlite3 "$STORE" ".timeout 30000" ".backup '$tmp'" || fail "sqlite3 .backup to $tmp failed"
 check="$(sqlite3 "$tmp" "PRAGMA integrity_check;" 2>&1)" || true
 [ "$check" = "ok" ] || fail "integrity_check failed on the copy: $check"
-chmod 600 "$tmp"
-mv "$tmp" "$out"
+# Audit TL-7 — under set -e a bare failure here exited without fail(), so no
+# `snapshot fail` record and no notification.
+chmod 600 "$tmp" || fail "cannot chmod $tmp"
+mv "$tmp" "$out" || fail "cannot move the snapshot into place at $out"
 
 # Keep the newest KEEP snapshots. The glob sorts ascending, and the names
 # carry a timestamp, so the oldest come first.
 shopt -s nullglob
 snaps=("$DEST"/roadmap-*.sqlite)
 if (( ${#snaps[@]} > KEEP )); then
-    rm -f -- "${snaps[@]:0:${#snaps[@]}-KEEP}"
+    rm -f -- "${snaps[@]:0:${#snaps[@]}-KEEP}" || fail "cannot prune old snapshots in $DEST"
 fi
 
 roadmap_backup_record snapshot ok

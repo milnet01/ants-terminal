@@ -31,13 +31,14 @@ command -v openssl >/dev/null 2>&1 || return 0
 
 # Per-prompt id. Bumped at each PS1 firing so a captured HMAC for prompt N
 # can't be replayed against prompt N+1 (different message → different HMAC).
-__ants_osc133_promptid=""
+# Audit TL-28 — kept across a re-source, or the open block's D is skipped.
+__ants_osc133_promptid="${__ants_osc133_promptid:-}"
 
 # HMAC helper. Args: <marker> [<exit-code-for-D>]
 # Echoes the canonical message's hex HMAC-SHA256.
 __ants_osc133_hmac() {
     local marker="$1"
-    local extra="$2"
+    local extra="${2:-}"
     local msg
     if [ "$marker" = "D" ] && [ -n "$extra" ]; then
         msg="${marker}|${__ants_osc133_promptid}|${extra}"
@@ -56,7 +57,7 @@ __ants_osc133_hmac() {
 # Emit OSC 133 ; <marker> [ ; <extra> ] ; aid=<id> ; ahmac=<hex>  ST(=BEL)
 __ants_osc133_emit() {
     local marker="$1"
-    local extra="$2"
+    local extra="${2:-}"
     local hmac
     hmac="$(__ants_osc133_hmac "$marker" "$extra")"
     [ -z "$hmac" ] && return 0
@@ -92,11 +93,13 @@ __ants_osc133_precmd() {
     return $last_exit
 }
 
+# Audit TL-27 — every expansion of a variable that may be unset uses a default,
+# so a shell running under `set -u` sources this without errors.
 # Bash uses PROMPT_COMMAND for the precmd analogue. We chain in front so we
 # don't clobber the user's existing PROMPT_COMMAND. PS1 is decorated with
 # the B and C markers — B closes the prompt, C opens the command-output
 # region (since bash has no preexec, B and C effectively coincide).
-case "$PROMPT_COMMAND" in
+case "${PROMPT_COMMAND:-}" in
     *__ants_osc133_precmd*) ;;
     *) PROMPT_COMMAND="__ants_osc133_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
 esac
@@ -105,11 +108,11 @@ esac
 # after Enter is read. PS1 holds B; PS0 (bash 4.4+) holds C.
 __ants_osc133_b='\[$(__ants_osc133_emit B)\]'
 __ants_osc133_c='$(__ants_osc133_emit C)'
-case "$PS1" in
+case "${PS1:-}" in
     *__ants_osc133_emit*) ;;
-    *) PS1="${PS1}${__ants_osc133_b}" ;;
+    *) PS1="${PS1:-}${__ants_osc133_b}" ;;
 esac
-case "$PS0" in
+case "${PS0:-}" in
     *__ants_osc133_emit*) ;;
-    *) PS0="${PS0}${__ants_osc133_c}" ;;
+    *) PS0="${PS0:-}${__ants_osc133_c}" ;;
 esac

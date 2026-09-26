@@ -470,6 +470,18 @@ EditResult appendInv(const QString &content, const QString &invId,
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
 
+    // RC-30 (audit 2026-09-26) — appendLoop's ANTS-3651 guard, for the same
+    // reason: two Invariants sections are ambiguous, and appending to the
+    // first would bury the defect one bullet deeper.
+    if (countSectionHeadings(lines, QStringLiteral("Invariants")) > 1) {
+        return fail(QStringLiteral("unrecognised_format"),
+                    QStringLiteral(
+                        "spec_log: this file holds more than one "
+                        "\"## Invariants\" section, so append_inv cannot tell "
+                        "which one the bullet belongs in. Merge them into a "
+                        "single section and retry."));
+    }
+
     const int hdr = findSectionHeading(
         lines, QStringLiteral("Invariants"));
     if (hdr < 0) {

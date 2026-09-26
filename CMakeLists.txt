@@ -3719,6 +3719,8 @@ if(ANTS_TESTS)
                 tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
                 tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
                 tests/features/debuglog_perms/test_debuglog_perms.cpp
+                # RC-51 — main.cpp's options vs the man page and completions.
+                tests/features/cli_docs_sync/test_cli_docs_sync.cpp
                 tests/features/persistence_post_rename_chmod/test_persistence_post_rename_chmod.cpp
                 tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
                 tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
@@ -4073,6 +4075,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/debuglog_perms/test_debuglog_perms.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp")
+    set_property(SOURCE tests/features/cli_docs_sync/test_cli_docs_sync.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_CLI_DOCS_ROOT="${CMAKE_SOURCE_DIR}")
     set_property(SOURCE tests/features/rc_tu_split/test_rc_tu_split.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}")
