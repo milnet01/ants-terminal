@@ -15,10 +15,13 @@
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSet>
+#include <QTemporaryFile>
 
 using namespace rcdetail;
 
@@ -55,6 +58,11 @@ struct RlBackfillWalk {
     bool    failed    = false;
     QString error;
 };
+
+// ANTS-5405 — a pass heading added in a hunk that did not also add its Status
+// line: a renamed heading, or a block moved. Its status at that revision is
+// not in the diff, so the one revision's file is read to learn it.
+struct RlPassLookup { QString hash, path, date, id; };
 
 // Only a line that could BEGIN a bullet reaches the grammar. Both readers key
 // on the list marker, so a prose line citing an id in passing — a body
@@ -97,10 +105,53 @@ QStringList rlRoadmapPathspecs(RoadmapStore &store, qint64 projectId,
     return out;
 }
 
+// ANTS-5405 — the pass id a line names, or empty: the reader's own heading
+// grammar, so the walk and every other pass-headings read agree.
+QString rlPassIdOf(const QString &line) {
+    if (!line.startsWith(QLatin1String("####"))) return {};
+    const auto rec = RoadmapParse::parsePassHeadingBlock({line});
+    return rec ? rec->id : QString();
+}
+
+// ANTS-5405 — true when `line` is a `- **Status**:` line the reader reads as
+// shipped (done / shipped / completed, or ✅).
+bool rlPassStatusIsDone(const QString &line) {
+    static const QRegularExpression rx(
+        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!rx.match(line).hasMatch()) return false;
+    const auto rec = RoadmapParse::parsePassHeadingBlock(
+        {QStringLiteral("#### Pass 0.0"), line});
+    return rec && rec->status == QString::fromUtf8(RoadmapParse::kEmojiDone);
+}
+
 RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspecs,
-                                 int budgetMs) {
+                                 int budgetMs, bool passHeadings) {
     RlBackfillWalk w;
-    QStringList argv{
+    // ANTS-5405 — on a pass-headings roadmap the id sits on the `#### Pass`
+    // heading and a flip changes only the Status line below it, so a -U0 diff
+    // of the flip never shows the heading. A diff driver whose function-name
+    // pattern is that heading makes git print the ENCLOSING pass in every `@@`
+    // hunk header. It is attached through a throwaway attributes file (a few
+    // bytes, removed when the walk returns) so the user's repository is not
+    // touched; core.attributesFile is the lowest-precedence attribute source,
+    // so a project's own diff attribute for the file would win over it.
+    QTemporaryFile attrs;
+    QStringList argv;
+    if (passHeadings) {
+        if (!attrs.open()) {
+            w.failed = true;
+            w.error  = QStringLiteral("could not create the diff-driver attributes file");
+            return w;
+        }
+        attrs.write("* diff=antspass\n");
+        attrs.flush();
+        argv << QStringLiteral("-c")
+             << QStringLiteral("diff.antspass.xfuncname=^#### Pass .*$")
+             << QStringLiteral("-c")
+             << QStringLiteral("core.attributesFile=") + attrs.fileName();
+    }
+    argv << QStringList{
         QStringLiteral("--no-pager"),
         QStringLiteral("log"),
         QStringLiteral("--reverse"),
@@ -138,6 +189,17 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
     QString curDate;
     QStringList added;   // this commit's added bullet lines, discarded per commit
 
+    // ANTS-5405 — pass mode's per-hunk state.
+    QString curPass;          // the pass the current hunk sits in
+    QString curHash, curPath; // the commit and file the hunk belongs to
+    QString headingNoStatus;  // a heading this hunk added, no Status line yet
+    QVector<RlPassLookup> lookups;
+    const auto closeHeading = [&] {
+        if (!headingNoStatus.isEmpty() && !curHash.isEmpty() && !curPath.isEmpty())
+            lookups.append({curHash, curPath, curDate, headingNoStatus});
+        headingNoStatus.clear();
+    };
+
     const auto flush = [&] {
         if (added.isEmpty()) return;
         // One grammar (ANTS-3808 INV-2): the added lines are handed to
@@ -165,10 +227,47 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
         const QString line = QString::fromUtf8(raw);
         if (line.startsWith(QChar(0x01))) {
             flush();
+            closeHeading();
             const QString rest = line.mid(1);
             const int sp = rest.indexOf(QLatin1Char(' '));
+            curHash = (sp < 0) ? rest.trimmed() : rest.left(sp);
             curDate = (sp < 0) ? QString() : rest.mid(sp + 1).trimmed();
+            curPass.clear();
+            curPath.clear();
             ++w.revisions;
+            return;
+        }
+        if (passHeadings) {
+            if (line.startsWith(QLatin1String("+++ b/"))) {
+                closeHeading();
+                curPath = line.mid(6);
+                return;
+            }
+            // `@@ -a,b +c,d @@ <function context>`: the driver above makes
+            // the context the nearest `#### Pass` heading above the hunk.
+            if (line.startsWith(QLatin1String("@@"))) {
+                closeHeading();
+                const qsizetype close = line.indexOf(QLatin1String("@@"), 2);
+                curPass = close < 0 ? QString()
+                                    : rlPassIdOf(line.mid(close + 2).trimmed());
+                return;
+            }
+            if (!line.startsWith(QLatin1Char('+')) ||
+                line.startsWith(QLatin1String("+++")) || curDate.isEmpty())
+                return;
+            const QString body = line.mid(1);
+            if (const QString id = rlPassIdOf(body); !id.isEmpty()) {
+                closeHeading();
+                curPass = id;   // a heading added in this hunk owns what follows
+                headingNoStatus = id;
+                if (!w.firstSeen.contains(id)) w.firstSeen.insert(id, curDate);
+                return;
+            }
+            const bool done = rlPassStatusIsDone(body);
+            if (done || body.contains(QLatin1String("**Status**"), Qt::CaseInsensitive))
+                headingNoStatus.clear();   // its Status line is in the diff
+            if (!curPass.isEmpty() && !w.firstShipped.contains(curPass) && done)
+                w.firstShipped.insert(curPass, curDate);
             return;
         }
         if (!line.startsWith(QLatin1Char('+')) ||
@@ -222,6 +321,47 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
         w.error  = QStringLiteral("git log exited %1: %2")
                        .arg(p.exitCode())
                        .arg(QString::fromUtf8(p.readAllStandardError().left(400)).trimmed());
+        return w;
+    }
+    closeHeading();
+
+    // ANTS-5405 — read each queued revision's file once, and date a pass that
+    // was already done when its heading appeared: that commit is when this id
+    // first carried a done marker, the rule the bullet walk applies to a
+    // renamed id. First wins, so an earlier date is never replaced by a later.
+    QHash<QString, QVector<const RlPassLookup *>> byRevision;
+    for (const RlPassLookup &l : std::as_const(lookups))
+        if (!w.firstShipped.contains(l.id) || w.firstShipped.value(l.id) > l.date)
+            byRevision[l.hash + QLatin1Char(':') + l.path].append(&l);
+    for (auto it = byRevision.cbegin(); it != byRevision.cend(); ++it) {
+        if (clock.elapsed() > budgetMs) {
+            w.failed = true;
+            w.error  = QStringLiteral("git show exceeded the %1 s walk budget")
+                           .arg(budgetMs / 1000);
+            return w;
+        }
+        const GitWrap::Result shown = GitWrap::run(
+            root, {QStringLiteral("show"), it.key()}, 32 * 1024 * 1024);
+        if (!shown.started || shown.exitCode != 0 || shown.stdoutTruncated)
+            continue;   // unreadable: leave it undated rather than guess
+        const QStringList lines = QString::fromUtf8(shown.stdoutBytes).split(QLatin1Char('\n'));
+        for (const RlPassLookup *l : it.value()) {
+            for (int i = 0; i < lines.size(); ++i) {
+                if (rlPassIdOf(lines.at(i)) != l->id) continue;
+                QStringList block{lines.at(i)};
+                for (int j = i + 1; j < lines.size(); ++j) {
+                    if (lines.at(j).startsWith(QLatin1Char('#')) &&
+                        !lines.at(j).startsWith(QLatin1String("#####")))
+                        break;
+                    block << lines.at(j);
+                }
+                const auto rec = RoadmapParse::parsePassHeadingBlock(block);
+                if (rec && rec->status == QString::fromUtf8(RoadmapParse::kEmojiDone) &&
+                    (!w.firstShipped.contains(l->id) || w.firstShipped.value(l->id) > l->date))
+                    w.firstShipped.insert(l->id, l->date);
+                break;
+            }
+        }
     }
     return w;
 }
@@ -285,9 +425,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     // budget exists to bound a pathological repository rather than to pace a
     // normal one. A caller that times out first still leaves the store
     // untouched — nothing is written until the walk completes.
+    // ANTS-5405 — the walk parses by the live file's dialect, and says which,
+    // so a zero on a dialect it cannot read is told apart from no history.
+    QString dialect;
+    {
+        QFile live(roadmapPath);
+        if (live.open(QIODevice::ReadOnly | QIODevice::Text))
+            dialect = RoadmapParse::detectRoadmapFormat(
+                QString::fromUtf8(live.readAll()).split(QLatin1Char('\n')));
+    }
+    const bool passHeadings = dialect == QLatin1String("pass-headings");
+
     QElapsedTimer wall;
     wall.start();
-    const RlBackfillWalk walk = rlWalkGitForDates(root, pathspecs, 180000);
+    const RlBackfillWalk walk =
+        rlWalkGitForDates(root, pathspecs, 180000, passHeadings);
     if (walk.failed) {
         return blErr(QStringLiteral("git_failed"),
             QStringLiteral("roadmap_log: backfill_dates could not walk the "
@@ -304,7 +456,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     // real run's counts rather than a second estimate of them.
     struct Write { qint64 pk = 0; QString created, shipped; };  // dates, empty = skip
     QVector<Write> plan;
-    QStringList undated;
+    QStringList undated, shippedUndated;
     int createdWrites = 0, shippedWrites = 0;
     for (const RoadmapStore::DateTarget &t : *targets) {
         // INV-2 — a non-NULL date is never overwritten, whether a stamp or an
@@ -332,6 +484,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
         // indistinguishable from a real one ever after.
         if (t.createdIsNull && !walk.firstSeen.contains(t.id))
             undated.append(t.id);
+        // ANTS-5405 — the same count for the `shipped` column: a shipped item
+        // whose history shows no done marker, so the report stays blind to it.
+        if (t.shippedIsNull && t.status == QLatin1String("shipped") &&
+            !walk.firstShipped.contains(t.id))
+            shippedUndated.append(t.id);
     }
 
     if (!dryRun && !plan.isEmpty()) {
@@ -364,6 +521,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     env[QStringLiteral("op")]              = QStringLiteral("backfill_dates");
     env[QStringLiteral("project_root")]    = root;
     env[QStringLiteral("revisions_walked")] = walk.revisions;
+    env[QStringLiteral("dialect")]         = dialect;   // ANTS-5405
     env[QStringLiteral("walk_ms")]         = double(walkMs);
     env[QStringLiteral("items")]           = int(targets->size());
     env[QStringLiteral("created_written")] = createdWrites;
@@ -380,6 +538,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     env[QStringLiteral("undated")] = sample;
     if (undated.size() > kUndatedSample)
         env[QStringLiteral("undated_truncated")] = true;
+    env[QStringLiteral("shipped_undated_count")] = int(shippedUndated.size());
+    if (!shippedUndated.isEmpty()) {
+        QJsonArray shippedSample;
+        for (int i = 0; i < shippedUndated.size() && i < kUndatedSample; ++i)
+            shippedSample.append(shippedUndated.at(i));
+        env[QStringLiteral("shipped_undated")] = shippedSample;
+        if (shippedUndated.size() > kUndatedSample)
+            env[QStringLiteral("shipped_undated_truncated")] = true;
+    }
     // § 5 — `last_modified` is not backfilled at all. A commit touching a bullet
     // IS a modification, so every commit would rewrite it, and the column's only
     // consumer is "what changed recently", which `history` answers properly for

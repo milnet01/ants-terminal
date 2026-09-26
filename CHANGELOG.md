@@ -159,6 +159,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:"backfill_dates" dates a pass-headings roadmap from its history** (ANTS-5405)
+  A `#### Pass N.M` roadmap is walked by the pass that encloses each
+  change, so a flip that touched only its Status line is dated, and a
+  renamed heading is dated from its rename. The reply names the `dialect`
+  it walked and counts shipped items the history never showed done. On
+  RetroDB's history: 253 of 253 items and 190 of 190 shipped dates found,
+  where it found none.
+
 - **Pass-headings notes are written as bullets, and a flip keeps the roadmap's own status word** (ANTS-5404)
   A note from `roadmap_log` on a `#### Pass` roadmap is now a
   `- **Progress** (date):` bullet, or a `- **Resolution** (date):` bullet

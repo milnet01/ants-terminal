@@ -513,3 +513,114 @@ TEST(RoadmapBackfill, DISABLED_CorpusDryRun) {
     EXPECT_LT(resp.value(QStringLiteral("walk_ms")).toDouble(), 60000.0)
         << "the walk no longer fits the MCP bridge's 60 s budget (ANTS-3444)";
 }
+
+namespace {
+
+// ANTS-5405 — a pass-headings repository: `rev1` committed on kAddedDate,
+// `rev2` on kShippedDate, the current file migrated. Returns the root.
+QString seedPassRepo(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
+                     const QByteArray &rev1, const QByteArray &rev2,
+                     qint64 *projectId) {
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    QDir().mkpath(rawRoot);
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    const QString file = root + QStringLiteral("/ROADMAP.md");
+    const auto commit = [&](const QByteArray &body, const char *date) {
+        return writeFile(file, body)
+            && git(root, {QStringLiteral("add"), QStringLiteral("ROADMAP.md")})
+            && git(root, {QStringLiteral("commit"), QStringLiteral("-q"),
+                          QStringLiteral("-m"), QStringLiteral("rev")},
+                   QStringLiteral("%1T10:00:00 +0000").arg(QLatin1String(date)));
+    };
+    if (!git(root, {QStringLiteral("init"), QStringLiteral("-q")})
+        || !git(root, {QStringLiteral("config"), QStringLiteral("user.email"),
+                       QStringLiteral("t@example.invalid")})
+        || !git(root, {QStringLiteral("config"), QStringLiteral("user.name"),
+                       QStringLiteral("T")})
+        || !commit(rev1, kAddedDate) || !commit(rev2, kShippedDate))
+        return QString();
+
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return QString();
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) { ADD_FAILURE() << "findRoadmaps: " << err.toStdString(); return QString(); }
+    const auto plan =
+        RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"), QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-08-14T10:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(*store, plan, opts);
+    if (!out.ok) { ADD_FAILURE() << "migration load: " << out.error.toStdString(); return QString(); }
+    *projectId = out.projectId;
+    return root;
+}
+
+QByteArray passes(const char *head72, const char *status72) {
+    return QByteArray("# Demo \xE2\x80\x94 Roadmap\n\n## Phase 59\n\n"
+        "#### Pass 59.71 Rotate the token (HIGH, S)\n"
+        "- **Target**: the credential.\n"
+        "- **Status**: planned (2026-01-05). Lanes: security.\n"
+        "- **Source**: in-session.\n\n---\n\n")
+        + head72 + "\n"
+        "- **Target**: the resolver.\n"
+        "- **Why**: a frozen build joins the wrong root.\n"
+        "- **Status**: " + status72 + ". Lanes: media.\n\n---\n";
+}
+
+}  // namespace
+
+// ANTS-5405 — RetroDB's `#### Pass N.M` dialect. The id is on the heading and
+// the status on a `- **Status**:` line below it, so a flip commit's diff
+// touches only the Status line; the walk must still attribute it to its pass.
+TEST(RoadmapBackfill, Ants5405PassHeadingsDatesFromTheEnclosingPass) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = -1;
+    const char *head = "#### Pass 59.72 Resolve the media path (MEDIUM, S)";
+    const QString root = seedPassRepo(guard, tmp, passes(head, "planned (2026-01-05)"),
+                                      passes(head, "shipped (2026-02-10)"), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject resp = runBackfill(root);
+    ASSERT_VERB_OK(resp);
+    EXPECT_EQ(resp.value(QStringLiteral("dialect")).toString().toStdString(),
+              std::string("pass-headings"));
+    const Dates shipped = datesOf(projectId, QStringLiteral("PASS-59-72"));
+    ASSERT_TRUE(shipped.found);
+    EXPECT_EQ(shipped.created.toStdString(), std::string(kAddedDate));
+    EXPECT_EQ(shipped.shipped.toStdString(), std::string(kShippedDate));
+    const Dates open = datesOf(projectId, QStringLiteral("PASS-59-71"));
+    EXPECT_EQ(open.created.toStdString(), std::string(kAddedDate));
+    EXPECT_TRUE(open.shippedNull);
+    EXPECT_EQ(resp.value(QStringLiteral("undated_count")).toInt(), 0);
+    EXPECT_EQ(resp.value(QStringLiteral("shipped_undated_count")).toInt(), 0)
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// ANTS-5405 — a renamed heading (RetroDB's FU.2 → Pass 60.2): the new id
+// first appears already shipped, in a commit whose diff holds only the heading.
+// It is dated from that commit, as the bullet walk dates a renamed id.
+TEST(RoadmapBackfill, Ants5405RenamedPassIsDatedFromItsRename) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = -1;
+    const QString root = seedPassRepo(guard, tmp,
+        passes("#### Pass 59.99 FU.2 Grid-card srcset (LOW, M)", "done (v3.6.18)"),
+        passes("#### Pass 60.2 FU.2 Grid-card srcset (LOW, M)", "done (v3.6.18)"),
+        &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject resp = runBackfill(root);
+    ASSERT_VERB_OK(resp);
+    const Dates renamed = datesOf(projectId, QStringLiteral("PASS-60-2"));
+    ASSERT_TRUE(renamed.found);
+    EXPECT_EQ(renamed.created.toStdString(), std::string(kShippedDate));
+    EXPECT_EQ(renamed.shipped.toStdString(), std::string(kShippedDate))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("shipped_undated_count")).toInt(), 0);
+}
