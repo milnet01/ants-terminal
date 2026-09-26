@@ -150,6 +150,7 @@ struct PlannedId {
     // Several stored rows satisfied the key and were paired BY ORDER.
     // Reproducible, but resting on order alone — check these by hand.
     bool    ambiguous = false;
+    QStringList candidateIds;   // ANTS-5329 — see ItemMatch::candidateIds
 };
 
 struct InTransactionLoad {
@@ -168,6 +169,9 @@ struct InTransactionLoad {
     // capped by the caller's budget.
     int         itemsOrphaned = 0;
     QStringList orphanedIdFolds;
+    // ANTS-5329 — over EVERY plan item, not the capped plannedIds, so a
+    // refusal or a count cannot miss an ambiguous pairing past the cap.
+    int         ambiguousRematches = 0;
 };
 InTransactionLoad loadInOpenTransaction(RoadmapStore &store,
                                         const QString &projectRoot,

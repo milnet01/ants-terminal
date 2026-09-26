@@ -826,8 +826,11 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
             out.plannedIds[i].matchedId       = m.matchedId;
             out.plannedIds[i].matchedHeadline = m.matchedHeadline;
             out.plannedIds[i].ambiguous       = m.ambiguous;
+            out.plannedIds[i].candidateIds    = m.candidateIds;   // ANTS-5329
         }
     }
+    for (const auto &m : loaded.itemMatches)
+        if (m.ambiguous) ++out.ambiguousRematches;   // ANTS-5329
     out.idsAllocated  = loaded.idsAllocated;
     out.itemsOrphaned = loaded.itemsOrphaned;
     for (const auto &n : loaded.notes) {

@@ -283,6 +283,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     QString     loadError;
     // ANTS-5252 — the per-bullet id report Vestige asked for.
     QVector<RoadmapMigrateVerb::PlannedId> plannedIds;
+    int         ambiguousRematches = 0;   // ANTS-5329 — uncapped
     // ANTS-5326 — orphans the re-import left, for the refusal below.
     int         itemsOrphaned = 0;
     QStringList orphanedIdFolds;
@@ -316,6 +317,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         bulletsTotal = loaded.bulletsTotal;
         idsParsed    = loaded.idsParsed;
         plannedIds   = loaded.plannedIds;
+        ambiguousRematches = loaded.ambiguousRematches;   // ANTS-5329
 
         // ANTS-5326 — the load keeps orphans on purpose: for a store-served
         // project a row missing from the file is a hand deletion the store must
@@ -362,14 +364,54 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     // only the file holds survives it, and measuring before would refuse on
     // text that is not lost. A rehearsal decides; any other failure in it falls
     // through, so the real run reports that failure as it always has.
-    if (!dryRun && !req.value(QStringLiteral("accept_text_loss")).toBool()) {
+    //
+    // ANTS-5329 — the same rehearsal refuses `ambiguous_rematch`: where
+    // several stored rows share a bullet's key, the load pairs them by order,
+    // and a convert writes the chosen id into the file for good. The rows name
+    // every candidate, so the caller can check and pass
+    // accept_ambiguous_rematch:true. Migrate keeps pairing by order silently;
+    // refusing there re-inserted and orphaned the same items on every re-run.
+    const bool acceptLoss  = req.value(QStringLiteral("accept_text_loss")).toBool();
+    const bool acceptAmbig =
+        req.value(QStringLiteral("accept_ambiguous_rematch")).toBool();
+    if (!dryRun && (!acceptLoss || !acceptAmbig)) {
         RoadmapRender::Outcome rehearsal;
         QString rehearsalErr;
         const auto rr = RoadmapWrite::commitAndRender(
             *store, projectId, root, roadmapPath, /*dryRun=*/true, mutate,
             &rehearsal, &rehearsalErr, RoadmapWrite::LaymanGate::Exempt,
             RoadmapWrite::DriftBasis::AfterMutation);
-        if (rr == RoadmapWrite::Result::Ok && rehearsal.externalTextLines > 0) {
+        if (rr == RoadmapWrite::Result::Ok && !acceptAmbig
+            && ambiguousRematches > 0) {
+            QJsonArray rows;
+            for (const auto &pid : std::as_const(plannedIds)) {
+                if (!pid.ambiguous) continue;
+                QJsonObject o;
+                o[QStringLiteral("line")]          = pid.firstLine;
+                o[QStringLiteral("matched_id")]    = pid.matchedId;
+                o[QStringLiteral("headline")]      = pid.matchedHeadline;
+                o[QStringLiteral("candidate_ids")] =
+                    QJsonArray::fromStringList(pid.candidateIds);
+                rows.append(o);
+            }
+            QJsonObject e = refuseWith(QStringLiteral("ambiguous_rematch"),
+                QStringLiteral("roadmap_log: %1 bullet(s) in \"%2\" share their "
+                               "section and headline with several stored items, "
+                               "and would be paired with them by order. The "
+                               "convert writes those ids into the file for good; "
+                               "`ambiguous` lists each with its candidates. "
+                               "Nothing was written. Make the headlines distinct, "
+                               "or re-run with accept_ambiguous_rematch:true once "
+                               "the pairing is checked.")
+                    .arg(ambiguousRematches).arg(roadmapPath)).object();
+            e[QStringLiteral("ambiguous_rematch_count")] = ambiguousRematches;
+            e[QStringLiteral("ambiguous")] = rows;
+            if (ambiguousRematches > rows.size())
+                e[QStringLiteral("ambiguous_shown")] = int(rows.size());
+            return QJsonDocument(e);
+        }
+        if (rr == RoadmapWrite::Result::Ok && !acceptLoss
+            && rehearsal.externalTextLines > 0) {
             QJsonObject e = refuseWith(QStringLiteral("text_lost"),
                 QStringLiteral("roadmap_log: converting \"%1\" would drop %2 "
                                "line(s) of text the file holds; "
@@ -502,18 +544,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         }
         // The pairing rested on ORDER alone — several stored rows satisfied
         // the key. Reproducible, and still the one arm a human should check.
-        if (pid.ambiguous)
+        if (pid.ambiguous) {
             o[QStringLiteral("ambiguous_rematch")] = true;
+            // ANTS-5329 — what the order chose from, the claimed id first.
+            o[QStringLiteral("candidate_ids")] =
+                QJsonArray::fromStringList(pid.candidateIds);
+        }
         planned.append(o);
     }
     // ANTS-5258 — the two counts a reviewer triages on, computed over EVERY
     // row rather than the capped echo, so a truncated list still reports the
     // true size of each arm. `ambiguous` is the one that should be zero.
-    int matchedCount = 0, ambiguousCount = 0;
-    for (const auto &pid : plannedIds) {
-        if (pid.matched)   ++matchedCount;
-        if (pid.ambiguous) ++ambiguousCount;
-    }
+    int matchedCount = 0;
+    for (const auto &pid : plannedIds)
+        if (pid.matched) ++matchedCount;
+    // ANTS-5329 — the load's own count; plannedIds is capped at the echo
+    // budget, so counting it undercounted past the cap.
+    const int ambiguousCount = ambiguousRematches;
     ids[QStringLiteral("matched")]           = matchedCount;
     ids[QStringLiteral("ambiguous_rematch")] = ambiguousCount;
     // ANTS-5289 — say how the tie was broken, so a count is not read as an

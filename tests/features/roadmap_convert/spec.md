@@ -185,6 +185,21 @@ the commit to be one transaction.
   *Breaks when:* the two disagree on a convert that re-matches its items, or a
   closed item is flagged.
 
+- **INV-18** — a bullet the load pairs BY ORDER (INV-12) carries
+  `candidate_ids`: every stored id that satisfied the key, the claimed one
+  first. A real convert with any such bullet refuses `ambiguous_rematch`,
+  listing each with its candidates, and writes nothing, unless the request
+  carries `accept_ambiguous_rematch:true`. A dry run never refuses.
+  `ids.ambiguous_rematch` counts every plan item, not the capped rows.
+  `roadmap_migrate` still pairs by order without refusing. *Test:*
+  `ambiguousRematchNamesCandidatesAndRefuses`.
+  *Why:* ANTS-5329. The convert writes the chosen id into the file for good,
+  and Vestige had seven bullets on one bare headline with no way to see what
+  the order chose from.
+  *Breaks when:* a flagged row lacks its candidates, a real convert with an
+  order-only pairing writes without the opt-in, or a refused one changes the
+  file or the stored format.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

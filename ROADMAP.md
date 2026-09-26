@@ -79029,14 +79029,25 @@ protocol.
 
 ---
 
-- 📋 [ANTS-5390] **The About dialog opens large enough for all its text, including the MCP reload notice.**
+- ✅ [ANTS-5390] **The About dialog opens large enough for all its text, including the MCP reload notice.**
   The About dialog clips its description at the default size (user screenshot 2026-09-26). It also has to fit the message telling the user to reload MCP.
+  Resolved (2026-09-26, a1ee7345 push): the About dialog has a 560 px
+  minimum width and a minimum height of what its layout needs there, so
+  no saved or dragged size clips the text. Test
+  AboutDialogFits.BodyIsNeverClipped, proven red. GitHub CI green on
+  a1ee7345. Visible after the next relaunch.
   **Layman:** Makes the About window big enough that nothing is cut off.
   Kind: ux.
   Source: user-request-2026-09-26.
 
-- 📋 [ANTS-5391] **The Roadmap dialog says it shows the store, not ROADMAP.md, on a store-backed project.**
+- ✅ [ANTS-5391] **The Roadmap dialog says it shows the store, not ROADMAP.md, on a store-backed project.**
   The window title reads `Roadmap — ROADMAP.md` on a store-backed project (user screenshot 2026-09-26), which suggests the file is the source. Check what the dialog actually reads, and make the title and any source label match it.
+  Resolved (2026-09-26, a1ee7345 push): the dialog did read the store;
+  DialogChrome's drawn title bar copied the title once and never
+  followed ANTS-5368's retitle. It now follows windowTitleChanged, for
+  every chromed dialog. Test
+  DialogChromeTitleFollows.RetitleReachesTheBar, proven red. GitHub CI
+  green on a1ee7345. Visible after the next relaunch.
   **Layman:** Makes the roadmap window say where its data really comes from.
   Kind: ux.
   Source: user-request-2026-09-26.

@@ -459,8 +459,16 @@ bool Loader::matchItems() {
     existing = *items;
 
     QHash<QString, qint64> byIdFold;
-    for (const RoadmapStore::ItemRef &r : existing)
+    QHash<qint64, QString> foldByPk;   // ANTS-5329 — the inverse, for candidates
+    for (const RoadmapStore::ItemRef &r : existing) {
         byIdFold.insert(r.idFold, r.itemPk);
+        foldByPk.insert(r.itemPk, r.idFold);
+    }
+    const auto foldsOf = [&foldByPk](const QVector<qint64> &pks) {
+        QStringList out;
+        for (qint64 pk : pks) out.append(foldByPk.value(pk));
+        return out;
+    };
 
     matchPk = QVector<qint64>(plan.items.size(), 0);
     // ANTS-5258 — sized with matchPk and for the same reason: both are indexed
@@ -543,6 +551,7 @@ bool Loader::matchItems() {
             if (candidates.size() > 1) {
                 note("ambiguous_rematch", it.headline);
                 out.itemMatches[i].ambiguous = true;
+                out.itemMatches[i].candidateIds = foldsOf(candidates);  // ANTS-5329
             }
             matchPk[i] = candidates.first();
             consumed.insert(candidates.first());
@@ -574,6 +583,7 @@ bool Loader::matchItems() {
         if (candidates.size() > 1) {
             note("ambiguous_rematch", it.headline);
             out.itemMatches[i].ambiguous = true;   // ANTS-5258
+            out.itemMatches[i].candidateIds = foldsOf(candidates);  // ANTS-5329
         }
         const qint64 pk = candidates.first();
         matchPk[i] = pk;

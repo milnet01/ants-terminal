@@ -13606,7 +13606,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "publish back; deregister and re-migrate first. "
                         "ANTS-5286 — a real run refuses `text_lost` when the "
                         "rewrite would drop the file's text, unless "
-                        "`accept_text_loss:true`. "
+                        "`accept_text_loss:true`. ANTS-5329 — and "
+                        "`ambiguous_rematch` when bullets would be paired by "
+                        "order, unless `accept_ambiguous_rematch:true`. "
                         "Nothing is written on any of them.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
@@ -14303,6 +14305,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "nothing. A dry run never refuses; it reports. Pass "
                         "only after inspecting the loss. Default false.");
                     props["accept_text_loss"] = acceptLossProp; // ANTS-5286
+                    QJsonObject acceptAmbigProp;
+                    acceptAmbigProp["type"] = "boolean";
+                    acceptAmbigProp["description"] = QStringLiteral(
+                        "op:\"convert\" — proceed although some bullets share "
+                        "their section and headline with several stored "
+                        "items and would be paired by order. Without it a "
+                        "real convert refuses `ambiguous_rematch`, listing "
+                        "each with `candidate_ids`. Default false.");
+                    props["accept_ambiguous_rematch"] = acceptAmbigProp; // ANTS-5329
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

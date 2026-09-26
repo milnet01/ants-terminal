@@ -83,6 +83,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log convert names its guesses for same-titled items, and asks first** (ANTS-5329)
+  When several stored items share a bullet's section and title, the
+  preview now lists every candidate id. A real convert refuses with
+  `ambiguous_rematch` until you pass `accept_ambiguous_rematch:true`.
+
 - **The local push check leaves speed tests to GitHub** (ANTS-5375)
   Timing tests fail at random on a busy desktop, so the pre-push hook
   now skips them. GitHub CI still runs them on every push, and a manual

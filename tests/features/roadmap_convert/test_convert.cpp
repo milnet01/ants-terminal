@@ -1039,3 +1039,71 @@ TEST(RoadmapConvert, laymanMissingCountAgreesWithRows) {
     EXPECT_EQ(flagged, 1) << "a shipped bullet owes no Layman and is not flagged:\n"
                           << dump;
 }
+
+// ---------------------------------------------------------------- INV-18 ----
+
+// ANTS-5329 — an order-only pairing names what it chose from, and a real
+// convert refuses it unless accepted: the convert writes the chosen id into
+// the file for good. Vestige had seven bullets on one bare headline.
+TEST(RoadmapConvert, ambiguousRematchNamesCandidatesAndRefuses) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray twins =
+        QByteArray("# Demo Roadmap\n"
+                   "\n"
+                   "## To Do\n"
+                   "\n"
+                   "- [ ] A duplicated headline.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5329-test.\n"
+                   "- [ ] A duplicated headline.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5329-test.\n");
+    const QString root = seed(guard, tmp, twins);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+    const QByteArray hashBefore = hashOf(roadmap);
+
+    // Dry run: the flagged row names both candidates, the claimed one first.
+    const QJsonObject dry = convert(root, /*dryRun=*/true);
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(dry).toJson().toStdString();
+    QJsonObject flagged;
+    for (const QJsonValue &v : dry.value(QStringLiteral("ids")).toObject()
+                                   .value(QStringLiteral("planned")).toArray())
+        if (v.toObject().value(QStringLiteral("ambiguous_rematch")).toBool())
+            flagged = v.toObject();
+    const QJsonArray cands = flagged.value(QStringLiteral("candidate_ids")).toArray();
+    ASSERT_EQ(cands.size(), 2) << QJsonDocument(dry).toJson().toStdString();
+    EXPECT_EQ(cands.at(0).toString(),
+              flagged.value(QStringLiteral("matched_id")).toString())
+        << "the claimed candidate comes first";
+
+    // Real run: refused, candidates named, nothing written.
+    const QJsonObject refused = convert(root);
+    const std::string dump = QJsonDocument(refused).toJson().toStdString();
+    EXPECT_FALSE(refused.value(QStringLiteral("ok")).toBool()) << dump;
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(),
+              QStringLiteral("ambiguous_rematch")) << dump;
+    const QJsonArray rows = refused.value(QStringLiteral("ambiguous")).toArray();
+    ASSERT_EQ(rows.size(), 1) << dump;
+    EXPECT_EQ(rows.at(0).toObject().value(QStringLiteral("candidate_ids"))
+                  .toArray().size(), 2) << dump;
+    EXPECT_EQ(hashOf(roadmap), hashBefore) << "a refused convert changed the file";
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("github-task-list"));
+
+    // Accepted: proceeds.
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("convert");
+    req[QStringLiteral("accept_ambiguous_rematch")] = true;
+    RemoteControl rc(nullptr);
+    const QJsonObject accepted = rc.cmdRoadmapLogConvertForTest(req).object();
+    EXPECT_TRUE(accepted.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(accepted).toJson().toStdString();
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));
+}

@@ -67,6 +67,10 @@ struct Outcome {
         // ORDER. The pairing is reproducible but rests on order alone, so this
         // is the one arm a human should actually check.
         bool    ambiguous = false;
+        // ANTS-5329 — on an ambiguous match, the folded id of EVERY stored
+        // row that satisfied the key at that point, the claimed one first.
+        // Empty otherwise. A reviewer can then see what the order chose from.
+        QStringList candidateIds;
     };
     QVector<ItemMatch> itemMatches;
     // ANTS-4479 (ANTS-3855 § 2.4) — WHICH items `itemsUpdated` counted, and
