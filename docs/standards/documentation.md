@@ -866,8 +866,20 @@ longer contains the ID, so searching for the ID stops finding the spec.
 
 **Scope: a record that accumulates entries** — a pedigree, a review log, a run
 record, a measurement, a field pass. **Not** published content whose filename is
-its address, **not** a generated or ignored file, and **not** a retired contract
-document, which is a snapshot and keeps the name it had.
+its address, **not** a generated or ignored file, **not `CHANGELOG.md` or
+`ROADMAP.md`**, which accumulate entries and are named by their own conventions,
+and **not** a retired contract document, which is a snapshot.
+
+**The snapshot clause is an EXCLUSION, not an instruction to keep the name.** A
+retired contract document is out of scope, so this section neither requires nor
+forbids moving or renaming it; it may sit wherever the project retires things,
+including beside pedigree files, and a date in its filename is not this section's
+business. What does bind is the bind-forward clause below: a snapshot is closed and
+takes no new entries.
+
+**A ledger whose rows are REMOVED when they stop applying is current state, not a
+record** — a held-back dependency table, a suppression list. It accumulates
+nothing, so none of this fires on it, and it stays in the document it belongs to.
 
 **A date belongs INSIDE a record, never in its filename.** Each entry carries its
 own date and says what kind of entry it is. A dated filename makes a new file per
@@ -876,7 +888,7 @@ it is referenced.
 
 | Home | For |
 |---|---|
-| `docs/history/<document>.md` | One document's rule pedigree — who reported a rule, which id, what the earlier wording was |
+| `docs/history/<document>.md` | One document's rule pedigree AND its rationale — who reported a rule, which id, what the earlier wording was, and why the rule reads as it does |
 | `docs/reviews/<document>-loop-log.md` | One document's review history, a row per loop |
 | `docs/<subject>-records.md` | Every other dated record on one subject — a first run, a live run, a measurement, a field pass |
 
@@ -887,13 +899,18 @@ document ABOUT that subject; the `-records` form cannot be mistaken for one.
 Reported 2026-09-26 by the user, of a file that had made exactly that impression.
 
 **Take the document's basename and lowercase it** —
-`standards/documentation.md` gives `docs/history/documentation.md`, and `CLAUDE.md`
-gives `claude.md`. **Qualify with the parent directory where that collides**, as
+`standards/documentation.md` gives `docs/history/documentation.md`. **Where
+dropping the extension would leave an ambiguous word, keep it as a hyphen**:
+`CLAUDE.md` gives `claude-md.md`, because `docs/history/claude.md` reads as the
+pedigree of a document called `claude`. **Qualify with the parent directory where that collides**, as
 `docs/reviews/languages-python-loop-log.md` does. **An embedded roadmap ID keeps
 its own casing** (§ 3.3): lowercase it and a search for the ID stops finding the
-record. *(`docs/history/claude-md.md` and `docs/reviews/claude-md-loop-log.md`
-predate this and keep their names under the bind-forward clause below — so the one
-document every repository has is the one that does not match the rule.)*
+record. *(This is what `docs/history/claude-md.md` and
+`docs/reviews/claude-md-loop-log.md` are already called. Stated as the rule rather
+than grandfathered after a field pass showed the transform matching almost nothing
+on disk, and would otherwise have left new repositories writing `claude.md` while
+every existing one wrote `claude-md.md` — two names forever for the one document
+every repository has.)*
 
 **The subject is what the record is ABOUT, and where one document owns that
 subject, the subject IS that document.** A field pass of a feature takes the
