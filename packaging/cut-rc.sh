@@ -55,6 +55,11 @@
 
 set -euo pipefail
 
+# Temp files made beside their target (TL-6) are removed on any exit, so an
+# interrupted run does not leave CHANGELOG.md.XXXXXX in the working tree.
+CUTRC_TMPS=()
+trap 'rm -f -- "${CUTRC_TMPS[@]+"${CUTRC_TMPS[@]}"}"' EXIT
+
 # ---- Setup -----------------------------------------------------------
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -292,6 +297,7 @@ roll_unreleased() {
     # Beside the target, not in /tmp: /tmp is tmpfs here, where mv is a copy
     # plus unlink and the "atomic rename" below would not be one (audit TL-6).
     tmp=$(mktemp "${CHANGELOG_FILE}.XXXXXX")
+    CUTRC_TMPS+=("$tmp")
     # A && B || C is intended here and is not a mis-written if-then-else: C is
     # cleanup-on-any-failure, wanted whether awk failed or the rename did.
     # Neither arm can leave a half-written file — awk writes to "$tmp" and the
@@ -358,6 +364,7 @@ roll_unreleased() {
 apply_rewrite() {
     local file=$1; shift
     local tmp; tmp=$(mktemp "${file}.XXXXXX")   # same filesystem (TL-6)
+    CUTRC_TMPS+=("$tmp")
     if awk "$@" "$file" > "$tmp"; then
         if [ "$DO_PUSH" = 1 ]; then
             chmod --reference="$file" "$tmp"
@@ -836,6 +843,7 @@ cmd_cycle() {
 record_hotfix_on_main() {
     local N=$2 block=$3 tmp
     tmp=$(mktemp "${CHANGELOG_FILE}.XXXXXX")   # same filesystem (TL-6)
+    CUTRC_TMPS+=("$tmp")
     # A && B || C is intended here and is not a mis-written if-then-else: C is
     # cleanup-on-any-failure, wanted whether awk failed or the rename did.
     # Neither arm can leave a half-written file — awk writes to "$tmp" and the

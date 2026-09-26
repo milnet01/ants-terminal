@@ -1473,6 +1473,15 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 60)
 
+    # The OSC 133 shell integration still emits under set -u / nounset,
+    # in bash and in zsh (audit TL-27).
+    add_test(NAME osc133_nounset
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/osc133_nounset/test_osc133_nounset.sh")
+    set_tests_properties(osc133_nounset PROPERTIES
+        LABELS "features;fast"
+        SKIP_RETURN_CODE 77
+        TIMEOUT 60)
+
     # tools/mcp-bridge.py: symlink-safe socket pick, sane timeouts, and a
     # reply rather than a crash on a non-object request.
     add_test(NAME mcp_bridge_client

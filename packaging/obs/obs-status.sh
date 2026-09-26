@@ -51,9 +51,13 @@ echo
 echo "=== final ==="
 # Audit TL-21 — exit 3 when the results cannot be read at all, rather than
 # reporting success over nothing.
-if ! final="$(osc -A "$API" results "$PROJ" "$PKG" 2>&1)" \
+# stderr is kept apart: merged in, a wordy osc warning passed the NF >= 4
+# test with no results behind it and was then parsed as a status line.
+errf="$(mktemp)"
+trap 'rm -f "$errf"' EXIT
+if ! final="$(osc -A "$API" results "$PROJ" "$PKG" 2>"$errf")" \
         || [ -z "$(echo "$final" | awk 'NF >= 4')" ]; then
-    echo "obs-status: could not read build results from $API: $final" >&2
+    echo "obs-status: could not read build results from $API: $(cat "$errf")" >&2
     exit 3
 fi
 echo "$final"

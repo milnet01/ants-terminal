@@ -119,7 +119,8 @@ check_copied_headlines() {
             unparsed=$((unparsed + 1)); continue
         fi
         headline="$(q "SELECT headline FROM item
-                      WHERE project_id=${PROJECT_ID} AND id='${id}' LIMIT 1;")"
+                      WHERE project_id=${PROJECT_ID} AND id='${id}' LIMIT 1;")" \
+            || query_failed "headline for ${id}"
         [[ -n "$headline" && "$headline" == "$summary" ]] && copied+=("$id")
     done <<< "$unrel"
 
@@ -179,7 +180,7 @@ mapfile -t SHIPPED <<< "$shipped_out"
 #     to this gate, so say how many there are rather than implying coverage.
 UNDATED="$(q "SELECT COUNT(*) FROM item
              WHERE project_id=${PROJECT_ID}
-               AND status='shipped' AND shipped IS NULL;")"
+               AND status='shipped' AND shipped IS NULL;")" || query_failed "undated count"
 
 if [[ ${#SHIPPED[@]} -eq 0 ]]; then
     echo "shipped-coverage: no dated ships since ${SINCE} — nothing to check."

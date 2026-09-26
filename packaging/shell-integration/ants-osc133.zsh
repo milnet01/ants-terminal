@@ -32,7 +32,7 @@ typeset -g __ants_osc133_promptid="${__ants_osc133_promptid:-}"
 
 __ants_osc133_hmac() {
     local marker="$1"
-    local extra="$2"
+    local extra="${2:-}"
     local msg
     if [[ "$marker" == "D" && -n "$extra" ]]; then
         msg="${marker}|${__ants_osc133_promptid}|${extra}"
@@ -46,7 +46,7 @@ __ants_osc133_hmac() {
 
 __ants_osc133_emit() {
     local marker="$1"
-    local extra="$2"
+    local extra="${2:-}"
     local hmac
     hmac="$(__ants_osc133_hmac "$marker" "$extra")"
     [ -z "$hmac" ] && return 0

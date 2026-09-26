@@ -22,10 +22,12 @@ _ants_terminal()
             return 0
             ;;
         --export-roadmaps|--remote-cwd)
+            compopt -o filenames 2>/dev/null
             mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
             return 0
             ;;
         --remote-socket)
+            compopt -o filenames 2>/dev/null
             mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
             return 0
             ;;
