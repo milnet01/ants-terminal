@@ -56,12 +56,14 @@ Rejected: both processes writing one shared ledger. `JsonlFile::writeLinesAtomic
 }
 ```
 
-`tools` is `TokenUsageEngine::ToolCounter` field for field. The total saved is not stored: the reader derives it with `Tracker::totalSaved()` over the merged counters, so it is stated once.
+`tools` is `TokenUsageEngine::ToolCounter` field for field. The total saved is not stored. The reader derives it **per snapshot**, with `Tracker::totalSaved()` over that one file's counters, and never over counters merged across files. `buildReport` floors each tool's saving at zero, so a merged total differs from the sum of per-file totals. The per-file total is the one that can be folded without moving the display (INV-4).
 
 ### 2.4 Writer (`ants-mcpd`)
 
-- At start, `main` creates the directory, then opens `<stem>.lock` and takes `flock(LOCK_EX)`. It keeps that descriptor open until exit. **The json is written only after the lock is held.**
-- On `ClaudeIntegration::tokensSavedUpdated`, a single-shot 2 s `QTimer` is (re)armed. On timeout and on `QCoreApplication::aboutToQuit`, `main` writes the snapshot with `QSaveFile` (write, then atomic rename).
+- At start, `main` creates the directory (mode 0700), opens `<stem>.lock` with `O_CLOEXEC`, and takes `flock(LOCK_EX)`. It keeps that descriptor open until exit. `O_CLOEXEC` stops a child process (`rg`, `git`) from inheriting the lock and making a dead helper look live. It then writes an empty snapshot at once, so a lock with no json exists only between two syscalls.
+- On `ClaudeIntegration::tokensSavedUpdated`, a single-shot 2 s `QTimer` is started if it is not already active. It is never restarted, so a busy helper still writes every 2 s. On timeout and on `QCoreApplication::aboutToQuit`, `main` writes the snapshot with `QSaveFile` (write, then atomic rename).
+- `main` turns SIGTERM and SIGINT into `QCoreApplication::quit()` through a self-pipe and a `QSocketNotifier`, so a client that stops the server by signal still gets the final write.
+- `ClaudeIntegration::initialize` calls `endTokenSession`, which resets the tracker. On `tokenSessionEnding`, emitted before that reset, the writer adds the ending session's counters and project bytes into a process-lifetime accumulator. The snapshot is always accumulator plus live, so a second `initialize` in one process loses nothing.
 - New engine API, in `src/tokenusageengine.{h,cpp}` (`ants_mcpcore_lib`, Qt6::Core only):
 
 ```cpp
@@ -70,11 +72,15 @@ QString peerSnapshotDir();   // GenericDataLocation + "/ants-terminal/mcpd-usage
 QJsonObject snapshotToJson(const QHash<QString, ToolCounter> &tools,
                            const QHash<QString, qint64> &savedBytesByProject,
                            qint64 pid, qint64 startedMs, qint64 updatedMs);
+// The inverse, with § 2.6's checks. False and `why` set on any rejection.
+bool snapshotFromJson(const QJsonObject &o, QHash<QString, ToolCounter> *tools,
+                      QHash<QString, qint64> *savedBytesByProject, QString *why);
+// Field-wise sum; min/max combine. Used only by the writer's accumulator.
+void addCounters(QHash<QString, ToolCounter> &into,
+                 const QHash<QString, ToolCounter> &from);
 class Tracker {
 public:
     const QHash<QString, ToolCounter> &counters() const { return m_counters; }
-    void merge(const QHash<QString, ToolCounter> &other);  // field-wise sum;
-                                                           // min/max combine
     // …existing members unchanged
 };
 }
@@ -86,14 +92,20 @@ public:
 
 ```cpp
 namespace TokenUsageEngine {
+// The PEER TOTAL. Every figure is a sum of per-snapshot figures, each derived
+// from that snapshot alone (§ 2.3), so removing one snapshot removes exactly
+// its own addends.
 struct PeerUsage {
-    QHash<QString, ToolCounter> tools;             // summed over every snapshot read
-    QHash<QString, qint64>      savedBytesByProject;
-    int         sessions = 0;                      // snapshots read
-    QStringList skipped;                           // file names not read, with the reason
+    qint64 savedTokens = 0;                    // Σ each snapshot's totalSaved()
+    QHash<QString, qint64> savedTokensByProject; // Σ each snapshot's bytes / kCharsPerToken, per root
+    qint64 calls = 0;                          // Σ n_calls
+    qint64 failedCalls = 0;                    // Σ failed_calls
+    int         sessions = 0;                  // snapshots read
+    QStringList stems;                         // the stems summed here
+    QStringList skipped;                       // file names not read, with the reason
 };
 // Read every snapshot. When `claimDead` is set, each snapshot whose lock can be
-// taken (its writer has exited) is ALSO returned in `dead`, with its lock held
+// taken (its writer has exited) is ALSO summed into `dead`, with its lock held
 // in `heldLocks` until the caller has folded it and calls releaseClaimed().
 PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
                             PeerUsage *dead, QList<int> *heldLocks);
@@ -110,10 +122,10 @@ bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime
 ```
 
 - **Display** reads every snapshot, live and dead-unfolded alike (`claimDead = false`). A dead snapshot therefore stays in the numbers until it is folded, and a fold moves it from "session" to "stored" without changing any displayed total.
-- **Liveness** is `flock(LOCK_EX | LOCK_NB)` on `<stem>.lock`. Success means the writer is gone. `EWOULDBLOCK` means it is live, and it is never folded or deleted. A json with no lock file is dead. A lock file with no json is never touched: that is a writer between taking its lock and its first write.
-- **Fold.** `MainWindow::foldTokenSavingsIntoConfig` calls `readPeerSnapshots(dir, true, &dead, &locks)`. It passes `dead` to `foldPeerUsage` over the values it already folds, and the result shares the same single `m_config.save()`. Then it calls `releaseClaimed`. It also runs once at `MainWindow` construction, so snapshots left while no terminal ran are folded on the next start.
-- **`token_usage`.** `cmdTokenUsage` merges `PeerUsage::tools` into a copy of the terminal's tracker before `buildReport`, so `calls[]`, `total_saved` and `tools_called` include the helper's calls. `MainWindow::tokenSavingsSummary` adds the peer total to its `session` term. The envelope gains `mcpd_sessions` (`PeerUsage::sessions`) and, when non-empty, `mcpd_snapshots_skipped`.
-- **Chip.** `refreshTokensSavedChip` adds `PeerUsage::savedBytesByProject[root]` to the per-project session bytes, and the peer total to `globalSession`. A `QFileSystemWatcher` on the directory calls `refreshTokensSavedChip`, because the terminal's own `tokensSavedUpdated` never fires for a call the helper served.
+- **Liveness** is `flock(LOCK_EX | LOCK_NB)` on `<stem>.lock`. Success means the writer is gone. `EWOULDBLOCK` means it is live, and it is never folded or deleted. A json with no lock file is dead. A lock file with no json is touched only when it is over 60 s old and its lock can be taken: then it is a writer that died between its two first syscalls, and the reader removes it. A younger one may be a writer about to write.
+- **Fold.** `MainWindow::foldTokenSavingsIntoConfig` calls `readPeerSnapshots(dir, true, &dead, &locks)`. It passes `dead` to `foldPeerUsage` over the values it already folds, and the result shares the same single `m_config.save()`. Then it calls `releaseClaimed`. It also runs once at `MainWindow` construction, so snapshots left while no terminal ran are folded on the next start. The terminal's own session is folded exactly as today, separately from the peers.
+- **`token_usage`.** `cmdTokenUsage` calls `readPeerSnapshots` **once** and passes that `PeerUsage` to `MainWindow::tokenSavingsSummary(const PeerUsage &)`, so both uses see one read. `calls[]`, `total_saved` and `tools_called` stay the terminal's own session, unchanged, so ANTS-1284's `total_saved` = Σ `calls[].est_tokens_saved` still holds. The envelope gains `mcpd: {sessions, calls, failed_calls, total_saved}` from the `PeerUsage`, plus `snapshots_skipped` when non-empty. The summary's `session` term becomes the terminal's session plus `PeerUsage::savedTokens`.
+- **Chip.** `refreshTokensSavedChip` reads once per refresh. It adds `PeerUsage::savedTokensByProject[root]` to the per-project session tokens, after the terminal's own bytes are divided, and `PeerUsage::savedTokens` to `globalSession`. The terminal creates the directory (mode 0700) before watching it, and a `QFileSystemWatcher` on it calls `refreshTokensSavedChip`, because the terminal's own `tokensSavedUpdated` never fires for a call the helper served.
 
 ### 2.6 Trust boundary
 
@@ -125,14 +137,14 @@ The directory sits in the user's own data dir, and a snapshot is written by anot
 
 ## 3. Invariants
 
-- **INV-1** — A flushed snapshot round-trips: `snapshotToJson` → `readPeerSnapshots` returns the same `ToolCounter`s and project bytes that were written. Broken by a field missed in either direction. *Test:* `tests/features/mcpd_usage_snapshots` `RoundTrip`.
+- **INV-1** — A snapshot round-trips: `snapshotToJson` → `snapshotFromJson` returns the same `ToolCounter`s and project bytes that were written. Broken by a field missed in either direction. *Test:* `tests/features/mcpd_usage_snapshots` `RoundTrip`.
 - **INV-2** — A snapshot whose lock is held by another open file description is read but never returned in `dead`, and its files survive `releaseClaimed`. Broken by folding without testing the lock. *Test:* `tests/features/mcpd_usage_snapshots` `LiveSnapshotNotClaimed` — the test holds the lock on a second `open()`.
 - **INV-3** — A dead snapshot folds exactly once: claim, `foldPeerUsage` and `releaseClaimed` add its totals to the three values and remove both files, and a second claim-and-fold over the same directory changes nothing. Broken by skipping the unlink (double count). *Test:* `tests/features/mcpd_usage_snapshots` `DeadSnapshotFoldsOnce`.
-- **INV-4** — A fold moves a dead snapshot from "session" to "stored" without changing the sum: stored lifetime plus the derived total of a `claimDead = false` read is the same before the fold and after it, globally and for the snapshot's project. Broken by counting a folded snapshot twice, or dropping an unfolded one from the display read. *Test:* `tests/features/mcpd_usage_snapshots` `FoldPreservesDisplayedTotals`.
-- **INV-5** — A lock file with no json beside it is never locked, unlinked or counted. Broken by a reader that sweeps lone lock files, which would race a writer that has locked but not yet written. *Test:* `tests/features/mcpd_usage_snapshots` `LoneLockUntouched`.
-- **INV-6** — `token_usage` counts the helper's calls: with one snapshot holding `n_calls: 3` for a tool, that tool's `calls[]` row and `total_saved` include them, and `mcpd_sessions` is 1. Broken by reading only the terminal tracker. *Test:* `tests/features/mcpd_usage_snapshots` `TokenUsageIncludesPeers`.
+- **INV-4** — A fold moves a dead snapshot from "session" to "stored" without changing the sum, exactly: stored lifetime plus `savedTokens` of a `claimDead = false` read is the same before the fold and after it, and so is stored per-root lifetime plus `savedTokensByProject[root]`. Broken by deriving any figure over counters merged across files, or dividing bytes after summing them across files. *Test:* `tests/features/mcpd_usage_snapshots` `FoldPreservesDisplayedTotals` — a live and a dead snapshot sharing one tool, one net-positive and one net-negative against its baseline, and sharing one root with byte counts that are not multiples of `kCharsPerToken`.
+- **INV-5** — A lock file with no json beside it is never locked, unlinked or counted while it is 60 s old or younger. An older one whose lock can be taken is removed. Broken by a reader that sweeps young lone locks, which would race a writer between its lock and its first write, or by one that never removes old ones. *Test:* `tests/features/mcpd_usage_snapshots` `LoneLockAge` — one lone lock with a fresh mtime survives, one set 120 s old is removed.
+- **INV-6** — `token_usage` counts the helper's calls in its own block: with one snapshot holding `n_calls: 3`, `mcpd.calls` is 3 and `mcpd.sessions` is 1. `calls[]` and `total_saved` equal a run with no snapshot at all. Broken by reading only the terminal tracker, or by merging peer counters into `calls[]`. *Test:* `tests/features/mcpd_usage_snapshots` `TokenUsageIncludesPeers`.
 - **INV-7** — A malformed, oversized, symlinked, wrong-format or negative-counter file is named in `skipped`, contributes nothing, and survives a fold. Broken by trusting the file. *Test:* `tests/features/mcpd_usage_snapshots` `UntrustedFilesSkipped`, one fixture per case.
-- **INV-8** — A forwarded call is counted in neither the helper's tracker nor its snapshot. Broken by recording before the forward decision. *Test:* `tests/features/mcpd_usage_snapshots` `ForwardedCallNotInSnapshot` — a `ClaudeIntegration` with a forwarder that replies, one call to a forwarded verb, then `tokenUsageReport(true).toolsCalled == 0`.
+- **INV-8** — A forward the terminal answered is counted in neither the helper's tracker nor its snapshot; the terminal counts it. A forward that failed (`no_terminal`) is counted by the helper as a failed call, since the terminal never saw it. Broken by recording before the forward decision. *Test:* `tests/features/mcpd_usage_snapshots` `ForwardedCallNotInSnapshot` — a `ClaudeIntegration` with a forwarder that replies, one call to a forwarded verb, then `tokenUsageReport(true).toolsCalled == 0` and `snapshotToJson` of its counters holds an empty `tools`; a second forwarder that fails gives one `failed_calls`.
 - **INV-9** — The peer fold shares the existing single `m_config.save()` (ANTS-3572 INV-6): one fold with both a terminal session and a dead snapshot saves config once. Broken by a second save call. *Test:* source scrape in `tests/features/mcpd_usage_snapshots` `SingleConfigSave`: `foldTokenSavingsIntoConfig`'s body holds exactly one `m_config.save()`.
 
 ## 4. RAM / build cost
@@ -146,12 +158,12 @@ The directory sits in the user's own data dir, and a snapshot is written by anot
 
 - `token_usage reset` does not reset a live helper's counters. The terminal cannot reach them, and a helper session ends when its client disconnects. Permanent: resetting another process's counters would need the channel § 2.1 rejects.
 - A crash between the config save and `releaseClaimed` folds that snapshot again on the next fold. Permanent: the window is two syscalls, and closing it would need a folded-id ledger in config.
-- Up to 2 s of counts is lost if a helper is killed with SIGKILL. Permanent: `aboutToQuit` covers every orderly exit.
+- Up to 2 s of counts is lost if a helper is killed with SIGKILL. Permanent: SIGKILL cannot be caught. Stdin EOF, SIGTERM and SIGINT all reach `aboutToQuit` (§ 2.4).
 - The token_usage `since` stays the terminal's session start. Deferred: nothing reads a per-snapshot start today.
 
 ## 6. Tests
 
-Feature test: `tests/features/mcpd_usage_snapshots/`, with a `spec.md` pointing here, built into the `test_claude` bundle, because INV-6 drives `RemoteControl::cmdTokenUsage` with a null `MainWindow` and `test_claude` is the bundle that links `RemoteControl`. It covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8 and INV-9. Label `features;fast`. Each test runs against a directory under the test's sandboxed `QStandardPaths`, never the real data dir. Verify each test fails against pre-fix source before the fix is restored.
+Feature test: `tests/features/mcpd_usage_snapshots/`, with a `spec.md` pointing here, built into the `test_claude` bundle, because INV-6 drives `RemoteControl::cmdTokenUsage` with a null `MainWindow` and `test_claude` is the bundle that links `RemoteControl`. It covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8 and INV-9. Label `features;fast`. Each test runs against a directory under the test's sandboxed `QStandardPaths`, never the real data dir. Verify each test fails against pre-fix source before the fix is restored, except INV-8 and INV-9, which hold of today's code and are regression guards. Prove each of those red by mutation instead: INV-8 by moving `recordDispatch` ahead of the forward branch, INV-9 by adding a second `m_config.save()`.
 
 Manual recipe: run one Claude Code session through `ants-mcpd` and make a few `read_region` calls. The chip's session figure rises within about 2 s. `/exit` the session, relaunch the terminal, and the chip's all-time figure keeps the same total.
 
