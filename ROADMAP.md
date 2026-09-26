@@ -51769,6 +51769,10 @@ are closed inline in the feedback files rather than filed here.
   times the working fallback was line numbers, which this project's own
   writing rules tell them not to put in prose. The cost is that, rather
   than the tokens.
+  Seen again 2026-09-26: five symbol/line slices (tokenusageengine.h,
+  mcpdmain.cpp, recordDispatch, two MainWindow methods) totalling about
+  17 KB came back as a spill handle with shape-only rows. The session fell
+  back to plain Read for all five, which cost more than one inline reply.
   **Layman:** The tool for fetching several pieces of a file at once returns nothing usable, while fetching the same pieces one at a time works.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
