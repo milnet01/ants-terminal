@@ -197,9 +197,12 @@ PROJ-1234, PROJ-1235: split the loader in two
 PROJ-1234..1236: retire the old config path
 ```
 
-**A range's end is a bare number**, so a scheme whose ids carry a
-multi-segment tail — `PASS-3-1` — uses the comma list instead; a range
-written over such ids is refused rather than guessed at. **Every member of
+**A range runs between two single-number ids.** A scheme whose ids carry a
+multi-segment tail — `PASS-3-1` — uses the comma list instead, and a range
+written over such ids is refused at EITHER end rather than guessed at.
+Guessing is what an earlier checker did: it rebuilt the end of
+`PASS-3-1..5` as a fabricated `PASS-5`, then refused a subject that merely
+mentioned that unrelated item. **Every member of
 a range is a member of the group**, interior ones included, which is what
 §1.3's no-repeat check is applied to.
 
@@ -243,8 +246,11 @@ against type prefixes applies here unchanged. It is a name, not a path:
 `skeleton`, never `skeleton/files`.
 
 **The spelling is lowercase letters and digits in `-`-joined segments, and
-nothing else** — no leading dot, no underscore. A directory whose real
-name cannot be spelled that way is transliterated: `.githooks` is named
+nothing else** — no leading dot, no underscore, no trailing hyphen. A
+segment may lead with a digit, so a `3d/` directory is named `3d`. **Both
+parts of a ` + ` pair take that same shape**, the second having been
+checked more loosely than it was written. A directory whose real name
+cannot be spelled this way is transliterated: `.githooks` is named
 `githooks`, `src_gen` is `src-gen`. Said because the rule above reads as
 permitting any lowercase directory name, while the checker admits only
 this shape, so a conformer was refused with no rule explaining it.

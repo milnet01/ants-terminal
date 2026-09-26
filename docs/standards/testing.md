@@ -198,7 +198,9 @@ something breaks has done nothing.
 language lives in `languages/<name>.md` — the same split as `coding.md`.
 Governs **every change that ships behaviour, whatever its `Kind`** — §1's
 test-first order and §8's conformance test bind an `implement` or `feature`
-item exactly as they bind a `test` one.
+item that ships behaviour, not only one labelled `test`. A `Kind: test`
+change shipping none — a harness improvement, a fixture — is outside this
+standard.
 `roadmap-format.md` § 3.5.3 owns that enum; enumerating a subset here
 left `security`, `perf`, `optimize` and `accessibility` outside a rule
 §8 states for every fix.
@@ -321,7 +323,11 @@ append-only.** They are cited from commit messages, changelog entries and
 sibling documents, so renumbering silently breaks references that nothing
 checks. A dropped invariant is marked **withdrawn** in `spec-format.md` § 3.7's
 exact spelling — em dash included, because the exemption is a literal
-match on that character — rather than deleted.
+match on that character — rather than deleted. **A feature contract carries
+no version, so the slot § 3.7 fills with one takes the closing item's id
+here**: `*withdrawn — CFG-0601: the group form replaced it.*` The em dash is
+the part the exemption matches; the id is what makes the tombstone
+traceable.
 
 **What this section borrows from `spec-format.md` § 3.7 is the id form
 and that spelling, and nothing else.** A feature contract is a test's own
@@ -336,7 +342,10 @@ its output on one for the tombstone check alone.
 **The contract may be the test source's own header comment**, where the
 project's pattern puts it there rather than in a separate file; the ids
 and the append-only rule bind the same either way. `CLAUDE.md` rule 14
-already treats that container as a sanctioned one.
+sanctions that container **while its conditions hold** — one test
+discharging every clause, no other contract in the file, nothing but its
+own test binding to it. A contract that outgrows them is gated like any
+other, so a header comment is not a route around the gate.
 
 That word is [spec-format.md](spec-format.md) §3.7's, which owns the
 Invariants section the marking lives in — this section said *retired*
@@ -393,8 +402,10 @@ noise.
 **A test disabled to stop it failing is a bug with the alarm switched
 off.** Disabling one requires a roadmap item for the underlying problem
 (`roadmap-format.md` § 3.5); `coding.md` § 1.2 names this section as the
-owner and asks for that same artefact. Otherwise the suite quietly stops
-covering what everyone assumes it covers.
+owner. **This section's shape test is what decides, and it scopes
+`coding.md` § 1.2*** — that section hands the rule here
+and cannot be wider than the rule it hands over. Otherwise the suite
+quietly stops covering what everyone assumes it covers.
 
 **The test is the skip's SHAPE, not why it was written.** *Disabled to
 stop it failing* is a motive, and no artefact records a motive — so a
@@ -408,7 +419,10 @@ could the author later. Decide it on the condition instead:
 - **A skip keyed only on the host owes nothing** — a tool absent, a
   platform, an optional dependency, a capability the kernel lacks. It
   reports that the environment cannot run the test, and a defect in the
-  code under test cannot make it fire.
+  code under test cannot make it fire. **A host condition standing in for a
+  known failure on that host is code-keyed here and owes the item** —
+  `skipIf(platform == "darwin")` over a macOS bug reads as host-keyed and is
+  not, which is why §10 names it.
 
 ## 8. Coverage
 
@@ -419,6 +433,9 @@ could the author later. Decide it on the condition instead:
 - **Every audit or review finding that gets fixed carries one**, for the
   same reason: a finding fixed without a test is one that can return
   unnoticed.
+- **A fix that is a version floor with no behaviour of yours carries no
+  test.** Bumping past an upstream advisory locks down nothing you wrote, so
+  there is no behaviour to regress; `security.md` § 9 points here for it.
 - **Refactors get no new tests.** They must keep the existing ones
   passing; that is what makes them refactors. If a refactor reveals
   untested behaviour, that is its own tracked item.
@@ -454,7 +471,9 @@ following a chain of abstractions to find out what it actually asserts.
 - ❌ A test written after the fix and never seen failing.
 - ❌ A test that mirrors the implementation it is testing.
 - ❌ Mocking the very interaction the test exists to cover.
-- ❌ A skip branch that hides a platform-specific failure.
+- ❌ A skip whose condition a defect in the code under test can trigger,
+  with nothing tracking the cause (§7). Phrased by shape, because §7's test
+  is the skip's shape and not why it was written.
 - ❌ A test that reports failure and exits successfully.
 - ❌ Dependence on timing, machine speed or test order, outside a labelled
   performance test.
@@ -507,10 +526,10 @@ presented at its site as derived.
 | Rule | What catches a breach |
 |---|---|
 | Tests pass (§1) | **`Partial:`** the test runner, locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one **nothing** checks this but the person who remembers to run it |
-| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — but the two tools differ on whether the shuffle happens unasked. `pytest-randomly` auto-loads, so an ordinary pytest run shuffles; `ctest` shuffles only when `--schedule-random` is passed, so an ordinary `ctest` invocation checks nothing here. Re-measured 2026-09-26: a bare collect prints `Using --randomly-seed=…`, and `ctest --help` lists `--schedule-random` as an option. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **Nothing** shuffles for a runner with no shuffle option at all — a Makefile loop or a script over a sorted file list is fixed-order by construction — and `ctest -j` is not a shuffle either: it orders by recorded cost, so which tests run *concurrently* varies while each one's order does not. **`Partial:`** for wall-clock dependence — `review-tests` dimension 7 greps Python tests for `datetime.now()` and `time.time()` used without freezing. **Nothing** catches dependence on machine speed, which repeated runs on one machine reproduce rather than expose |
+| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — but the two tools differ on whether the shuffle happens unasked. `pytest-randomly` auto-loads, so an ordinary pytest run shuffles; `ctest` shuffles only when `--schedule-random` is passed, so an ordinary `ctest` invocation checks nothing here. Re-measured 2026-09-26: a bare collect prints `Using --randomly-seed=…`, and `ctest --help` lists `--schedule-random` as an option. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **Nothing** shuffles for a runner with no shuffle option at all — a Makefile loop or a script over a sorted file list is fixed-order by construction — and `ctest -j` is not a shuffle either: it orders by recorded cost, so which tests run *concurrently* varies while each one's order does not. **`Partial:`** for wall-clock dependence — `review-tests` dimension 7 greps Python tests for `datetime.now()` / `datetime.utcnow()`, and *without freezing* is a LANE's confirmation rather than part of the pattern. `time.time()` belongs to dimension 5 and matches only the arithmetic form, so a bare `assert t < time.time()` matches nothing. **Nothing** catches a non-arithmetic wall-clock read, or a wall clock in any language the pattern table does not cover. **Nothing** catches dependence on machine speed, which repeated runs on one machine reproduce rather than expose |
 | Network isolation (§7) | **`Partial:`** running the fast set with no connection. **Nothing** reaches the slow set, or checks that an opted-in test carries its label and gate |
 | Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations=N` — the count is required, and a bare `--durations` is an argument error rather than a report). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
-| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable, and `review-tests` dimension 8 reports a long-muted skip carrying no tracked item at all. **Nothing** checks that a named item exists or is still open |
+| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable, and `review-tests` dimension 8 reports a skip with no reason string at all. **Its long-muted branch fires only where the run supplies the skip's age** — no lane has a blame verb — so on an ordinary run the reason-string half is the whole check. **Nothing** checks that a named item exists or is still open |
 | **The test was seen failing before the code changed (§1)** | **nothing** — once both are green, no artifact distinguishes a test written first from one written after. Not a person either: nobody present can see it afterwards |
 | The backwards proof was actually run (§2) | **nothing** — the two runs leave nothing behind, and a build error quoted as the red run looks identical to a real one in a transcript |
 | Tests the contract, not the implementation (§3) | **nothing mechanical** — a reader, helped by the naming rule |

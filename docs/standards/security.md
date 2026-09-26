@@ -69,6 +69,20 @@ exclusion is what decides how hard the check at it has to work. Naming
 the exclusion is the whole of the difference, because a whole context
 declared trusted tells a reader nothing about what was given up.
 
+**Walk the table row by row. Against every row you skip, write *none,
+because …* and name what you ran or read** — *none, because a grep for an
+elevation call over `src/` is empty* is checkable; *none, because neither
+goes through a shell* is a guess in the same shape, and one project's first
+draft of exactly that was refuted by reading its own installer. **Where a
+crossing is checked inside another row's entry, *covered under \<row\>* is
+the answer** — a second entry would be a second copy, which
+`documentation.md` § 2.1 forbids. The table is illustrative, so an omission is otherwise
+invisible: a conformer can match every row they wrote and still have left
+out their largest input surface. A skipped row with a reason is checkable
+by a reader; a missing row is not. Reported 2026-09-26 by a project whose
+localhost HTTP server and whose signed self-update — network, dependency
+and privilege at once — appeared in no row.
+
 Name yours before
 defending anything: a checklist applied to a system whose boundaries
 nobody wrote down defends the wrong places thoroughly.
@@ -80,7 +94,7 @@ Common ones:
 | **User input** | anything typed, pasted, dropped or uploaded |
 | **Filesystem** | paths supplied by the user, files written by the app |
 | **Process** | arguments handed to an external command |
-| **Network** | anything received from a remote host |
+| **Network** | anything received over a socket, from any host, localhost included |
 | **Deserialisation** | JSON, YAML, pickle, saved state read back |
 | **Privilege** | any point where the app gains or drops rights |
 | **Dependency** | third-party code executing inside your process |
@@ -129,8 +143,17 @@ fork-owned area that file names. Upstream's `SECURITY.md` is left alone,
 the scaffold's delete instruction reaching only a copy the project owns.
 
 **A project with no trust boundary records that instead, in one line, in
-its `CLAUDE.md`.** A local single-user tool that reads nothing it did not
-write and talks to nothing may genuinely have none. The `CLAUDE.md` home
+whichever home the rule above names** — its `SECURITY.md` where it ships one,
+its `CLAUDE.md` otherwise. Routing the line to `CLAUDE.md` unconditionally
+left a report-accepting project with no boundaries holding the scaffold's
+empty section, which this section calls insufficient, while its record sat
+in a file the reviewer was not sent to. That is a narrow case, and narrower than it reads: a
+tool reading back a file it wrote earlier is still crossing the filesystem
+and deserialisation boundaries this section's own table lists, because
+control is not the test. It applies to a tool that persists nothing, takes
+no input, **and links no third-party code** — the table's Dependency row is
+a crossing too, and leaving it out let a tool importing one library record
+itself as having no boundary. Anything else has boundaries and names them. The `CLAUDE.md` home
 is named because a project accepting no external reports ships no
 `SECURITY.md` — the skeleton tells it to delete that file, on the same
 condition `documentation.md` § 5.3 sets — so the line has nowhere else
@@ -287,7 +310,11 @@ a sweep that turns up a real advisory hands it here.
 - **Where the hole is in your own code, write the regression test
   first**, so it cannot reopen silently. **Where it is an upstream advisory
   there is no behaviour of yours to lock down** — the check is the version
-  floor in the manifest, and no test is owed. **The two below bind on both** —
+  pin at or above the patched release, per §8 — not a `>=` floor, which leaves
+  the dependency unpinned and which `dependencies.md` uses for a language or
+  runtime minimum instead. **`testing.md` § 8 owns whether a test is owed**, and
+  carries that carve-out; stating the narrowing here instead is what
+  `documentation.md` § 2.1 forbids. **The two below bind on both** —
   rotate whatever may have been exposed, and say so in the
   CHANGELOG either way, because a user on the old version needs to upgrade
   whoever wrote the hole.
@@ -318,11 +345,11 @@ enforcement.** An absence is not coverage.
 
 | Rule | What catches a breach |
 |---|---|
-| Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **tracked files** — that step passes `--no-git` and feeds the tool `git ls-files`, re-admitting untracked files under `--changed` alone. **Nothing** catches a secret in a commit message, one already in history, or one in a file not yet added on a `--tree` run. Measured on `gitleaks` 8.30.1: a committed-then-removed secret is found in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **A per-commit or per-push scan is the project's to install**: `check-code` is invoked by a session, so no hook or pipeline can call it |
-| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s `semgrep` step, a static-analysis check it selects on every project, plus `bandit` on Python and `cppcheck` on C++. **`ruff` counts only where `S` is selected** — `check-code` supplies `--select E,F,B,S` where the project's ruff config sets no `select`, and runs it as-is otherwise, so a project selecting without `S` gets no injection rule from it. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives — and **nothing** reaches a language whose selected tools carry no injection rule. `--quick` drops `semgrep`, which leaves such a project with neither |
+| Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **tracked files** — that step passes `--no-git` and feeds the tool `git ls-files`. **Nothing** catches a secret in a commit message, one already in history, or one in a file that has never been added, in ANY scope. `git ls-files` cannot yield an untracked path (measured 2026-09-26: zero), and `--changed` resolves its list from `git diff --name-only <base>...HEAD`, which is committed changes only — so the carve-out that re-admits untracked files reaches a path the run was handed some other way, never one either list produces. Measured on `gitleaks` 8.30.1: a committed-then-removed secret is found in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **A per-commit or per-push scan is the project's to install**: `check-code` is invoked by a session, so no hook or pipeline can call it |
+| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s `semgrep` step, a static-analysis check it selects on every project, plus `bandit` on Python, and `cppcheck` on a **CMake** C++ project — `check-code` keys that row on `CMakeLists.txt` AND `*.cpp/*.h` together, so a Meson, Make or Bazel C++ tree selects it not at all. **`ruff` counts only where `S` is selected** — `check-code` supplies `--select E,F,B,S` where the project's ruff config sets no `select`, and runs it as-is otherwise, so a project selecting without `S` gets no injection rule from it. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives — and **nothing** reaches a language whose selected tools carry no injection rule. `--quick` drops `semgrep`, which leaves such a project with neither |
 | Dependency advisories (§8) | **nothing** — `check-dependencies` reports staleness only — it queries no advisory database, so a package at latest stable with an open advisory is invisible to it. **The ecosystem's advisory command is the project's to run**, on the `dependencies.md` cadence |
 | Lockfile committed (§8) | `dependencies.md` § What checks this owns the answer |
-| Immutable pipeline and image references (§8) | **`Partial:`** `check-code`'s `zizmor` step, a workflow-security check, whose `unpinned-uses` rule reports a mutable `uses:` in a default run. **`Partial:`** for the container half — `check-code`'s `hadolint` step, a Dockerfile check, reports an untagged base image (`DL3006`) and an explicit `:latest` (`DL3007`). Measured on 2.15.1. **Nothing** catches a `FROM` on a real tag — `node:18` passes both rules and is still mutable — or an `image:` in a compose file, which `hadolint` does not read |
+| Immutable pipeline and image references (§8) | **`Partial:`** `check-code`'s `zizmor` step, a workflow-security check, whose `unpinned-uses` rule reports a mutable `uses:` in a default run. **`Partial:`** for the container half — `check-code`'s `hadolint` step, a Dockerfile check, reports an untagged base image (`DL3006`) and an explicit `:latest` (`DL3007`). Measured on 2.15.1. **Nothing** catches a `FROM` on a real tag — `node:18` passes both rules and is still mutable — or an `image:` in a compose file, which `hadolint` cannot parse — fed one it emits `DL1000`, a parse error, never a finding about the `image:` reference (measured 2.15.1) |
 | Atomic writes and owner-only permissions (§4) | **`Partial:`** `check-code`'s `bandit` step, a static-analysis check, reports a permissive `chmod` (`B103`) and survives the `-ll` threshold that step uses. Measured on 1.9.4, Python only. **Nothing** catches the atomic-write half, or a permission set in any other language — there a code reviewer is the only reader |
 | Encryption of what a stolen disk would expose (§4) | **nothing mechanical** — a code reviewer, because whether a thing *should* be encrypted is a judgement about the data |
 | TLS with verification on (§5) | **`Partial:`** `check-code`'s language sweep, a static-analysis check, where the language has a rule for a disabled-verification flag. **Nothing** catches verification disabled through config rather than code, or a language among the selected tools carrying no such rule |
@@ -331,7 +358,7 @@ enforcement.** An absence is not coverage.
 | The CHANGELOG entry and the rotation (§9) | **nothing** — `changelog-format.md` offers a `Security` category and requires no entry, so a security fix shipped silently is caught by nothing |
 | Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row |
 | Anti-patterns restating nothing above (§10) | **nothing mechanical** — a code reviewer. Rolling your own crypto, token format or password hashing; disabling a security check to pass a test; "it's only internal"; validating in the user interface only |
-| Boundary list exists (§1) | **nothing mechanical** — whoever reviews the home §1 names, `SECURITY.md` or `CLAUDE.md`, **following a pointer out of it to the named file**. A reviewer who stops at the home reports no list on a project whose list is thorough and one file away, which is what reading the design document unprompted was ruled out to prevent. **Nothing** catches a home that mentions boundaries and names no file |
+| Boundary list exists (§1) | **nothing mechanical** — whoever reviews the home §1 names, `SECURITY.md` or `CLAUDE.md`, **following a pointer out of it to the named file**. A reviewer who stops at the home reports no list on a project whose list is thorough and one file away, which is what reading the design document unprompted was ruled out to prevent. The same reviewer catches a home that mentions boundaries and names no file, one naming the right file and the wrong section, and a list that skips a §1 table row without writing *none, because …* against it — §1 makes all three breaches. **Nothing** catches either on a project whose home nobody reviews |
 | What may be logged (§6) | **nothing mechanical** — the reviewer of the boundary the log sits on |
 | Fix-now discipline (§9) | **nothing mechanical** — the person who found the hole, and nobody else |
 

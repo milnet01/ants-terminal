@@ -49,7 +49,11 @@ PEP 8, which the whole ecosystem follows:
   pile up.
 - `pathlib.Path` over `os.path`.
 - `pyproject.toml` for configuration; no `setup.py`.
-- `subprocess.run([cmd, arg])` — never `shell=True` with an f-string.
+- `subprocess.run([cmd, arg])` — **never `shell=True`, whatever the command
+string is built from**, a constant included. `security.md` § 3's first
+bullet is absolute, and `S602` fires on a literal too — so a build-shape
+qualifier here would have this document's own cited check flag what its
+rule permitted.
 - `dataclasses` (or `attrs` where the project already uses it) over
   hand-written `__init__` boilerplate.
 
@@ -80,7 +84,14 @@ Python.
 - **Prove the test can fail** (`testing.md` §2) — run `pytest -k <test>`
   with the fix removed and watch it fail, then restore and run it again.
   **How you remove the fix depends on whether it is committed, and
-  `cpp.md` § Tests owns that recipe** — read it there rather than
+  `cpp.md` § Tests owns that recipe** — including the rebuild step, whose
+  Python spelling is that a non-editable install imports the copy in
+  `site-packages`, so removing the fix from the tree changes nothing and the
+  must-fail run passes. `pip install -e .` before both runs. Read it there
+  rather than reaching for `git stash` against a COMMITTED fix — for an
+  uncommitted one that recipe prescribes `git stash push` and forbids the
+  checkout substitute, so the prohibition is on the wrong case, not the
+  tool. Read it there rather than
   reaching for `git stash`. Corrected 2026-08-14 (ROADMAP CFG-0108):
   this said `git stash`, which against a *committed* fix prints
   `No local changes to save` and **exits 0**, leaving the fix in place —
@@ -118,8 +129,8 @@ Python.
 
 ## Traps
 
-What projects here learned the hard way. Each carries the breach it
-produces and a way to observe it.
+What projects here learned the hard way. Each names the breach it produces,
+and carries a way to observe it where one is cheap enough to state.
 
 **A file that is both a program and a module guards its entry point.**
 Top-level code runs on import, so everything but definitions goes behind
@@ -169,11 +180,20 @@ rather than adding to them.** Measured 2026-09-26 on 0.16.8: unconfigured,
 413 rules are enabled across more than twenty families; with
 `select = ["E", "F"]`, a file breaching `S110` and `BLE001` reports
 *All checks passed*. So the act of pinning switches off most of what the
-table below credits. **Use `extend-select` to add to the defaults, or list
-in `select` every code you are relying on.** On this machine it costs
-twice over: `check-code` supplies `--select E,F,B,S` only where the
-project's own ruff config sets no `select`, so pinning also removes the
-`S` family that gate was adding.
+table below credits. **The two ways out are not equivalent, and the trap above is the test.**
+`extend-select` keeps the coverage and does NOT pin: the moving default set
+stays the base, so the same commit still lints differently on two ruff
+releases unless the version is pinned as well. An exhaustive `select`
+naming every code you rely on pins both. **And on this machine the gate's
+own selector replaces the defaults too**: `check-code` supplies
+`--select E,F,B,S` where the project has NO ruff config, so its run there is
+NARROWER than an unconfigured one. **Where a config exists but selects
+nothing it runs BOTH** — the default set and the supplied selector — so
+coverage is wider, and rewriting that config as an exhaustive `select`
+loses the default half — measured 2026-09-26, it adds
+`S` and drops `I`, `UP` and the rest. Only an explicit `select` gives the
+same set inside and outside that gate. Breach: a `select` list the table
+below credits with codes it does not name.
 
 **Removing an environment variable is not neutral.** Copy the
 environment, delete a key, pass it to a child, and the library defaults
@@ -184,8 +204,10 @@ successfully, with every signal green.
 
 **No dependency manifest is a position, not an omission.** A project
 using only the standard library ships no requirements file. Record that
-in the project's own file, or a later session reads the absence as a gap
-and closes it. Breach: a manifest appears where there was none, with
+in the project's `CLAUDE.md`, which is where a later session looks. **No
+tool reads it** — `check-dependencies` says of a project with no manifest
+*say so and stop*, and never opens `CLAUDE.md`. Without the note, the
+absence is a gap a later session closes by inventing a manifest. Breach: a manifest appears where there was none, with
 nothing saying the constraint was dropped.
 
 ## Tooling
@@ -195,8 +217,9 @@ there is one place to look.
 
 ## What checks this
 
-**Nearly every rule here has a `ruff` code, and that is the point of the
-table.** Which of them are on by default is a moving target: `ruff`'s
+**Most rules here have a `ruff` code, and that is the point of the table.
+Several rows name none, and say so** — a clean `ruff` report leaves those
+unchecked. Which of them are on by default is a moving target: `ruff`'s
 default set now spans most of its families. Re-measured unconfigured on
 `ruff` 0.16.8, 2026-09-26: `ruff check --show-settings` resolves 413
 enabled rules spanning more than twenty families, so `F401`, `I001`,
@@ -218,7 +241,7 @@ and the split moves between releases.
 | Idioms — `list[int]` and `X \| Y` over `List`/`Union` | `ruff` `UP006`, `UP007`. **Both default** — verified unconfigured on `ruff` 0.16.8 |
 | Idioms — `pathlib` over `os.path` | `ruff`'s `PTH` family (`PTH100` and its siblings). **Selected, not default** |
 | Idioms — never `shell=True` with an f-string | `ruff` `S602`, with `S603` on the other side. **Selected, not default**, and `bandit` covers the same ground where it runs |
-| Idioms — type hints on every public signature | **`Partial:`** `ruff`'s `ANN` family, plus `mypy` or `pyright` where configured. **Nothing** enforces *public* as this rule means it — the checks fire on scope, not on what the project treats as its surface |
+| Idioms — type hints on every public signature | **`Partial:`** `ruff`'s `ANN` family — **selected, not default** — plus `mypy` or `pyright` where configured. **Nothing** enforces *public* as this rule means it — the checks fire on scope, not on what the project treats as its surface |
 | Idioms — `match`/`case`, `dataclasses`, no `setup.py` | **nothing.** Each is a design choice; a chain of `isinstance` checks and a hand-written `__init__` are both valid Python |
 | Catch what you can name — no bare `except:` | `ruff` `E722`, and `BLE001` for `except Exception:`. **Both default** — verified unconfigured on `ruff` 0.16.8 |
 | Surface what you did not expect — never `except: pass` | **`Partial:`** `ruff` `S110` catches it and is **default**; `SIM105` reaches the suppressible case when selected. **Nothing** checks the rule's actual requirement, that a comment says why ignoring it is correct |

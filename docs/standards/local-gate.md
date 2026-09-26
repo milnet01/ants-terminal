@@ -192,18 +192,20 @@ reads it for one and not the other is already half right.
 cache=${XDG_CACHE_HOME:-$HOME/.cache}/pre-push
 mkdir -p "$cache"
 tree=$(mktemp -d "$cache/tmp.XXXXXX")
-trap 'git worktree remove --force "$tree" 2>/dev/null; return 0' EXIT
+cleanup() { git worktree remove --force "$tree" 2>/dev/null; return 0; }
+trap cleanup EXIT
 git worktree add --detach --quiet "$tree" "$local_sha"
 ( cd "$tree" && ./scripts/local-ci.sh )   # a RELATIVE path, so it stays here
 ```
 
-**The trap's `return 0` is load-bearing, and not for the reason it looks
-like.** It cannot hide a red gate — measured 2026-09-26, an EXIT trap
-ending in a *successful* command leaves a failure status intact. What it
-prevents is the reverse: a trap whose last command FAILS replaces a
-success with that failure, so a cleanup that cannot remove the worktree
-turns a green gate into an aborted push. `~/.claude/githooks/pre-push`
-ends its own cleanup the same way.
+**The cleanup is a FUNCTION, and that is not a style choice.** `return` is
+invalid outside a function or a sourced script, and a pre-push hook is
+executed — measured 2026-09-26, an inline `trap 'cmd; return 0' EXIT`
+prints `return: can only 'return' from a function or sourced script` on
+every run. `~/.claude/githooks/pre-push` puts its cleanup in a function
+for that reason. Whether a failing cleanup can change the hook's exit
+status turns on `set -e`, so do not reason about it from the trap alone —
+use a function and the question does not arise.
 
 **Keep the gate's path relative.** An absolute one resolves to the script
 in the real checkout, and a script that repositions itself from `$0` then
@@ -296,7 +298,13 @@ its extension. Measured 2026-09-26: `docs/conf.py` matches. A docs
 directory holding build scripts is waved through on that entry alone.
 
 **The key's form: a `|`-separated list of shell patterns, matched against
-each pushed path, and a match in either direction means documentation.**
+each pushed path with the PATH on the left and the pattern on the right.**
+There is no reverse match. **And one match does not make a push
+documentation-only — every pushed path must match at least one pattern**,
+the first that does not settling it as a code push. That rule is stated
+nowhere else, and a project writing its own hook has only this sentence to
+build from: a one-match test classifies a push of a README beside a source
+file as documentation-only and ships the code untested.
 It is positive-match only — there is no negation — so a repository narrows
 it by OMITTING patterns, never by excluding them. `docs/*|CHANGELOG.md|LICENSE`
 is the shape. A value written as `!README.md|*.md` narrows nothing:
@@ -425,7 +433,7 @@ proof, not uncertainty.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. **That branch cannot tell § 2's two cases apart** — no gate script at all, which is the gap worth fixing, and a script the hook cannot find, which is the breach — so it prints the same thing for both, and a third cause it also cannot name is a script present but not executable. What it lacks there is a *block*, not a voice: it exits 0, so all are announced on every push and none is stopped. **`~/.claude/tools/ci-gate` is what tells them apart**, reporting `BROKEN` for a gate the hook cannot find against `NO-GATE` for a repository that has none — so the remedy is a run of it rather than a guess |
+| § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. **That branch cannot tell § 2's two cases apart** — no gate script at all, which is the gap worth fixing, and a script the hook cannot find, which is the breach — so it prints the same thing for both, and a third cause it also cannot name is a script present but not executable. What it lacks there is a *block*, not a voice: it exits 0, so all are announced on every push and none is stopped. **`~/.claude/tools/ci-gate` tells the first two apart**, reporting `BROKEN` for a gate the hook cannot find against `NO-GATE` for a repository that has none. **It does NOT name the exec-bit cause unless `ants.gate.command` is set** — with the key unset its own discovery requires the executable bit too, so a non-executable script reports `NO-GATE` and its advice is to scaffold a second gate. **Nothing** names that cause mechanically; the third remedy is reached by reading § 2 |
 | § 3 the local run executes the pipeline's own definition | `~/.claude/tools/ci-gate`, an on-demand audit — it greps the repository's workflows for the gate script's basename and reports `NOT MAPPED` with a non-zero exit, per repository or over a tree with `--all`. **It is not on `PATH`**: call it by that path. **`Partial:`** because nothing runs it on a push, so a repository that stops calling its gate stays broken until somebody sweeps |
 | § 4 uncovered jobs are named | **nothing** — the absence of a sentence is what would have to be detected |
 | § 5 the run is over the pushed commits, not the working tree | **`Partial:`** `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally. **Route 1 is not by itself enough**: the gate runs as `( cd "$WORKTREE" && "$GATE" )`, and an absolute `ants.gate.command` resolves to the script in the real checkout, whose own `cd "$(dirname "$0")/.."` then walks back to the working tree. Measured 2026-09-25 — the gate reported the real repository as its `PWD`, an uncommitted file was present, and the hook exited 0. The machine-wide hook now re-anchors an absolute path inside the repository and refuses one outside it; a hook that does not is still exposed. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |

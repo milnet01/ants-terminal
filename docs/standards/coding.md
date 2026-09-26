@@ -142,8 +142,14 @@ the underlying constraint so it reads as deliberate, not neglect.
 
 **A comment naming a constraint that STANDS is not a deferral, so § 8's
 anti-pattern does not reach it. One that defers the fix is, and owes the
-roadmap item § 8 asks for.** A disabled test always owes one, whichever it
-looks like: `testing.md` §7 requires it and owns the rule. The reason is that this workaround is invisible: every other
+roadmap item § 8 asks for.** A disabled test owes one where a defect in the code
+under test can trigger its skip; one keyed only on the host — a tool
+absent, a platform, an optional dependency — owes nothing, **unless that host
+condition stands in for a known failure on that host, which is code-keyed and
+owes the item**. `testing.md` §7
+owns that test, and this sentence cannot be wider than the rule it hands
+over; it read *always, whichever it looks like* until 2026-09-26, which
+put a conforming host-keyed skip in breach. The reason is that this workaround is invisible: every other
 one leaves something failing, or noisy, or obviously commented out,
 while a skipped test leaves a green run that looks exactly like a
 passing one. A comment in a file nobody opens is not a reminder.
@@ -531,10 +537,10 @@ Each of these is something that looks like care and is not.
 | Rule | What catches a breach |
 |------|----------------------|
 | §1.1 shortest correct implementation | **nothing mechanical** — a code review, the only reader that can raise "shorter would have worked" about an alternative nobody wrote |
-| §1.2 no workarounds without a root-cause fix | **`Partial:`** `check-code`'s language sweep, a static-analysis check. Measured unconfigured on `ruff` 0.16.8: `E722` and `S110` fire, which are §1.2's own two examples, and `ERA001` finds a commented-out branch once selected. **Nothing** catches a silently loosened condition, or a skipped test naming no tracked cause |
+| §1.2 no workarounds without a root-cause fix | **`Partial:`** `check-code`'s language sweep, a static-analysis check. Measured unconfigured on `ruff` 0.16.8: `E722` and `S110` fire, `S110` being §1.2's own `try/except: pass`, and `ERA001` finds a commented-out branch once selected. **Nothing** catches a silently loosened condition, or a skipped test naming no tracked cause |
 | §1.3 reuse before rewriting | **nothing mechanical** for the general case — a reviewer who knows the codebase. A near-duplicate detector finds copied *text*, which is the weakest form of the rule and the one least worth catching |
 | §1.4 six-month test | **nothing** — by construction. It asks whether a stranger will understand this later, which nobody present can answer |
-| §1.5 latest stable library, current idioms | **`Partial:`** `dependencies.md` § What checks this owns the answer for both halves — a version-staleness check for what is behind, and a person for the idiom refresh |
+| §1.5 latest stable library, current idioms | `dependencies.md` § What checks this owns the answer for both halves — a version-staleness check for what is behind, and a person for the idiom refresh |
 | §1.6 an assumption is stated, not built on | **nothing mechanical** — a reviewer asking "how was this decided?", or the user recognising a choice they never made. The assumption is invisible once the code exists, which is the failure |
 | §1.7 every changed line traces to the request | **nothing mechanical** — the diff, read by whoever commits it. The cheapest reader in this table and the one most often skipped, and no tool separates a reformat from a fix |
 | §1.8 one file, one reason to change | **nothing mechanical** — `write-code`'s per-edit row asks the question at the seam, and nothing compels it. `git log --follow -- <file>` shows what a file HAS changed for; no tool decides whether those are one reason or three |
