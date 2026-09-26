@@ -2244,13 +2244,26 @@ RoadmapStore::reportCounts(std::optional<qint64> projectId, QString *error) cons
         out.items += n;                 // totals.items is the sum of by_status
     }
 
-    // Pass 2 — kind tally.
-    q.prepare(QStringLiteral("SELECT kind, COUNT(*) FROM item WHERE 1=1%1 "
-                             "GROUP BY kind").arg(rsScopeClause(projectId)));
+    // Pass 2 — kind tally. ANTS-5406: a kind the import DEFAULTED is not one
+    // anybody chose (a `#### Pass` roadmap has no Kind slot, so every item of
+    // one defaults), and counting it under `implement` reports a choice. It is
+    // counted apart instead. Provenance is parsed here, not with json_extract(),
+    // for the no-build-flags reason the item-ref read below gives.
+    q.prepare(QStringLiteral("SELECT kind, provenance, COUNT(*) FROM item WHERE 1=1%1 "
+                             "GROUP BY kind, provenance").arg(rsScopeClause(projectId)));
     rsBindScope(q, projectId);
     if (!q.exec()) { if (error) *error = lastErr(q); return std::nullopt; }
-    while (q.next())
-        out.byKind.insert(q.value(0).toString(), q.value(1).toInt());
+    while (q.next()) {
+        const int n = q.value(2).toInt();
+        const bool defaulted =
+            QJsonDocument::fromJson(q.value(1).toString().toUtf8())
+                .object().value(QStringLiteral("kind")).toString()
+            == QLatin1String("defaulted");
+        if (defaulted)
+            out.kindNotRecorded += n;
+        else
+            out.byKind[q.value(0).toString()] += n;
+    }
 
     // Pass 3 — coverage. INV-1: every bucketed figure ships beside the count of
     // rows that could NOT be bucketed, so a caller can never read a figure

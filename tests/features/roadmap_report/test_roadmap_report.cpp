@@ -305,3 +305,25 @@ TEST(RoadmapReport, ScopeAllSumsEveryRegisteredProject) {
     ASSERT_TRUE(all.has_value()) << err.toStdString();
     EXPECT_EQ(all->items, 2) << "scope:all sums every registered project";
 }
+
+// ANTS-5406 — a kind the import DEFAULTED (provenance `kind: defaulted`, e.g.
+// every item of a `#### Pass` roadmap, whose dialect has no Kind slot) is not a
+// kind anybody chose. by_kind counts only recorded kinds and the defaulted ones
+// ship beside them as kind_not_recorded, INV-1's rule applied to kind.
+TEST(RoadmapReport, Ants5406DefaultedKindIsNotRecorded) {
+    Fixture f;
+    f.add(QStringLiteral("ANTS-1"), QStringLiteral("planned"), QStringLiteral("fix"));
+    const qint64 pk = f.add(QStringLiteral("PASS-59-71"), QStringLiteral("planned"),
+                            QStringLiteral("implement"));
+    QString err;
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("kind"), QStringLiteral("implement"),
+                                     QStringLiteral("defaulted"), &err))
+        << err.toStdString();
+
+    const auto c = f.store.reportCounts(f.projectId, &err);
+    ASSERT_TRUE(c.has_value()) << err.toStdString();
+    EXPECT_EQ(c->byKind.value(QStringLiteral("fix")), 1);
+    EXPECT_FALSE(c->byKind.contains(QStringLiteral("implement")))
+        << "a defaulted kind was reported as chosen";
+    EXPECT_EQ(c->kindNotRecorded, 1);
+}

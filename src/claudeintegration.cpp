@@ -3554,7 +3554,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         + QStringLiteral(
                         " ANTS-4501 — \"report\" returns ONE aggregate over the "
                         "store and no bullets[]: totals (items / open / "
-                        "in_progress / shipped), by_status, by_kind, throughput "
+                        "in_progress / shipped), by_status, by_kind (chosen "
+                        "kinds; import-defaulted ones count as "
+                        "kind_not_recorded), throughput "
                         "per day / week / month / year, age_open and "
                         "time_to_close. `open` is planned + in-progress + "
                         "considered — an enumeration, NOT status != shipped, "

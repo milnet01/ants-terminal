@@ -310,6 +310,7 @@ sample and not a claim about now:
   "totals":  { "items": 2143, "open": 406, "in_progress": 4, "shipped": 1737 },
   "by_status": { "planned": 329, "in-progress": 4, "shipped": 1737, "considered": 73 },
   "by_kind":   { "fix": 604, "implement": 523, "enhancement": 323, "…": 0 },
+  "kind_not_recorded": 476,    // ANTS-5406: kinds the import defaulted; not in by_kind
   "periods": {
     "day":   { "closed": 0, "added": 0, "net": 0 },
     "week":  { "closed": 0, "added": 0, "net": 0 },

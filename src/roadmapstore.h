@@ -604,7 +604,10 @@ public:
     struct ReportCounts {
         int items = 0;
         QMap<QString, int> byStatus;      // status  -> count
-        QMap<QString, int> byKind;        // kind    -> count
+        QMap<QString, int> byKind;        // kind    -> count, recorded kinds only
+        // ANTS-5406 — items whose kind the import defaulted (provenance
+        // `kind: defaulted`): nobody chose it, so it is not in byKind.
+        int kindNotRecorded = 0;
         // Coverage. The undated halves are the whole point: a bucketed figure
         // computed over dated rows alone reads as a total, and on this corpus
         // that would turn a 2% sample into a confident answer.

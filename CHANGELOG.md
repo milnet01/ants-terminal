@@ -159,6 +159,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap report counts import-defaulted kinds as kind_not_recorded, not as implement** (ANTS-5406)
+  `roadmap_query mode:"report"` no longer folds a kind nobody chose into
+  `by_kind`. An item whose kind the import defaulted, such as every item of
+  a `#### Pass` roadmap, which has no Kind slot, is counted in
+  `kind_not_recorded` beside `by_kind`. Reported by RetroDB.
+
 - **roadmap_log op:"backfill_dates" dates a pass-headings roadmap from its history** (ANTS-5405)
   A `#### Pass N.M` roadmap is walked by the pass that encloses each
   change, so a flip that touched only its Status line is dated, and a

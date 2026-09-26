@@ -587,6 +587,8 @@ QJsonObject RemoteControl::buildRoadmapReportEnvelope(
     out[QStringLiteral("totals")]        = totals;
     out[QStringLiteral("by_status")]     = byStatus;
     out[QStringLiteral("by_kind")]       = byKind;
+    // ANTS-5406 — kinds the import defaulted, beside the recorded ones.
+    out[QStringLiteral("kind_not_recorded")] = counts->kindNotRecorded;
     out[QStringLiteral("periods")]       = periods;
     out[QStringLiteral("coverage")]      = coverage;
     out[QStringLiteral("age_open")]      = rcSpreadObj(*age, /*withOldest=*/true);

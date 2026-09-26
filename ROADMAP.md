@@ -66921,7 +66921,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session request 2026-09-26 (their CFG-0234).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-5404] **A pass-headings flip note lands as a bare line after the last bullet, and the done keyword ignores the block's own vocabulary.**
+- ✅ [ANTS-5404] **A pass-headings flip note lands as a bare line after the last bullet, and the done keyword ignores the block's own vocabulary.**
   Remainder of ANTS-5395, re-tested by RetroDB. The flip dry run ends
   `...\n  psn-npsso file.\nRe-test note (dry run only).\n\n---`: the note is an
   unindented line, which Markdown folds into the bullet above as a lazy
@@ -66930,6 +66930,9 @@ project. Reported causes are claims until checked in source.
   keyword: keep the one the block, or the file's majority, already uses
   (`shipped (date)` on RetroDB) instead of the canonical `done`.
   Repro in RetroDB_Ants_MCP_Feedback.md, retrodb-9b 2026-09-26.
+  Shipped 2026-09-26 in bf40dca6 (GitHub CI green). Notes are bullets
+  (Resolution above Status on a shipping flip, Progress otherwise); a
+  store-route flip writes the roadmap's own status word by majority.
   **Layman:** Closing an item on this roadmap style adds the note in a place Markdown merges into the previous line, and writes 'done' where the file says 'shipped'.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26 (ANTS-5395 re-test).
