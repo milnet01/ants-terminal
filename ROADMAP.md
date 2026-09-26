@@ -66090,6 +66090,11 @@ parse, not that file.
   flagged 996 text_lost lines; Vestige's normalised containment check
   found 0 real losses. The two near-misses were a leading 🚧 prefix and
   removed inner bold.
+  Also on render (RetroArch feedback 2026-09-25): the first op:"render"
+  after migrating an id-less roadmap reported text_lost, yet a
+  line-by-line check found every line. The flagged lines were split into
+  head and continuation with a synthesised id inserted. Same classifier;
+  fix both callers.
   **Layman:** The safety check meant to warn about lost roadmap text also fires when nothing was lost, so nobody can trust it.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
@@ -66632,6 +66637,90 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: in-session-2026-09-25.
   Lanes: ci, roadmap.
+
+- 📋 [ANTS-5376] **roadmap_query accepts an array of statuses and takes their union.**
+  status:["planned","in-progress"] refuses bad_status today. Accept the array form, or at least say in the refusal hint that `active` means planned plus in-progress.
+  **Layman:** Lets a caller ask for several statuses at once instead of being refused.
+  Kind: enhancement.
+  Source: Album_Builder feedback 2026-09-25.
+
+- 📋 [ANTS-5377] **changelog_log add_batch reports created_category on the entry that created the heading.**
+  With four Fixed entries into an [Unreleased] section lacking ### Fixed, the reply flags the last entry as the creator. The heading is created for the first entry in reading order (ANTS-4854).
+  **Layman:** Makes the changelog tool report correctly which entry created a new heading.
+  Kind: fix.
+  Source: Album_Builder feedback 2026-09-25.
+
+- 📋 [ANTS-5378] **roadmap_log set_intro says when a section also holds a table it did not replace.**
+  A section's table is stored as a separate `table` element. set_intro replaces only the prose, so new_text carrying a rewritten table renders above the old table. Report the section's non-intro elements in the reply, or refuse when new_text carries a table and the section already has one.
+  **Layman:** Stops a section intro rewrite from silently leaving the old table in place next to the new one.
+  Kind: fix.
+  Source: LocalWebServerManager feedback 2026-09-25.
+
+- 📋 [ANTS-5379] **roadmap_log gains ops to list, amend and delete a section's or the preamble's narration elements.**
+  No op reaches a narration element: the legend list under the preamble, or narration bullets in a section. set_intro and set_preamble skip them, and a hand edit is discarded by the next render. Wanted: list elements with an index, replace or delete by index, and promote a narration bullet to an item.
+  **Layman:** Lets sessions fix legend lists and loose notes in the roadmap without hand-editing the generated file.
+  Kind: feature.
+  Source: LocalWebServerManager and RetroArch feedback 2026-09-25.
+
+- 📋 [ANTS-5380] **amend_field field:"section" reorders within the item's current section.**
+  A move into the item's current section returns moved_count:0. Treat it as a re-append at the section's end, or accept a before_id, and say in the reply when a move was a no-op.
+  **Layman:** Lets a session reorder items inside a section in one call instead of four.
+  Kind: enhancement.
+  Source: LocalWebServerManager feedback 2026-09-25.
+
+- 📋 [ANTS-5381] **check_sync reports whether drift came from a renderer change, a file edit or the store.**
+  A file last written by the store drifts after a renderer upgrade, and nothing in the envelope says which side moved, so the documented rule re-migrates the old renderer's punctuation into the store. Stamp the render with a renderer version or store hash and report drift_cause.
+  **Layman:** Tells a session which way to repair a roadmap that no longer matches its store.
+  Kind: enhancement.
+  Source: LottoTracker feedback 2026-09-25.
+
+- 📋 [ANTS-5382] **roadmap_query check_sync returns a sample of the drifted lines.**
+  check_sync gives drift_lines with no content, so judging whether a render is safe takes a dry run, a render and a git diff. Add a capped drift_sample (file vs render) and flag a header-only difference.
+  **Layman:** Shows which roadmap lines differ from the store, not just how many.
+  Kind: enhancement.
+  Source: Snatch feedback 2026-09-25.
+
+- 📋 [ANTS-5383] **roadmap_migrate names status bullets it turns into narration.**
+  A status bullet with an emoji outside the five statuses, or with no bold headline, becomes narration with no id or status, and no note says so, even for an open 🚧 task. Emit a note code with line numbers and count open-status ones separately. Optionally honour status aliases declared in .ants/project.json.
+  **Layman:** Warns when a roadmap import quietly drops open tasks from the task list.
+  Kind: fix.
+  Source: RetroArch feedback 2026-09-25.
+
+- 📋 [ANTS-5384] **The renderer stops duplicating its injected legend line on each migrate cycle.**
+  The render injects `- 🚫 Dropped (closed, not done)` into the legend. A re-migrate imports that line as narration and the next render injects another. Skip injection when a legend line already starts with the emoji, and do not import an injected line.
+  **Layman:** Stops the roadmap legend from growing an extra copy of the same line every import.
+  Kind: fix.
+  Source: RetroArch feedback 2026-09-25.
+
+- 📋 [ANTS-5385] **roadmap_log gains amend_field_batch.**
+  Backfilling Layman and Kind after a migration takes one call per item per field, in a forced order because the render gate refuses Kind on an item without Layman. Take [{id, field, value}] in one commit and judge the gate on the final state.
+  **Layman:** Lets a session set fields on many roadmap items in one call.
+  Kind: enhancement.
+  Source: RetroArch feedback 2026-09-25.
+
+- 📋 [ANTS-5386] **render_failed on a table row names the section and row.**
+  `table row has 6 cells against 4 columns` names no section, table or row; the cause was unescaped `|` in code spans. Include the section slug, row index and first cell. Have migrate note any row whose cell count differs from its header.
+  **Layman:** Tells a session where a broken roadmap table is, instead of just that one exists.
+  Kind: fix.
+  Source: RetroArch feedback 2026-09-25.
+
+- 📋 [ANTS-5387] **doc_symbols resolves Python assignments and classifies builtins as not checked.**
+  The py resolver indexes def and class only, so module constants, class-body attributes and try-body import flags report unresolved, as do builtins and stdlib names. Index Assign and AnnAssign targets, and classify builtins and stdlib names as not_checked.
+  **Layman:** Stops the docs checker flagging real Python names as missing.
+  Kind: fix.
+  Source: Snatch feedback 2026-09-25.
+
+- 📋 [ANTS-5388] **changelog_log op:"release" matches the dash style of the file's existing dated headings.**
+  op:"release" always writes ` - ` before the date. A CHANGELOG whose headings use ` — ` gets a mismatched heading and a different anchor, which AppStream detail links depend on. Match the most recent dated heading, take a dash argument, or at least warn.
+  **Layman:** Keeps new release headings in the same style as the project's older ones.
+  Kind: fix.
+  Source: perch feedback 2026-09-25.
+
+- 📋 [ANTS-5389] **roadmap_log append and append_batch return possible_duplicates on a store-backed project.**
+  ANTS-2043 added a non-blocking possible_duplicates[] to append. On this store-backed project neither append_batch nor its dry run emits the field; `fields_unmatched` lists it. Triage relies on it for dedup, so a store project now files duplicates silently. Observed while triaging the 2026-09-25 feedback.
+  **Layman:** Brings back the warning that a new roadmap item may repeat an existing one.
+  Kind: fix.
+  Source: in-session-2026-09-26.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
