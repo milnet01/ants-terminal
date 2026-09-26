@@ -13,17 +13,20 @@ moved into its own helper.
 
 ## 1. Problem
 
-`verify_changes` is registered in `mcp::registerProjectScopedVerbs`, so
-`ants-mcpd` serves it for every Claude Code session. `ants-mcpd`'s `main`
-installs a bare `VerifyTrust::FilePersistedTrustClient`, whose `prompt()`
-returns `Outcome::Headless`. So an untrusted `.ants/verify.json` always
-falls back to auto-detect with `verify_untrusted:true`, and the only
-prompt that can grant trust — `VerifyTrust::ModalClient::prompt()` in the
-terminal — is reachable only through the terminal's own socket, which no
-Claude session uses any more. Safe, but there is no way to say yes.
+`verify_changes` is registered in `mcp::registerProjectScopedVerbs`.
+So `ants-mcpd` serves it for every Claude Code session.
 
-ANTS-5411 already carries a grant made in the terminal to a running
-`ants-mcpd`. This item makes the terminal be asked.
+`ants-mcpd`'s `main` installs a bare `VerifyTrust::FilePersistedTrustClient`.
+Its `prompt()` returns `Outcome::Headless`. So an untrusted
+`.ants/verify.json` always falls back to auto-detect.
+
+The only prompt that grants trust is `VerifyTrust::ModalClient::prompt()`
+in the terminal. A session served by `ants-mcpd` never reaches it; only
+one still using `tools/mcp-bridge.py` does. Safe, but there is no way to
+say yes.
+
+ANTS-5411 already carries a grant to a running `ants-mcpd`. This item
+makes the terminal be asked.
 
 ## 2. Surface
 
@@ -49,53 +52,54 @@ does not.
 
 ### 2.2 The terminal side
 
-The handler canonicalises `root`, reads `<root>/.ants/verify.json` through
-the same anchored read `loadGateConfig` uses (`pathStrictlyBelow` against
-the canonical root, then `readFile`) — factored into one function both
-call — and parses it with `parseVerifyJson`. No file, a file outside the
-root, a parse error or no gates → `no_config`. Otherwise it calls the
-terminal's installed trust client, `outcomeForConfig(rootCanon, bytes)`,
-which already honours a stored trust, applies the session-denied cache
-and shows the modal on the GUI thread (`ModalClient::prompt`). The reply
-maps `Trusted` → `trusted`, `UntrustedFellBack` → `denied`, `Headless` →
-`headless`, and carries the SHA the terminal computed.
+The handler canonicalises `root`. It reads `<root>/.ants/verify.json`
+through `loadGateConfig`'s anchored read: `pathStrictlyBelow`, then
+`readFile`. That read is factored into one function both call. It parses
+the bytes with `parseVerifyJson`.
+
+No file, a file outside the root, a parse error or no gates → `no_config`.
+
+Otherwise it calls the terminal's trust client:
+`outcomeForConfig(rootCanon, bytes)`. That call honours a stored trust,
+applies the session-denied cache, and shows the modal on the GUI thread.
+
+The reply maps `Trusted` → `trusted`, `UntrustedFellBack` → `denied`,
+`Headless` → `headless`. It carries the SHA the terminal computed.
 
 **Everything that decides trust comes from the terminal's own read.** The
-request carries a root and nothing else; any other `params` key is
-ignored.
+handler reads `params.root` and ignores every other key.
 
-The handler runs on the pipeline's Bulk worker (`DispatchLane::Bulk`,
-ANTS-5086), and the modal itself on the GUI thread through
-`ModalClient::prompt`. An open prompt therefore holds only the Bulk
-worker; the GUI thread and the Shared worker keep serving.
+The handler runs on the Bulk worker (`DispatchLane::Bulk`, ANTS-5086). An
+open prompt holds only that worker. The GUI thread and the Shared worker
+keep serving.
 
 ### 2.3 The ants-mcpd side
 
 `ants-mcpd` installs `mcpd::ForwardingTrustClient`, a
 `FilePersistedTrustClient` whose `prompt()`:
 
-1. With no acceptable terminal socket — found and uid-checked exactly as
-   `mcpd::Forwarder` does (ANTS-4932 § 2.5, INV-11) — returns `Headless`
-   at once.
-2. Otherwise connects on the calling thread, sends § 2.1's line and waits
-   at most `kTrustPromptTimeoutMs` = 120 000 ms for the reply, blocking
-   the thread `verify_changes` runs on. This item moves `verify_changes`
-   to `DispatchLane::Bulk` in `mcp::registerProjectScopedVerbs`, so in
-   both hosts a pending prompt — like a long gate run — holds only the
-   Bulk worker, and the main thread and the Shared worker keep answering.
-3. Maps the reply:
-   - `trusted` with a `sha` equal to its own → re-reads the trust file
-     (ANTS-5411) and returns `Trusted` **only if** that file now holds the
-     SHA or a matching repo pin; otherwise `Headless`. **The terminal's
-     word alone never trusts anything**: only the file it wrote does.
-   - `denied` → `UntrustedFellBack`, which the base class records in its
-     session-denied cache, so this process does not ask again for that SHA.
-   - anything else — `headless`, `no_config`, a different `sha`, an error
-     reply, a timeout, a dropped connection → `Headless`, not cached, so
-     the next call may ask again.
+1. Finds the terminal socket and checks its uid as `mcpd::Forwarder`
+   does (ANTS-4932 § 2.5, INV-11). With none acceptable, it returns
+   `Headless` at once.
+2. Otherwise it connects on the calling thread and sends § 2.1's line. It
+   waits at most `kTrustPromptTimeoutMs` = 120 000 ms for the reply.
+3. It maps the reply:
+   - `trusted` with its own `sha` → re-read the trust file (ANTS-5411).
+     Return `Trusted` **only if** the file now holds the SHA or a matching
+     repo pin. Otherwise `Headless`. **The terminal's word alone never
+     trusts anything.**
+   - `denied` → `UntrustedFellBack`. The base class caches it, so this
+     process does not ask again for that SHA.
+   - Anything else → `Headless`, not cached. That covers `headless`,
+     `no_config`, a different `sha`, an error, a timeout and a dropped
+     connection.
+
+This item moves `verify_changes` to `DispatchLane::Bulk` in
+`mcp::registerProjectScopedVerbs`. So in both hosts a pending prompt holds
+only the Bulk worker. The main thread and the Shared worker keep answering.
 
 On a timeout the terminal's dialog stays open. A later click still saves
-the trust, and ANTS-5411 carries it to `ants-mcpd` on its next call.
+the trust. ANTS-5411 carries it to `ants-mcpd` on its next call.
 
 ## 3. Invariants
 
