@@ -179,12 +179,17 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         ++tally[l];
 
     QList<QStringView> fileOnly;
+    QList<int> fileOnlyAt;   // ANTS-5327 — each line's index in the file
+    int at = 0;
     for (QStringView l : QStringView(have).split(u'\n')) {
         const auto it = tally.find(l);
         if (it != tally.end() && it.value() > 0)
             --it.value();
-        else
+        else {
             fileOnly.append(l);   // the file holds it; the render will not
+            fileOnlyAt.append(at);
+        }
+        ++at;
     }
     d.total = static_cast<int>(fileOnly.size());
     for (auto it = tally.cbegin(); it != tally.cend(); ++it)
@@ -204,7 +209,10 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         for (int n = 0; n < it.value(); ++n)
             renderKeys[contentKey(it.key())].append(it.key());
 
-    for (QStringView l : std::as_const(fileOnly)) {
+    // ANTS-5327 — lines with no twin, held back until the reflow check below.
+    QList<std::pair<int, QStringView>> unmatched;
+    for (qsizetype i = 0; i < fileOnly.size(); ++i) {
+        const QStringView l = fileOnly.at(i);
         const auto k = renderKeys.find(contentKey(l));
         if (k != renderKeys.end() && !k.value().isEmpty()) {
             const QStringView twin = k.value().takeLast();
@@ -224,9 +232,48 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         // as lost prose would bury the one line that matters under the noise
         // this item exists to remove.
         if (l.trimmed().isEmpty()) continue;
+        unmatched.append({fileOnlyAt.at(i), l});
+    }
+
+    // ANTS-5327 — a line with no twin may still survive as a REFLOW: the render
+    // splits a head line carrying its body into head plus continuation, inserts
+    // a synthesised id, or re-wraps a paragraph. No single render line matches
+    // then, yet every word is still there. So test adjacent unmatched lines as
+    // one run against the render's whole word stream, and a failed run line by
+    // line. Under three words stays lost: a short phrase can occur by chance
+    // in a large render, and a missed loss costs more than a false alarm here.
+    QString stream;   // built only when some line has no twin
+    const auto survives = [&](const QString &key) {
+        if (key.count(u' ') < 2) return false;
+        if (stream.isEmpty())
+            stream = QLatin1Char(' ') + contentKey(want) + QLatin1Char(' ');
+        return stream.contains(QLatin1Char(' ') + key + QLatin1Char(' '));
+    };
+    const auto lose = [&](QStringView l) {
         ++d.lost;
         if (d.lostText.size() < kLostTextCap)
             d.lostText.append(l.trimmed().toString());
+    };
+    for (qsizetype s = 0; s < unmatched.size();) {
+        qsizetype e = s + 1;
+        while (e < unmatched.size()
+               && unmatched.at(e).first == unmatched.at(e - 1).first + 1)
+            ++e;
+        QString run;
+        for (qsizetype i = s; i < e; ++i) {
+            run += unmatched.at(i).second;
+            run += u'\n';
+        }
+        if (survives(contentKey(run))) {
+            d.restyled += static_cast<int>(e - s);
+        } else {
+            for (qsizetype i = s; i < e; ++i) {
+                const QStringView l = unmatched.at(i).second;
+                if (e - s > 1 && survives(contentKey(l))) ++d.restyled;
+                else lose(l);
+            }
+        }
+        s = e;
     }
     // ANTS-5350 — render lines no file line matched: what the render adds.
     for (auto it = renderKeys.cbegin(); it != renderKeys.cend(); ++it)

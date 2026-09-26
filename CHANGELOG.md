@@ -137,6 +137,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap write no longer reports reflowed text as lost** (ANTS-5327)
+  When the renderer splits a bullet's head line or inserts an id, the
+  drift report counts those lines as restyled when every word survives.
+  A convert or render on a migrated roadmap stops warning text_lost for
+  text that is still there.
+
 - **`roadmap_log` edits find their item in the roadmap store, so anything `roadmap_query` shows can be edited** (ANTS-4485)
   On a store-backed project, flip, annotate, their batch forms, amend_body,
   amend_headline and set_body locate an id or headline in the store

@@ -144,6 +144,14 @@ ANTS-4965 — a file line that differs from its render twin only in whitespace
 `check_sync`), and not as restyling. Each field is emitted only when non-zero.
 *Test:* `Ants4965CountsWhitespaceChangesAsStructure`.
 
+ANTS-5327 — a file line with no render twin is not lost if its words survive
+as a reflow. Adjacent unmatched lines are tested as one run: if the run's
+content key occurs, word-aligned, in the whole render's content key, every
+line in it counts as `discarded_restyled_lines`. A run that fails is tested
+line by line the same way. A run or line of fewer than three words is never
+excused, so a short phrase matching by chance stays lost. *Test:*
+`Ants5327CountsAReflowAsRestyledNotLost`.
+
 ANTS-4957 — the true arm also carries `discard_reason` (`would_discard_reason`
 on a dry run): the worst thing at stake, one of `text_lost`, `structure`,
 `punctuation` or `restyle_only`. `restyle_only` is a stale render nobody

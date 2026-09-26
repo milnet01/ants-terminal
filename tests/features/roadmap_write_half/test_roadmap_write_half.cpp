@@ -1638,6 +1638,58 @@ TEST(RoadmapWriteHalf, Ants4615SplitsRestyledFromLostText) {
         << "got: " << text.at(0).toString().toStdString();
 }
 
+// ANTS-5327 — a REFLOW is not lost text. Vestige and RetroArch each saw
+// hundreds of text_lost lines on a file whose every word survived: the render
+// splits a head line carrying its body into head plus continuation, so no one
+// render line matches the file's line. Here the file joins a bullet's head to
+// its continuation, which is the same shape from the other side. A sentence
+// that exists nowhere in the store stays beside it as the control.
+TEST(RoadmapWriteHalf, Ants5327CountsAReflowAsRestyledNotLost) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    QByteArray hand = readAll(roadmap);
+    const QByteArray head = "- \xF0\x9F\x93\x8B [DEMO-0008] **A settling bullet.**";
+    const int h = hand.indexOf(head);
+    ASSERT_GE(h, 0) << "precondition: the canonical bullet was not found";
+    const int eol = hand.indexOf('\n', h);
+    ASSERT_GT(eol, h);
+    int next = eol + 1;
+    while (next < hand.size() && hand.at(next) == ' ') ++next;
+    ASSERT_NE(hand.at(next), '\n') << "precondition: the bullet has no continuation";
+    hand.replace(eol, next - eol, " ");   // head and continuation on one line
+
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1,
+        "> A hand-written sentence that exists nowhere in the store.\n");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the reflow."))).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool());
+    EXPECT_GE(env.value(QStringLiteral("discarded_restyled_lines")).toInt(), 1)
+        << "ANTS-5327: the joined line's words all survive into the render";
+    EXPECT_EQ(env.value(QStringLiteral("discarded_text_lines")).toInt(), 1)
+        << "ANTS-5327: only the planted sentence is lost; the reflow is not";
+    const QJsonArray text = env.value(QStringLiteral("discarded_text")).toArray();
+    ASSERT_EQ(text.size(), 1);
+    EXPECT_TRUE(text.at(0).toString().contains(
+        QStringLiteral("exists nowhere in the store")))
+        << "got: " << text.at(0).toString().toStdString();
+}
+
 // ANTS-4839 — whose text is it? A project keeping a frozen branch sees a large
 // `text_lost` figure on an ordinary one-item write, because the file there is
 // an older publication of this same store. The fields were honest and
