@@ -1350,6 +1350,30 @@ The requirements this standard adds:
   re-based.** The row still names the same file and still says the same
   thing. Anything that changes what a row *says* is the current row's
   business.
+- **Where the run has ENDED, the correction is a NEW dated row whose Outcome
+  cell begins `post-run note`, with the lane and verdict columns `n/a`.** A new
+  row, so *never edited* survives. **The marker is that literal phrase, so a
+  checker can key on it**, and **the tally clause below does not fire on such a
+  row** — there were no lanes and no findings to balance. Named on first use,
+  2026-09-26: the row worked and its author had to choose the wording, which
+  would have made every project's marker different. Without this there is no place for what the build finds
+  after a cap, and the log reads clean over a document known to be wrong —
+  measured 2026-09-26 on a capped spec whose build found a false claim that
+  went into a roadmap note, leaving neither the log nor the spec pointing at
+  it. **Where `CLAUDE.md` rule 14's already-existing-code exception permits
+  repairing the document itself after the cap, the row says the document
+  moved after the cap** — the cap ends the review, not the repair.
+- **Rows are numbered continuously across runs**, never restarted per run,
+  so *row 4 corrects row 3* stays unambiguous when the correction is two runs
+  later. Each run's first row says it begins a new run.
+- **This binds forward, and § 3.4's clause governs.** A log already written is
+  **neither moved nor renamed** to satisfy the location above, and a document
+  whose pointer predates this is not made non-conforming by it — every
+  citation of that record would break, which is what § 3.4 protects. The
+  location and the heading bind a log started from here on. Added 2026-09-26:
+  § 3.4 carried the clause and this section did not, so the two contradicted
+  each other for any existing log outside `docs/reviews/` — a conformer
+  reading § 9.1 moved the file and one reading § 3.4 did not.
 
 ### 9.2 Sweep shipped documents separately
 
