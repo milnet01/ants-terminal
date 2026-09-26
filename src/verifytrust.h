@@ -132,6 +132,22 @@ private:
     bool loadFromDisk();
     bool saveToDisk() const;
 
+    // ANTS-5411 — another process (the terminal granting trust from its
+    // prompt) may rewrite the file after this client loaded it; ants-mcpd
+    // holds one client for its lifetime. Every lookup and add re-reads the
+    // file when its identity changed. The save is tmp + rename, so each
+    // save is a new inode even inside one mtime tick.
+    struct FileStamp {
+        bool exists = false;
+        quint64 inode = 0;
+        qint64 size = 0;
+        qint64 mtimeNs = 0;
+        bool operator==(const FileStamp &) const = default;
+    };
+    static FileStamp stampOf(const QString &path);
+    void reloadIfChanged();
+    FileStamp m_loadedStamp;
+
     // Compute SHA-256 over raw bytes; return hex digest.
     static QString sha256Hex(const QByteArray &bytes);
 

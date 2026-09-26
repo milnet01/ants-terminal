@@ -354,6 +354,36 @@ void testTrustFile() {
                "TF-9 a repo whose save failed is not trusted afterwards");
     }
 
+    // TF-10 (ANTS-5411) — a client sees a trust another process wrote after
+    // it loaded, and a revocation the same way. `a` is ants-mcpd's long-lived
+    // client; `b` stands in for the terminal granting trust from its prompt.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path =
+            tmp.path() + QStringLiteral("/verify-trust.json");
+        const QByteArray cfg("{\"gates\":[\"ctest\"]}\n");
+        const QString sha = QString::fromLatin1(
+            QCryptographicHash::hash(cfg, QCryptographicHash::Sha256).toHex());
+        VerifyTrust::FilePersistedTrustClient a(path);
+        expect(a.outcomeForConfig(QStringLiteral("/p"), cfg).outcome
+                   == VerifyTrust::Outcome::Headless,
+               "TF-10 untrusted before any grant");
+        {
+            VerifyTrust::FilePersistedTrustClient b(path);
+            ASSERT_TRUE(b.addTrustedSha(sha));
+        }
+        expect(a.outcomeForConfig(QStringLiteral("/p"), cfg).outcome
+                   == VerifyTrust::Outcome::Trusted,
+               "TF-10 a trust written after load is honoured");
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("{\"version\":1,\"trusted_shas\":{},\"trusted_repos\":{}}\n");
+        f.close();
+        expect(a.outcomeForConfig(QStringLiteral("/p"), cfg).outcome
+                   != VerifyTrust::Outcome::Trusted,
+               "TF-10 a trust revoked after load is no longer honoured");
+    }
+
     // TF-7 (ANTS-5082) — first_trusted is the date an entry was first
     // trusted: a later save keeps it, and only a new entry gets a new date.
     {

@@ -18,6 +18,8 @@
 
 #include <cstdio>
 
+#include <sys/stat.h>
+
 namespace VerifyTrust {
 
 namespace {
@@ -68,6 +70,7 @@ QString FilePersistedTrustClient::sha256Hex(const QByteArray &bytes) {
 Decision FilePersistedTrustClient::outcomeForConfig(
         const QString &projectPath,
         const QByteArray &configBytes) {
+    reloadIfChanged();
     const QString shaHex = sha256Hex(configBytes);
 
     // SHA match wins immediately.
@@ -120,6 +123,7 @@ Decision FilePersistedTrustClient::prompt(const QString &projectPath,
 bool FilePersistedTrustClient::addTrustedSha(const QString &shaHex,
                                               const QString &note) {
     if (shaHex.isEmpty()) return false;
+    reloadIfChanged();   // build on the file as it is now, not as loaded
     // The entry must be in the map for saveToDisk() to write it, but it
     // must not outlive a failed save: outcomeForConfig() reads the map,
     // so a trust that never reached disk would still be honoured for the
@@ -143,6 +147,7 @@ bool FilePersistedTrustClient::addTrustedRepo(
     if (canonicalProjectPath.isEmpty() || currentShaHex.isEmpty()) {
         return false;
     }
+    reloadIfChanged();
     // Same rule as addTrustedSha: roll the map back if the save fails.
     const auto prior = m_trustedRepos.constFind(canonicalProjectPath);
     const std::optional<RepoEntry> previous =
@@ -161,7 +166,34 @@ void FilePersistedTrustClient::clearSessionCache() {
     m_sessionDenied.clear();
 }
 
+FilePersistedTrustClient::FileStamp
+FilePersistedTrustClient::stampOf(const QString &path) {
+    FileStamp st;
+    struct stat sb {};
+    if (path.isEmpty() || ::stat(QFile::encodeName(path).constData(), &sb) != 0)
+        return st;
+    st.exists = true;
+    st.inode = static_cast<quint64>(sb.st_ino);
+    st.size = static_cast<qint64>(sb.st_size);
+    st.mtimeNs = static_cast<qint64>(sb.st_mtim.tv_sec) * 1000000000LL
+                 + sb.st_mtim.tv_nsec;
+    return st;
+}
+
+void FilePersistedTrustClient::reloadIfChanged() {
+    if (stampOf(m_path) == m_loadedStamp) return;
+    // A fresh read replaces the maps whole, so a revocation is seen too.
+    // The session-denied cache is this process's own and is kept.
+    m_trustedShas.clear();
+    m_trustedRepos.clear();
+    m_futureSchema = false;
+    loadFromDisk();
+}
+
 bool FilePersistedTrustClient::loadFromDisk() {
+    // Stamped before the read: a write landing between the two leaves a
+    // newer stamp on disk, so the next lookup reads again.
+    m_loadedStamp = stampOf(m_path);
     QFile f(m_path);
     if (!f.open(QIODevice::ReadOnly)) {
         // Absent or unreadable — start with an empty trust set.

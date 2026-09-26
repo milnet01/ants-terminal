@@ -59,6 +59,9 @@ callers (nullptr client) see no behavior change. Phase 2 wires
   so a later `outcomeForConfig` for that config is not `Trusted` in the
   same session. Exercised under TF-4's future-schema file, where every
   save refuses.
+- **TF-10** (ANTS-5411) A client sees a trust written to the file by
+  another client after it loaded, and a revocation the same way: the
+  next `outcomeForConfig` re-reads a file whose identity changed.
 
 Phase 2 will add MD-* (modal) and MC-* (MCP envelope) tests.
 
