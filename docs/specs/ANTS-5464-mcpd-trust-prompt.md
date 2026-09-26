@@ -64,9 +64,10 @@ maps `Trusted` → `trusted`, `UntrustedFellBack` → `denied`, `Headless` →
 request carries a root and nothing else; any other `params` key is
 ignored.
 
-The handler runs as a deferred job off the GUI thread, like
-`verify_changes` itself (ANTS-2132), so an open prompt does not stop the
-terminal serving other MCP requests.
+The handler runs on the pipeline's Bulk worker (`DispatchLane::Bulk`,
+ANTS-5086), and the modal itself on the GUI thread through
+`ModalClient::prompt`. An open prompt therefore holds only the Bulk
+worker; the GUI thread and the Shared worker keep serving.
 
 ### 2.3 The ants-mcpd side
 
@@ -77,9 +78,11 @@ terminal serving other MCP requests.
    `mcpd::Forwarder` does (ANTS-4932 § 2.5, INV-11) — returns `Headless`
    at once.
 2. Otherwise connects on the calling thread, sends § 2.1's line and waits
-   at most `kTrustPromptTimeoutMs` = 120 000 ms for the reply. It blocks
-   only the thread `verify_changes` runs on, never `ants-mcpd`'s main
-   thread, so other requests keep being answered.
+   at most `kTrustPromptTimeoutMs` = 120 000 ms for the reply, blocking
+   the thread `verify_changes` runs on. This item moves `verify_changes`
+   to `DispatchLane::Bulk` in `mcp::registerProjectScopedVerbs`, so in
+   both hosts a pending prompt — like a long gate run — holds only the
+   Bulk worker, and the main thread and the Shared worker keep answering.
 3. Maps the reply:
    - `trusted` with a `sha` equal to its own → re-reads the trust file
      (ANTS-5411) and returns `Trusted` **only if** that file now holds the
@@ -108,7 +111,8 @@ the trust, and ANTS-5411 carries it to `ants-mcpd` on its next call.
 - **INV-2** — `ants-mcpd` returns `Trusted` only when its own re-read of
   the trust file finds the SHA or the repo pin after the reply. *Test:*
   a stub terminal replies `trusted` with the right SHA without writing
-  the trust file; `verify_changes` through `ants-mcpd` still reports
+  the trust file; the stub receives exactly one `ants/verifyTrustPrompt`
+  request, and `verify_changes` through `ants-mcpd` still reports
   `verify_untrusted:true`. Broken by: returning `Trusted` from the reply.
 - **INV-3** — Where the terminal grants trust, the same `verify_changes`
   call runs the project's own gates. *Test:* a stub terminal writes the
@@ -134,10 +138,12 @@ the trust, and ANTS-5411 carries it to `ants-mcpd` on its next call.
   `ants-mcpd` and in the in-process GUI pipeline; sent to `ants-mcpd` it
   answers error `-32601`. Broken by: registering it through
   `registerToolProvider`.
-- **INV-8** — `ants-mcpd` keeps answering while a prompt is pending.
-  *Test:* against a stub terminal that holds the trust request open,
-  a `tools/list` sent after `verify_changes` is answered before the stub
-  replies. Broken by: waiting on `ants-mcpd`'s main thread.
+- **INV-8** — `ants-mcpd` keeps answering main-thread and Shared-lane
+  requests while a prompt is pending. *Test:* against a stub terminal
+  that holds the trust request open, once the stub has received it, a
+  `tools/list` and a `spec_lint` are both answered before the stub
+  replies. Broken by: waiting on the main thread, or leaving
+  `verify_changes` on the Shared lane.
 
 ## 4. RAM / build cost
 
@@ -166,9 +172,11 @@ Feature test: `tests/features/mcpd_trust_prompt/`, built into
 `test_claude` beside `standalone_mcp_server` and reusing its
 `McpdSession` and `StubTerminal`, the stub gaining a handler for § 2.1's
 method. Covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7 and
-INV-8. Label `features;fast`. Each case fails against
-the pre-change source first — INV-1 and INV-7 as unknown-method errors,
-the rest because `ants-mcpd` never sends the request.
+INV-8. Label `features;fast`. Red first: INV-1 fails
+pre-change with `-32601` (no handler), and INV-2, INV-3, INV-5 and INV-8
+because the stub receives no request; INV-6 tests the new class. INV-4
+and INV-7 pin today's behaviour and pass before the change — their red
+run is their *Broken by* applied.
 
 ## 7. Cross-doc impact
 
@@ -194,3 +202,4 @@ the rest because `ants-mcpd` never sends the request.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-26 | 2 (review-lane; every question each) | 1 | 0 | 1 | 1 | Verified 3 / fixed 3 / dismissed 0. Q4 (both lanes): § 6 claimed every case fails pre-change, but INV-2, INV-4, INV-7 and INV-8 pass on today's code and INV-2/INV-8 could not tell "asked" from "never asked" — INV-2 now counts the stub's requests, INV-8 waits for the request, § 6 names INV-4/INV-7 as guards. Q1 (lane A, confirmed by the orchestrator): "other requests keep being answered" was false for the Shared worker, a single thread — `verify_changes` moves to `DispatchLane::Bulk`, INV-8 probes a Shared-lane verb. Q3 (lane A): the terminal handler's thread was unpinned — now the Bulk worker. Open questions resolved clean by the orchestrator: the base class caches `UntrustedFellBack`; `pathStrictlyBelow` canonicalises through a symlink; the spawned `ants-mcpd` inherits the test XDG sandbox. |
