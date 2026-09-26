@@ -485,7 +485,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         // present on every row saying `false` is a key nobody reads.
         if (pid.inferred)
             o[QStringLiteral("id_inferred")] = true;
-        if (!pid.hasLayman)
+        // ANTS-5330 — open items only, the population the top-level
+        // `layman_missing` counts, so the two agree.
+        if (pid.open && !pid.hasLayman)
             o[QStringLiteral("layman_missing")] = true;
         // ANTS-5258 — what the load DID with it. `origin` says what the file
         // holds; this says what became of it, and the matched arm is the one

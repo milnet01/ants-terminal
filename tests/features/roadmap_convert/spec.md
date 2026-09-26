@@ -174,6 +174,17 @@ the commit to be one transaction.
   *Breaks when:* a real convert with lost text writes without the opt-in, a
   refused one changes the file or the stored format, or a dry run refuses.
 
+- **INV-17** — the top-level `layman_missing.count` and the per-row
+  `layman_missing` flags count one population: OPEN items with no Layman
+  after the convert, whether or not the convert rewrote them. A closed item is
+  owed no Layman and is not flagged. *Test:*
+  `laymanMissingCountAgreesWithRows`.
+  *Why:* ANTS-5330. The count took only items the convert wrote, and a
+  re-matched item is not rewritten, so Vestige saw count 0 beside 164 flagged
+  rows, some of them shipped.
+  *Breaks when:* the two disagree on a convert that re-matches its items, or a
+  closed item is flagged.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

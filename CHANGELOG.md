@@ -149,6 +149,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A convert preview's two missing-summary counts now agree** (ANTS-5330)
+  Both count open items without a plain-English summary, whether or not
+  the convert rewrote them. Shipped items are no longer flagged.
+
 - **The About dialog opens large enough to show all its text** (ANTS-5390)
   It no longer cuts off its description or the notice asking you to
   reconnect Ants MCP, even if it was last closed at a smaller size.

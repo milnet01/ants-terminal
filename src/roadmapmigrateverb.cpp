@@ -20,6 +20,7 @@
 #include "projectsettings.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmaprender.h"   // ANTS-5330: isOpen()
 #include "roadmapsource.h"
 #include "roadmapstore.h"
 
@@ -797,6 +798,7 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
             // owed allocation is by definition not there yet.
             row.inFile    = !it.idAllocationOwed && !it.id.isEmpty();
             row.hasLayman = !it.layman.isEmpty();
+            row.open      = RoadmapRender::isOpen(it.status);   // ANTS-5330
             row.firstLine = it.firstLine;
             out.plannedIds.append(row);
         }

@@ -536,8 +536,14 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         // collected, into laymanMissing, and the render proceeds. The test is
         // unchanged: an advisory gate must report exactly what a blocking one
         // would have refused, or the report is not about this gate.
+        // ANTS-5330 — the advisory arm (op:"convert") reports every open
+        // offender, not only the items this write touched: its reply says the
+        // next write to ANY of them is refused, and a convert that re-matches
+        // most items writes few of them, so the scoped count read 0 beside
+        // hundreds of flagged rows.
         if (!passHeadings && isOpen(it->status) && it->layman.isEmpty()
-            && (!opts.gateScope || opts.gateScope->contains(ref.itemPk))) {
+            && (opts.laymanGateAdvisory || !opts.gateScope
+                || opts.gateScope->contains(ref.itemPk))) {
             (opts.laymanGateAdvisory ? out.laymanMissing : out.gateFailures)
                 .append(it->id.isEmpty() ? ref.idFold : it->id);
         }

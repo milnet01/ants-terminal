@@ -131,6 +131,9 @@ struct PlannedId {
     // over this (ANTS-5256) but the first ordinary edit to the item will, so
     // the reviewer should see it here rather than discover it later.
     bool    hasLayman = false;
+    // ANTS-5330 — planned or in progress. The Layman rule binds open items
+    // only, so a closed item without one is owed nothing and is not flagged.
+    bool    open      = false;
     int     firstLine = 0;   // 1-based, in the source roadmap
 
     // ANTS-5258 — what the LOAD did with this bullet, filled after the load

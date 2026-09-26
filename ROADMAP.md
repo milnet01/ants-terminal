@@ -51522,7 +51522,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5286] **convert proceeds on text_lost while its own preview is too large to read.**
+- ✅ [ANTS-5286] **convert proceeds on text_lost while its own preview is too large to read.**
   BLOCKER. Found by vestige-5f on the first real-scale ANTS-4491 run, on
   a 1,026-bullet mixed-dialect roadmap at a clean tree. They stopped and
   asked rather than proceeding, which is what saved the text.
@@ -51560,6 +51560,13 @@ are closed inline in the feedback files rather than filed here.
   DO NOT weaken this to a louder warning. A warning is what shipped, and
   the only reason 890 lines survive is that one session declined to
   follow it.
+  Resolved (2026-09-26, e0b71971): a real convert refuses text_lost
+  unless accept_text_loss:true, measured against the render after the
+  re-import (DriftBasis::AfterMutation). A dry run reports only. Removed
+  two false positives first: the task-list [x] checkbox and lines with
+  no letter or digit. Tests RoadmapConvert.textLossRefusesUnlessAccepted
+  and RoadmapWriteHalf.Ants5286LineWithoutTextIsNotLostText, each change
+  proven red. GitHub CI green on push head 23d324a9.
   **Layman:** A one-way conversion warns that it would delete text, then goes ahead anyway — and the warning that lists what would be lost is too big to display.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
@@ -66092,7 +66099,7 @@ parse, not that file.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5327] **convert's text_lost signal fires on a faithful reflow as well as on real loss.**
+- ✅ [ANTS-5327] **convert's text_lost signal fires on a faithful reflow as well as on real loss.**
   Vestige: 890 lines flagged on the original file; 996 flagged after a
   convert where a normalised containment check found every original
   line. Compare at word level with headlines and bodies re-joined across
@@ -66107,6 +66114,11 @@ parse, not that file.
   line-by-line check found every line. The flagged lines were split into
   head and continuation with a synthesised id inserted. Same classifier;
   fix both callers.
+  Resolved (2026-09-26, 88bea11c): driftLines tests adjacent unmatched
+  lines as a run against the render's word stream, so a reflow counts as
+  restyled. Under three words stays lost. Test
+  RoadmapWriteHalf.Ants5327CountsAReflowAsRestyledNotLost, proven red.
+  GitHub CI green on push head 23d324a9.
   **Layman:** The safety check meant to warn about lost roadmap text also fires when nothing was lost, so nobody can trust it.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
@@ -66730,11 +66742,23 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: perch feedback 2026-09-25.
 
-- 📋 [ANTS-5389] **roadmap_log append and append_batch return possible_duplicates on a store-backed project.**
-  ANTS-2043 added a non-blocking possible_duplicates[] to append. On this store-backed project neither append_batch nor its dry run emits the field; `fields_unmatched` lists it. Triage relies on it for dedup, so a store project now files duplicates silently. Observed while triaging the 2026-09-25 feedback.
-  **Layman:** Brings back the warning that a new roadmap item may repeat an existing one.
-  Kind: fix.
+- 💭 [ANTS-5389] **roadmap_log append says when its duplicate check found nothing, instead of omitting possible_duplicates.**
+  Corrected 2026-09-26: the check DOES run on the store path. A dry run
+  whose headline copies ANTS-5327 returned it at score 100, on append and
+  append_batch. The field is omitted when no candidate clears the
+  threshold, and `fields_unmatched` then lists it, which reads as "not
+  computed". This session filed the original item on that misreading.
+  Emit `possible_duplicates: []` (or a `duplicates_checked` flag) so an
+  empty result is distinguishable from a check that did not run.
+  **Layman:** Makes the duplicate check say "none found" instead of staying silent.
+  Kind: enhancement.
   Source: in-session-2026-09-26.
+  Parked 2026-09-26:
+  tests/features/roadmap_log_possible_duplicates/spec.md chose "absent,
+  not an empty array" on purpose, and its tests assert absence. Doing
+  this reverses that decision, so weigh it against the lean-envelope
+  rule first. The tool description could instead say that absence means
+  none found.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

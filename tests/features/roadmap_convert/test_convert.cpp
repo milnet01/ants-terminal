@@ -1005,3 +1005,37 @@ TEST(RoadmapConvert, textLossRefusesUnlessAccepted) {
         << QJsonDocument(accepted).toJson().toStdString();
     EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));
 }
+
+// ---------------------------------------------------------------- INV-17 ----
+
+// ANTS-5330 — the top-level `layman_missing` and the per-row flags count the
+// same population: OPEN items with no Layman. Vestige saw count:0 beside 164
+// flagged rows, because the count took only items the convert WROTE and a
+// re-matched item is not rewritten, while the rows flagged closed items too.
+// Migrating first makes the convert re-match every bullet, which is that case.
+TEST(RoadmapConvert, laymanMissingCountAgreesWithRows) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmapPlusUnlaymanned()
+        + QByteArray("- [x] A shipped bullet with no Layman line.\n"
+                     "  Kind: chore.\n"
+                     "  Source: ants-4491-test.\n"));
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    const QJsonObject resp = convert(root, /*dryRun=*/true);
+    const std::string dump = QJsonDocument(resp).toJson().toStdString();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << dump;
+    const int count = resp.value(QStringLiteral("layman_missing")).toObject()
+                          .value(QStringLiteral("count")).toInt();
+    int flagged = 0;
+    const QJsonArray planned = resp.value(QStringLiteral("ids")).toObject()
+                                   .value(QStringLiteral("planned")).toArray();
+    for (const QJsonValue &v : planned)
+        if (v.toObject().value(QStringLiteral("layman_missing")).toBool())
+            ++flagged;
+    EXPECT_EQ(count, 1) << "the one OPEN bullet without Layman is owed one:\n" << dump;
+    EXPECT_EQ(flagged, 1) << "a shipped bullet owes no Layman and is not flagged:\n"
+                          << dump;
+}
