@@ -22,11 +22,11 @@ _ants_terminal()
             return 0
             ;;
         --export-roadmaps|--remote-cwd)
-            COMPREPLY=( $(compgen -d -- "${cur}") )
+            mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
             return 0
             ;;
         --remote-socket)
-            COMPREPLY=( $(compgen -f -- "${cur}") )
+            mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
             return 0
             ;;
     esac
@@ -35,7 +35,7 @@ _ants_terminal()
         --export-roadmaps --e2e --remote --remote-socket --remote-tab
         --remote-text --remote-cwd --remote-command --remote-title
         --remote-lines --remote-json"
-    COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+    mapfile -t COMPREPLY < <(compgen -W "${opts}" -- "${cur}")
     return 0
 }
 

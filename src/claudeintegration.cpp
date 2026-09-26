@@ -1522,7 +1522,7 @@ void ClaudeIntegration::registerToolProvider(
     if (auto it = m_toolProviders.find(name); it != m_toolProviders.end())
         it->second.deferred =
             [name, inner = std::move(handler)]
-            (const QJsonObject &args, std::function<void(QString)> reply) {
+            (const QJsonObject &args, const std::function<void(QString)> &reply) {
                 // A throw before `reply` runs answers the call once; the
                 // dispatcher drops any second reply.
                 try {

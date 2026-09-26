@@ -257,8 +257,8 @@ TEST(RoadmapRepairTrailers, RepairedColumnIsRecordedInHistory) {
     const auto pk = store->findItem(projectId, QStringLiteral("DEMO-0001"), &err);
     ASSERT_TRUE(pk);
     QSqlQuery q(store->db());
-    q.prepare(QStringLiteral("SELECT old_value, new_value FROM history "
-                             "WHERE item_pk = ? AND field = 'layman'"));
+    ASSERT_TRUE(q.prepare(QStringLiteral("SELECT old_value, new_value FROM history "
+                                         "WHERE item_pk = ? AND field = 'layman'")));
     q.addBindValue(*pk);
     ASSERT_TRUE(q.exec());
     ASSERT_TRUE(q.next()) << "the layman repair left no history row";

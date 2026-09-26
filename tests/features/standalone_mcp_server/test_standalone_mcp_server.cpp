@@ -398,7 +398,7 @@ TEST(StandaloneMcpServer, ThrowingVerbRefusesHandlerFailed) {
         }));
     ci.registerToolProvider(defName, ClaudeIntegration::callerCwdContractFor(defName),
         ClaudeIntegration::DeferredToolHandler(
-            [](const QJsonObject &, std::function<void(QString)>) {
+            [](const QJsonObject &, const std::function<void(QString)> &) {
                 throw std::runtime_error("later boom");
             }));
     for (const QString &name : {syncName, defName}) {
@@ -424,7 +424,7 @@ TEST(StandaloneMcpServer, OversizedStdinRequestIsRefusedOnce) {
     ASSERT_TRUE(tmp.isValid());
     McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
     ASSERT_TRUE(mcpd.started());
-    mcpd.writeRaw(QByteArray(300 * 1024, 'a') + '\n');
+    mcpd.writeRaw(QByteArray(qsizetype(300) * 1024, 'a') + '\n');
     const int list = mcpd.send(QStringLiteral("tools/list"));
     const QJsonObject listed = mcpd.await(list);
     EXPECT_TRUE(listed.contains(QStringLiteral("result")))
@@ -443,12 +443,12 @@ TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
     ASSERT_TRUE(tmp.isValid());
     McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
     ASSERT_TRUE(mcpd.started());
-    mcpd.writeRaw(QByteArray(300 * 1024, 'a'));
+    mcpd.writeRaw(QByteArray(qsizetype(300) * 1024, 'a'));
     const QJsonObject err = mcpd.await(0, 5000);
     EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
                   .value(QStringLiteral("code")).toInt(), -32600)
         << QJsonDocument(err).toJson().toStdString();
-    mcpd.writeRaw(QByteArray(10 * 1024, 'a') + '\n');
+    mcpd.writeRaw(QByteArray(qsizetype(10) * 1024, 'a') + '\n');
     const QJsonObject listed = mcpd.await(mcpd.send(QStringLiteral("tools/list")));
     EXPECT_TRUE(listed.contains(QStringLiteral("result")))
         << QJsonDocument(listed).toJson().toStdString();

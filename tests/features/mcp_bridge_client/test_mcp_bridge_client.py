@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """tests/features/mcp_bridge_client — see spec.md."""
 import importlib.util, json, os, socket, subprocess, sys, tempfile
+from typing import Any
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BRIDGE = os.path.join(HERE, "..", "..", "..", "tools", "mcp-bridge.py")
 spec = importlib.util.spec_from_file_location("mcp_bridge", BRIDGE)
-bridge = importlib.util.module_from_spec(spec)
+assert spec is not None and spec.loader is not None, BRIDGE
+bridge: Any = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 
 failures = 0

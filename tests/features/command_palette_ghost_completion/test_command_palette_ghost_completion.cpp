@@ -181,8 +181,11 @@ TEST(CommandPaletteGhostCompletion, ClosedSlotReplacingActionsDoesNotRetarget) {
     ASSERT_NE(input, nullptr);
     input->setText(QStringLiteral("Alpha"));
 
+    QAction *otherPtr = &other, *chosenPtr = &chosen;
     QObject::connect(palette, &CommandPalette::closed, palette,
-                     [&]() { palette->setActions({&other, &chosen}); });
+                     [palette, otherPtr, chosenPtr]() {
+                         palette->setActions({otherPtr, chosenPtr});
+                     });
     QSignalSpy chosenSpy(&chosen, &QAction::triggered);
     QSignalSpy otherSpy(&other, &QAction::triggered);
     sendKey(input, Qt::Key_Return);

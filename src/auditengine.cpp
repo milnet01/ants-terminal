@@ -197,7 +197,8 @@ QJsonArray flattenTrivyResults(const QJsonArray &results) {
             out.append(e);
             any = true;
         };
-        for (const QJsonValue &v : r.value(QStringLiteral("Vulnerabilities")).toArray()) {
+        const QJsonArray vulns = r.value(QStringLiteral("Vulnerabilities")).toArray();
+        for (const QJsonValue &v : vulns) {
             const QJsonObject o = v.toObject();
             add(o.value(QStringLiteral("VulnerabilityID")).toString(),
                 QStringLiteral("%1 %2: %3").arg(
@@ -206,14 +207,16 @@ QJsonArray flattenTrivyResults(const QJsonArray &results) {
                     o.value(QStringLiteral("Title")).toString()),
                 o.value(QStringLiteral("Severity")), QJsonValue());
         }
-        for (const QJsonValue &v : r.value(QStringLiteral("Secrets")).toArray()) {
+        const QJsonArray secrets = r.value(QStringLiteral("Secrets")).toArray();
+        for (const QJsonValue &v : secrets) {
             const QJsonObject o = v.toObject();
             add(o.value(QStringLiteral("RuleID")).toString(),
                 o.value(QStringLiteral("Title")).toString(),
                 o.value(QStringLiteral("Severity")),
                 o.value(QStringLiteral("StartLine")));
         }
-        for (const QJsonValue &v : r.value(QStringLiteral("Misconfigurations")).toArray()) {
+        const QJsonArray misconfigs = r.value(QStringLiteral("Misconfigurations")).toArray();
+        for (const QJsonValue &v : misconfigs) {
             const QJsonObject o = v.toObject();
             add(o.value(QStringLiteral("ID")).toString(),
                 o.value(QStringLiteral("Title")).toString(),
