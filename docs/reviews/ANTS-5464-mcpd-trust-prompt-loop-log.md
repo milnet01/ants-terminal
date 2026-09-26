@@ -1,0 +1,10 @@
+# ANTS-5464 — cold-eyes loop log
+
+Review history for [`docs/specs/ANTS-5464-mcpd-trust-prompt.md`](../specs/ANTS-5464-mcpd-trust-prompt.md).
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|---|---|---|---|---|---|---|---|
+| 1 | 2026-09-26 | 2 (review-lane; every question each) | 1 | 0 | 1 | 1 | Verified 3 / fixed 3 / dismissed 0. Q4 (both lanes): § 6 claimed every case fails pre-change, but INV-2, INV-4, INV-7 and INV-8 pass on today's code and INV-2/INV-8 could not tell "asked" from "never asked" — INV-2 now counts the stub's requests, INV-8 waits for the request, § 6 names INV-4/INV-7 as guards. Q1 (lane A, confirmed by the orchestrator): "other requests keep being answered" was false for the Shared worker, a single thread — `verify_changes` moves to `DispatchLane::Bulk`, INV-8 probes a Shared-lane verb. Q3 (lane A): the terminal handler's thread was unpinned — now the Bulk worker. Open questions resolved clean by the orchestrator: the base class caches `UntrustedFellBack`; `pathStrictlyBelow` canonicalises through a symlink; the spawned `ants-mcpd` inherits the test XDG sandbox. |
+| 2 | 2026-09-26 | 2 (review-lane; every question each) | 0 | 0 | 1 | 0 | Q3 (lane B; lane A raised it as an open question): the terminal handler was said to run on the Bulk worker, but a non-tool method has no route to a lane. Fixed: `ClaudeIntegration::setVerifyTrustPromptHandler` installs it, the request loop posts it with `postWorkerJob` on the Bulk lane, and new INV-9 tests that the terminal keeps answering. Also stated: other terminal Bulk verbs wait while a dialog is open. Open questions resolved clean: both processes use the application name "Ants Terminal", so they share one trust file; `StubTerminal` exists in the standalone_mcp_server tests; the client-side call timeout is outside this contract. Cap reached; the finding landed on loop 1's Bulk decision, an unpropagated consequence rather than a repair of a repair. Nothing filed. Spec accepted. |

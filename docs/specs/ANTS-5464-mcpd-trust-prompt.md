@@ -1,6 +1,6 @@
 # ANTS-5464 — ants-mcpd asks the terminal before trusting a project's verify.json
 
-**Status:** spec draft (2026-09-26).
+**Status:** accepted (2026-09-26).
 **Kind:** review-fix.
 **Source:** ROADMAP.md ANTS-5464 (review-contract ANTS-1337 loop 2,
 2026-09-26; design option (a) chosen by the user the same day).
@@ -45,10 +45,11 @@ and reads one reply line whose `result` is
 ```
 
 It is not a tool: it is absent from `tools/list` in both hosts and from
-`mcp::terminalScopedVerbNames()`, so no model can call it. `ClaudeIntegration`
-answers the method only when its host installed a handler; without one it
-answers JSON-RPC error `-32601`. The terminal installs one; `ants-mcpd`
-does not.
+`mcp::terminalScopedVerbNames()`, so no model can call it.
+
+A host installs the handler with
+`ClaudeIntegration::setVerifyTrustPromptHandler(fn)`. The terminal installs
+one. `ants-mcpd` installs none, so it answers JSON-RPC error `-32601`.
 
 ### 2.2 The terminal side
 
@@ -69,9 +70,10 @@ The reply maps `Trusted` → `trusted`, `UntrustedFellBack` → `denied`,
 **Everything that decides trust comes from the terminal's own read.** The
 handler reads `params.root` and ignores every other key.
 
-The handler runs on the Bulk worker (`DispatchLane::Bulk`, ANTS-5086). An
-open prompt holds only that worker. The GUI thread and the Shared worker
-keep serving.
+The request loop posts the handler to the Bulk worker with
+`postWorkerJob`, and writes the reply when it returns. An open prompt
+holds only that worker. The GUI thread and the Shared worker keep
+serving. Other Bulk verbs in the terminal wait until the user answers.
 
 ### 2.3 The ants-mcpd side
 
@@ -148,6 +150,10 @@ the trust. ANTS-5411 carries it to `ants-mcpd` on its next call.
   `tools/list` and a `spec_lint` are both answered before the stub
   replies. Broken by: waiting on the main thread, or leaving
   `verify_changes` on the Shared lane.
+- **INV-9** — The terminal keeps answering while its handler is open.
+  *Test:* an in-process pipeline whose installed handler blocks on a
+  latch answers a `tools/list` and a `spec_lint` before the latch is
+  released. Broken by: running the handler inline in the request loop.
 
 ## 4. RAM / build cost
 
@@ -173,14 +179,18 @@ back, which is today's behaviour.
 ## 6. Tests
 
 Feature test: `tests/features/mcpd_trust_prompt/`, built into
-`test_claude` beside `standalone_mcp_server` and reusing its
-`McpdSession` and `StubTerminal`, the stub gaining a handler for § 2.1's
-method. Covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7 and
-INV-8. Label `features;fast`. Red first: INV-1 fails
-pre-change with `-32601` (no handler), and INV-2, INV-3, INV-5 and INV-8
-because the stub receives no request; INV-6 tests the new class. INV-4
-and INV-7 pin today's behaviour and pass before the change — their red
-run is their *Broken by* applied.
+`test_claude` beside `standalone_mcp_server`. It reuses that directory's
+`McpdSession` and `StubTerminal`. The stub gains a handler for § 2.1's
+method. Label `features;fast`.
+
+It covers every invariant in § 3.
+
+Red first:
+- INV-1 fails pre-change with `-32601`: no handler exists.
+- INV-2, INV-3, INV-5 and INV-8 fail because the stub receives no request.
+- INV-6 and INV-9 test API this item adds.
+- INV-4 and INV-7 pin today's behaviour and pass before the change. Their
+  red run is their *Broken by* applied.
 
 ## 7. Cross-doc impact
 
@@ -201,9 +211,8 @@ run is their *Broken by* applied.
 | INV-6 | `tests/features/mcpd_trust_prompt/` |
 | INV-7 | `tests/features/mcpd_trust_prompt/` |
 | INV-8 | `tests/features/mcpd_trust_prompt/` |
+| INV-9 | `tests/features/mcpd_trust_prompt/` |
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|---|---|---|---|---|---|---|---|
-| 1 | 2026-09-26 | 2 (review-lane; every question each) | 1 | 0 | 1 | 1 | Verified 3 / fixed 3 / dismissed 0. Q4 (both lanes): § 6 claimed every case fails pre-change, but INV-2, INV-4, INV-7 and INV-8 pass on today's code and INV-2/INV-8 could not tell "asked" from "never asked" — INV-2 now counts the stub's requests, INV-8 waits for the request, § 6 names INV-4/INV-7 as guards. Q1 (lane A, confirmed by the orchestrator): "other requests keep being answered" was false for the Shared worker, a single thread — `verify_changes` moves to `DispatchLane::Bulk`, INV-8 probes a Shared-lane verb. Q3 (lane A): the terminal handler's thread was unpinned — now the Bulk worker. Open questions resolved clean by the orchestrator: the base class caches `UntrustedFellBack`; `pathStrictlyBelow` canonicalises through a symlink; the spawned `ants-mcpd` inherits the test XDG sandbox. |
+The rows are in [`docs/reviews/ANTS-5464-mcpd-trust-prompt-loop-log.md`](../reviews/ANTS-5464-mcpd-trust-prompt-loop-log.md).
