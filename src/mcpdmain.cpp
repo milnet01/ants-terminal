@@ -151,7 +151,7 @@ int main(int argc, char **argv) {
         for (auto it = from.cbegin(); it != from.cend(); ++it) {
             if (!into.contains(it.key()) && into.size() >= TokenUsageEngine::kMaxPeerProjects) {
                 auto smallest = std::min_element(into.begin(), into.end());
-                if (*smallest >= it.value()) continue;
+                if (smallest == into.end() || *smallest >= it.value()) continue;
                 into.erase(smallest);
             }
             into[it.key()] += it.value();
@@ -204,11 +204,31 @@ int main(int argc, char **argv) {
                          [] { QCoreApplication::quit(); });
     }
 
+    // ANTS-5320 — stdin EOF ends reading, not the process. Every dispatched
+    // line ends in exactly one reply() or finish(); off-thread and forwarded
+    // replies land through the event loop after the read that dispatched
+    // them, so quitting on EOF dropped them. The server quits once nothing is
+    // in flight, or after kEofGraceMs if a handler never ends its request.
+    int inFlight = 0;
+    bool stdinClosed = false;
+    constexpr int kEofGraceMs = 60000;
+    QTimer eofGrace;
+    eofGrace.setSingleShot(true);
+    QObject::connect(&eofGrace, &QTimer::timeout, &app, [&inFlight] {
+        std::fprintf(stderr, "ants-mcpd: %d request(s) unanswered %d s after stdin closed; exiting\n",
+                     inFlight, kEofGraceMs / 1000);
+        QCoreApplication::quit();
+    });
+    const auto requestEnded = [&] {
+        if (inFlight > 0) --inFlight;
+        if (stdinClosed && inFlight == 0) QCoreApplication::quit();
+    };
+
     // One channel for the whole session: replies may arrive out of order, and
     // JSON-RPC matches them by id.
     McpReplyChannel out(
-        [](const QByteArray &line) { writeStdout(line); },
-        [] {}, [] { return true; });
+        [&requestEnded](const QByteArray &line) { writeStdout(line); requestEnded(); },
+        [&requestEnded] { requestEnded(); }, [] { return true; });
 
     QByteArray pending;
     bool discarding = false;   // inside an over-ceiling line; drop to its '\n'
@@ -219,9 +239,12 @@ int main(int argc, char **argv) {
         char chunk[65536];
         const ssize_t n = ::read(STDIN_FILENO, chunk, sizeof(chunk));
         if (n <= 0) {
-            // EOF or error: the client has gone, so nobody is left to answer.
+            // EOF or error: no more requests. Answer the ones in flight first
+            // (ANTS-5320); a line with no newline before EOF is not a request.
             stdinNotifier.setEnabled(false);
-            QCoreApplication::quit();
+            stdinClosed = true;
+            if (inFlight == 0) QCoreApplication::quit();
+            else eofGrace.start(kEofGraceMs);
             return;
         }
         pending.append(chunk, n);
@@ -236,8 +259,10 @@ int main(int argc, char **argv) {
         // is refused once (its id is unreadable) and never parsed. It applies
         // to a whole line in the buffer and to one still arriving, whose rest
         // is then skipped up to its newline.
-        const auto refuseOversized = [&out] {
-            out.reply(QByteArrayLiteral(
+        // Written directly, not through `out`: no request was dispatched, so
+        // none ends here (ANTS-5320's in-flight count).
+        const auto refuseOversized = [] {
+            writeStdout(QByteArrayLiteral(
                 "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,"
                 "\"message\":\"request exceeds the 262144-byte ceiling; discarded\"}}\n"));
         };
@@ -247,7 +272,10 @@ int main(int argc, char **argv) {
                 refuseOversized();
             } else {
                 const QByteArray line = pending.left(nl).trimmed();
-                if (!line.isEmpty()) pipeline.handleMcpLine(line, &out);
+                if (!line.isEmpty()) {
+                    ++inFlight;
+                    pipeline.handleMcpLine(line, &out);
+                }
             }
             pending.remove(0, nl + 1);
         }

@@ -120,6 +120,32 @@ public:
         return payload(reply);
     }
 
+    // ANTS-5320 — closes stdin, waits for the server to exit, and collects
+    // every reply it wrote on the way out. False when it did not exit. Pumps
+    // this process's event loop while it waits, so an in-process stub
+    // terminal can still answer a forwarded request.
+    bool closeInputAndDrain(int timeoutMs = 30000) {
+        m_proc.closeWriteChannel();
+        QElapsedTimer t;
+        t.start();
+        bool exited = false;
+        while (!exited && t.elapsed() < timeoutMs) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            exited = m_proc.waitForFinished(20);
+        }
+        m_buf += m_proc.readAllStandardOutput();
+        qsizetype nl;
+        while ((nl = m_buf.indexOf('\n')) >= 0) {
+            const QJsonObject o = QJsonDocument::fromJson(m_buf.left(nl)).object();
+            m_buf.remove(0, nl + 1);
+            if (o.contains(QStringLiteral("id")))
+                m_replies.insert(o.value(QStringLiteral("id")).toInt(), o);
+        }
+        return exited;
+    }
+
+    bool hasReply(int id) const { return m_replies.contains(id); }
+
     QByteArray stderrText() { return m_proc.readAllStandardError(); }
 
 private:

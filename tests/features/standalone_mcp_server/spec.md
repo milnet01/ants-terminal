@@ -18,6 +18,7 @@ invariant.
 | `ThrowingVerbRefusesHandlerFailed` | — | A registered verb that throws, on the sync path and the deferred path, answers `code:"handler_failed"` (`mcp-error-codes.md` § 5) rather than terminating the process that hosts every session's PTY. |
 | `OversizedStdinRequestIsRefusedOnce` | — | A stdin line over the 256 KiB request ceiling (ANTS-1659) gets exactly one JSON-RPC `-32600` reply with `id:null`; its tail is skipped, never parsed as a request, and the next request is answered. |
 | `OversizedStdinRequestInPiecesIsRefusedOnce` | — | The same when the line arrives in pieces: the ceiling trips before its newline, one `-32600` is sent, and the tail written later is skipped rather than parsed. |
+| `RepliesInFlightAtStdinEofAreStillSent` | — | ANTS-5320: a forwarded `get_text` (to a stub terminal that answers only when the test pumps events) and a `tools/list` are sent, then stdin is closed. `ants-mcpd` exits, and both ids have a reply. |
 
 INV-4 lives in `tests/features/mcp_dispatch_forward_completeness/` and INV-7
 in `tests/features/mcp_tabspecific_contract/`, which own those contracts. INV-10

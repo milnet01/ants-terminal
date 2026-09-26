@@ -458,3 +458,22 @@ TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
         << "the tail was parsed as a request: "
         << QJsonDocument(after).toJson().toStdString();
 }
+
+// ANTS-5320 — a client that pipes requests and closes stdin still gets every
+// reply. A forwarded verb's reply lands through the event loop after the read
+// that dispatched it, once the terminal answers; the server used to quit on
+// EOF first and drop it. The stub terminal answers only while this process
+// pumps events, so the forwarded reply is always late relative to the EOF.
+TEST(StandaloneMcpServer, RepliesInFlightAtStdinEofAreStillSent) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::StubTerminal stub(tmp.filePath(QStringLiteral("stub.sock")));
+    ASSERT_TRUE(stub.listening());
+    McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), stub.path());
+    ASSERT_TRUE(mcpd.started());
+    const int forwarded = mcpd.sendCall(QStringLiteral("get_text"), QJsonObject{{"tab", 0}});
+    const int list = mcpd.send(QStringLiteral("tools/list"));
+    EXPECT_TRUE(mcpd.closeInputAndDrain()) << "ants-mcpd did not exit after stdin closed";
+    EXPECT_TRUE(mcpd.hasReply(list)) << "tools/list's reply was dropped at EOF";
+    EXPECT_TRUE(mcpd.hasReply(forwarded)) << "the forwarded get_text reply was dropped at EOF";
+}

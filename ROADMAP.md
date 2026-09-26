@@ -65893,12 +65893,19 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: refactor.
   Source: in-session-2026-09-24.
 
-- 📋 [ANTS-5320] **ants-mcpd drops replies still in flight when its stdin closes.**
+- ✅ [ANTS-5320] **ants-mcpd drops replies still in flight when its stdin closes.**
   src/mcpdmain.cpp quits the event loop on stdin EOF. Off-thread and
   forwarded replies arrive later through the loop, so they are never
   written. Claude Code keeps stdin open, so it is unaffected; a client that
   pipes a batch and closes stdin gets only the synchronous replies. Fix:
   on EOF, stop reading and quit once no request is outstanding.
+  Shipped 2026-09-26. src/mcpdmain.cpp counts each dispatched line and
+  ends it on reply() or finish(); stdin EOF stops reading and quits once
+  nothing is in flight, with a 60 s backstop for a handler that never ends
+  its request. The oversized-line refusal writes directly, uncounted.
+  Test: StandaloneMcpServer.RepliesInFlightAtStdinEofAreStillSent, a
+  forwarded get_text to a stub terminal plus tools/list, then EOF. Red
+  against the old main (forwarded reply dropped), green after.
   **Layman:** If a program sends the MCP helper several requests and then closes the connection, the slower answers are lost.
   Kind: fix.
   Source: in-session-2026-09-24.

@@ -167,6 +167,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ants-mcpd answers every request a client sent before closing its input, including ones forwarded to the terminal** (ANTS-5320)
+
 - **The man page and the bash, zsh and fish completions now list --e2e, --export-roadmaps and every --remote* option**
   A new test keeps them in step with the options the program accepts.
 
