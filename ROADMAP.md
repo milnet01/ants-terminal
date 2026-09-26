@@ -66938,13 +66938,17 @@ project. Reported causes are claims until checked in source.
   Source: RetroDB feedback 2026-09-26 (ANTS-5395 re-test).
   Lanes: roadmap.
 
-- 📋 [ANTS-5405] **roadmap_log op:backfill_dates dates nothing on a pass-headings roadmap.**
+- ✅ [ANTS-5405] **roadmap_log op:backfill_dates dates nothing on a pass-headings roadmap.**
   RetroDB dry run walked 207 revisions and wrote 0 of 253 dates; every item
   lands in `undated`. The walk evidently parses each historical revision with
   the bullet reader, which yields no ids from `#### Pass N.M` blocks. Parse
   each revision with the dialect reader the live file uses (PASS-N-M from the
   heading; shipped from the Status line's done keyword), and report the
   dialect per revision so a zero can be told from no history.
+  Shipped 2026-09-26 in 77f6c6c2 (GitHub CI green). A pass-headings file is
+  walked with a diff driver naming the enclosing #### Pass per hunk; a renamed
+  heading is dated from that revision's file. RetroDB dry run: 253/253
+  created, 190/190 shipped.
   **Layman:** Filling in old created and shipped dates from git history works on the usual roadmap style but finds nothing on the pass-by-pass style.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
