@@ -65661,12 +65661,18 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).
   Lanes: mcp, packaging.
 
-- 📋 [ANTS-5309] **Narrow ants_core_lib's PUBLIC Qt6::Widgets link now that the MCP verbs live in a GUI-free library.**
+- 🚫 [ANTS-5309] **Narrow ants_core_lib's PUBLIC Qt6::Widgets link now that the MCP verbs live in a GUI-free library.**
   The comment above ants_audit_lib names the split into GUI-free
   libraries as the structural prerequisite for narrowing
   ants_core_lib's PUBLIC Widgets surface. ANTS-4932 creates
   ants_mcpcore_lib and so provides it; the narrowing itself is this
   item. Blocked by ANTS-4932.
+  Dropped (2026-09-26, user ruling): narrowing buys nothing. ants_core_lib compiles
+  Widgets TUs itself, so every consumer still links libQt6Widgets; test_core
+  includes a Widgets header (test_remote_control_ls.cpp); ants_vt_lib,
+  ants_chrome_lib and the other GUI libs get Widgets only through core. The
+  window-free goal is met by ants-mcpd, which does not link core (ANTS-4932).
+  Reopen only if a window-free consumer of ants_core_lib appears.
   **Layman:** Tidy the build so code that has no windows stops pulling in the whole window toolkit.
   Kind: refactor.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).

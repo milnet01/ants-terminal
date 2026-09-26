@@ -877,9 +877,10 @@ set_target_properties(ants_claude_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # of these #include a Qt6::Widgets header); the QDialog moves to
 # ants_audit_dialog_lib below. This keeps engine-only consumers (the MCP
 # audit test bundle, future core consumers) free of the auditdialog.o
-# translation unit. NB: ants_core_lib still links Qt6::Widgets PUBLIC,
-# so the *transitive* Widgets surface persists until that is narrowed
-# separately — this split is the structural prerequisite.
+# translation unit. NB: ants_core_lib still links Qt6::Widgets PUBLIC, and
+# stays that way (ANTS-5309, dropped): core compiles Widgets TUs itself, so
+# narrowing would change no link. The window-free consumer is ants-mcpd,
+# which links ants_mcpcore_lib and never core.
 add_library(ants_audit_lib STATIC
     src/auditengine.cpp
     src/audithygiene.cpp
