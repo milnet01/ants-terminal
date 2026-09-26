@@ -107,11 +107,13 @@ Three rules, each on a different write path:
   all.
 - **`last_modified`** — set on every successful `setItemField()` /
   `clearItemField()`, and at insert. **The stamp lives in the callers, not
-  inside `setItemField()`, and the migration loader and the backfill are both
-  exempt.** Put inside the store method it would fire on every path that
-  reaches it, so one re-migration or one backfill would date every item to
-  today — which is the `last_modified` rewrite § 5 rejects, and it would break
-  INV-4 as well.
+  inside `setItemField()`, and the migration loader, the backfill and
+  `roadmap_log op:"repair_trailers"` are exempt.** Put inside the store method
+  it would fire on every path that reaches it, so one re-migration or one
+  backfill would date every item to today — which is the `last_modified`
+  rewrite § 5 rejects, and it would break INV-4 as well. The repair is exempt
+  for the same reason: it restores values the migration should have stored,
+  across many items at once (user ruling, 2026-09-26).
 - **`shipped`** — set **only on the transition into `shipped`**: a `status`
   write whose new value is `shipped` and whose old value is not. It is
   *cleared* on a transition out, so a reopened item carries no closure date.

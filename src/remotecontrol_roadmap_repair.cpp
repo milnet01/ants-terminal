@@ -215,6 +215,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
         }
     }
 
+    // No rlStampModified here, deliberately: the repair restores what the
+    // migration should have stored, so it is exempt from `last_modified` as
+    // the loader and the backfill are (ANTS-4501 spec, user ruling 2026-09-26).
     HistoryContext hist;
     hist.changedAt = rlHistoryStamp();
     if (!dryRun && (!plan.isEmpty() || !bodyPlan.isEmpty())) {
