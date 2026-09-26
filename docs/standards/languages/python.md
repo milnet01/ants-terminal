@@ -26,6 +26,24 @@
 Read alongside `../coding.md`, which holds the language-agnostic rules.
 This file covers only what is specific to Python.
 
+## Scope — Python as the project, Python as its tooling
+
+**Every rule about the code itself binds wherever Python is written.** Casing,
+idioms, the traps, what a test must prove.
+
+**The packaging and `pytest` rules bind a project that IS a Python package.**
+`pyproject.toml`, `requires-python`, the marker registry and
+`@pytest.mark.skip` presuppose a package with a Python test runner of its own.
+A repository whose Python is a few tool scripts driven by another language's
+harness has nowhere to put them, and adding a `pyproject.toml` nothing reads is
+not conformance. There, `ruff`'s config goes wherever that project keeps it —
+`ruff.toml` is the standard alternative — and the harness running the script
+owns its skip protocol, which is what `testing.md` § 7 is asking for.
+
+Reported 2026-09-26 by a project in exactly that state: Python tool scripts, no
+`pyproject.toml`, `ruff.toml` for config, one test run by `ctest` through exit
+code 77.
+
 ## Version floor
 
 Python 3.10 minimum unless the project pins higher — that is the floor
@@ -43,7 +61,11 @@ PEP 8, which the whole ecosystem follows:
 
 ## Idioms
 
-- Type hints on every public function signature.
+- Type hints on every public function signature. **Public means importable by
+  another module, not un-underscored.** A module nothing imports — a script that
+  is only executed — exposes its command line and its exit codes, so the rule
+  fires on nothing inside it. `_leading_underscore` marks intent within a
+  module and does not decide this.
 - `list[int]` and `X | Y`, not `List[int]` and `Union[X, Y]`.
 - `match` / `case` where a chain of `isinstance` checks would otherwise
   pile up.
@@ -192,8 +214,11 @@ nothing it runs BOTH** — the default set and the supplied selector — so
 coverage is wider, and rewriting that config as an exhaustive `select`
 loses the default half — measured 2026-09-26, it adds
 `S` and drops `I`, `UP` and the rest. Only an explicit `select` gives the
-same set inside and outside that gate. Breach: a `select` list the table
-below credits with codes it does not name.
+same set inside and outside that gate. **Breach: your `select` omits a code the
+table below calls default, so that row is checked by nothing here while still
+reading as covered.** Reported 2026-09-26 by a project whose
+`select` names neither `E722`, `S110` nor `BLE001`: a probe with `except: pass`
+fired only `F401` and `F403`, against eight findings under `--isolated`.
 
 **Removing an environment variable is not neutral.** Copy the
 environment, delete a key, pass it to a child, and the library defaults
@@ -233,6 +258,11 @@ neither that nothing is enforced nor that much is.** Each row says
 which. **Re-measure rather than trusting this paragraph** — an isolated
 `ruff check` over a file that breaks the rule answers it in one command,
 and the split moves between releases.
+
+**Scope of the word *default* in every row below: an UNCONFIGURED project.** A
+project with any `select` has replaced that set, so read each *default* row as
+checked by nothing there unless its code is in the list. This is the trap above,
+and it is where the table misleads rather than where it is wrong.
 
 | Rule | What catches a breach |
 |------|----------------------|

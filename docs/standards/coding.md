@@ -215,6 +215,14 @@ calling into it, use the idiom current for *that* version — not the
 one you remember. `dependencies.md` §1 owns when a project may hold
 one back.
 
+***That version* is the oldest release your project still requires, not the
+newest it happens to build against.** Where the two differ — a declared minimum
+and a newer local build — an idiom the minimum lacks will not compile for
+everyone who can build you. Declaring no minimum makes them the same and the
+question does not arise. Reported 2026-09-26 by a project requiring Qt 6.2,
+building against 6.11, and guarding the floor in its pre-push hook: nothing here
+said which version the idiom should be current for.
+
 **Check before writing, rather than recalling.** A stale idiom
 still compiles, which is exactly why it survives: nothing fails,
 and the codebase ages a little. Where a language has aged visibly,

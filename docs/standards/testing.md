@@ -321,7 +321,16 @@ move between the two without guessing which assertion covers what.
 **Invariant ids take `spec-format.md` §3.7's `INV-N` form, and are
 append-only.** They are cited from commit messages, changelog entries and
 sibling documents, so renumbering silently breaks references that nothing
-checks. A dropped invariant is marked **withdrawn** in `spec-format.md` § 3.7's
+checks.
+
+**The form binds forward. A contract written before the project adopted this
+keeps its own numbering, and is not in breach.** Append-only is what protects
+it: converting `1. 2. 3.` to `INV-1 INV-2 INV-3` is a rename, which the same
+sentence forbids doing silently — so either leave it, or convert it with each old
+id kept as a withdrawn tombstone naming its replacement. **Leaving it is the
+default and costs nothing.** Reported 2026-09-26 by a project whose existing
+feature contracts are numbered that way: read flat, this sentence put every one
+of them in breach on adoption day and offered a remedy it also prohibited. A dropped invariant is marked **withdrawn** in `spec-format.md` § 3.7's
 exact spelling — em dash included, because the exemption is a literal
 match on that character — rather than deleted. **A feature contract carries
 no version, so the slot § 3.7 fills with one takes the closing item's id
@@ -423,6 +432,14 @@ could the author later. Decide it on the condition instead:
   known failure on that host is code-keyed here and owes the item** —
   `skipIf(platform == "darwin")` over a macOS bug reads as host-keyed and is
   not, which is why §10 names it.
+
+**A skip spelled as an early `return` is still a skip, and nothing finds it.**
+Print a reason and return, and the test reports a PASS — so it claims to have
+run. Every check for this rule greps the framework's marker, so this shape is
+invisible to all of them, which makes it the one the rule most needs to reach.
+**Use the framework's own skip** — `GTEST_SKIP`, `pytest.skip`, the harness's
+skipped-exit code — so the result says skipped. Found 2026-09-26 in a live
+repository, where such a skip had reported green since April.
 
 ## 8. Coverage
 
@@ -529,7 +546,7 @@ presented at its site as derived.
 | Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — but the two tools differ on whether the shuffle happens unasked. `pytest-randomly` auto-loads, so an ordinary pytest run shuffles; `ctest` shuffles only when `--schedule-random` is passed, so an ordinary `ctest` invocation checks nothing here. Re-measured 2026-09-26: a bare collect prints `Using --randomly-seed=…`, and `ctest --help` lists `--schedule-random` as an option. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **Nothing** shuffles for a runner with no shuffle option at all — a Makefile loop or a script over a sorted file list is fixed-order by construction — and `ctest -j` is not a shuffle either: it orders by recorded cost, so which tests run *concurrently* varies while each one's order does not. **`Partial:`** for wall-clock dependence — `review-tests` dimension 7 greps Python tests for `datetime.now()` / `datetime.utcnow()`, and *without freezing* is a LANE's confirmation rather than part of the pattern. `time.time()` belongs to dimension 5 and matches only the arithmetic form, so a bare `assert t < time.time()` matches nothing. **Nothing** catches a non-arithmetic wall-clock read, or a wall clock in any language the pattern table does not cover. **Nothing** catches dependence on machine speed, which repeated runs on one machine reproduce rather than expose |
 | Network isolation (§7) | **`Partial:`** running the fast set with no connection. **Nothing** reaches the slow set, or checks that an opted-in test carries its label and gate |
 | Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations=N` — the count is required, and a bare `--durations` is an argument error rather than a report). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
-| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable, and `review-tests` dimension 8 reports a skip with no reason string at all. **Its long-muted branch fires only where the run supplies the skip's age** — no lane has a blame verb — so on an ordinary run the reason-string half is the whole check. **Nothing** checks that a named item exists or is still open |
+| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable **only where the framework's marker is what was used — a skip spelled as an early `return` after printing its reason reports a PASS, and no grep reaches it** (measured 2026-09-26 in a live repository), and `review-tests` dimension 8 reports a skip with no reason string at all. **Its long-muted branch fires only where the run supplies the skip's age** — no lane has a blame verb — so on an ordinary run the reason-string half is the whole check. **Nothing** checks that a named item exists or is still open |
 | **The test was seen failing before the code changed (§1)** | **nothing** — once both are green, no artifact distinguishes a test written first from one written after. Not a person either: nobody present can see it afterwards |
 | The backwards proof was actually run (§2) | **nothing** — the two runs leave nothing behind, and a build error quoted as the red run looks identical to a real one in a transcript |
 | Tests the contract, not the implementation (§3) | **nothing mechanical** — a reader, helped by the naming rule |
