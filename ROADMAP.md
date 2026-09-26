@@ -67220,6 +67220,72 @@ project. Reported causes are claims until checked in source.
   Source: in-session 2026-09-26 (found implementing ANTS-5404).
   Lanes: roadmap.
 
+### Ants MCP feedback from CC sessions — 2026-09-26 triage
+
+- 📋 [ANTS-5467] **roadmap_query honours max_body_bytes on the section and list paths.**
+  Today max_body_bytes applies to id/ids fetches only; a section or list
+  query always emits bodies at the 2000 cap, and that is the path that
+  spills. Honour it there, clamped as the targeted path clamps it.
+  Reproduced by claude-45 over 26 rows: rows_preview showed bodies far
+  above the requested cap.
+  **Layman:** A roadmap search that returns many items can be told to keep each item's text short.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5468] **roadmap_query can return only the lines of each body that match a pattern.**
+  A body projection, e.g. body_match (literal or regex): each row keeps
+  only the matching body lines plus a count of lines dropped, in the
+  shape workspace_search uses for match rows. `query` picks WHICH rows;
+  this bounds WHAT of each row. Asked for by claude-45 for a staleness
+  triage it ended up doing with a script over ROADMAP.md.
+  **Layman:** When checking many roadmap items for one thing, Claude can read just the matching lines instead of every item in full.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5469] **doc_lint's doc_citations treats an illustrative path in an "X, not Y" example as a specimen.**
+  doc_lint over ~/.claude/standards flagged `src/vault.py:39-49` in
+  documentation.md, an invented example of the form not to use. Reporter's
+  preferred rule: a path inside a negative construction (`X, not Y`) is a
+  specimen; alternatively skip a path whose directory root does not exist
+  in the project.
+  **Layman:** The document checker stops flagging made-up example paths in a guide about how to cite paths.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: docs.
+
+- 📋 [ANTS-5470] **doc_lint's doc_symbols stops reporting backticked prose words as unresolved symbols.**
+  On ~/.claude/standards the kind reported mostly field values, verdict
+  bands and naming-convention names (`Kind`, `PARTIAL`, `PascalCase`) as
+  unresolved. Candidate rules: a single backticked TitleCase/ALLCAPS word
+  or a known naming-convention name is prose; consider defaulting the
+  kind off outside source-adjacent documents.
+  **Layman:** The document checker stops treating ordinary words in code formatting as missing code names.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: docs.
+
+- 📋 [ANTS-5471] **doc_lint's doc_dedup can exclude a section heading the corpus's own standard requires.**
+  Most near_duplicate hits on ~/.claude/standards were each standard's
+  `## What checks this` section, which documentation.md mandates. An
+  argument naming headings to treat as structural would drop them.
+  **Layman:** The document checker stops calling a required section a duplicate just because every document has one.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: docs.
+
+- 💭 [ANTS-5472] **docs_index could report whether a document has a history file and a loop log.**
+  documentation.md § 3.4 moves pedigree to docs/history/<doc>.md and
+  review history to docs/reviews/<doc>-loop-log.md. read_region plus
+  workspace_search already reach them in two calls; the reporter asks
+  only whether convention awareness belongs in docs_index. Considered,
+  not planned, until a session is seen to miss a history file.
+  **Layman:** Claude could find where a rule's history lives in one step instead of knowing the naming convention.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: docs.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
