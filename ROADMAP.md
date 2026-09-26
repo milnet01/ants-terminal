@@ -66971,6 +66971,20 @@ project. Reported causes are claims until checked in source.
   Source: RetroDB feedback 2026-09-26.
   Lanes: roadmap.
 
+- 📋 [ANTS-5408] **A file-route pass-headings flip replaces the whole Status value, dropping its date and Lanes.**
+  PassHeadingWrite::flipPassStatus writes `prefix + newValue`, where
+  newValue is the keyword (or emoji + keyword) alone, so
+  `- **Status**: planned (2026-09-02). Lanes: security, packaging.` becomes
+  `- **Status**: done`. The store route keeps the rest of the line
+  (ANTS-5395) and, since ANTS-5404, the project's own status word. The
+  file route (a pass-headings project the store does not serve) should
+  use the same helpers: rewriteStatusWord for the word, redatePassStatus
+  for the date. No reporter uses the file route today.
+  **Layman:** On a pass-by-pass roadmap that is not in the database, changing an item's status wipes the date and the list of areas written on the same line.
+  Kind: fix.
+  Source: in-session 2026-09-26 (found implementing ANTS-5404).
+  Lanes: roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

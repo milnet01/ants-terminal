@@ -51,6 +51,18 @@ A pass-headings project the store does not serve keeps every file writer.
   path's annotate places a note by the same rule (ANTS-5395).
   *Tests:* `Ants5395FlipRedatesAndKeepsTheNoteInside`,
   `Ants5395FileAnnotateKeepsTheNoteInside`.
+- **INV-7** — a note is written as a bullet, never a bare line, which
+  Markdown would fold into the bullet above it (ANTS-5404). A store-route flip
+  to shipped writes `- **Resolution** (<today>): <note>` directly above the
+  first Status line; any other note is `- **Progress** (<today>): <note>` at
+  the INV-6 position. A note that already opens with `- ` is kept as written.
+  A store-route flip that changes status writes the word this roadmap already
+  uses for the target status, by majority over its items' Status lines, and
+  the canonical keyword only when no item uses one. Fixture shapes are
+  RetroDB's (`roadmap.md` at 075f494, Passes 59.64, 59.71, 59.72).
+  *Tests:* `Ants5404ShippingNoteIsAResolutionAboveStatus`,
+  `Ants5404AnnotateNoteIsAProgressBullet`,
+  `Ants5404FileAnnotateNoteIsABullet`.
 
 INV-1 to INV-4 fail against the pre-fix code.
 

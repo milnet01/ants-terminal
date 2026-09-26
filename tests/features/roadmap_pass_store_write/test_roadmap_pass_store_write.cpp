@@ -65,6 +65,39 @@ const char *kDated =
     "\n"
     "---\n";
 
+// ANTS-5404 — RetroDB's blocks (roadmap.md at 075f494, Passes 59.64, 59.72,
+// 59.71), prose shortened, bullets and Status lines exact. A Resolution sits
+// above Status; Source and Progress bullets follow it; the project writes
+// `shipped (date)`, never `done`.
+const char *kRetro =
+    "# Demo — Roadmap\n"
+    "\n"
+    "## Phase 59\n"
+    "\n"
+    "#### Pass 59.64 MISSING DOCUMENT — the launcher subsystem has no spec (HIGH, M)\n"
+    "- **Target**: a new `docs/specs/launcher.md`.\n"
+    "- **Resolution** (2026-09-26, docs only, 60bdc74): the spec is accepted.\n"
+    "- **Status**: shipped (2026-09-26). Lanes: launch, docs.\n"
+    "- **Source**: review-code launch lane 2026-09-01.\n"
+    "---\n"
+    "\n"
+    "#### Pass 59.72 A container-relative media value still resolves against the bundle (MEDIUM, S)\n"
+    "- **Target**: `services/media_cleanup.py::_resolve_media_path`.\n"
+    "- **Resolution** (2026-09-26, v3.23.13, 9ed9d45): fixed rather than deleted.\n"
+    "- **Status**: shipped (2026-09-26). Lanes: media, packaging.\n"
+    "- **Source**: in-session 2026-09-02.\n"
+    "\n"
+    "---\n"
+    "\n"
+    "#### Pass 59.71 ACTION REQUIRED — rotate the PSN NPSSO token (HIGH, S)\n"
+    "- **Target**: the live PSN NPSSO credential.\n"
+    "- **Status**: planned (2026-09-02). Lanes: security, packaging.\n"
+    "- **Source**: in-session 2026-09-01 (`a5e0939`).\n"
+    "- **Progress** (2026-09-26): the user chose to rotate the token.\n"
+    "  Waiting on the user.\n"
+    "\n"
+    "---\n";
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QDir().mkpath(QFileInfo(path).path());
     QFile f(path);
@@ -384,4 +417,97 @@ TEST(RoadmapPassStoreWrite, Ants5395FileAnnotateKeepsTheNoteInside) {
     ASSERT_GE(noteAt, 0) << file.toStdString();
     EXPECT_LT(noteAt, ruleAt) << "the note landed after the first pass's separator:\n"
                               << file.toStdString();
+}
+
+// ANTS-5404 — RetroDB's re-test of ANTS-5395: a shipping note is a Resolution
+// bullet directly above the Status line, and the Status line keeps the word
+// this roadmap uses (`shipped`), not the canonical `done`. The Progress bullet
+// after the Status line is untouched.
+TEST(RoadmapPassStoreWrite, Ants5404ShippingNoteIsAResolutionAboveStatus) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, /*migrate=*/true, &projectId, kRetro);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject flip = req(root, QStringLiteral("flip"));
+    flip[QStringLiteral("id")]        = QStringLiteral("PASS-59-71");
+    flip[QStringLiteral("to_status")] = QStringLiteral("shipped");
+    flip[QStringLiteral("note")]      = QStringLiteral("Token rotated.");
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(flip).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QString today = QDate::currentDate().toString(Qt::ISODate);
+    const QString want = QStringLiteral(
+        "- **Resolution** (%1): Token rotated.\n"
+        "- **Status**: shipped (%1). Lanes: security, packaging.\n").arg(today);
+    const auto item = itemOf(QStringLiteral("PASS-59-71"), projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_TRUE(item->body.contains(want)) << item->body.toStdString();
+    EXPECT_TRUE(item->body.contains(QStringLiteral(
+        "- **Progress** (2026-09-26): the user chose to rotate the token.\n"
+        "  Waiting on the user.")))
+        << "the Progress bullet after the Status line moved:\n"
+        << item->body.toStdString();
+
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(want)) << file.toStdString();
+    EXPECT_FALSE(file.contains(QStringLiteral("**Status**: done")))
+        << "the render wrote the canonical keyword over the project's own:\n"
+        << file.toStdString();
+}
+
+// ANTS-5404 — an annotate note is a Progress bullet at the end of the item,
+// above its `---`, not a bare line folded into the bullet before it.
+TEST(RoadmapPassStoreWrite, Ants5404AnnotateNoteIsAProgressBullet) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, /*migrate=*/true, &projectId, kRetro);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject ann = req(root, QStringLiteral("annotate"));
+    ann[QStringLiteral("id")]   = QStringLiteral("PASS-59-72");
+    ann[QStringLiteral("note")] = QStringLiteral("Checked on a second library.");
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(ann).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QString today = QDate::currentDate().toString(Qt::ISODate);
+    const auto item = itemOf(QStringLiteral("PASS-59-72"), projectId);
+    ASSERT_TRUE(item.has_value());
+    const QString want = QStringLiteral(
+        "- **Source**: in-session 2026-09-02.\n"
+        "- **Progress** (%1): Checked on a second library.").arg(today);
+    EXPECT_TRUE(item->body.contains(want)) << item->body.toStdString();
+    EXPECT_EQ(item->status, QStringLiteral("shipped"));
+}
+
+// ANTS-5404 — the file path's annotate writes the same bullet.
+TEST(RoadmapPassStoreWrite, Ants5404FileAnnotateNoteIsABullet) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, /*migrate=*/false, nullptr, kRetro);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject ann = req(root, QStringLiteral("annotate"));
+    ann[QStringLiteral("id")]   = QStringLiteral("PASS-59-72");
+    ann[QStringLiteral("note")] = QStringLiteral("Checked on a second library.");
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(ann).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QString today = QDate::currentDate().toString(Qt::ISODate);
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(QStringLiteral(
+        "- **Source**: in-session 2026-09-02.\n"
+        "- **Progress** (%1): Checked on a second library.\n").arg(today)))
+        << file.toStdString();
 }

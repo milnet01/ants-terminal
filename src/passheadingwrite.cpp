@@ -5,6 +5,8 @@
 
 #include "roadmapparse.h"   // ANTS-3768 — the format's status vocabulary
 
+#include <QDate>
+#include <QHash>
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -89,6 +91,12 @@ QString capitaliseFirst(const QString &s) {
     if (s.isEmpty()) return s;
     return s.left(1).toUpper() + s.mid(1);
 }
+
+// Rewrite the word of the first Status line in lines[from..] that classifies —
+// the reader's line — to `keyword`, and a status glyph to `emoji`, keeping its
+// date and prose. False when none classifies.
+bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
+                       const QString &emoji);
 
 // Synthesise the reader's id for a `#### Pass` heading match.
 QString idForHead(const QRegularExpressionMatch &m) {
@@ -191,6 +199,36 @@ QString designatorFromPassId(const QString &id) {
         : QStringLiteral("%1.%2.%3").arg(m.captured(1), m.captured(2), sub);
 }
 
+namespace {
+
+bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
+                       const QString &emoji) {
+    for (int j = from; j < lines.size(); ++j) {
+        const QRegularExpressionMatch pm = rxStatusPrefix().match(lines.at(j));
+        if (!pm.hasMatch()) continue;
+        const QString value = pm.captured(2);
+        const QRegularExpressionMatch vm = rxStatusValue().match(value);
+        const QString lead = vm.captured(1), word = vm.captured(2);
+        // A leading run that is not a status glyph (`**`) is the author's
+        // decoration: kept, never replaced by an emoji.
+        bool glyph = false;
+        for (const char *k : {"todo", "in-progress", "done", "deferred", "dropped"})
+            glyph = glyph || lead == passStatusEmoji(QLatin1String(k));
+        if (word.isEmpty() && !glyph) continue;   // content-free: the reader skips it too
+        const qsizetype gap = vm.capturedStart(2) - lead.size();
+        lines[j] = pm.captured(1)
+                 + (glyph ? emoji : lead)
+                 + value.mid(lead.size(), gap)
+                 + (word.isEmpty() ? QString()
+                                   : (glyph ? capitaliseFirst(keyword) : keyword))
+                 + value.mid(vm.capturedEnd(0));
+        return true;
+    }
+    return false;
+}
+
+}  // namespace
+
 QString formatPassBlock(const QString &pass, const QString &headline,
                         const QString &keyword, const QString &body) {
     QString head = QStringLiteral("#### Pass %1").arg(pass);
@@ -210,29 +248,8 @@ QString formatPassBlock(const QString &pass, const QString &headline,
             // stays `planned` rather than churning to `todo` on every render.
             if (rec->status == passStatusEmoji(keyword))
                 return block.join(QChar('\n'));
-            // Otherwise rewrite the word of the first line that classifies —
-            // the reader's line — and keep its date and prose.
-            for (int j = 1; j < block.size(); ++j) {
-                const QRegularExpressionMatch pm = rxStatusPrefix().match(block.at(j));
-                if (!pm.hasMatch()) continue;
-                const QString value = pm.captured(2);
-                const QRegularExpressionMatch vm = rxStatusValue().match(value);
-                const QString lead = vm.captured(1), word = vm.captured(2);
-                // A leading run that is not a status glyph (`**`) is the
-                // author's decoration: kept, never replaced by an emoji.
-                bool glyph = false;
-                for (const char *k : {"todo", "in-progress", "done", "deferred", "dropped"})
-                    glyph = glyph || lead == passStatusEmoji(QLatin1String(k));
-                if (word.isEmpty() && !glyph) continue;   // content-free: the reader skips it too
-                const qsizetype gap = vm.capturedStart(2) - lead.size();
-                block[j] = pm.captured(1)
-                         + (glyph ? passStatusEmoji(keyword) : lead)
-                         + value.mid(lead.size(), gap)
-                         + (word.isEmpty() ? QString()
-                                           : (glyph ? capitaliseFirst(keyword) : keyword))
-                         + value.mid(vm.capturedEnd(0));
+            if (rewriteStatusWord(block, 1, keyword, passStatusEmoji(keyword)))
                 return block.join(QChar('\n'));
-            }
         }
     }
 
@@ -327,7 +344,11 @@ WriteResult annotatePass(const QString &markdown,
     // Append after the block's last non-blank content line, so the note
     // lands inside the block rather than after its trailing blank lines.
     // ANTS-5395 — and above a trailing `---` rule, which separates passes.
-    const QStringList noteLines = note.split(QChar('\n'));
+    // ANTS-5404 — as a bullet, never a bare line.
+    const QStringList noteLines =
+        formatPassNote(note, PassNoteKind::Progress,
+                       QDate::currentDate().toString(Qt::ISODate))
+            .split(QChar('\n'));
     const int insertAt = noteInsertionPoint(lines, head + 1, blockEnd, head + 1);
     for (int k = noteLines.size() - 1; k >= 0; --k) {
         lines.insert(insertAt, noteLines.at(k));
@@ -370,6 +391,68 @@ QString redatePassStatus(const QString &body, const QString &isoDate) {
                  + value.mid(dm.capturedEnd(0));
         break;   // the FIRST Status line is the item's, as for the reader
     }
+    return lines.join(QChar('\n'));
+}
+
+QString formatPassNote(const QString &note, PassNoteKind kind,
+                       const QString &isoDate) {
+    QStringList lines = note.split(QChar('\n'));
+    if (lines.first().startsWith(QStringLiteral("- ")))
+        return note;   // the caller wrote its own bullet
+    const QString label = kind == PassNoteKind::Resolution
+        ? QStringLiteral("Resolution") : QStringLiteral("Progress");
+    lines[0] = QStringLiteral("- **%1** (%2): %3").arg(label, isoDate, lines.first());
+    for (int k = 1; k < lines.size(); ++k)
+        if (!lines.at(k).isEmpty() && !lines.at(k).front().isSpace())
+            lines[k] = QStringLiteral("  ") + lines.at(k);
+    return lines.join(QChar('\n'));
+}
+
+QString insertPassNoteAboveStatus(const QString &body, const QString &bullet) {
+    QStringList lines = body.split(QChar('\n'));
+    for (int j = 0; j < lines.size(); ++j) {
+        if (!rxStatusPrefix().match(lines.at(j)).hasMatch()) continue;
+        const QStringList add = bullet.split(QChar('\n'));
+        for (int k = int(add.size()) - 1; k >= 0; --k)
+            lines.insert(j, add.at(k));
+        return lines.join(QChar('\n'));
+    }
+    return insertPassNote(body, bullet);
+}
+
+QString passStatusWordFor(const QString &canonicalKeyword,
+                          const QStringList &bodies) {
+    const QString want = passStatusEmoji(canonicalKeyword);
+    QStringList order;                 // first-seen order breaks a tie
+    QHash<QString, int> count;
+    for (const QString &body : bodies) {
+        QString value;
+        for (const QString &line : body.split(QChar('\n'))) {
+            const QRegularExpressionMatch pm = rxStatusPrefix().match(line);
+            if (pm.hasMatch()) { value = pm.captured(2); break; }
+        }
+        if (value.isEmpty()) continue;
+        // Classify with the reader itself, so a word counts here exactly
+        // when the reader would read it as this status.
+        const auto rec = RoadmapParse::parsePassHeadingBlock(
+            {QStringLiteral("#### Pass 0.0"), QStringLiteral("- **Status**: ") + value});
+        if (!rec || rec->status != want) continue;
+        const QString word = rxStatusValue().match(value.trimmed()).captured(2);
+        if (word.isEmpty()) continue;
+        if (!count.contains(word)) order.append(word);
+        ++count[word];
+    }
+    QString best = canonicalKeyword;
+    int bestCount = 0;
+    for (const QString &w : std::as_const(order))
+        if (count.value(w) > bestCount) { best = w; bestCount = count.value(w); }
+    return best;
+}
+
+QString setPassStatusWord(const QString &body, const QString &word,
+                          const QString &canonicalKeyword) {
+    QStringList lines = body.split(QChar('\n'));
+    rewriteStatusWord(lines, 0, word, passStatusEmoji(canonicalKeyword));
     return lines.join(QChar('\n'));
 }
 

@@ -159,6 +159,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Pass-headings notes are written as bullets, and a flip keeps the roadmap's own status word** (ANTS-5404)
+  A note from `roadmap_log` on a `#### Pass` roadmap is now a
+  `- **Progress** (date):` bullet, or a `- **Resolution** (date):` bullet
+  above the Status line when flipping to shipped, so Markdown no longer
+  folds it into the bullet before it. A store-route flip writes the word
+  the roadmap already uses for the new status (`shipped (date)`), not the
+  canonical `done`. Reported by RetroDB.
+
 - **roadmap_migrate names Pass-style blocks it could not read as items** (ANTS-5394)
   A `####` block with a status but no `Pass N.M` id, such as `FU.6`, is
   now listed in `unparsed_headings` at the top of the reply, with its

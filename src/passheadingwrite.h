@@ -10,6 +10,9 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
+
+#include <cstdint>
 
 namespace PassHeadingWrite {
 
@@ -93,6 +96,29 @@ WriteResult annotatePass(const QString &markdown,
 // Inserts `note` after the body's last content line, above a trailing
 // `---` / `***` / `___` rule, so it stays inside the item.
 QString insertPassNote(const QString &body, const QString &note);
+
+// ANTS-5404 — a pass block's items are bullets, so a note is written as one:
+// a bare line is folded by Markdown into the bullet above it.
+enum class PassNoteKind : std::uint8_t { Progress, Resolution };
+// `- **Progress** (<isoDate>): <note>` / `- **Resolution** (...)`, later
+// lines indented two spaces. A note already opening with `- ` is the
+// caller's own bullet and is returned as written.
+QString formatPassNote(const QString &note, PassNoteKind kind,
+                       const QString &isoDate);
+// Inserts `bullet` directly above the FIRST `- **Status**:` line, where a
+// shipped pass carries its Resolution. No Status line: insertPassNote's rule.
+QString insertPassNoteAboveStatus(const QString &body, const QString &bullet);
+// The word this roadmap writes for the status `canonicalKeyword` stands for:
+// the most common status word, over the FIRST Status line of each of
+// `bodies` (its items' block bodies), that the reader reads as the same
+// status. The canonical keyword when none does.
+QString passStatusWordFor(const QString &canonicalKeyword,
+                          const QStringList &bodies);
+// Rewrites the status word of the body's FIRST Status line to `word`, and a
+// status glyph to `canonicalKeyword`'s, keeping its date and the rest of the
+// line.
+QString setPassStatusWord(const QString &body, const QString &word,
+                          const QString &canonicalKeyword);
 // Replaces the date written right after the status word on the FIRST
 // `- **Status**:` line (`planned (2026-09-01). Lanes: a.`) with `isoDate`,
 // keeping the rest of the line. No date there: the body is unchanged.

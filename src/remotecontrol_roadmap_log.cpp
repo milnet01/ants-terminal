@@ -1344,14 +1344,39 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // item, and a status change re-dates that line: keeping the planning date
     // beside `done` reads as the ship date (RetroDB, 2026-09-26).
     const bool passBody = c.format == QLatin1String("pass-headings");
-    QString newBody =
-        (note.isEmpty() || alreadyPresent)
-            ? before->body
-            : passBody ? PassHeadingWrite::insertPassNote(before->body, note)
-                       : rlAppendBodyNote(before->body, note);
-    if (passBody && !annotateMode && before->status != targetStatusWord)
-        newBody = PassHeadingWrite::redatePassStatus(
-            newBody, QDate::currentDate().toString(Qt::ISODate));
+    const QString today = QDate::currentDate().toString(Qt::ISODate);
+    // ANTS-5404 — a pass note is a bullet: a shipping note is the item's
+    // Resolution, above its Status line, where RetroDB's shipped passes carry
+    // theirs; any other note is a Progress bullet at the item's end.
+    const bool resolution = passBody && !annotateMode
+                         && targetStatusWord == QLatin1String("shipped");
+    QString newBody = before->body;
+    if (!note.isEmpty() && !alreadyPresent) {
+        if (!passBody)
+            newBody = rlAppendBodyNote(before->body, note);
+        else if (resolution)
+            newBody = PassHeadingWrite::insertPassNoteAboveStatus(before->body,
+                PassHeadingWrite::formatPassNote(
+                    note, PassHeadingWrite::PassNoteKind::Resolution, today));
+        else
+            newBody = PassHeadingWrite::insertPassNote(before->body,
+                PassHeadingWrite::formatPassNote(
+                    note, PassHeadingWrite::PassNoteKind::Progress, today));
+    }
+    if (passBody && !annotateMode && before->status != targetStatusWord) {
+        // ANTS-5404 — write the word this roadmap already uses for the new
+        // status (RetroDB's `shipped`), not the canonical keyword, so the
+        // render finds a word meaning the same status and keeps the line.
+        QStringList bodies;
+        if (const auto items = store.readItems(projectId, &seamErr))
+            for (const auto &it : *items)
+                bodies.append(it.body);
+        const QString canonical = PassHeadingWrite::passStatusKeyword(targetStatusWord);
+        newBody = PassHeadingWrite::setPassStatusWord(
+            newBody, PassHeadingWrite::passStatusWordFor(canonical, bodies),
+            canonical);
+        newBody = PassHeadingWrite::redatePassStatus(newBody, today);
+    }
 
     // ANTS-3822 § 2.5 — one stamp for the whole op, computed before
     // mutate() runs rather than per row, so a write that straddles a
