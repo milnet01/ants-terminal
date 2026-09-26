@@ -86620,6 +86620,253 @@ contributors don't duplicate research.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #13; ledger TL-26).
   Lanes: shell-integration.
 
+- 📋 [ANTS-5429] **clang-tidy performance-implicit-conversion-in-loop: 230 sites in 75 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Large class, mostly noise: spot-check, then fix or suppress as one class.
+  **Layman:** Loops that quietly copy each item instead of looking at it in place.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5430] **clang-tidy bugprone-signed-bitwise: 198 sites in 42 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Likely Qt flag enums: spot-check, then fix or suppress as one class.
+  **Layman:** Bit operations done on signed numbers, which C++ treats loosely.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5431] **clang-tidy misc-use-anonymous-namespace: 176 sites in 104 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Style only: fix or suppress as one class.
+  **Layman:** File-private helpers written in an older style than the project's newer code.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5432] **clang-tidy bugprone-implicit-widening-of-multiplication-result: 143 sites in 79 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  143 unique, 1160 raw (headers counted per TU). Spot-check for a real
+  overflow, then fix or suppress as one class. ANTS-5243 covers two sites.
+  **Layman:** Multiplications done in a small number type and widened afterwards, which can overflow first.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5433] **clang-tidy misc-use-internal-linkage: 108 sites in 24 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Style only: fix or suppress as one class.
+  **Layman:** Helpers visible to the whole program that only one file uses.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5434] **clang-tidy performance-use-std-move: 87 sites in 39 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Fix or suppress as one class.
+  **Layman:** Values copied where they could simply be handed over.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5435] **clang-tidy bugprone-throwing-static-initialization (cert-err58-cpp): 86 sites in 38 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  cert-err58-cpp flags the same 86 locations; one item covers both.
+  Likely static QString/QRegularExpression: spot-check, then one class.
+  **Layman:** Global values built at startup in a way that could, in theory, throw before the program begins.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5436] **clang-tidy performance-no-automatic-move: 71 sites in 56 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Fix or suppress as one class.
+  **Layman:** Return values that get copied because they were declared const.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5437] **clang-tidy performance-enum-size: 57 sites in 44 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  57 unique, 2059 raw (headers). Changing an enum's size can change a
+  serialised or ABI layout: check QDataStream users first.
+  **Layman:** Small lists of named options stored in a bigger number type than they need.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5438] **clang-tidy performance-unnecessary-copy-initialization: 53 sites in 27 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Fix or suppress as one class.
+  **Layman:** Local copies of values that are only read.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5439] **clang-tidy performance-unnecessary-value-param: 29 sites in 13 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Fix or suppress as one class.
+  **Layman:** Functions that take a copy of an argument they only read.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5440] **clang-tidy bugprone-argument-comment: 24 sites in 5 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  A stale name can hide swapped arguments: check each, then fix.
+  **Layman:** Inline comments naming an argument that no longer match the parameter's name.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5441] **clang-tidy bugprone-assignment-in-if-condition: 20 sites in 3 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Fix or suppress as one class.
+  **Layman:** Assignments written inside an if test, easy to misread as a comparison.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5442] **clang-tidy bugprone-branch-clone: 20 sites in 13 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  An identical branch is sometimes a copy-paste bug: read each one.
+  **Layman:** If/else or switch branches that do exactly the same thing.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5443] **clang-tidy bugprone-unchecked-optional-access: 12 sites in 3 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  ANTS-4783 holds the 354 in tests; this is the tree run's 12. Check each.
+  **Layman:** Reading an optional value without checking it is there.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5444] **clang-tidy misc-no-recursion: 12 sites in 9 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Check each recursion is bounded by its input (depth caps), then suppress.
+  **Layman:** Functions that call themselves, which can run out of stack on deep input.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5445] **clang-tidy bugprone-switch-missing-default-case (and unhandled-code-paths): 11 sites in 2 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  bugprone-unhandled-code-paths flags 9 of the same 11; one item covers both.
+  **Layman:** Switch statements with no fallback for a value nobody listed.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5446] **clang-tidy bugprone-unchecked-string-to-number-conversion (cert-err34-c): 9 sites in 8 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  cert-err34-c flags the same 9; one item covers both. Check each input.
+  **Layman:** Text turned into numbers without checking the text was a number.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5447] **clang-tidy bugprone-macro-parentheses: 8 sites in 6 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it). Fix as one class.
+  **Layman:** Macros whose arguments are not bracketed, so an expression passed in can group wrongly.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5448] **clang-tidy misc-override-with-different-visibility: 7 sites in 6 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Often deliberate for Qt event handlers: check, then fix or suppress.
+  **Layman:** Overridden methods that are public in one class and private in another.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5449] **clang-tidy performance-faster-string-find (prefer-single-char-overloads): 7 sites in 6 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  performance-prefer-single-char-overloads flags the same 7; one item.
+  **Layman:** Searching text for a one-letter string instead of a single character.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5450] **clang-tidy bugprone-incorrect-roundings: 6 sites in 6 files.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it):
+  claudestatuswidgets.cpp, feedbackfile.cpp, indiereviewengine.cpp,
+  mainwindow.cpp, remotecontrol.cpp (ANTS-5158), remotecontrol_roadmap_query_verb.cpp.
+  Replace with std::lround.
+  **Layman:** Numbers rounded with a +0.5 trick that rounds some values the wrong way.
+  Kind: fix.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5451] **clang-tidy performance-inefficient-vector-operation: 6 sites in 1 file.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it). Fix as one class.
+  **Layman:** Lists grown one item at a time without reserving room first.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5452] **clang-tidy bugprone-optional-value-conversion: 5 sites in 4 files.**
+  Sites: mainwindow.cpp:3230, remotecontrol_feedback.cpp:2276,
+  remotecontrol_roadmap_query_verb.cpp:3319/3321, test_roadmap_render.cpp:352.
+  The unwrap is unchecked; check each, then drop the round trip.
+  **Layman:** An optional value unwrapped and immediately re-wrapped.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5453] **clang-analyzer-cplusplus.NewDeleteLeaks: 4 sites in 4 files.**
+  main.cpp:205, mainwindow.cpp:1226 (stayOpen), settingsdialog.cpp:990
+  (groupLayout), test_task_list_dialog_context_menu.cpp:106. Likely Qt
+  parent ownership the analyzer cannot see: confirm each has a parent.
+  **Layman:** Places the analyzer thinks memory is allocated and never freed.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5454] **clang-analyzer-optin.performance.Padding: 4 structs.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
+  Reorder only where the struct is hot or numerous; else suppress.
+  **Layman:** Data structures with wasted gaps between their fields.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5455] **clang-tidy bugprone-unused-local-non-trivial-variable: 2 test sites.**
+  test_audit_dedup_96bit.cpp:81 (hdr), test_terminal_partial_update_mode.cpp:89
+  (makeCurrentCall regex). An unused regex may mean an assertion was lost:
+  check before deleting.
+  **Layman:** Two tests build a value and never use it.
+  Kind: chore.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5456] **clang-tidy cert-dcl16-c: 2 lowercase integer suffixes.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Uppercase the suffix.
+  **Layman:** Number literals ending in a lowercase l, which reads like a 1.
+  Kind: chore.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5457] **clang-analyzer-deadcode.DeadStores: 2 sites.**
+  fileoutline.cpp:337 (i), remotecontrol_roadmap_log.cpp:781 (counter).
+  Check neither hides a lost use, then remove.
+  **Layman:** Values assigned and then never read.
+  Kind: chore.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5458] **clang-tidy misc-explicit-constructor: 2 sites.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Mark explicit unless the conversion is wanted.
+  **Layman:** Constructors that let one type silently turn into another.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5459] **clang-tidy performance-inefficient-string-concatenation: 2 sites.**
+  Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Fix as one class.
+  **Layman:** Text joined with + in a loop, making a new copy each time.
+  Kind: perf.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5460] **clang-tidy bugprone-casting-through-void: 1 test site.**
+  test_shared_socket_listener.cpp:138. Use reinterpret_cast as the check suggests.
+  **Layman:** A socket address converted through void* instead of the usual cast.
+  Kind: chore.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5461] **clang-analyzer-cplusplus.NewDelete: use after release in a test.**
+  test_guithread_join_parked_marshal.cpp:43. Not yet read: confirm or
+  dismiss; a real use-after-free makes the test's result unreliable.
+  **Layman:** A test may touch memory after it has been freed.
+  Kind: investigate.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5462] **clang-tidy misc-multiple-inheritance: 1 site.**
+  Site in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Usually QObject +
+  interface and intended: check, then suppress.
+  **Layman:** One class inherits from two classes that both carry code.
+  Kind: refactor.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5463] **clang-tidy misc-redundant-expression: 1 site.**
+  modelautoswitch.cpp:123: `toolUseElapsedMs >= 0 && >= kLongToolUseMs`;
+  the first test is implied by the second. Harmless; simplify.
+  **Layman:** A comparison that can never change the result.
+  Kind: chore.
+  Source: code-audit-2026-09-26 clang-tidy class table.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
