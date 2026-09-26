@@ -51447,7 +51447,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5285] **Orienting in one section needs two calls because neither survey shape fits.**
+- ✅ [ANTS-5285] **Orienting in one section needs two calls because neither survey shape fits.**
   Measured by peer session localwebservermanager-28.
 
   THE MEASUREMENT: `roadmap_query mode:"headline_only" status:"planned"`
@@ -51503,6 +51503,8 @@ are closed inline in the feedback files rather than filed here.
   Keep ANTS-5275 open regardless: the converse problem on the same verb —
   the prescribed cheap survey spilling on a large project — is unaffected
   by this and is a real defect.
+  Shipped 2026-09-26 in ed3ef8b9; GitHub CI green on the push head
+  05e4d239.
   **Layman:** To see the open work in one area you must either get counts with no items or every item in the project, so people filter it themselves afterwards.
   Kind: doc.
   Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
@@ -66134,10 +66136,12 @@ parse, not that file.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5332] **roadmap_log's op enum text does not mark which section ops are store-only.**
+- ✅ [ANTS-5332] **roadmap_log's op enum text does not mark which section ops are store-only.**
   move_section, delete_section, set_intro and amend_field
   field:section are store-only, stated only in their own prose. Name
   the backend in the enum description itself.
+  Shipped 2026-09-26 in ed3ef8b9; GitHub CI green on the push head
+  05e4d239.
   **Layman:** The tool's help text doesn't say some roadmap operations only work on converted roadmaps, so callers find out by failing.
   Kind: doc-fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
