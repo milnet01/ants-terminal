@@ -19016,13 +19016,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (UT_Ants session report).
   Lanes: audit-engine.
 
-- 📋 [ANTS-5411] **ants-mcpd picks up a trust granted after it started, without a client reconnect.**
+- ✅ [ANTS-5411] **ants-mcpd picks up a trust granted after it started, without a client reconnect.**
   ants-mcpd now wires VerifyTrust::FilePersistedTrustClient (MC-5), but
   that client reads verify-trust.json once at construction and has no
   window to prompt from, so a SHA or repo trusted in the terminal after
   ants-mcpd started stays untrusted there until /mcp reconnects. Fail-safe
   (the engine falls back to auto-detect), so a limitation, not a hole.
   Proposed: re-read the file when its mtime changes, on each lookup.
+  Shipped 2026-09-26 (3d7f617f). FilePersistedTrustClient re-reads
+  verify-trust.json before each lookup and add when its inode, size or
+  mtime changed; a re-read replaces both maps, so a revocation reaches
+  ants-mcpd too. Test: VerifyTrustGate TF-10, red then green. ANTS-1337
+  INV-2 and § 9 amended; review-contract loop 2 found the amendment clean
+  and filed eight pre-existing findings as ANTS-5464 and ANTS-5465. Note
+  ANTS-5464: a Claude session still has no way to GRANT trust.
   **Layman:** A repo you trust while a Claude session is open should be trusted by that session too, without reconnecting.
   Kind: enhancement.
   Source: code-audit-2026-09-26 (review-code lane mcpd, follow-up to the MC-5 fix).
@@ -65983,6 +65990,25 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-request-2026-09-25.
   Lanes: mcp, ui.
 
+- 📋 [ANTS-5464] **Claude Code sessions served by ants-mcpd can never be asked to trust a project's .ants/verify.json.**
+  verify_changes is registered in registerProjectScopedVerbs
+  (src/mcptoolregistry.cpp), so ants-mcpd serves it for every Claude Code
+  session. ants-mcpd installs a bare FilePersistedTrustClient
+  (src/mcpdmain.cpp), whose prompt() returns Headless. So an untrusted
+  bespoke config always falls back to auto-detect with verify_untrusted,
+  and the terminal's ModalClient prompt is reachable only through the
+  terminal's own socket. Fail-safe, but there is no route to GRANT trust
+  from a Claude session. ANTS-5411 makes a grant reach ants-mcpd once made.
+  Needs a design choice: (a) on an untrusted config with a terminal
+  running, forward the trust decision to the terminal so its modal asks;
+  or (b) a terminal UI (menu / Settings) to trust the current project's
+  verify.json. ANTS-1337 § 4.3 and § 8 still describe the prompt as
+  reachable; update them with the choice.
+  **Layman:** Since the MCP moved to its own helper, Claude never asks you before running a project's custom check commands; it quietly uses the default checks instead.
+  Kind: review-fix.
+  Source: review-contract ANTS-1337 loop 2, 2026-09-26 (both lanes).
+  Lanes: mcpd, verify.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
@@ -86873,6 +86899,29 @@ contributors don't duplicate research.
   **Layman:** A comparison that can never change the result.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
+
+- 📋 [ANTS-5465] **Bring ANTS-1337's spec in line with the shipped trust code: seven verified drifts.**
+  All in docs/specs/ANTS-1337.md, verified against src 2026-09-26:
+  1. § 4.5: signature, `struct VerifyTrust`/`trustOut`, `VerifyTrustClient`
+  are stale; real is loadGateConfig(path, configSource, VerifyTrust::Client*
+  = nullptr, bool *verifyUntrusted = nullptr). Its "thin shim that
+  constructs the default client" contradicts INV-10 (null = full trust).
+  Same stale names in INV-10, VT-1/2/7 (trustOut, DenyOnce), WI-1.
+  2. § 4.1 schema: trusted_repos entries carry "sha"; a changed SHA
+  re-prompts and keeps the entry, not "auto-purged".
+  3. § 4.2 "DenyOnce: return empty; record nothing" contradicts INV-5
+  (auto-detect fallback) and INV-9 (session-denied cache).
+  4. INV-9: the cache is keyed per SHA, not per (sha, repo).
+  5. INV-1 "No exceptions": ANTS_VERIFY_TRUST_AUTOTRUST=1 leaves the client
+  null (remotecontrol_review.cpp); name it as the exception.
+  6. VT-6 is "headless fake, loads fall back" here but "null client,
+  bespoke honoured" in tests/features/verify_trust_gate/spec.md.
+  7. § 4.6 pseudo-code ignores the write/flush/close/setOwnerOnlyPerms
+  results the code checks (TF-5).
+  **Layman:** The design document for the project-trust check describes an older version of the code in seven places.
+  Kind: doc-fix.
+  Source: review-contract ANTS-1337 loop 2, 2026-09-26 (filed at the blast-radius exit).
+  Lanes: verify, docs.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

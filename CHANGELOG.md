@@ -167,6 +167,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A project trusted or un-trusted in the terminal now takes effect in running Claude sessions without reconnecting the MCP** (ANTS-5411)
+
 - **ants-mcpd answers every request a client sent before closing its input, including ones forwarded to the terminal** (ANTS-5320)
 
 - **The man page and the bash, zsh and fish completions now list --e2e, --export-roadmaps and every --remote* option**
