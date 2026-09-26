@@ -2052,3 +2052,31 @@ TEST(RoadmapMigrateVerb, Ants4492UniformSourceSaysNothing) {
     EXPECT_FALSE(src.contains(QStringLiteral("gfm_bullets")));
     EXPECT_FALSE(src.contains(QStringLiteral("non_gfm_bullets")));
 }
+
+// ANTS-5394 — the migrate reply lifts each id-less pass block's heading to a
+// top-level `unparsed_headings[]`, with the Status line under it, so an OPEN
+// item the migration left as prose is visible without reading notes_summary.
+TEST(roadmap_migrate_verb, Ants5394UnparsedHeadingsReachTheTopLevel) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("unparsed"),
+        "# Fixture\n\n## Passes\n\n"
+        "#### Pass 43.5 A real pass\n\n- **Status**: done\n\n"
+        "#### Pass 43.6 A second real pass\n\n- **Status**: todo\n\n"
+        "#### FU.6 A follow-up with no pass id\n\n"
+        "- **Status**: planned (2026-09-01)\n");
+    ASSERT_FALSE(root.isEmpty());
+    const QJsonObject env = RoadmapMigrateVerb::run(
+        dir.filePath(QStringLiteral("store.sqlite")), request(root));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("unparsed_headings_count")).toInt(), 1);
+    const QJsonArray rows = env.value(QStringLiteral("unparsed_headings")).toArray();
+    ASSERT_EQ(rows.size(), 1) << QJsonDocument(env).toJson().toStdString();
+    const QJsonObject r = rows.at(0).toObject();
+    EXPECT_TRUE(r.value(QStringLiteral("heading")).toString()
+                    .contains(QStringLiteral("FU.6")));
+    EXPECT_TRUE(r.value(QStringLiteral("status_line")).toString()
+                    .contains(QStringLiteral("planned")))
+        << "the Status line under the heading shows it is open";
+}

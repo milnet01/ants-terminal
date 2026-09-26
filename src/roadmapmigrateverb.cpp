@@ -157,6 +157,38 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
     for (auto it = summary.constBegin(); it != summary.constEnd(); ++it)
         summaryObj[it.key()] = it.value();
     env[QStringLiteral("notes_summary")] = summaryObj;
+
+    // ANTS-5394 — a pass-headings block with a Status line and no `Pass N.M`
+    // id is not an item, and a count inside notes_summary is where no caller
+    // looks. Lifted to the top level with the Status line under it, so an
+    // OPEN item the migration left as prose is visible at a glance. Emitted
+    // only when there is one, like the other advisory arms.
+    constexpr int kMaxUnparsedHeadings = 50;
+    QJsonArray unparsed;
+    int unparsedTotal = 0;
+    for (const RoadmapMigrate::Note &h : notes) {
+        if (h.code != QLatin1String("unparsed_heading")) continue;
+        ++unparsedTotal;
+        if (unparsed.size() >= kMaxUnparsedHeadings) continue;
+        QString status;
+        int bestLine = 0;
+        for (const RoadmapMigrate::Note &s : notes)
+            if (s.code == QLatin1String("orphan_status_line")
+                && s.sourceIndex == h.sourceIndex && s.line > h.line
+                && (bestLine == 0 || s.line < bestLine)) {
+                bestLine = s.line;
+                status   = s.detail;
+            }
+        QJsonObject o;
+        o[QStringLiteral("heading")]     = h.detail;
+        o[QStringLiteral("line")]        = h.line;
+        o[QStringLiteral("status_line")] = status;
+        unparsed.append(o);
+    }
+    if (unparsedTotal > 0) {
+        env[QStringLiteral("unparsed_headings")]       = unparsed;
+        env[QStringLiteral("unparsed_headings_count")] = unparsedTotal;
+    }
     // The EFFECTIVE bound, after run()'s clamp — a caller passing 5000 receives
     // 2000 rows and has no other way to learn its argument was reduced.
     env[QStringLiteral("max_notes")] = maxNotes;

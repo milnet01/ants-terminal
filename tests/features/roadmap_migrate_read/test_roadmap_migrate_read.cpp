@@ -1422,3 +1422,45 @@ TEST(roadmap_migrate_read, Ants5361UnrecognisedCheckboxIsReported) {
     EXPECT_EQ(plan.items.size(), 2);
     EXPECT_EQ(noteLines(plan, "unrecognised_checkbox"), QList<int>({6}));
 }
+
+// ------------------------------------------------------------- ANTS-5394 ----
+// A `####` block with a Status line and no `Pass N.M` id is not an item. Its
+// heading is named once as `unparsed_heading`, beside the Status line's own
+// `orphan_status_line`, and both lines sit inside a carried span (INV-11).
+TEST(roadmap_migrate_read, Ants5394UnparsedPassHeadingIsNamed) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray md =
+        "# Fixture — unparsed pass headings\n"   // 1
+        "\n"                                      // 2
+        "## Passes\n"                             // 3
+        "\n"                                      // 4
+        "#### Pass 43.5 A real pass\n"            // 5
+        "\n"                                      // 6
+        "- **Status**: done\n"                    // 7
+        "\n"                                      // 8
+        "#### FU.6 A follow-up with no pass id\n" // 9
+        "\n"                                      // 10
+        "- **Status**: planned (2026-09-01)\n"    // 11
+        "\n"                                      // 12
+        "#### Pass 2 — an old-style heading\n"    // 13
+        "\n"                                      // 14
+        "- **Status**: done\n";                   // 15
+    QFile f(tmp.path() + QStringLiteral("/roadmap.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(md);
+    f.close();
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(tmp.path(), &err);
+    ASSERT_TRUE(disc.has_value()) << err.toStdString();
+    const MigrationPlan plan = RoadmapMigrate::planFrom(
+        *disc, QStringLiteral("t"), QStringLiteral("t"));
+    ASSERT_FALSE(plan.sources.isEmpty());
+    ASSERT_EQ(plan.sources.constFirst().format, QStringLiteral("pass-headings"));
+    EXPECT_EQ(plan.items.size(), 1) << "only Pass 43.5 carries a pass id";
+    EXPECT_EQ(noteLines(plan, "orphan_status_line"), QList<int>({11, 15}));
+    EXPECT_EQ(noteLines(plan, "unparsed_heading"), QList<int>({9, 13}))
+        << "ANTS-5394: each id-less block's heading is named once";
+    EXPECT_EQ(partitionFault(QString::fromUtf8(md), plan), QString())
+        << "INV-11: every note line sits inside a carried span";
+}

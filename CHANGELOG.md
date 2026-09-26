@@ -159,6 +159,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_migrate names Pass-style blocks it could not read as items** (ANTS-5394)
+  A `####` block with a status but no `Pass N.M` id, such as `FU.6`, is
+  now listed in `unparsed_headings` at the top of the reply, with its
+  status line, so an open item left out of the task list is visible.
+
 - **Closing a Pass-style roadmap item records today's date and keeps its note inside the item** (ANTS-5395)
   On roadmaps written as `#### Pass` blocks, a flip now updates the date
   next to the status and places the note above the item's `---`

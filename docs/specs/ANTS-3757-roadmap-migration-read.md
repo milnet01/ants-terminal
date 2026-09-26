@@ -788,6 +788,7 @@ are a closed set — an open one becomes prose nobody can grep:
 | `status_defaulted` | § 2.7 — an unnamed word, **or no Status line at all**. |
 | `kind_unmapped` | § 2.8 — non-canonical and absent from `roadmap-data-model.md` § 7.4's table. |
 | `orphan_status_line` | § 2.4 — a `- **Status**:` line belonging to no pass block. |
+| `unparsed_heading` | ANTS-5394 — the nearest heading above an `orphan_status_line`, when that heading is `####` or deeper: a block with a Status line and no `Pass N.M` id, such as `#### FU.6`. Named once per heading. The migrate reply lifts these to `unparsed_headings[]`. |
 | `unrecognised_checkbox` | ANTS-5361 — a top-level task-list line whose checkbox is not `[ ]`, `[x]` or `[X]`, such as `- [~]`, outside a fence. It is carried as narration. |
 | `id_allocation_owed` | § 2.9 — an id-less item, carrying open/closed. |
 | `empty_source` | § 2.3 — a file yielding zero items. |

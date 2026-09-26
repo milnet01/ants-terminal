@@ -66124,22 +66124,35 @@ parse, not that file.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5328] **convert dry_run cannot be read on a large roadmap: planned[] has no cap or filter argument.**
+- ✅ [ANTS-5328] **convert dry_run cannot be read on a large roadmap: planned[] has no cap or filter argument.**
   Vestige: 121,826-character envelope, over the tool-result ceiling;
   planned[] shows 200 of 1102 rows. `fields` including `ids` brings
   planned[] back. Add max_planned (clamped, echoed) and a planned_filter
   for rows needing a decision (origin absent, id_inferred,
   ambiguous_rematch), and let `fields` exclude planned[].
+  Resolved (2026-09-26, 46c85af4): max_planned (default 200, clamped to
+  5000; 0 keeps counts only) and planned_filter:"needs_decision"; the
+  envelope echoes planned_filter, planned_max and planned_total. The
+  load collects every row so the filter sees past the old cap. `fields`
+  cannot drop a nested array, so max_planned:0 serves that ask. Test
+  RoadmapConvert.plannedTableIsFilteredAndCapped (INV-19), proven red
+  twice. GitHub CI green on 46c85af4.
   **Layman:** On a big roadmap the conversion preview is too large to read, so the per-item check it exists for is impossible.
   Kind: enhancement.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-5329] **convert's ambiguous_rematch rows do not say what they resolve to.**
+- ✅ [ANTS-5329] **convert's ambiguous_rematch rows do not say what they resolve to.**
   Vestige: 11 origin:absent rows, seven on the bare headline
   `Phase 9E-2:`. Emit the candidate store ids per row, and refuse while
   any remain unless the caller passes an explicit override, since the
   binding is permanent.
+  Resolved (2026-09-26, 1524aa94): ambiguous rows carry candidate_ids,
+  the claimed id first; a real convert refuses ambiguous_rematch unless
+  accept_ambiguous_rematch:true. Migrate still pairs by order silently.
+  ids.ambiguous_rematch counts every plan item. Test
+  RoadmapConvert.ambiguousRematchNamesCandidatesAndRefuses (INV-18),
+  proven red twice. GitHub CI green on 1524aa94.
   **Layman:** When several items share a title, the conversion guesses which old item each one is and doesn't say which guess it made.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.

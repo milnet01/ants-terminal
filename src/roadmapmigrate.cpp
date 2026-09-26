@@ -819,11 +819,30 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
         static const QRegularExpression rxStatus(
             QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
             QRegularExpression::CaseInsensitiveOption);
-        for (int k = 1; k <= n; ++k)
-            if (!insideItem[k] && !inFence[k] &&
-                rxStatus.match(lines.at(k - 1)).hasMatch())
-                addNote(plan.notes, "orphan_status_line",
-                        lines.at(k - 1).trimmed(), k, ctx.index);
+        // ANTS-5394 — and the `####`-or-deeper heading above such a line is
+        // named once, as `unparsed_heading`: a block that reads as an item to
+        // a person (`#### FU.6`, `#### Pass 2 — ...`) but has no `Pass N.M`
+        // id. RetroDB lost an OPEN item that way with only the note above to
+        // say so; the migrate reply lifts these to the top level.
+        QSet<int> namedHeadings;
+        for (int k = 1; k <= n; ++k) {
+            if (insideItem[k] || inFence[k] ||
+                !rxStatus.match(lines.at(k - 1)).hasMatch())
+                continue;
+            addNote(plan.notes, "orphan_status_line",
+                    lines.at(k - 1).trimmed(), k, ctx.index);
+            for (int h = k - 1; h >= 1; --h) {
+                if (inFence[h]) continue;
+                const int lvl = RoadmapIndex::headingLevel(lines.at(h - 1));
+                if (lvl == 0) continue;
+                if (lvl >= 4 && !namedHeadings.contains(h)) {
+                    namedHeadings.insert(h);
+                    addNote(plan.notes, "unparsed_heading",
+                            lines.at(h - 1).trimmed(), h, ctx.index);
+                }
+                break;   // the nearest heading owns the line, whatever its level
+            }
+        }
     }
 
     // ANTS-5361 — a top-level checkbox the task-list grammar does not define
