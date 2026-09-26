@@ -323,6 +323,16 @@ checks. A dropped invariant is marked **withdrawn** in `spec-format.md` § 3.7's
 exact spelling — em dash included, because the exemption is a literal
 match on that character — rather than deleted.
 
+**What this section borrows from `spec-format.md` § 3.7 is the id form
+and that spelling, and nothing else.** A feature contract is a test's own
+contract, not a spec: § 3.7's per-invariant test-surface clause and
+`spec-format.md`'s required-sections block do not bind it, and here the
+test cites the contract rather than the contract naming the test.
+Measured 2026-09-26: `spec_lint` over `tests/features/` reports
+`invariant_no_test` for every invariant and `missing_section` for every
+spec section, against contracts that conform to this section — so read
+its output on one for the tombstone check alone.
+
 That word is [spec-format.md](spec-format.md) §3.7's, which owns the
 Invariants section the marking lives in — this section said *retired*
 until 2026-08-14, so the two standards named one state two ways, shared
@@ -376,9 +386,10 @@ noise.
   code.
 
 **A test disabled to stop it failing is a bug with the alarm switched
-off.** Disabling one requires a tracked item for the underlying problem;
-otherwise the suite quietly stops covering what everyone assumes it
-covers.
+off.** Disabling one requires a roadmap item for the underlying problem
+(`roadmap-format.md` § 3.5); `coding.md` § 1.2 names this section as the
+owner and asks for that same artefact. Otherwise the suite quietly stops
+covering what everyone assumes it covers.
 
 ## 8. Coverage
 
@@ -454,8 +465,9 @@ reference case; or a limit the formula must reach, such as zero at a
 threshold or continuity at a join.
 
 Where no reference exists, the value is a choice rather than a
-derivation. Record it as one at its site, and say in that same comment
-what the test does not prove.
+derivation. Record it as one in the parity test's own comment — the
+location the breach below is assessed at — and say there what the test
+does not prove.
 
 A parity failure says the two sides differ. It does not say which is
 wrong; the reference breaks the tie.
@@ -476,14 +488,14 @@ presented at its site as derived.
 | Rule | What catches a breach |
 |---|---|
 | Tests pass (§1) | **`Partial:`** the test runner, locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one **nothing** checks this but the person who remembers to run it |
-| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — `ctest --schedule-random` and `pytest-randomly`, both present on this machine and both working by default — re-measured 2026-09-25: `pytest-randomly` 4.1.0 auto-loads and a plain collect prints `Using --randomly-seed=…`. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **Nothing** catches dependence on time of day or machine speed, which repeated runs on one machine reproduce rather than expose |
+| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — but the two tools differ on whether the shuffle happens unasked. `pytest-randomly` auto-loads, so an ordinary pytest run shuffles; `ctest` shuffles only when `--schedule-random` is passed, so an ordinary `ctest` invocation checks nothing here. Re-measured 2026-09-26: a bare collect prints `Using --randomly-seed=…`, and `ctest --help` lists `--schedule-random` as an option. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **`Partial:`** for wall-clock dependence — `review-tests` dimension 7 greps Python tests for `datetime.now()` and `time.time()` used without freezing. **Nothing** catches dependence on machine speed, which repeated runs on one machine reproduce rather than expose |
 | Network isolation (§7) | **`Partial:`** running the fast set with no connection. **Nothing** reaches the slow set, or checks that an opted-in test carries its label and gate |
 | Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations=N` — the count is required, and a bare `--durations` is an argument error rather than a report). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
-| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable. **Nothing** checks that the tracked item behind one exists or is still open |
+| A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable, and `review-tests` dimension 8 reports a long-muted skip carrying no tracked item at all. **Nothing** checks that a named item exists or is still open |
 | **The test was seen failing before the code changed (§1)** | **nothing** — once both are green, no artifact distinguishes a test written first from one written after. Not a person either: nobody present can see it afterwards |
 | The backwards proof was actually run (§2) | **nothing** — the two runs leave nothing behind, and a build error quoted as the red run looks identical to a real one in a transcript |
 | Tests the contract, not the implementation (§3) | **nothing mechanical** — a reader, helped by the naming rule |
-| An invariant's tombstone spelling (§4) | **`Partial:`** `spec_lint` exempts the § 3.7 spelling and reports the others. **Nothing** catches a renumbered id, which is what §4 forbids |
+| An invariant's tombstone spelling (§4) | **`Partial:`** `spec_lint` exempts the § 3.7 spelling and reports the others. **Nothing** catches a renumbered id, which is what §4 forbids. Its remaining checks are written for a spec and fire on a conforming feature contract — §4 says so and says what to read instead |
 | A failing test explains itself (§6) | **nothing mechanical** — whoever next reads a failure log. An uninformative assertion message is valid code |
 | Every fix has a regression test (§8) | **nothing mechanical** — visible in review as a fix commit with no test beside it |
 | Tests obey `coding.md`, minus §1.3 (§9) | **`Partial:`** `check-code`'s language sweep reaches test files by its own rule — *"a tool-decided finding that happens to sit in a test file is this skill's"* — so `coding.md` § What checks this answers for whatever it names there. **nothing mechanical** for the rest: a code reviewer, who also has to know §9's carve-out exists |

@@ -85,8 +85,10 @@ defending.
 **A project with no trust boundary records that instead, in one line, in
 its `CLAUDE.md`.** A local single-user tool that reads nothing it did not
 write and talks to nothing may genuinely have none. The `CLAUDE.md` home
-is named because such a project ships no `SECURITY.md` and the skeleton
-tells it to delete that file — so the line has nowhere else to go. That
+is named because a project accepting no external reports ships no
+`SECURITY.md` — the skeleton tells it to delete that file, on the same
+condition `documentation.md` § 5.3 sets — so the line has nowhere else
+to go. That
 sentence satisfies this section; an empty boundary section does not,
 because it reads as a list nobody filled in.
 
@@ -203,11 +205,12 @@ decision.
 ## 8. Supply chain
 
 - **Pin, and know what you pinned.** A pin *below the latest stable
-  release* with no reason is indistinguishable from neglect —
-  `dependencies.md` owns the currency policy, and its § 9 scopes the rule
-  this way for a reason: unscoped, it condemns the lockfile this section's
-  fourth bullet requires, and every sha-pinned action its last bullet
-  requires.
+  release* with no reason is indistinguishable from neglect.
+  `dependencies.md` owns the currency policy, and its § 9 carve-out names
+  a lockfile and a pin at latest stable — the two this section's own
+  bullets require. **An immutable reference is not exempt by being
+  immutable**: a sha of an older release is a pin below latest stable and
+  owes a recorded reason like any other.
 - **Scan for known vulnerabilities** on a cadence, not only when
   something breaks.
 - **Review what a new dependency actually is** before adding it —
@@ -269,15 +272,15 @@ enforcement.** An absence is not coverage.
 
 | Rule | What catches a breach |
 |---|---|
-| Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **working tree only**. **Nothing** catches a secret in a commit message or already in history — that step passes `--no-git`, and measurement on `gitleaks` 8.30.1 finds a committed-then-removed secret in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **A per-commit or per-push scan is the project's to install**: `check-code` is invoked by a session, so no hook or pipeline can call it |
-| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s language sweep (`semgrep`, `bandit`, `ruff`, `cppcheck`), a static-analysis check, for the injection and unsafe-call classes. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives |
+| Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **tracked files** — that step passes `--no-git` and feeds the tool `git ls-files`, re-admitting untracked files under `--changed` alone. **Nothing** catches a secret in a commit message, one already in history, or one in a file not yet added on a `--tree` run. Measured on `gitleaks` 8.30.1: a committed-then-removed secret is found in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **A per-commit or per-push scan is the project's to install**: `check-code` is invoked by a session, so no hook or pipeline can call it |
+| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s `semgrep` step, a static-analysis check it selects on every project, plus `bandit` and `ruff` on Python and `cppcheck` on C++. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives — and **nothing** reaches a language whose selected tools carry no injection rule. `--quick` drops `semgrep`, which leaves such a project with neither |
 | Dependency advisories (§8) | **nothing** — `check-dependencies` reports staleness only — it queries no advisory database, so a package at latest stable with an open advisory is invisible to it. **The ecosystem's advisory command is the project's to run**, on the `dependencies.md` cadence |
 | Lockfile committed (§8) | `dependencies.md` § What checks this owns the answer |
 | Immutable pipeline and image references (§8) | **`Partial:`** `check-code`'s `zizmor` step, a workflow-security check, whose `unpinned-uses` rule reports a mutable `uses:` in a default run. **`Partial:`** for the container half — `check-code`'s `hadolint` step, a Dockerfile check, reports an untagged base image (`DL3006`) and an explicit `:latest` (`DL3007`). Measured on 2.15.1. **Nothing** catches a `FROM` on a real tag — `node:18` passes both rules and is still mutable — or an `image:` in a compose file, which `hadolint` does not read |
 | Atomic writes and owner-only permissions (§4) | **`Partial:`** `check-code`'s `bandit` step, a static-analysis check, reports a permissive `chmod` (`B103`) and survives the `-ll` threshold that step uses. Measured on 1.9.4, Python only. **Nothing** catches the atomic-write half, or a permission set in any other language — there a code reviewer is the only reader |
 | Encryption of what a stolen disk would expose (§4) | **nothing mechanical** — a code reviewer, because whether a thing *should* be encrypted is a judgement about the data |
 | TLS with verification on (§5) | **`Partial:`** `check-code`'s language sweep, a static-analysis check, where the language has a rule for a disabled-verification flag. **Nothing** catches verification disabled through config rather than code, or a language among the selected tools carrying no such rule |
-| No credentials in a URL (§5) | **nothing** — measured on `gitleaks` 8.30.1: its default rules do not match URL userinfo |
+| No credentials in a URL (§5) | **nothing mechanical** — a code reviewer, to whom a credential in a URL literal is visible. Measured on `gitleaks` 8.30.1: its default rules do not match URL userinfo |
 | Late-acquire, early-drop privilege (§7) | **nothing mechanical** — a code reviewer; the shape of an escalation is a design question |
 | The CHANGELOG entry and the rotation (§9) | **nothing** — `changelog-format.md` offers a `Security` category and requires no entry, so a security fix shipped silently is caught by nothing |
 | Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row |
