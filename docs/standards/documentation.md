@@ -843,6 +843,46 @@ project unable to name its own specs. The ID is copied, never
 transliterated — a filename that turns `3D_E-0007` into `3d-e-0007` no
 longer contains the ID, so searching for the ID stops finding the spec.
 
+### 3.4 Where a record goes, and what it is called
+
+**A date belongs INSIDE a record, never in its filename.** One file per subject,
+appended to, each entry carrying its own date and saying what kind of entry it
+is. A dated filename makes a new file per run, so one subject grows several — and
+every one of them needs its own citation from wherever it is referenced.
+
+| Home | For | Form |
+|---|---|---|
+| `docs/history/<document>.md` | One document's rule pedigree — who reported a rule, which id, what the earlier wording was | Named for its document |
+| `docs/reviews/<document>-loop-log.md` | One document's review history, a row per loop | Named for its document |
+| `docs/<subject>.md` | Every dated record about one subject — a first run, a live run, a gate, a measurement, a field pass | Named for the SUBJECT alone; each entry dated and labelled with its kind |
+
+**None of the three carries a date in its name.** The first two never did. The
+third is the change.
+
+**When a file grows past one comfortable read, continue it — do not rename it.**
+The existing file keeps its name, so every citation of it still resolves, and the
+continuation is `<name>-part-2.md`. Each part points at the next and the previous.
+Splitting on size is a judgement, and the honest trigger is that a reader must
+already open it in pieces.
+
+**An undated reference several documents cite** states what is true now and takes
+`docs/<topic>.md` — the same shape, with no dated entries at all.
+
+**A history file points BACK at its document, and the document points forward at
+it.** Both directions, or one of them is an orphan a later reader cannot place.
+
+**What moves out is wider than pedigree:** how a rule came to be, a design
+discussion, a superseded alternative, the evidence behind a requirement.
+**What stays is what the rule RESTS ON** — a dated measurement without which the
+rule is unfounded, a recorded unverifiability, a scope. The test: remove it, and
+does the rule still stand on anything?
+
+**This binds forward.** A record already carrying a date in its filename is not a
+breach and is not renamed: every citation of it would break, and those citations
+are what make an old record findable. Where a subject already has several such
+files, a NEW entry starts that subject's consolidated file and points at the
+older ones; it does not gather them in.
+
 ## 4. Per-kind format standards
 
 This file holds what is true of every document. What is true of one kind
@@ -1324,6 +1364,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence, and `sections` skips a standard, whose requirement is prose — which is what `mandated-section` exists for. **Once the rows live in a record the tally is caught only by a `loop-log` run pointed at the record itself** — a run pointed at this document reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
 | §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook, a staged-commit blocking check, blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
+| A record's home and name (§ 3.4) | **`Partial:`** `check-doc-facts`' link and path checks catch a POINTER that does not resolve, in either direction, once one exists. **A date in a new record's FILENAME is the one mechanical case** — a glob for `*20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md` under `docs/` finds it, and nothing runs that glob today. **Nothing** checks that a document carrying pedigree has a history file at all, or that what moved out was provenance rather than a rule the document needed |
 | Evidence carries its own falsifier (§ 2.10) | **`Partial:`** a reader, who can see whether a sha, an excluded count or a command sits beside the claim. **Nothing** decides whether a record rests a conclusion on evidence at all, and `check-doc-facts` looks for none of the three; its `counts` check reaches only an undated census figure, never a dated measurement missing its command |
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
