@@ -493,7 +493,8 @@ run it, rather than pasting today's answer.
   What-checks-this table". A record of what was observed on a day cannot
   go stale, because it was never a claim about now. It must read as past
   tense and carry its date; without one it is a census wearing a
-  disguise.
+  disguise. **Once a rule or a verdict RESTS on it, § 2.10 applies too**: the
+  date says when it was true, the falsifier says how to check it still is.
 
 **The test, for all three:** *would this number change under the document,
 without anyone touching it?* Structural — no; it changes only when someone
@@ -716,6 +717,35 @@ In a standard or reference this section is **unnumbered**, so adding it
 to an existing document renumbers nothing and every cross-reference
 still resolves. Same for a trailing `## Cold-eyes loop log`. In a spec
 it is numbered like every other section.
+
+### 2.10 Evidence carries its own falsifier
+
+A record that rests a conclusion on evidence names what would show the evidence
+has expired. Three shapes, each with its own falsifier.
+
+**A verdict resting on an artefact names the commit the artefact came from**, not
+only its path. The artefact outlives the code that produced it, and a live path
+to a superseded file checks out — so it reassures the reader with the very thing
+that went wrong. With the commit named, `git log <sha>..HEAD -- <the covered
+paths>` says whether the verdict still holds.
+
+**A count over a filtered population names what the filter left out, as a
+number.** Scope: a tool's output or a survey someone reads as evidence. Not a
+tool whose population is its own arguments — a caller that passed N items knows
+it got N. Without the excluded number a survey reads as the whole population, and
+a tool reporting *clean* must say how much it compared, since a clean report over
+nothing reads the same.
+
+**A measured claim about something outside this repository states the command
+that reproduces it.** Another tool, a service, a machine-wide component. This
+repository's checks cannot see that thing change, so the command is the only way
+a later reader re-runs the claim. Not a claim about this repository's own code,
+which its tests and history already govern; not a judgement with no figure
+behind it.
+
+**A falsifier is not a guarantee.** It makes an expired claim detectable; it
+does not make anyone look. What it removes is the claim that cannot be checked
+at all.
 
 ## 3. Where documents live
 
@@ -1294,6 +1324,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence, and `sections` skips a standard, whose requirement is prose — which is what `mandated-section` exists for. **Once the rows live in a record the tally is caught only by a `loop-log` run pointed at the record itself** — a run pointed at this document reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
 | §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook, a staged-commit blocking check, blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
+| Evidence carries its own falsifier (§ 2.10) | **`Partial:`** a reader, who can see whether a sha, an excluded count or a command sits beside the claim. **Nothing** decides whether a record rests a conclusion on evidence at all, and `check-doc-facts` looks for none of the three; its `counts` check reaches only an undated census figure, never a dated measurement missing its command |
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
 | §3.1 / §3.3 filename form | **nothing** — the `SHOUTING.md` / `lowercase-kebab.md` split and the presence of an ID are greppable, so this is a check worth adding. It must accept any ID spelling (§3.3) |
