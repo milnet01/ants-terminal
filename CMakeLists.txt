@@ -1465,6 +1465,14 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 30)
 
+    # The pre-push hook's change set: renames and undiffable ranges run the
+    # gate rather than reading as docs-only.
+    add_test(NAME prepush_range
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/prepush_range/test_prepush_range.sh")
+    set_tests_properties(prepush_range PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60)
+
     # ANTS-2164/2165 — cut-rc.sh cadence-hardening + hotfix behavioural
     # conformance (shell harness drives the real script against throwaway git
     # repos; the C++ release_rc_pipeline test keeps the source-scrape layer).

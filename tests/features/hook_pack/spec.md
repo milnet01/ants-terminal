@@ -54,6 +54,12 @@ passes, non-zero (with FAIL lines on stderr) otherwise.
     target that `lstat`s as a symlink exits non-zero with a
     descriptive message — verified inside the install-hooks
     round-trip block.
+14. **INV-13 (the user's hooks survive install and uninstall).**
+    Installing into a settings.json that already has groups under an
+    event the pack uses keeps those groups and adds the pack's. An
+    uninstall removes the pack's own hook entries only — a user hook
+    sharing a group with one survives — and deletes only the scripts
+    the pack ships, never another `ants-*.sh` in the hooks dir.
 
 ## ANTS-2141 — grep/find soft-warn (appended; existing 1-13 unchanged)
 

@@ -98,28 +98,37 @@ read_settings() {
 splice_install() {
     local current
     current="$(read_settings)"
-    # Merge: shallow per top-level key; deep-merge under "hooks" so
-    # other extensions can coexist with us. jq's `*` operator does a
-    # recursive merge with right-side wins.
-    jq --argjson pack "$(hook_entries)" '. * $pack' <<<"$current"
+    # Merge per event: append the pack's groups to whatever the event
+    # already holds, skipping a group whose command is already present.
+    # Not jq's `*`, which REPLACES arrays and so dropped every existing
+    # group under an event the pack also uses (INV-13).
+    jq --argjson pack "$(hook_entries)" '
+        .ants_hooks_pack_v1 = true
+        | .hooks = (reduce ($pack.hooks | to_entries[]) as $e (.hooks // {};
+            (.[$e.key] // []) as $have
+            | ([$have[].hooks[]?.command]) as $cmds
+            | .[$e.key] = $have + [$e.value[] | select((.hooks[0].command) as $c | $cmds | index($c) | not)]))
+    ' <<<"$current"
 }
+
+# The scripts this pack ships. Uninstall removes these and nothing else:
+# a pattern such as ants-*.sh also matches scripts other tools put in
+# the same hooks dir.
+pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot)\.sh$'
 
 splice_uninstall() {
     local current
     current="$(read_settings)"
-    jq '
+    # Remove the pack's own hook ENTRIES, then any group left empty. A
+    # group is not dropped for containing a pack hook: a user's hook can
+    # share the group (INV-13).
+    jq --arg re "$pack_hook_regex" '
         del(.ants_hooks_pack_v1)
         | if .hooks then
-            .hooks |= (
-                (.SessionStart? // [] | map(select(.hooks // [] | all(.command // "" | test("/ants-[^/]+\\.sh$") | not))) ) as $ss |
-                (.PreToolUse?  // [] | map(select(.hooks // [] | all(.command // "" | test("/ants-[^/]+\\.sh$") | not))) ) as $pre |
-                (.Stop?        // [] | map(select(.hooks // [] | all(.command // "" | test("/ants-[^/]+\\.sh$") | not))) ) as $stop |
-                (.PreCompact?  // [] | map(select(.hooks // [] | all(.command // "" | test("/ants-[^/]+\\.sh$") | not))) ) as $pc |
-                (if ($ss | length) > 0 then .SessionStart = $ss else del(.SessionStart) end)
-                | (if ($pre | length) > 0 then .PreToolUse = $pre else del(.PreToolUse) end)
-                | (if ($stop | length) > 0 then .Stop = $stop else del(.Stop) end)
-                | (if ($pc | length) > 0 then .PreCompact = $pc else del(.PreCompact) end)
-            )
+            .hooks |= with_entries(
+                .value |= (map(.hooks |= map(select((.command // "") | test($re) | not)))
+                           | map(select((.hooks // []) | length > 0))))
+            | .hooks |= with_entries(select(.value | length > 0))
             | if (.hooks | length) == 0 then del(.hooks) else . end
         else . end
     ' <<<"$current"
@@ -171,7 +180,9 @@ if [ "$uninstall" -eq 1 ]; then
         cp --no-dereference -- "$target" "${target}.ants-backup" 2>/dev/null || true
     fi
     atomic_write_settings "$new_content"
-    rm -f "$hooks_dir"/ants-*.sh "$hooks_dir/_common.sh" 2>/dev/null || true
+    for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+        rm -f "$hooks_dir/${f##*/}" 2>/dev/null || true
+    done
     echo "uninstalled ants_hooks_pack_v1 from $target"
     exit 0
 fi

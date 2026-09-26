@@ -56,15 +56,26 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
         # New branch on the remote: diff against origin/main's merge-base if we
         # have it, else test unconditionally.
         base="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+        # --no-renames: a rename is two paths, and rename detection would
+        # report only the new one — `git mv src/x docs/x` read as docs-only.
+        # A failed diff is uncertainty, so it runs the gate (prepush_range).
         if [[ -n "$base" ]]; then
-            changed+=$'\n'"$(git diff --name-only "$base" "$local_sha")"
+            if d="$(git diff --no-renames --name-only "$base" "$local_sha")"; then
+                changed+=$'\n'"$d"
+            else
+                run_gate=1
+            fi
             ranges+=" ${base:0:8}..${local_sha:0:8}(merge-base)"
         else
             run_gate=1
             ranges+=" ${local_sha:0:8}(new-branch,no-base)"
         fi
     else
-        changed+=$'\n'"$(git diff --name-only "$remote_sha" "$local_sha")"
+        if d="$(git diff --no-renames --name-only "$remote_sha" "$local_sha" 2>/dev/null)"; then
+            changed+=$'\n'"$d"
+        else
+            run_gate=1
+        fi
         ranges+=" ${remote_sha:0:8}..${local_sha:0:8}"
     fi
 done

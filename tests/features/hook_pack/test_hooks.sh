@@ -681,6 +681,44 @@ if [ "$have_jq" -eq 1 ]; then
         fail "install-hooks uninstall did NOT remove sentinel"
     fi
 
+    # INV-13 — install and uninstall preserve hooks the pack does not own.
+    # jq's `*` replaces arrays, so a merge through it drops every existing
+    # group under an event the pack also uses.
+    pre="$tmp/pre-settings.json"
+    cat > "$pre" <<'JSON'
+{"hooks":{
+  "PreToolUse":[
+    {"matcher":"Bash","hooks":[{"type":"command","command":"/u/global-config-lock.sh"}]},
+    {"matcher":"Edit","hooks":[{"type":"command","command":"/u/edit-guard.sh"}]}],
+  "SessionStart":[
+    {"matcher":"*","hooks":[{"type":"command","command":"/u/start.sh"}]}]}}
+JSON
+    mkdir -p "$tmp/hooks2"
+    printf '#!/bin/sh\n' > "$tmp/hooks2/ants-verb-redirect.sh"
+    bash "$INSTALLER" --target "$pre" --hooks-dir "$tmp/hooks2" >/dev/null 2>&1
+    if jq -e '[.hooks.PreToolUse[].hooks[].command] | (index("/u/global-config-lock.sh") != null) and (index("/u/edit-guard.sh") != null)' "$pre" >/dev/null 2>&1 \
+       && jq -e '[.hooks.SessionStart[].hooks[].command] | index("/u/start.sh") != null' "$pre" >/dev/null 2>&1 \
+       && jq -e '[.hooks.PreToolUse[].hooks[].command] | any(test("/ants-bash-veto\\.sh$"))' "$pre" >/dev/null 2>&1; then
+        pass "INV-13 install keeps the user's existing hook groups"
+    else
+        fail "INV-13 install dropped existing hook groups: $(jq -c .hooks "$pre" 2>/dev/null)"
+    fi
+    # A user group that also carries a pack hook: uninstall removes the
+    # pack hook only, not the user's hook beside it.
+    jq '.hooks.PreToolUse[0].hooks += [{"type":"command","command":"'"$tmp/hooks2"'/ants-bash-veto.sh"}]' "$pre" > "$pre.t" && mv "$pre.t" "$pre"
+    bash "$INSTALLER" --uninstall --target "$pre" --hooks-dir "$tmp/hooks2" >/dev/null 2>&1
+    if jq -e '[.hooks.PreToolUse[].hooks[].command] | (index("/u/global-config-lock.sh") != null) and (index("/u/edit-guard.sh") != null) and (any(test("/ants-")) | not)' "$pre" >/dev/null 2>&1 \
+       && jq -e '[.hooks.SessionStart[].hooks[].command] | index("/u/start.sh") != null' "$pre" >/dev/null 2>&1; then
+        pass "INV-13 uninstall removes only the pack's hooks"
+    else
+        fail "INV-13 uninstall removed hooks it does not own: $(jq -c .hooks "$pre" 2>/dev/null)"
+    fi
+    if [ -f "$tmp/hooks2/ants-verb-redirect.sh" ]; then
+        pass "INV-13 uninstall leaves non-pack ants-*.sh scripts"
+    else
+        fail "INV-13 uninstall deleted ants-verb-redirect.sh, which the pack never installed"
+    fi
+
     # INV-5 symlink abort.
     rm -f "$tmp/symlink-target"
     ln -s /etc/hosts "$tmp/symlink-target"
