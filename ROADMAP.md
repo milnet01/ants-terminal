@@ -66848,6 +66848,31 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: RetroDB message 2026-09-26.
 
+- 📋 [ANTS-5399] **A roadmap_log write over a drifted file buries its small change in a whole-file re-layout, with no pointer to render first.**
+  MAME Curator: a small append_batch over a hand-edited file reported structure
+  and restyle drift, no text lost; the new bullets were buried in the diff.
+  The reporter asked for no_text_lost:true. `discard_reason` already answers that
+  (`text_lost` vs `structure` / `punctuation` / `restyle_only`, set in
+  remotecontrol_roadmap_query.cpp beside `discarded_text_lines`), so do not add a
+  second flag. The unmet half: when the drift arm fires on a semantic write, add a
+  hint naming op:"render" and saying to commit that render alone, so the next
+  write is a small diff. Consider the same hint on roadmap_query check_sync's
+  drifted arm.
+  **Layman:** When the roadmap file was hand-edited, adding one item rewrites the whole file, and nothing suggests publishing that rewrite as its own commit first.
+  Kind: enhancement.
+  Source: MAME_Curator_Ants_MCP_Feedback.md 2026-09-26.
+  Lanes: roadmap.
+
+- 📋 [ANTS-5400] **session_orient reports pending feedback but not unread cross-session mail.**
+  A handoff note asked for session_orient fields ["feedback_pending","mail_pending"];
+  the reply listed mail_pending in fields_unmatched. Unread mail is only visible via
+  session_message op:"inbox". Add a `mail_pending` block (unacked_count, newest
+  sender/date) beside feedback_pending, from the same store read the inbox uses.
+  **Layman:** The start-of-session summary counts waiting feedback but not waiting messages, so a session must remember a second call to find its mail.
+  Kind: enhancement.
+  Source: in-session-2026-09-26.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
