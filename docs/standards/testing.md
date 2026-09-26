@@ -333,6 +333,11 @@ Measured 2026-09-26: `spec_lint` over `tests/features/` reports
 spec section, against contracts that conform to this section — so read
 its output on one for the tombstone check alone.
 
+**The contract may be the test source's own header comment**, where the
+project's pattern puts it there rather than in a separate file; the ids
+and the append-only rule bind the same either way. `CLAUDE.md` rule 14
+already treats that container as a sanctioned one.
+
 That word is [spec-format.md](spec-format.md) §3.7's, which owns the
 Invariants section the marking lives in — this section said *retired*
 until 2026-08-14, so the two standards named one state two ways, shared
@@ -390,6 +395,20 @@ off.** Disabling one requires a roadmap item for the underlying problem
 (`roadmap-format.md` § 3.5); `coding.md` § 1.2 names this section as the
 owner and asks for that same artefact. Otherwise the suite quietly stops
 covering what everyone assumes it covers.
+
+**The test is the skip's SHAPE, not why it was written.** *Disabled to
+stop it failing* is a motive, and no artefact records a motive — so a
+reader could not tell a deliberate mute from an honest guard, and neither
+could the author later. Decide it on the condition instead:
+
+- **A skip a defect in the code under test can trigger owes the item** —
+  keyed on a status code, an empty config, a missing row, a response body.
+  Such a skip converts a future regression into a silent pass, which is
+  this rule's whole subject.
+- **A skip keyed only on the host owes nothing** — a tool absent, a
+  platform, an optional dependency, a capability the kernel lacks. It
+  reports that the environment cannot run the test, and a defect in the
+  code under test cannot make it fire.
 
 ## 8. Coverage
 
@@ -488,7 +507,7 @@ presented at its site as derived.
 | Rule | What catches a breach |
 |---|---|
 | Tests pass (§1) | **`Partial:`** the test runner, locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one **nothing** checks this but the person who remembers to run it |
-| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — but the two tools differ on whether the shuffle happens unasked. `pytest-randomly` auto-loads, so an ordinary pytest run shuffles; `ctest` shuffles only when `--schedule-random` is passed, so an ordinary `ctest` invocation checks nothing here. Re-measured 2026-09-26: a bare collect prints `Using --randomly-seed=…`, and `ctest --help` lists `--schedule-random` as an option. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **`Partial:`** for wall-clock dependence — `review-tests` dimension 7 greps Python tests for `datetime.now()` and `time.time()` used without freezing. **Nothing** catches dependence on machine speed, which repeated runs on one machine reproduce rather than expose |
+| Determinism (§7) | **`Partial:`** repeated runs, and a shuffled order — but the two tools differ on whether the shuffle happens unasked. `pytest-randomly` auto-loads, so an ordinary pytest run shuffles; `ctest` shuffles only when `--schedule-random` is passed, so an ordinary `ctest` invocation checks nothing here. Re-measured 2026-09-26: a bare collect prints `Using --randomly-seed=…`, and `ctest --help` lists `--schedule-random` as an option. **A project without the plugin gets no shuffle**, and its absence is silent, so this holds for this machine rather than for every project. **Nothing** shuffles for a runner with no shuffle option at all — a Makefile loop or a script over a sorted file list is fixed-order by construction — and `ctest -j` is not a shuffle either: it orders by recorded cost, so which tests run *concurrently* varies while each one's order does not. **`Partial:`** for wall-clock dependence — `review-tests` dimension 7 greps Python tests for `datetime.now()` and `time.time()` used without freezing. **Nothing** catches dependence on machine speed, which repeated runs on one machine reproduce rather than expose |
 | Network isolation (§7) | **`Partial:`** running the fast set with no connection. **Nothing** reaches the slow set, or checks that an opted-in test carries its label and gate |
 | Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations=N` — the count is required, and a bare `--durations` is an argument error rather than a report). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
 | A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable, and `review-tests` dimension 8 reports a long-muted skip carrying no tracked item at all. **Nothing** checks that a named item exists or is still open |

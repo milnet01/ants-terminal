@@ -77,10 +77,33 @@ organised around boundaries rather than vulnerability classes, and did so
 independently of each other. That convergence is why this section is
 first.
 
-**Write the project's boundary list into its `SECURITY.md` where the
-project accepts external reports (`documentation.md` § 5.3 fixes that
-home), otherwise into its `CLAUDE.md`.** A boundary nobody has named is a boundary nobody is
-defending.
+**Write the project's boundary list into its `SECURITY.md` where it ships
+one, and into its `CLAUDE.md` otherwise.** Those are one condition, not
+two to reconcile: `documentation.md` § 5.3 keeps that file for a project
+accepting external reports, and the scaffold deletes it on the same test.
+A boundary nobody has named is a boundary nobody is defending.
+
+**Each boundary names what crosses and what is checked at the crossing.**
+That is a floor, not a length limit — a paragraph each, with the check's
+measurement, is this list done well. A list of vulnerability *classes* is
+not this list however complete: injection, XSS and path traversal name
+what goes wrong, never where the crossing is, so nobody can tell which
+was considered at which entry point. Keep both if you like; only the
+boundary list discharges this section.
+
+**A pointer satisfies it where the pointer names the file.** Where the
+list already lives somewhere the project owns, the home says so by path
+rather than carrying a second copy — `documentation.md` § 2.1 forbids the
+second copy, and it is the one that goes stale. What does not satisfy it
+is a home mentioning boundaries and naming no file.
+
+**A file the project did not author is not "its".** A fork carries
+upstream's `SECURITY.md`: those boundaries and that report channel are
+upstream's, editing it makes the next re-sync conflict, and a fork-only
+list written there leaks into a file meant to go back upstream. A fork's
+list goes where its own documents live — its `CLAUDE.md`, or the
+fork-owned area that file names. Upstream's `SECURITY.md` is left alone,
+the scaffold's delete instruction reaching only a copy the project owns.
 
 **A project with no trust boundary records that instead, in one line, in
 its `CLAUDE.md`.** A local single-user tool that reads nothing it did not
@@ -273,7 +296,7 @@ enforcement.** An absence is not coverage.
 | Rule | What catches a breach |
 |---|---|
 | Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **tracked files** — that step passes `--no-git` and feeds the tool `git ls-files`, re-admitting untracked files under `--changed` alone. **Nothing** catches a secret in a commit message, one already in history, or one in a file not yet added on a `--tree` run. Measured on `gitleaks` 8.30.1: a committed-then-removed secret is found in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **A per-commit or per-push scan is the project's to install**: `check-code` is invoked by a session, so no hook or pipeline can call it |
-| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s `semgrep` step, a static-analysis check it selects on every project, plus `bandit` and `ruff` on Python and `cppcheck` on C++. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives — and **nothing** reaches a language whose selected tools carry no injection rule. `--quick` drops `semgrep`, which leaves such a project with neither |
+| Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s `semgrep` step, a static-analysis check it selects on every project, plus `bandit` on Python and `cppcheck` on C++. **`ruff` counts only where `S` is selected** — `check-code` supplies `--select E,F,B,S` where the project's ruff config sets no `select`, and runs it as-is otherwise, so a project selecting without `S` gets no injection rule from it. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives — and **nothing** reaches a language whose selected tools carry no injection rule. `--quick` drops `semgrep`, which leaves such a project with neither |
 | Dependency advisories (§8) | **nothing** — `check-dependencies` reports staleness only — it queries no advisory database, so a package at latest stable with an open advisory is invisible to it. **The ecosystem's advisory command is the project's to run**, on the `dependencies.md` cadence |
 | Lockfile committed (§8) | `dependencies.md` § What checks this owns the answer |
 | Immutable pipeline and image references (§8) | **`Partial:`** `check-code`'s `zizmor` step, a workflow-security check, whose `unpinned-uses` rule reports a mutable `uses:` in a default run. **`Partial:`** for the container half — `check-code`'s `hadolint` step, a Dockerfile check, reports an untagged base image (`DL3006`) and an explicit `:latest` (`DL3007`). Measured on 2.15.1. **Nothing** catches a `FROM` on a real tag — `node:18` passes both rules and is still mutable — or an `image:` in a compose file, which `hadolint` does not read |
@@ -285,7 +308,7 @@ enforcement.** An absence is not coverage.
 | The CHANGELOG entry and the rotation (§9) | **nothing** — `changelog-format.md` offers a `Security` category and requires no entry, so a security fix shipped silently is caught by nothing |
 | Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row |
 | Anti-patterns restating nothing above (§10) | **nothing mechanical** — a code reviewer. Rolling your own crypto, token format or password hashing; disabling a security check to pass a test; "it's only internal"; validating in the user interface only |
-| Boundary list exists (§1) | **nothing mechanical** — whoever reviews the two files §1 names, `SECURITY.md` or `CLAUDE.md`. Not the design document: the list is not written there, so a reviewer reading it returns a clear on every project |
+| Boundary list exists (§1) | **nothing mechanical** — whoever reviews the home §1 names, `SECURITY.md` or `CLAUDE.md`, **following a pointer out of it to the named file**. A reviewer who stops at the home reports no list on a project whose list is thorough and one file away, which is what reading the design document unprompted was ruled out to prevent. **Nothing** catches a home that mentions boundaries and names no file |
 | What may be logged (§6) | **nothing mechanical** — the reviewer of the boundary the log sits on |
 | Fix-now discipline (§9) | **nothing mechanical** — the person who found the hole, and nobody else |
 

@@ -484,6 +484,17 @@ any repository with no CI at all — either cadence is fine.** Push per
 commit or build up and push together, whichever suits the work. There is
 nothing to conserve, so there is no rule to follow.
 
+**A fork's inherited workflows are not the project's own pipeline, and
+free minutes are not free attention.** A fork answers *does it have
+`.github/workflows`* with yes while owning none of what is in there, so
+the cost test above reads the wrong repository's pipeline. Every push
+then starts builds for platforms the fork does not work on; they fail or
+are cancelled, and the failure mail is the real cost. **Disable Actions
+on the fork** — settings, not a file, so a re-sync cannot revert it.
+Restrict by branch only for a workflow file the fork itself owns:
+narrowing an inherited one means editing upstream's file, which the next
+re-sync conflicts with or reverts.
+
 Two consequences worth stating, because both have been got wrong:
 
 - **Commit locally regardless.** The cost is in pushing. Withholding
