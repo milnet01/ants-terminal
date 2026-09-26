@@ -13604,6 +13604,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`orphaned_ids`) when the store holds items the file "
                         "no longer carries, which the render would otherwise "
                         "publish back; deregister and re-migrate first. "
+                        "ANTS-5286 — a real run refuses `text_lost` when the "
+                        "rewrite would drop the file's text, unless "
+                        "`accept_text_loss:true`. "
                         "Nothing is written on any of them.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
@@ -14291,6 +14294,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "is listed in strip_skipped_ids and never removed. "
                         "Default false.");
                     props["strip_runs"]    = stripRunsProp;   // ANTS-4507
+                    QJsonObject acceptLossProp;
+                    acceptLossProp["type"] = "boolean";
+                    acceptLossProp["description"] = QStringLiteral(
+                        "op:\"convert\" — proceed although the rewrite would "
+                        "drop text the file holds. Without it a real convert "
+                        "refuses `text_lost`, naming the lines, and writes "
+                        "nothing. A dry run never refuses; it reports. Pass "
+                        "only after inspecting the loss. Default false.");
+                    props["accept_text_loss"] = acceptLossProp; // ANTS-5286
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

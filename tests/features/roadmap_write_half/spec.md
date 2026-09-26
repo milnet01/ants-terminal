@@ -152,6 +152,13 @@ line by line the same way. A run or line of fewer than three words is never
 excused, so a short phrase matching by chance stays lost. *Test:*
 `Ants5327CountsAReflowAsRestyledNotLost`.
 
+ANTS-5286 — a line with no letter or digit, such as a `***` rule, is layout
+and never counts as lost text. `contentKey()` also drops a leading task-list
+checkbox (`- [x] `), whose `x` otherwise kept every completed github-task-list
+bullet from matching its ants-v1 twin. *Tests:*
+`Ants5286LineWithoutTextIsNotLostText`; the checkbox case is covered by
+roadmap_convert's real-run cases, which refuse `text_lost` without it.
+
 ANTS-4957 — the true arm also carries `discard_reason` (`would_discard_reason`
 on a dry run): the worst thing at stake, one of `text_lost`, `structure`,
 `punctuation` or `restyle_only`. `restyle_only` is a stale render nobody

@@ -353,9 +353,43 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     //
     // The exemption ends here. Every ordinary write afterwards judges these
     // items normally, so the first edit to one still owes its summary.
+
+    // ANTS-5286 — refuse a real convert that would drop text, unless the
+    // caller says they inspected it. The warning that shipped first was
+    // followed through by default, and the evidence behind it was too large to
+    // read. The count is taken against the render AFTER the re-import
+    // (DriftBasis::AfterMutation): the convert re-imports the file, so a line
+    // only the file holds survives it, and measuring before would refuse on
+    // text that is not lost. A rehearsal decides; any other failure in it falls
+    // through, so the real run reports that failure as it always has.
+    if (!dryRun && !req.value(QStringLiteral("accept_text_loss")).toBool()) {
+        RoadmapRender::Outcome rehearsal;
+        QString rehearsalErr;
+        const auto rr = RoadmapWrite::commitAndRender(
+            *store, projectId, root, roadmapPath, /*dryRun=*/true, mutate,
+            &rehearsal, &rehearsalErr, RoadmapWrite::LaymanGate::Exempt,
+            RoadmapWrite::DriftBasis::AfterMutation);
+        if (rr == RoadmapWrite::Result::Ok && rehearsal.externalTextLines > 0) {
+            QJsonObject e = refuseWith(QStringLiteral("text_lost"),
+                QStringLiteral("roadmap_log: converting \"%1\" would drop %2 "
+                               "line(s) of text the file holds; "
+                               "`discarded_text` names them. Nothing was "
+                               "written, so the file is intact. Put the text "
+                               "where the convert keeps it, or re-run with "
+                               "accept_text_loss:true once you have checked it.")
+                    .arg(roadmapPath).arg(rehearsal.externalTextLines)).object();
+            e[QStringLiteral("discarded_text_lines")] = rehearsal.externalTextLines;
+            e[QStringLiteral("discarded_text")] =
+                QJsonArray::fromStringList(rehearsal.externalLostText);
+            if (rehearsal.externalLostTextTruncated)
+                e[QStringLiteral("discarded_text_truncated")] = true;
+            return QJsonDocument(e);
+        }
+    }
+
     const auto rc = RoadmapWrite::commitAndRender(
         *store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &err,
-        RoadmapWrite::LaymanGate::Exempt);
+        RoadmapWrite::LaymanGate::Exempt, RoadmapWrite::DriftBasis::AfterMutation);
 
     if (itemsOrphaned > 0) {
         // The rows are still in the store — the refusal rolled back the load,

@@ -159,6 +159,21 @@ the commit to be one transaction.
   *Breaks when:* a github-task-list convert with orphans succeeds, or a
   refused one changes the file or the stored format.
 
+- **INV-16** — a real convert refuses `text_lost` when text the file holds
+  would not survive into the render that replaces it, unless the request
+  carries `accept_text_loss:true`. The refusal carries `discarded_text_lines`
+  and `discarded_text`, and writes nothing. A dry run never refuses; it
+  reports `would_discard_reason:"text_lost"`. The loss is measured against the
+  render AFTER the re-import (`DriftBasis::AfterMutation`), because a line the
+  file alone holds survives a convert. *Test:*
+  `textLossRefusesUnlessAccepted`, which uses
+  `RoadmapWrite::setDropFromPostImageForTest`: no fixture tried makes the real
+  convert lose text.
+  *Why:* ANTS-5286. A warning shipped first, a session followed it through by
+  default, and the evidence behind it was too large to read.
+  *Breaks when:* a real convert with lost text writes without the opt-in, a
+  refused one changes the file or the stored format, or a dry run refuses.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

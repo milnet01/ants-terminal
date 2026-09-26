@@ -27,6 +27,9 @@ namespace {
 // already uses for the same job. Never set outside a test.
 bool g_forcePostMutateFail = false;
 
+// ANTS-5286 — see setDropFromPostImageForTest(). Never set outside a test.
+QString g_dropFromPostImage;
+
 
 // ANTS-4141 — the ids one file carries, from each bullet's own leading
 // `[<PREFIX>-NNNN]` slot.
@@ -86,6 +89,16 @@ QString contentKey(QStringView line) {
         QStringLiteral("planned"), QStringLiteral("considered"),
         QStringLiteral("dropped"),   // ANTS-4977
     };
+    // ANTS-5286 — a task-list checkbox is status, not text. Its `x` is a letter,
+    // so `- [x] Done thing.` keyed as `x done thing` and never matched its
+    // ants-v1 twin: every completed github-task-list bullet read as lost text.
+    {
+        const QStringView t = line.trimmed();
+        if (t.size() >= 5 && (t[0] == u'-' || t[0] == u'*' || t[0] == u'+')
+            && t[1] == u' ' && t[2] == u'[' && t[4] == u']'
+            && (t[3] == u' ' || t[3] == u'x' || t[3] == u'X'))
+            line = t.mid(5);
+    }
     QString out, tok;
     const auto flush = [&] {
         if (tok.isEmpty()) return;
@@ -232,6 +245,12 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         // as lost prose would bury the one line that matters under the noise
         // this item exists to remove.
         if (l.trimmed().isEmpty()) continue;
+        // ANTS-5286 — nor is a line with no letter or digit, such as a `---`
+        // rule a convert drops by design (roadmap_convert INV-13). It holds no
+        // text to lose, and counting it would refuse every such convert.
+        if (std::none_of(l.begin(), l.end(),
+                         [](QChar c) { return c.isLetterOrNumber(); }))
+            continue;
         unmatched.append({fileOnlyAt.at(i), l});
     }
 
@@ -389,6 +408,7 @@ QStringList keepDiscarded(const QStringList &paths) {
 }  // namespace
 
 void setForcePostMutateFailForTest(bool on) { g_forcePostMutateFail = on; }
+void setDropFromPostImageForTest(const QString &needle) { g_dropFromPostImage = needle; }
 
 
 // ANTS-4803 — publish in the dialect the project was MIGRATED FROM, read from
@@ -463,7 +483,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
                        const QString &liveRoadmapPath, bool dryRun,
                        const std::function<bool(QString *)> &mutate,
                        RoadmapRender::Outcome *outcome,
-                       QString *error, LaymanGate gate) {
+                       QString *error, LaymanGate gate, DriftBasis basis) {
     if (error)
         error->clear();
 
@@ -504,7 +524,9 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // the project, and these two items ask to be TOLD, not blocked.
     DriftBreakdown drift;
     bool driftChecked = false;
-    if (const auto preDialect = dialectOf(store, projectId)) {
+    const bool measureBefore = (basis == DriftBasis::BeforeMutation);
+    if (const auto preDialect = measureBefore ? dialectOf(store, projectId)
+                                              : std::nullopt) {
         // ANTS-5087 — and skipped outright when the dialect could not be read.
         // `externalEditsChecked:false` already means "nobody looked", which is
         // the truth here; measuring against the wrong emission would report
@@ -648,9 +670,26 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         }
     }
 
-    const auto dry = RoadmapRender::render(store, projectId, projectRoot, opts, error);
+    // ANTS-5286 — AfterMutation measures against THIS render, the one that
+    // will replace the file, rather than the pre-image.
+    QHash<QString, QString> postImage;
+    const auto dry = RoadmapRender::render(store, projectId, projectRoot, opts, error,
+                                           measureBefore ? nullptr : &postImage);
     if (!dry)
         return abort(Result::RenderFailed);
+    if (!measureBefore && !postImage.isEmpty()) {
+        if (!g_dropFromPostImage.isEmpty()) {
+            for (QString &text : postImage) {
+                QStringList kept = text.split(u'\n');
+                kept.removeIf([](const QString &l) {
+                    return l.contains(g_dropFromPostImage);
+                });
+                text = kept.join(u'\n');
+            }
+        }
+        drift = externalDrift(postImage);
+        driftChecked = true;
+    }
     // Set before the gate check: GateUnmet's envelope is built from
     // `gateFailures`, so the refusal path needs the Outcome as much as the
     // success path does.

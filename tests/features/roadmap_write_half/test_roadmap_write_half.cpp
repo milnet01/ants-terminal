@@ -1690,6 +1690,42 @@ TEST(RoadmapWriteHalf, Ants5327CountsAReflowAsRestyledNotLost) {
         << "got: " << text.at(0).toString().toStdString();
 }
 
+// ANTS-5286 — a line with no letter or digit holds no text, so it is not
+// `discarded_text`: a convert refuses on that count now, and a `***` rule it
+// drops would otherwise refuse every such convert. The sentence is the control.
+TEST(RoadmapWriteHalf, Ants5286LineWithoutTextIsNotLostText) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    QByteArray hand = readAll(roadmap);
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1,
+        "***\n> A hand-written sentence that exists nowhere in the store.\n");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the rule."))).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("discarded_text_lines")).toInt(), 1)
+        << "ANTS-5286: `***` carries no text and must not count as lost";
+    const QJsonArray text = env.value(QStringLiteral("discarded_text")).toArray();
+    ASSERT_EQ(text.size(), 1);
+    EXPECT_TRUE(text.at(0).toString().contains(
+        QStringLiteral("exists nowhere in the store")))
+        << "got: " << text.at(0).toString().toStdString();
+}
+
 // ANTS-4839 — whose text is it? A project keeping a frozen branch sees a large
 // `text_lost` figure on an ordinary one-item write, because the file there is
 // an older publication of this same store. The fields were honest and

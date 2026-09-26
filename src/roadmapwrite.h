@@ -179,9 +179,26 @@ enum class Result {
 // case that sets it — a leaked `true` refuses every subsequent write.
 void setForcePostMutateFailForTest(bool on);
 
+// ANTS-5286 — TEST ONLY. Drops every line containing `needle` from the
+// AfterMutation image before it is measured, standing in for a convert that
+// loses text: none of the fixtures tried makes the real one lose any. An empty
+// needle clears it. Clear it in the same case that sets it.
+void setDropFromPostImageForTest(const QString &needle);
+
 enum class LaymanGate : std::uint8_t {
     Enforce,   // the default — the write authors or edits, so INV-5 applies
     Exempt,    // a migration, which authors nothing and cannot satisfy INV-5
+};
+
+// ANTS-5286 — which render the file is compared against to count lost text.
+// BeforeMutation is every ordinary write's: the store as it stood, so the
+// count is what arrived from outside. AfterMutation is op:"convert"'s: a
+// convert re-imports the file, so a hand-written line in it survives, and the
+// honest question is whether the file's text is in the render that replaces
+// it. Measuring that one before the re-import refuses on text that survives.
+enum class DriftBasis : std::uint8_t {
+    BeforeMutation,
+    AfterMutation,
 };
 
 Result commitAndRender(RoadmapStore &store, qint64 projectId,
@@ -190,6 +207,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
                        const std::function<bool(QString *)> &mutate,
                        RoadmapRender::Outcome *outcome,
                        QString *error = nullptr,
-                       LaymanGate gate = LaymanGate::Enforce);
+                       LaymanGate gate = LaymanGate::Enforce,
+                       DriftBasis basis = DriftBasis::BeforeMutation);
 
 } // namespace RoadmapWrite

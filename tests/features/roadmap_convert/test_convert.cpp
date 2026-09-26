@@ -949,3 +949,59 @@ TEST(RoadmapConvert, midSectionProseKeepsItsPosition) {
                             "before/after diff and is not a defect";
     }
 }
+
+
+// ---------------------------------------------------------------- INV-16 ----
+
+// ANTS-5286 — a real convert that would drop text refuses unless the caller
+// accepts the loss. What shipped first was a warning, and a session followed
+// it through by default on evidence too large to read. No fixture tried makes
+// the real convert lose text, so the seam stands in for a lossy render.
+TEST(RoadmapConvert, textLossRefusesUnlessAccepted) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+    const QByteArray hashBefore = hashOf(roadmap);
+
+    RoadmapWrite::setDropFromPostImageForTest(QStringLiteral("second checklist"));
+    struct ClearSeam {
+        ~ClearSeam() { RoadmapWrite::setDropFromPostImageForTest(QString()); }
+    } clearSeam;
+
+    // A dry run reports; it never refuses.
+    const QJsonObject dry = convert(root, /*dryRun=*/true);
+    EXPECT_TRUE(dry.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(dry).toJson().toStdString();
+    EXPECT_EQ(dry.value(QStringLiteral("would_discard_reason")).toString(),
+              QStringLiteral("text_lost"));
+
+    // A real run refuses, names the line, and writes nothing.
+    const QJsonObject refused = convert(root);
+    const std::string dump = QJsonDocument(refused).toJson().toStdString();
+    EXPECT_FALSE(refused.value(QStringLiteral("ok")).toBool()) << dump;
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(),
+              QStringLiteral("text_lost")) << dump;
+    EXPECT_EQ(refused.value(QStringLiteral("discarded_text_lines")).toInt(), 1) << dump;
+    const QJsonArray named = refused.value(QStringLiteral("discarded_text")).toArray();
+    ASSERT_EQ(named.size(), 1) << dump;
+    EXPECT_TRUE(named.at(0).toString().contains(QStringLiteral("second checklist")))
+        << dump;
+    EXPECT_EQ(hashOf(roadmap), hashBefore) << "a refused convert changed the file";
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("github-task-list"))
+        << "a refused convert changed the stored format";
+
+    // accept_text_loss:true proceeds.
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]       = root;
+    req[QStringLiteral("op")]               = QStringLiteral("convert");
+    req[QStringLiteral("accept_text_loss")] = true;
+    RemoteControl rc(nullptr);
+    const QJsonObject accepted = rc.cmdRoadmapLogConvertForTest(req).object();
+    EXPECT_TRUE(accepted.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(accepted).toJson().toStdString();
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));
+}

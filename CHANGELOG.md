@@ -83,6 +83,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log convert refuses to drop text unless told to** (ANTS-5286)
+  A real convert whose output would lose text from the file now refuses
+  with `text_lost`, names the lines and writes nothing. Pass
+  `accept_text_loss:true` after checking them. The loss is measured
+  against the converted result, and completed checklist items and
+  rule lines no longer count as lost.
+
 - **`roadmap_log`'s help text marks delete_section and move_section as store-only** (ANTS-5332)
 
 - **`roadmap_query`'s `section` help says it plus `headline_only` and `status` lists one section's open ids** (ANTS-5285)
