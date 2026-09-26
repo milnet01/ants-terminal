@@ -66921,6 +66921,56 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session request 2026-09-26 (their CFG-0234).
   Lanes: docs, mcp.
 
+- 📋 [ANTS-5404] **A pass-headings flip note lands as a bare line after the last bullet, and the done keyword ignores the block's own vocabulary.**
+  Remainder of ANTS-5395, re-tested by RetroDB. The flip dry run ends
+  `...\n  psn-npsso file.\nRe-test note (dry run only).\n\n---`: the note is an
+  unindented line, which Markdown folds into the bullet above as a lazy
+  continuation. Write it as its own bullet (`- **Resolution** (date): ...`
+  when flipping to shipped, else `- **Note** (date): ...`). And the Status
+  keyword: keep the one the block, or the file's majority, already uses
+  (`shipped (date)` on RetroDB) instead of the canonical `done`.
+  Repro in RetroDB_Ants_MCP_Feedback.md, retrodb-9b 2026-09-26.
+  **Layman:** Closing an item on this roadmap style adds the note in a place Markdown merges into the previous line, and writes 'done' where the file says 'shipped'.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26 (ANTS-5395 re-test).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5405] **roadmap_log op:backfill_dates dates nothing on a pass-headings roadmap.**
+  RetroDB dry run walked 207 revisions and wrote 0 of 253 dates; every item
+  lands in `undated`. The walk evidently parses each historical revision with
+  the bullet reader, which yields no ids from `#### Pass N.M` blocks. Parse
+  each revision with the dialect reader the live file uses (PASS-N-M from the
+  heading; shipped from the Status line's done keyword), and report the
+  dialect per revision so a zero can be told from no history.
+  **Layman:** Filling in old created and shipped dates from git history works on the usual roadmap style but finds nothing on the pass-by-pass style.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
+  Lanes: roadmap.
+
+- 📋 [ANTS-5406] **Pass-headings items all store kind implement, so the kind filter and the report's by_kind are meaningless there.**
+  The dialect has no Kind slot and append ignores kind on it (ANTS-4357),
+  yet the import stamps `implement` on every item, a value nobody chose.
+  Store kind as unknown for this dialect and have mode:"report" and the
+  kind filter say kind is not recorded there, rather than report
+  `implement`. Reading headline suffixes like `(HIGH, S)` as a kind hint
+  is a guess and is not proposed.
+  **Layman:** On the pass-by-pass roadmap style every item is labelled the same kind, so filtering by kind shows nothing useful.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
+  Lanes: roadmap.
+
+- 📋 [ANTS-5407] **Pass-headings items never store the Lanes their Status lines declare, and one item reports a lanes field_conflict at line 0.**
+  Every RetroDB Status line carries `Lanes: a, b.` after the status, yet
+  bullet_fields:["lanes"] returns none. Parse the trailing Lanes on a
+  pass-headings Status line into the lanes column. Separately, every migrate
+  reports field_conflict `PASS-59-64: lanes` at line 0 although that block has
+  one Lanes line, so the conflict is file versus store: name both values and
+  which won. Read-side twin of ANTS-5397 (the write guard on the same line).
+  **Layman:** The pass-by-pass roadmap style names which parts of the project each item touches, but that information is lost on import.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
+  Lanes: roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
