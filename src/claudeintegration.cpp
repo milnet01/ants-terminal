@@ -6294,8 +6294,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // same reason ANTS-4089's pair is: additionalProperties
                         // is false, so an undeclared key is refused before the
                         // handler ever sees it.
-                        QJsonObject otP; otP["type"] = "string";
-                            otP["description"] = QStringLiteral(
+                        QJsonObject oldTextP; oldTextP["type"] = "string";
+                            oldTextP["description"] = QStringLiteral(
                                 "Alias for `old` — roadmap_log "
                                 "op:\"amend_body\"'s spelling, accepted so a "
                                 "caller arriving from that verb guesses "
@@ -6307,7 +6307,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                 "both are sent.");
                         ip["path"] = pP; ip["old"] = oP; ip["new"] = nP;
                         ip["old_string"] = osP; ip["new_string"] = nsP;
-                        ip["old_text"] = otP; ip["new_text"] = ntP;
+                        ip["old_text"] = oldTextP; ip["new_text"] = ntP;
                         ip["replace_all"] = rP;
                         {   // ANTS-4838 — the count guard replace_all lacks.
                             QJsonObject ecP; ecP["type"] = "integer";

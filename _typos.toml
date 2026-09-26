@@ -11,7 +11,7 @@
 # own directory walk. Passing paths as positional arguments bypasses it, so
 # run plain `typos` from the repo root to see what the config actually does.
 #
-# EXPECTED RESIDUE (ANTS-4800). A clean run is not a silent one: four
+# EXPECTED RESIDUE (ANTS-4800). A clean run is not a silent one: five
 # findings remain on purpose, and each is unfixable rather than unfixed.
 #
 #   - `occured`, three times. Every one is a QUOTED EXAMPLE of the typo
@@ -22,8 +22,11 @@
 #     is a genuine slip, and CLAUDE.md rule 14 forbids editing a row that
 #     has landed -- a corrected count is named there as exactly the reason
 #     not to.
+#   - `warnign`, once, in src/mcpprojection.cpp. The comment uses the
+#     misspelling as its example of what a caller might type; adding the
+#     word here would wave through a real one elsewhere.
 #
-# A FIFTH finding is a regression. Read the line before adding anything.
+# A SIXTH finding is a regression. Read the line before adding anything.
 
 [files]
 # Generated or append-only, and the largest single source of noise.

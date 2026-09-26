@@ -384,7 +384,7 @@ merge clean, compile clean, and are wrong. D10 is what covers them.
 **So the dealing rule is a preference, not a prohibition.** The
 orchestrator prefers non-overlapping tasks when it has the choice —
 ordering two overlapping tasks costs one wait, while running them
-concurrently and requeueing costs one task's work twice.
+concurrently and requeuing costs one task's work twice.
 
 **It refuses nothing on the grounds of a rename. D10 supersedes the
 carve-out an earlier draft had here**, and the draft was wrong twice

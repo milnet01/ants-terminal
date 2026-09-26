@@ -18987,6 +18987,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: claude-ab-request-2026-09-24.
   Lanes: roadmap.
 
+- 📋 [ANTS-5409] **indie_review_partition names tracked source outside every lane's walked roots.**
+  unassigned_count counts only leftovers inside the roots the verb walks, so
+  tracked source outside them reads as covered. Two cases, same day:
+  UT_Ants (computed partition, .ants/project.json source_roots:["src"])
+  reported unassigned_count 12 while tools/ and apps/ (31 C++ TUs) and
+  scripts/ had no lane. Ants Terminal (committed .indie-review/partition.json)
+  reports unassigned 4 (.github yml) while 58 tracked .py/.sh files under
+  tools/, tools/hooks/, packaging/, scripts/ and launch.sh are in no lane.
+  Proposed: emit unwalked_roots (tracked dirs holding outlineable source —
+  file_outline's languages — that no walked root contains), with a count and
+  a hint naming source_roots / partition.json as the place to widen.
+  **Layman:** The review planner should say when whole folders of code were never looked at, instead of reporting almost full coverage.
+  Kind: enhancement.
+  Source: code-audit-2026-09-26 (with UT_Ants session report).
+  Lanes: mcp-review-verbs.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

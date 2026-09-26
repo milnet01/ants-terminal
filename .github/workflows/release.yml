@@ -94,10 +94,12 @@ jobs:
             IS_RC=0
             UPDATE_CHANNEL="latest"
           fi
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "is_rc=${IS_RC}" >> "$GITHUB_OUTPUT"
-          echo "update_channel=${UPDATE_CHANNEL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "ref=${REF}"
+            echo "version=${VERSION}"
+            echo "is_rc=${IS_RC}"
+            echo "update_channel=${UPDATE_CHANNEL}"
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved tag: ${REF} (version ${VERSION}, is_rc=${IS_RC}, channel=${UPDATE_CHANNEL})"
 
       - name: Check out source at tag

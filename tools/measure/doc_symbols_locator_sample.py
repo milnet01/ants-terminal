@@ -7,7 +7,8 @@ line beside the cited code line."""
 import json, random, re, sys
 import os
 R=os.environ.get('ANTS_ROOT', os.getcwd())+'/'
-rows=[json.loads(l) for l in open('out.jsonl')]
+with open('out.jsonl') as fh:
+    rows=[json.loads(l) for l in fh]
 pop=[]; agg={'located':0,'ambiguous':0,'unresolved':0,'not_checked':0,'declared_only':0}; trunc=0
 for r in rows:
     trunc+=r['truncated']
@@ -18,11 +19,12 @@ for r in rows:
 print('docs',len(rows),'truncated_docs',trunc,agg)
 lines={}
 def L(path):
-    if path not in lines: lines[path]=open(R+path,errors='replace').read().split('\n')
+    if path not in lines:
+        with open(R+path,errors='replace') as fh: lines[path]=fh.read().split('\n')
     return lines[path]
 # mechanical: cited line contains the final identifier
 miss=[]
-for d,s,loc,dl in pop:
+for d,s,loc,_dl in pop:
     f,n=loc.rsplit(':',1); leaf=s.replace('()','').split('::')[-1]
     if not re.search(r'\b'+re.escape(leaf)+r'\b', L(f)[int(n)-1]): miss.append((d,s,loc))
 print('population',len(pop),'mechanical_miss',len(miss))

@@ -172,7 +172,9 @@ def module_lines(root):
     out, cur = {}, None
     if not os.path.exists(path):
         return out
-    for l in open(path, errors="replace"):
+    with open(path, errors="replace") as fh:
+        lines = fh.readlines()
+    for l in lines:
         m = re.match(r"^- `([A-Za-z0-9_]+)`[^—]*—\s*(.*)", l)
         if m:
             cur = m.group(1)
@@ -345,7 +347,8 @@ def main():
             f.write(doc)
     else:
         try:
-            cur = open(path).read()
+            with open(path) as f:
+                cur = f.read()
         except OSError:
             print(f"filemap: {a.out} missing", file=sys.stderr)
             return 1

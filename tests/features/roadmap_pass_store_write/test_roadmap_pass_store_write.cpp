@@ -293,9 +293,9 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
     flipBatch[QStringLiteral("to_status")] = QStringLiteral("shipped");
     flipBatch[QStringLiteral("locators")]  = QJsonArray{loc};
     QJsonObject annotateBatch = req(root, QStringLiteral("annotate_batch"));
-    QJsonObject aloc = loc;
-    aloc[QStringLiteral("id")] = QStringLiteral("PASS-44-1");
-    annotateBatch[QStringLiteral("locators")] = QJsonArray{aloc};
+    QJsonObject annotateLoc = loc;
+    annotateLoc[QStringLiteral("id")] = QStringLiteral("PASS-44-1");
+    annotateBatch[QStringLiteral("locators")] = QJsonArray{annotateLoc};
 
     // ANTS-5396 — amend_body refuses on this format too, through its own
     // message; RetroDB reached it first.

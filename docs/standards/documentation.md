@@ -720,32 +720,33 @@ it is numbered like every other section.
 
 ### 2.10 Evidence carries its own falsifier
 
-A record that rests a conclusion on evidence names what would show the evidence
-has expired. Three shapes, each with its own falsifier.
+A record resting a conclusion on evidence names how a reader finds out the
+evidence has expired. **Scope: a conclusion someone may later rely on** — not a
+claim this repository's own tests already lock, and not an opinion.
 
-**A verdict resting on an artefact names the commit the artefact came from**, not
-only its path. The artefact outlives the code that produced it, and a live path
-to a superseded file checks out — so it reassures the reader with the very thing
-that went wrong. With the commit named, `git log <sha>..HEAD -- <the covered
-paths>` says whether the verdict still holds.
+**Name what the evidence WAS, precisely enough to find again.** A path alone will
+not do: a live path to a superseded artefact reassures the reader with the very
+thing that went wrong. A commit is the usual form, **and it names its repository
+whenever that is not this one** — a sha from elsewhere fails silently in
+`git log <sha>..HEAD -- <the covered paths>`. **Where there is no commit** — a
+running service, an installed binary, a machine-wide tool — name the version it
+reported and the command that reports it.
 
-**A count over a filtered population names what the filter left out, as a
-number.** Scope: a tool's output or a survey someone reads as evidence. Not a
-tool whose population is its own arguments — a caller that passed N items knows
-it got N. Without the excluded number a survey reads as the whole population, and
-a tool reporting *clean* must say how much it compared, since a clean report over
-nothing reads the same.
+**Say what the evidence did NOT cover.** A filtered population, a survey's
+exclusions, a tool that compared less than it was pointed at. The excluded amount,
+**or the command that recomputes it**, which is what a project forbidding counts
+writes instead. With neither, a partial check reads as a whole one, and a clean
+report over nothing reads like a clean report over everything.
 
-**A measured claim about something outside this repository states the command
-that reproduces it.** Another tool, a service, a machine-wide component. This
-repository's checks cannot see that thing change, so the command is the only way
-a later reader re-runs the claim. Not a claim about this repository's own code,
-which its tests and history already govern; not a judgement with no figure
-behind it.
+**Where both apply both are owed**, unless one subsumes the other — then the
+stronger alone.
 
-**A falsifier is not a guarantee.** It makes an expired claim detectable; it
-does not make anyone look. What it removes is the claim that cannot be checked
-at all.
+**This binds forward.** A record already written is not in breach. **A landed
+loop-log row is not rewritten to bring it into conformance** — § 9.1 owns that
+rule and its one exception — so those cannot conform and are not expected to.
+
+**A falsifier is not a guarantee.** It makes an expired claim detectable, not
+noticed. What it removes is the claim nobody can check.
 
 ## 3. Where documents live
 
@@ -845,43 +846,73 @@ longer contains the ID, so searching for the ID stops finding the spec.
 
 ### 3.4 Where a record goes, and what it is called
 
-**A date belongs INSIDE a record, never in its filename.** One file per subject,
-appended to, each entry carrying its own date and saying what kind of entry it
-is. A dated filename makes a new file per run, so one subject grows several — and
-every one of them needs its own citation from wherever it is referenced.
+**Scope: a record that accumulates entries** — a pedigree, a review log, a run
+record, a measurement, a field pass. **Not** published content whose filename is
+its address, **not** a generated or ignored file, and **not** a retired contract
+document, which is a snapshot and keeps the name it had.
 
-| Home | For | Form |
-|---|---|---|
-| `docs/history/<document>.md` | One document's rule pedigree — who reported a rule, which id, what the earlier wording was | Named for its document |
-| `docs/reviews/<document>-loop-log.md` | One document's review history, a row per loop | Named for its document |
-| `docs/<subject>.md` | Every dated record about one subject — a first run, a live run, a gate, a measurement, a field pass | Named for the SUBJECT alone; each entry dated and labelled with its kind |
+**A date belongs INSIDE a record, never in its filename.** Each entry carries its
+own date and says what kind of entry it is. A dated filename makes a new file per
+run, so one subject grows several — and each needs its own citation from everywhere
+it is referenced.
 
-**None of the three carries a date in its name.** The first two never did. The
-third is the change.
+| Home | For |
+|---|---|
+| `docs/history/<document>.md` | One document's rule pedigree — who reported a rule, which id, what the earlier wording was |
+| `docs/reviews/<document>-loop-log.md` | One document's review history, a row per loop |
+| `docs/<subject>.md` | Every other dated record on one subject — a first run, a live run, a measurement, a field pass |
 
-**When a file grows past one comfortable read, continue it — do not rename it.**
-The existing file keeps its name, so every citation of it still resolves, and the
-continuation is `<name>-part-2.md`. Each part points at the next and the previous.
-Splitting on size is a judgement, and the honest trigger is that a reader must
-already open it in pieces.
 
-**An undated reference several documents cite** states what is true now and takes
-`docs/<topic>.md` — the same shape, with no dated entries at all.
+**Take the document's basename and lowercase it** —
+`standards/documentation.md` gives `docs/history/documentation.md`, and `CLAUDE.md`
+gives `claude.md`. **Qualify with the parent directory where that collides**, as
+`docs/reviews/languages-python-loop-log.md` does. **An embedded roadmap ID keeps
+its own casing** (§ 3.3): lowercase it and a search for the ID stops finding the
+record. *(`docs/history/claude-md.md` and `docs/reviews/claude-md-loop-log.md`
+predate this and keep their names under the bind-forward clause below — so the one
+document every repository has is the one that does not match the rule.)*
 
-**A history file points BACK at its document, and the document points forward at
-it.** Both directions, or one of them is an orphan a later reader cannot place.
+**The subject is what the record is ABOUT, and where one document owns that
+subject, the subject IS that document.** A field pass of a feature takes the
+feature's name, not the name of a document that mentions it, and not a section
+heading — a heading moves and the record's citations break with it.
 
-**What moves out is wider than pedigree:** how a rule came to be, a design
-discussion, a superseded alternative, the evidence behind a requirement.
-**What stays is what the rule RESTS ON** — a dated measurement without which the
-rule is unfounded, a recorded unverifiability, a scope. The test: remove it, and
-does the rule still stand on anything?
+**The gate index is not one of these.** It is `docs/reviews/gate-log.md`, where
+`check-doc.py` looks for it by default — a gate record filed under `docs/` instead
+silences that check in every project that does not also reconfigure it.
 
-**This binds forward.** A record already carrying a date in its filename is not a
-breach and is not renamed: every citation of it would break, and those citations
-are what make an old record findable. Where a subject already has several such
-files, a NEW entry starts that subject's consolidated file and points at the
-older ones; it does not gather them in.
+**Within the third home, a current-state reference and dated entries on one
+subject are ONE file**: what is true now first, the dated entries below. **This
+does not reach the first two homes** — a document's pedigree and its loop log are
+separate files by the table above and by § 9.1, and a document is not made into a
+one-file subject by having them. Two files in the SAME home on one subject is what
+this rule prevents.
+
+**Past one comfortable read, continue a file — never rename it.** The existing name
+keeps every citation resolving; the continuation is `<name>-part-2.md`, and each
+part links the next and the previous. The honest trigger is that a reader already
+opens it in pieces.
+
+**A history file links its document, and the document links back — to part 1
+only.** Both directions, or one is an orphan a later reader cannot place. **An
+existing pair owes nothing on its own account**: an always-loaded document pays for
+every pointer every session, so a missing one waits for that document's next edit.
+
+**What moves out is the working out** — how a rule came to be, a design
+discussion, a superseded alternative, the investigation behind a requirement.
+**What stays is the FIGURE the rule cites**, a recorded unverifiability, a scope.
+One line stays; the pages that produced it go.
+
+**This binds forward. A record already written is not in breach, and is neither
+renamed nor moved** — every citation of it would break, and those citations are
+what make an old record findable. **Adopting this section creates no file on its
+own account**: a new entry appends to the newest file on that subject, whatever it
+is called and wherever it sits — **other than a retired snapshot, which is closed
+and takes no new entries**. Start a new file only where appending would cross one
+of the three homes above — a run record does not go into a pedigree file — or where
+the file you would append to has grown past one read. **Within one home, a
+measurement and a field pass on one subject share a file**; the entry says which
+kind it is, and that is what the dated label is for.
 
 ## 4. Per-kind format standards
 
@@ -1364,8 +1395,8 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence, and `sections` skips a standard, whose requirement is prose — which is what `mandated-section` exists for. **Once the rows live in a record the tally is caught only by a `loop-log` run pointed at the record itself** — a run pointed at this document reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
 | §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook, a staged-commit blocking check, blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
-| A record's home and name (§ 3.4) | **`Partial:`** `check-doc-facts`' link and path checks catch a POINTER that does not resolve, in either direction, once one exists. **A date in a new record's FILENAME is the one mechanical case** — a glob for `*20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md` under `docs/` finds it, and nothing runs that glob today. **Nothing** checks that a document carrying pedigree has a history file at all, or that what moved out was provenance rather than a rule the document needed |
-| Evidence carries its own falsifier (§ 2.10) | **`Partial:`** a reader, who can see whether a sha, an excluded count or a command sits beside the claim. **Nothing** decides whether a record rests a conclusion on evidence at all, and `check-doc-facts` looks for none of the three; its `counts` check reaches only an undated census figure, never a dated measurement missing its command |
+| A record's home and name (§ 3.4) | **`Partial:`** `check-doc-facts`' link and path checks catch a POINTER that does not resolve, in either direction, once one exists. **A new record's filename and home are both mechanical** — a glob for `*20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md` under `docs/` finds a dated name, and the prescribed home and basename are as greppable as the § 3.1 / § 3.3 row says a filename form is; nothing runs either check today. **Nothing** checks that a document carrying pedigree has a history file at all, that a record sits in its prescribed home, or that what moved out was provenance rather than a rule the document needed |
+| Evidence carries its own falsifier (§ 2.10) | **nothing mechanical** — a reader, who can see whether a sha, an excluded count or a command sits beside the claim. **Nothing** decides whether a record rests a conclusion on evidence at all, and `check-doc-facts` looks for none of the three; its `counts` check reaches only an undated census figure, never a dated measurement missing its command |
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
 | §3.1 / §3.3 filename form | **nothing** — the `SHOUTING.md` / `lowercase-kebab.md` split and the presence of an ID are greppable, so this is a check worth adding. It must accept any ID spelling (§3.3) |
