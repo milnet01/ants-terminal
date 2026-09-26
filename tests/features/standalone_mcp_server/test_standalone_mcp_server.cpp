@@ -346,6 +346,12 @@ TEST(StandaloneMcpServer, Inv11UidChecksRefuseAnotherUid) {
     const uid_t me = ::getuid();
     EXPECT_TRUE(mcpd::socketOwnedBy(path, me));
     EXPECT_FALSE(mcpd::socketOwnedBy(path, me + 1));
+    // A symlink to a socket this uid owns is not that socket: another user
+    // can plant one in /tmp, and stat() would follow it and pass the check.
+    const QString link = tmp.filePath(QStringLiteral("link.sock"));
+    ASSERT_TRUE(QFile::link(path, link));
+    EXPECT_FALSE(mcpd::socketOwnedBy(link, me))
+        << "socketOwnedBy followed a symlink to an owned socket";
 
     int fds[2] = {-1, -1};
     ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);

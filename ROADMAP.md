@@ -19003,6 +19003,53 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (with UT_Ants session report).
   Lanes: mcp-review-verbs.
 
+- 📋 [ANTS-5410] **audit_dismiss can revoke a verdict with an append-only tombstone that audit_run honours.**
+  learned-fp.jsonl is append-only and must not be hand-edited, but
+  audit_dismiss has no reverse op. UT_Ants dismissed three shell=True hits
+  (bandit, ruff S602, semgrep subprocess-shell-true) that a later review
+  proved real; the records stay and would suppress the defect if it
+  returned with the same message. Proposed: op:"revoke" by fingerprint or
+  rule+file+message, appending a tombstone the matcher applies after the
+  dismissal, so history survives and the suppression lifts.
+  **Layman:** If a finding was wrongly marked as a false alarm, there should be a supported way to take that back.
+  Kind: enhancement.
+  Source: code-audit-2026-09-26 (UT_Ants session report).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5411] **ants-mcpd picks up a trust granted after it started, without a client reconnect.**
+  ants-mcpd now wires VerifyTrust::FilePersistedTrustClient (MC-5), but
+  that client reads verify-trust.json once at construction and has no
+  window to prompt from, so a SHA or repo trusted in the terminal after
+  ants-mcpd started stays untrusted there until /mcp reconnects. Fail-safe
+  (the engine falls back to auto-detect), so a limitation, not a hole.
+  Proposed: re-read the file when its mtime changes, on each lookup.
+  **Layman:** A repo you trust while a Claude session is open should be trusted by that session too, without reconnecting.
+  Kind: enhancement.
+  Source: code-audit-2026-09-26 (review-code lane mcpd, follow-up to the MC-5 fix).
+  Lanes: mcpd, verify.
+
+- 📋 [ANTS-5412] **feedback_log, spec_log and session_message scrub leaked tool-call markup from free-text bodies.**
+  rcScrubLeakedToolXml runs on roadmap_log and changelog_log bodies but
+  not on feedback_log append_finding / append_tracking, spec_log, or
+  session_message (remotecontrol_session_message.cpp:117-151), so leaked
+  <parameter>/<invoke> text lands verbatim in those files and messages.
+  Apply the same scrub and echo the scrubbed names as the other writers do.
+  **Layman:** Stray tool-call text that leaks into a note should be cleaned out everywhere, not only in the roadmap and changelog.
+  Kind: enhancement.
+  Source: code-audit-2026-09-26 (review-code finding #27).
+  Lanes: mcp-feedback, spec-log, session-message.
+
+- 📋 [ANTS-5413] **changelog_log add_batch reports created_category on the entry that created the heading.**
+  A seven-entry add_batch into an [Unreleased] with no ### Security
+  heading wrote the heading once, above entry 0, but reported
+  created_category:false on entries 0-5 and true on entry 6. A caller
+  checking which write added a heading reads the wrong one. Expected:
+  true on index 0 only.
+  **Layman:** The changelog tool said the wrong entry created a new section; the file itself was right.
+  Kind: fix.
+  Source: in-session-2026-09-26 (code audit, CHANGELOG write).
+  Lanes: changelog.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

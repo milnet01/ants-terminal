@@ -26,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
+#include <QElapsedTimer>
 #include <QTemporaryDir>
 #include <QVector>
 
@@ -722,4 +723,25 @@ TEST(roadmap_id_format_declared, Inv6StorePathIsUnaffected) {
         EXPECT_EQ(plainRecs->at(i).boldId,   declRecs->at(i).boldId)   << i;
         EXPECT_EQ(plainRecs->at(i).headline, declRecs->at(i).headline) << i;
     }
+}
+
+// ---------------------------------------------------------------- INV-14 ---
+
+// The pattern is the repository's text, and it runs once per bullet. A
+// backtracking pattern over a document of bullets built to defeat it must be
+// cut short by a match limit, and the cut reads as a non-match (INV-4).
+TEST(roadmap_id_format_declared, Inv14BacktrackingPatternIsBounded) {
+    QByteArray md = gfmDoc();
+    for (int i = 0; i < 200; ++i)
+        md += "- [ ] **aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!** trap\n\n";
+    IdFormat fmt; fmt.pattern = QStringLiteral("^(a+)+$");
+    QElapsedTimer t; t.start();
+    const auto bs = RoadmapParse::parseBullets(QString::fromUtf8(md), fmt);
+    const qint64 ms = t.elapsed();
+    std::fprintf(stderr, "INV-14: 200 trap bullets parsed in %lld ms\n",
+                 static_cast<long long>(ms));
+    // Unlimited, PCRE's default ten-million-step limit costs ~18 ms per trap
+    // bullet here (3.6 s measured); the declared limit costs well under 1 ms.
+    EXPECT_LT(ms, 1000) << "a declared pattern ran without a match limit";
+    EXPECT_GE(bs.size(), 200) << "the trap bullets still parse";
 }

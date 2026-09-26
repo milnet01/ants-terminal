@@ -1485,10 +1485,14 @@ void SettingsDialog::installClaudeHooks() {
         "        sock=\"/tmp/ants-claude-hooks-$pid\"\n"
         "        if [[ -S \"$sock\" ]]; then\n"
         "            timeout 1 python3 -c \"\n"
-        "import socket, sys\n"
+        "import os, socket, struct, sys\n"
         "s = socket.socket(socket.AF_UNIX)\n"
         "s.settimeout(1.0)\n"
         "s.connect('$sock')\n"
+        // /tmp is world-writable: send the hook event (commands, file
+        // paths) only to a socket this user's process is listening on.
+        "u = struct.unpack('3i', s.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]\n"
+        "if u != os.getuid(): sys.exit(0)\n"
         "s.sendall(sys.stdin.buffer.read())\n"
         "s.shutdown(socket.SHUT_WR)\n"
         "s.close()\n"

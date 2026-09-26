@@ -281,6 +281,34 @@ TEST(McpFindSources, PrunesNoiseDirsUnderFlatRoot) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// A symlinked file under a source root that points outside the project is
+// not read: the walk must stay inside the root subtree, as codebase_index's
+// does (QDir::NoSymLinks).
+TEST(McpFindSources, DoesNotFollowSymlinkOutOfRoot) {
+    expect_reset();
+
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(outside.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("src")));
+    {
+        QFile f(outside.path() + QStringLiteral("/secret.cpp"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("// zebrafinch zebrafinch zebrafinch outside the project\n");
+    }
+    ASSERT_TRUE(QFile::link(outside.path() + QStringLiteral("/secret.cpp"),
+                            root + QStringLiteral("/src/leak.cpp")));
+
+    const auto r = FindSources::findSources(QStringLiteral("zebrafinch"), root);
+    bool sawLink = false;
+    for (const auto &h : r.files)
+        if (h.path.contains(QStringLiteral("leak.cpp"))) sawLink = true;
+    expect(!sawLink, "a symlinked file pointing outside the root is not read");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpFindSources, WiringContract) {
     expect_reset();
 

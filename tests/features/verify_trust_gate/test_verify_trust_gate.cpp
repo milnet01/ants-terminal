@@ -337,6 +337,21 @@ void testTrustFile() {
         expect(onDiskAfter == futureFile,
                "TF-4 future-schema file left byte-identical "
                "(no downgrade-clobber)");
+
+        // TF-9 — a trust whose save failed is not honoured later in the
+        // session. The in-memory map is what outcomeForConfig reads, so
+        // an entry left behind by a failed save would read as Trusted.
+        expect(!client.addTrustedSha(shaHex),
+               "TF-9 addTrustedSha reports the failed save");
+        expect(client.outcomeForConfig(QStringLiteral("/some/proj"), cfgBytes)
+                   .outcome != VerifyTrust::Outcome::Trusted,
+               "TF-9 a SHA whose save failed is not trusted afterwards");
+        expect(!client.addTrustedRepo(QStringLiteral("/some/proj"), shaHex,
+                                      /*untilShaChanges=*/false),
+               "TF-9 addTrustedRepo reports the failed save");
+        expect(client.outcomeForConfig(QStringLiteral("/some/proj"), cfgBytes)
+                   .outcome != VerifyTrust::Outcome::Trusted,
+               "TF-9 a repo whose save failed is not trusted afterwards");
     }
 
     // TF-7 (ANTS-5082) — first_trusted is the date an entry was first

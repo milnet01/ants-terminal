@@ -4302,9 +4302,9 @@ void MainWindow::setupStatusBarChrome() {
     // directory never fires.
     {
         const QString peerDir = TokenUsageEngine::peerSnapshotDir();
-        if (QDir().mkpath(peerDir)) {
-            QFile::setPermissions(peerDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                           | QFileDevice::ExeOwner);
+        // ensurePrivateDir creates it 0700; mkpath + chmod left it at the
+        // umask's mode until the chmod landed (ANTS-5311 spec: "mode 0700").
+        if (ensurePrivateDir(peerDir)) {
             m_peerUsageWatcher = new QFileSystemWatcher({peerDir}, this);
             connect(m_peerUsageWatcher, &QFileSystemWatcher::directoryChanged, this, [this] {
                 foldDeadPeers();

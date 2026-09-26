@@ -74,6 +74,13 @@ The fix uses the project-wide `setOwnerOnlyPerms` helper from
 literal bitmask. This is the audit-rule-enforced pattern
 (`setPermissions_pair_no_helper`). Asserted via source-grep.
 
+### Invariant 5 — every message is escaped where it is written
+
+`DebugLog::write` passes each message through `escapeForLog`, so a newline
+in any caller's text lands as `\x0a` and cannot start a forged line
+(CWE-117). No call site escapes on its own. Test:
+`WriteEscapesEveryMessage`.
+
 ## How this test anchors to reality
 
 The test:

@@ -65,6 +65,9 @@ carry one name.
   the universal grammar accepts.
 - **INV-13** — every path that parses a project's roadmap resolves the same id
   for the same bullet.
+- **INV-14** — a declared `pattern` runs under a PCRE match limit at every
+  site that compiles it, so a backtracking pattern cannot stall a parse; a
+  match cut short by the limit reads as a non-match (INV-4).
 
 INV-11 (no second id renderer on the allocation path) has no case here: it is a
 source-grep, and a passing test cannot show that nothing was added.

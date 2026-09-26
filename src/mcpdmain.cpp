@@ -19,7 +19,9 @@
 #include "mcptoolregistry.h"
 #include "remotecontrol.h"
 #include "rootprovider.h"
+#include "secureio.h"
 #include "tokenusageengine.h"
+#include "verifytrust.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -89,6 +91,12 @@ int main(int argc, char **argv) {
 
     ants::ServerCwdRootProvider roots;
     RemoteControl rc(nullptr, nullptr, &roots);
+    // ANTS-1337 — verify_changes is served here, so it needs the trust gate
+    // the terminal wires too. Without a client, VerifyEngine honours a repo's
+    // .ants/verify.json unconditionally. There is no window to prompt from,
+    // so the file-backed client answers Headless for any SHA not already in
+    // verify-trust.json, and the engine falls back to auto-detect.
+    rc.setVerifyTrustClient(std::make_unique<VerifyTrust::FilePersistedTrustClient>());
     rc.setMcpVerbVocabularyProvider(
         [&pipeline] { return pipeline.registeredToolNames(); });
 
@@ -119,9 +127,9 @@ int main(int argc, char **argv) {
     const QString usageStem = QStringLiteral("%1-%2")
         .arg(QCoreApplication::applicationPid()).arg(startedMs);
     int usageLock = -1;
-    if (QDir().mkpath(usageDir)) {
-        QFile::setPermissions(usageDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                        | QFileDevice::ExeOwner);
+    // ensurePrivateDir creates it 0700 from the start; mkpath + chmod left a
+    // window at the umask's mode in which other users could list it.
+    if (ensurePrivateDir(usageDir)) {
         const QByteArray lockPath =
             QFile::encodeName(usageDir + QLatin1Char('/') + usageStem + QStringLiteral(".lock"));
         usageLock = ::open(lockPath.constData(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);

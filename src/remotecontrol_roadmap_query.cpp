@@ -1832,6 +1832,7 @@ QString rcdetail::rlDeclaredIdRefusal(const QString &writtenId,
     bool accepted = kUniversal.match(writtenId).hasMatch();
     if (!accepted && !fmt.pattern.isEmpty()) {
         const QRegularExpression declared(
+            QLatin1String(RoadmapParse::kIdFormatMatchLimit) +
             QStringLiteral("\\A(?:") + fmt.pattern + QStringLiteral(")\\z"));
         accepted = declared.isValid() && declared.match(writtenId).hasMatch();
     }

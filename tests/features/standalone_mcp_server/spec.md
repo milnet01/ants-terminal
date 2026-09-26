@@ -13,7 +13,7 @@ invariant.
 | `Inv6FallbackIsTheServerCwd` | INV-6 | Started in a fixture directory, `caller_cwd_info` with no `caller_cwd` reports `"source":"ServerCwd"` and that directory. |
 | `Inv8ForwardNeverSynthesisesCallerCwd` | INV-8 | A stub terminal records the forwarded request. With no `caller_cwd` the arguments have none; with one, it arrives byte-identical. |
 | `Inv9ConcurrentWritesFromBothHosts` | INV-9 | `ants-mcpd` and an in-process `RemoteControl` each append to one migrated project at once. Each host has at least one `ok:true`; the item count is the seeded item plus every `ok:true`; `PRAGMA integrity_check` is `ok`. |
-| `Inv11UidChecksRefuseAnotherUid` | INV-11 | `mcpd::socketOwnedBy` and `mcpd::peerUidIs`, each called with this process's uid and with another. |
+| `Inv11UidChecksRefuseAnotherUid` | INV-11 | `mcpd::socketOwnedBy` and `mcpd::peerUidIs`, each called with this process's uid and with another; and `socketOwnedBy` on a symlink to an owned socket refuses it (lstat, not stat). |
 | `Inv13HoldIsSeenAcrossProcesses` | INV-13 | A migration hold taken in the test process makes `roadmap_log` through `ants-mcpd` refuse `roadmap_busy`; after release it is `ok:true`. |
 
 INV-4 lives in `tests/features/mcp_dispatch_forward_completeness/` and INV-7

@@ -212,7 +212,8 @@ bool isGrammaticalId(const QString &token, const RoadmapParse::IdFormat &fmt) {
         return true;
     if (fmt.pattern.isEmpty())
         return false;
-    const QRegularExpression declared(QStringLiteral("\\A(?:") + fmt.pattern +
+    const QRegularExpression declared(QLatin1String(RoadmapParse::kIdFormatMatchLimit) +
+                                      QStringLiteral("\\A(?:") + fmt.pattern +
                                       QStringLiteral(")\\z"));
     return declared.isValid() && declared.match(token).hasMatch();
 }

@@ -12,6 +12,8 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+
+#include <optional>
 #include <QStandardPaths>
 
 #include <cstdio>
@@ -118,10 +120,20 @@ Decision FilePersistedTrustClient::prompt(const QString &projectPath,
 bool FilePersistedTrustClient::addTrustedSha(const QString &shaHex,
                                               const QString &note) {
     if (shaHex.isEmpty()) return false;
+    // The entry must be in the map for saveToDisk() to write it, but it
+    // must not outlive a failed save: outcomeForConfig() reads the map,
+    // so a trust that never reached disk would still be honoured for the
+    // rest of the session.
+    const auto prior = m_trustedShas.constFind(shaHex);
+    const std::optional<ShaEntry> previous =
+        prior == m_trustedShas.cend() ? std::nullopt : std::optional(*prior);
     ShaEntry &e = m_trustedShas[shaHex];
     e.note = note;
     if (e.firstTrusted.isEmpty()) e.firstTrusted = nowIso();
-    return saveToDisk();
+    if (saveToDisk()) return true;
+    if (previous) m_trustedShas[shaHex] = *previous;
+    else m_trustedShas.remove(shaHex);
+    return false;
 }
 
 bool FilePersistedTrustClient::addTrustedRepo(
@@ -131,11 +143,18 @@ bool FilePersistedTrustClient::addTrustedRepo(
     if (canonicalProjectPath.isEmpty() || currentShaHex.isEmpty()) {
         return false;
     }
+    // Same rule as addTrustedSha: roll the map back if the save fails.
+    const auto prior = m_trustedRepos.constFind(canonicalProjectPath);
+    const std::optional<RepoEntry> previous =
+        prior == m_trustedRepos.cend() ? std::nullopt : std::optional(*prior);
     RepoEntry &e = m_trustedRepos[canonicalProjectPath];
     e.shaHex = currentShaHex;
     e.untilShaChanges = untilShaChanges;
     if (e.firstTrusted.isEmpty()) e.firstTrusted = nowIso();
-    return saveToDisk();
+    if (saveToDisk()) return true;
+    if (previous) m_trustedRepos[canonicalProjectPath] = *previous;
+    else m_trustedRepos.remove(canonicalProjectPath);
+    return false;
 }
 
 void FilePersistedTrustClient::clearSessionCache() {

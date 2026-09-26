@@ -54,8 +54,21 @@ callers (nullptr client) see no behavior change. Phase 2 wires
   users can read or write is honoured on load, and `loadFromDisk` writes a
   warning naming the file to stderr. The next save narrows it to 0600
   (TF-1).
+- **TF-9** A trust whose save fails is not honoured. `addTrustedSha` and
+  `addTrustedRepo` roll the in-memory entry back when `saveToDisk` fails,
+  so a later `outcomeForConfig` for that config is not `Trusted` in the
+  same session. Exercised under TF-4's future-schema file, where every
+  save refuses.
 
 Phase 2 will add MD-* (modal) and MC-* (MCP envelope) tests.
+
+MC-1..MC-4 are source-grep checks in this directory's test file, confirming
+`cmdVerifyChangesImpl` reads `m_verifyTrustClient` and threads
+`ANTS_VERIFY_TRUST_AUTOTRUST` through. **MC-5 lives in
+`tests/features/mcpd_verify_trust_wiring/`**, which owns that contract: it
+is a behavioural check (a real `ants-mcpd` child process) that the
+`RemoteControl` instance serving `verify_changes` actually *has* a trust
+client wired, not only that the code path that would use one exists.
 
 ## Invariants pinned for the trust prompt (ANTS-5082)
 

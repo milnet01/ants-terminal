@@ -1119,7 +1119,7 @@ struct CompiledIdFormat {
             return;
         if (fmt.pattern.toUtf8().size() > kIdFormatPatternMaxBytes)
             return;
-        rx.setPattern(fmt.pattern);
+        rx.setPattern(QLatin1String(kIdFormatMatchLimit) + fmt.pattern);
         if (!rx.isValid())
             return;
         rx.optimize();

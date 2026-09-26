@@ -1473,6 +1473,14 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 60)
 
+    # tools/mcp-bridge.py: symlink-safe socket pick, sane timeouts, and a
+    # reply rather than a crash on a non-object request.
+    add_test(NAME mcp_bridge_client
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/mcp_bridge_client/test_mcp_bridge_client.py")
+    set_tests_properties(mcp_bridge_client PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60)
+
     # ANTS-2164/2165 — cut-rc.sh cadence-hardening + hotfix behavioural
     # conformance (shell harness drives the real script against throwaway git
     # repos; the C++ release_rc_pipeline test keeps the source-scrape layer).
@@ -2236,6 +2244,9 @@ if(ANTS_TESTS)
                 tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
                 # ANTS-5340 — the About dialog's ants-mcpd version line.
                 tests/features/mcpd_about_version/test_mcpd_about_version.cpp
+                # MC-5 — ants-mcpd never wires a VerifyTrust client into its
+                # RemoteControl, so an untrusted .ants/verify.json runs unconditionally.
+                tests/features/mcpd_verify_trust_wiring/test_mcpd_verify_trust_wiring.cpp
                 # ANTS-5093 — a remote-control reply nobody reads does not pin the socket.
                 tests/features/rc_reply_drain_guard/test_rc_reply_drain_guard.cpp
                 # ANTS-5089 — the MCP socket answers an unparsable request.
@@ -2988,11 +2999,12 @@ if(ANTS_TESTS)
         SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
         SRC_ARCH_PKGBUILD_PATH="${CMAKE_SOURCE_DIR}/packaging/archlinux/PKGBUILD"
         SRC_DEBIAN_CONTROL_PATH="${CMAKE_SOURCE_DIR}/packaging/debian/control")
-    # ANTS-4932 — the binaries under test. Both cases that start ants-mcpd
-    # need it built first, and INV-1's positive control reads ants-terminal.
+    # ANTS-4932 — the binaries under test. Every case that starts ants-mcpd
+    # needs it built first, and INV-1's positive control reads ants-terminal.
     set_property(SOURCE tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
                         tests/features/mcp_tabspecific_contract/test_mcp_tabspecific_contract.cpp
                         tests/features/mcpd_about_version/test_mcpd_about_version.cpp
+                        tests/features/mcpd_verify_trust_wiring/test_mcpd_verify_trust_wiring.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>"
         ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")

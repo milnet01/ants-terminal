@@ -315,6 +315,22 @@ for security-relevant changes.
 
 - **The OBS build watcher reports a build still running at its time limit instead of hanging on its log and calling it a failure.** (ANTS-5222)
 
+### Security
+
+- **ants-mcpd applies the verify trust gate, so an untrusted repository's .ants/verify.json no longer runs under verify_changes.**
+
+- **Trusting a commit or repository is undone when the trust file cannot be saved, rather than lasting until restart.**
+
+- **find_sources no longer follows a symlink out of the project, and ants-mcpd never follows a symlink when choosing a terminal socket.**
+
+- **The MCP bridge and the Claude Code hook script refuse a terminal socket owned by another user; the bridge also rejects a non-object request and a bad timeout value.**
+
+- **Every debug-log message is escaped where it is written, so no caller's text can forge a log line.**
+
+- **A roadmap ID pattern declared in .ants/project.json runs under a match limit, so a backtracking pattern cannot stall roadmap parsing.**
+
+- **The token-usage snapshot directory is created private from the start, with no moment at wider permissions.**
+
 ## [0.7.112] — unreleased (Patron RC preview)
 ### Added
 

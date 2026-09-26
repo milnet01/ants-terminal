@@ -72,7 +72,8 @@ public:
     // (CWE-117). A control character (C0, DEL, C1) becomes \xHH and a Unicode
     // line or paragraph separator becomes \uHHHH, so none can start a forged
     // line or drive a terminal that later shows the log. A backslash is
-    // doubled so escaped and literal text stay distinguishable.
+    // doubled so escaped and literal text stay distinguishable. write()
+    // applies it to every message, so a call site must not escape again.
     static QString escapeForLog(const QString &s);
 
 private:

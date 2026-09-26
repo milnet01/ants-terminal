@@ -10,9 +10,12 @@
 
 namespace mcpd {
 
+// lstat, never stat: /tmp is world-writable, so another uid can plant a
+// symlink at an ants-terminal-mcp-<pid> name pointing at a socket this
+// user owns, and stat would follow it and pass both checks.
 bool socketOwnedBy(const QString &path, uid_t expectedUid) {
     struct stat st{};
-    if (::stat(QFile::encodeName(path).constData(), &st) != 0) return false;
+    if (::lstat(QFile::encodeName(path).constData(), &st) != 0) return false;
     return S_ISSOCK(st.st_mode) && st.st_uid == expectedUid;
 }
 
@@ -51,7 +54,7 @@ QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {
     for (const QString &name : entries) {
         const QString path = tmp.filePath(name);
         struct stat st{};
-        if (::stat(QFile::encodeName(path).constData(), &st) != 0) continue;
+        if (::lstat(QFile::encodeName(path).constData(), &st) != 0) continue;
         if (!S_ISSOCK(st.st_mode)) continue;
         if (st.st_uid != expectedUid) { ++foreign; continue; }
         bool ok = false;

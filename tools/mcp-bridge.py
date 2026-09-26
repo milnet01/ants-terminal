@@ -17,19 +17,24 @@
 
 import glob
 import json
+import math
 import os
 import socket
+import struct
 import sys
 
 SOCK_GLOB = "/tmp/ants-terminal-mcp-*"
 
 
 def _env_float(name: str, default: float) -> float:
-    # A typo'd override must not take the bridge down at import — fall back.
+    # A typo'd override must not take the bridge down — fall back. That
+    # includes values float() accepts but settimeout() rejects or misreads:
+    # nan, inf, and <= 0 (0 would make the socket non-blocking).
     try:
-        return float(os.environ[name])
+        v = float(os.environ[name])
     except (KeyError, ValueError):
         return default
+    return v if math.isfinite(v) and v > 0 else default
 
 
 # ANTS-3444 — heavy verbs (find_sources ~52s, spec_query list ~14s measured
@@ -57,8 +62,10 @@ def pick_socket() -> str:
     from stat import S_ISSOCK
     candidates = []
     for p in glob.glob(SOCK_GLOB):
+        # lstat, not stat: a co-tenant can plant a symlink at a live-PID
+        # name pointing at any socket we own, and stat would follow it.
         try:
-            st = os.stat(p)
+            st = os.lstat(p)
         except OSError:
             continue
         if not S_ISSOCK(st.st_mode):
@@ -110,6 +117,15 @@ def forward(req: dict):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(CONNECT_TIMEOUT_S)
         s.connect(sock_path)
+        # The picker's uid check is on a path, which can be swapped before
+        # connect; the peer's credentials are what we actually talk to.
+        cred = s.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                            struct.calcsize("3i"))
+        _pid, peer_uid, _gid = struct.unpack("3i", cred)
+        if peer_uid != os.getuid():
+            s.close()
+            return None if is_notification else err_reply(
+                req_id, -32000, "Ants MCP socket is owned by another uid")
         s.sendall(json.dumps(req).encode("utf-8") + b"\n")
         if is_notification:
             s.close()
@@ -162,6 +178,13 @@ def main() -> int:
         except json.JSONDecodeError as e:
             sys.stdout.write(json.dumps(err_reply(
                 None, -32700, f"client sent invalid JSON: {e}")) + "\n")
+            sys.stdout.flush()
+            continue
+        if not isinstance(req, dict):
+            # A batch array or a scalar is valid JSON but not a request
+            # this bridge relays; answer it rather than crash on .get().
+            sys.stdout.write(json.dumps(err_reply(
+                None, -32600, "invalid request: expected a JSON object")) + "\n")
             sys.stdout.flush()
             continue
         reply = forward(req)

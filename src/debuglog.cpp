@@ -169,7 +169,7 @@ void DebugLog::write(Category c, const QString &message) {
     const QByteArray line = QStringLiteral("[%1] %2  %3\n")
         .arg(QDateTime::currentDateTime().toString("yyyy-MM-ddTHH:mm:ss.zzz"))
         .arg(QString::asprintf("%-8s", nameFor(c)))
-        .arg(message)
+        .arg(escapeForLog(message))
         .toUtf8();
 
     if (s_file.isOpen()) {

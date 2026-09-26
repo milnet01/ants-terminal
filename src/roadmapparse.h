@@ -66,6 +66,10 @@ struct IdFormat {
 // ProjectSettings::load() and project_settings op:set both enforce it and a
 // second literal is a second answer.
 inline constexpr int kIdFormatPatternMaxBytes = 512;
+// The declared pattern is a repository's text and runs once per bullet, so
+// every site that compiles it prepends this PCRE match limit: a backtracking
+// pattern is cut short, and the cut reads as a non-match.
+inline constexpr char kIdFormatMatchLimit[] = "(*LIMIT_MATCH=100000)";
 
 // Bullet record surfaced via the `roadmap-query` IPC verb (ANTS-1117).
 // One entry per top-level status-emoji-prefixed bullet in document

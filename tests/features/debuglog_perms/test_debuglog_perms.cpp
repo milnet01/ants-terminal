@@ -211,3 +211,26 @@ TEST(DebuglogPerms, Ants5093EscapeForLogNeutralisesControls) {
               QStringLiteral("a\\\\x0ab"))
         << "literal text that looks like an escape stays distinguishable";
 }
+
+// Every message is escaped where the line is written, not at each call
+// site, so a caller that forgets cannot let a newline forge a line.
+TEST(DebuglogPerms, WriteEscapesEveryMessage) {
+    const QString xdg =
+        QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+        + QStringLiteral("/ants-debuglog-escape-")
+        + QUuid::createUuid().toString(QUuid::Id128);
+    QDir().mkpath(xdg);
+    const QByteArray priorXdg = qgetenv("XDG_DATA_HOME");
+    qputenv("XDG_DATA_HOME", xdg.toLocal8Bit());
+    DebugLog::setActive(0);
+    DebugLog::setActive(DebugLog::Events);
+    DebugLog::write(DebugLog::Events, QStringLiteral("real\n[forged] line"));
+    QFile f(DebugLog::logFilePath());
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray body = f.readAll();
+    DebugLog::setActive(0);
+    qputenv("XDG_DATA_HOME", priorXdg);
+    QDir(xdg).removeRecursively();
+    EXPECT_FALSE(body.contains("\n[forged] line")) << body.constData();
+    EXPECT_TRUE(body.contains("real\\x0a[forged] line")) << body.constData();
+}

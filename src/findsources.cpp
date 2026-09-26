@@ -163,8 +163,11 @@ QVector<QString> collectCandidates(const QString &rootCanonical) {
     for (const QString &subdir : roots) {
         QDir dir(rootCanonical + QLatin1Char('/') + subdir);
         if (!dir.exists()) continue;
+        // NoSymLinks: a symlinked file under a source root can point
+        // anywhere the user can read; the walk stays inside the root, as
+        // codebaseindex.cpp::candidates does.
         QDirIterator it(dir.absolutePath(),
-                        QDir::Files | QDir::Readable,
+                        QDir::Files | QDir::Readable | QDir::NoSymLinks,
                         QDirIterator::Subdirectories);
         while (it.hasNext()) {
             const QString abs = it.next();
