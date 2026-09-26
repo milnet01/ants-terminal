@@ -80,6 +80,17 @@ QDialog *makeAboutDialog(QWidget *parent,
 
     layout->addWidget(label);
     layout->addLayout(btnRow);
+
+    // ANTS-5390 — never smaller than the text. A word-wrapped label reports
+    // no useful minimum height, so a saved or dragged size below the text
+    // clipped it; the MCP reload notice makes the body longest. The minimum
+    // height is what the whole layout needs at the minimum width, and a
+    // restored size smaller than that is clamped up by resize().
+    constexpr int kMinWidth = 560;
+    dlg->setMinimumWidth(kMinWidth);
+    if (QLayout *top = dlg->layout(); top && top->hasHeightForWidth())
+        dlg->setMinimumHeight(top->totalHeightForWidth(kMinWidth));
+    dlg->resize(dlg->minimumSize());
     return dlg;
 }
 

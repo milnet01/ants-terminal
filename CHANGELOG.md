@@ -144,6 +144,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The About dialog opens large enough to show all its text** (ANTS-5390)
+  It no longer cuts off its description or the notice asking you to
+  reconnect Ants MCP, even if it was last closed at a smaller size.
+
+- **Themed dialogs show their current title** (ANTS-5391)
+  A dialog that changes its title after opening now shows the new one.
+  The Roadmap window's title now says whether it reads the roadmap store
+  or ROADMAP.md, as intended since ANTS-5368.
+
 - **A roadmap write no longer reports reflowed text as lost** (ANTS-5327)
   When the renderer splits a bullet's head line or inserts an id, the
   drift report counts those lines as restyled when every word survives.

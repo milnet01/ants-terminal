@@ -194,6 +194,10 @@ InstallResult install(QDialog *dlg, const QString &themeName,
 
     auto *bar = new TitleBar(dlg);
     bar->setTitle(dlg->windowTitle());
+    // ANTS-5391 — follow later retitles. The bar copied the title once, so a
+    // dialog that retitles itself after install (the roadmap dialog names its
+    // source only once it has read it, ANTS-5368) kept showing the old one.
+    QObject::connect(dlg, &QWidget::windowTitleChanged, bar, &TitleBar::setTitle);
     bar->centerButton()->hide();
     QObject::connect(bar, &TitleBar::closeRequested, dlg, &QDialog::reject);
     QObject::connect(bar, &TitleBar::minimizeRequested,

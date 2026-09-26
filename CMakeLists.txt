@@ -3383,6 +3383,10 @@ if(ANTS_TESTS)
                 ants_roadmapstore_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
+                # ANTS-5390 — the About dialog never clips its body.
+                tests/features/about_dialog_fits/test_about_dialog_fits.cpp
+                # ANTS-5391 — the themed title bar follows a retitle.
+                tests/features/dialog_chrome_title_follows/test_dialog_chrome_title_follows.cpp
                 # ANTS-5368 — the roadmap dialog's title names its source.
                 tests/features/roadmap_dialog_source_title/test_roadmap_dialog_source_title.cpp
                 # ANTS-1727 — review-dialog foundation scaffold.

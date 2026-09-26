@@ -4677,7 +4677,8 @@ minor tag (next: pre-0.8.0).
   Resolved 2026-05-29: filter isSidechain events out of parseTranscriptTail's event list (claudeintegration.cpp) before any state walk, mirroring the existing filter in claudebgtasks.cpp. Regression locked in by inv10 in claude_transcript_robustness. Commit 83143f6.
 
 - ✅ [ANTS-1886] **Review Changes dialog: surface new-file content, not just the bare `??` marker.**
-  **Layman:** Right now the Review Changes window lists brand-new files as just `?? path/to/file.md`, with no preview and no line count. Existing files get a unified diff. Brand-new files are arguably the most interesting bit of a change — you want to see them. Two ideas, in priority order: (1) show new files as additions (every line a `+`) just like the unified diff does for existing files; (2) if that's expensive, at minimum show the line count next to the path, e.g. `NF tests/features/mcp_roadmap_log_append_batch/ (120 lines)`, and swap the cryptic `??` for a friendlier marker like `NF` (new file) or a coloured `+`.</layman> <parameter name="body">Reproduction: branch with both modified and new files; open the Review Changes dialog. Current output uses git's raw porcelain markers (`??`) for new files, which read as "untracked / status unknown" rather than "new file with content to look at". Acceptance for option 1: new files render as a synthetic addition diff (full content prefixed with `+`), ma…
+  **Layman:** Right now the Review Changes window lists brand-new files as just `?? path/to/file.md`, with no preview and no line count. Existing files get a unified diff. Brand-new files are arguably the most interesting bit of a change — you want to see them. Two ideas, in priority order: (1) show new files as additions (every line a `+`) just like the unified diff does for existing files; (2) if that's expensive, at minimum show the line count next to the path, e.g. `NF tests/features/mcp_roadmap_log_append_batch/ (120 lines)`, and swap the cryptic `??` for a friendlier marker like `NF` (new file) or a coloured `+`.
+  Reproduction: branch with both modified and new files; open the Review Changes dialog. Current output uses git's raw porcelain markers (`??`) for new files, which read as "untracked / status unknown" rather than "new file with content to look at". Acceptance for option 1: new files render as a synthetic addition diff (full content prefixed with `+`), ma…
   Kind: ux.
   Source: user-request-2026-05-26 (Review Changes dialog UX).
   Resolved 2026-05-29: status section swaps ?? → green NF; new "New files" section reads each untracked file and renders a synthetic addition diff (binary + 200 KB cap handled). Commit 922d7cb.
@@ -5390,7 +5391,8 @@ minor tag (next: pre-0.8.0).
   Lanes: MainWindow, new `WorkflowDialog`, AuditDialog, Config, build/CMake.
 
 - 📋 [ANTS-1887] **First-run wizard: detect a fresh install and offer to install Claude Code hooks + MCP integration.**
-  **Layman:** On the very first launch (or first launch after a fresh user account), Ants Terminal should notice it has never been set up and ask the user whether to wire up the bits that make the Ants × Claude Code experience work: the hook scripts under `~/.claude/hooks/`, the MCP server registration in `~/.claude.json` (or whichever Claude Code config the runtime version uses), the `.claude/settings.json` template, etc. A single "Set up Claude Code integration" dialog with a checkbox per feature beats today's "read the README and copy these files by hand" path.</layman> <parameter name="body">First-run detection should probably key on `~/.config/ants-terminal/config.json` absence (or an explicit `first_run_completed` flag inside it). The wizard then offers (defaults all ON, each individually opt-out): (1) install/refresh the hook pack into `~/.claude/hooks/` (matches `tests/hook_pack/`); (2) register the Ants MCP server in `~/.claude.json` so the `mcp__ants__*` tools light up in fresh Claude Code…
+  **Layman:** On the very first launch (or first launch after a fresh user account), Ants Terminal should notice it has never been set up and ask the user whether to wire up the bits that make the Ants × Claude Code experience work: the hook scripts under `~/.claude/hooks/`, the MCP server registration in `~/.claude.json` (or whichever Claude Code config the runtime version uses), the `.claude/settings.json` template, etc. A single "Set up Claude Code integration" dialog with a checkbox per feature beats today's "read the README and copy these files by hand" path.
+  First-run detection should probably key on `~/.config/ants-terminal/config.json` absence (or an explicit `first_run_completed` flag inside it). The wizard then offers (defaults all ON, each individually opt-out): (1) install/refresh the hook pack into `~/.claude/hooks/` (matches `tests/hook_pack/`); (2) register the Ants MCP server in `~/.claude.json` so the `mcp__ants__*` tools light up in fresh Claude Code…
   Kind: feature.
   Source: user-request-2026-05-26.
   Scope expansion (user-request-2026-06-25): the first-run wizard
@@ -18730,6 +18732,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   A fix lets a document name its paired test file as the surface for all
   its invariants, echoing the exemption in the envelope as ANTS-4739 does.
   Related, not the same: ANTS-4890.
+  Measured again 2026-09-26 by the ~/.claude session: spec_lint
+  path:"tests/features" gave 22 invariant_no_test and 36 missing_section
+  findings on feature contracts that conform to testing.md section 4.
+  That standard now tells readers to take spec_lint output on a feature
+  contract as the tombstone check alone, until this item and ANTS-5293
+  ship.
   **Layman:** The spec checker wrongly says every rule in a test's own notes has no test, though the test sits right beside it.
   Kind: enhancement.
   Source: in-session-2026-09-10.
@@ -79009,11 +79017,23 @@ protocol.
   Kind: ux.
   Source: user-request-2026-09-26.
 
-- 📋 [ANTS-5392] **ANTS-1887's Layman column holds leaked tool-call markup.**
+- ✅ [ANTS-5392] **ANTS-1887's Layman column holds leaked tool-call markup.**
   The Roadmap dialog shows `</layman> First-run detection ...` inside ANTS-1887's one-line summary. Repair the column with amend_field, then check the store for other layman values carrying the same markup.
+  Repaired 2026-09-26 with amend_body: ANTS-1887 and ANTS-1886 had the
+  same leak. A store-wide search found no other item carrying leaked
+  markup; ANTS-1551 and ANTS-1639 quote it on purpose. The Layman line
+  now ends where it should. The text after `fresh Claude Code…` was cut
+  off when the item was written and cannot be recovered. Prevention is
+  ANTS-5393.
   **Layman:** Cleans a roadmap entry whose summary contains stray machine text.
   Kind: fix.
   Source: user-screenshot-2026-09-26.
+
+- 📋 [ANTS-5393] **The leaked-markup scrub refuses a field whose text carries a closing tag for another argument.**
+  ANTS-1886 and ANTS-1887 stored `...path.</layman> First-run ...` in one field: the harness folded the next argument into the Layman value. rcScrubLeakedToolXml strips the `` opener but leaves a mid-text `</layman>`, so a repeat would still merge two fields with no warning. A closing tag naming a known roadmap_log argument, followed by a parameter opener, is a boundary leak, not prose. Refuse or split it, and say so in the reply.
+  **Layman:** Stops a garbled tool call from silently merging two roadmap fields into one.
+  Kind: fix.
+  Source: in-session-2026-09-26.
 
 ## 0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — shipped 2026-05-08
 
