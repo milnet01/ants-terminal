@@ -243,7 +243,8 @@ public:
     //               uses for shell wiring). Callers are responsible
     //               for line terminators in `command`; the shell
     //               won't execute until a newline lands.
-    int newTabForRemote(const QString &cwd, const QString &command);
+    int newTabForRemote(const QString &cwd, const QString &command,
+                         bool *shellStarted = nullptr);
 
 private:
 

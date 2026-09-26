@@ -97,3 +97,8 @@ in v2 (roadmap follow-up).
   QTemporaryDir project whose `tests/features/*/spec.md` cites a
   back-ticked token absent from the tree; asserts `spec_code_drift` lands
   in `by_tool` with `rawCount ≥ 1`. See docs/specs/ANTS-1351.md INV-21.
+- **trivy's nested findings are flattened (2026-09-26 audit).** trivy's
+  `Results[]` are per-target containers; `AuditEngine::flattenTrivyResults`
+  turns each vulnerability, secret and misconfiguration into one entry with
+  file, rule, message and severity, and passes a finding-less target through
+  so ANTS-3590 still drops it. Test: `TrivyNestedFindingsAreFlattened`.

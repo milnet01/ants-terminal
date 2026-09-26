@@ -983,3 +983,32 @@ TEST(mcp_audit_run, Ants3694WrittenSarifCarriesLevelOnEveryResult) {
            QString::number(errors));
     EXPECT_EQ(0, expect_failures());
 }
+
+// trivy nests its findings under each `Results[]` target. Flattened, every
+// vulnerability and secret is one entry with file, rule and message, so the
+// ANTS-3590 empty-entry drop removes only a target with nothing in it.
+// Unflattened, a target holding a CVE had no top-level file/message/rule and
+// was dropped as empty: a scan with real findings read as clean.
+TEST(mcp_audit_run, TrivyNestedFindingsAreFlattened) {
+    const QByteArray json = R"({"Results":[
+      {"Target":"clean.lock","Class":"lang-pkgs","Type":"npm"},
+      {"Target":"package-lock.json","Vulnerabilities":[
+        {"VulnerabilityID":"CVE-2024-0001","PkgName":"lodash",
+         "InstalledVersion":"4.17.20","Title":"Prototype pollution",
+         "Severity":"HIGH"}],
+       "Secrets":[{"RuleID":"aws-access-key-id","Title":"AWS Access Key",
+         "Severity":"CRITICAL","StartLine":12}]}]})";
+    const QJsonArray flat = AuditEngine::flattenTrivyResults(
+        QJsonDocument::fromJson(json).object().value("Results").toArray());
+    ASSERT_EQ(flat.size(), 3);
+    EXPECT_FALSE(flat.at(0).toObject().contains("check_id"))
+        << "a target with no findings passes through as the empty entry";
+    const QJsonObject vuln = flat.at(1).toObject();
+    EXPECT_EQ(vuln.value("File").toString(), QStringLiteral("package-lock.json"));
+    EXPECT_EQ(vuln.value("check_id").toString(), QStringLiteral("CVE-2024-0001"));
+    EXPECT_TRUE(vuln.value("Description").toString().contains("lodash"));
+    EXPECT_EQ(vuln.value("severity").toString(), QStringLiteral("HIGH"));
+    const QJsonObject secret = flat.at(2).toObject();
+    EXPECT_EQ(secret.value("check_id").toString(), QStringLiteral("aws-access-key-id"));
+    EXPECT_EQ(secret.value("line_number").toInt(), 12);
+}

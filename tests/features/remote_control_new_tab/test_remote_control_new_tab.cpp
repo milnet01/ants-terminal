@@ -79,7 +79,7 @@ static int runMain() {
 
     // INV-4: newTabForRemote signature — non-const, returns int.
     std::regex ntSig(
-        R"(int\s+newTabForRemote\s*\(\s*const\s+QString\s*&\s*\w+\s*,\s*const\s+QString\s*&\s*\w+\s*\)\s*;)");
+        R"(int\s+newTabForRemote\s*\(\s*const\s+QString\s*&\s*\w+\s*,\s*const\s+QString\s*&\s*\w+\s*(,\s*bool\s*\*\s*\w+\s*=\s*nullptr\s*)?\)\s*;)");
     if (!std::regex_search(mwh, ntSig)) {
         fail("INV-4: MainWindow::newTabForRemote(const QString&, const QString&) "
              "declaration missing from mainwindow.h — must be non-const, "

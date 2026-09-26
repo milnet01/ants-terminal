@@ -48,7 +48,10 @@ Client CLI:
   and returns the `index` field from it — the response contract
   depends on the index surviving unchanged.
 - **INV-4** `MainWindow::newTabForRemote(const QString &, const QString &) const`?
-  The method is non-const (creates a tab) and returns `int`. Pinned so
+  The method is non-const (creates a tab) and returns `int`; an optional
+  trailing `bool *shellStarted = nullptr` reports whether the tab's shell
+  started, and `new-tab` / `launch` refuse `shell_failed` when it did not
+  (2026-09-26 audit). Pinned so
   a refactor that tries to return `void` or make the method a slot
   without a return value breaks here instead of at the dispatch site.
 - **INV-5** `newTabForRemote` uses `QTimer::singleShot(200, ...)`

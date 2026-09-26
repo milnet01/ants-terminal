@@ -814,9 +814,18 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
             if (check.bad) return QJsonDocument(check.err);
         }
     }
-    const int idx = m_main->newTabForRemote(cwd, filteredCommand);
-    out["ok"] = true;
+    bool started = false;
+    const int idx = m_main->newTabForRemote(cwd, filteredCommand, &started);
     out["index"] = idx;
+    if (!started) {
+        // The tab exists but holds no shell; a follow-up send-text to it
+        // would go nowhere, so this is not a success.
+        out["ok"] = false;
+        out["code"] = QStringLiteral("shell_failed");
+        out["error"] = QStringLiteral("the new tab's shell did not start");
+        return QJsonDocument(out);
+    }
+    out["ok"] = true;
     if (!rawBypass && stripped > 0) out["stripped"] = stripped;
     return QJsonDocument(out);
 }
@@ -880,9 +889,18 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
             if (check.bad) return QJsonDocument(check.err);
         }
     }
-    const int idx = m_main->newTabForRemote(cwd, filteredCommand);
-    out["ok"] = true;
+    bool started = false;
+    const int idx = m_main->newTabForRemote(cwd, filteredCommand, &started);
     out["index"] = idx;
+    if (!started) {
+        // The tab exists but holds no shell; a follow-up send-text to it
+        // would go nowhere, so this is not a success.
+        out["ok"] = false;
+        out["code"] = QStringLiteral("shell_failed");
+        out["error"] = QStringLiteral("the new tab's shell did not start");
+        return QJsonDocument(out);
+    }
+    out["ok"] = true;
     if (!rawBypass && stripped > 0) out["stripped"] = stripped;
     return QJsonDocument(out);
 }

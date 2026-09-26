@@ -180,6 +180,52 @@ QString trivySkipDirsCsv() {
     return parts.join(QLatin1Char(','));
 }
 
+QJsonArray flattenTrivyResults(const QJsonArray &results) {
+    QJsonArray out;
+    for (const QJsonValue &rv : results) {
+        const QJsonObject r = rv.toObject();
+        const QString target = r.value(QStringLiteral("Target")).toString();
+        bool any = false;
+        const auto add = [&](const QString &rule, const QString &desc,
+                             const QJsonValue &sev, const QJsonValue &line) {
+            QJsonObject e;
+            e[QStringLiteral("File")]        = target;
+            e[QStringLiteral("check_id")]    = rule;
+            e[QStringLiteral("Description")] = desc;
+            e[QStringLiteral("severity")]    = sev.toString();
+            if (line.isDouble()) e[QStringLiteral("line_number")] = line;
+            out.append(e);
+            any = true;
+        };
+        for (const QJsonValue &v : r.value(QStringLiteral("Vulnerabilities")).toArray()) {
+            const QJsonObject o = v.toObject();
+            add(o.value(QStringLiteral("VulnerabilityID")).toString(),
+                QStringLiteral("%1 %2: %3").arg(
+                    o.value(QStringLiteral("PkgName")).toString(),
+                    o.value(QStringLiteral("InstalledVersion")).toString(),
+                    o.value(QStringLiteral("Title")).toString()),
+                o.value(QStringLiteral("Severity")), QJsonValue());
+        }
+        for (const QJsonValue &v : r.value(QStringLiteral("Secrets")).toArray()) {
+            const QJsonObject o = v.toObject();
+            add(o.value(QStringLiteral("RuleID")).toString(),
+                o.value(QStringLiteral("Title")).toString(),
+                o.value(QStringLiteral("Severity")),
+                o.value(QStringLiteral("StartLine")));
+        }
+        for (const QJsonValue &v : r.value(QStringLiteral("Misconfigurations")).toArray()) {
+            const QJsonObject o = v.toObject();
+            add(o.value(QStringLiteral("ID")).toString(),
+                o.value(QStringLiteral("Title")).toString(),
+                o.value(QStringLiteral("Severity")),
+                o.value(QStringLiteral("CauseMetadata")).toObject()
+                    .value(QStringLiteral("StartLine")));
+        }
+        if (!any) out.append(r);
+    }
+    return out;
+}
+
 QString cppcheckIgnoreShellExpr() {
     QString names = QStringLiteral("build build-*");
     for (const QString &d : excludedDirNames())

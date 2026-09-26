@@ -167,6 +167,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit reports trivy's vulnerabilities, secrets and misconfigurations; a scan with real findings no longer reads as clean.**
+
+- **A trigger's inject action types into the terminal whose output matched, not whichever tab has focus.**
+
+- **When a split pane's shell exits in a background tab, that tab's empty split is cleaned up rather than the current tab's.**
+
+- **rc new-tab and launch report shell_failed when the new tab's shell does not start, and queue no command into it.**
+
+- **Clearing the scrollback (CSI 3J) also forgets the command blocks that were in it, so re-run and prompt jumps cannot land on other text.**
+
+- **Narrowing the window no longer lets the scrollback grow past its configured limit.**
+
 - **An MCP verb that fails with an exception now answers handler_failed instead of closing the terminal and every session in it.**
 
 - **ants-mcpd answers an over-size request with one error and skips the rest of it, instead of dropping it silently and misreading its tail.**

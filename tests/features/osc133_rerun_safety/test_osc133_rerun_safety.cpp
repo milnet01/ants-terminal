@@ -132,3 +132,31 @@ TEST(Osc133RerunSafety, Inv5ContextMenuCapturesBlockId) {
     EXPECT_NE(body.find("promptRegionIndexById("), std::string::npos)
         << "menu actions must look their block up by id when they run";
 }
+
+// INV-6 — clearing the scrollback (a standalone CSI 3J) drops the regions
+// that pointed into it, as an eviction does; left alone they would name
+// global lines that now hold other text.
+TEST(Osc133RerunSafety, Inv6ClearScrollbackDropsRegions) {
+    TerminalGrid grid(5, 40);
+    feed(grid, kBlock);
+    feed(grid, newlines(20));          // the block is now in the scrollback
+    ASSERT_EQ(grid.promptRegions().size(), 1u);
+    feed(grid, "\x1b[3J");
+    EXPECT_EQ(grid.scrollbackSize(), 0);
+    EXPECT_TRUE(grid.promptRegions().empty())
+        << "a region survived the clear at line "
+        << grid.promptRegions().front().startLine;
+}
+
+// INV-7 — a width change that reflows the screen into the scrollback keeps
+// the scrollback within its cap, and the regions move with the trim.
+TEST(Osc133RerunSafety, Inv7ReflowKeepsTheScrollbackCap) {
+    TerminalGrid grid(5, 40);
+    grid.setMaxScrollback(1000);
+    feed(grid, newlines(1200));                      // scrollback is full
+    feed(grid, QByteArray(40, 'x') + "\r\n" + QByteArray(40, 'y') + "\r\n"
+               + QByteArray(40, 'z'));
+    ASSERT_EQ(grid.scrollbackSize(), 1000);
+    grid.resize(5, 10);                              // each line becomes 4
+    EXPECT_LE(grid.scrollbackSize(), 1000);
+}

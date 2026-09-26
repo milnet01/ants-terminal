@@ -40,3 +40,12 @@ INV-1, INV-2 and INV-4 drive `TerminalGrid` through `VtParser`, headless.
 INV-3 is a source scrape of `rerunCommandAt`, and INV-5 of
 `contextMenuEvent`, because both need a live `TerminalWidget` and a modal
 dialog.
+
+## Added 2026-09-26 (code audit)
+
+- **INV-6** — a standalone CSI 3J clears the scrollback and drops every prompt
+  region that pointed into it, through the same shift an eviction applies.
+  Test: `Inv6ClearScrollbackDropsRegions`.
+- **INV-7** — a width change whose reflow pushes screen lines into the
+  scrollback leaves it within `setMaxScrollback`'s cap. Test:
+  `Inv7ReflowKeepsTheScrollbackCap`.

@@ -899,7 +899,10 @@ ParsedOutput parseToolOutput(const QString &tool,
                     arr = o.value(QStringLiteral("results")).toArray();
                 } else if (o.contains(QStringLiteral("Results")) &&
                            o.value(QStringLiteral("Results")).isArray()) {
-                    arr = o.value(QStringLiteral("Results")).toArray();
+                    // trivy: one container per target; its findings are
+                    // nested, so flatten them into entries this loop reads.
+                    arr = AuditEngine::flattenTrivyResults(
+                        o.value(QStringLiteral("Results")).toArray());
                 }
             }
             out.rawCount = arr.size();

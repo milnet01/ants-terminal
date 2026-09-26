@@ -315,6 +315,14 @@ QString grepExcludeExpr();
 // skip-dirs honours shell-style globs, so `build-*` covers every preset.
 QString trivySkipDirsCsv();
 
+// trivy's JSON `Results[]` entries are per-target containers holding
+// `Vulnerabilities[]`, `Secrets[]` and `Misconfigurations[]`. Flattens each
+// finding into one entry the generic JSON parser reads — `File` (the
+// target), `check_id`, `Description`, `severity`, `line_number` when known.
+// A container with none of the three arrays passes through unchanged, so a
+// clean scan's empty target is still dropped as a non-finding (ANTS-3590).
+QJsonArray flattenTrivyResults(const QJsonArray &results);
+
 // cppcheck `-i`: cppcheck can't glob a -i prefix, so emit a shell
 // snippet that expands `build*` at run time and prints one `-i <dir>`
 // per existing match. Leading space; embed inside the cppcheck command.

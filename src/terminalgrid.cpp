@@ -2023,6 +2023,10 @@ void TerminalGrid::eraseInDisplay(int mode) {
         // Standalone `\e[3J` (no recent 2J, or on alt screen) is the
         // explicit user-asked clear-scrollback semantics.
         if (mode == 3 && !isInkOverflowRepaint) {
+            // Every scrollback line leaves, so every prompt region moves up
+            // by that many and those that pointed into it are dropped — the
+            // same bookkeeping an eviction does (ANTS-5029).
+            m_promptRegionShift += static_cast<qint64>(m_scrollback.size());
             m_scrollback.clear();
             // ANTS-1799 — keep the parallel hyperlink side-table lockstep.
             // Clearing m_scrollback alone leaves stale OSC 8 spans (with
@@ -3044,6 +3048,15 @@ void TerminalGrid::resize(int rows, int cols) {
         // limitation as the live path per ANTS-1333 INV-4 — but the length is
         // correct and rows-only resizes keep the spans aligned.)
         m_altScreenHyperlinks.resize(rows);
+    }
+
+    // The reflow overflow above pushes up to a screen of lines after the
+    // scrollback was trimmed, so trim again: the cap is a hard bound.
+    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
+        m_scrollback.pop_front();
+        ++m_promptRegionShift;  // ANTS-5029
+        if (!m_scrollbackHyperlinks.empty())
+            m_scrollbackHyperlinks.pop_front();
     }
 
     m_rows = rows;

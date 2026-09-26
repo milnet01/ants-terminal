@@ -2326,9 +2326,17 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         // Find parent splitter
         QSplitter *splitter = findParentSplitter(terminal);
         if (splitter) {
+            // The exiting pane's own tab, found before it is unparented: a
+            // shell exiting in a background tab left that tab's empty
+            // splitter behind while the current tab was cleaned instead.
+            QWidget *ownTab = nullptr;
+            for (int i = 0; i < m_tabWidget->count(); ++i) {
+                QWidget *w = m_tabWidget->widget(i);
+                if (w->isAncestorOf(terminal)) { ownTab = w; break; }
+            }
             terminal->setParent(nullptr);
             terminal->deleteLater();
-            cleanupEmptySplitters(m_tabWidget->currentWidget());
+            cleanupEmptySplitters(ownTab);
         } else {
             // It's the only terminal in the tab
             int idx = m_tabWidget->indexOf(terminal);
@@ -3350,7 +3358,8 @@ bool MainWindow::selectTabForRemote(int index) {
     return true;
 }
 
-int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
+int MainWindow::newTabForRemote(const QString &cwd, const QString &command,
+                                bool *shellStarted) {
     // Mirror of the newTab() slot but with explicit cwd/command
     // plumbing so rc_protocol `new-tab` doesn't need to round-trip
     // through signals. Returns the index of the created tab so the
@@ -3371,9 +3380,11 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
     m_tabWidget->setCurrentIndex(idx);
     m_tabSessionIds[terminal] = tabId;
 
-    if (!terminal->startShell(effectiveCwd, m_config.shellCommand())) {
-        showStatusMessage("Failed to start shell!");
-    }
+    // The tab stays when the shell fails, as the menu's newTab() leaves it;
+    // the caller is told, and no command is queued into a dead tab.
+    const bool started = terminal->startShell(effectiveCwd, m_config.shellCommand());
+    if (shellStarted) *shellStarted = started;
+    if (!started) showStatusMessage("Failed to start shell!");
     terminal->setFocus();
 
     if (m_claudeIntegration)
@@ -3383,7 +3394,7 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
     // Hide tab bar when only one tab (same logic as newTab slot).
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
 
-    if (!command.isEmpty()) {
+    if (started && !command.isEmpty()) {
         // 200 ms settle before writing — same timing the SSH-manager
         // wiring uses (onSshConnect) because the shell child needs a
         // moment to finish its init before it can accept input reliably.
@@ -5844,10 +5855,12 @@ void MainWindow::onTriggerFired(const QString &pattern, const QString &actionTyp
             QProcess::startDetached("/bin/sh", {"-c", actionValue});
         }
     } else if (actionType == "inject") {
-        // Inject text directly into the focused PTY. \n / \r in the action
-        // value pass through verbatim so a "yes\n" rule can auto-answer a
-        // prompt — caller's responsibility to scope this with a tight regex.
-        if (auto *t = focusedTerminal()) {
+        // Inject text into the PTY whose output matched — never the focused
+        // one, which may be another tab (a Claude session) when the match
+        // came from a background tab. \n / \r in the action value pass
+        // through verbatim so a "yes\n" rule can auto-answer a prompt —
+        // caller's responsibility to scope this with a tight regex.
+        if (auto *t = qobject_cast<TerminalWidget *>(sender())) {
             t->sendToPty(actionValue.toUtf8());
         }
     }
