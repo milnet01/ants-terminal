@@ -167,6 +167,27 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The man page and the bash, zsh and fish completions now list --e2e, --export-roadmaps and every --remote* option**
+  A new test keeps them in step with the options the program accepts.
+
+- **launch.sh appends to its log and rotates it, instead of overwriting the previous run's log**
+
+- **The OSC 133 shell integration loads in shells running with set -u, and keeps its prompt id when sourced again (bash and zsh)**
+
+- **A user theme named like a built-in theme now replaces it, instead of appearing twice with one copy unselectable**
+
+- **mutation_probe leaves a file alone if it is edited while the tests run, reports concurrent_edit and stops the batch**
+
+- **plan_template never overwrites a plan another writer created in the meantime**
+
+- **MCP verbs answer handler_failed instead of dropping the connection when a handler throws, and ants-mcpd applies its request size limit to every line**
+
+- **A trivy scan with vulnerabilities is reported as findings, not read as clean**
+
+- **Copying a right-to-left selection on one line as rich text now copies the text**
+
+- **Maintainer scripts: obs-status exits 3 when it cannot read results; perf-report reports a crashing benchmark and keeps baseline rows it did not re-measure; the roadmap snapshot backup records every failure and runs one at a time**
+
 - **The audit reports trivy's vulnerabilities, secrets and misconfigurations; a scan with real findings no longer reads as clean.**
 
 - **A trigger's inject action types into the terminal whose output matched, not whichever tab has focus.**
@@ -340,6 +361,12 @@ for security-relevant changes.
 - **The OBS build watcher reports a build still running at its time limit instead of hanging on its log and calling it a failure.** (ANTS-5222)
 
 ### Security
+
+- **The debug log redacts secret-shaped values and escapes every message before writing a line**
+
+- **Path checks follow a symlinked directory or a dangling link before a file exists, so a write cannot land outside the project**
+
+- **ants-mcpd honours the verify_changes trust gate, and the MCP bridge checks the connecting user's id**
 
 - **ants-mcpd applies the verify trust gate, so an untrusted repository's .ants/verify.json no longer runs under verify_changes.**
 
