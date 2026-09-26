@@ -83,6 +83,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The local push check leaves speed tests to GitHub** (ANTS-5375)
+  Timing tests fail at random on a busy desktop, so the pre-push hook
+  now skips them. GitHub CI still runs them on every push, and a manual
+  tools/ci-parity.sh run still includes them.
+
 - **roadmap_log convert refuses to drop text unless told to** (ANTS-5286)
   A real convert whose output would lose text from the file now refuses
   with `text_lost`, names the lines and writes nothing. Pass

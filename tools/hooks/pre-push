@@ -126,7 +126,9 @@ echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.s
 # to test the existing build/ without building, because a build-minute stamp
 # recompiled the two largest TUs every time; ANTS-3582 moved that stamp into
 # its own TU, so an incremental build is the cost of what changed.
-if ! python3 "$runner" run build-test; then
+# ANTS-5375 — tells ci_workflow.py this is the push gate; ci.yml's perf step
+# then skips here and runs on GitHub only (user ruling, 2026-09-26).
+if ! ANTS_PUSH_GATE=1 python3 "$runner" run build-test; then
     echo >&2
     echo "pre-push: ci.yml's build-test job FAILED locally — push blocked." >&2
     echo "          Fix the failure above (or 'git push --no-verify' to override)." >&2
@@ -278,7 +280,7 @@ else
               echo "pre-push: interrupted during the sanitizer build — $asan_dir" >&2
               echo "          marked untrusted; the next run will say how to heal it." >&2
               exit 143' TERM INT
-        if ! python3 "$runner" run build-asan; then
+        if ! ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
             echo >&2
             echo "pre-push: ci.yml's build-asan job FAILED locally — push blocked." >&2
             echo "          This is the class that reached CI as run 30587366963." >&2

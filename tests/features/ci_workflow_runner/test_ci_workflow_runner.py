@@ -15,6 +15,7 @@ except ImportError:
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 RUNNER = os.path.join(ROOT, "tools", "ci_workflow.py")
 PARITY = os.path.join(ROOT, "tools", "ci-parity.sh")
+HOOK = os.path.join(ROOT, "tools", "hooks", "pre-push")
 HOST_JOBS = ("build-test", "build-asan", "cppcheck")
 failures = []
 
@@ -25,9 +26,12 @@ def check(ok, msg):
         failures.append(msg)
 
 
-def runner(*args, workflow=None):
+def runner(*args, workflow=None, extra_env=None):
     env = dict(os.environ)
     env.pop("CI_WORKFLOW_FILE", None)
+    # INV-6 — the pre-push hook runs this test with ANTS_PUSH_GATE=1 set; clear
+    # it so INV-1 plans ci.yml as GitHub runs it, and set it only on purpose.
+    env.pop("ANTS_PUSH_GATE", None)
     # INV-3 asserts the WORKFLOW's CCACHE_* values reach the step. On GitHub
     # ci.yml's job env already puts CCACHE_MAXSIZE into this process, so the
     # caller's are cleared first: the fixture alone decides what the step sees,
@@ -36,6 +40,8 @@ def runner(*args, workflow=None):
         del env[k]
     if workflow:
         env["CI_WORKFLOW_FILE"] = workflow
+    if extra_env:
+        env.update(extra_env)
     p = subprocess.run([sys.executable, RUNNER, *args], env=env,
                        capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
@@ -157,6 +163,30 @@ with tempfile.TemporaryDirectory() as tmp:
     rc, out = runner("run", "j", workflow=wf)
     check(rc == 0 and "MARK-GATED-RAN" in out,
           "INV-5 a not-on-push job still runs locally when asked for")
+
+    # INV-6
+    with open(wf, "w") as f:
+        f.write("jobs:\n  j:\n    steps:\n      - run: echo MARK-FIRST-RAN\n"
+                "      - name: perf\n        if: env.ANTS_PUSH_GATE != '1'\n"
+                "        run: echo MARK-PERF-RAN\n")
+    rc, out = runner("run", "j", workflow=wf)
+    check(rc == 0 and "MARK-PERF-RAN" in out,
+          f"INV-6 the push-gate step runs when ANTS_PUSH_GATE is unset (got {rc}: {out[-200:]})")
+    rc, out = runner("run", "j", workflow=wf, extra_env={"ANTS_PUSH_GATE": "1"})
+    check(rc == 0 and "MARK-FIRST-RAN" in out and "MARK-PERF-RAN" not in out
+          and "push gate" in out,
+          f"INV-6 the push-gate step is skipped, and says so, under ANTS_PUSH_GATE=1 (got {rc}: {out[-200:]})")
+
+# INV-6 — ci.yml's perf step carries the condition, so the hook skips it.
+perf = [st for st in ci["jobs"]["build-test"]["steps"]
+        if "-L perf" in str(st.get("run", ""))]
+check(len(perf) == 1 and str(perf[0].get("if", "")).strip()
+      == "env.ANTS_PUSH_GATE != '1'",
+      "INV-6 build-test's perf step is gated on ANTS_PUSH_GATE")
+with open(HOOK) as f:
+    hook = f.read()
+check('ANTS_PUSH_GATE=1 python3 "$runner" run build-test' in hook,
+      "INV-6 the pre-push hook sets ANTS_PUSH_GATE=1 for build-test")
 
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)

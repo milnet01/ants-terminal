@@ -166,7 +166,11 @@ jobs:
         # so a wall-clock budget never shares the machine with this -j2 run.
         run: timeout 8m ctest -j2 --output-on-failure --timeout 300 -LE perf
 
+      # ANTS-5375 — the pre-push hook sets ANTS_PUSH_GATE=1: a wall-clock
+      # budget on a shared workstation fails on load, not on a regression, so
+      # the user ruled this step GitHub's alone. Never set here, so it runs.
       - name: Run perf tests (serial)
+        if: env.ANTS_PUSH_GATE != '1'
         working-directory: build
         run: timeout 5m ctest --output-on-failure --timeout 300 -L perf
 

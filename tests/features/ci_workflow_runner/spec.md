@@ -28,7 +28,7 @@ step a later step runs only if it has `if: always()`; the run exits non-zero.
 
 **INV-4 — what has no local meaning is refused, not guessed.** Each of these
 makes `plan` exit 3: an unknown `uses:` action; an unknown `${{ }}`
-expression; an `if:` other than `always()`; a key the runner does not
+expression; a step `if:` other than `always()` or the one INV-6 names; a key the runner does not
 understand at workflow, job or step level (`defaults`, `strategy`,
 `container`, `continue-on-error` and the rest); and a `run:` that reads a
 `GITHUB_*` or `RUNNER_*` variable the runner does not set, which includes
@@ -41,6 +41,15 @@ one INV-5 names is refused too.
 plan names the condition as `not on push`. GitHub skips such a job on a push;
 locally the caller chose the job by name (the pre-push hook, `ci-parity.sh`),
 so the condition has already been decided.
+
+**INV-6 — a step gated on the push gate skips there (ANTS-5375).** A step
+whose `if:` is exactly `env.ANTS_PUSH_GATE != '1'` runs when that variable is
+unset and is planned as a skip, naming the push gate, when it is `1`. The
+pre-push hook sets it; GitHub never does, so the step always runs there.
+`ci.yml`'s serial perf step carries the condition, by the user's ruling
+(2026-09-26) that a wall-clock budget on a shared workstation is GitHub's to
+enforce. The test clears the variable before planning, so INV-1 holds inside
+the hook too.
 
 ## Not covered
 

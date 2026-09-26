@@ -135,7 +135,9 @@ the whole suite, the lints, with the job's env — and its `build-asan` job
 when `build-asan/` exists and is warm (ANTS-4118's cost gate). A push is
 docs-only, and skips, exactly when `ci.yml`'s push `paths-ignore` says so;
 the hook keeps no copy of that list. Not in the hook: the informational
-`cppcheck` job and a cold container leg; `--full` runs every job.
+`cppcheck` job, a cold container leg, and `build-test`'s serial perf step,
+which skips under the hook's `ANTS_PUSH_GATE=1` and runs on GitHub
+(ANTS-5375, user ruling 2026-09-26); `--full` runs every job.
 
 **The Qt-floor half IS covered** (ANTS-4131): the hook runs
 `tools/qt62-guard.sh --warm-only`, a compile guard against the Qt 6.2

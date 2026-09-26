@@ -89,6 +89,17 @@ JOB_CONDITIONS = {
 STEP_KEYS = {"name", "uses", "with", "run", "env", "working-directory", "if",
              "shell"}
 
+# Step-level `if:` values, each with its local meaning. ANTS-5375: the pre-push
+# hook sets ANTS_PUSH_GATE=1, and a wall-clock benchmark on a machine shared
+# with many sessions fails on load rather than on a regression, so that step
+# is GitHub's alone there. GitHub never sets the variable, so the step always
+# runs on the runner; a manual ci-parity.sh run leaves it unset and runs it too.
+STEP_CONDITIONS = {
+    "env.ANTS_PUSH_GATE != '1'": (
+        lambda: os.environ.get("ANTS_PUSH_GATE") != "1",
+        "push gate: this step runs on GitHub, not here (ANTS-5375)"),
+}
+
 # Runner variables a step may read: the ones RUNNER_ENV sets. A step that
 # reads any other GITHUB_* / RUNNER_* — including writing $GITHUB_ENV,
 # $GITHUB_PATH or $GITHUB_OUTPUT for later steps — is refused.
@@ -141,7 +152,13 @@ def plan(job_id):
         where = f"{job_id} / {name}"
         unknown(step, STEP_KEYS, where)
         cond = str(step.get("if", "")).strip()
-        if cond not in ("", "always()"):
+        if cond in STEP_CONDITIONS:
+            holds, why = STEP_CONDITIONS[cond]
+            if not holds():
+                steps.append((name, "skip", why, False, {}, ROOT))
+                continue
+            cond = ""
+        elif cond not in ("", "always()"):
             raise Refused(f"{where}: no local meaning for if: {cond}")
         if "uses" in step:
             action = step["uses"].split("@")[0]
