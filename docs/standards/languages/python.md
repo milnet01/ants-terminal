@@ -21,6 +21,8 @@
 <!-- MIRROR BEGIN ~/.claude/standards/languages/python.md -->
 # Python — language notes
 
+**Rule history: `docs/history/python.md`.**
+
 Read alongside `../coding.md`, which holds the language-agnostic rules.
 This file covers only what is specific to Python.
 
@@ -96,7 +98,12 @@ Python.
   `-m fast`. **The flag is the whole mechanism**: declaring `markers`
   alone only silences the warning for the names you listed, and a typo
   like `@pytest.mark.fastt` still warns, still exits 0, and drops the
-  test out of `-m fast` unnoticed. Reproduced 2026-08-14 (ROADMAP
+  test out of `-m fast` unnoticed. **`fast` is one project's spelling,
+  not the rule**: the rule is that the quick set is runnable by one
+  label, whatever the project named it, and `cpp.md` § Tests owns that
+  reasoning. Read the project's labels before adding one — a guessed
+  label registers, passes `--strict-markers`, and silently drops the
+  test out of the selection. Reproduced 2026-08-14 (ROADMAP
   CFG-0108) — `1 passed, 1 warning`, exit 0 without the flag; a
   collection error with it.
 - **Determinism** (`testing.md` §7) — seed any randomness explicitly;
@@ -104,7 +111,10 @@ Python.
   smell, not a fix.
 - **A disabled test needs a tracked cause** (`testing.md` §7) — put the
   id in the marker: `@pytest.mark.skip(reason="PROJ-1234: ...")`. A bare
-  `skip` records nothing.
+  `skip` records nothing. **Only a skip a defect in the code under test
+  can trigger owes the id**, per that section's shape test; a `skipif`
+  keyed on the host — a missing tool, a platform, an optional dependency
+  — owes nothing, and filing one for it is the breach's opposite.
 
 ## Traps
 
@@ -154,6 +164,17 @@ on another, and neither result is wrong. Pin the ruleset in a config
 file; pin the linter version where the gate installs it. Breach: one
 commit, two different lint results.
 
+**And know what the pin costs, because `select` REPLACES ruff's defaults
+rather than adding to them.** Measured 2026-09-26 on 0.16.8: unconfigured,
+413 rules are enabled across more than twenty families; with
+`select = ["E", "F"]`, a file breaching `S110` and `BLE001` reports
+*All checks passed*. So the act of pinning switches off most of what the
+table below credits. **Use `extend-select` to add to the defaults, or list
+in `select` every code you are relying on.** On this machine it costs
+twice over: `check-code` supplies `--select E,F,B,S` only where the
+project's own ruff config sets no `select`, so pinning also removes the
+`S` family that gate was adding.
+
 **Removing an environment variable is not neutral.** Copy the
 environment, delete a key, pass it to a child, and the library defaults
 for you. An absent name and a name that cannot resolve are different
@@ -176,11 +197,15 @@ there is one place to look.
 
 **Nearly every rule here has a `ruff` code, and that is the point of the
 table.** Which of them are on by default is a moving target: `ruff`'s
-default set now spans most of its families. Measured unconfigured on
-`ruff` 0.16.8, and corroborated against Astral's published default-rules
-list: `F401`, `I001`, `E722`, `S110`, `BLE001`, `UP006` and `UP007`
-fire with no configuration at all; every other code in this table needs
-selecting. **So a clean report from an unconfigured project proves
+default set now spans most of its families. Re-measured unconfigured on
+`ruff` 0.16.8, 2026-09-26: `ruff check --show-settings` resolves 413
+enabled rules spanning more than twenty families, so `F401`, `I001`,
+`E722`, `S110`, `BLE001`, `UP006` and `UP007` all fire with no
+configuration at all, while `F403` does not despite most of `F` being on.
+**Do not correct this paragraph from ruff's published default selector,
+which is narrower than what the binary resolves** — two independent
+reviewers did exactly that, each concluding these rows were inverted, and
+measurement showed the rows right and the inference wrong. **So a clean report from an unconfigured project proves
 neither that nothing is enforced nor that much is.** Each row says
 which. **Re-measure rather than trusting this paragraph** — an isolated
 `ruff check` over a file that breaks the rule answers it in one command,
@@ -188,7 +213,7 @@ and the split moves between releases.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| Version floor — Python 3.10 minimum | **`Partial:`** `requires-python` in `pyproject.toml`, which installers honour. **Nothing** stops a lower floor being declared; the idioms below then fail at runtime rather than at check time |
+| Version floor — Python 3.10 minimum | **`Partial:`** `requires-python` in `pyproject.toml`, which installers honour. **Nothing** stops a lower floor being declared, and declaring one costs more than it looks: `ruff` infers its `target-version` from that key, so a floor below 3.10 silently switches `UP006` and `UP007` off — measured 2026-09-26, `requires-python = ">=3.8"` reports nothing for `List[int]` and `Union[X, Y]` even when the two codes are named in `--select`. The rule then rests on nothing at all. `match`/`case` is the exception that announces itself: under 3.10 it is a parse error, not a runtime one |
 | Casing — PEP 8 | `ruff`'s `N` family: `N801` for a class, `N802` for a function. **Selected, not default** |
 | Idioms — `list[int]` and `X \| Y` over `List`/`Union` | `ruff` `UP006`, `UP007`. **Both default** — verified unconfigured on `ruff` 0.16.8 |
 | Idioms — `pathlib` over `os.path` | `ruff`'s `PTH` family (`PTH100` and its siblings). **Selected, not default** |
@@ -201,7 +226,7 @@ and the split moves between releases.
 | Comments — a docstring, not a paragraph restating the code | **nothing.** `D103` catches a *missing* docstring, which is the opposite failure; no check reads one and judges it |
 | Do not pessimise — comprehensions, `join()`, generators | **nothing that decides it.** `C4` and `PERF` flag some shapes; whether the whole list was needed at once is not something a check can call a breach |
 | Tests — labels registered with `--strict-markers` | **`Partial:`** the flag itself, which the section calls the whole mechanism — an unregistered mark becomes a collection error. **Nothing** catches its absence from `addopts`, which is the state the section reproduced |
-| Tests — determinism, and a tracked cause on a skip | **nothing.** A `@pytest.mark.skip` with no id is valid, and an unseeded random passes until it does not |
+| Tests — determinism, and a tracked cause on a skip | **`Partial:`** `pytest-randomly`, which auto-loads where it is installed — it shuffles collection order and reseeds per test with no configuration, printing the seed so a failure can be reproduced. This section already assumes it, calling `-p no:randomly` a smell. **Nothing** catches a `@pytest.mark.skip` carrying no id, and nothing installs the plugin for a project that lacks it, where its absence is silent |
 
 ## Cold-eyes loop log
 

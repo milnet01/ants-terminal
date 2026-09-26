@@ -24,6 +24,8 @@
 <!-- MIRROR BEGIN ~/.claude/standards/local-gate.md -->
 # Local Gate Standard — v1
 
+**Rule history: `docs/history/local-gate.md`.**
+
 The rules for running a repository's CI pipeline on your own machine
 before a push. It binds every repository that has a pipeline, and every
 hook, skill or session that pushes on one's behalf.
@@ -74,8 +76,12 @@ runs is in breach of this standard**, not merely unlucky. Two ways in: no
 reachable `pre-push` hook, or a reachable one that cannot find the script.
 § 6.2's `ants.gate.command` is the second.
 
-**Both `ants.gate.*` keys live in `.git/config` and no clone inherits
-them.** Setting them once satisfies § 6.2 on that machine only; a fresh
+**All three `ants.gate.*` keys — `command`, `docsMode`, `docsGlob` — live
+in `.git/config`, and no clone inherits any of them.** Naming them is not
+pedantry: this said *both*, § 6.2 describes two documentation keys, and
+`CLAUDE.md` names a different pair, so a setup script written from any one
+of the three sources omitted a key. Setting them once satisfies § 6.2 on
+that machine only; a fresh
 clone, a colleague's box and CI are each back in breach with nothing said.
 So a repository meeting this section through the shared hook owes something
 a clone executes — a setup step in its README, or a script — rather than a
@@ -86,7 +92,16 @@ A hook that is not reached runs nothing and prints nothing, so a silent
 push is the breach rather than the evidence against it. A hook that IS
 reached and finds no gate script says so and exits 0. So: silence means
 audit `core.hooksPath` and whether a `pre-push` reaches the shared hook;
-the announcement means set `ants.gate.command` or write a gate. **The pair
+the announcement means set `ants.gate.command`, write a gate, **or make
+the script executable** — discovery accepts an executable candidate only,
+so a gate that lost its exec bit is reported as no gate at all and neither
+of the first two remedies applies.
+
+**And the exec bit must be COMMITTED.** Discovery reads the working tree;
+the gate then runs inside a worktree built from the pushed commit, so a
+`chmod +x` that has not been committed lets discovery succeed and
+execution fail. Measured 2026-09-26: the push aborts with `gate FAILED`,
+and the diagnostic names neither cause. **The pair
 the announcement cannot tell apart is a different pair** — no gate script
 at all, against a script the hook cannot find — and § What checks this
 states it in those terms.
@@ -177,10 +192,18 @@ reads it for one and not the other is already half right.
 cache=${XDG_CACHE_HOME:-$HOME/.cache}/pre-push
 mkdir -p "$cache"
 tree=$(mktemp -d "$cache/tmp.XXXXXX")
-trap 'git worktree remove --force "$tree" 2>/dev/null' EXIT
+trap 'git worktree remove --force "$tree" 2>/dev/null; return 0' EXIT
 git worktree add --detach --quiet "$tree" "$local_sha"
 ( cd "$tree" && ./scripts/local-ci.sh )   # a RELATIVE path, so it stays here
 ```
+
+**The trap's `return 0` is load-bearing, and not for the reason it looks
+like.** It cannot hide a red gate — measured 2026-09-26, an EXIT trap
+ending in a *successful* command leaves a failure status intact. What it
+prevents is the reverse: a trap whose last command FAILS replaces a
+success with that failure, so a cleanup that cannot remove the worktree
+turns a green gate into an aborted push. `~/.claude/githooks/pre-push`
+ends its own cleanup the same way.
 
 **Keep the gate's path relative.** An absolute one resolves to the script
 in the real checkout, and a script that repositions itself from `$0` then
@@ -265,8 +288,20 @@ which § 6.1 forbids. `~/.claude/githooks/pre-push` reads two keys about
 documentation, and they are not symmetric.
 
 **`ants.gate.docsGlob` says which paths count. Leaving it unset costs
-COVERAGE**: the hook falls back to an extension list, which is what § 6.1
-forbids and what produced the 2026-08-19 failure above. So a repository
+COVERAGE**: the hook falls back to a built-in list, which is what § 6.1
+forbids and what produced the 2026-08-19 failure above. **That fallback is
+not an extension list, and calling it one understates it** — it leads with
+a path prefix, so every file under `docs/` counts as documentation whatever
+its extension. Measured 2026-09-26: `docs/conf.py` matches. A docs
+directory holding build scripts is waved through on that entry alone.
+
+**The key's form: a `|`-separated list of shell patterns, matched against
+each pushed path, and a match in either direction means documentation.**
+It is positive-match only — there is no negation — so a repository narrows
+it by OMITTING patterns, never by excluding them. `docs/*|CHANGELOG.md|LICENSE`
+is the shape. A value written as `!README.md|*.md` narrows nothing:
+`README.md` still matches `*.md`, the push is still classified
+documentation-only, and the lost coverage is silent. So a repository
 **relying on a shared hook** that has not set `ants.gate.docsGlob` has not
 satisfied this standard. **A hook that only hands off is not a hook of its
 own**: the skeleton's `.githooks/pre-push` execs the machine-wide one, so
@@ -292,8 +327,9 @@ breach with a gate script present.
 The fallback is a deliberate compromise rather than an oversight: a hook
 that refused to run until configured would be uninstalled, and one that
 guesses at least says so in its own source. **A repository whose pipeline
-reads markdown must narrow that glob to exclude those paths, or keep its
-own hook.** Nothing checks that it did.
+reads markdown must narrow that glob, or keep its own hook** — narrow by
+dropping the patterns that cover what its suite asserts against, per the
+form above. Nothing checks that it did.
 
 ## 7. The complete skip — three conditions
 
@@ -389,11 +425,11 @@ proof, not uncertainty.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. **That branch cannot tell § 2's two cases apart** — no gate script at all, which is the gap worth fixing, and a script the hook cannot find, which is the breach — so it prints the same thing for both. What it lacks there is a *block*, not a voice: it exits 0, so both are announced on every push and neither is stopped |
+| § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. **That branch cannot tell § 2's two cases apart** — no gate script at all, which is the gap worth fixing, and a script the hook cannot find, which is the breach — so it prints the same thing for both, and a third cause it also cannot name is a script present but not executable. What it lacks there is a *block*, not a voice: it exits 0, so all are announced on every push and none is stopped. **`~/.claude/tools/ci-gate` is what tells them apart**, reporting `BROKEN` for a gate the hook cannot find against `NO-GATE` for a repository that has none — so the remedy is a run of it rather than a guess |
 | § 3 the local run executes the pipeline's own definition | `~/.claude/tools/ci-gate`, an on-demand audit — it greps the repository's workflows for the gate script's basename and reports `NOT MAPPED` with a non-zero exit, per repository or over a tree with `--all`. **It is not on `PATH`**: call it by that path. **`Partial:`** because nothing runs it on a push, so a repository that stops calling its gate stays broken until somebody sweeps |
 | § 4 uncovered jobs are named | **nothing** — the absence of a sentence is what would have to be detected |
 | § 5 the run is over the pushed commits, not the working tree | **`Partial:`** `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally. **Route 1 is not by itself enough**: the gate runs as `( cd "$WORKTREE" && "$GATE" )`, and an absolute `ants.gate.command` resolves to the script in the real checkout, whose own `cd "$(dirname "$0")/.."` then walks back to the working tree. Measured 2026-09-25 — the gate reported the real repository as its `PWD`, an uncommitted file was present, and the hook exited 0. The machine-wide hook now re-anchors an absolute path inside the repository and refuses one outside it; a hook that does not is still exposed. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
-| § 6.2 a repository sets `ants.gate.docsGlob` | **nothing** — the machine-wide hook falls back to an extension list with no word said, and § 6.2 says so in its own text. **It is the only one of the three that is silent.** An unset `ants.gate.command` is named where no gate script is discoverable (`NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE`, then the key), and an unset `ants.gate.docsMode` is named on a documentation-only push (`has no documentation mode — running all of it`, then the key) — each in the branch where its absence bites. So for those two an unset key and a set one do NOT produce the same push, and only `docsGlob` reaches § 2's breach unannounced |
+| § 6.2 a repository sets `ants.gate.docsGlob` | **nothing** — the machine-wide hook falls back to a built-in list with no word said, and § 6.2 says so in its own text. **It is the one of the three whose absence is always silent.** An unset `ants.gate.command` is named where no gate script is discoverable (`NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE`, then the key), so for that key an unset and a set one do not produce the same push. **`ants.gate.docsMode` is named only where the hook's `--docs`/`--lint` grep ALSO finds nothing** — a gate spelling its flag either of those ways gets documentation mode with the key unset, and the push is identical to the configured one. So unset-versus-set is visible for `command` alone, and `docsGlob` is the only one that reaches § 2's breach unannounced |
 | § 7 all three conditions hold before the skip | **nothing** — no hook on this machine implements this skip. `~/.claude/githooks/pre-push` classifies a push as documentation-only, but it does that to select § 6's documentation mode: it holds no `gh` call, and after classifying it always runs the gate. So condition 1 is checked by nothing, condition 2 is a read of the pipeline's definition, and the skip is taken by hand or not at all |
 
 ## Cold-eyes loop log

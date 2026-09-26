@@ -197,6 +197,12 @@ PROJ-1234, PROJ-1235: split the loader in two
 PROJ-1234..1236: retire the old config path
 ```
 
+**A range's end is a bare number**, so a scheme whose ids carry a
+multi-segment tail — `PASS-3-1` — uses the comma list instead; a range
+written over such ids is refused rather than guessed at. **Every member of
+a range is a member of the group**, interior ones included, which is what
+§1.3's no-repeat check is applied to.
+
 The test is whether the commits could stand alone, not whether the work
 felt related — §2.1 still refuses unrelated work batched together. Where
 one cross-cutting ROADMAP item already covers the change, name that item
@@ -235,6 +241,13 @@ matching what the change touched — `foundation`, `standards`,
 `check-doc-facts`. Not a type (`feat`, `refactor`); §1.1's reasoning
 against type prefixes applies here unchanged. It is a name, not a path:
 `skeleton`, never `skeleton/files`.
+
+**The spelling is lowercase letters and digits in `-`-joined segments, and
+nothing else** — no leading dot, no underscore. A directory whose real
+name cannot be spelled that way is transliterated: `.githooks` is named
+`githooks`, `src_gen` is `src-gen`. Said because the rule above reads as
+permitting any lowercase directory name, while the checker admits only
+this shape, so a conformer was refused with no rule explaining it.
 
 A change that genuinely spans two parts names both, joined by ` + ` —
 `standards + skeleton: the two smallest What-checks-this tables`.
@@ -605,7 +618,7 @@ the rows below say so.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`.githooks/commit-msg`, enabled via `core.hooksPath`; `skeleton/files/` ships an identical copy). **`~/.claude/githooks/` holds a `pre-push` and no `commit-msg`**, so the 13 repositories pointed at it by the global `core.hooksPath` get the §4.2 gate and **no subject-shape check at all** — deliberately, since most of them are not roadmap projects. Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists. §1.1's grouped form is accepted, and the no-ID-repeated check runs against each member of a group. **What it cannot see is whether a group was earned** — that the commit could not have been split — so that half of §1.1 is **nothing** |
+| §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`.githooks/commit-msg`, enabled via `core.hooksPath`; `skeleton/files/` ships an identical copy). **`~/.claude/githooks/` holds a `pre-push` and no `commit-msg`**, so the 13 repositories pointed at it by the global `core.hooksPath` get the §4.2 gate and **no subject-shape check at all** — deliberately, since most of them are not roadmap projects. Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists. §1.1's grouped form is accepted, and the no-ID-repeated check runs against every member of a group — each id of a comma list, and **every member of a range including its interior ones**, enumerated from the ends. Past a range spanning hundreds the hook falls back to the two endpoints, a guard against a typo rather than a rule. It also enforces §1.2's two-part cap on the ` + ` list. **What it cannot see is whether a group was earned** — that the commit could not have been split — so that half of §1.1 is **nothing** |
 | §1.3 single line | **nothing**, and it defeats the length check too. The hook reads `head -1`; git's subject is the whole first paragraph, joined. Measured: a 70-character line 1 with a second line under it passes the hook and produces a 134-character subject in `git log --oneline` |
 | §1.3 present tense, and the description's capitalisation | **nothing** — both are judgements about wording rather than shape, and a hook cannot make them |
 | §9.0 of `documentation.md` — the mechanical checks ran while writing | Partial: the `pre-commit` hook (`.githooks/pre-commit`, enabled via `core.hooksPath`). **Passing it is not §9.0 satisfied** — that section says so, and names quoted fragments and census counts as not checked at all. `check-doc-facts` runs the rest. **What it blocks on is [documentation.md](documentation.md) §9.0's to state, not this table's** — that section owns the class list, and says which classes the weaker copy in `skeleton/files/` does not carry. A restatement lived here until 2026-08-14 and had already drifted from it (ROADMAP CFG-0098) |

@@ -56,7 +56,20 @@ less-trusted context into a more-trusted one. **Control is not the test**
 — a component you wrote, a file your app itself created, a server you
 run: each can still be impersonated, corrupted or compromised, which is
 why §5 takes every response through §3 and §10 calls internal a boundary
-rather than an exemption. Name yours before
+rather than an exemption.
+
+**A declared trusted context does not remove a crossing from the list.**
+*The machine the app runs on is trusted* is a sentence almost every local
+application writes, and read as scoping it deletes the filesystem and
+deserialisation boundaries outright — which is §10's exemption under
+another name. What a project may legitimately do is state what it does
+**not** defend against, naming it: an attacker already holding the user's
+account, a tampered kernel. The crossing stays listed either way, and the
+exclusion is what decides how hard the check at it has to work. Naming
+the exclusion is the whole of the difference, because a whole context
+declared trusted tells a reader nothing about what was given up.
+
+Name yours before
 defending anything: a checklist applied to a system whose boundaries
 nobody wrote down defends the wrong places thoroughly.
 
@@ -91,11 +104,21 @@ what goes wrong, never where the crossing is, so nobody can tell which
 was considered at which entry point. Keep both if you like; only the
 boundary list discharges this section.
 
-**A pointer satisfies it where the pointer names the file.** Where the
-list already lives somewhere the project owns, the home says so by path
-rather than carrying a second copy — `documentation.md` § 2.1 forbids the
-second copy, and it is the one that goes stale. What does not satisfy it
-is a home mentioning boundaries and naming no file.
+**A pointer satisfies it where it names the file AND the section holding
+the list.** Where the list already lives somewhere the project owns, the
+home says so by path rather than carrying a second copy —
+`documentation.md` § 2.1 forbids the second copy, and it is the one that
+goes stale. **The section is not a detail**: a home naming the right file
+and the wrong section sends its reviewer to a scope list or an invariant
+list and passes on the mention, which is the failure the pointer was
+allowed to prevent. A home mentioning boundaries and naming nothing
+satisfies neither test.
+
+**A check may be given as a cross-reference to where it is stated.** One
+entry reading *parsed defensively (§ 3)* names its check; the rule is
+that a reader can reach it, never that it is restated here. A reference
+that resolves to the wrong section names nothing, on the same ground as
+the paragraph above.
 
 **A file the project did not author is not "its".** A fork carries
 upstream's `SECURITY.md`: those boundaries and that report channel are
