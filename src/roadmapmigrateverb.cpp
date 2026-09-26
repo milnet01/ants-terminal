@@ -783,7 +783,10 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
         // ANTS-5252 — built from the PLAN, before the load runs, because this
         // is where every field is already decided and where an id the convert
         // is ABOUT to invent is still distinguishable from one it read.
-        if (out.plannedIds.size() < maxEchoedIds) {
+        // ANTS-5328 — every row, uncapped. The convert filters and caps them
+        // for its reply (max_planned, planned_filter); capping here would hide
+        // a row needing a decision past the cap from any filter.
+        {
             PlannedId row;
             // An owed allocation has no id yet: the plan leaves `id` empty
             // and records the obligation. "absent", not "allocated" — the load

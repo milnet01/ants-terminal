@@ -1107,3 +1107,65 @@ TEST(RoadmapConvert, ambiguousRematchNamesCandidatesAndRefuses) {
         << QJsonDocument(accepted).toJson().toStdString();
     EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));
 }
+
+// ---------------------------------------------------------------- INV-19 ----
+
+// ANTS-5328 — the per-bullet table can be sized and filtered, and always says
+// how many rows passed. Vestige's dry run was 121,826 characters with the
+// table cut at 200 of 1,102 rows, so the review it exists for was impossible.
+TEST(RoadmapConvert, plannedTableIsFilteredAndCapped) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QByteArray md("# Demo Roadmap\n\n## To Do\n\n");
+    for (const char *id : {"PROJ-0901", "PROJ-0902", "PROJ-0903"})
+        md += QByteArray("- [ ] [") + id + "] A bullet carrying an id " + id
+              + ".\n  Layman: A plain-language line.\n  Kind: chore.\n"
+                "  Source: ants-5328-test.\n";
+    md += "- [ ] A bullet with no id in the file.\n"
+          "  Layman: A plain-language line.\n  Kind: chore.\n"
+          "  Source: ants-5328-test.\n";
+    const QString root = seed(guard, tmp, md);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    const auto dryWith = [&](const QJsonObject &extra) {
+        QJsonObject req = extra;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("convert");
+        req[QStringLiteral("dry_run")]    = true;
+        RemoteControl rc(nullptr);
+        return rc.cmdRoadmapLogConvertForTest(req).object();
+    };
+    const auto idsOf = [](const QJsonObject &r) {
+        return r.value(QStringLiteral("ids")).toObject();
+    };
+
+    const QJsonObject all = dryWith({});
+    ASSERT_TRUE(all.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(all).toJson().toStdString();
+    EXPECT_EQ(idsOf(all).value(QStringLiteral("planned")).toArray().size(), 4);
+    EXPECT_EQ(idsOf(all).value(QStringLiteral("planned_total")).toInt(), 4);
+    EXPECT_FALSE(idsOf(all).contains(QStringLiteral("planned_truncated")));
+
+    const QJsonObject nd = dryWith({{QStringLiteral("planned_filter"),
+                                     QStringLiteral("needs_decision")}});
+    const QJsonArray ndRows = idsOf(nd).value(QStringLiteral("planned")).toArray();
+    ASSERT_EQ(ndRows.size(), 1) << QJsonDocument(nd).toJson().toStdString();
+    EXPECT_EQ(ndRows.at(0).toObject().value(QStringLiteral("origin")).toString(),
+              QStringLiteral("absent"));
+    EXPECT_EQ(idsOf(nd).value(QStringLiteral("planned_total")).toInt(), 1);
+
+    const QJsonObject two = dryWith({{QStringLiteral("max_planned"), 2}});
+    EXPECT_EQ(idsOf(two).value(QStringLiteral("planned")).toArray().size(), 2);
+    EXPECT_EQ(idsOf(two).value(QStringLiteral("planned_total")).toInt(), 4);
+    EXPECT_TRUE(idsOf(two).value(QStringLiteral("planned_truncated")).toBool());
+
+    const QJsonObject none = dryWith({{QStringLiteral("max_planned"), 0}});
+    EXPECT_TRUE(idsOf(none).value(QStringLiteral("planned")).toArray().isEmpty());
+    EXPECT_EQ(idsOf(none).value(QStringLiteral("planned_total")).toInt(), 4);
+
+    const QJsonObject bad = dryWith({{QStringLiteral("planned_filter"),
+                                      QStringLiteral("everything")}});
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+}

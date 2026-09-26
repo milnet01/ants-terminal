@@ -14314,6 +14314,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "real convert refuses `ambiguous_rematch`, listing "
                         "each with `candidate_ids`. Default false.");
                     props["accept_ambiguous_rematch"] = acceptAmbigProp; // ANTS-5329
+                    QJsonObject maxPlannedProp;
+                    maxPlannedProp["type"] = "integer";
+                    maxPlannedProp["minimum"] = 0;
+                    maxPlannedProp["description"] = QStringLiteral(
+                        "op:\"convert\" — cap on `ids.planned[]` rows "
+                        "(default 200, clamped to 5000). 0 omits the rows and "
+                        "keeps the counts. `planned_total` is the uncapped "
+                        "count after `planned_filter`.");
+                    props["max_planned"] = maxPlannedProp;       // ANTS-5328
+                    QJsonObject plannedFilterProp;
+                    plannedFilterProp["type"] = "string";
+                    plannedFilterProp["enum"] =
+                        QJsonArray{QStringLiteral("all"), QStringLiteral("needs_decision")};
+                    plannedFilterProp["description"] = QStringLiteral(
+                        "op:\"convert\" — `needs_decision` keeps only rows a "
+                        "human must check: origin absent, id_inferred, or "
+                        "ambiguous_rematch. Default `all`.");
+                    props["planned_filter"] = plannedFilterProp; // ANTS-5328
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

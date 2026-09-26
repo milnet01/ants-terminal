@@ -66640,7 +66640,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: mcp, roadmap.
 
-- 🚧 [ANTS-5375] **The pre-push hook now runs perf-labelled wall-clock benchmarks, which fail under this machine's shared load.**
+- ✅ [ANTS-5375] **The pre-push hook now runs perf-labelled wall-clock benchmarks, which fail under this machine's shared load.**
   ci.yml's build-test step runs `ctest -j2` with no `-LE perf`, so
   RoadmapReadSeam.Inv3Latency (p95 < 50 ms) runs there on purpose. Since
   ANTS-5322 the pre-push hook executes that job, so the benchmark now
@@ -66659,6 +66659,12 @@ project. Reported causes are claims until checked in source.
   machine should enforce a wall-clock budget at all. User decision.
   Decided by the user 2026-09-26: the local pre-push gate does not run
   wall-clock perf-labelled tests. GitHub CI keeps running them.
+  Resolved (2026-09-26, 3f950631): ci.yml's perf step carries `if:
+  env.ANTS_PUSH_GATE != '1'`, ci_workflow.py gives that condition a
+  local meaning (STEP_CONDITIONS), and the pre-push hook sets the
+  variable. That push's own hook log shows the step skipped. Test
+  ci_workflow_runner INV-6, proven red. GitHub CI green on 3f950631,
+  perf step included.
   **Layman:** Pushing code can fail because a speed test ran while the computer was busy, not because anything broke.
   Kind: fix.
   Source: in-session-2026-09-25.

@@ -200,6 +200,19 @@ the commit to be one transaction.
   order-only pairing writes without the opt-in, or a refused one changes the
   file or the stored format.
 
+- **INV-19** — `max_planned` caps `ids.planned[]` (default 200, clamped to
+  0..5000; 0 omits the rows) and `planned_filter:"needs_decision"` keeps only
+  rows with origin `absent`, `id_inferred` or `ambiguous_rematch`. The
+  envelope echoes `planned_filter`, `planned_max` and `planned_total`, the
+  uncapped count after the filter, with `planned_truncated` and
+  `planned_shown` when the cap cut it. An unknown filter refuses `bad_args`.
+  The rows are collected uncapped, so the filter sees every bullet. *Test:*
+  `plannedTableIsFilteredAndCapped`.
+  *Why:* ANTS-5328. Vestige's dry run was too large to read, and the table
+  was cut at 200 of 1,102 rows.
+  *Breaks when:* the filter keeps a row needing no decision or drops one that
+  needs it, the cap is not applied, or the total counts only shown rows.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

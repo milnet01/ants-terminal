@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log convert previews can be filtered and sized** (ANTS-5328)
+  `planned_filter:"needs_decision"` shows only the items a person must
+  check, and `max_planned` sets how many rows come back (0 for counts
+  only). The reply always says how many rows matched.
+
 - **A roadmap write's dry run reports `would_change`, saying whether the render would alter any file** (ANTS-5283)
   `roadmap_log op:"render" dry_run:true` now answers "is a render
   owed?" directly, instead of leaving it to be inferred from

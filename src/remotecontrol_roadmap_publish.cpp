@@ -273,6 +273,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     const qint64 projectId = row->projectId;
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
+    // ANTS-5328 — the per-bullet table's size and population. Vestige's dry
+    // run was 121,826 characters with planned[] cut at 200 of 1,102 rows, so
+    // the review it exists for could not be done. `needs_decision` keeps the
+    // rows a human must check: no id in the file (the load issues or matches
+    // one), an inferred id, or an order-only pairing. `max_planned:0` drops
+    // the table and keeps the counts.
+    constexpr int kMaxPlannedCeiling = 5000;
+    const int maxPlanned = std::clamp(
+        req.value(QStringLiteral("max_planned")).toInt(kMaxEchoedIds),
+        0, kMaxPlannedCeiling);
+    const QString plannedFilter =
+        req.value(QStringLiteral("planned_filter")).toString(QStringLiteral("all"));
+    if (plannedFilter != QLatin1String("all")
+        && plannedFilter != QLatin1String("needs_decision"))
+        return refuseWith(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: planned_filter must be \"all\" or "
+                           "\"needs_decision\"; got \"%1\"").arg(plannedFilter));
+
     // Filled inside mutate(), read after. The load's Outcome does not survive
     // the lambda, and the envelope needs what it allocated — which is the one
     // thing a reviewer of a one-way bulk rewrite has to see BEFORE it lands.
@@ -386,6 +404,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             QJsonArray rows;
             for (const auto &pid : std::as_const(plannedIds)) {
                 if (!pid.ambiguous) continue;
+                if (rows.size() >= kMaxEchoedIds) break;   // ambiguous_shown
                 QJsonObject o;
                 o[QStringLiteral("line")]          = pid.firstLine;
                 o[QStringLiteral("matched_id")]    = pid.matchedId;
@@ -517,7 +536,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     // item by headline, and `ids.allocated_ids[]` names the ids actually
     // issued. The row does not claim an allocation it cannot know happened.
     QJsonArray planned;
+    int plannedMatching = 0;   // ANTS-5328 — rows passing the filter, uncapped
+    const bool needsDecisionOnly = plannedFilter == QLatin1String("needs_decision");
     for (const auto &pid : plannedIds) {
+        if (needsDecisionOnly && pid.origin != QLatin1String("absent")
+            && !pid.inferred && !pid.ambiguous)
+            continue;
+        ++plannedMatching;
+        if (planned.size() >= maxPlanned)
+            continue;
         QJsonObject o;
         o[QStringLiteral("id")]      = pid.id;
         o[QStringLiteral("origin")]  = pid.origin;
@@ -571,7 +598,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             "k-th stored item in item_pk order; an unchanged re-run "
             "reproduces the same pairing");
     ids[QStringLiteral("planned")] = planned;
-    if (bulletsTotal > planned.size()) {
+    // ANTS-5328 — echo what shaped the table, so a short list is never read
+    // as a complete one: the filter, the cap, and how many rows passed.
+    ids[QStringLiteral("planned_filter")] = plannedFilter;
+    ids[QStringLiteral("planned_max")]    = maxPlanned;
+    ids[QStringLiteral("planned_total")]  = plannedMatching;
+    if (plannedMatching > planned.size()) {
         ids[QStringLiteral("planned_truncated")] = true;
         ids[QStringLiteral("planned_shown")]     = planned.size();
     }

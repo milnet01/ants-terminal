@@ -160,9 +160,9 @@ struct InTransactionLoad {
     QStringList allocatedIds;    // capped by the caller's own budget
     int         bulletsTotal = 0;
     int         idsParsed    = 0;
-    // ANTS-5252 — capped by the caller's budget like allocatedIds. `bulletsTotal`
-    // carries the true count either way, so a truncated list is always
-    // detectable rather than merely suspected.
+    // ANTS-5252 — one row per plan item. ANTS-5328 — NOT capped here: the
+    // caller filters and caps for its reply, and a cap at collection would
+    // hide a row needing a decision past it from any filter.
     QVector<PlannedId> plannedIds;
     // ANTS-5326 — store items the source no longer carries. The TRUE count,
     // and their ids case-folded as the loader notes them (the store's id_fold),
