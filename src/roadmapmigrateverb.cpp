@@ -185,10 +185,12 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
         o[QStringLiteral("status_line")] = status;
         unparsed.append(o);
     }
-    if (unparsedTotal > 0) {
-        env[QStringLiteral("unparsed_headings")]       = unparsed;
-        env[QStringLiteral("unparsed_headings_count")] = unparsedTotal;
-    }
+    // The count rides every reply, 0 included, so "none found" is not read as
+    // "this build has no such check" (RetroDB, 2026-09-26). The rows appear
+    // only when there are some.
+    env[QStringLiteral("unparsed_headings_count")] = unparsedTotal;
+    if (unparsedTotal > 0)
+        env[QStringLiteral("unparsed_headings")] = unparsed;
     // The EFFECTIVE bound, after run()'s clamp — a caller passing 5000 receives
     // 2000 rows and has no other way to learn its argument was reduced.
     env[QStringLiteral("max_notes")] = maxNotes;

@@ -66119,6 +66119,9 @@ parse, not that file.
   restyled. Under three words stays lost. Test
   RoadmapWriteHalf.Ants5327CountsAReflowAsRestyledNotLost, proven red.
   GitHub CI green on push head 23d324a9.
+  Verified by RetroArch 2026-09-26 after a /mcp reconnect: a pure reflow
+  edit (two wrapped lines joined) rendered as restyle_only,
+  would_discard_text_lines 0.
   **Layman:** The safety check meant to warn about lost roadmap text also fires when nothing was lost, so nobody can trust it.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
@@ -66792,6 +66795,8 @@ project. Reported causes are claims until checked in source.
 
 - 📋 [ANTS-5395] **On a store-served pass-headings roadmap, flip stamps today's date and keeps its note inside the item.**
   RetroDB, flip PASS-59-41 to shipped with a note, dry run: `- **Status**: planned (2026-09-01)` becomes `done (2026-09-01)`, keeping the planning date, and the note lands after the item's `---`, as prose between items. The roadmap's own convention is `- **Status**: shipped (<ship date>)` plus a `- **Resolution** (date, version):` bullet inside the item.
+  Verified by RetroDB 2026-09-26 on PASS-59-72: `done (2026-09-26).
+  Lanes: media, packaging.`, note inside the item above `---`.
   **Layman:** Makes closing a task record the right date and keep the closing note with the task.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
@@ -66807,6 +66812,12 @@ project. Reported causes are claims until checked in source.
   **Layman:** Lets sessions write this roadmap style's normal status line without being refused.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
+
+- 📋 [ANTS-5398] **A wrapped note that opens with a list marker gets a continuation indent on a pass-headings item.**
+  RetroDB, PASS-53-2 store-route annotate: rlWrapNote wraps at ~70 columns, and the continuation lines start at column 0 while the item's own bullets use a 2-space indent. Markdown still reads it as one bullet (lazy continuation), so nothing breaks. When the note's first line starts with `- `, indent the rest by two spaces. Low priority.
+  **Layman:** Keeps a long roadmap note lined up with the item's other bullet points.
+  Kind: enhancement.
+  Source: RetroDB message 2026-09-26.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

@@ -2079,4 +2079,20 @@ TEST(roadmap_migrate_verb, Ants5394UnparsedHeadingsReachTheTopLevel) {
     EXPECT_TRUE(r.value(QStringLiteral("status_line")).toString()
                     .contains(QStringLiteral("planned")))
         << "the Status line under the heading shows it is open";
+
+    // The count is on every reply, 0 included: absence would read as "this
+    // build does not check" (RetroDB, 2026-09-26).
+    QTemporaryDir clean;
+    ASSERT_TRUE(clean.isValid());
+    const QString cleanRoot = makeProjectRoot(clean, QStringLiteral("clean"),
+        "# Fixture\n\n## Passes\n\n"
+        "#### Pass 43.5 A real pass\n\n- **Status**: done\n\n"
+        "#### Pass 43.6 A second real pass\n\n- **Status**: todo\n");
+    const QJsonObject none = RoadmapMigrateVerb::run(
+        clean.filePath(QStringLiteral("store.sqlite")), request(cleanRoot));
+    ASSERT_TRUE(none.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(none.contains(QStringLiteral("unparsed_headings_count")))
+        << "a clean migrate must still say it checked";
+    EXPECT_EQ(none.value(QStringLiteral("unparsed_headings_count")).toInt(-1), 0);
+    EXPECT_FALSE(none.contains(QStringLiteral("unparsed_headings")));
 }
