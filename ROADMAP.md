@@ -66145,10 +66145,15 @@ parse, not that file.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5330] **convert's top-level layman_missing disagrees with the per-row flags in planned[].**
+- ✅ [ANTS-5330] **convert's top-level layman_missing disagrees with the per-row flags in planned[].**
   Same Vestige envelope: layman_missing {count:0} while 164 of 200
   planned[] rows carry layman_missing:true. Make them agree, or name
   and document the different population the scalar counts.
+  Resolved (2026-09-26, d3cf3be2): both counts now mean open items with
+  no Layman after the convert. The advisory render (convert only) judges
+  the whole project, and PlannedId carries `open`, so closed items are
+  not flagged. Test RoadmapConvert.laymanMissingCountAgreesWithRows
+  (INV-17), each half proven red. GitHub CI green on d3cf3be2.
   **Layman:** Two counts in the same conversion report contradict each other about how many items lack a plain-English summary.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
@@ -66765,6 +66770,30 @@ project. Reported causes are claims until checked in source.
   this reverses that decision, so weigh it against the lean-envelope
   rule first. The tool description could instead say that absence means
   none found.
+
+- 📋 [ANTS-5394] **roadmap_migrate reports pass-headings blocks it could not read as items at the top level of its reply.**
+  RetroDB: seven `####` blocks (`FU.1`-`FU.6`, `Pass 2 — ...`) carry a Status line but no parsable `Pass N.M`, so they become prose. The only trace is an `orphan_status_line` note; items_inserted says nothing, and the open FU.6 left every query. Add a top-level `unparsed_headings[]`, or accept `FU.N` and `Pass N —` as ids. Related: ANTS-5383 (the same gap on ants-v1).
+  **Layman:** Warns when a roadmap import quietly leaves open tasks out of the task list.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
+
+- 📋 [ANTS-5395] **On a store-served pass-headings roadmap, flip stamps today's date and keeps its note inside the item.**
+  RetroDB, flip PASS-59-41 to shipped with a note, dry run: `- **Status**: planned (2026-09-01)` becomes `done (2026-09-01)`, keeping the planning date, and the note lands after the item's `---`, as prose between items. The roadmap's own convention is `- **Status**: shipped (<ship date>)` plus a `- **Resolution** (date, version):` bullet inside the item.
+  **Layman:** Makes closing a task record the right date and keep the closing note with the task.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
+
+- 📋 [ANTS-5396] **Pass-headings amend_body and flip_batch get a store route, or their refusal names the working one.**
+  RetroDB: amend_body refuses `unsupported_format ... edit it with a text edit`, and flip_batch refuses with no store route. What works is a hand edit of roadmap.md then roadmap_migrate (items_updated 13, check_sync in sync), but nothing says so, and the store-first model suggests the next render discards the edit. At least name that remedy in the refusal. Separately, body_shadowed refuses this format's own Status line, which carries `Lanes:` mid-line by design.
+  **Layman:** Gives sessions a supported way to edit and close items on this roadmap style.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
+
+- 📋 [ANTS-5397] **body_shadowed does not refuse a pass-headings Status line whose Lanes sit mid-line by design.**
+  Split from ANTS-5396. The guard refuses any new_text naming a trailer key mid-line, and RetroDB's house format writes `- **Status**: planned (date). Lanes: a, b.`, so the format's own canonical line is refused. On pass-headings, a `Lanes:` inside a Status line is that format's declaration, not prose.
+  **Layman:** Lets sessions write this roadmap style's normal status line without being refused.
+  Kind: fix.
+  Source: RetroDB feedback 2026-09-26.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

@@ -23,6 +23,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
+#include <QDate>
 #include <QTemporaryDir>
 
 #include <memory>
@@ -46,6 +47,23 @@ const char *kSeed =
     "#### Pass 44.1 Retire the legacy transport.\n"
     "- **Status**: in-progress\n"
     "  Blocked on the 43.5 follow-up.\n";
+
+// ANTS-5395 — RetroDB's shape: dated Status lines, `---` between passes.
+const char *kDated =
+    "# Demo — Roadmap\n"
+    "\n"
+    "## Phase 59\n"
+    "\n"
+    "#### Pass 59.41 Close the cache on shutdown.\n"
+    "- **Status**: planned (2026-09-01). Lanes: cache, shutdown.\n"
+    "The cache is flushed but never closed.\n"
+    "\n"
+    "---\n"
+    "\n"
+    "#### Pass 59.42 Log the close.\n"
+    "- **Status**: planned (2026-09-01). Lanes: logging.\n"
+    "\n"
+    "---\n";
 
 bool writeFile(const QString &path, const QByteArray &body) {
     QDir().mkpath(QFileInfo(path).path());
@@ -78,11 +96,11 @@ std::unique_ptr<RoadmapStore> openStore(RoadmapStore::Access access) {
 // Write the seed at <tmp>/proj and return its canonical root. With `migrate`,
 // also load it into the sandboxed store (Bulk, closed before the verb runs).
 QString seed(ants_test::XdgGuard &guard, const QTemporaryDir &tmp, bool migrate,
-             qint64 *projectId = nullptr) {
+             qint64 *projectId = nullptr, const char *body = kSeed) {
     guard.setEnv("XDG_DATA_HOME",
                  QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
     const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
-    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), QByteArray(kSeed)))
+    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), QByteArray(body)))
         return QString();
     QString root = QFileInfo(rawRoot).canonicalFilePath();
     if (!migrate) return root;
@@ -246,8 +264,16 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
     aloc[QStringLiteral("id")] = QStringLiteral("PASS-44-1");
     annotateBatch[QStringLiteral("locators")] = QJsonArray{aloc};
 
+    // ANTS-5396 — amend_body refuses on this format too, through its own
+    // message; RetroDB reached it first.
+    QJsonObject amend = req(root, QStringLiteral("amend_body"));
+    amend[QStringLiteral("id")]       = QStringLiteral("PASS-44-1");
+    amend[QStringLiteral("old_text")] = QStringLiteral("x");
+    amend[QStringLiteral("new_text")] = QStringLiteral("y");
+
     RemoteControl rc(nullptr);
     const struct { const char *op; QJsonObject resp; } cases[] = {
+        {"amend_body",     rc.cmdRoadmapLogAmendBodyForTest(amend).object()},
         {"append",         rc.cmdRoadmapLogAppendForTest(append).object()},
         {"append_batch",   rc.cmdRoadmapLogAppendBatchForTest(appendBatch).object()},
         {"flip_batch",     rc.cmdRoadmapLogFlipBatchForTest(flipBatch).object()},
@@ -258,6 +284,11 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
         EXPECT_EQ(c.resp.value(QStringLiteral("code")).toString(),
                   QStringLiteral("unsupported_format"))
             << c.op << ": " << QJsonDocument(c.resp).toJson().toStdString();
+        // ANTS-5396 — the refusal names the route that works.
+        EXPECT_TRUE(c.resp.value(QStringLiteral("error")).toString()
+                        .contains(QStringLiteral("roadmap_migrate")))
+            << c.op << " refused without naming roadmap_migrate: "
+            << QJsonDocument(c.resp).toJson().toStdString();
     }
     EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before)
         << "a refused op wrote the file behind the store";
@@ -290,4 +321,67 @@ TEST(RoadmapPassStoreWrite, Inv5UnmigratedPassProjectStillWritesTheFile) {
     EXPECT_TRUE(file.contains(QStringLiteral(
         "#### Pass 43.5.B Follow-up: the same check on the reply path.\n- **Status**: done")))
         << file.toStdString();
+}
+
+// ANTS-5395 — RetroDB's shape: a dated Status line carrying Lanes mid-line,
+// and a `---` closing each pass. A flip to shipped with a note must re-date
+// the Status line, keep the rest of it, and keep the note inside the item.
+TEST(RoadmapPassStoreWrite, Ants5395FlipRedatesAndKeepsTheNoteInside) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, /*migrate=*/true, &projectId, kDated);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject flip = req(root, QStringLiteral("flip"));
+    flip[QStringLiteral("id")]        = QStringLiteral("PASS-59-41");
+    flip[QStringLiteral("to_status")] = QStringLiteral("shipped");
+    flip[QStringLiteral("note")]      = QStringLiteral("Closed in the shutdown hook.");
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(flip).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const auto item = itemOf(QStringLiteral("PASS-59-41"), projectId);
+    ASSERT_TRUE(item.has_value());
+    const QString today = QDate::currentDate().toString(Qt::ISODate);
+    EXPECT_TRUE(item->body.contains(QStringLiteral("(%1). Lanes: cache, shutdown.")
+                                        .arg(today)))
+        << "the Status line kept its planning date or lost its Lanes:\n"
+        << item->body.toStdString();
+    const qsizetype noteAt = item->body.indexOf(QStringLiteral("Closed in the shutdown hook."));
+    const qsizetype ruleAt = item->body.lastIndexOf(QStringLiteral("---"));
+    ASSERT_GE(noteAt, 0) << item->body.toStdString();
+    if (ruleAt >= 0)
+        EXPECT_LT(noteAt, ruleAt) << "the note landed after the pass's separator:\n"
+                                  << item->body.toStdString();
+    // The neighbouring pass is untouched.
+    EXPECT_TRUE(itemOf(QStringLiteral("PASS-59-42"), projectId)->body.contains(
+        QStringLiteral("planned (2026-09-01)")));
+}
+
+// ANTS-5395 — the file path's annotate (an unmigrated project) keeps the note
+// inside the pass too, above its `---`, by the same rule as the store route.
+TEST(RoadmapPassStoreWrite, Ants5395FileAnnotateKeepsTheNoteInside) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, /*migrate=*/false, nullptr, kDated);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject ann = req(root, QStringLiteral("annotate"));
+    ann[QStringLiteral("id")]   = QStringLiteral("PASS-59-41");
+    ann[QStringLiteral("note")] = QStringLiteral("A note for the first pass.");
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(ann).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QByteArray file = readAll(root + QStringLiteral("/ROADMAP.md"));
+    const qsizetype noteAt = file.indexOf("A note for the first pass.");
+    const qsizetype ruleAt = file.indexOf("---");
+    ASSERT_GE(noteAt, 0) << file.toStdString();
+    EXPECT_LT(noteAt, ruleAt) << "the note landed after the first pass's separator:\n"
+                              << file.toStdString();
 }

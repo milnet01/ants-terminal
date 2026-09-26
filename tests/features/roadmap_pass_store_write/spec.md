@@ -37,11 +37,20 @@ A pass-headings project the store does not serve keeps every file writer.
   *Test:* `Inv3AnnotateAppendsToTheStoredBody`.
 - **INV-4** — each of the four ops with no store route refuses
   `unsupported_format`, and the file and the store's items are unchanged.
+  So does `op:"amend_body"`. Every such refusal names `roadmap_migrate` as the
+  route that works: edit the file by hand, then re-import it (ANTS-5396).
   *Test:* `Inv4OpsWithNoStoreRouteRefuse`.
 - **INV-5** — on a pass-headings project the store does not serve,
   `op:"flip"` still writes the file directly. A boundary pin: it holds before
   and after the fix.
   *Test:* `Inv5UnmigratedPassProjectStillWritesTheFile`.
+- **INV-6** — a store-route flip that changes status replaces the date
+  written right after the status word on the item's first Status line with
+  today's, keeping the rest of the line (`Lanes:` included). A note goes
+  above a trailing `---` / `***` / `___` rule, inside the item. The file
+  path's annotate places a note by the same rule (ANTS-5395).
+  *Tests:* `Ants5395FlipRedatesAndKeepsTheNoteInside`,
+  `Ants5395FileAnnotateKeepsTheNoteInside`.
 
 INV-1 to INV-4 fail against the pre-fix code.
 

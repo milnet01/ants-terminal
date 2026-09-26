@@ -159,6 +159,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a Pass-style roadmap item records today's date and keeps its note inside the item** (ANTS-5395)
+  On roadmaps written as `#### Pass` blocks, a flip now updates the date
+  next to the status and places the note above the item's `---`
+  separator, not after it.
+
+- **Pass-style roadmap refusals name the edit route that works** (ANTS-5396)
+  When an operation cannot write a Pass-style roadmap through the store,
+  the refusal now says to edit the file by hand and re-import it with
+  roadmap_migrate.
+
 - **A convert preview's two missing-summary counts now agree** (ANTS-5330)
   Both count open items without a plain-English summary, whether or not
   the convert rewrote them. Shipped items are no longer flagged.

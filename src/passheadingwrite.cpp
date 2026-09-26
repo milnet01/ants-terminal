@@ -58,6 +58,33 @@ bool isHeadingLeQ4(const QString &line) {
            !line.startsWith(QStringLiteral("#####"));
 }
 
+// ANTS-5395 — a thematic break (`---`, `***`, `___`, three or more of one
+// character, spaces allowed). A pass block commonly ends in one to separate
+// it from the next pass, and it belongs to the layout, not the item's text.
+bool isRule(const QString &line) {
+    const QString t = QString(line).remove(QChar(' ')).trimmed();
+    if (t.size() < 3) return false;
+    const QChar c = t.at(0);
+    if (c != u'-' && c != u'*' && c != u'_') return false;
+    for (const QChar x : t)
+        if (x != c) return false;
+    return true;
+}
+
+// ANTS-5395 — where a note goes in lines [first, end): after the last line
+// with content that is not a trailing rule, so the note stays inside the
+// item rather than landing after its separator. `fallback` when the span
+// holds nothing else.
+int noteInsertionPoint(const QStringList &lines, int first, int end, int fallback) {
+    int last = end - 1;
+    while (last >= first && lines.at(last).trimmed().isEmpty()) --last;
+    if (last >= first && isRule(lines.at(last))) {
+        --last;
+        while (last >= first && lines.at(last).trimmed().isEmpty()) --last;
+    }
+    return last >= first ? last + 1 : fallback;
+}
+
 QString capitaliseFirst(const QString &s) {
     if (s.isEmpty()) return s;
     return s.left(1).toUpper() + s.mid(1);
@@ -299,12 +326,9 @@ WriteResult annotatePass(const QString &markdown,
     }
     // Append after the block's last non-blank content line, so the note
     // lands inside the block rather than after its trailing blank lines.
-    int lastContent = head;
-    for (int j = head + 1; j < blockEnd; ++j) {
-        if (!lines.at(j).trimmed().isEmpty()) lastContent = j;
-    }
+    // ANTS-5395 — and above a trailing `---` rule, which separates passes.
     const QStringList noteLines = note.split(QChar('\n'));
-    const int insertAt = lastContent + 1;
+    const int insertAt = noteInsertionPoint(lines, head + 1, blockEnd, head + 1);
     for (int k = noteLines.size() - 1; k >= 0; --k) {
         lines.insert(insertAt, noteLines.at(k));
     }
@@ -316,6 +340,37 @@ WriteResult annotatePass(const QString &markdown,
     r.headingLine = head;
     r.changedLine = insertAt;
     return r;
+}
+
+QString insertPassNote(const QString &body, const QString &note) {
+    if (note.isEmpty()) return body;
+    QStringList lines = body.split(QChar('\n'));
+    if (body.isEmpty()) lines.clear();
+    const int at = noteInsertionPoint(lines, 0, int(lines.size()), 0);
+    const QStringList noteLines = note.split(QChar('\n'));
+    for (int k = int(noteLines.size()) - 1; k >= 0; --k)
+        lines.insert(at, noteLines.at(k));
+    return lines.join(QChar('\n'));
+}
+
+QString redatePassStatus(const QString &body, const QString &isoDate) {
+    // `<word> (YYYY-MM-DD` right after the status word; the rest of the line,
+    // `). Lanes: ...` included, is kept byte for byte.
+    static const QRegularExpression rxDate(
+        QStringLiteral("^([^\\sA-Za-z0-9_-]*\\s*[A-Za-z-]+\\s*\\()"
+                       "\\d{4}-\\d{2}-\\d{2}"));
+    QStringList lines = body.split(QChar('\n'));
+    for (QString &line : lines) {
+        const QRegularExpressionMatch pm = rxStatusPrefix().match(line);
+        if (!pm.hasMatch()) continue;
+        const QString value = pm.captured(2);
+        const QRegularExpressionMatch dm = rxDate.match(value);
+        if (dm.hasMatch())
+            line = pm.captured(1) + dm.captured(1) + isoDate
+                 + value.mid(dm.capturedEnd(0));
+        break;   // the FIRST Status line is the item's, as for the reader
+    }
+    return lines.join(QChar('\n'));
 }
 
 }  // namespace PassHeadingWrite

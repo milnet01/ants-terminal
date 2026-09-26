@@ -1265,7 +1265,8 @@ QJsonDocument rcdetail::rcPassStoreWriteUnsupported(const QString &op) {
         "the store serves, so it writes nothing. The file writer would put the "
         "file behind the store, and the next render would discard the edit. "
         "op:\"flip\" and op:\"annotate\" do write through the store here "
-        "(ANTS-5334).").arg(op);
+        "(ANTS-5334). For anything else, edit the roadmap file by hand and "
+        "then run roadmap_migrate to re-import it (ANTS-5396).").arg(op);
     return QJsonDocument(env);
 }
 
@@ -1338,10 +1339,19 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // annotate must not get a second copy for having migrated.
     const bool alreadyPresent =
         !note.isEmpty() && before->body.contains(note);
-    const QString newBody =
+    // ANTS-5395 — a pass block's body ends in its `---` separator and opens
+    // with a dated Status line. The note goes above the separator, inside the
+    // item, and a status change re-dates that line: keeping the planning date
+    // beside `done` reads as the ship date (RetroDB, 2026-09-26).
+    const bool passBody = c.format == QLatin1String("pass-headings");
+    QString newBody =
         (note.isEmpty() || alreadyPresent)
             ? before->body
-            : rlAppendBodyNote(before->body, note);
+            : passBody ? PassHeadingWrite::insertPassNote(before->body, note)
+                       : rlAppendBodyNote(before->body, note);
+    if (passBody && !annotateMode && before->status != targetStatusWord)
+        newBody = PassHeadingWrite::redatePassStatus(
+            newBody, QDate::currentDate().toString(Qt::ISODate));
 
     // ANTS-3822 § 2.5 — one stamp for the whole op, computed before
     // mutate() runs rather than per row, so a write that straddles a
@@ -2925,9 +2935,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // mis-edit (parity with the ANTS-2031 format gate).
     if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical))) {
         return rlErr(QStringLiteral("unsupported_format"),
+            // ANTS-5396 — name the whole remedy. On a store-served project a
+            // hand edit alone is discarded by the next render; re-importing it
+            // with roadmap_migrate is what keeps it (RetroDB, 2026-09-26).
             QStringLiteral("roadmap_log: op:\"%1\" is not supported on "
-                           "pass-headings roadmaps — edit it with a text "
-                           "edit").arg(opName));
+                           "pass-headings roadmaps. Edit the roadmap file by "
+                           "hand; if the store serves this project, then run "
+                           "roadmap_migrate to re-import it, or the next render "
+                           "discards the edit").arg(opName));
     }
 
     QStringList lines = markdown.split(QChar('\n'));

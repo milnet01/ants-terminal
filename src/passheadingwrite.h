@@ -88,4 +88,14 @@ WriteResult annotatePass(const QString &markdown,
                          const QString &locatorHeadline,
                          const QString &note);
 
+// ANTS-5395 — the store route's two body edits, for a pass block's BODY
+// (everything under its heading, as the store holds it).
+// Inserts `note` after the body's last content line, above a trailing
+// `---` / `***` / `___` rule, so it stays inside the item.
+QString insertPassNote(const QString &body, const QString &note);
+// Replaces the date written right after the status word on the FIRST
+// `- **Status**:` line (`planned (2026-09-01). Lanes: a.`) with `isoDate`,
+// keeping the rest of the line. No date there: the body is unchanged.
+QString redatePassStatus(const QString &body, const QString &isoDate);
+
 }  // namespace PassHeadingWrite
