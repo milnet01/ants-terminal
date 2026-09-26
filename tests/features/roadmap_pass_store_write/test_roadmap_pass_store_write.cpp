@@ -511,3 +511,33 @@ TEST(RoadmapPassStoreWrite, Ants5404FileAnnotateNoteIsABullet) {
         "- **Progress** (%1): Checked on a second library.\n").arg(today)))
         << file.toStdString();
 }
+
+// ANTS-5407 — a pass block declares its lanes on the Status line
+// (`- **Status**: shipped (date). Lanes: launch, docs.`). The import reads them
+// into the lanes column, and the render does not write them a second time.
+TEST(RoadmapPassStoreWrite, Ants5407StatusLineLanesReachTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, /*migrate=*/true, &projectId, kRetro);
+    ASSERT_FALSE(root.isEmpty());
+
+    const auto shipped = itemOf(QStringLiteral("PASS-59-64"), projectId);
+    ASSERT_TRUE(shipped.has_value());
+    EXPECT_EQ(shipped->lanes, (QStringList{QStringLiteral("launch"), QStringLiteral("docs")}));
+    const auto planned = itemOf(QStringLiteral("PASS-59-71"), projectId);
+    ASSERT_TRUE(planned.has_value());
+    EXPECT_EQ(planned->lanes,
+              (QStringList{QStringLiteral("security"), QStringLiteral("packaging")}));
+
+    // A write re-renders the file: the Lanes stay once, on the Status line.
+    QJsonObject ann = req(root, QStringLiteral("annotate"));
+    ann[QStringLiteral("id")]   = QStringLiteral("PASS-59-64");
+    ann[QStringLiteral("note")] = QStringLiteral("Lanes check.");
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogFlipForTest(ann).object()
+                    .value(QStringLiteral("ok")).toBool());
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_EQ(file.count(QStringLiteral("Lanes: launch, docs")), 1) << file.toStdString();
+}

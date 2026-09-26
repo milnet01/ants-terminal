@@ -159,6 +159,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A pass-headings roadmap's Lanes, declared on each Status line, reach the lanes column** (ANTS-5407)
+  The `#### Pass` reader now reads `Lanes: a, b.` from a pass's Status line,
+  so the import stores it and the lanes filter and report can see which
+  parts of a project each item touches. The render still writes it once, on
+  the Status line. The standing lanes `field_conflict` on every RetroDB
+  migrate goes away with it. Reported by RetroDB.
+
 - **The roadmap report counts import-defaulted kinds as kind_not_recorded, not as implement** (ANTS-5406)
   `roadmap_query mode:"report"` no longer folds a kind nobody chose into
   `by_kind`. An item whose kind the import defaulted, such as every item of

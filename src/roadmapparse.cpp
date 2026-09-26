@@ -929,6 +929,11 @@ parsePassHeadingBullets(const QStringList &lines) {
             ? QStringLiteral("%1.%2").arg(major).arg(minor)
             : QStringLiteral("%1.%2.%3").arg(major).arg(minor).arg(sub);
         rec.sourceStatus = statusValue;
+        // ANTS-5407 — a pass declares its lanes on the Status line
+        // (`shipped (2026-09-26). Lanes: launch, docs.`). The dialect has no
+        // trailer block, so that line is where the key lives; the bullet
+        // reader's own extractor splits it.
+        rec.lanes        = trailerValuesIn(statusValue).lanesList;
         rec.firstLine    = i + 1;
         rec.lastLine     = lastIdx + 1;
         if (statusWord == QStringLiteral("done") ||
