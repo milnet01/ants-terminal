@@ -85,6 +85,13 @@ public:
             }
             if (m_proc.state() == QProcess::NotRunning) break;
         }
+        // ANTS-5339 — a missing reply says so, and how long was waited. An
+        // empty object read as `ok:false` and could not be told from a refusal.
+        if (!m_replies.contains(id))
+            return QJsonObject{{"test_timeout", true},
+                               {"elapsed_ms", double(t.elapsed())},
+                               {"server_running",
+                                m_proc.state() != QProcess::NotRunning}};
         return m_replies.value(id);
     }
 
@@ -104,7 +111,10 @@ public:
 
     QJsonObject call(const QString &tool, const QJsonObject &args,
                      int timeoutMs = 20000) {
-        return payload(await(sendCall(tool, args), timeoutMs));
+        const QJsonObject reply = await(sendCall(tool, args), timeoutMs);
+        if (reply.contains(QStringLiteral("test_timeout")))
+            return reply;   // ANTS-5339 — surfaced, not flattened to {}
+        return payload(reply);
     }
 
     QByteArray stderrText() { return m_proc.readAllStandardError(); }

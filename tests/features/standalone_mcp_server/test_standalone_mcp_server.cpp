@@ -208,11 +208,35 @@ TEST(StandaloneMcpServer, Inv5NoTerminalRefusesForwardedVerbsOnly) {
     const QJsonObject tabs = mcpd.call(QStringLiteral("tab_list"), {});
     EXPECT_EQ(tabs.value(QStringLiteral("code")).toString(), QStringLiteral("no_terminal"))
         << QJsonDocument(tabs).toJson().toStdString();
+    // ANTS-5339 — a one-file project, not the real tree: the invariant is that
+    // a project-scoped verb still answers with no terminal, and linting the
+    // repo's own spec made the call's cost grow with the repo. Under a loaded
+    // pre-push run it exceeded the 20 s wait once.
+    const QString proj = tmp.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(QDir().mkpath(proj + QStringLiteral("/docs/specs")));
+    QFile spec(proj + QStringLiteral("/docs/specs/T-1-demo.md"));
+    ASSERT_TRUE(spec.open(QIODevice::WriteOnly));
+    spec.write("# T-1 Demo\n\n## Invariants\n\n- **INV-1** — a rule.\n");
+    spec.close();
     const QJsonObject lint = mcpd.call(QStringLiteral("spec_lint"),
-        QJsonObject{{"caller_cwd", ANTS_SOURCE_DIR},
-                    {"path", "docs/specs/ANTS-4932-standalone-mcp-server.md"}});
+        QJsonObject{{"caller_cwd", proj},
+                    {"path", "docs/specs/T-1-demo.md"}});
     EXPECT_TRUE(lint.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(lint).toJson().toStdString();
+}
+
+// ANTS-5339 — the harness itself: a call that gets no reply inside its wait
+// reports `test_timeout` with the time waited, so a slow server is never read
+// as a refusal (`{}` gave `ok:false` and nothing else).
+TEST(StandaloneMcpServer, HarnessReportsATimeoutAsSuch) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
+    ASSERT_TRUE(mcpd.started());
+    const QJsonObject r = mcpd.call(QStringLiteral("tab_list"), {}, /*timeoutMs=*/0);
+    EXPECT_TRUE(r.value(QStringLiteral("test_timeout")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_TRUE(r.contains(QStringLiteral("elapsed_ms")));
 }
 
 // INV-6 — no caller_cwd resolves to the server's own cwd, reported ServerCwd.
