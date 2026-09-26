@@ -66004,6 +66004,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   or (b) a terminal UI (menu / Settings) to trust the current project's
   verify.json. ANTS-1337 § 4.3 and § 8 still describe the prompt as
   reachable; update them with the choice.
+  Decided by the user 2026-09-26: option (a). When ants-mcpd meets an
+  untrusted bespoke config and a terminal is running, it asks the
+  terminal, which shows its existing trust modal; with no terminal, the
+  auto-detect fallback stands. Costs one terminal relaunch to install (a
+  new terminal-side verb), accepted. Security-sensitive and crosses two
+  processes, so it gets a spec first.
   **Layman:** Since the MCP moved to its own helper, Claude never asks you before running a project's custom check commands; it quietly uses the default checks instead.
   Kind: review-fix.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (both lanes).
