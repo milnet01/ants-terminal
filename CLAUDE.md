@@ -150,7 +150,10 @@ Retrofitting is a roadmap item, never an obligation. Models to copy:
 - `session_orient` refreshes `codebase_index`. Query it (`codebase_index`,
   `find_definition`, `find_sources`, `workspace_search`) rather than `grep`.
 - Adding or changing a verb: follow
-  [`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md). Per-verb notes:
+  [`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md). Its
+  *Load-bearing contracts* list the response-wrap, caller_cwd,
+  CallerCwdContract, path validation, ETag-304, `fields=`, refusal codes and
+  state routing. Per-verb notes:
   [`docs/standards/mcp-behavioural-notes.md`](docs/standards/mcp-behavioural-notes.md).
   Config keys, including the master gate `claude.mcp_enabled`:
   [`docs/standards/mcp-config-keys.md`](docs/standards/mcp-config-keys.md).
