@@ -741,6 +741,24 @@ report over nothing reads like a clean report over everything.
 **Where both apply both are owed**, unless one subsumes the other — then the
 stronger alone.
 
+**A figure that depends on CONDITIONS names them** — a timing, anything
+load-dependent. The machine and its load are what a reader must reproduce, and
+they are neither the evidence nor what it excluded, so without this they fall
+between the two obligations above.
+
+**Evidence that was not kept cannot be named precisely enough to find again** — a
+scratchpad packet, a lane's report, a subagent transcript. Name the command that
+recomputes it and say the artefact is gone. Such a figure is refutable only by
+re-measuring, never by re-inspecting, and that is acceptable where it is stated.
+
+**A measurement REFUTING a recorded figure owes what the original owed, and names
+the figure it refutes.** Otherwise the correction is less checkable than the
+error.
+
+**Appending a conforming figure beside older ones does not re-scope them.**
+Binding forward is per figure, never per paragraph — a paragraph that grows by
+appending would otherwise put its own history in breach on the next edit.
+
 **This binds forward.** A record already written is not in breach. **A landed
 loop-log row is not rewritten to bring it into conformance** — § 9.1 owns that
 rule and its one exception — so those cannot conform and are not expected to.
