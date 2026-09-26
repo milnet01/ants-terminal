@@ -66954,25 +66954,30 @@ project. Reported causes are claims until checked in source.
   Source: RetroDB feedback 2026-09-26.
   Lanes: roadmap.
 
-- 📋 [ANTS-5406] **Pass-headings items all store kind implement, so the kind filter and the report's by_kind are meaningless there.**
+- ✅ [ANTS-5406] **Pass-headings items all store kind implement, so the kind filter and the report's by_kind are meaningless there.**
   The dialect has no Kind slot and append ignores kind on it (ANTS-4357),
   yet the import stamps `implement` on every item, a value nobody chose.
   Store kind as unknown for this dialect and have mode:"report" and the
   kind filter say kind is not recorded there, rather than report
   `implement`. Reading headline suffixes like `(HIGH, S)` as a kind hint
   is a guess and is not proposed.
+  Shipped 2026-09-26 in 7402514f (GitHub CI green). mode:"report" counts
+  import-defaulted kinds as kind_not_recorded beside by_kind.
   **Layman:** On the pass-by-pass roadmap style every item is labelled the same kind, so filtering by kind shows nothing useful.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
   Lanes: roadmap.
 
-- 📋 [ANTS-5407] **Pass-headings items never store the Lanes their Status lines declare, and one item reports a lanes field_conflict at line 0.**
+- ✅ [ANTS-5407] **Pass-headings items never store the Lanes their Status lines declare, and one item reports a lanes field_conflict at line 0.**
   Every RetroDB Status line carries `Lanes: a, b.` after the status, yet
   bullet_fields:["lanes"] returns none. Parse the trailing Lanes on a
   pass-headings Status line into the lanes column. Separately, every migrate
   reports field_conflict `PASS-59-64: lanes` at line 0 although that block has
   one Lanes line, so the conflict is file versus store: name both values and
   which won. Read-side twin of ANTS-5397 (the write guard on the same line).
+  Shipped 2026-09-26 in e7c99431 (GitHub CI green). The pass reader reads
+  Lanes from the Status line; RetroDB dry run: 99 items gain lanes, the
+  PASS-59-64 lanes conflict is gone.
   **Layman:** The pass-by-pass roadmap style names which parts of the project each item touches, but that information is lost on import.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
