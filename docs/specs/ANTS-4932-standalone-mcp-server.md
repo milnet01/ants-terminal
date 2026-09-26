@@ -219,7 +219,7 @@ Assigned by this spec:
 
 `token_usage` counts only the calls the terminal served. Calls `ants-mcpd`
 serves are not in it, nor in the status-bar savings. Deferred — tracked by
-ANTS-5311.
+ANTS-5311, whose contract is `docs/specs/ANTS-5311-mcpd-usage-snapshots.md`.
 
 **Both hosts run one `tools/call` pipeline.** It is extracted from
 `ClaudeIntegration` into `ants_mcpcore_lib` as-is: the `claude.mcp_enabled`
