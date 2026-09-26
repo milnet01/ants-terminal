@@ -46810,6 +46810,10 @@ are closed inline in the feedback files rather than filed here.
   mistaken item flipped to dropped stays visible as 🚫, which answers "it
   comes back as 📋" but not "it is still in the file". § 4.4's hard delete
   still needs the user's go-ahead, as the spec says.
+  Decided by the user 2026-09-26: keep 🚫 Dropped visible for items
+  decided against (ANTS-4977 stands; spec § 4.1 is superseded on that
+  point). Approved: a guarded hard delete, requiring explicit
+  confirmation, for items filed by mistake.
   **Layman:** A roadmap item added by mistake cannot be undone — deleting it from the file does not remove it, and the next save writes it straight back.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Fin Break).
@@ -66633,6 +66637,8 @@ project. Reported causes are claims until checked in source.
   build-test step (56 s locally), so they no longer contend with the -j2
   run, in CI or in the hook. Open: whether a local gate on a shared
   machine should enforce a wall-clock budget at all. User decision.
+  Decided by the user 2026-09-26: the local pre-push gate does not run
+  wall-clock perf-labelled tests. GitHub CI keeps running them.
   **Layman:** Pushing code can fail because a speed test ran while the computer was busy, not because anything broke.
   Kind: fix.
   Source: in-session-2026-09-25.
@@ -78990,6 +78996,24 @@ protocol.
   Source: user-2026-05-11.
 
 ---
+
+- 📋 [ANTS-5390] **The About dialog opens large enough for all its text, including the MCP reload notice.**
+  The About dialog clips its description at the default size (user screenshot 2026-09-26). It also has to fit the message telling the user to reload MCP.
+  **Layman:** Makes the About window big enough that nothing is cut off.
+  Kind: ux.
+  Source: user-request-2026-09-26.
+
+- 📋 [ANTS-5391] **The Roadmap dialog says it shows the store, not ROADMAP.md, on a store-backed project.**
+  The window title reads `Roadmap — ROADMAP.md` on a store-backed project (user screenshot 2026-09-26), which suggests the file is the source. Check what the dialog actually reads, and make the title and any source label match it.
+  **Layman:** Makes the roadmap window say where its data really comes from.
+  Kind: ux.
+  Source: user-request-2026-09-26.
+
+- 📋 [ANTS-5392] **ANTS-1887's Layman column holds leaked tool-call markup.**
+  The Roadmap dialog shows `</layman> First-run detection ...` inside ANTS-1887's one-line summary. Repair the column with amend_field, then check the store for other layman values carrying the same markup.
+  **Layman:** Cleans a roadmap entry whose summary contains stray machine text.
+  Kind: fix.
+  Source: user-screenshot-2026-09-26.
 
 ## 0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — shipped 2026-05-08
 
