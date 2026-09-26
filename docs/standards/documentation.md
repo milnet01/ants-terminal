@@ -860,8 +860,13 @@ it is referenced.
 |---|---|
 | `docs/history/<document>.md` | One document's rule pedigree — who reported a rule, which id, what the earlier wording was |
 | `docs/reviews/<document>-loop-log.md` | One document's review history, a row per loop |
-| `docs/<subject>.md` | Every other dated record on one subject — a first run, a live run, a measurement, a field pass |
+| `docs/<subject>-records.md` | Every other dated record on one subject — a first run, a live run, a measurement, a field pass |
 
+
+**The third home's name carries `-records`**, because a reader choosing what to
+open sees the filename and not the title. A bare `docs/<subject>.md` reads as a
+document ABOUT that subject; the `-records` form cannot be mistaken for one.
+Reported 2026-09-26 by the user, of a file that had made exactly that impression.
 
 **Take the document's basename and lowercase it** —
 `standards/documentation.md` gives `docs/history/documentation.md`, and `CLAUDE.md`
@@ -882,7 +887,10 @@ heading — a heading moves and the record's citations break with it.
 silences that check in every project that does not also reconfigure it.
 
 **Within the third home, a current-state reference and dated entries on one
-subject are ONE file**: what is true now first, the dated entries below. **This
+subject are ONE file**, named `-records` like any other file in that home: what is
+true now first, the dated entries below. **A reference that carries no dated
+entries at all keeps the bare `docs/<topic>.md`**, and that difference in the name
+is what lets a reader tell the two apart without opening either (§ 3). **This
 does not reach the first two homes** — a document's pedigree and its loop log are
 separate files by the table above and by § 9.1, and a document is not made into a
 one-file subject by having them. Two files in the SAME home on one subject is what
