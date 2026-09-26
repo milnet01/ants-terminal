@@ -22950,6 +22950,19 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Release note (2026-09-04): no CHANGELOG entry, deliberately — hardens
   one test's byte window. Test infrastructure only.
 
+- 📋 [ANTS-5401] **The wide-char overwrite test skips on a failed width check and reports a pass.**
+  tests/features/wide_char_overwrite_mate/test_wide_char_overwrite.cpp:
+  wideCharPremiseHolds() runs U+4E2D through VtParser/TerminalGrid and, on a
+  false result, prints "SKIP: wcwidth…" and does a plain `return;`. The code
+  under test computes the skip condition, so a width regression reads as a
+  pass. Global testing.md §7 (code-keyed skip owes a tracking item) and §10.
+  Fix: make it a GTEST_SKIP keyed on the ENVIRONMENT only (the locale's own
+  wcwidth), and fail when the locale says 2 but the grid disagrees.
+  **Layman:** One test quietly gives up when a width check fails and still shows as passed, so a real bug in that check would go unnoticed.
+  Kind: test.
+  Source: claude-config adoption-day standards check 2026-09-26.
+  Lanes: tests, vt.
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
