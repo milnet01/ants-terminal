@@ -66892,6 +66892,31 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-26.
   Lanes: mcp.
 
+- 📋 [ANTS-5402] **doc_integrity reports a Markdown table row whose cell count differs from its header.**
+  A row whose cell count differs from the header row renders wrong and
+  is broken by hand regularly; a literal `|` inside a cell is the common
+  cause. Count cells the way GFM does: split on unescaped `|`, ignore
+  pipes inside backtick code spans, trim the optional outer pipes. Skip
+  tables inside fences. New finding kind on doc_integrity, so doc_lint
+  picks it up. claude-config closes CFG-0024 against this id.
+  **Layman:** The document checker will flag a table row with too many or too few columns, such as one broken by a stray | character.
+  Kind: feature.
+  Source: claude-config session request 2026-09-26 (their CFG-0024).
+  Lanes: docs, mcp.
+
+- 📋 [ANTS-5403] **doc_dedup flags near-duplicate passages that state the same figure with different values.**
+  claude-config's reviews keep finding one fact stated with two values
+  across a skill's files (a word budget of 600-1200 in one file and 500 in
+  another), each found by a cold lane. doc_dedup already clusters
+  near-duplicate passages across a doc set. Add a finding kind when two
+  passages in one cluster differ in a number token at the same position.
+  Report both locations and both values; decide nothing about which is
+  right. claude-config closes CFG-0234 against this id.
+  **Layman:** When two files repeat the same sentence but one says 500 and the other 600, the checker will point it out.
+  Kind: feature.
+  Source: claude-config session request 2026-09-26 (their CFG-0234).
+  Lanes: docs, mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
