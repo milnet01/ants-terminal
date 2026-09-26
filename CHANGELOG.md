@@ -167,6 +167,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An MCP verb that fails with an exception now answers handler_failed instead of closing the terminal and every session in it.**
+
+- **ants-mcpd answers an over-size request with one error and skips the rest of it, instead of dropping it silently and misreading its tail.**
+
+- **read_log skips and counts a line longer than max_bytes rather than reading it whole.**
+
+- **A split pane too narrow for the command header no longer rereads the whole command region on every repaint.**
+
+- **A clock correction while a plugin handler runs no longer gets a healthy plugin demoted.**
+
+- **test_audit_brief no longer reads a cached partition another call may be evicting.**
+
 - **A pass-headings roadmap's Lanes, declared on each Status line, reach the lanes column** (ANTS-5407)
   The `#### Pass` reader now reads `Lanes: a, b.` from a pass's Status line,
   so the import stores it and the lanes filter and report can see which

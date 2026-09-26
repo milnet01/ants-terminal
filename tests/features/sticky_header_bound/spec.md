@@ -53,13 +53,13 @@ signature.
   with exactly one space.** `"  a  "`, `"  b  "` (leading and trailing
   spaces on each) produces `"a b"`. *Test:* `test_sticky_header_bound.cpp`
   (paired test file).
-- **ANTS-5027-INV-5 — a non-positive `maxChars` never truncates.**
-  `paintEvent` can pass a non-positive width on a tiny window. This is
-  current, pre-fix behaviour and the bound must not change it: for a short
-  span (`"hello"`, `"world"`) with `maxChars = 0`, the result is the full
-  joined string `"hello world"`, untruncated; the same holds for a negative
-  `maxChars` (`-5`). *Test:* `test_sticky_header_bound.cpp` (paired test
-  file).
+- **ANTS-5027-INV-5 — a non-positive `maxChars` reads nothing and returns
+  empty.** `paintEvent` passes a non-positive width when a pane is narrower
+  than the header's padding, where no text fits. For `maxChars = 0` and for
+  `-5`, over a span of 100000 lines, the result is `""` and `lineAt` is never
+  called. This replaced "never truncates" (2026-09-26 audit): that reading
+  kept the unbounded read ANTS-5027 exists to remove, for the narrow-pane
+  case. *Test:* `test_sticky_header_bound.cpp` (paired test file).
 
 ## Scope
 
@@ -90,7 +90,7 @@ call count and/or the returned string via the shared `expect()` helper
 the current, unbounded tree, INV-1 and INV-3 are expected to fail: the
 5-digit spans they construct make the current call count (one per line, no
 early stop) far exceed `maxChars + 2`, which is exactly the defect this test
-locks against. INV-2, INV-4 and INV-5 assert the current output shape and
+locks against. INV-2 and INV-4 assert the current output shape and
 are expected to pass on both the current tree and the bounded fix, proving
 the fix does not change output for spans that already fit.
 

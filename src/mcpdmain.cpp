@@ -211,6 +211,8 @@ int main(int argc, char **argv) {
         [] {}, [] { return true; });
 
     QByteArray pending;
+    bool discarding = false;   // inside an over-ceiling line; drop to its '\n'
+    constexpr qsizetype kMaxRequestBytes = qsizetype{256} * 1024;  // ANTS-1659
     QSocketNotifier stdinNotifier(STDIN_FILENO, QSocketNotifier::Read);
     QObject::connect(&stdinNotifier, &QSocketNotifier::activated, &app,
                      [&](QSocketDescriptor, QSocketNotifier::Type) {
@@ -223,14 +225,37 @@ int main(int argc, char **argv) {
             return;
         }
         pending.append(chunk, n);
+        if (discarding) {
+            const qsizetype nl0 = pending.indexOf('\n');
+            if (nl0 < 0) { pending.clear(); return; }
+            pending.remove(0, nl0 + 1);
+            discarding = false;
+        }
+        // ANTS-1659 — the same request ceiling the socket enforces. The
+        // socket disconnects; stdio cannot reconnect, so an over-ceiling line
+        // is refused once (its id is unreadable) and never parsed. It applies
+        // to a whole line in the buffer and to one still arriving, whose rest
+        // is then skipped up to its newline.
+        const auto refuseOversized = [&out] {
+            out.reply(QByteArrayLiteral(
+                "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,"
+                "\"message\":\"request exceeds the 262144-byte ceiling; discarded\"}}\n"));
+        };
         qsizetype nl;
         while ((nl = pending.indexOf('\n')) >= 0) {
-            const QByteArray line = pending.left(nl).trimmed();
+            if (nl > kMaxRequestBytes) {
+                refuseOversized();
+            } else {
+                const QByteArray line = pending.left(nl).trimmed();
+                if (!line.isEmpty()) pipeline.handleMcpLine(line, &out);
+            }
             pending.remove(0, nl + 1);
-            if (!line.isEmpty()) pipeline.handleMcpLine(line, &out);
         }
-        // ANTS-1659 — the same request ceiling the socket enforces.
-        if (pending.size() > qsizetype{256} * 1024) pending.clear();
+        if (pending.size() > kMaxRequestBytes) {
+            pending.clear();
+            discarding = true;
+            refuseOversized();
+        }
     });
 
     return QCoreApplication::exec();

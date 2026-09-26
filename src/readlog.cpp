@@ -1,7 +1,7 @@
 // ANTS-1855 — read_log filtering helper. Pure (Qt6::Core-only). Streams
 // the file line-by-line and keeps survivors in a drop-oldest deque
-// bounded by max_bytes (and tail), so peak heap stays ≤ max_bytes
-// regardless of file size. See docs/specs/ANTS-1855.md.
+// bounded by max_bytes (and tail), and reads no line past max_bytes, so
+// peak heap stays near max_bytes regardless of file size. See docs/specs/ANTS-1855.md.
 
 #include "readlog.h"
 
@@ -100,10 +100,26 @@ QJsonObject filter(const QString &path, const Options &opts) {
     std::deque<QByteArray> kept;     // raw UTF-8 (newline stripped)
     qint64 keptBytes = 0;
     qint64 cursorPos = startOffset;  // advances past each COMPLETE line
+    int oversizeSkipped = 0;         // lines longer than maxBytes (B-INV-11)
 
     while (!f.atEnd()) {
         const qint64 lineStart = f.pos();
-        QByteArray raw = f.readLine();
+        // Never hold more than maxBytes of one line: a longer line is
+        // drained in maxBytes pieces and skipped whole.
+        QByteArray raw = f.readLine(qint64(maxBytes) + 1);
+        if (!raw.endsWith('\n') && !f.atEnd()) {
+            QByteArray piece;
+            do { piece = f.readLine(qint64(maxBytes) + 1); }
+            while (!piece.endsWith('\n') && !f.atEnd());
+            if (!piece.endsWith('\n')) {   // oversized AND still being written
+                cursorPos = lineStart;
+                break;
+            }
+            cursorPos = f.pos();
+            ++scanned;
+            ++oversizeSkipped;
+            continue;
+        }
         const bool complete = raw.endsWith('\n');
         if (!complete && f.atEnd()) {
             // Partial trailing line — hold it; cursor stops before it.
@@ -148,6 +164,10 @@ QJsonObject filter(const QString &path, const Options &opts) {
     env["returned"] = returned;
     env["truncated"] = linesDropped > 0;
     if (linesDropped > 0) env["lines_dropped"] = linesDropped;
+    if (oversizeSkipped > 0) {
+        env["truncated"] = true;
+        env["lines_oversize_skipped"] = oversizeSkipped;
+    }
     if (capClamped) env["bytes_cap_clamped"] = true;
     env["cursor"] = QString::number(cursorPos);
     if (cursorStale) {

@@ -1,6 +1,5 @@
 #include "pluginmanager.h"
 
-#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -13,7 +12,18 @@
 #include <QThread>
 #include <QTimer>
 
+#include <chrono>
 #include <cstdlib>
+
+namespace {
+// Handler execution time is measured on the monotonic clock: a wall-clock
+// step (an NTP correction) during a handler would otherwise read as that
+// handler running for the size of the step, and demote a healthy plugin.
+qint64 monotonicMs() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+}  // namespace
 
 bool PluginManager::devMode() {
     // Cached per-process: env var is read once at first call
@@ -189,7 +199,7 @@ void PluginManager::wireEngine(LuaEngine *engine) {
     // run on the GUI thread (queued from the worker); m_execStart is touched
     // only here and in healthTick(). INV-3.
     connect(engine, &LuaEngine::eventStarted, this, [this, engine](quint64) {
-        m_execStart.insert(engine, QDateTime::currentMSecsSinceEpoch());
+        m_execStart.insert(engine, monotonicMs());
     });
     connect(engine, &LuaEngine::eventCompleted, this, [this, engine](quint64) {
         m_execStart.remove(engine);
@@ -221,7 +231,7 @@ QList<LuaEngine *> PluginManager::healthyEngines() const {
 
 void PluginManager::healthTick() {
     if (m_execStart.isEmpty()) return;
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = monotonicMs();
     // Collect first so demotion doesn't mutate m_execStart mid-iteration.
     QList<LuaEngine *> toDemote;
     for (auto it = m_execStart.cbegin(); it != m_execStart.cend(); ++it) {

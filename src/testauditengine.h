@@ -37,6 +37,7 @@
 
 #pragma once
 
+#include <optional>
 #include <QDateTime>
 #include <QHash>
 #include <QJsonArray>
@@ -316,7 +317,7 @@ RecheckResult   recheck(const RecheckRequest &req);
 // chunk layout for a given token without re-walking the tree.
 // Bounded; LRU-evicted to kPartitionCacheCap entries.
 namespace internal {
-const PartitionResult *lookupPartition(const QString &token);
+std::optional<PartitionResult> lookupPartition(const QString &token);
 
 // Exposed for ANTS-1451 regression coverage. Walks the project tree
 // honouring the test_globs, with build-tree + tooling exclusions

@@ -19050,6 +19050,64 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-26 (code audit, CHANGELOG write).
   Lanes: changelog.
 
+- 📋 [ANTS-5414] **apply_edits, co_change_family and invariant_check cap the arrays a caller can make them process.**
+  apply_edits `edits` (remotecontrol_workspace.cpp ~2594) has no count
+  cap: refuse bad_args past 100, as file_outline's kMaxOutlinePaths does.
+  co_change_family `stems` (~3591): stop at kCitedByMaxAnchors (64) and
+  flag stems_truncated + stems_limit. invariant_check `matched_specs`
+  (remotecontrol_state.cpp ~2846): a max_specs arg (default 50, clamp
+  1-200, task_priors clampCap shape) with truncated + matched_total;
+  decide whether matched_count reports returned or total (ANTS-4374).
+  **Layman:** Three tools accept lists of any length; each should have a sensible limit.
+  Kind: enhancement.
+  Source: code-audit-2026-09-26 (review-code RC-32, RC-48; drafts by retroarch-1c).
+  Lanes: mcp-workspace, mcp-state.
+
+- 📋 [ANTS-5415] **Typing or pasting onto a stalled paste is capped like the PTY write queue.**
+  VtStream::write and writePaste append to m_pasteBacklog with no cap
+  while a paste is in flight (vtstream.cpp ~87-100). Cap appends onto an
+  in-flight backlog at Pty::MAX_PENDING_WRITE_BYTES (4 MiB; private in
+  ptyhandler.h, so make it public or mirror it with a static_assert) and
+  report a drop the way writeLost does. Leave a single paste whole: the
+  feed already slices it.
+  **Layman:** If a big paste stalls, extra input queued behind it should not grow memory without limit.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (review-code RC-14; draft by retroarch-1c).
+  Lanes: pty.
+
+- 📋 [ANTS-5416] **The transcript walker skips a line longer than its 16 MiB window on a resumed walk.**
+  claudetranscriptwalker.h walkFrom reads each line with readLine() and
+  no size; only the cold walk's 16 MiB tail window bounds anything. Hoist
+  that window to a namespace constant and use it as a per-line cap on
+  every walk, skipping a longer line whole (and holding the cursor at an
+  unterminated one, INV-1). Decide first: the skip drops a real event
+  over 16 MiB, which the cold walk already cannot parse.
+  **Layman:** A single enormous line in a Claude transcript should not be read into memory whole.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (review-code RC-26; draft by retroarch-1c).
+  Lanes: claude-transcript.
+
+- 📋 [ANTS-5417] **slurpUtf8 reads at most the cache budget, so an oversized file is never held whole.**
+  filecontentcache.h:53 does QString::fromUtf8(f.readAll()); kByteBudget
+  only decides whether a body is kept. Read at most kByteBudget/2 bytes,
+  report truncation through an optional out-param, and never cache a
+  clipped body. coldeyesengine.cpp:1176 hashes the whole body, so it must
+  flag or refuse a truncated read rather than hash a prefix.
+  **Layman:** Reading a huge file for a review brief should stop at a size limit.
+  Kind: fix.
+  Source: code-audit-2026-09-26 (review-code lane dim 11; draft by retroarch-1c).
+  Lanes: file-content-cache.
+
+- 📋 [ANTS-5418] **Scrollback search runs off the GUI thread or yields, so a million-line search cannot freeze the window.**
+  TerminalWidget::performSearch (terminalwidget.cpp ~4687) scans every
+  scrollback line on the GUI thread; at the 1M-line scrollback maximum
+  that freezes every tab until it finishes. Options: an incremental scan
+  that yields between batches, or a worker over a snapshot of the lines.
+  **Layman:** Searching a very long scrollback should not lock up the terminal.
+  Kind: perf.
+  Source: code-audit-2026-09-26 (review-code RC-11).
+  Lanes: terminal-widget.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

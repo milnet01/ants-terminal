@@ -16,14 +16,18 @@
 // bounds how many lines are read.
 inline QString stickyCommandText(int startLine, int endLine, int maxChars,
                                  const std::function<QString(int)> &lineAt) {
+    // No room in the header (a pane narrower than its padding): nothing is
+    // shown, so nothing is read. Unbounded here, the loop read the whole
+    // region — up to the whole scrollback — on every paint.
+    if (maxChars <= 0) return {};
     QString cmdText;
     for (int gl = startLine; gl <= endLine; ++gl) {
         cmdText += lineAt(gl).trimmed();
         if (gl < endLine) cmdText += QLatin1Char(' ');
-        if (maxChars > 0 && cmdText.length() > maxChars + 1) break;
+        if (cmdText.length() > maxChars + 1) break;
     }
     cmdText = cmdText.trimmed();
-    if (maxChars > 0 && cmdText.length() > maxChars)
+    if (cmdText.length() > maxChars)
         cmdText = cmdText.left(maxChars - 1) + QChar(0x2026);  // ellipsis
     return cmdText;
 }

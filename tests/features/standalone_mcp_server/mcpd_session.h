@@ -61,6 +61,9 @@ public:
         return id;
     }
 
+    // Bytes written as given, for a request no well-formed client sends.
+    void writeRaw(const QByteArray &bytes) { m_proc.write(bytes); }
+
     int sendCall(const QString &tool, const QJsonObject &args) {
         return send(QStringLiteral("tools/call"),
                     QJsonObject{{"name", tool}, {"arguments", args}});

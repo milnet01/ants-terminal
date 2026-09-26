@@ -34,6 +34,9 @@ dispatch are locked by source-scrape.
 - **B-INV-10** — `since_cursor` reads only appended bytes + returns a
   fresh `cursor`; a rotated/garbage cursor soft-falls-back to
   `cursor_stale:true` + full re-read (never a refusal).
+- **B-INV-11** — a line longer than `max_bytes` is never held whole: it is
+  skipped, counted in `lines_oversize_skipped` with `truncated:true`, and the
+  cursor passes it; one with no newline yet holds the cursor at its first byte.
 - **B-not_found** — an unopenable path → `{ok:false, code:"not_found"}`.
 
 ## Test plan

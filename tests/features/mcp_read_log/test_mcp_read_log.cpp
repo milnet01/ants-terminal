@@ -16,6 +16,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QFileInfo>
 #include <QTemporaryDir>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
@@ -233,4 +234,31 @@ TEST(McpReadLog, NotFound) {
         ReadLog::filter("/nonexistent/ants-1855/nope.log", ReadLog::Options{});
     EXPECT_FALSE(env.value("ok").toBool());
     EXPECT_EQ(env.value("code").toString().toStdString(), "not_found");
+}
+
+// B-INV-11 — a line longer than max_bytes is never held whole: it is skipped
+// and counted, the lines around it survive, and the cursor passes it. One
+// still being written (no newline yet) holds the cursor at its first byte.
+TEST(McpReadLog, OversizedLineIsSkippedNotHeld) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString big(8192, QLatin1Char('x'));
+    const QString p = writeLog(d, "big.log", {"before", big, "after"});
+    ReadLog::Options o; o.maxBytes = 4096;
+    const QJsonObject env = ReadLog::filter(p, o);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(linesOf(env), (QStringList{"before", "after"}));
+    EXPECT_EQ(env.value("lines_oversize_skipped").toInt(), 1);
+    EXPECT_TRUE(env.value("truncated").toBool());
+    EXPECT_EQ(env.value("cursor").toString().toLongLong(), QFileInfo(p).size());
+
+    const QString q = d.path() + "/partial.log";
+    QFile f(q);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("first\n");
+    f.write(big.toUtf8());           // no newline: still being written
+    f.close();
+    const QJsonObject e2 = ReadLog::filter(q, o);
+    EXPECT_EQ(linesOf(e2), (QStringList{"first"}));
+    EXPECT_EQ(e2.value("cursor").toString().toLongLong(), 6);
 }

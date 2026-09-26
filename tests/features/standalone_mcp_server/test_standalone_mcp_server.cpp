@@ -33,6 +33,7 @@
 
 #include <atomic>
 #include <thread>
+#include <stdexcept>
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -383,4 +384,77 @@ TEST(StandaloneMcpServer, Inv13HoldIsSeenAcrossProcesses) {
                                      appendArgs(root, QStringLiteral("After release.")));
     EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(ok).toJson().toStdString();
+}
+
+// A verb whose handler throws answers `handler_failed` instead of
+// terminating the process, on the sync and the deferred path alike.
+TEST(StandaloneMcpServer, ThrowingVerbRefusesHandlerFailed) {
+    ClaudeIntegration ci;
+    const QString syncName = QStringLiteral("zz_test_throws");
+    const QString defName  = QStringLiteral("zz_test_throws_deferred");
+    ci.registerToolProvider(syncName, ClaudeIntegration::callerCwdContractFor(syncName),
+        ClaudeIntegration::ToolHandler([](const QJsonObject &) -> QString {
+            throw std::out_of_range("boom");
+        }));
+    ci.registerToolProvider(defName, ClaudeIntegration::callerCwdContractFor(defName),
+        ClaudeIntegration::DeferredToolHandler(
+            [](const QJsonObject &, std::function<void(QString)>) {
+                throw std::runtime_error("later boom");
+            }));
+    for (const QString &name : {syncName, defName}) {
+        QByteArray line;
+        McpReplyChannel out([&line](const QByteArray &l) { line = l; }, [] {},
+                            [] { return true; });
+        const QJsonObject req{
+            {"jsonrpc", "2.0"}, {"id", 7}, {"method", "tools/call"},
+            {"params", QJsonObject{{"name", name}, {"arguments", QJsonObject{
+                {"caller_cwd", QStringLiteral(ANTS_SOURCE_DIR)}}}}}};
+        ci.handleMcpLine(QJsonDocument(req).toJson(QJsonDocument::Compact), &out);
+        ASSERT_FALSE(line.isEmpty()) << name.toStdString() << ": no reply";
+        EXPECT_TRUE(line.contains("handler_failed"))
+            << name.toStdString() << ": " << line.toStdString();
+    }
+}
+
+// ANTS-1659 on stdio — a request over the 256 KiB ceiling gets one -32600
+// reply (id null, since its id cannot be read), and its tail is skipped
+// rather than parsed as a request of its own; the next request is served.
+TEST(StandaloneMcpServer, OversizedStdinRequestIsRefusedOnce) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
+    ASSERT_TRUE(mcpd.started());
+    mcpd.writeRaw(QByteArray(300 * 1024, 'a') + '\n');
+    const int list = mcpd.send(QStringLiteral("tools/list"));
+    const QJsonObject listed = mcpd.await(list);
+    EXPECT_TRUE(listed.contains(QStringLiteral("result")))
+        << QJsonDocument(listed).toJson().toStdString();
+    // An id:null reply lands under 0; a later one would overwrite it.
+    const QJsonObject err = mcpd.await(0, 2000);
+    EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
+                  .value(QStringLiteral("code")).toInt(), -32600)
+        << QJsonDocument(err).toJson().toStdString();
+}
+
+// The same ceiling when the line arrives in pieces: the first 300 KiB with
+// no newline trips it mid-line, and the tail sent later is skipped.
+TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
+    ASSERT_TRUE(mcpd.started());
+    mcpd.writeRaw(QByteArray(300 * 1024, 'a'));
+    const QJsonObject err = mcpd.await(0, 5000);
+    EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
+                  .value(QStringLiteral("code")).toInt(), -32600)
+        << QJsonDocument(err).toJson().toStdString();
+    mcpd.writeRaw(QByteArray(10 * 1024, 'a') + '\n');
+    const QJsonObject listed = mcpd.await(mcpd.send(QStringLiteral("tools/list")));
+    EXPECT_TRUE(listed.contains(QStringLiteral("result")))
+        << QJsonDocument(listed).toJson().toStdString();
+    const QJsonObject after = mcpd.await(0, 500);
+    EXPECT_EQ(after.value(QStringLiteral("error")).toObject()
+                  .value(QStringLiteral("code")).toInt(), -32600)
+        << "the tail was parsed as a request: "
+        << QJsonDocument(after).toJson().toStdString();
 }

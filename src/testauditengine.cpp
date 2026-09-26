@@ -969,10 +969,13 @@ const QStringList &kStyleDimensions() { return g_kStyleDimensions(); }
 const QVector<PrePassPattern> &prePassPatterns() { return g_kPrePatterns(); }
 
 namespace internal {
-const PartitionResult *lookupPartition(const QString &token) {
+// A copy, taken under the lock: a pointer into the cache outlived the lock,
+// and a concurrent partition() could evict the entry it pointed at.
+std::optional<PartitionResult> lookupPartition(const QString &token) {
     QMutexLocker lk(&g_partitionCacheMutex);
     auto it = g_partitionCache.find(token);
-    return (it == g_partitionCache.end()) ? nullptr : &it.value();
+    if (it == g_partitionCache.end()) return std::nullopt;
+    return it.value();
 }
 
 // ANTS-1451 — thin forwarder so the regression test can exercise the
@@ -1344,7 +1347,7 @@ BriefResult brief(const BriefRequest &req) {
             "test_audit_brief: partition_token is required");
         return r;
     }
-    const PartitionResult *p =
+    const std::optional<PartitionResult> p =
         internal::lookupPartition(req.partitionToken);
     if (!p) {
         r.ok = false; r.code = QStringLiteral("stale_partition");

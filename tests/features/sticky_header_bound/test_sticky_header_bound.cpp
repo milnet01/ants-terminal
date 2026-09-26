@@ -142,25 +142,18 @@ void runChecks() {
                QStringLiteral("got=[%1] want=[%2]").arg(result, want));
     }
 
-    // ANTS-5027-INV-5 — a non-positive maxChars never truncates (current,
-    // pre-fix semantics; the fix bounds the READ, not this rule).
-    {
-        QStringList lines{QStringLiteral("hello"), QStringLiteral("world")};
-        const QString want = QStringLiteral("hello world");
-
-        CountingLineSource srcZero{lines};
-        const QString resultZero = stickyCommandText(
-            0, lines.size() - 1, 0,
-            [&srcZero](int gl) { return srcZero(gl); });
-        expect(resultZero == want, "ANTS-5027-INV-5/zero",
-               QStringLiteral("got=[%1] want=[%2]").arg(resultZero, want));
-
-        CountingLineSource srcNeg{lines};
-        const QString resultNeg = stickyCommandText(
-            0, lines.size() - 1, -5,
-            [&srcNeg](int gl) { return srcNeg(gl); });
-        expect(resultNeg == want, "ANTS-5027-INV-5/negative",
-               QStringLiteral("got=[%1] want=[%2]").arg(resultNeg, want));
+    // ANTS-5027-INV-5 — a non-positive maxChars reads nothing and returns
+    // empty: no text fits, so a long span must not be walked.
+    for (const int mc : {0, -5}) {
+        QStringList lines;
+        for (int i = 0; i < 100000; ++i) lines << QStringLiteral("x");
+        CountingLineSource src{lines};
+        const QString result = stickyCommandText(
+            0, lines.size() - 1, mc, [&src](int gl) { return src(gl); });
+        expect(result.isEmpty(), "ANTS-5027-INV-5/empty",
+               QStringLiteral("maxChars=%1 got=[%2]").arg(mc).arg(result.left(40)));
+        expect(src.calls == 0, "ANTS-5027-INV-5/no-read",
+               QStringLiteral("maxChars=%1 calls=%2").arg(mc).arg(src.calls));
     }
 }
 

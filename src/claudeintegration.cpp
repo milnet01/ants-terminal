@@ -17,6 +17,8 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
+
+#include <exception>
 #include <QJsonArray>
 #include <QPointer>  // ANTS-2101 — guard MCP socket across nested-loop dispatch
 #include <QRegularExpression>
@@ -1415,6 +1417,18 @@ QStringList ClaudeIntegration::registeredToolNames() const {
     return out;
 }
 
+namespace {
+// The refusal a verb's escaped exception becomes (mcp-error-codes.md § 5).
+QString handlerFailedEnvelope(const QString &tool, const QString &what) {
+    qWarning("MCP verb %s threw: %s", qUtf8Printable(tool), qUtf8Printable(what));
+    QJsonObject env;
+    env[QStringLiteral("ok")]    = false;
+    env[QStringLiteral("code")]  = QStringLiteral("handler_failed");
+    env[QStringLiteral("error")] = QStringLiteral("%1: internal error (%2)").arg(tool, what);
+    return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+}
+}  // namespace
+
 void ClaudeIntegration::registerToolProvider(
     const QString &name,
     CallerCwdContract contract,
@@ -1449,6 +1463,10 @@ void ClaudeIntegration::registerToolProvider(
     // multi-checkpoint debugging sees: lambda-enter (here) → cmd*
     // body checkpoint (per-cmd one-liner) → recordDispatch (final).
     // Zero overhead in production (single bit-test when category off).
+    //
+    // The same wrapper is the exception boundary. This process hosts every
+    // Claude Code session's PTY, so a throw escaping one verb — from a Qt
+    // slot or a worker job alike — would terminate it and kill them all.
     ToolHandler wrapped =
         [name, inner = std::move(handler)]
         (const QJsonObject &args) -> QString {
@@ -1456,7 +1474,13 @@ void ClaudeIntegration::registerToolProvider(
                      "mcp lambda-enter tool=%s arg_keys=%lld",
                      name.toUtf8().constData(),
                      static_cast<long long>(args.size()));
-            return inner(args);
+            try {
+                return inner(args);
+            } catch (const std::exception &e) {
+                return handlerFailedEnvelope(name, QString::fromUtf8(e.what()));
+            } catch (...) {
+                return handlerFailedEnvelope(name, QStringLiteral("unknown exception"));
+            }
         };
     m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract, false,
                                            DispatchLane::Shared, {}};
@@ -1496,7 +1520,19 @@ void ClaudeIntegration::registerToolProvider(
     DeferredToolHandler handler) {
     registerToolProvider(name, contract, ToolHandler{});
     if (auto it = m_toolProviders.find(name); it != m_toolProviders.end())
-        it->second.deferred = std::move(handler);
+        it->second.deferred =
+            [name, inner = std::move(handler)]
+            (const QJsonObject &args, std::function<void(QString)> reply) {
+                // A throw before `reply` runs answers the call once; the
+                // dispatcher drops any second reply.
+                try {
+                    inner(args, reply);
+                } catch (const std::exception &e) {
+                    reply(handlerFailedEnvelope(name, QString::fromUtf8(e.what())));
+                } catch (...) {
+                    reply(handlerFailedEnvelope(name, QStringLiteral("unknown exception")));
+                }
+            };
 }
 
 // ANTS-1360 — MCP debug-log tap. Top-level shape only — no recursion

@@ -139,7 +139,8 @@ private:
     QStringList m_watchedEnabled;  // cached enabled list for hot-reload
 
     // ANTS-1750 — health bookkeeping. m_execStart: per-engine handler
-    // execution-start ms (set on eventStarted, cleared on eventCompleted),
+    // execution-start ms on the monotonic clock (set on eventStarted,
+    // cleared on eventCompleted),
     // touched only on the GUI thread. m_demoted: engines neutered this
     // session. m_zombies: detached worker pairs from a stuck-C-call
     // teardown — never joined, never deleted (bounded by runaways/session).

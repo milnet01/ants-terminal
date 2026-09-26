@@ -15,6 +15,9 @@ invariant.
 | `Inv9ConcurrentWritesFromBothHosts` | INV-9 | `ants-mcpd` and an in-process `RemoteControl` each append to one migrated project at once. Each host has at least one `ok:true`; the item count is the seeded item plus every `ok:true`; `PRAGMA integrity_check` is `ok`. |
 | `Inv11UidChecksRefuseAnotherUid` | INV-11 | `mcpd::socketOwnedBy` and `mcpd::peerUidIs`, each called with this process's uid and with another; and `socketOwnedBy` on a symlink to an owned socket refuses it (lstat, not stat). |
 | `Inv13HoldIsSeenAcrossProcesses` | INV-13 | A migration hold taken in the test process makes `roadmap_log` through `ants-mcpd` refuse `roadmap_busy`; after release it is `ok:true`. |
+| `ThrowingVerbRefusesHandlerFailed` | — | A registered verb that throws, on the sync path and the deferred path, answers `code:"handler_failed"` (`mcp-error-codes.md` § 5) rather than terminating the process that hosts every session's PTY. |
+| `OversizedStdinRequestIsRefusedOnce` | — | A stdin line over the 256 KiB request ceiling (ANTS-1659) gets exactly one JSON-RPC `-32600` reply with `id:null`; its tail is skipped, never parsed as a request, and the next request is answered. |
+| `OversizedStdinRequestInPiecesIsRefusedOnce` | — | The same when the line arrives in pieces: the ceiling trips before its newline, one `-32600` is sent, and the tail written later is skipped rather than parsed. |
 
 INV-4 lives in `tests/features/mcp_dispatch_forward_completeness/` and INV-7
 in `tests/features/mcp_tabspecific_contract/`, which own those contracts. INV-10
