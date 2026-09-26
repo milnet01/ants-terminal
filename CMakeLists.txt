@@ -1348,9 +1348,12 @@ if(ANTS_TESTS)
         # genuine hang promptly; it just stops killing a sanitized build for
         # being sanitized. Per-test overrides are not available here —
         # DISCOVERY_MODE PRE_TEST means no test exists at configure time for
-        # set_tests_properties to name.
+        # set_tests_properties to name. DISCOVERY_TIMEOUT is the same hang
+        # detector for the listing run: its 5s default killed test_claude's
+        # listing once on a memory-starved host (0.1s when re-timed).
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
+            DISCOVERY_TIMEOUT 60
             PROPERTIES LABELS "features;fast" TIMEOUT 60)
     endfunction()
 
@@ -1377,9 +1380,12 @@ if(ANTS_TESTS)
         # genuine hang promptly; it just stops killing a sanitized build for
         # being sanitized. Per-test overrides are not available here —
         # DISCOVERY_MODE PRE_TEST means no test exists at configure time for
-        # set_tests_properties to name.
+        # set_tests_properties to name. DISCOVERY_TIMEOUT is the same hang
+        # detector for the listing run: its 5s default killed test_claude's
+        # listing once on a memory-starved host (0.1s when re-timed).
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
+            DISCOVERY_TIMEOUT 60
             PROPERTIES LABELS "features;fast" TIMEOUT 60)
     endfunction()
 
