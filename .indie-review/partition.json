@@ -247,7 +247,8 @@
       "summary": "The two largest roadmap verbs: query and single-item log.",
       "sourcePaths": [
         "src/remotecontrol_roadmap_log.cpp",
-        "src/remotecontrol_roadmap_query.cpp"
+        "src/remotecontrol_roadmap_query.cpp",
+        "src/remotecontrol_roadmap_query_verb.cpp"
       ]
     },
     {

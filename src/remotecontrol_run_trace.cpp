@@ -1,4 +1,4 @@
-// ANTS-5299 TU 18/18 — the `run_trace` handler: a review run records its trace.
+// ANTS-5299 TU 19/19 — the `run_trace` handler: a review run records its trace.
 // Contract: tests/features/run_trace/spec.md.
 //
 // Thin by design, like its roadmap_migrate and session_message siblings. The

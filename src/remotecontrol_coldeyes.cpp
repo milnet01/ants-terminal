@@ -1,4 +1,4 @@
-// ANTS-3833 TU 12/18 — Cold eyes and test verbs.
+// ANTS-3833 TU 13/19 — Cold eyes and test verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "buildfixhint.h"   // ANTS-3374 — enrichLikelyFixes

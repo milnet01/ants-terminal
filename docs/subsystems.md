@@ -231,9 +231,12 @@ Listed only where behavior isn't obvious from the name.
   terminal and window verbs: tabs, windows, text send and capture, plus the
   `--e2e` input-injection and screenshot verbs (`cmdSendText`, `cmdGetText`,
   `cmdTabList`, `cmdInjectKey`, `cmdGrabImage`). The one GUI-side TU.
-- `remotecontrol_roadmap_query` — the roadmap READ surface (bullets, bundles,
-  reports) and, despite the name, the `cmdRoadmapLog` op dispatcher plus the
-  `rl*` helpers the write TUs share.
+- `remotecontrol_roadmap_query` — despite the name, the `rl*` helpers the
+  roadmap write TUs share and the pass-headings write ops.
+- `remotecontrol_roadmap_query_verb` — the roadmap READ surface
+  (`cmdRoadmapQuery`: bullets, bundles, reports), the `cmdRoadmapLog` op
+  dispatcher, and the roadmap test hooks. Cut from the TU above at the line
+  cap (ANTS-5319).
 - `remotecontrol_changelog` — reads and writes `CHANGELOG.md`: section
   queries, and entry appends singly or in batches.
 - `remotecontrol_roadmap_log` — single-item roadmap writes: append a bullet,

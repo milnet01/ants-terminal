@@ -449,6 +449,10 @@ set(ANTS_RC_SOURCES_REL
     src/remotecontrol.cpp
     src/remotecontrol_terminal.cpp
     src/remotecontrol_roadmap_query.cpp
+    # ANTS-5319 — TU 3 reached INV-6's 6,000-line cap, so it was cut in two at a
+    # member boundary, as ANTS-4620 cut TU 5. The SECOND half goes HERE, not at
+    # the end, so no member moves behind a TU that used to follow it.
+    src/remotecontrol_roadmap_query_verb.cpp
     src/remotecontrol_changelog.cpp
     src/remotecontrol_roadmap_log.cpp
     # ANTS-4620 — TU 5 reached INV-6's 6,000-line cap with zero headroom, so it

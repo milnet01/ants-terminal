@@ -1444,8 +1444,9 @@ TEST(RoadmapReadSeam, Ants4426AppendAdvisoryReadsNoBody) {
 // top-level definition, NOT on a byte window — a comment added above the
 // function must not slide the window off the body.
 TEST(RoadmapReadSeam, Ants4431RoadmapQueryConstructsOneProvider) {
+    // ANTS-5319 — cmdRoadmapQuery moved to TU 4 when TU 3 reached the line cap.
     const QString path = QStringLiteral(ANTS_SRC_DIR)
-                       + QStringLiteral("/remotecontrol_roadmap_query.cpp");
+                       + QStringLiteral("/remotecontrol_roadmap_query_verb.cpp");
     QFile f(path);
     ASSERT_TRUE(f.open(QIODevice::ReadOnly))
         << "cannot read " << path.toStdString()

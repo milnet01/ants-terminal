@@ -1,4 +1,4 @@
-// ANTS-3833 TU 1/18 — Shared helpers. The dispatcher and the --remote socket
+// ANTS-3833 TU 1/19 — Shared helpers. The dispatcher and the --remote socket
 // are GUI-side, at the head of TU 2 (ANTS-4932 § 2.2).
 //
 // ANTS-4125 — include list swept 2026-08-12. The ANTS-3833 decomposition moved
