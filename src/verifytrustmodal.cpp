@@ -90,10 +90,10 @@ Decision ModalClient::prompt(const QString &projectPath,
     return *decision;
 }
 
-Decision ModalClient::showPrompt(const QString &projectPath,
-                                 const QString &shaHex,
-                                 const QByteArray &configBytes) {
-    QMessageBox box(m_parent);
+PromptControls buildPromptBox(QMessageBox &box,
+                              const QString &projectPath,
+                              const QString &shaHex,
+                              const QByteArray &configBytes) {
     box.setIcon(QMessageBox::Question);
     box.setWindowTitle(QObject::tr("Trust .ants/verify.json?"));
 
@@ -149,10 +149,23 @@ Decision ModalClient::showPrompt(const QString &projectPath,
         "Trust this repo: auto-re-prompt if the file changes"));
     reprompt->setChecked(true);
     box.setCheckBox(reprompt);
+    // ANTS-5479 — QMessageBox caps its width and squeezed these buttons
+    // below their labels. A floor per button makes the box grow instead.
+    // Runs after setDetailedText, which adds the "Show Details..." button.
+    for (QPushButton *b : box.findChildren<QPushButton *>())
+        b->setMinimumWidth(b->sizeHint().width());
+    return {bTrustSha, bTrustRepo, reprompt};
+}
 
+Decision ModalClient::showPrompt(const QString &projectPath,
+                                 const QString &shaHex,
+                                 const QByteArray &configBytes) {
+    QMessageBox box(m_parent);
+    const PromptControls c =
+        buildPromptBox(box, projectPath, shaHex, configBytes);
     box.exec();
     auto *clicked = box.clickedButton();
-    if (clicked == bTrustSha) {
+    if (clicked == c.trustSha) {
         // Persist the SHA. addTrustedSha returns false on disk-write
         // failure — surface as Headless so the engine falls back to
         // auto-detect rather than running an untrusted config (the
@@ -165,8 +178,8 @@ Decision ModalClient::showPrompt(const QString &projectPath,
         }
         return {Outcome::Trusted, shaHex};
     }
-    if (clicked == bTrustRepo) {
-        if (!addTrustedRepo(projectPath, shaHex, reprompt->isChecked())) {
+    if (clicked == c.trustRepo) {
+        if (!addTrustedRepo(projectPath, shaHex, c.reprompt->isChecked())) {
             return {Outcome::Headless, shaHex};
         }
         return {Outcome::Trusted, shaHex};

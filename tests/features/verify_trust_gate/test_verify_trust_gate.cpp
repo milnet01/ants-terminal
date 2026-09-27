@@ -486,7 +486,9 @@ void testModalPrompt() {
     ASSERT_TRUE(sf.open(QIODevice::ReadOnly | QIODevice::Text))
         << "cannot read " << srcPath.toStdString();
     const QString code = QString::fromUtf8(sf.readAll());
-    const int s = code.indexOf(QStringLiteral("Decision ModalClient::showPrompt("));
+    // ANTS-5479 — the dialog is built by buildPromptBox and run by
+    // showPrompt, which follows it; the slice runs to EOF and covers both.
+    const int s = code.indexOf(QStringLiteral("PromptControls buildPromptBox("));
     ASSERT_GE(s, 0);
     const QString body = code.mid(s);
 

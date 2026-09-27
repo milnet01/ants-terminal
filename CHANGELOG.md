@@ -175,6 +175,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The "Trust .ants/verify.json?" dialog shows every button label in full.** (ANTS-5479)
+  The dialog now widens to fit its buttons instead of cutting off
+  "Show Details...", "Trust this SHA" and "Trust this repo".
+
 - **mutation_probe counts vitest and jest tests, not test files, on every run** (ANTS-5475)
 
 - **spec_log append_loop writes after the last row of a loop log that has a blank line inside it** (ANTS-5476)

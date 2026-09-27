@@ -11,9 +11,26 @@
 
 #include <QPointer>
 
+class QAbstractButton;
+class QCheckBox;
+class QMessageBox;
 class QWidget;
 
 namespace VerifyTrust {
+
+// The controls showPrompt() reads back after the box closes.
+struct PromptControls {
+    QAbstractButton *trustSha  = nullptr;
+    QAbstractButton *trustRepo = nullptr;
+    QCheckBox       *reprompt  = nullptr;
+};
+
+// ANTS-5479 — fills `box` with the trust prompt's text and buttons without
+// running it, so a test can lay out the real dialog. showPrompt() runs it.
+PromptControls buildPromptBox(QMessageBox &box,
+                              const QString &projectPath,
+                              const QString &shaHex,
+                              const QByteArray &configBytes);
 
 class ModalClient : public FilePersistedTrustClient {
 public:
