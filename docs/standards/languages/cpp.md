@@ -282,9 +282,10 @@ C++.
 - **A skip** (`testing.md` §7) — **`GTEST_SKIP()` returns only from the
   function it is written in.** Called from a helper, it records a skip and
   the test goes on; a later failure then fails it. So the caller checks
-  `::testing::Test::IsSkipped()` and returns. **And ctest reports a skip as
-  skipped only through `gtest_discover_tests`**: under a plain `add_test`, a
-  binary whose tests all skip exits 0 and reads as passed. Measured
+  `::testing::Test::IsSkipped()` and returns. **And a bare `add_test` with no
+  `SKIP_REGULAR_EXPRESSION` reports a skip as passed**: a binary whose tests
+  all skip exits 0. `gtest_discover_tests` and `gtest_add_tests` set that
+  regex, so they report it as skipped. Measured
   2026-09-27 by Ants Terminal on GoogleTest 1.15.2. Refute with a TEST whose
   helper skips and then `EXPECT_TRUE(false)`, run under both wirings.
 

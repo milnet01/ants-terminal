@@ -253,7 +253,8 @@ crashed. Naming only some of them cleared the rest.
 **A pure refactor with no behaviour change, and a documentation-only
 change, ship no behaviour and are outside this section** — they are not
 exceptions to it and owe no commit-body line. So a behaviour-neutral seam a
-test needs may be cut before step 1.
+test needs may be cut before step 1. It is neutral when the existing
+behavioural tests stay green across it.
 
 **Exceptions**, each stated in the commit body so a reader can tell a
 decision from an omission: generated code, where the consumer is what is
@@ -276,8 +277,8 @@ between the two runs. `languages/<name>.md` has the commands.
 **The rebuild is part of the shape, not a spelling.** A project whose
 plain build target does not build its tests runs the previous binary and
 sees a pass — the false green this step exists to prevent, reached by
-following it faithfully. **Rebuild the target that owns the edited test
-source**: where tests are compiled into bundles, rebuilding another bundle
+following it faithfully. **Rebuild the target that owns the test,
+whichever file you edited**: where tests are compiled into bundles, rebuilding another bundle
 leaves the old binary, and its old result, in place.
 
 **§1's definition of red governs this run too.** Removing a fix often
@@ -443,7 +444,7 @@ invisible to all of them, which makes it the one the rule most needs to reach.
 **Use the framework's own skip** — `GTEST_SKIP`, `pytest.skip`, the harness's
 skipped-exit code — so the result says skipped. **The skip must end the
 test, and the runner must report it as skipped**; `languages/cpp.md` shows
-GoogleTest missing both. Found 2026-09-26 in a live
+two ways GoogleTest misses them. Found 2026-09-26 in a live
 repository, where such a skip had reported green since April.
 
 ## 8. Coverage
