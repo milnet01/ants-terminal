@@ -102,6 +102,11 @@ QByteArray fixture() {
         "\n"
         "## Later\n"
         "\n"
+        // ANTS-5378 — a stored `table` element beside the intro.
+        "| Phase | State |\n"
+        "|---|---|\n"
+        "| 1 | done |\n"
+        "\n"
         "- \xF0\x9F\x93\x8B [DEMO-0008] **A later item.**\n"
         "  Layman: A later thing.\n"
         "  Kind: implement.\n"
@@ -405,4 +410,40 @@ TEST(RoadmapLogSetIntro, Ants5493FencedHashLinesAreNotHeadings) {
         introReq(fx.root, QStringLiteral("work"),
                  QStringLiteral("```\ncode\n```\n# Real heading\n")), false).object();
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_intro"));
+}
+
+// ------------------------------------------------------------- ANTS-5378 -----
+
+// set_intro replaces the intro only. A section's table is a separate element
+// and stays, so the reply says what it kept, and warns when the new intro
+// brings a table of its own (LocalWebServerManager feedback 2026-09-25).
+TEST(RoadmapLogSetIntro, Ants5378KeptElementsAreReported) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("later"), QStringLiteral("Later intro.")),
+        false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("kept_elements")).toObject()
+                  .value(QStringLiteral("table")).toInt(), 1)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(resp.contains(QStringLiteral("warnings")));
+
+    resp = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("later"),
+                 QStringLiteral("Later intro.\n\n| Phase | State |\n|---|---|\n| 1 | redone |")),
+        false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    const QJsonArray warns = resp.value(QStringLiteral("warnings")).toArray();
+    ASSERT_EQ(warns.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(warns.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("intro_table_beside_stored_table"));
+
+    // A section holding only items reports nothing kept.
+    resp = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("work"), QStringLiteral("Work intro.")),
+        false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(resp.contains(QStringLiteral("kept_elements")));
 }

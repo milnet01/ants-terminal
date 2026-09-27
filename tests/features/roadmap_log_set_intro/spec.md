@@ -38,6 +38,13 @@ of the intro is kept. The result is checked as INV-2 checks `new_text`.
 `replaced_intro_chars` counts. On `amend_intro` (ANTS-5474) that count is
 the matched `old_text` only, since the rest of the intro is kept.
 
+**INV-11 (ANTS-5378) — the reply names what the section kept.** A
+section's tables and narration are separate elements the intro ops do not
+touch. When the section holds any, the reply carries `kept_elements`, a
+count per kind. When `new_text` carries a table row and the section already
+holds a table, `warnings` gains `intro_table_beside_stored_table`, since the
+render would show both.
+
 All three ops are store-only.
 
 **INV-8 (ANTS-4555) — every rendered file says it is generated.** The line

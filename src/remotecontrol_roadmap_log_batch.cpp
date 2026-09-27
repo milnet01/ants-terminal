@@ -3770,6 +3770,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     // ANTS-5373 — on a preview, the text replaced_intro_chars counts, so a
     // caller can see what the write would remove before making it.
     if (dryRun) env[QStringLiteral("previous_intro")] = previous;
+    // ANTS-5378 — tables and narration are separate elements the intro ops
+    // leave alone, so say what stayed. A new intro carrying a table beside a
+    // stored one would render both, which is the case that was reported.
+    if (const auto elems = store.listElements(*sectionId)) {
+        QJsonObject kept;
+        for (const RoadmapStore::ElementRow &e : *elems)
+            if (e.kind != QLatin1String("item"))
+                kept[e.kind] = kept.value(e.kind).toInt() + 1;
+        if (!kept.isEmpty()) env[QStringLiteral("kept_elements")] = kept;
+        const QStringList introLines = intro.split(QChar('\n'));
+        const QVector<bool> fenced = MarkdownScan::fenceMask(introLines);
+        bool introHasTable = false;
+        for (int i = 0; i < introLines.size() && !introHasTable; ++i)
+            introHasTable = !fenced.value(i) &&
+                            introLines.at(i).trimmed().startsWith(QChar('|'));
+        if (introHasTable && kept.contains(QStringLiteral("table"))) {
+            QJsonObject warn;
+            warn[QStringLiteral("code")]    = QStringLiteral("intro_table_beside_stored_table");
+            warn[QStringLiteral("message")] = QStringLiteral(
+                "The new intro carries a table, and the section already holds a "
+                "stored table this op does not replace, so the render shows "
+                "both. Drop the table from the intro; op:\"bundle_row\" appends "
+                "rows to the stored one.");
+            rlAddWarning(env, warn);
+        }
+    }
     rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
     return QJsonDocument(env);
 }

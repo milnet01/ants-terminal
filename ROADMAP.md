@@ -66846,7 +66846,7 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Rolodex-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5359] **A literal backslash-n in a scalar note or body is stored verbatim with no warning.**
+- ✅ [ANTS-5359] **A literal backslash-n in a scalar note or body is stored verbatim with no warning.**
   Reported by OneUp: a note passed as a plain string holding the two
   characters backslash and n was stored as-is, while the same spelling
   inside a JSON array became a line break. Suggested: an advisory warning
@@ -66864,6 +66864,11 @@ project. Reported causes are claims until checked in source.
   expect rcDelegate(&RemoteControl::...). Prefer (b) when next touching
   cmdRoadmapLog. Check: note, body, new_text, bullets[].body,
   locators[].note hold a literal backslash-n and no real newline.
+  Resolved (2026-09-27, bd8c6653): route (b). cmdRoadmapLog holds the
+  lock, calls the new cmdRoadmapLogDispatch, and adds a
+  literal_escape_sequences warning naming each field
+  (RoadmapParse::literalEscapeFields). Live after an ants-mcpd rebuild
+  and /mcp.
   **Layman:** Text meant to break onto a new line can be saved with stray \n characters, and the write still reports success.
   Kind: enhancement.
   Source: feedback-OneUp-2026-09-18.
