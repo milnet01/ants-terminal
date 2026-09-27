@@ -67079,8 +67079,12 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: Album_Builder feedback 2026-09-25.
 
-- 📋 [ANTS-5378] **roadmap_log set_intro says when a section also holds a table it did not replace.**
+- ✅ [ANTS-5378] **roadmap_log set_intro says when a section also holds a table it did not replace.**
   A section's table is stored as a separate `table` element. set_intro replaces only the prose, so new_text carrying a rewritten table renders above the old table. Report the section's non-intro elements in the reply, or refuse when new_text carries a table and the section already has one.
+  Resolved (2026-09-27, 97284ace): the reply carries kept_elements
+  (count per non-item kind), and an intro table beside a stored table
+  adds an intro_table_beside_stored_table warning. Reporting, not
+  refusing. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Stops a section intro rewrite from silently leaving the old table in place next to the new one.
   Kind: fix.
   Source: LocalWebServerManager feedback 2026-09-25.
