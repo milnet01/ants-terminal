@@ -61,7 +61,8 @@ context. So a C++ project *chooses*, records the choice, and holds it.
 - `[[nodiscard]]` on factory and parser return types — the ones where
   dropping the result is always a bug.
 - `noexcept` on move constructors, swap and destructors.
-- `std::span` over `(pointer, length)` pairs.
+- `std::span` over `(pointer, length)` pairs, except in a signature that
+  must stay callable from C.
 - Concepts and `requires` over SFINAE.
 - `std::format` (or `std::print` in C++23) over stringstreams.
 

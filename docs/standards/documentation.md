@@ -582,7 +582,9 @@ that is the whole edit:
 4. **Do not annotate the removal's reasoning.** The commit message is where an
    argument for a change is made; the document is where the change is made.
    Where the reasoning must survive in the document, name a check rather than
-   describe one. **What this does NOT forbid is a dated record of what the rule
+   describe one. This is the argument for the edit being made now. Reasoning
+   already in the document, dated or not, is pedigree, and goes where the
+   history-file sentence below sends it. **What this does NOT forbid is a dated record of what the rule
    previously said** — "this read X until 2026-08-14" is § 2.3's *dated
    historical* form, it is past tense, it carries its date, and it cannot go
    stale. **Where the document names a history file — a record it keeps for

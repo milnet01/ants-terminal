@@ -277,6 +277,8 @@ A diff should contain the change that was asked for and nothing else.
   variable or helper.
 - **Do not delete pre-existing dead code without being asked.** Surface it
   instead: *"`legacy_foo()` is unreferenced — leave or remove?"*
+  Commented-out code already in the file counts as dead code here; § 1.2
+  governs only what you add.
 
 **The cost is not tidiness, it is review.** An unrelated line in a diff has to
 be read, understood and cleared by whoever reviews it, and it dilutes the
@@ -382,8 +384,10 @@ Don't:
 
 - Explain WHAT the code does — well-named identifiers do that.
 - Reference the current task / fix / callers ("used by X", "added
-  for Y") — those belong in the commit body.
-- Write multi-line block comments or paragraph docstrings.
+  for Y") — those belong in the commit body. An item ID may label a
+  why-comment; it may not be the comment.
+- Write multi-line block comments or paragraph docstrings. Banners already
+  in a file stay (§ 1.7); a comment you add follows this section.
 
 **A documentation comment is not a comment, and this section is not
 about it.** A docstring or `///` block that a tool extracts is part of
