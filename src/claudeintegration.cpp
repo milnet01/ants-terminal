@@ -14519,11 +14519,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "resolved from caller_cwd. dry_run:true plans, reports counts "
                         "and rolls back (it still opens the store). It never writes "
                         "ROADMAP.md. Read store_backed, updated_items[] and "
-                        "notes_summary before acting on counts. op:\"deregister\" removes "
+                        "notes_summary before acting on counts. A missing item is "
+                        "DELETED (items_deleted). op:\"deregister\" removes "
                         "a project (confirm:true while its root exists). Refusals: "
                         "no_project, no_roadmap, case_ambiguous, not_utf8, too_large, "
                         "format_mismatch, bad_args, slug_collision, store_failed, "
-                        "migrate_failed, confirm_required, transient_root. caller_cwd "
+                        "migrate_failed, mass_deletion, confirm_required, "
+                        "transient_root. caller_cwd "
                         "Required.");
                     t["detail"] = QStringLiteral(
                         "ANTS-4617 — op:\"deregister\" is the INVERSE and the "
@@ -14814,6 +14816,22 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "weekly rotation one snapshot. The envelope echoes "
                             "the resolved path as `backup_path`.");
                         props["backup_to"] = p;
+                    }
+                    {
+                        // ANTS-5287 — an item removed from the roadmap file is
+                        // deleted on migrate; a large deletion needs this.
+                        QJsonObject p;
+                        p["type"] = QStringLiteral("boolean");
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "An item missing from the roadmap file is DELETED "
+                            "from the store (its history too; the snapshot is "
+                            "the undo), and reported in `items_deleted` / "
+                            "`deleted_ids`. A run that would delete more than "
+                            "a quarter of the project's items refuses "
+                            "`mass_deletion`, naming them; pass true to allow "
+                            "it. An item another row references is kept.");
+                        props["accept_deletions"] = p;
                     }
                     props["dry_run"] = makeDryRunProp();
                     // ANTS-4429 — declared for the same reason ANTS-4621

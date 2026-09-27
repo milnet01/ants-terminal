@@ -189,6 +189,7 @@ TEST(RoadmapMigrateLoad, Inv2ReRunWithIdsIsIdempotent) {
     EXPECT_EQ(again.itemsUpdated, 0);
     EXPECT_EQ(again.itemsUnchanged, 2);
     EXPECT_EQ(again.itemsOrphaned, 0);
+    EXPECT_EQ(again.itemsDeleted, 0);
     EXPECT_EQ(f.count(QStringLiteral("history")), 0)
         << "a re-run that changed nothing must not fill the audit trail with "
            "changes that did not happen";
@@ -220,6 +221,7 @@ TEST(RoadmapMigrateLoad, Inv2ReRunWithoutIdsIsIdempotent) {
         << "an id-less item re-read from source must match the row the last run "
            "allocated an id for, not become a second copy of it";
     EXPECT_EQ(again.itemsOrphaned, 0);
+    EXPECT_EQ(again.itemsDeleted, 0);
     EXPECT_EQ(again.idsAllocated, 0) << "and no id may be burnt doing it";
     EXPECT_EQ(again.itemsUnchanged, 2);
     EXPECT_EQ(f.count(QStringLiteral("item")), 2);
@@ -410,6 +412,7 @@ TEST(RoadmapMigrateLoad, Inv2AmbiguousIdlessGroupPairsByOrderNotByGuessing) {
         << "an ambiguous group re-inserted every run grows the store without "
            "bound on a source that never changed";
     EXPECT_EQ(again.itemsOrphaned, 0);
+    EXPECT_EQ(again.itemsDeleted, 0);
     EXPECT_EQ(again.idsAllocated, 0);
     EXPECT_EQ(again.itemsUnchanged, 3);
     EXPECT_EQ(f.count(QStringLiteral("item")), 3);
@@ -452,48 +455,138 @@ TEST(RoadmapMigrateLoad, Inv3ReRunKeepsFieldsThePlanDoesNotCarry) {
            "silently destroys every human edit";
 }
 
-// INV-4 — an item absent from source is retained, re-filed and reported.
-TEST(RoadmapMigrateLoad, Inv4OrphanIsRetainedRefiledAndReported) {
+// ANTS-5287 — four items, so dropping one stays under § 2.7's guard
+// (1 * 4 does not exceed 4); two of two would be half the project.
+namespace {
+QVector<PlannedItem> fourItems() {
+    return {
+        item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("s"), 0),
+        item(QStringLiteral("A-2"), QStringLiteral("two"), QStringLiteral("s"), 1),
+        item(QStringLiteral("A-3"), QStringLiteral("three"), QStringLiteral("s"), 2),
+        item(QStringLiteral("A-4"), QStringLiteral("four"), QStringLiteral("s"), 3),
+    };
+}
+
+int noteCount(const RoadmapMigrateLoad::Outcome &o, const char *code);   // defined below
+}  // namespace
+
+// INV-4 — ANTS-5287: an item absent from source is deleted, and reported.
+TEST(RoadmapMigrateLoad, Inv4AbsentItemIsDeletedAndReported) {
     Fixture f;
     QString err;
     ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
 
-    QVector<PlannedItem> both{
-        item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("s"), 0),
-        item(QStringLiteral("A-2"), QStringLiteral("two"), QStringLiteral("s"), 1),
-    };
-    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(both), f.opts()).ok);
-
-    // The intervening run is what makes the history half testable at all: an
-    // initial load writes no history, so a load-then-omit recipe would assert
-    // the survival of rows that were never created.
-    both[1].headline = QStringLiteral("two, edited");
-    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(both), f.opts()).ok);
+    QVector<PlannedItem> items = fourItems();
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
+    // Give the fourth a history row, so the delete is shown to take it too:
+    // an initial load writes none.
+    items[3].headline = QStringLiteral("four, edited");
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
     ASSERT_EQ(f.count(QStringLiteral("history")), 1);
 
-    const auto dropped = RoadmapMigrateLoad::load(
-        f.store, planOf({both[0]}), f.opts());
-    ASSERT_TRUE(dropped.ok) << dropped.error.toStdString();
-    EXPECT_EQ(dropped.itemsOrphaned, 1);
-    EXPECT_TRUE(hasNote(dropped, "orphaned_item"));
-
-    // Its row, its history and its status survive — an id absent from source is
-    // far more often a rename or an archive rotation than a deletion, and the
-    // store holds history the source file never contained and cannot restore.
-    EXPECT_EQ(f.count(QStringLiteral("item")), 2);
-    EXPECT_EQ(f.count(QStringLiteral("history")), 1);
-    EXPECT_EQ(f.scalar(QStringLiteral("SELECT status FROM item WHERE id = 'A-2'"))
+    items.removeLast();
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+    EXPECT_EQ(out.itemsDeleted, 1);
+    EXPECT_EQ(out.itemsStored, 4);
+    EXPECT_EQ(out.itemsOrphaned, 0);
+    EXPECT_EQ(noteCount(out, "deleted_item"), 1);
+    EXPECT_EQ(f.count(QStringLiteral("item")), 3);
+    EXPECT_EQ(f.count(QStringLiteral("history")), 0) << "its history must go with it";
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT COUNT(*) FROM item WHERE id = 'A-4'"))
                   .toStdString(),
-              std::string("planned"));
-
-    // And ANTS-3756 INV-20 still holds for BOTH items at the commit boundary:
-    // the rebuild must re-file the orphan, not merely the plan's own items.
+              std::string("0"));
+    // ANTS-3756 INV-20 for the survivors: each filed exactly once.
     EXPECT_EQ(f.scalar(QStringLiteral(
                            "SELECT COUNT(*) FROM item i WHERE (SELECT COUNT(*) FROM "
                            "element e WHERE e.item_pk = i.item_pk AND e.kind = 'item') != 1"))
                   .toStdString(),
-              std::string("0"))
-        << "every item must be filed exactly once after the rebuild";
+              std::string("0"));
+    EXPECT_EQ(f.count(QStringLiteral("element")), 3);
+}
+
+// INV-17 — ANTS-5287: deleting more than a quarter refuses without the flag.
+TEST(RoadmapMigrateLoad, Inv17MassDeletionRefusesUnlessAccepted) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const QVector<PlannedItem> items = fourItems();
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
+    const MigrationPlan half = planOf({items[0], items[1]});
+
+    // A dry run refuses exactly where the real run would (INV-13).
+    const auto dry = RoadmapMigrateLoad::load(f.store, half, f.opts(/*dryRun=*/true));
+    EXPECT_FALSE(dry.ok);
+    EXPECT_TRUE(hasNote(dry, "mass_deletion"));
+
+    const auto refused = RoadmapMigrateLoad::load(f.store, half, f.opts());
+    EXPECT_FALSE(refused.ok);
+    EXPECT_TRUE(hasNote(refused, "mass_deletion"));
+    EXPECT_TRUE(hasNote(refused, "project_refused"));
+    EXPECT_EQ(refused.itemsDeleted, 2) << "the would-be count";
+    EXPECT_EQ(refused.itemsStored, 4);
+    EXPECT_EQ(noteCount(refused, "deleted_item"), 2) << "the refusal names what would go";
+    EXPECT_EQ(f.count(QStringLiteral("item")), 4) << "a refusal writes nothing";
+
+    auto accept = f.opts();
+    accept.acceptDeletions = true;
+    const auto taken = RoadmapMigrateLoad::load(f.store, half, accept);
+    ASSERT_TRUE(taken.ok) << taken.error.toStdString();
+    EXPECT_EQ(taken.itemsDeleted, 2);
+    EXPECT_EQ(f.count(QStringLiteral("item")), 2);
+}
+
+// INV-17's boundary — exactly a quarter (1 of 4) is not refused.
+TEST(RoadmapMigrateLoad, Inv17QuarterIsTheBoundary) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    QVector<PlannedItem> items = fourItems();
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
+    items.removeLast();
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+    EXPECT_EQ(out.itemsDeleted, 1);
+}
+
+// INV-18 — ANTS-5287: a referenced absent item is kept; so is any absent item
+// under keepAbsent, the convert path's setting.
+TEST(RoadmapMigrateLoad, Inv18ReferencedOrKeptItemIsRetained) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    QVector<PlannedItem> items = fourItems();
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
+
+    QSqlQuery q(f.store.db());
+    ASSERT_TRUE(q.exec(QStringLiteral(
+        "INSERT INTO relationship (type, src_pk, dst_pk) SELECT 'relates-to', "
+        "(SELECT item_pk FROM item WHERE id = 'A-1'), "
+        "(SELECT item_pk FROM item WHERE id = 'A-4')")));
+
+    items.removeLast();
+    const auto kept = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    ASSERT_TRUE(kept.ok) << kept.error.toStdString();
+    EXPECT_EQ(kept.itemsDeleted, 0);
+    EXPECT_EQ(kept.itemsOrphaned, 1);
+    EXPECT_TRUE(hasNote(kept, "orphaned_item"));
+    EXPECT_EQ(f.count(QStringLiteral("item")), 4);
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                           "SELECT COUNT(*) FROM element e JOIN item i ON e.item_pk = "
+                           "i.item_pk WHERE i.id = 'A-4'"))
+                  .toStdString(),
+              std::string("1"))
+        << "a kept item stays filed once";
+
+    // keepAbsent — unreferenced this time, and still kept.
+    ASSERT_TRUE(q.exec(QStringLiteral("DELETE FROM relationship")));
+    auto keep = f.opts();
+    keep.keepAbsent = true;
+    const auto held = RoadmapMigrateLoad::load(f.store, planOf(items), keep);
+    ASSERT_TRUE(held.ok) << held.error.toStdString();
+    EXPECT_EQ(held.itemsDeleted, 0);
+    EXPECT_EQ(held.itemsOrphaned, 1);
+    EXPECT_EQ(f.count(QStringLiteral("item")), 4);
 }
 
 // INV-5 — ordering is rebuilt without a UNIQUE collision.
@@ -637,6 +730,8 @@ TEST(RoadmapMigrateLoad, Inv13DryRunReportsTheRealRun) {
     EXPECT_EQ(dry.itemsUpdated, real.itemsUpdated);
     EXPECT_EQ(dry.itemsUnchanged, real.itemsUnchanged);
     EXPECT_EQ(dry.itemsOrphaned, real.itemsOrphaned);
+    EXPECT_EQ(dry.itemsDeleted, real.itemsDeleted);
+    EXPECT_EQ(dry.itemsStored, real.itemsStored);
     EXPECT_EQ(dry.idsAllocated, real.idsAllocated);
     EXPECT_EQ(dry.sectionsWritten, real.sectionsWritten);
     EXPECT_EQ(dry.elementsWritten, real.elementsWritten);

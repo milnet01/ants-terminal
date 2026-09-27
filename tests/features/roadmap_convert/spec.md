@@ -152,10 +152,9 @@ the commit to be one transaction.
   github-task-list source, where the FILE is the truth, a stale snapshot's
   rows came back as live items. Vestige measured 680 of them against 1102
   bullets.
-  *Remedy the refusal names:* `roadmap_migrate op:"deregister"` and a fresh
-  migrate. Dropping orphans in place is not offered: the store has no
-  single-item delete, and one would touch every table that references an
-  item.
+  *Remedy the refusal names:* `roadmap_migrate` with `accept_deletions:true`,
+  which deletes them after a snapshot (ANTS-5287), then convert. Convert
+  itself deletes nothing: it sets `keepAbsent`, because it takes no snapshot.
   *Breaks when:* a github-task-list convert with orphans succeeds, or a
   refused one changes the file or the stored format.
 

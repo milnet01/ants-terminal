@@ -490,6 +490,18 @@ public:
     // ITEM. Removes the kind='item' row; the item itself is untouched.
     bool unfileItem(qint64 itemPk, QString *error = nullptr);
 
+    // ANTS-5287 (ANTS-3765 § 2.4) — deletes an item inside the caller's
+    // transaction, cascading in ANTS-4487 § 4.4's order: element, history,
+    // feedback_ref, relationship, citation, then the item. Unconditional: a
+    // caller that must not delete a referenced item asks itemIsReferenced()
+    // first.
+    bool deleteItem(qint64 itemPk, QString *error = nullptr);
+
+    // ANTS-5287 — true when relationship names the item at either end (src_pk,
+    // dst_pk, or dst_project + dst_id_fold from another project), or citation
+    // or feedback_ref names it. std::nullopt on an SQL error.
+    std::optional<bool> itemIsReferenced(qint64 itemPk, QString *error = nullptr);
+
     // § 2.6 step 2's element delete, PER SECTION and never per project: a
     // section retained because the plan no longer carries it also holds
     // narration and table rows nothing re-inserts.

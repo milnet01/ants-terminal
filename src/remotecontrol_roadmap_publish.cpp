@@ -482,9 +482,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             QStringLiteral("roadmap_log: the store holds %1 item(s) for this "
                            "project that \"%2\" no longer carries. A "
                            "github-task-list convert publishes every store row, "
-                           "so it would put them back into the file. To convert "
-                           "from the file alone, run roadmap_migrate "
-                           "op:\"deregister\" (confirm:true), then roadmap_migrate, "
+                           "so it would put them back into the file. To drop "
+                           "them, run roadmap_migrate with accept_deletions:true, "
+                           "which deletes them after a snapshot (ANTS-5287), "
                            "then convert. Nothing was written.")
                 .arg(itemsOrphaned).arg(roadmapPath)).object();
         e[QStringLiteral("items_orphaned")] = itemsOrphaned;

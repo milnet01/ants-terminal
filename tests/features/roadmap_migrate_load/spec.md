@@ -46,12 +46,23 @@ must still fire: the pairing rests on order alone and the reader should know.
 and not `priority`: `priority` is in neither `setItemField()`'s allowlist nor
 `QString`-typed, so the obvious recipe cannot run at all.
 
-**INV-4 — an item absent from source is retained, re-filed and reported.** The
-recipe has an **intervening run** that edits the second item's headline, because
-an initial load writes no history — without it the test asserts the survival of
-rows that were never created. After the omitting run the orphan keeps its row,
-its history row and its status, both items still satisfy ANTS-3756 INV-20
-(exactly one `element` row each), and an `orphaned_item` note names it.
+**INV-4 — an item absent from source is deleted and reported (ANTS-5287).**
+Four items load; an intervening run edits the fourth's headline so it has a
+history row; a run without it deletes its item, element and history rows,
+reports `itemsDeleted == 1`, `itemsStored == 4`, one `deleted_item` note and
+no orphan, and leaves the other three filed exactly once. Four, because one of
+two would trip INV-17.
+
+**INV-17 — a load deleting more than a quarter of the stored items refuses
+unless `acceptDeletions` is set (ANTS-5287).** Two of four: the dry run and the
+real run both refuse with `mass_deletion` and `project_refused`, the refused
+`Outcome` carries `itemsDeleted == 2`, `itemsStored == 4` and two
+`deleted_item` notes, and nothing is written. With the flag both go. One of
+four passes without it: the boundary.
+
+**INV-18 — an absent item that a relationship references is kept, and so is
+any absent item under `keepAbsent` (ANTS-5287).** Both are counted as orphans,
+noted `orphaned_item`, and stay filed once.
 
 **INV-5 — ordering is rebuilt, not shifted.** A three-item section re-loaded
 **reversed** must succeed, and afterwards the positions are exactly `0..n-1`.

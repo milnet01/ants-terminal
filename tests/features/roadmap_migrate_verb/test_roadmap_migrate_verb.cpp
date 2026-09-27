@@ -2137,3 +2137,68 @@ TEST(RoadmapMigrateVerb, Ants5374FolderPrefixIsAnnounced) {
     EXPECT_FALSE(clean.contains(QStringLiteral("warnings")))
         << QJsonDocument(clean).toJson().toStdString();
 }
+
+// ANTS-3855 INV-16 (ANTS-5287) — the verb carries the load's deletions, its
+// mass_deletion refusal and the accept_deletions flag through unchanged.
+namespace {
+
+QByteArray roadmapWith(const QStringList &ids) {
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n\n# Demo — Roadmap\n\n## Work\n\n";
+    for (const QString &id : ids) {
+        md += "- \xF0\x9F\x93\x8B [" + id.toUtf8() + "] **Item " + id.toUtf8() + ".**\n"
+              "  Layman: A thing.\n  Kind: implement.\n  Source: test.\n";
+    }
+    return md;
+}
+
+QStringList idsOf(const QJsonValue &v) {
+    QStringList out;
+    for (const QJsonValue &e : v.toArray())
+        out << e.toString();
+    return out;
+}
+
+}  // namespace
+
+TEST(RoadmapMigrateVerb, Inv16DeletionsReachTheEnvelope) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QStringList four{QStringLiteral("DEMO-0001"), QStringLiteral("DEMO-0002"),
+                           QStringLiteral("DEMO-0003"), QStringLiteral("DEMO-0004")};
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), roadmapWith(four));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store/store.sqlite"));
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(storePath).absolutePath()));
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+
+    // One of four: deleted and named.
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapWith(four.mid(0, 3))));
+    const QJsonObject one = RoadmapMigrateVerb::run(storePath, request(root));
+    ASSERT_TRUE(one.value(QStringLiteral("ok")).toBool())
+        << one.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(one.value(QStringLiteral("items_deleted")).toInt(), 1);
+    EXPECT_EQ(idsOf(one.value(QStringLiteral("deleted_ids"))),
+              QStringList{QStringLiteral("demo-0004")});
+    EXPECT_TRUE(one.contains(QStringLiteral("deleted_ids_truncated")));
+
+    // Two of the remaining three: more than a quarter, refused.
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapWith(four.mid(0, 1))));
+    const QJsonObject refused = RoadmapMigrateVerb::run(storePath, request(root));
+    EXPECT_FALSE(refused.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("mass_deletion"));
+    EXPECT_EQ(refused.value(QStringLiteral("items_deleted")).toInt(), 2);
+    EXPECT_EQ(refused.value(QStringLiteral("items_stored")).toInt(), 3);
+    EXPECT_EQ(idsOf(refused.value(QStringLiteral("deleted_ids"))).size(), 2);
+    EXPECT_FALSE(refused.contains(QStringLiteral("notes")))
+        << "migrate_failed stays the one refusal that carries notes";
+
+    auto accept = request(root);
+    accept.acceptDeletions = true;
+    const QJsonObject taken = RoadmapMigrateVerb::run(storePath, accept);
+    ASSERT_TRUE(taken.value(QStringLiteral("ok")).toBool())
+        << taken.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(taken.value(QStringLiteral("items_deleted")).toInt(), 2);
+}

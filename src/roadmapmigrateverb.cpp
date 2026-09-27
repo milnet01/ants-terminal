@@ -588,13 +588,41 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     opts.projectRoot = req.projectRoot;
     opts.dryRun      = req.dryRun;
     opts.idFormat    = idFormat;      // ANTS-3771 § 2.3
+    opts.acceptDeletions = req.acceptDeletions;   // ANTS-5287
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);
+
+    // ANTS-5287 — the ids of the deleted_item notes, bounded by max_notes. On a
+    // success they are the deletions; on a mass_deletion refusal, what would
+    // have gone.
+    QJsonArray deletedIds;
+    int deletedNotes = 0;
+    bool massDeletion = false;
+    for (const RoadmapMigrate::Note &n : out.notes) {
+        if (n.code == QLatin1String("deleted_item")) {
+            if (++deletedNotes <= maxNotes)
+                deletedIds.append(n.detail);
+        } else if (n.code == QLatin1String("mass_deletion")) {
+            massDeletion = true;
+        }
+    }
 
     // 9 — the envelope. Every count is Outcome's corresponding field renamed to
     // snake_case and NOT recomputed: the Outcome is "a value, not a log", and a
     // second tally would be a second answer.
     QJsonObject env;
     env[QStringLiteral("dry_run")] = req.dryRun;
+    if (!out.ok && massDeletion) {
+        // ANTS-3855 § 2.5 row 8 — its own code, the counts and the ids, and no
+        // `notes`: migrate_failed stays the one refusal that carries notes.
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = QStringLiteral("mass_deletion");
+        env[QStringLiteral("error")] = out.error;
+        env[QStringLiteral("items_deleted")]         = out.itemsDeleted;
+        env[QStringLiteral("items_stored")]          = out.itemsStored;
+        env[QStringLiteral("deleted_ids")]           = deletedIds;
+        env[QStringLiteral("deleted_ids_truncated")] = deletedNotes > maxNotes;
+        return env;
+    }
     if (!out.ok) {
         // Including a lock timeout: Access::Bulk carries a 30 s busy deadline
         // and the write lock is held for a whole project, so a concurrent
@@ -739,6 +767,9 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("items_updated_governed")] = out.itemsUpdatedGoverned;
     env[QStringLiteral("items_unchanged")]  = out.itemsUnchanged;
     env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
+    env[QStringLiteral("items_deleted")]    = out.itemsDeleted;    // ANTS-5287
+    env[QStringLiteral("deleted_ids")]      = deletedIds;
+    env[QStringLiteral("deleted_ids_truncated")] = deletedNotes > maxNotes;
     env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
     // ANTS-5374 — ids are permanent, and once this prefix is in the store later
     // appends treat it as chosen, so the migration is the one place to say it
@@ -904,6 +935,9 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
     opts.projectRoot       = projectRoot;
     opts.idFormat          = idFormat;
     opts.borrowTransaction = true;
+    // ANTS-5287 — convert takes no pre-migration snapshot, so it deletes
+    // nothing: absent items stay orphans and its orphans_present refusal holds.
+    opts.keepAbsent        = true;
 
     const auto loaded = RoadmapMigrateLoad::load(store, plan, opts);
     if (!loaded.ok) {

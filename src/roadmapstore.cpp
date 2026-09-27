@@ -1903,6 +1903,55 @@ bool RoadmapStore::unfileItem(qint64 itemPk, QString *error) {
     return true;
 }
 
+// ANTS-5287 (ANTS-3765 § 2.4) — the cascade, in foreign-key order. There is no
+// ON DELETE CASCADE in this schema, so the order IS the contract: a child left
+// behind makes the item's DELETE fail the constraint and the caller's
+// transaction roll back.
+bool RoadmapStore::deleteItem(qint64 itemPk, QString *error) {
+    static const char *const kSteps[] = {
+        "DELETE FROM element WHERE item_pk = ?",
+        "DELETE FROM history WHERE item_pk = ?",
+        "DELETE FROM feedback_ref WHERE item_pk = ?",
+        "DELETE FROM relationship WHERE src_pk = ? OR dst_pk = ?",
+        "DELETE FROM citation WHERE item_pk = ?",
+        "DELETE FROM item WHERE item_pk = ?",
+    };
+    for (const char *sql : kSteps) {
+        QSqlQuery q(m_db);
+        const QString text = QString::fromLatin1(sql);
+        q.prepare(text);
+        for (qsizetype i = 0, n = text.count(QLatin1Char('?')); i < n; ++i)
+            q.addBindValue(itemPk);
+        if (!q.exec()) {
+            if (error)
+                *error = lastErr(q);
+            return false;
+        }
+    }
+    return true;
+}
+
+// ANTS-5287 — a relationship names an item by pk from its own project, or by
+// (dst_project = the item's project's export_slug, dst_id_fold) from another.
+std::optional<bool> RoadmapStore::itemIsReferenced(qint64 itemPk, QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "SELECT EXISTS(SELECT 1 FROM relationship WHERE src_pk = ? OR dst_pk = ?)"
+        " OR EXISTS(SELECT 1 FROM relationship r JOIN item i ON i.item_pk = ?"
+        "           JOIN project p ON p.project_id = i.project_id"
+        "           WHERE r.dst_project = p.export_slug AND r.dst_id_fold = i.id_fold)"
+        " OR EXISTS(SELECT 1 FROM citation WHERE item_pk = ?)"
+        " OR EXISTS(SELECT 1 FROM feedback_ref WHERE item_pk = ?)"));
+    for (int i = 0; i < 5; ++i)
+        q.addBindValue(itemPk);
+    if (!q.exec() || !q.next()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    return q.value(0).toBool();
+}
+
 bool RoadmapStore::clearSectionElements(qint64 sectionId, QString *error) {
     // Per SECTION, never per project: the signature is the contract. A
     // project-wide delete would take out the narration and table rows of

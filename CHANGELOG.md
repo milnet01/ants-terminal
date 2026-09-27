@@ -136,6 +136,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Deleting an item from the roadmap file and re-running roadmap_migrate now removes it from the store, instead of the next save putting it back.** (ANTS-5287)
+  Its history goes with it; the pre-migration snapshot is the undo, and the
+  reply names every deleted id. A run that would delete more than a quarter
+  of the project's items refuses (mass_deletion) until accept_deletions:true
+  is passed. Items another roadmap row refers to are kept.
+
 - **roadmap_migrate's safety snapshot goes to the weekly backup folder, or one you set, instead of the system drive.** (ANTS-5247)
   With no backup_to it uses the config key claude.roadmap_snapshot_dir,
   then the folder the weekly snapshot last wrote to, then beside the store.

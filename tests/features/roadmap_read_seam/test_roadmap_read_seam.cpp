@@ -68,7 +68,8 @@ std::unique_ptr<RoadmapStore> openStore(const QString &path,
 // Bulk, because RoadmapMigrateLoad::load() refuses an Interactive connection
 // outright (ANTS-3765 INV-12).
 bool migrateInto(RoadmapStore &store, const QString &root, qint64 *projectId,
-                 const QString &exportSlug = QStringLiteral("demo")) {
+                 const QString &exportSlug = QStringLiteral("demo"),
+                 bool acceptDeletions = false) {
     QString err;
     const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
     if (!disc) {
@@ -81,6 +82,7 @@ bool migrateInto(RoadmapStore &store, const QString &root, qint64 *projectId,
     RoadmapMigrateLoad::Options opts;
     opts.changedAt   = QStringLiteral("2026-08-04T10:00:00Z");
     opts.projectRoot = root;
+    opts.acceptDeletions = acceptDeletions;
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);
     if (!out.ok) {
         ADD_FAILURE() << "migration load: " << out.error.toStdString();
@@ -486,7 +488,11 @@ TEST(RoadmapReadSeam, Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses) {
     // registerProject() that refused an already-registered canonical root would
     // break it silently, since it is get-or-create and nothing here asserts so.
     qint64 again = 0;
-    ASSERT_TRUE(migrateInto(*store, root, &again));
+    // ANTS-5287 — the rewrite re-identifies the project's only item, so the
+    // re-migration deletes 1 of 1 and ANTS-3765 § 2.7's guard would refuse.
+    // This leg is about the project row, so it accepts the deletion.
+    ASSERT_TRUE(migrateInto(*store, root, &again, QStringLiteral("demo"),
+                            /*acceptDeletions=*/true));
     EXPECT_EQ(again, projectId) << "a re-migration must reuse the project row";
     {
         const auto row = store->readProject(projectId, &err);

@@ -239,6 +239,8 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
         Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir());
     r.snapshotDir       = dest.folder;
     r.snapshotDirSource = dest.source;
+    // ANTS-5287 — lifts ANTS-3765 § 2.7's mass-deletion refusal.
+    r.acceptDeletions   = req.value(QStringLiteral("accept_deletions")).toBool(false);
 
     QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r);
     // ANTS-4740 — say the file was created. Without it an init reply is

@@ -103,7 +103,13 @@ struct Outcome {
     // `itemsUpdated > updatedItems.size()`, which stopped holding the moment a
     // suppression-only item could enter the array without being an update.
     int     updatedItemsDropped = 0;
-    int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
+    // ANTS-5287 (§ 2.7) — an item absent from source is DELETED unless another
+    // row references it or Options::keepAbsent is set; those are kept and
+    // counted as orphans. `itemsStored` is the project's item count before the
+    // run, the guard's denominator. A mass_deletion refusal still fills both.
+    int     itemsDeleted = 0;
+    int     itemsStored = 0;
+    int     itemsOrphaned = 0;   // absent from source and kept (§ 2.7)
     int     idsAllocated = 0;    // § 2.8
     // ANTS-5374 — set when those ids took the project folder's name as their
     // prefix, because nothing declared or carried one. Empty otherwise.
@@ -193,6 +199,12 @@ struct Options {
     // steps that follow. `dryRun` is therefore refused alongside it — a dry run
     // IS the rollback, which a borrower cannot perform.
     bool    borrowTransaction = false;
+    // ANTS-5287 (§ 2.7) — lifts the refusal of a load deleting more than a
+    // quarter of the project's stored items.
+    bool    acceptDeletions = false;
+    // ANTS-5287 — keep absent items instead of deleting them. The convert path
+    // sets it: it takes no pre-migration snapshot, so it must delete nothing.
+    bool    keepAbsent = false;
 };
 
 // One plan, one project, one transaction (§ 2.5). `store` must be open on an

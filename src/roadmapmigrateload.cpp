@@ -162,6 +162,7 @@ struct Loader {
     QVector<RoadmapStore::ItemRef> existing;
     QVector<qint64> matchPk;                    // parallel to plan.items; 0 = new
     QSet<qint64> consumed;                      // stored items a plan item claimed
+    bool massDeletion = false;                  // § 2.7's guard refused
 
     // § 2.8's counter, resolved on the first allocation and not before: a plan
     // with nothing to allocate must not touch id_prefix at all.
@@ -957,6 +958,12 @@ bool Loader::rebuildElements() {
         int    position = 0;
     };
     QVector<Orphan> orphans;
+    // ANTS-5287 (§ 2.7) — an absent item is deleted unless another row
+    // references it or the caller set keepAbsent. Collected first and deleted
+    // only after the guard below, so a refused load has counted everything and
+    // deleted nothing (the rollback would undo it either way).
+    out.itemsStored = int(existing.size());
+    QVector<const RoadmapStore::ItemRef *> toDelete;
     for (const RoadmapStore::ItemRef &r : existing) {
         const bool matched = consumed.contains(r.itemPk);
         const bool cleared = clearedSections.contains(r.sectionId);
@@ -965,6 +972,16 @@ bool Loader::rebuildElements() {
             if (!cleared && r.sectionId != 0 && !store.unfileItem(r.itemPk, &err))
                 return fail(err);
             continue;
+        }
+
+        if (!opts.keepAbsent) {
+            const auto referenced = store.itemIsReferenced(r.itemPk, &err);
+            if (!referenced)
+                return fail(err);
+            if (!*referenced) {
+                toDelete.push_back(&r);
+                continue;
+            }
         }
 
         ++out.itemsOrphaned;
@@ -983,6 +1000,24 @@ bool Loader::rebuildElements() {
             o.position = cur->position;
         }
         orphans.push_back(o);
+    }
+
+    out.itemsDeleted = int(toDelete.size());
+    for (const RoadmapStore::ItemRef *r : std::as_const(toDelete))
+        note("deleted_item", r->idFold);
+    // § 2.7's guard: more than a quarter of the stored items, unaccepted.
+    if (qint64(toDelete.size()) * 4 > qint64(existing.size()) && !opts.acceptDeletions) {
+        massDeletion = true;
+        const QString msg = QStringLiteral(
+            "this load would delete %1 of the project's %2 stored items, more "
+            "than a quarter; pass acceptDeletions to allow it")
+                                .arg(toDelete.size()).arg(existing.size());
+        note("mass_deletion", msg);
+        return fail(msg);
+    }
+    for (const RoadmapStore::ItemRef *r : std::as_const(toDelete)) {
+        if (!store.deleteItem(r->itemPk, &err))
+            return fail(err);
     }
 
     // Step 2 — per section the plan carries, never project-wide. A section
@@ -1225,7 +1260,19 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
             QString rollbackErr;
             store.rollback(&rollbackErr);
         }
-        return refuse("project_refused", loader.err);
+        Outcome refused = refuse("project_refused", loader.err);
+        // ANTS-5287 (§ 2.7) — a mass_deletion refusal keeps what it counted,
+        // so the caller can name what would have gone before accepting it.
+        if (loader.massDeletion) {
+            refused.itemsDeleted = out.itemsDeleted;
+            refused.itemsStored  = out.itemsStored;
+            for (const Note &n : std::as_const(out.notes)) {
+                if (n.code == QLatin1String("deleted_item")
+                    || n.code == QLatin1String("mass_deletion"))
+                    refused.notes.push_back(n);
+            }
+        }
+        return refused;
     }
 
     // ANTS-4483 — report the render's INV-5 Layman gate while the transaction
