@@ -51872,6 +51872,12 @@ are closed inline in the feedback files rather than filed here.
   and its history rows are deleted, and the reply names every deleted
   id. A run that would delete more than a quarter of the project's items
   refuses unless accept_deletions:true.
+  Gate done (2026-09-27): ANTS-3765 review-contract loops 8-9, capped,
+  11 verified and fixed; ANTS-3855 loops 8-9, 11 verified and fixed.
+  Ready to build. Tail, do not re-review, fold in while building: a
+  delete in a RETAINED section leaves a position gap (check the render
+  and export tolerate it); ANTS-3765 § 2.1's Outcome lacks members other
+  specs added (itemMatches, updatedItems, sectionsUnchanged, gateFailures).
   **Layman:** Items removed from the roadmap are kept in the database, and rewriting the file puts every one of them back.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
