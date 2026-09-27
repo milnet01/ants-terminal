@@ -67507,7 +67507,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-config-feedback-2026-09-27.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5484] **changelog_log op:"release" closes a dated section for a versionless project.**
+- ✅ [ANTS-5484] **changelog_log op:"release" closes a dated section for a versionless project.**
   changelog-format.md 4.1 permits `## YYYY-MM-DD` for a versionless
   project. Today the date passed as `version` writes
   `## [YYYY-MM-DD] - YYYY-MM-DD`, and a second close the same day refuses
@@ -67515,6 +67515,10 @@ project. Reported causes are claims until checked in source.
   Decided by the user 2026-09-27: add a dated mode (no version) that
   writes `## <date>`, and a second close the same day merges its entries
   into that day's section category by category instead of refusing.
+  Resolved (2026-09-27, d0cd34ed): op:"release" `dated:true` writes `##
+  <date>`; a same-day close merges category by category, new bullets
+  first, merged:true. Refuses bad_args (bad date, or with a version) and
+  merge_unsupported. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Projects without version numbers can close their changelog under a plain date heading.
   Kind: feature.
   Source: claude-config-feedback-2026-09-27.
