@@ -65930,6 +65930,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   it, but whether a sandboxed ants-mcpd sees the terminal's /tmp socket
   and can run rg/git needs a real sandbox test first; recommend doing
   the AppImage half alone and filing the Flatpak half as its own item.
+  Decided by the user (2026-09-27): AppImage first. Custom AppRun: first
+  argument `--mcpd` runs the bundled ants-mcpd. Land it early in a
+  release week, never the day before Wednesday's release (only the
+  tag-triggered release workflow can test it). File the Flatpak half as
+  its own item, after a sandbox test.
   **Layman:** People who use the single-file or Flatpak version cannot connect Claude Code the new way yet.
   Kind: package.
   Source: in-session-2026-09-24.
@@ -67350,6 +67355,10 @@ project. Reported causes are claims until checked in source.
   body with the existing elision marker until the reply fits under the
   offload threshold, and spill only if the rows alone still do not fit.
   Other paths keep today's behaviour.
+  Decided by the user (2026-09-27): shorten, then spill. On a targeted
+  id/ids fetch only, trim each body with the existing elision marker
+  until the reply fits under the offload threshold; spill only if the
+  rows still do not fit. Every other path keeps today's behaviour.
   **Layman:** Asking for six specific roadmap items can return none of them, only a pointer to a spill file.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-26.
