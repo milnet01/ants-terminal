@@ -175,6 +175,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe counts vitest and jest tests, not test files, on every run** (ANTS-5475)
+
 - **spec_log append_loop writes after the last row of a loop log that has a blank line inside it** (ANTS-5476)
   Rows after the gap with the same columns are the same table, so the new
   row no longer lands between loop 1 and loop 2.

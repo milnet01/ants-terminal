@@ -56,6 +56,30 @@ Counts parseCounts(const QString &output) {
         return c;
     }
 
+    // ANTS-5475 — vitest ("Tests  1 failed | 10 passed (11)") and jest
+    // ("Tests:  2 failed, 9 passed, 11 total") print a FILE-count line first
+    // ("Test Files  1 passed", "Test Suites: 1 failed"). The counts are read
+    // from the `Tests` line alone, or a green run reports its file count.
+    static const QRegularExpression jsTests(
+        QStringLiteral(R"(^\s*Tests:?\s+(.*)$)"),
+        QRegularExpression::MultilineOption);
+    if (const auto jt = jsTests.match(output); jt.hasMatch()) {
+        const QString line = jt.captured(1);
+        static const QRegularExpression n(QStringLiteral(R"((\d+) (passed|failed))"));
+        bool any = false;
+        for (auto it = n.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            (m.captured(2) == QLatin1String("passed") ? c.passed : c.failed) =
+                m.captured(1).toInt();
+            any = true;
+        }
+        if (any) {
+            if (c.passed < 0) c.passed = 0;
+            if (c.failed < 0) c.failed = 0;
+            return c;
+        }
+    }
+
     // pytest: "3 failed, 5 passed in 1.23s" — either half may be absent.
     static const QRegularExpression pyPassed(
         QStringLiteral(R"((\d+) passed)"));

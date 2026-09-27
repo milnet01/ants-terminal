@@ -96,6 +96,23 @@ TEST(MutationProbe, Inv2CountParsing) {
     EXPECT_EQ(gt.passed, 5);
     EXPECT_EQ(gt.failed, 2);
 
+    // ANTS-5475 — vitest and jest print a file-count line before the test
+    // counts. Reading the first "N passed" took the FILE count on a green run
+    // (1) and the test count on a red one (10), so the two could not be
+    // compared.
+    const auto vitestGreen = MutationProbe::parseCounts(QStringLiteral(
+        " Test Files  1 passed (1)\n      Tests  11 passed (11)\n   Duration  1.2s"));
+    EXPECT_EQ(vitestGreen.passed, 11);
+    EXPECT_EQ(vitestGreen.failed, 0);
+    const auto vitestRed = MutationProbe::parseCounts(QStringLiteral(
+        " Test Files  1 failed (1)\n      Tests  1 failed | 10 passed (11)"));
+    EXPECT_EQ(vitestRed.passed, 10);
+    EXPECT_EQ(vitestRed.failed, 1);
+    const auto jest = MutationProbe::parseCounts(QStringLiteral(
+        "Test Suites: 1 failed, 1 total\nTests:       2 failed, 9 passed, 11 total"));
+    EXPECT_EQ(jest.passed, 9);
+    EXPECT_EQ(jest.failed, 2);
+
     const auto unknown = MutationProbe::parseCounts(
         QStringLiteral("Segmentation fault (core dumped)"));
     EXPECT_EQ(unknown.passed, -1)
