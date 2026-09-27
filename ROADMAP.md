@@ -18982,6 +18982,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Urgent: Games_Hub's checker refuses every roadmap commit ("no version
   headings, 193 unplaced"). Nothing built yet; no other project's roadmap
   written.
+  Progress (2026-09-27, 58a0c926): step 2's query half shipped:
+  roadmap_query version: (RoadmapIndex::findByVersion), bad_version with
+  `versions`. Remaining in step 2: create_section numeric placement with
+  no after_section, plus the 0.9.0-then-0.10.0 order test. It changes
+  docs/specs/ANTS-1878's required-field contract, so it waits for that
+  amendment and its review-contract gate. Then step 4, the migration.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
