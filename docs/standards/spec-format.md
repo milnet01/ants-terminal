@@ -346,6 +346,8 @@ back to them.
 ### 3.5 Scope decisions (agreed with the user)
 
 The choices that were preference rather than deduction, and who made them.
+The heading is a fixed section name; each entry names who made that choice,
+the user or not.
 This is the section that stops the same argument being had twice. A design
 fork resolved in conversation and recorded nowhere gets re-opened.
 
@@ -375,6 +377,10 @@ Numbered, independently testable contracts. Bullet form:
 test-file path there is nothing to run, so drop the arrow rather than
 inventing an output for it — the rule below asks for an expected result of a
 *command*, and the skeleton says the same.
+
+**Any other form parses to no invariants.** `spec_lint` then runs every
+per-invariant check over an empty set, and the spec reads clean. Its
+`invariants_found` is the tell: zero is the alarm.
 
 Five rules, each of which exists because its absence shipped a defect:
 

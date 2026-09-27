@@ -387,7 +387,10 @@ the form instead.
 
 When a pre-commit hook fails, the commit DID NOT happen — so
 `--amend` would modify the *previous* commit, not the failed one.
-Fix the issue, re-stage, create a new commit.
+Fix the issue, re-stage, create a new commit — a script's own commit
+included. **Before that commit, run
+`git diff --cached --name-only`**: the index is what the refused commit
+left, and may hold files that do not belong. Unstage them.
 
 Only amend when fixing your *own* unpublished commit before push,
 and only if you're certain.

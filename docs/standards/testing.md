@@ -316,6 +316,12 @@ name that says which branches it walks does not.
 A name like `test_works_correctly` states nothing at all — the useful
 question it dodges is *what contract?*
 
+**A test that breaks when a format only gained something asserted the
+container, not the content.** Rewrite it to assert the content, as strictly
+as before, and say why in the commit. Loosening it until it passes is not a
+fix. **A fix must not silently disarm an existing test either**: a change
+to a test inside a fix is reviewed as a change to the contract.
+
 ## 4. Contract first, then the test
 
 For feature-conformance work, write the contract before the test: a short
@@ -438,7 +444,10 @@ could the author later. Decide it on the condition instead:
   code under test cannot make it fire. **A host condition standing in for a
   known failure on that host is code-keyed here and owes the item** —
   `skipIf(platform == "darwin")` over a macOS bug reads as host-keyed and is
-  not, which is why §10 names it.
+  not, which is why §10 names it. **Such a skip — or a test that cannot
+  import without a host dependency — must be false somewhere the suite
+  runs.** Where the usual developer and CI setups both skip it, name
+  where it does run; a skip true everywhere is a test nobody runs.
 - **Two more owe nothing.** A skip whose reason string names a sibling
   test which fails on the same defect: that failure is not silent. And a skip keyed on the
   project's own history, such as no release yet: it waits on work the
