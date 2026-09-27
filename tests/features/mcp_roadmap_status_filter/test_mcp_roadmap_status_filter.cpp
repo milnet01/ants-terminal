@@ -155,26 +155,21 @@ TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-3408 — the granular planned/in-progress/considered arms must live
-// in BOTH emission branches (section= and full-file/no-section). ANTS-3400
+// ANTS-3408 — the granular planned/in-progress/considered arms must reach
+// BOTH emission branches (section= and full-file/no-section). ANTS-3400
 // added them to the section branch only; the full-file branch iterating
 // m_roadmapCacheBullets silently returned 0 for a granular filter without a
-// `section` arg (Contact_List feedback 2026-07-01). A whole-file `contains`
-// check can't tell the two branches apart, so this is count-based: the
-// planned arm literal must appear at least twice.
+// `section` arg (Contact_List feedback 2026-07-01). ANTS-5376 moved the arms
+// into one predicate, keepStatus, that both branches call — so the check is
+// now that both call sites exist. Behaviour on both branches is locked by
+// RoadmapQueryStatusHint.Inv6GranularFilterOnBothPaths.
 TEST(mcp_roadmap_status_filter, Ants3408GranularFiltersInBothBranches) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // Both the section= and full-file predicates must carry the planned arm.
-    expect(countOccurrences(
-               cpp, "QLatin1String(\"planned\")     && (s == plannedEmoji)") >= 2,
-           "ANTS-3408: planned granular arm present in both emission branches");
-    expect(countOccurrences(
-               cpp, "QLatin1String(\"in-progress\") && (s == progressEmoji)") >= 2,
-           "ANTS-3408: in-progress granular arm present in both branches");
-    expect(countOccurrences(
-               cpp, "QLatin1String(\"considered\")  && (s == consideredEmoji)") >= 2,
-           "ANTS-3408: considered granular arm present in both branches");
+    expect(countOccurrences(cpp, "keepStatus(s)") >= 2,
+           "ANTS-3408: both emission branches call the shared status predicate");
+    expect(contains(cpp, "QLatin1String(\"considered\")  && (s == consideredEmoji)"),
+           "ANTS-3408: the predicate carries the considered arm");
     expect(contains(cpp, "ANTS-3408"),
            "ANTS-3408 anchor comment present");
     EXPECT_EQ(0, expect_failures());

@@ -2967,7 +2967,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "overwrites, so \"is my file in sync?\" and \"what would a "
                     "write overwrite?\" can never disagree. Returns "
                     "`file_in_sync`, plus `drift_lines` / `drift_restyled` / "
-                    "`drift_lost` / `drift_lost_text` on the drifted arm only. "
+                    "`drift_lost` / `drift_lost_text` on the drifted arm only; "
+                    "ANTS-5382 adds `drift_sample` ({file, render} rows) and "
+                    "`drift_header_only`. "
                     "`sync_checked:false` means nobody looked (not "
                     "store-backed, or the render failed) and must NOT be read "
                     "as in-sync. ANTS-4730 — it reports on EVERY arm, so its "
@@ -3151,7 +3153,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     schema["type"] = "object";
                     QJsonObject props;
                     QJsonObject statusProp;
-                    statusProp["type"] = "string";
                     QJsonArray statusEnum;
                     statusEnum.append("all");
                     statusEnum.append("active");
@@ -3160,8 +3161,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     statusEnum.append("in-progress");
                     statusEnum.append("considered");
                     statusEnum.append("dropped");   // ANTS-4977
-                    statusProp["enum"] = statusEnum;
+                    // ANTS-5376 — one value, or an array that is their union.
+                    {
+                        QJsonObject one;
+                        one["type"] = "string";
+                        one["enum"] = statusEnum;
+                        QJsonObject many;
+                        many["type"]     = "array";
+                        many["items"]    = one;
+                        many["minItems"] = 1;
+                        statusProp["anyOf"] = QJsonArray{one, many};
+                    }
                     statusProp["description"] = QStringLiteral(
+                        "ANTS-5376 — an ARRAY of these values is their union. "
                         "Filter by lifecycle. Aggregates: \"active\" = "
                         "planned + in-progress (📋+🚧, ~7× smaller payload), "
                         "\"shipped\" = ✅, \"all\". ANTS-3400 — the granular "
@@ -3915,7 +3927,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "before it overwrites, so the two surfaces can "
                             "never disagree. Adds `file_in_sync`, plus "
                             "`drift_lines` / `drift_restyled` / `drift_lost` / "
-                            "`drift_lost_text` on the drifted arm only. "
+                            "`drift_lost_text` on the drifted arm only; "
+                            "ANTS-5382 adds `drift_sample` ({file, render} "
+                            "rows) and `drift_header_only`. "
                             "`sync_checked:false` means nobody looked — not "
                             "store-backed, or the render failed — and is NOT a "
                             "clean bill of health. ANTS-4730 — it is emitted "

@@ -71,6 +71,13 @@ struct Drift {
     // counts both sides, so a restyled line is one file line plus one render
     // line there and one `restyled` here.
     int         gained   = 0;
+    // ANTS-5382 — a capped sample of differing lines as {file, render} pairs:
+    // a twin pair for a restyle, an empty render side for lost text, an empty
+    // file side for a gained line. `headerOnly` is true when everything from
+    // the first `## ` heading on matches, so only the title, preamble or
+    // banner differ.
+    QList<std::pair<QString, QString>> sample;
+    bool        headerOnly = false;
 };
 
 // nullopt means the measurement could not be taken — the render failed or came

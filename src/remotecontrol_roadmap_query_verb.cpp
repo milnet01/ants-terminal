@@ -622,6 +622,17 @@ bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
         if (!d->lostText.isEmpty())
             out[QStringLiteral("drift_lost_text")] =
                 QJsonArray::fromStringList(d->lostText);
+        // ANTS-5382 — which lines, not just how many. A side with no line is
+        // omitted rather than emitted empty.
+        QJsonArray sample;
+        for (const auto &[file, render] : d->sample) {
+            QJsonObject row;
+            if (!file.isEmpty())   row[QStringLiteral("file")]   = file;
+            if (!render.isEmpty()) row[QStringLiteral("render")] = render;
+            sample.append(row);
+        }
+        if (!sample.isEmpty()) out[QStringLiteral("drift_sample")] = sample;
+        if (d->headerOnly) out[QStringLiteral("drift_header_only")] = true;
     }
     return true;
 }
@@ -677,11 +688,30 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // on this verb's own advertised lean-planning call it hands a planning
     // session a list of already-shipped ids. `status` still wins when both
     // are present.
-    QString statusArg = req.value(QStringLiteral("status")).toString();
-    if (statusArg.isEmpty())
-        statusArg = req.value(QStringLiteral("filter")).toString();
+    QJsonValue statusVal = req.value(QStringLiteral("status"));
+    if (!statusVal.isArray() && statusVal.toString().isEmpty())
+        statusVal = req.value(QStringLiteral("filter"));
+    QString statusArg = statusVal.toString();
     QString filter = statusArg.toLower();
     if (filter.isEmpty()) filter = QStringLiteral("all");
+    // ANTS-5376 — an ARRAY is the union of its elements. `filterSet` is what
+    // the predicates below read; a single value is a set of one. `filter`
+    // stays a string for the "all" short-circuits: it is "all" when the set
+    // holds "all", and otherwise names no single status.
+    QStringList filterSet{filter};
+    if (statusVal.isArray()) {
+        filterSet.clear();
+        for (const auto &v : statusVal.toArray()) {
+            const QString s = v.toString().toLower();
+            if (!filterSet.contains(s)) filterSet.append(s);
+        }
+        filter = filterSet.contains(QLatin1String("all"))
+                     ? QStringLiteral("all")
+                     : QStringLiteral("set");
+    }
+    const QJsonValue filterEcho =
+        statusVal.isArray() ? QJsonValue(QJsonArray::fromStringList(filterSet))
+                            : QJsonValue(filter);
 
     // ANTS-1247-INV-5: unknown status → bad_status, cache untouched.
     // ANTS-3400 — accept roadmap_log's lifecycle vocabulary
@@ -700,8 +730,25 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         QStringLiteral("shipped"),     QStringLiteral("planned"),
         QStringLiteral("in-progress"), QStringLiteral("considered"),
         QStringLiteral("dropped") };   // ANTS-4977
-    if (!kAcceptedStatusFilters.contains(filter)) {
-        QString verbatim = statusArg;   // ANTS-3698 — status or its alias
+    // ANTS-5376 — the first element outside the accepted set, or an empty
+    // array, which would otherwise read as "all".
+    QString unknownStatus;
+    bool badStatus = false;
+    if (statusVal.isArray()) {
+        for (const QString &s : std::as_const(filterSet)) {
+            if (!kAcceptedStatusFilters.contains(s)) {
+                unknownStatus = s;
+                badStatus = true;
+                break;
+            }
+        }
+        if (filterSet.isEmpty()) badStatus = true;
+    } else {
+        unknownStatus = statusArg;
+        badStatus = !kAcceptedStatusFilters.contains(filter);
+    }
+    if (badStatus) {
+        QString verbatim = unknownStatus;   // ANTS-3698 — status or its alias
         if (verbatim.size() > 64) verbatim.truncate(64);
         for (int i = 0; i < verbatim.size(); ++i) {
             if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
@@ -714,9 +761,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // and `accepted` lists the union it wanted without saying so.
         if (statusArg.contains(QRegularExpression(QStringLiteral("[,|\\s]"))))
             out["hint"] = QStringLiteral(
-                "status takes ONE value. \"active\" is planned + in-progress; "
-                "\"all\" is every status. For any other combination, make one "
-                "call per status.");
+                "status takes one value or an array of values, which is "
+                "their union (ANTS-5376). \"active\" is planned + "
+                "in-progress; \"all\" is every status.");
         return QJsonDocument(out);
     }
 
@@ -727,13 +774,40 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // while section_index stays coarse: planned/in-progress → active;
     // considered has no section tally, so it lists every section (a
     // caller after 💭 items uses the bullets path, which does filter).
-    QString sectionFilter = filter;
-    if (sectionFilter == QLatin1String("planned") ||
-        sectionFilter == QLatin1String("in-progress"))
-        sectionFilter = QStringLiteral("active");
-    else if (sectionFilter == QLatin1String("considered") ||
-             sectionFilter == QLatin1String("dropped"))   // ANTS-4977
-        sectionFilter = QStringLiteral("all");
+    // ANTS-5376 — an array takes the union of its elements' aggregates, so
+    // any mix of active and shipped, or anything with no tally, lists all.
+    auto aggregateOf = [](const QString &f) {
+        if (f == QLatin1String("planned") || f == QLatin1String("in-progress"))
+            return QStringLiteral("active");
+        if (f == QLatin1String("considered") ||
+            f == QLatin1String("dropped"))   // ANTS-4977
+            return QStringLiteral("all");
+        return f;
+    };
+    QString sectionFilter = aggregateOf(filterSet.first());
+    for (const QString &f : std::as_const(filterSet))
+        if (aggregateOf(f) != sectionFilter) sectionFilter = QStringLiteral("all");
+
+    // ANTS-3408 / ANTS-5376 — one status predicate for both emission paths,
+    // over the whole set. It had been written out twice, once per path.
+    auto keepStatus = [&filterSet](const QString &s) {
+        static const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+        static const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+        static const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+        static const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
+        static const QString droppedEmoji    = QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫
+        for (const QString &f : filterSet) {
+            if ((f == QLatin1String("all")) ||
+                (f == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
+                (f == QLatin1String("shipped")     && (s == doneEmoji)) ||
+                (f == QLatin1String("planned")     && (s == plannedEmoji)) ||
+                (f == QLatin1String("in-progress") && (s == progressEmoji)) ||
+                (f == QLatin1String("considered")  && (s == consideredEmoji)) ||
+                (f == QLatin1String("dropped")     && (s == droppedEmoji)))
+                return true;
+        }
+        return false;
+    };
 
     // ANTS-1287-INV-1: optional `section` slug. Empty/missing → full-file
     // path (existing behaviour, INV-6).
@@ -2332,7 +2406,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = true;
         out["mode"] = mode;          // explicit in section_index path
         out["path"] = path;
-        out["filter"] = filter;      // status filter echo (ANTS-1848: now shapes emission)
+        out["filter"] = filterEcho;      // status filter echo (ANTS-1848: now shapes emission)
         // ANTS-1729 — paginate / auto-truncate the section index with the
         // same PaginationEngine the bullets path uses. Auto-pick (limit
         // omitted → -1) measure-cuts the slice under the soft cap so a
@@ -2727,19 +2801,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (filter == QLatin1String("all")) {
             filtered = sectionBullets;
         } else {
-            const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B");
-            const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7");
-            const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");
-            const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭 (ANTS-3400)
             for (const auto &v : std::as_const(sectionBullets)) {
                 const QString s = v.toObject().value(QStringLiteral("status")).toString();
-                const bool keep =
-                    (filter == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
-                    (filter == QLatin1String("shipped")     && (s == doneEmoji)) ||
-                    (filter == QLatin1String("planned")     && (s == plannedEmoji)) ||
-                    (filter == QLatin1String("in-progress") && (s == progressEmoji)) ||
-                    (filter == QLatin1String("considered")  && (s == consideredEmoji)) ||
-                    (filter == QLatin1String("dropped")     && (s == QString::fromUtf8("\xF0\x9F\x9A\xAB"))); // 🚫 ANTS-4977
+                const bool keep = keepStatus(s);   // ANTS-5376
                 if (keep) filtered.append(v);
             }
         }
@@ -2850,7 +2914,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         out["path"] = path;
         out["count"] = page.slice.size();
-        out["filter"] = filter;
+        out["filter"] = filterEcho;
         if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
         if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
         if (!sourceArgs.isEmpty()) {   // ANTS-4985
@@ -3358,26 +3422,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (filter == QLatin1String("all")) {
         filtered = m_roadmapCacheBullets;
     } else {
-        const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-        const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-        const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");     // ✅
-        const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭 (ANTS-3400)
         for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
             const QString s = v.toObject().value(QStringLiteral("status")).toString();
-            // ANTS-3408 — mirror the section= branch's granular arms.
-            // ANTS-3400 added planned/in-progress/considered to the
-            // section path only; this full-file (no `section` arg) path
-            // kept just active/shipped, so a granular filter without a
-            // section fell through the else and returned 0 with no error
-            // (Contact_List feedback 2026-07-01). Root cause was path
-            // divergence, not the ants-v1/GFM roadmap format.
-            const bool keep =
-                (filter == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
-                (filter == QLatin1String("shipped")     && (s == doneEmoji)) ||
-                (filter == QLatin1String("planned")     && (s == plannedEmoji)) ||
-                (filter == QLatin1String("in-progress") && (s == progressEmoji)) ||
-                (filter == QLatin1String("considered")  && (s == consideredEmoji)) ||
-                (filter == QLatin1String("dropped")     && (s == QString::fromUtf8("\xF0\x9F\x9A\xAB"))); // 🚫 ANTS-4977
+            // ANTS-3408 — the full-file and section= paths share one
+            // predicate (keepStatus), so a granular filter cannot again
+            // reach one path only.
+            const bool keep = keepStatus(s);   // ANTS-5376
             if (keep) filtered.append(v);
         }
     }
@@ -3534,7 +3584,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1247-INV-10: count is post-filter post-pagination size.
     out["count"] = page.slice.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
-    out["filter"] = filter;
+    out["filter"] = filterEcho;
     if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
     if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
     if (!sourceArgs.isEmpty()) {   // ANTS-4985

@@ -117,6 +117,17 @@ QString contentKey(QStringView line) {
 }
 
 constexpr int kLostTextCap = 20;
+// ANTS-5382 — lines of drift_sample. Small: it is there to show the KIND of
+// difference, and the counts above still say how much there is.
+constexpr int kDriftSampleCap = 10;
+
+// ANTS-5382 — the text from the first `## ` heading on. Everything above it is
+// the header: the title, the preamble and the generated-file banner.
+QStringView bodyAfterHeader(QStringView text) {
+    if (text.startsWith(u"## ")) return text;
+    const qsizetype at = text.indexOf(u"\n## ");
+    return at < 0 ? QStringView() : text.mid(at + 1);
+}
 
 // What the file holds that `want` (the store alone) does not reproduce, split
 // by whether the line's TEXT survives in some other styling.
@@ -130,6 +141,9 @@ struct DriftBreakdown {
     int         lost     = 0;
     QStringList lostText;
     int         gained   = 0;   // ANTS-5350 — see Drift::gained
+    // ANTS-5382 — see Drift::sample and Drift::headerOnly.
+    QList<std::pair<QString, QString>> sample;
+    bool        headerOnly = false;
     // ANTS-4947 — the files that lost TEXT, so the publish can keep a copy of
     // each. Per file rather than a flag, because a project renders into several
     // and only the ones that actually lose prose are worth keeping.
@@ -229,6 +243,8 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         const auto k = renderKeys.find(contentKey(l));
         if (k != renderKeys.end() && !k.value().isEmpty()) {
             const QStringView twin = k.value().takeLast();
+            if (d.sample.size() < kDriftSampleCap)   // ANTS-5382
+                d.sample.append({l.toString(), twin.toString()});
             // ANTS-4965 — same characters, different spacing: an indent or an
             // aligned column the render is about to flatten. A benign dialect
             // restyle changes characters, so it never lands here.
@@ -270,6 +286,8 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
     };
     const auto lose = [&](QStringView l) {
         ++d.lost;
+        if (d.sample.size() < kDriftSampleCap)   // ANTS-5382 — no render twin
+            d.sample.append({l.toString(), QString()});
         if (d.lostText.size() < kLostTextCap)
             d.lostText.append(l.trimmed().toString());
     };
@@ -295,9 +313,24 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         s = e;
     }
     // ANTS-5350 — render lines no file line matched: what the render adds.
+    // ANTS-5382 — sampled in sorted order, so the same drift samples the same
+    // lines on every call (renderKeys is a hash).
+    QStringList gainedLines;
     for (auto it = renderKeys.cbegin(); it != renderKeys.cend(); ++it)
         for (QStringView r : it.value())
-            if (!r.trimmed().isEmpty()) ++d.gained;
+            if (!r.trimmed().isEmpty()) {
+                ++d.gained;
+                gainedLines.append(r.toString());
+            }
+    gainedLines.sort();
+    for (const QString &r : std::as_const(gainedLines)) {
+        if (d.sample.size() >= kDriftSampleCap) break;
+        d.sample.append({QString(), r});
+    }
+    // ANTS-5382 — the sections match line for line, so every difference sits
+    // in the header. A reflowed body line is not sampled (it has no one twin),
+    // but it leaves the bodies unequal, so it can never pass as header-only.
+    d.headerOnly = d.total > 0 && bodyAfterHeader(have) == bodyAfterHeader(want);
     return d;
 }
 
@@ -306,6 +339,7 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
 // nothing — so it is skipped rather than counted as wholly discarded.
 DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
     DriftBreakdown all;
+    bool everyDriftInHeader = true;   // ANTS-5382
     for (auto it = preImage.cbegin(); it != preImage.cend(); ++it) {
         QFile f(it.key());
         if (!f.open(QIODevice::ReadOnly))
@@ -322,7 +356,11 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
             all.lostFiles.append(it.key());
         for (const QString &t : d.lostText)
             if (all.lostText.size() < kLostTextCap) all.lostText.append(t);
+        for (const auto &row : d.sample)                     // ANTS-5382
+            if (all.sample.size() < kDriftSampleCap) all.sample.append(row);
+        if (d.total > 0 && !d.headerOnly) everyDriftInHeader = false;
     }
+    all.headerOnly = all.total > 0 && everyDriftInHeader;
     return all;
 }
 
@@ -475,6 +513,8 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
     out.lost         = d.lost;
     out.gained       = d.gained;   // ANTS-5350
     out.lostText = d.lostText;
+    out.sample     = d.sample;       // ANTS-5382
+    out.headerOnly = d.headerOnly;
     return out;
 }
 

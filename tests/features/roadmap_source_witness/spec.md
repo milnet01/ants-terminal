@@ -86,3 +86,19 @@ safe (AI_Prompts: `drift_lines:1`, every kind 0).
 Note that `drift_lines` counts BOTH sides, so a restyled line is one file line
 plus one render line there and one `drift_restyled`; the kinds do not sum to
 `drift_lines`, and `drift_lost == 0` is the render-is-safe test.
+
+## ANTS-5382 — `check_sync` samples the differing lines
+
+On the drifted arm, `check_sync` also returns `drift_sample`: up to ten
+`{file, render}` rows. A restyled line carries both sides, a lost line only
+`file`, and a line only the render has only `render`. Rows are in a stable
+order, so the same drift samples the same lines. `drift_header_only:true`
+appears when everything from the first `## ` heading on matches, so only the
+title, preamble or banner differ.
+
+- *Test:* `Ants5382HeaderOnlyDriftIsFlaggedAndSampled` — remove only the
+  banner: the flag is set and the one row is the banner, render side only.
+- *Test:* `Ants5382BodyDriftSamplesBothSides` — append text to a bullet line:
+  no flag, and the edited line appears as a row's `file` side.
+
+Both fail against the tree before ANTS-5382, which emitted neither field.

@@ -17,6 +17,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 
 #include <algorithm>
@@ -549,4 +550,89 @@ TEST(RoadmapSourceWitness, Ants5350RenderOnlyLineIsCountedAsGained) {
     EXPECT_EQ(out.value(QStringLiteral("drift_gained")).toInt(), 1)
         << QJsonDocument(out).toJson().toStdString();
     EXPECT_EQ(out.value(QStringLiteral("drift_lost")).toInt(), 0);
+}
+
+// ANTS-5382 — check_sync shows WHICH lines differ, and says when only the
+// header does. drift_lines alone made judging a render take a dry run, a
+// render and a git diff (Snatch feedback 2026-09-25).
+
+// ANTS-5382a — a header-only difference is flagged, with its line sampled.
+TEST(RoadmapSourceWitness, Ants5382HeaderOnlyDriftIsFlaggedAndSampled) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    const QString path = root + QStringLiteral("/ROADMAP.md");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    f.close();
+    const auto banner = std::find_if(lines.begin(), lines.end(), [](const QString &l) {
+        return l.contains(QStringLiteral("Generated from the Ants Terminal roadmap store"));
+    });
+    ASSERT_NE(banner, lines.end());
+    const QString bannerText = *banner;
+    lines.erase(banner);
+    ASSERT_TRUE(writeFile(path, lines.join(QLatin1Char('\n')).toUtf8()));
+
+    const QJsonObject out = checkSync(root);
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(out.value(QStringLiteral("drift_header_only")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray sample = out.value(QStringLiteral("drift_sample")).toArray();
+    ASSERT_EQ(sample.size(), 1) << QJsonDocument(out).toJson().toStdString();
+    const QJsonObject row = sample.at(0).toObject();
+    EXPECT_EQ(row.value(QStringLiteral("render")).toString(), bannerText);
+    EXPECT_FALSE(row.contains(QStringLiteral("file")))
+        << "the file holds no twin for a line only the render has";
+}
+
+// ANTS-5382b — a changed bullet line is sampled as its file/render pair, and
+// the drift is not header-only.
+TEST(RoadmapSourceWitness, Ants5382BodyDriftSamplesBothSides) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    const QString path = root + QStringLiteral("/ROADMAP.md");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    f.close();
+    int firstH2 = -1;
+    for (int i = 0; i < lines.size(); ++i)
+        if (lines.at(i).startsWith(QStringLiteral("## "))) { firstH2 = i; break; }
+    ASSERT_GE(firstH2, 0);
+    int bullet = -1;
+    for (int i = firstH2; i < lines.size(); ++i)
+        if (lines.at(i).startsWith(QStringLiteral("- "))) { bullet = i; break; }
+    ASSERT_GE(bullet, 0) << "the fixture renders no bullet below its first section";
+    const QString rendered = lines.at(bullet);
+    lines[bullet] = rendered + QStringLiteral(" HAND EDIT");
+    ASSERT_TRUE(writeFile(path, lines.join(QLatin1Char('\n')).toUtf8()));
+
+    const QJsonObject out = checkSync(root);
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(out.contains(QStringLiteral("drift_header_only")))
+        << QJsonDocument(out).toJson().toStdString();
+    bool paired = false;
+    for (const auto &v : out.value(QStringLiteral("drift_sample")).toArray()) {
+        const QJsonObject row = v.toObject();
+        if (row.value(QStringLiteral("file")).toString() == lines.at(bullet))
+            paired = true;
+    }
+    EXPECT_TRUE(paired) << "the edited line must appear in the sample\n"
+                        << QJsonDocument(out).toJson().toStdString();
 }

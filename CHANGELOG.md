@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query check_sync shows a sample of the lines that differ, and says when only the header does.** (ANTS-5382)
+  Up to ten lines come back as file-versus-store pairs, so a session can
+  judge whether re-writing ROADMAP.md is safe without a trial run. A
+  difference confined to the title, preamble or banner is flagged.
+
+- **roadmap_query takes an array of statuses and returns items in any of them.** (ANTS-5376)
+  For example, status ["planned", "considered"] lists both kinds in one
+  call. An unknown or empty entry is refused and named, instead of an
+  array quietly returning every item.
+
 - **The tokens-saved chip and token_usage count the calls ants-mcpd serves** (ANTS-5311)
   Since ants-mcpd began answering most MCP calls, the terminal's savings
   figures only saw the few it served itself. Each ants-mcpd now writes a
