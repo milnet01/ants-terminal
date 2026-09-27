@@ -67618,13 +67618,15 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: OneUp feedback 2026-09-27.
 
-- 📋 [ANTS-5496] **docs/specs/ANTS-1878.md names the wrong files for create_section's handler and dispatch.**
+- ✅ [ANTS-5496] **docs/specs/ANTS-1878.md names the wrong files for create_section's handler and dispatch.**
   Both lanes: § 2.1 places the handler in src/remotecontrol.{h,cpp} (it is src/remotecontrol_roadmap_log_batch.cpp), § 2.1 places cmdRoadmapLog in src/remotecontrol_roadmap_query.cpp (it is src/remotecontrol_roadmap_query_verb.cpp), and § 6 item 3 and § 7 put the dispatch in src/remotecontrol.cpp :2754-2780. Pre-existing text outside the ANTS-5315 amendment, so filed rather than fixed in that gate. Fold in directly; do not re-review.
+  Resolved (2026-09-27, 76ecb942): § 2.1, § 4, § 6 and § 7 name the real
+  files; stale line pins dropped.
   **Layman:** Points the create_section spec at the files that actually hold the code.
   Kind: doc-fix.
   Source: review-contract ANTS-1878 loop 5, 2026-09-27 (filed out of radius).
 
-- 📋 [ANTS-5497] **docs/specs/ANTS-3757 carries three stale claims about its note codes and fixtures.**
+- ✅ [ANTS-5497] **docs/specs/ANTS-3757 carries three stale claims about its note codes and fixtures.**
   Found by the ANTS-5383/5495 gate, outside its span. (1) § 2.10's `unrecognised_checkbox` row says the line "is carried as narration"; section-level text before a section's first element is intro (§ 2.11's position rule). (2) § 2.10 says the read-half set is closed and names every shared code, but `archive_unrecognised` (ANTS-3766 § 2.2, per the Note struct comment in src/roadmapmigrate.h) is not in the table. (3) § 6 lists "a pathological fixture" carrying the status-marked detail line; the only such line is fixtures/antsv1/ROADMAP.md:30 and there is no fixture of that name. Fold in directly; do not re-review.
   Also (loop 6 of the same gate): § 2.10's table omits read-half codes
   the code raises: `field_defaulted` (owned by ANTS-4065), and
@@ -67632,6 +67634,10 @@ project. Reported causes are claims until checked in source.
   `archive_unrecognised`. § 2.10 now states every added code belongs in
   the table, so add their rows (or pointers). Fold in directly; do not
   re-review.
+  Resolved (2026-09-27, 76ecb942): pointer rows for field_defaulted,
+  unresolved_path, archive_unrecognised, archive_slug_collision;
+  unrecognised_checkbox row states the position rule; § 6 fixture
+  wording fixed.
   **Layman:** Corrects three small inaccuracies in the roadmap-import spec that a test writer could follow.
   Kind: doc-fix.
   Source: review-contract ANTS-3757, 2026-09-27 (filed out of radius).
