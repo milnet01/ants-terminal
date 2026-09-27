@@ -66987,6 +66987,15 @@ project. Reported causes are claims until checked in source.
   alive so it can still receive messages. Look first for a way that
   needs no schema change; if none exists, come back before bumping
   kSchemaVersion (it locks older builds out).
+  Decided 2026-09-27 (user deferred the route to the session): no
+  no-bump route is clean. A tombstone row with root NULL cannot be found
+  by the departed session's own inbox, which resolves by caller_cwd;
+  keeping root makes the project look registered with zero items and
+  blanks its roadmap. A side-file mailbox splits messages across two
+  stores. So: add a deregistered marker to `project` in the NEXT
+  kSchemaVersion bump, bundled with ANTS-5483 so older builds are locked
+  out once. Until then a departed project's news goes to its feedback
+  file.
   **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
   Kind: enhancement.
   Source: in-session-2026-09-25.
