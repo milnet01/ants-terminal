@@ -67143,8 +67143,12 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: RetroArch feedback 2026-09-25.
 
-- 📋 [ANTS-5386] **render_failed on a table row names the section and row.**
+- ✅ [ANTS-5386] **render_failed on a table row names the section and row.**
   `table row has 6 cells against 4 columns` names no section, table or row; the cause was unescaped `|` in code spans. Include the section slug, row index and first cell. Have migrate note any row whose cell count differs from its header.
+  Resolved (2026-09-27, 7b0b77c5): the render error names the section
+  slug, row number, first cell and both counts. The migrate-note half is
+  split into its own item, since it needs a new note code in ANTS-3757's
+  closed set.
   **Layman:** Tells a session where a broken roadmap table is, instead of just that one exists.
   Kind: fix.
   Source: RetroArch feedback 2026-09-25.
@@ -67354,6 +67358,12 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: in-session 2026-09-26 (found implementing ANTS-5404).
   Lanes: roadmap.
+
+- 📋 [ANTS-5495] **roadmap_migrate notes a table row whose cell count differs from its header.**
+  ANTS-5386 made the render's refusal name the section, row and first cell. Its second half, a migrate note for such rows up front, needs a new code in ANTS-3757 § 2.10's closed note set, so the spec amendment and its gate come first.
+  **Layman:** Warns at import time about a broken roadmap table, before it stops the roadmap from being written.
+  Kind: fix.
+  Source: RetroArch feedback 2026-09-25 (split from ANTS-5386).
 
 ### Ants MCP feedback from CC sessions — 2026-09-26 triage
 
