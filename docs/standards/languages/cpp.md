@@ -32,6 +32,9 @@ C++20 minimum unless the project pins higher. A pin below that needs a
 one-line reason where the project sets the standard — `CMakeLists.txt`
 where that is what builds it — or in the project's own standard.
 
+**C: C11 minimum** unless the project pins another. A pin below that needs
+the same one-line reason in the same place.
+
 ## Casing
 
 **C++ has no ecosystem-wide convention** — the standard library is
