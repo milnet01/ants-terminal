@@ -67604,6 +67604,12 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: OneUp feedback 2026-09-27.
 
+- 📋 [ANTS-5496] **docs/specs/ANTS-1878.md names the wrong files for create_section's handler and dispatch.**
+  Both lanes: § 2.1 places the handler in src/remotecontrol.{h,cpp} (it is src/remotecontrol_roadmap_log_batch.cpp), § 2.1 places cmdRoadmapLog in src/remotecontrol_roadmap_query.cpp (it is src/remotecontrol_roadmap_query_verb.cpp), and § 6 item 3 and § 7 put the dispatch in src/remotecontrol.cpp :2754-2780. Pre-existing text outside the ANTS-5315 amendment, so filed rather than fixed in that gate. Fold in directly; do not re-review.
+  **Layman:** Points the create_section spec at the files that actually hold the code.
+  Kind: doc-fix.
+  Source: review-contract ANTS-1878 loop 5, 2026-09-27 (filed out of radius).
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
