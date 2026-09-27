@@ -374,3 +374,35 @@ TEST(RoadmapLogSetIntro, Ants5373DryRunEchoesPreviousIntro) {
     EXPECT_EQ(resp.value(QStringLiteral("previous_intro")).toString(),
               QStringLiteral("The old work intro."));
 }
+
+// ------------------------------------------------------------- ANTS-5493 -----
+
+// A `# comment` inside a fenced code block is code, not a heading. The import
+// is fence-aware, so the guard must be too, or an intro holding a shell
+// sample can never be edited (MAME_Curator feedback 2026-09-27).
+TEST(RoadmapLogSetIntro, Ants5493FencedHashLinesAreNotHeadings) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QString intro = QStringLiteral(
+        "How to propose.\n\n```bash\n# Allocate the next ID:\nnext-id\n```\n\n"
+        "~~~\n## also code\n~~~\n");
+    QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("work"), intro), false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_TRUE(has(md, "```bash\n# Allocate the next ID:\nnext-id\n```\n")) << md;
+
+    // amend_intro over the same intro, touching an unrelated line.
+    resp = rc.cmdRoadmapLogSetIntroForTest(
+        amendReq(fx.root, QStringLiteral("How to propose."),
+                 QStringLiteral("How to propose an item.")), false).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    // Outside a fence the guard still holds.
+    resp = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("work"),
+                 QStringLiteral("```\ncode\n```\n# Real heading\n")), false).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_intro"));
+}

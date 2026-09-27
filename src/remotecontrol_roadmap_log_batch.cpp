@@ -6,6 +6,7 @@
 // pre-split relative order — which is what INV-3 checks and what every
 // two-anchor scrape window depends on. Inserted at its slice position in
 // ANTS_RC_SOURCES_REL, immediately after TU 5, and never appended.
+#include "markdownscan.h"
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
@@ -3663,9 +3664,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
         // `#` is the title. Deeper headings stay intro text (ANTS-5373).
         static const QRegularExpression kHeading(QStringLiteral("^#{1,3}\\s"));
         static const QRegularExpression kTitle(QStringLiteral("^#\\s"));
+        // ANTS-5493 — a `#` line inside a fenced code block is code: the
+        // import is fence-aware and does not read it as a heading.
+        const QVector<bool> fenced = MarkdownScan::fenceMask(lines);
         int titles = 0;
-        for (const QString &ln : std::as_const(lines)) {
-            if (!kHeading.match(ln).hasMatch())
+        for (int i = 0; i < lines.size(); ++i) {
+            const QString &ln = lines.at(i);
+            if (fenced.value(i) || !kHeading.match(ln).hasMatch())
                 continue;
             if (preamble && kTitle.match(ln).hasMatch() && ++titles == 1)
                 continue;

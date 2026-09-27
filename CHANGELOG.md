@@ -211,6 +211,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log set_intro, amend_intro and set_preamble accept a `#` line inside a fenced code block, so an intro holding a shell sample can be edited.** (ANTS-5493)
+
 - **A roadmap_query id or ids fetch shortens its bodies to fit instead of spilling them all.** (ANTS-5477)
   When a targeted reply would be offloaded, each body is trimmed with the
   existing elision marker until the reply fits, and the reply says so

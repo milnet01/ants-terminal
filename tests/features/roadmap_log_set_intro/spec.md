@@ -10,7 +10,9 @@ lines are trimmed. The envelope reports `replaced_intro_chars`.
 **INV-2 — an intro holds no `#` to `###` heading.** A `new_text` line
 matching `^#{1,3}\s` refuses `bad_intro` and nothing is written, because
 the next import would read it as a new section. `####` and deeper are
-intro text, which is what migration stores (ANTS-5373).
+intro text, which is what migration stores (ANTS-5373). A line inside a
+fenced code block is code and is not checked, as the import does not read
+it as a heading (ANTS-5493). The same holds for INV-7.
 
 **INV-3 — `set_intro` never reaches the preamble.** A missing `section`
 refuses `missing_field`, and the message names `set_preamble`.
