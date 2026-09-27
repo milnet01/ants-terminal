@@ -49863,7 +49863,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-22 (maintainer, measured).
 
-- 📋 [ANTS-5247] **The pre-migration snapshot writes beside the store, on the system drive.**
+- ✅ [ANTS-5247] **The pre-migration snapshot writes beside the store, on the system drive.**
   ANTS-4499 shipped the pre-migration snapshot with a default path of
   pre-migrate.sqlite beside the store, chosen for portability. The store
   lives under the home directory, so the snapshot lands on the system
@@ -49895,6 +49895,13 @@ are closed inline in the feedback files rather than filed here.
   unwritable; the reply names the path used. Add its row to
   docs/standards/mcp-config-keys.md. Gate it in the same batch as
   ANTS-5287's ANTS-3765 amendment.
+  Resolved (2026-09-27): built to ANTS-3855 § 2.4 as gated (loops 8-9).
+  RoadmapBackupHealth::snapshotDest() orders the config key and the
+  record's dest=; run() tries that folder (must exist, never created)
+  and falls back beside storePath, reporting backup_path_source and
+  backup_fallback. The weekly job writes dest= on success. Tests red
+  first: RoadmapBackupHealth.Ants5247SnapshotDestOrder,
+  RoadmapMigrateBackup.Inv10-13, roadmap_export_publish INV-12. Suite green.
   **Layman:** Let the safety copy taken before a migration live on the games drive with the other backups, instead of in your home folder.
   Kind: enhancement.
   Source: in-session-2026-09-20, user decision.
