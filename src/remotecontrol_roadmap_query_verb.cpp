@@ -865,6 +865,44 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 .arg(QRegularExpression(queryArg).errorString());
         return QJsonDocument(o);
     }
+    // ANTS-5468 — `body_match` bounds WHAT of each row comes back, where
+    // `query` picks WHICH rows: each body keeps only the lines that match,
+    // case-insensitively. Same matcher as `query`, so the two read alike.
+    const QString bodyMatchArg =
+        req.value(QStringLiteral("body_match")).toString();
+    const bool bodyMatchActive = !bodyMatchArg.isEmpty();
+    const mcp::QueryMode bodyMatchMode =
+        req.value(QStringLiteral("body_match_regex")).toBool(false)
+            ? mcp::QueryMode::Regex : mcp::QueryMode::Substring;
+    if (bodyMatchActive && bodyMatchMode == mcp::QueryMode::Regex &&
+        !QRegularExpression(bodyMatchArg).isValid()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        o[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_query: `body_match` is not a valid regular expression "
+            "(body_match_regex:true was passed): %1")
+                .arg(QRegularExpression(bodyMatchArg).errorString());
+        return QJsonDocument(o);
+    }
+    // Runs on the WHOLE body, before any emission cap, so a line past the cap
+    // is still found. Adds `body_lines_dropped` to each row it filters.
+    auto applyBodyMatch = [&](QJsonArray &arr) {
+        if (!bodyMatchActive) return;
+        const mcp::QueryMatcher matcher(bodyMatchArg, bodyMatchMode);
+        for (int i = 0; i < arr.size(); ++i) {
+            QJsonObject o = arr.at(i).toObject();
+            const auto it = o.constFind(QStringLiteral("body"));
+            if (it == o.constEnd()) continue;
+            const QStringList lines = it->toString().split(QLatin1Char('\n'));
+            QStringList kept;
+            for (const QString &line : lines)
+                if (matcher.matches(line)) kept.append(line);
+            o["body"] = kept.join(QLatin1Char('\n'));
+            o["body_lines_dropped"] = int(lines.size() - kept.size());
+            arr.replace(i, o);
+        }
+    };
     auto applyQueryFilter = [&queryArg, queryMode](QJsonArray &arr) {
         if (queryArg.isEmpty()) return;  // no filter → keep all, skip iteration
         // ANTS-5104 — compiled once for the whole array, not per bullet.
@@ -1505,6 +1543,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QJsonDocument(out);
         }
     }
+    // ANTS-5468 — refused where no body is emitted: an ignored body_match
+    // would answer with rows that look filtered and are not.
+    if (bodyMatchActive &&
+        (mode == QLatin1String("headline_only") ||
+         mode == QLatin1String("section_index") ||
+         mode == QLatin1String("bundles") ||
+         mode == QLatin1String("report") ||
+         (req.contains(QStringLiteral("include_body")) &&
+          !req.value(QStringLiteral("include_body")).toBool(true)))) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "body_match filters body lines, so it needs a reply that carries "
+            "bodies: it does not combine with include_body:false or with "
+            "mode:%1").arg(mode);
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    if (bodyMatchActive) out["body_match"] = bodyMatchArg;
 
     // ANTS-4715 — `shipped_since` / `shipped_until`: WHICH items closed in a
     // window, where mode:"report" answers only how many. Without it the
@@ -1611,8 +1667,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // is false.
     const bool hasIncludeBodyArg =
         req.contains(QStringLiteral("include_body"));
+    // ANTS-5468 — body_match implies bodies; include_body:false with it is
+    // refused above.
     const bool includeBody =
-        req.value(QStringLiteral("include_body")).toBool(false);
+        req.value(QStringLiteral("include_body")).toBool(false)
+        || bodyMatchActive;
 
     // ANTS-1398-INV-2: rollup predicate. A bullet is a section rollup
     // iff its `id` and `headline` are both empty — the unambiguous
@@ -2711,8 +2770,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // ANTS-1521 — single-line headline companion.
                 o["headline_oneline"] = rcHeadlineOneline(b.headline);
                 rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
-                // ANTS-1517 — body (truncated).
-                rcSetBodyFields(o, b.bodyProse);  // ANTS-4557
+                // ANTS-1517 — body (truncated). ANTS-5468 — whole when
+                // body_match will filter it, so a line past the cap is seen;
+                // the list cap is applied after the filter.
+                rcSetBodyFields(o, b.bodyProse,
+                                bodyMatchActive ? kRoadmapQueryBodyCacheCap
+                                                : kRoadmapQueryBodyCap);  // ANTS-4557
                 rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
                 // ANTS-4985 — beside `kind`, at every emitter.
@@ -2868,6 +2931,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // bodies were built at 2000 above, so the store cap here trimmed
         // nothing and a smaller cap asked for was never applied.
         if (includeBody) {
+            applyBodyMatch(filtered);  // ANTS-5468 — before the cap
             rcCapBodyFields(filtered, listBodyCap);
             announceListCap(out);
         }
@@ -3213,6 +3277,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 return QJsonDocument(out);
             }
         }
+        applyBodyMatch(matches);  // ANTS-5468 — before the cap
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
         // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only
         // (this singular-id arm and the ids[] arm below). A list query's
@@ -3299,6 +3364,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 seen.insert(bid);
             }
         }
+        applyBodyMatch(matches);  // ANTS-5468 — before the cap
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
         // ANTS-4904 — the plural ids[] arm of the same targeted path.
         else rcCapBodyFields(matches, idBodyCap,
@@ -3545,6 +3611,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // lower. Measuring at the store cap weighed each body up to 16 KiB and
     // then emitted 2000, so a page held fewer rows than fit.
     if (includeBody) {
+        applyBodyMatch(filtered);  // ANTS-5468 — before the cap
         rcCapBodyFields(filtered, listBodyCap);
         announceListCap(out);
     }

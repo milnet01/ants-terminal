@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query `body_match` returns only the body lines that match, with a count of the lines dropped, on list, section and id queries.** (ANTS-5468)
+
 - **roadmap_log op:"amend_field_batch" sets fields on many roadmap items in one call.** (ANTS-5385)
   Filling in plain-English summaries and kinds after moving a roadmap
   into the store no longer takes one call per item per field in a set

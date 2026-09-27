@@ -136,3 +136,16 @@ emits; the list path had measured at the 16 KiB store cap. A cap that
 differs from the one asked for is announced as ANTS-4981 announces it.
 `body_from_end` stays targeted-only. *Tests:* the three `Ants5467*` cases in
 `test_roadmap_query_id_body_cap.cpp`.
+
+## ANTS-5468 — `body_match` keeps only the matching body lines
+
+`body_match` filters each returned body to the lines that contain it,
+case-insensitively; `body_match_regex:true` reads it as a case-insensitive
+regular expression, and a malformed one refuses `bad_args`. `query` picks
+which rows come back; `body_match` bounds what of each row. It runs on the
+list, section, id and ids paths, against the whole body before any cap, and
+turns bodies on. Each filtered row carries `body_lines_dropped`, and the
+envelope echoes `body_match`. It refuses `bad_mode_combo` with
+`include_body:false` and under `headline_only`, `section_index`, `bundles`
+and `report`, which emit no body. *Tests:* the three `Ants5468*` cases in
+`test_roadmap_query_id_body_cap.cpp`.

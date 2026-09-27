@@ -886,3 +886,119 @@ TEST(roadmap_query_id_body_cap, Ants5467ListCapClampIsAnnounced) {
                             QStringLiteral("ANTS-7777")).size(), c.applied);
     }
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-5468 — body_match keeps only the body lines that match. `query` picks
+// which rows come back; this bounds what of each row. claude-config asked for
+// it after a staleness triage it ended up scripting over ROADMAP.md.
+
+namespace {
+
+QJsonObject bodyMatchRequest(const QString &root, const QString &pattern) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("body_match")] = pattern;
+    return req;
+}
+
+QJsonObject rowForId(const QJsonArray &bullets, const QString &id) {
+    for (const auto &v : bullets)
+        if (v.toObject().value(QStringLiteral("id")).toString() == id)
+            return v.toObject();
+    return {};
+}
+
+}  // namespace
+
+// ANTS-5468a — list, section and id paths keep only the matching lines, and
+// match the WHOLE body: MIDSENTINEL sits past every emission cap.
+TEST(roadmap_query_id_body_cap, Ants5468KeepsOnlyMatchingLines) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithMiddleSentinelBody(120)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject whole;
+    whole[QStringLiteral("caller_cwd")]     = tmp.path();
+    whole[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    whole[QStringLiteral("max_body_bytes")] = 1048576;
+    const int totalLines =
+        bodyForId(rc.cmdRoadmapQuery(whole).object()
+                      .value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"))
+            .split(QLatin1Char('\n')).size();
+    ASSERT_GT(totalLines, 120);
+
+    const struct { const char *name; const char *key; const char *value; } paths[] = {
+        {"list", nullptr, nullptr},
+        {"section", "section", "work"},
+        {"id", "id", "ANTS-7777"},
+    };
+    for (const auto &p : paths) {
+        QJsonObject req = bodyMatchRequest(tmp.path(), QStringLiteral("sentinel"));
+        if (p.key) req[QLatin1String(p.key)] = QLatin1String(p.value);
+        const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << p.name << ": "
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        const QJsonObject row =
+            rowForId(resp.value(QStringLiteral("bullets")).toArray(),
+                     QStringLiteral("ANTS-7777"));
+        const QStringList lines =
+            row.value(QStringLiteral("body")).toString().split(QLatin1Char('\n'));
+        ASSERT_EQ(lines.size(), 3) << p.name << " path kept the wrong lines";
+        EXPECT_TRUE(lines[0].contains(QStringLiteral("HEADSENTINEL"))) << p.name;
+        EXPECT_TRUE(lines[1].contains(QStringLiteral("MIDSENTINEL"))) << p.name;
+        EXPECT_TRUE(lines[2].contains(QStringLiteral("TAILSENTINEL"))) << p.name;
+        EXPECT_EQ(row.value(QStringLiteral("body_lines_dropped")).toInt(-1),
+                  totalLines - 3) << p.name;
+        EXPECT_FALSE(row.value(QStringLiteral("body_truncated")).toBool())
+            << p.name << ": three short lines fit every cap";
+        EXPECT_EQ(resp.value(QStringLiteral("body_match")).toString(),
+                  QStringLiteral("sentinel")) << p.name;
+    }
+}
+
+// ANTS-5468b — body_match_regex takes a pattern; a bad one is refused.
+TEST(roadmap_query_id_body_cap, Ants5468RegexAndBadPattern) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithMiddleSentinelBody(20)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = bodyMatchRequest(tmp.path(), QStringLiteral("^(head|tail)"));
+    req[QStringLiteral("body_match_regex")] = true;
+    QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QString body = bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                                   QStringLiteral("ANTS-7777"));
+    EXPECT_EQ(body.split(QLatin1Char('\n')).size(), 2) << body.toStdString();
+    EXPECT_FALSE(body.contains(QStringLiteral("MIDSENTINEL")));
+
+    req[QStringLiteral("body_match")] = QStringLiteral("(unclosed");
+    resp = rc.cmdRoadmapQuery(req).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool(true));
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+}
+
+// ANTS-5468c — refused where no body can be emitted, never silently ignored.
+TEST(roadmap_query_id_body_cap, Ants5468RefusedWithoutABody) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithMiddleSentinelBody(20)));
+
+    RemoteControl rc(nullptr);
+    for (const char *mode : {"headline_only", "section_index", "bundles", "report"}) {
+        QJsonObject req = bodyMatchRequest(tmp.path(), QStringLiteral("x"));
+        req[QStringLiteral("mode")] = QLatin1String(mode);
+        const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_mode_combo")) << mode;
+    }
+    QJsonObject req = bodyMatchRequest(tmp.path(), QStringLiteral("x"));
+    req[QStringLiteral("include_body")] = false;
+    EXPECT_EQ(rc.cmdRoadmapQuery(req).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_mode_combo"));
+}

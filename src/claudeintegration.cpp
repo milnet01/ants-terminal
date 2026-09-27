@@ -3596,6 +3596,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "has no such items\".");
                     props["whole_word"] = wwProp;
                     props["regex"]      = qReProp;
+                    // ANTS-5468 — per-row body line filter.
+                    QJsonObject bmProp; bmProp["type"] = "string";
+                                        bmProp["description"] = QStringLiteral(
+                        "ANTS-5468. Keep only the body lines that contain this "
+                        "text, case-insensitively. `query` picks WHICH rows; "
+                        "this bounds WHAT of each row. Matched against the "
+                        "WHOLE body before any cap, on the list, section, id "
+                        "and ids paths, and it turns bodies on. Each row gains "
+                        "`body_lines_dropped`; the envelope echoes it. Refuses "
+                        "bad_mode_combo with include_body:false and on "
+                        "headline_only, section_index, bundles and report.");
+                    QJsonObject bmReProp; bmReProp["type"] = "boolean";
+                                          bmReProp["default"] = false;
+                                          bmReProp["description"] = QStringLiteral(
+                        "ANTS-5468. Read `body_match` as a case-insensitive "
+                        "regular expression. A malformed one refuses bad_args.");
+                    props["body_match"]       = bmProp;
+                    props["body_match_regex"] = bmReProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.
