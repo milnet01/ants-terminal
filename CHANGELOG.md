@@ -136,6 +136,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log refuses to append an item whose headline exactly matches one already filed, unless force:true is passed.** (ANTS-4487)
+  The refusal (duplicate_item) names the existing item in duplicate_of.
+  append_batch skips such an entry and files the rest. Near matches still
+  only produce the possible_duplicates advisory.
+
 - **Deleting an item from the roadmap file and re-running roadmap_migrate now removes it from the store, instead of the next save putting it back.** (ANTS-5287)
   Its history goes with it; the pre-migration snapshot is the undo, and the
   reply names every deleted id. A run that would delete more than a quarter

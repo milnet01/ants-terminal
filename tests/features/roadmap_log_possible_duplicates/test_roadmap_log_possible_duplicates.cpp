@@ -169,13 +169,16 @@ QJsonObject migratedAppendReq(const QString &dir, const QString &headline) {
 }  // namespace
 
 // INV-1 — exact normalised match scores 100 and still appends.
+// ANTS-4487 § 4.5 — an exact duplicate now refuses unless forced
+// (tests/features/roadmap_item_removal); forced, the advisory still reports it.
 TEST(roadmap_log_possible_duplicates, Inv1ExactMatchScore100) {
     QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
-    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
-        appendReq(dir.path(),
-            QStringLiteral("The widget cache grows without bound "
-                           "during long sessions."))).object();
+    QJsonObject req = appendReq(dir.path(),
+        QStringLiteral("The widget cache grows without bound "
+                       "during long sessions."));
+    req["force"] = true;
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
     ASSERT_TRUE(out["ok"].toBool())
         << QJsonDocument(out).toJson().toStdString();
     ASSERT_TRUE(out.contains("possible_duplicates"))
@@ -225,13 +228,16 @@ TEST(roadmap_log_possible_duplicates, Inv3CleanHeadlineNoField) {
 
 // INV-4 — the advisory never blocks: the bullet is written + counter
 // advances even on an exact-duplicate headline.
+// ANTS-4487 § 4.5 — the ADVISORY never blocks; the exact-match refusal is a
+// separate guard, lifted here with force:true.
 TEST(roadmap_log_possible_duplicates, Inv4AdvisoryNeverBlocks) {
     QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
-    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
-        appendReq(dir.path(),
-            QStringLiteral("The widget cache grows without bound "
-                           "during long sessions."))).object();
+    QJsonObject req = appendReq(dir.path(),
+        QStringLiteral("The widget cache grows without bound "
+                       "during long sessions."));
+    req["force"] = true;
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
     ASSERT_TRUE(out["ok"].toBool());
     EXPECT_EQ(out["id"].toString(), QStringLiteral("ANTS-9101"));
     EXPECT_EQ(readCounter(dir.path()), 9101)
@@ -262,6 +268,7 @@ TEST(roadmap_log_possible_duplicates, Inv5BatchPerBulletAdvisory) {
     req["op"]         = QStringLiteral("append_batch");
     req["section"]    = QStringLiteral("performance");
     req["bullets"]    = bs;
+    req["force"]      = true;   // ANTS-4487 § 4.5 — else the duplicate is skipped
     const QJsonObject out =
         rc.cmdRoadmapLogAppendBatchForTest(req).object();
 
@@ -368,10 +375,11 @@ TEST(roadmap_log_possible_duplicates, Ants4426StoreItemStillSurfaces) {
     ASSERT_TRUE(migrateDefaultStore(root));
 
     RemoteControl rc(nullptr);
-    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
-        migratedAppendReq(root,
-            QStringLiteral("The widget cache grows without bound during long "
-                           "sessions."))).object();
+    QJsonObject req = migratedAppendReq(root,
+        QStringLiteral("The widget cache grows without bound during long "
+                       "sessions."));
+    req["force"] = true;   // ANTS-4487 § 4.5 — else it refuses duplicate_item
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
 
     ASSERT_TRUE(out["ok"].toBool()) << "append refused: "
         << out["error"].toString().toStdString();

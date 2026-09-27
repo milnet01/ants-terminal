@@ -14443,6 +14443,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["dry_run"]       = dryRunProp;      // ANTS-2077
                     props["return"]        = returnProp;      // ANTS-2080
                     props["pass"]          = passProp;        // ANTS-2126
+                    {   // ANTS-4487 § 4.5
+                        QJsonObject forceProp;
+                        forceProp["type"] = QStringLiteral("boolean");
+                        forceProp["description"] = QStringLiteral(
+                            "op:\"append\" / \"append_batch\" — file a bullet whose "
+                            "headline exactly matches an existing item. Without it "
+                            "that append refuses `duplicate_item` (a batch skips "
+                            "the entry), naming the match in `duplicate_of`.");
+                        props["force"] = forceProp;
+                    }
                     QJsonObject stripRunsProp;
                     stripRunsProp["type"] = "boolean";
                     stripRunsProp["description"] = QStringLiteral(

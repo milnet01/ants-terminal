@@ -547,6 +547,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             RoadmapSource::ReadError dupWhy = RoadmapSource::ReadError::None;
             const auto preWriteBullets = RoadmapSource::bulletsFromStore(
                 store, projectId, /*includeArchive=*/false, &dupWhy);
+            // ANTS-4487 § 4.5 — an exact duplicate refuses before the write.
+            if (preWriteBullets && !req.value(QStringLiteral("force")).toBool()) {
+                const QString dupId = rcExactDuplicateId(*preWriteBullets, headline);
+                if (!dupId.isEmpty())
+                {
+                    QJsonObject e;
+                    e["ok"]           = false;
+                    e["code"]         = QStringLiteral("duplicate_item");
+                    e["error"]        = QStringLiteral(
+                        "roadmap_log: the headline exactly matches %1; nothing was "
+                        "written. Pass force:true to file it anyway").arg(dupId);
+                    e["duplicate_of"] = dupId;
+                    return QJsonDocument(e);
+                }
+            }
 
             RoadmapRender::Outcome outcome;
             QString writeErr;
@@ -1069,6 +1084,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // against a previewed id is wrong if any other write intervenes — wrong in
     // a way nothing detects, since the id then names a different item or none.
     // Same `would_*` naming as ANTS-4463's `would_write` on this envelope.
+    // ANTS-4487 § 4.5 — an exact duplicate refuses before anything is written,
+    // and a dry run refuses where the real run would.
+    if (!req.value(QStringLiteral("force")).toBool()) {
+        const QString dupId = rcExactDuplicateId(preflightBullets, headline);
+        if (!dupId.isEmpty())
+        {
+            QJsonObject e;
+            e["ok"]           = false;
+            e["code"]         = QStringLiteral("duplicate_item");
+            e["error"]        = QStringLiteral(
+                "roadmap_log: the headline exactly matches %1; nothing was "
+                "written. Pass force:true to file it anyway").arg(dupId);
+            e["duplicate_of"] = dupId;
+            return QJsonDocument(e);
+        }
+    }
+
     if (dryRun) {
         QJsonObject out;
         out["ok"]          = true;

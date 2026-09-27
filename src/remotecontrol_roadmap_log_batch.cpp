@@ -2726,6 +2726,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 if (!scrubbedRollup.contains(n)) scrubbedRollup.append(n);
         }
 
+        // ANTS-4487 § 4.5 — an exact duplicate of an existing item is skipped
+        // before an id is allocated, unless the call passes force:true.
+        if (!req.value(QStringLiteral("force")).toBool()) {
+            const QString dupId = rcExactDuplicateId(preflightBullets, headline);
+            if (!dupId.isEmpty()) {
+                skip(QStringLiteral("duplicate_item"),
+                     QStringLiteral("headline exactly matches %1; pass "
+                                    "force:true to file it anyway").arg(dupId));
+                continue;
+            }
+        }
+
         QString idStr;
         if (useStablePrefix) {
             // ANTS-2078 — each bullet carries its own full ID string.

@@ -2755,6 +2755,7 @@ if(ANTS_TESTS)
                 tests/features/theme_switch_popup_defer/test_theme_switch_popup_defer.cpp
                 # ANTS-2043 roadmap_log non-blocking near-duplicate advisory.
                 tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp
+                tests/features/roadmap_item_removal/test_item_removal.cpp
                 # ANTS-2076/2077 roadmap_log counter-prefix fallback + dry_run preview.
                 tests/features/roadmap_log_prefix_and_dry_run/test_roadmap_log_prefix_and_dry_run.cpp
                 # ANTS-1548 changelog_log token-frugal CHANGELOG writer.

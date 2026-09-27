@@ -602,6 +602,10 @@ QString rcStructuralStem(const QString &headline);
 bool rcIsNonconformingIdToken(const QString &tok);
 double rcHeadlineJaccard(const QSet<QString> &tokA, const QSet<QString> &tokB, int minShared = 2);
 QJsonArray rcComputePossibleDuplicates(const QVector<RoadmapParse::BulletRecord> &existing, const QString &newHeadline);
+// ANTS-4487 § 4.5 — the id of an existing item whose headline is an EXACT
+// normalised match (the advisory's score 100), or empty. op:append and
+// op:append_batch refuse such an append with `duplicate_item` unless forced.
+QString rcExactDuplicateId(const QVector<RoadmapParse::BulletRecord> &existing, const QString &newHeadline);
 QString rcGfmCanonicalHeadline(const QString &rawHead);
 QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead, const QString &boldId);
 // ANTS-3771 — `fmt` is the project's DECLARED id format. The WRITE path has

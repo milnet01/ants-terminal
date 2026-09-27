@@ -1842,6 +1842,16 @@ double rcHeadlineJaccard(const QSet<QString> &tokA,
 // ≥2-shared-token floor so two short headlines sharing a stop-word pair
 // don't false-fire. Non-blocking — the verb still appends; the result
 // is an advisory list returned in the success envelope. Top 5 by score.
+QString rcExactDuplicateId(const QVector<RoadmapParse::BulletRecord> &existing,
+                           const QString &newHeadline) {
+    for (const QJsonValue &v : rcComputePossibleDuplicates(existing, newHeadline)) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("score")).toInt() == 100)
+            return o.value(QStringLiteral("id")).toString();
+    }
+    return {};
+}
+
 QJsonArray rcComputePossibleDuplicates(
         const QVector<RoadmapParse::BulletRecord> &existing,
         const QString &newHeadline) {
