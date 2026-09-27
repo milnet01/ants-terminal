@@ -51843,6 +51843,12 @@ are closed inline in the feedback files rather than filed here.
   keeps the record) instead of re-emitting it. Touches the migrate load
   contract (ANTS-3765) and ANTS-4487, so a spec amendment and its gate
   come first.
+  Decided by the user 2026-09-27 (second round). The schema cannot keep
+  history for a deleted item (history.item_pk is NOT NULL and references
+  item), so the record is git plus the pre-migration snapshot: the item
+  and its history rows are deleted, and the reply names every deleted
+  id. A run that would delete more than a quarter of the project's items
+  refuses unless accept_deletions:true.
   **Layman:** Items removed from the roadmap are kept in the database, and rewriting the file puts every one of them back.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
@@ -67719,6 +67725,22 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.
   Lanes: remotecontrol.
+
+- 📋 [ANTS-5501] **The pass-headings roadmap render carries no generated-file banner.**
+  ANTS-4555 added the banner to the ants-v1 render only. RetroDB's
+  pass-headings roadmap.md has had five commits since its 2026-09-26
+  migration that each say it was written by hand, then re-imported
+  (1ec4c6a, b749a1a, 844517c, d4b407c, 075f494). UT_MonsterHunt had
+  admitted hand edits before its ants-v1 banner and none after.
+  Fix: emit the same banner from the pass-headings render, and check
+  that migrate and check_sync read past it.
+  Also reported: Slipcase's ROADMAP.md has no banner and check_sync shows
+  drift lines, probably a stale 2026-09-03 render. A roadmap_log
+  op:render there is the likely fix, which is that project's call.
+  **Layman:** Some projects' roadmap files don't say "generated, don't edit", so people keep editing them by hand.
+  Kind: fix.
+  Source: peer-session claude-dd 2026-09-27 (Hub website survey).
+  Lanes: roadmap.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

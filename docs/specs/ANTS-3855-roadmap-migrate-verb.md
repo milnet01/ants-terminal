@@ -1,6 +1,6 @@
 # ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. **Built 2026-09-08** — `Request::maxNotes`, `run()`'s clamp, `notes_summary` and the echoed `max_notes` shipped as specified, with INV-10's third leg proved red against a stubbed `setNotes()` before the code was restored. No contract changed at implementation.
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. **Built 2026-09-08** — `Request::maxNotes`, `run()`'s clamp, `notes_summary` and the echoed `max_notes` shipped as specified, with INV-10's third leg proved red against a stubbed `setNotes()` before the code was restored. No contract changed at implementation. **Amended 2026-09-27** — § 2.1, § 2.4, § 2.5, § 3 and § 7 for ANTS-5247 (the snapshot folder) and ANTS-5287 (deleted items); these change direction, so the gate runs before the build.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
@@ -87,6 +87,9 @@ has nothing to fall back to when no project is named.
 | `dry_run` | bool | `false` | Plan every write, report the counts, roll back. Declared via `makeDryRunProp()`. |
 | `project_name` | string | leaf dir of the canonical root, verbatim | `project.name`. Must be non-empty after trimming — `project.name` is `TEXT NOT NULL`, and an all-whitespace name would satisfy the column and identify nothing. |
 | `export_slug` | string | slugified leaf dir | `project.export_slug`. |
+| `backup` | bool | `true` | Take the pre-migration snapshot — § 2.4. `false` migrates without one. |
+| `backup_to` | string | resolved per § 2.4 | Snapshot destination file. Not confined to the project. An explicit value that fails refuses; it never falls back. |
+| `accept_deletions` | bool | `false` | Lifts the `mass_deletion` refusal — § 2.4 (ANTS-5287). |
 | `max_notes` | integer | `200` | Row bound for `notes[]` — § 2.4. Forwarded verbatim as `Request::maxNotes`; **`run()` applies the `[1, 2000]` clamp**, so a test calling the seam directly is bounded identically. |
 | `op` | enum | `"migrate"` | `"deregister"` is the inverse — see § 2.8. Declared because the handler reads it (ANTS-4617 / ANTS-4621). |
 | `confirm` | bool | `false` | `op:"deregister"` only; clears `confirm_required`. Ignored by the migrate op. |
@@ -370,11 +373,13 @@ downstream re-derives it.
   "store_backed": true, "markdown_rewritten": false,
   "items_inserted": 0, "items_updated": 0, "items_updated_governed": 0,
   "items_unchanged": 0, "items_orphaned": 0, "ids_allocated": 0,
+  "items_deleted": 0, "deleted_ids": [],
   "sections_written": 0, "sections_unchanged": 0,
   "elements_written": 0, "history_rows": 0,
   "render_gate_checked": true, "render_gate_failures": [],
   "render_gate_failures_total": 0,
   "backup_taken": true, "backup_path": "/home/…/pre-migrate.sqlite",
+  "backup_path_source": "beside_store",
   "updated_items": [], "updated_items_truncated": false,
   "defaulted_fields": {},
   "notes": [], "notes_count": 0, "notes_truncated": false,
@@ -502,6 +507,44 @@ deliberately **not** named `roadmap-*.sqlite`: that glob is what
 would sit in the weekly rotation and quietly cost it one kept snapshot.
 
 **Added 2026-09-20 (ANTS-4499).**
+
+**Amended 2026-09-27 (ANTS-5247): the default destination is a folder, found
+in this order.** The store lives under the home directory, so "beside the
+store" puts the snapshot on the system drive. The user decided the order:
+
+1. `backup_to`, when given. It is used as is, and a failure refuses.
+2. The `claude.roadmap_snapshot_dir` config key
+   (`docs/standards/mcp-config-keys.md`).
+3. The folder the weekly snapshot job last wrote to, read from the `dest=`
+   line of its backup record (ANTS-3794 § 2.4).
+4. Beside the store.
+
+Rungs 2 and 3 name a folder; the file in it is `pre-migrate.sqlite`, which
+stays outside the weekly job's `roadmap-*.sqlite` prune glob. **A snapshot to
+rung 2 or 3 that fails is retaken beside the store**, so a migration never
+fails for want of a folder. It refuses `backup_failed` only when that retake
+fails too. `backup_path_source` reports the rung used: `backup_to`, `config`,
+`backup_record` or `beside_store`. After a fallback, `backup_fallback` carries
+the folder tried and its error.
+
+The handler resolves rungs 2 and 3 into `Request::snapshotDir` and
+`Request::snapshotDirSource`; `run()` does no config or file read of its own,
+so a test drives it with a plain value. Hardcoding the games-drive path was
+declined: it is specific to this machine.
+
+**Hot reload:** the key and the record are read on every call, so a change
+reaches a running `ants-mcpd` with no relaunch.
+
+**Amended 2026-09-27 (ANTS-5287): an item removed from the source is
+deleted.** ANTS-3765 § 2.7 owns the rule and its mass-deletion guard. This
+verb adds three things. `items_deleted` and `deleted_ids` report the
+deletions; `deleted_ids` holds at most `max_notes` entries, and
+`deleted_ids_truncated: true` says when it was cut.
+`accept_deletions` lifts the guard. A refused run answers `mass_deletion` and
+names what it would have deleted, so the caller can check before passing the
+flag. `items_orphaned` now counts only items kept because another row
+references them. The pre-migration snapshot is the undo, so
+`accept_deletions:true` with `backup:false` is allowed but unprotected.
 
 `updated_items[].fields_suppressed` names the columns the plan **differed on
 and the write declines** — "defaulted does not overwrite" and "empty does not
@@ -747,7 +790,8 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 | 6 | either lookup fails with an SQL error (distinct from "no row") | `store_failed` |
 | 6 | the slug belongs to a different root, or a re-run changes this root's slug | `slug_collision` |
 | 6 | a re-run changes this root's `project_name` | `bad_args` |
-| 8 | `load()` returns `ok == false` — including a lock timeout | `migrate_failed`, `error` = `Outcome::error`, `notes` carried |
+| 8 | `load()` refuses with a `mass_deletion` note — it would delete more than a quarter of the project's stored items and `accept_deletions` is not set (ANTS-5287) | `mass_deletion`, with `items_deleted`, `items_stored` and `deleted_ids` |
+| 8 | `load()` returns `ok == false` for any other reason — including a lock timeout | `migrate_failed`, `error` = `Outcome::error`, `notes` carried |
 
 Every refusal carries `ok:false`, a `code`, and a human-readable `error`.
 
@@ -1077,6 +1121,29 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   same case one layer down and arrives too late for this one: a session
   scratchpad exists while it is being migrated and is removed afterwards, so
   canonicalisation passed and the row is permanent.
+- **INV-15** *(ANTS-5247)* — with no `backup_to`, the snapshot goes to the
+  first of: the `claude.roadmap_snapshot_dir` folder, the folder the weekly
+  snapshot record names in `dest=`, beside the store. If the snapshot to the
+  chosen folder fails, it is retaken beside the store. `backup_path_source`
+  names the rung used. *Test:* `roadmap_migrate_backup`, `run()` driven
+  directly with `Request::snapshotDir` set, four legs: a writable folder is
+  used; an empty `snapshotDir` lands beside the store; an unwritable folder
+  falls back beside the store and says so in `backup_fallback`; an explicit
+  unwritable `backup_to` still refuses `backup_failed`. The handler's
+  resolution of `snapshotDir` from config and record is covered by a unit test
+  of `RoadmapBackupHealth::snapshotDest()` reading a record with and without
+  `dest=`.
+  <br>*Breaks when:* the fallback also applies to `backup_to` — a caller who
+  named a destination and gets a different one has been overridden silently.
+- **INV-16** *(ANTS-5287)* — `items_deleted`, `deleted_ids` and the
+  `mass_deletion` refusal carry `Outcome::itemsDeleted`, its `deleted_item`
+  notes and its `mass_deletion` note unchanged, and `accept_deletions`
+  reaches `Options::acceptDeletions`. *Test:* feature test through `run()`: a
+  project re-migrated without one of four bullets reports `items_deleted: 1`
+  and names the id; without two of four it refuses `mass_deletion` and a
+  second call with `accept_deletions:true` succeeds.
+  <br>*Breaks when:* the verb recounts from the notes, or drops the flag, so
+  the refusal cannot be lifted.
 
 ## 4. RAM / build cost
 
@@ -1163,7 +1230,9 @@ target, no new dependency, no new link edge (§ 2.1). The feature test joins `te
 
 ## 6. Tests
 
-Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-14.
+Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-14
+and INV-16. INV-15 lives in `tests/features/roadmap_migrate_backup/`, beside
+the rest of the snapshot's contract.
 Label `features;fast`. Source added to `test_core`'s `SOURCES` list — not
 `add_executable` (`tests/features/README.md`).
 
@@ -1271,6 +1340,16 @@ remaining legs against the declared-but-unimplemented seam.
 - **ANTS-3807's bullet** currently attributes the missing cutover route to
   ANTS-3793 and ANTS-3794. It is amended to name this id, which is what
   actually blocked it.
+- **ANTS-5247 and ANTS-5287 (2026-09-27).**
+  `docs/standards/mcp-config-keys.md` gains `claude.roadmap_snapshot_dir`.
+  [ANTS-3794](ANTS-3794-roadmap-store-backup.md) § 2.4's snapshot record gains
+  `dest=`, the folder of the last successful weekly snapshot.
+  `docs/standards/mcp-error-codes.md` gains `mass_deletion`. The schema gains
+  `backup`, `backup_to` (both shipped with ANTS-4499 and never listed here) and
+  `accept_deletions`; the description names `items_deleted`, `deleted_ids`,
+  `backup_path_source` and `backup_fallback`.
+  `tests/features/roadmap_migrate_backup/spec.md` INV-8 narrows: a failed
+  default-folder snapshot falls back before it refuses.
 - **`CHANGELOG.md`** — one `Added` entry.
 - **A source-scrape caveat, not a doc.** Adding a verb has twice pushed a
   literal past a fixed-byte scrape window in `test_claude`
