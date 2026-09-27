@@ -113,6 +113,12 @@ written from that date.
 **Only the writer is bound. A consumer matches either dash and lets the date
 decide** — as `cut-release` Phase 0e does.
 
+**A project with no version numbers heads each dated section `## YYYY-MM-DD`.**
+Its date is its version. It drops the Semantic Versioning clause from the
+preamble and writes no `**Theme:**` line. § 4.3 step 1's move still happens, under
+the date heading; its Theme half, and step 4, bind a versioned release only. `changelog_log op:"release"` cannot write this heading:
+given the date as `version`, it writes `## [YYYY-MM-DD] - YYYY-MM-DD`.
+
 **It does not reach the feature-grouped `### <date> <Category> — <headline>`
 subsection.** That em dash is what its writer emits.
 
@@ -163,7 +169,7 @@ guard alone.
   The ROADMAP viewer reads it for current-work signaling per
   `roadmap-format.md` § 3.6.2.
 - Dated sections in **reverse chronological order**.
-- `**Theme:**` line is one sentence; sets the release's
+- On a versioned release, the `**Theme:**` line is one sentence; sets the release's
   character.
 - Bullets categorical: Added / Changed / Deprecated / Removed / Fixed /
   Security. Don't invent new categories. **That is also the heading order, in

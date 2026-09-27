@@ -66074,6 +66074,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   expect(false, "... test skipped ..."); return;. testing.md section 7 wants
   the framework's skip. The single TEST(X, Main) harness makes GTEST_SKIP
   hide every other invariant, so settle how to skip one invariant first.
+  Measured 2026-09-27 (gtest v1.15.2): GTEST_SKIP inside a helper returns
+  only from the helper; a later failure still marks the test FAILED.
+  The caller must test ::testing::Test::IsSkipped() and return. In the
+  single TEST(X, Main) harness a skip would mark the whole Main
+  Skipped, so the fix is either one TEST per invariant or a counted
+  "skipped" line from runMain that is not a failure.
   **Layman:** One test fails on computers that can't make file shortcuts, even though its message says it was skipped.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
