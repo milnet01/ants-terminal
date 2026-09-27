@@ -194,6 +194,9 @@ struct ReleaseResult {
     // field except that one is the wrong half.
     QString date;            // the resolved heading date (iff ok)
     int     line = -1;       // 1-based line of the new version heading
+    // ANTS-5484 — a dated close found that day's section already present and
+    // merged into it rather than writing a second heading.
+    bool    merged = false;
 };
 
 // Refuses `nothing_to_release` on an empty `[Unreleased]` (a version block
@@ -204,6 +207,16 @@ struct ReleaseResult {
 ReleaseResult closeUnreleased(const QString &markdown,
                               const QString &version,
                               const QString &date = QString());
+
+// ANTS-5484 — the versionless form (changelog-format.md § 4.1): close
+// [Unreleased] under `## <date>`. When that day's section already exists, a
+// second close merges into it `###` block by block, new bullets first and
+// categories in § 4.2's order, instead of refusing. `date` empty ⟹ today;
+// anything but YYYY-MM-DD refuses bad_args, since the date IS the heading.
+// A merge refuses `merge_unsupported` when [Unreleased] holds anything but
+// canonical category blocks, which it could not place.
+ReleaseResult closeUnreleasedDated(const QString &markdown,
+                                   const QString &date = QString());
 
 struct NormalizeResult {
     bool        ok = false;

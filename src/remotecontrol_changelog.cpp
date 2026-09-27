@@ -693,15 +693,30 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         const QString clMarkdown = QString::fromUtf8(cf.readAll());
         cf.close();
 
-        const auto res =
-            ChangelogLog::closeUnreleased(clMarkdown, version, relDate);
+        // ANTS-5484 — `dated:true` closes under `## <date>` for a project
+        // with no versions. It names no version, so passing one is a
+        // contradiction the caller must resolve, not one the verb picks.
+        const bool dated = req.value(QStringLiteral("dated")).toBool(false);
+        if (dated && !version.trimmed().isEmpty()) {
+            return clErr(QStringLiteral("bad_args"),
+                QStringLiteral("changelog_log: `dated:true` closes under the "
+                               "date alone, so it takes no `version`"));
+        }
+        const auto res = dated
+            ? ChangelogLog::closeUnreleasedDated(clMarkdown, relDate)
+            : ChangelogLog::closeUnreleased(clMarkdown, version, relDate);
         if (!res.ok) return clErr(res.code, res.error);
 
         QJsonObject out;
         out["ok"]            = true;
         out["op"]            = op;
         out["file"]          = clPath.section('/', -1);
-        out["version"]       = version.trimmed();
+        if (dated) {
+            out["dated"]  = true;
+            out["merged"] = res.merged;
+        } else {
+            out["version"] = version.trimmed();
+        }
         out["heading"]       = res.heading;
         // ANTS-4833 — on the dry run as well as the write. It is the release
         // path's only unpredictable field, so previewing everything except it

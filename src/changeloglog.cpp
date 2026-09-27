@@ -597,6 +597,151 @@ ReleaseResult closeUnreleased(const QString &markdown,
     return r;
 }
 
+// ANTS-5484 — see the header.
+ReleaseResult closeUnreleasedDated(const QString &markdown,
+                                   const QString &date) {
+    ReleaseResult r;
+    const QString effDate = date.trimmed().isEmpty()
+        ? QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))
+        : date.trimmed();
+    if (!QDate::fromString(effDate, QStringLiteral("yyyy-MM-dd")).isValid()) {
+        r.code  = QStringLiteral("bad_args");
+        r.error = QStringLiteral(
+            "changelog_log: a dated release needs `date` as YYYY-MM-DD, since "
+            "the date is the heading: \"%1\"").arg(effDate);
+        return r;
+    }
+
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+    int unrel = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().compare(
+                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
+            unrel = i;
+            break;
+        }
+    }
+    if (unrel < 0) {
+        r.code  = QStringLiteral("not_unreleased");
+        r.error = QStringLiteral(
+            "changelog_log: no `## [Unreleased]` heading found — the "
+            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
+            "section at the top");
+        return r;
+    }
+    int sectionEnd = lines.size();
+    for (int i = unrel + 1; i < lines.size(); ++i) {
+        if (lines.at(i).startsWith(QStringLiteral("## "))) { sectionEnd = i; break; }
+    }
+
+    QStringList body = lines.mid(unrel + 1, sectionEnd - unrel - 1);
+    while (!body.isEmpty() && body.first().trimmed().isEmpty()) body.removeFirst();
+    while (!body.isEmpty() && body.last().trimmed().isEmpty())  body.removeLast();
+    if (body.isEmpty()) {
+        r.code  = QStringLiteral("nothing_to_release");
+        r.error = QStringLiteral(
+            "changelog_log: `## [Unreleased]` is empty — there is nothing to "
+            "release. Add entries first (op:\"add\" / \"add_batch\").");
+        return r;
+    }
+    r.released_body = body.join(QLatin1Char('\n'));
+    r.heading = QStringLiteral("## ") + effDate;
+    r.date    = effDate;
+
+    int day = -1;
+    for (int i = sectionEnd; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed() == r.heading) { day = i; break; }
+    }
+    if (day < 0) {
+        // First close of the day: the same rewrite closeUnreleased makes.
+        lines[unrel] = r.heading;
+        lines.insert(unrel, QString());
+        lines.insert(unrel, QStringLiteral("## [Unreleased]"));
+        r.line = unrel + 3;
+        r.ok = true;
+        r.markdown = lines.join(QLatin1Char('\n'));
+        return r;
+    }
+
+    // Same day: split [Unreleased] into its `### <Category>` blocks.
+    QList<QPair<QString, QStringList>> blocks;
+    for (const QString &line : std::as_const(body)) {
+        const QString t = line.trimmed();
+        if (t.startsWith(QStringLiteral("### "))) {
+            const QString name = t.mid(4).trimmed();
+            const int ord = canonicalCategories().indexOf(name);
+            if (ord < 0) {
+                r.code  = QStringLiteral("merge_unsupported");
+                r.error = QStringLiteral(
+                    "changelog_log: `## [Unreleased]` holds \"%1\", which is "
+                    "not a Keep-a-Changelog category, so it cannot be merged "
+                    "into the existing `%2` section").arg(t, r.heading);
+                return r;
+            }
+            blocks.append({canonicalCategories().at(ord), {}});
+        } else if (blocks.isEmpty()) {
+            r.code  = QStringLiteral("merge_unsupported");
+            r.error = QStringLiteral(
+                "changelog_log: `## [Unreleased]` holds text outside a `### "
+                "<Category>` block, which cannot be merged into the existing "
+                "`%1` section").arg(r.heading);
+            return r;
+        } else {
+            blocks.last().second.append(line);
+        }
+    }
+
+    // Empty [Unreleased]; the day's heading moves up by what was removed.
+    const int removed = sectionEnd - unrel - 2;
+    lines.erase(lines.begin() + unrel + 1, lines.begin() + sectionEnd);
+    lines.insert(unrel + 1, QString());
+    day -= removed;
+
+    for (auto &blk : blocks) {
+        QStringList content = blk.second;
+        while (!content.isEmpty() && content.first().trimmed().isEmpty()) content.removeFirst();
+        while (!content.isEmpty() && content.last().trimmed().isEmpty())  content.removeLast();
+        if (content.isEmpty()) continue;
+        int dayEnd = lines.size();
+        for (int i = day + 1; i < lines.size(); ++i) {
+            if (lines.at(i).startsWith(QStringLiteral("## "))) { dayEnd = i; break; }
+        }
+        const int wantOrder = canonicalCategories().indexOf(blk.first);
+        int catHeading = -1, laterHeading = -1;
+        for (int i = day + 1; i < dayEnd; ++i) {
+            const QString t = lines.at(i).trimmed();
+            if (!t.startsWith(QStringLiteral("### "))) continue;
+            const QString name = t.mid(4).trimmed();
+            if (name.compare(blk.first, Qt::CaseInsensitive) == 0) { catHeading = i; break; }
+            if (canonicalCategories().indexOf(name) > wantOrder && laterHeading < 0)
+                laterHeading = i;
+        }
+        QStringList insert;
+        int at;
+        if (catHeading >= 0) {
+            // New bullets first, under the existing heading.
+            at = catHeading + 1;
+            if (at < dayEnd && lines.at(at).trimmed().isEmpty()) ++at;
+            insert = content;
+            insert.append(QString());
+        } else {
+            at = laterHeading >= 0 ? laterHeading : dayEnd;
+            if (at > 0 && !lines.at(at - 1).trimmed().isEmpty())
+                insert.append(QString());
+            insert.append(QStringLiteral("### ") + blk.first);
+            insert.append(QString());
+            insert += content;
+            insert.append(QString());
+        }
+        for (int k = 0; k < insert.size(); ++k) lines.insert(at + k, insert.at(k));
+    }
+    r.line   = day + 1;
+    r.merged = true;
+    r.ok     = true;
+    r.markdown = lines.join(QLatin1Char('\n'));
+    return r;
+}
+
 SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                                             const QString &date,
                                             const QString &category,

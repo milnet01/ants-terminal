@@ -986,6 +986,101 @@ TEST(changelog_log_writer, Ants4363CloseUnreleasedIntoAVersionBlock) {
     EXPECT_EQ(bracketed.code, QStringLiteral("bad_args"));
 }
 
+// ANTS-5484 — a versionless project closes [Unreleased] under `## <date>`
+// (changelog-format.md § 4.1). A second close the same day merges into that
+// day's section category by category, new bullets first, rather than
+// refusing — decided by the user 2026-09-27.
+TEST(changelog_log_writer, Ants5484DatedCloseAndSameDayMerge) {
+    const QString before = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Fixed\n\n"
+        "- **First fix.** (PROJ-1)\n\n"
+        "## 2026-09-20\n\n"
+        "### Added\n\n"
+        "- older.\n");
+
+    const auto r = ChangelogLog::closeUnreleasedDated(
+        before, QStringLiteral("2026-09-27"));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_EQ(r.heading, QStringLiteral("## 2026-09-27"));
+    EXPECT_FALSE(r.merged);
+    std::string md = r.markdown.toStdString();
+    EXPECT_LT(md.find("## [Unreleased]"), md.find("## 2026-09-27"));
+    EXPECT_LT(md.find("## 2026-09-27"), md.find("- **First fix.**"));
+    EXPECT_LT(md.find("- **First fix.**"), md.find("## 2026-09-20"));
+    EXPECT_TRUE(r.released_body.contains(QStringLiteral("First fix")));
+
+    // Same day again: new entries in an existing and a missing category.
+    QString second = r.markdown;
+    second.replace(QStringLiteral("## [Unreleased]\n"),
+                   QStringLiteral("## [Unreleased]\n\n"
+                                  "### Fixed\n\n"
+                                  "- **Second fix.** (PROJ-3)\n\n"
+                                  "### Added\n\n"
+                                  "- **New thing.** (PROJ-2)\n"));
+    const auto m = ChangelogLog::closeUnreleasedDated(
+        second, QStringLiteral("2026-09-27"));
+    ASSERT_TRUE(m.ok) << m.error.toStdString();
+    EXPECT_TRUE(m.merged);
+    md = m.markdown.toStdString();
+    const auto day = md.find("## 2026-09-27");
+    ASSERT_NE(day, std::string::npos);
+    EXPECT_EQ(md.find("## 2026-09-27", day + 1), std::string::npos)
+        << "a merge must not write a second heading for the day";
+    const auto unrel = md.find("## [Unreleased]");
+    EXPECT_LT(unrel, day);
+    EXPECT_EQ(md.find("### ", unrel), md.find("### ", day))
+        << "the merged entries left [Unreleased] empty";
+    // § 4.2 order inside the day: Added before Fixed; new bullets first.
+    EXPECT_LT(md.find("### Added", day), md.find("### Fixed", day));
+    EXPECT_LT(md.find("- **New thing.**"), md.find("### Fixed", day));
+    EXPECT_LT(md.find("- **Second fix.**"), md.find("- **First fix.**"));
+    EXPECT_LT(md.find("- **First fix.**"), md.find("## 2026-09-20"));
+    EXPECT_EQ(md.find("### Added", day), md.rfind("### Added", md.find("## 2026-09-20")))
+        << "one Added block for the day";
+
+    // Refusals: a malformed date, an empty section, prose outside a category.
+    EXPECT_EQ(ChangelogLog::closeUnreleasedDated(before, QStringLiteral("27/09/2026")).code,
+              QStringLiteral("bad_args"));
+    EXPECT_EQ(ChangelogLog::closeUnreleasedDated(m.markdown, QStringLiteral("2026-09-27")).code,
+              QStringLiteral("nothing_to_release"));
+    QString prose = r.markdown;
+    prose.replace(QStringLiteral("## [Unreleased]\n"),
+                  QStringLiteral("## [Unreleased]\n\nLoose prose.\n"));
+    EXPECT_EQ(ChangelogLog::closeUnreleasedDated(prose, QStringLiteral("2026-09-27")).code,
+              QStringLiteral("merge_unsupported"));
+}
+
+// ANTS-5484 — the verb takes `dated:true`, echoes `merged`, and refuses a
+// version alongside it rather than choosing one of the two.
+TEST(changelog_log_writer, Ants5484DatedReleaseThroughTheVerb) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("release");
+    req[QStringLiteral("dated")]      = true;
+    req[QStringLiteral("date")]       = QStringLiteral("2026-09-27");
+    req[QStringLiteral("version")]    = QStringLiteral("1.0.0");
+    QJsonObject resp = rc.cmdChangelogLog(req).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+
+    req.remove(QStringLiteral("version"));
+    resp = rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("heading")).toString(),
+              QStringLiteral("## 2026-09-27"));
+    EXPECT_FALSE(resp.value(QStringLiteral("merged")).toBool(true));
+    EXPECT_FALSE(resp.contains(QStringLiteral("version")));
+    EXPECT_TRUE(contains(readFileStd(clPath(tmp.path())), "\n## 2026-09-27\n"));
+}
+
 
 // ANTS-4475 — changelog_log accepts roadmap_log's spelling of the same act.
 //

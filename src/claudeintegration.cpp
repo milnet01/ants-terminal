@@ -15319,7 +15319,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "refuses `nothing_to_release` on an empty section or "
                         "`version_exists` when that heading already exists "
                         "(two `## [X.Y.Z]` blocks leave a notes-extraction "
-                        "grep unable to choose). "
+                        "grep unable to choose). ANTS-5484 — `dated:true` "
+                        "closes under `## <date>` instead, merging a second "
+                        "close the same day. "
                         "\"add_subsection\" (ANTS-3584, guarded by "
                         "ANTS-4356 — it refuses `flat_section` when a flat "
                         "`### <category>` heading sits ABOVE every dated topic, "
@@ -15492,6 +15494,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "date-version is fine — what is fixed is the "
                             "heading shape.");
                         clProps["version"] = v;
+                        // ANTS-5484
+                        QJsonObject d; d["type"] = "boolean";
+                                       d["description"] = QStringLiteral(
+                            "op:\"release\" — close under `## <date>` for a "
+                            "project with no versions (changelog-format.md "
+                            "4.1); takes no `version`. A second close the same "
+                            "day merges into that day's section category by "
+                            "category, new bullets first, and replies "
+                            "`merged:true`. Refuses `merge_unsupported` when "
+                            "[Unreleased] holds text outside a category block.");
+                        clProps["dated"] = d;
                     }
                     clProps["summary"]    = clSummary;
                     clProps["category"]   = clCategory;

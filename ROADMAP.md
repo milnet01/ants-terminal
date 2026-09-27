@@ -67358,12 +67358,17 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5468] **roadmap_query can return only the lines of each body that match a pattern.**
+- ✅ [ANTS-5468] **roadmap_query can return only the lines of each body that match a pattern.**
   A body projection, e.g. body_match (literal or regex): each row keeps
   only the matching body lines plus a count of lines dropped, in the
   shape workspace_search uses for match rows. `query` picks WHICH rows;
   this bounds WHAT of each row. Asked for by claude-45 for a staleness
   triage it ended up doing with a script over ROADMAP.md.
+  Resolved (2026-09-27, 1f5dc24e): `body_match` (+ `body_match_regex`)
+  filters each body to matching lines before any cap, adds
+  body_lines_dropped, echoes body_match; list, section, id and ids
+  paths. Refuses bad_mode_combo where no body is emitted. Live after an
+  ants-mcpd rebuild and /mcp.
   **Layman:** When checking many roadmap items for one thing, Claude can read just the matching lines instead of every item in full.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.

@@ -154,3 +154,16 @@ INV-6/7 drive `cmdChangelogLog` against a seeded temp project
 the pure helper (malformed vs clean) and the handler (advisory present
 vs absent). INV-10 drives `add_from_roadmap` with a >120-char headline
 and asserts no ellipsis leaks into the rendered bullet.
+
+### ANTS-5484 — dated release for a versionless project
+
+`closeUnreleasedDated` closes `## [Unreleased]` under `## <date>`
+(changelog-format.md § 4.1) and opens a fresh `[Unreleased]` above it. When
+that day's heading already exists it merges instead: each `### <Category>`
+block joins the same category there, new bullets first, and a missing
+category is created in § 4.2 order; the reply carries `merged:true`. It
+refuses `bad_args` on a date that is not YYYY-MM-DD, `nothing_to_release`
+on an empty section, and `merge_unsupported` when a merge meets text outside
+a category block. The verb takes it as `op:"release"` with `dated:true`,
+which refuses `bad_args` alongside a `version`. *Tests:*
+`Ants5484DatedCloseAndSameDayMerge`, `Ants5484DatedReleaseThroughTheVerb`.
