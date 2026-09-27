@@ -292,7 +292,10 @@ QString generatedNotice() {
         "roadmap_log; hand edits are discarded by the next write. -->");
 }
 
-QString withGeneratedNotice(const QString &text) {
+// ANTS-5501 — `atTop` is the pass-headings case: that dialect carries no
+// format marker (ANTS-5230), so the notice opens the file instead. It stays
+// an HTML comment, which detectRoadmapFormat() reads past.
+QString withGeneratedNotice(const QString &text, bool atTop = false) {
     QStringList lines = text.split(QLatin1Char('\n'));
     const int n = std::min(6, int(lines.size()));
     int markerAt = -1;
@@ -302,8 +305,13 @@ QString withGeneratedNotice(const QString &text) {
         if (markerAt < 0 && lines.at(i).contains(QLatin1String("ants-roadmap-format")))
             markerAt = i;
     }
-    if (markerAt < 0)
-        return text;
+    if (markerAt < 0) {
+        if (!atTop)
+            return text;
+        lines.insert(0, QString());
+        lines.insert(0, generatedNotice());
+        return lines.join(QLatin1Char('\n'));
+    }
     lines.insert(markerAt + 1, generatedNotice());
     return lines.join(QLatin1Char('\n'));
 }
@@ -721,7 +729,7 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         QString text = blocks.join(QStringLiteral("\n\n"));
         if (!passHeadings && (!sawRoot || !hasMarkerInHead(text)))
             text = formatMarker() + QStringLiteral("\n\n") + text;
-        text = withGeneratedNotice(text);   // ANTS-4555
+        text = withGeneratedNotice(text, passHeadings);   // ANTS-4555, ANTS-5501
         if (!text.endsWith(QLatin1Char('\n')))
             text += QLatin1Char('\n');
         contentOf.insert(path, text);

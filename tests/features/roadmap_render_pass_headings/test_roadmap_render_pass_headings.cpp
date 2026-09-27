@@ -416,3 +416,27 @@ TEST(RoadmapRenderPassHeadings, Inv7AuthorsStatusLineIsTheSlot) {
                              "- **Finding**: x."))
         << "a block with no Status line gets the canonical one under the heading";
 }
+
+// INV-8 (ANTS-5501) — a rendered pass-headings file says it is generated,
+// once, at the top: ANTS-4555's notice, which the ants-v1 render places under
+// its format marker and this dialect has none of (INV-5). It must not break
+// re-detection, and a second migrate-render cycle must not add a second copy.
+TEST(RoadmapRenderPassHeadings, Inv8GeneratedNoticeOnceAndStillPassHeadings) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString first =
+        migrateThenRender(tmp, QStringLiteral("g1"), QByteArray(kSeed));
+    ASSERT_FALSE(first.isEmpty());
+    const QString marker = QStringLiteral("Generated from the Ants Terminal roadmap store");
+    EXPECT_TRUE(first.split(QLatin1Char('\n')).value(0).contains(marker))
+        << "the notice must open the file:\n" << first.left(300).toStdString();
+    EXPECT_EQ(first.count(marker), 1);
+    EXPECT_EQ(RoadmapParse::detectRoadmapFormat(first.split(QLatin1Char('\n'))),
+              QStringLiteral("pass-headings"));
+
+    const QString second =
+        migrateThenRender(tmp, QStringLiteral("g2"), first.toUtf8());
+    ASSERT_FALSE(second.isEmpty());
+    EXPECT_EQ(second.count(marker), 1) << "a re-import doubled the notice";
+    EXPECT_EQ(first, second);
+}

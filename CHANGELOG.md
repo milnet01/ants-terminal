@@ -243,6 +243,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Pass-headings roadmap files now open with the "generated — edit it with roadmap_log" notice that ants-v1 files carry.** (ANTS-5501)
+
 - **session_message send and ack wait for a concurrent roadmap write instead of failing "database is locked".** (ANTS-5499)
 
 - **The verify.json trust dialog shows "Show Details..." in full on Qt 6.4 too (Ubuntu 24.04).** (ANTS-5479)
