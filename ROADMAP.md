@@ -67435,9 +67435,13 @@ project. Reported causes are claims until checked in source.
   (src/roadmapstore.cpp, CREATE TABLE project), so SQLite reuses the
   highest deleted rowid: deregister project 30, migrate another, it gets
   30. Reported by the Ants Projects Hub Website session.
-  Decided by the user 2026-09-27: keep a high-water mark of the highest
-  id ever issued and allocate above it. No table change and no
-  kSchemaVersion bump, so older builds keep working.
+  Decided by the user 2026-09-27, revised the same day: fold this into
+  the NEXT kSchemaVersion bump made for another reason, so older builds
+  are locked out once. The first choice (a high-water mark with no
+  layout change) has nowhere to live: the store has no store-wide table,
+  and deregisterProject deletes every per-project row. Harmless today,
+  since nothing caches a project_id across a deregister.
+  Blocked-by: the next kSchemaVersion bump.
   **Layman:** When a project is removed, its number is never handed to a new one.
   Kind: fix.
   Source: claude-config-feedback-2026-09-27.
