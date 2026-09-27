@@ -66034,13 +66034,15 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (both lanes).
   Lanes: mcpd, verify.
 
-- 🚧 [ANTS-5479] **The verify.json trust dialog clips its button labels.**
+- ✅ [ANTS-5479] **The verify.json trust dialog clips its button labels.**
   User screenshot 2026-09-27, seen while checking ANTS-5464. QMessageBox caps its
   width, and its five buttons are squeezed to one equal width below what
   "Show Details...", "Trust this SHA" and "Trust this repo" need.
   Reproduced off-screen with Qt 6: two buttons 2 px short at a 596 px box.
   Fix: give each button a minimum width equal to its own size hint, so the
   box grows instead.
+  Shipped 2026-09-27 in a901796b. Test verify_trust_modal_buttons_fit
+  red before, green after; pre-push suite green.
   **Layman:** The buttons on the "Trust .ants/verify.json?" dialog cut off their own words.
   Kind: fix.
   Source: user-report-2026-09-27.
