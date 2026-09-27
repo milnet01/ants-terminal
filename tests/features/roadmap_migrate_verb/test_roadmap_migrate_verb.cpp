@@ -1071,6 +1071,12 @@ TEST(RoadmapMigrateVerb, Inv11WritesNoSourceFileUnderTheProjectRoot) {
     ASSERT_FALSE(before.isEmpty()) << "the fixture wrote nothing to hash";
 
     auto req = request(root);
+    // ANTS-5247 — the default snapshot goes beside the store, and this fixture
+    // keeps its store under the root. The claim here is about SOURCE files, so
+    // the snapshot is sent outside the root rather than counted.
+    QTemporaryDir snaps;
+    ASSERT_TRUE(snaps.isValid());
+    req.backupTo = snaps.filePath(QStringLiteral("pre-migrate.sqlite"));
     req.dryRun = true;
     const QJsonObject dry = RoadmapMigrateVerb::run(storePath, req);
     ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())

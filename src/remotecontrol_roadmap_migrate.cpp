@@ -19,10 +19,12 @@
 // includes the header; this TU needed none until ANTS-4740 added op:"init",
 // which must know whether a roadmap already exists before it writes one.
 
+#include "config.h"
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 
 #include "resolvedroot.h"
+#include "roadmapbackuphealth.h"
 #include "roadmapmigrateverb.h"
 #include "roadmapstore.h"
 
@@ -231,6 +233,12 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // root-relative check would refuse every correct destination.
     r.backup      = req.value(QStringLiteral("backup")).toBool(true);
     r.backupTo    = req.value(QStringLiteral("backup_to")).toString();
+    // ANTS-5247 — § 2.4 rungs 2 and 3, read on every call so a changed key or
+    // a newer weekly snapshot needs no relaunch of ants-mcpd.
+    const RoadmapBackupHealth::SnapshotDest dest = RoadmapBackupHealth::snapshotDest(
+        Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir());
+    r.snapshotDir       = dest.folder;
+    r.snapshotDirSource = dest.source;
 
     QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r);
     // ANTS-4740 — say the file was created. Without it an init reply is

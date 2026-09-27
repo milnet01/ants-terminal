@@ -149,6 +149,10 @@ public:
     // (the default) means "the parent of caller_cwd", the pre-existing rule.
     QString claudeMcpFeedbackRoot() const;
     void setClaudeMcpFeedbackRoot(const QString &dir);
+    // ANTS-5247 — the folder roadmap_migrate's pre-migration snapshot goes to
+    // when no backup_to is passed. Empty (the default) falls back to the weekly
+    // snapshot's recorded folder, then beside the store (ANTS-3855 § 2.4).
+    QString claudeRoadmapSnapshotDir() const;
 
     // ANTS-2085 — terse-by-default for Ants MCP read responses. Default
     // true: token-saving on out of the box. Drives mcp::setTerseDefault()

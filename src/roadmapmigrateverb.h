@@ -63,12 +63,21 @@ struct Request {
     // back is the thing this exists to prevent, and a warning nobody reads is
     // not protection.
     //
-    // Empty `backupTo` means RoadmapStore::defaultSnapshotPath(). A dry run
-    // takes none at all (INV-7): it commits nothing, so there is nothing to
-    // protect and a rolling snapshot spent on a preview would overwrite the one
-    // taken before the last real run.
+    // A dry run takes none at all (INV-7): it commits nothing, so there is
+    // nothing to protect and a rolling snapshot spent on a preview would
+    // overwrite the one taken before the last real run.
+    //
+    // ANTS-5247 (ANTS-3855 § 2.4) — where it goes. `backupTo` is used as is
+    // and a failure refuses. Otherwise `snapshotDir` (the handler resolves it
+    // through RoadmapBackupHealth::snapshotDest()), which must already exist;
+    // a snapshot there that fails is retaken beside `storePath`. Empty
+    // `snapshotDir` goes beside `storePath` directly.
     bool    backup = true;
     QString backupTo;
+    QString snapshotDir;
+    QString snapshotDirSource;   // "config", "backup_record" or empty
+    // ANTS-5287 — lifts ANTS-3765 § 2.7's mass-deletion refusal.
+    bool    acceptDeletions = false;
 };
 
 // Returns the success envelope, or a refusal carrying `code`. Opens its OWN

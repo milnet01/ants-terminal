@@ -94,3 +94,17 @@ QJsonObject RoadmapBackupHealth::assess(const QString &stateDir, const QDateTime
              .arg(hints.join(QStringLiteral("; ")))},
     };
 }
+
+// ANTS-5247 — ANTS-3855 § 2.4 rungs 2 and 3, in that order. Empty is unset on
+// both, as assess() reads an empty record value.
+RoadmapBackupHealth::SnapshotDest RoadmapBackupHealth::snapshotDest(const QString &configDir,
+                                                                     const QString &stateDir) {
+    if (!configDir.trimmed().isEmpty())
+        return {configDir.trimmed(), QStringLiteral("config")};
+    QHash<QString, QString> rec;
+    readRecord(recordPath(stateDir, QStringLiteral("snapshot")), &rec);
+    const QString dest = rec.value(QStringLiteral("dest"));
+    if (!dest.isEmpty())
+        return {dest, QStringLiteral("backup_record")};
+    return {};
+}

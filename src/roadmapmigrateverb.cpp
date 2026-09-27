@@ -522,12 +522,47 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // INV-7 — never on a dry run. It commits nothing, so there is nothing to
     // protect, and spending the rolling snapshot on a preview would destroy the
     // one taken before the last real migration.
+    //
+    // ANTS-5247 (ANTS-3855 § 2.4) — where: `backupTo` as given; else the
+    // resolved folder, which must already exist (never created: a folder on an
+    // unmounted drive would be recreated on the system drive); else, or when
+    // that snapshot fails, beside `storePath`.
     QString backupPath;
+    QString backupSource;
+    QJsonObject backupFallback;
     if (!req.dryRun && req.backup) {
-        backupPath = req.backupTo.isEmpty() ? RoadmapStore::defaultSnapshotPath()
-                                            : req.backupTo;
+        const QString beside = QFileInfo(storePath).absolutePath()
+                               + QStringLiteral("/pre-migrate.sqlite");
         QString backupErr;
-        if (!store.snapshotTo(backupPath, &backupErr)) {
+        bool taken = false;
+        if (!req.backupTo.isEmpty()) {
+            backupPath   = req.backupTo;
+            backupSource = QStringLiteral("backup_to");
+            taken = store.snapshotTo(backupPath, &backupErr);
+        } else {
+            if (!req.snapshotDir.isEmpty()) {
+                if (QFileInfo(req.snapshotDir).isDir()) {
+                    backupPath = QDir(req.snapshotDir).filePath(
+                        QStringLiteral("pre-migrate.sqlite"));
+                    backupSource = req.snapshotDirSource.isEmpty()
+                        ? QStringLiteral("config") : req.snapshotDirSource;
+                    taken = store.snapshotTo(backupPath, &backupErr);
+                } else {
+                    backupErr = QStringLiteral("the folder does not exist");
+                }
+                if (!taken) {
+                    backupFallback[QStringLiteral("folder")] = req.snapshotDir;
+                    backupFallback[QStringLiteral("error")]  = backupErr;
+                }
+            }
+            if (!taken) {
+                backupPath   = beside;
+                backupSource = QStringLiteral("beside_store");
+                backupErr.clear();
+                taken = store.snapshotTo(backupPath, &backupErr);
+            }
+        }
+        if (!taken) {
             // INV-8 — refuse, rather than migrate unprotected and mention it.
             // This verb can update hundreds of rows in a store every project on
             // the machine shares, and there is no undo; proceeding past a
@@ -540,6 +575,8 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                 "pre-migration snapshot to %1 failed: %2. Nothing was migrated. "
                 "Pass a writable `backup_to`, or `backup:false` to migrate "
                 "without one.").arg(backupPath, backupErr);
+            if (!backupFallback.isEmpty())
+                env[QStringLiteral("backup_fallback")] = backupFallback;
             return env;
         }
     }
@@ -688,8 +725,12 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // a dry run and on an explicit `backup:false`; a failed snapshot never
     // reaches here, having refused above.
     env[QStringLiteral("backup_taken")] = !backupPath.isEmpty();
-    if (!backupPath.isEmpty())
-        env[QStringLiteral("backup_path")] = backupPath;
+    if (!backupPath.isEmpty()) {
+        env[QStringLiteral("backup_path")]        = backupPath;
+        env[QStringLiteral("backup_path_source")] = backupSource;   // ANTS-5247
+    }
+    if (!backupFallback.isEmpty())
+        env[QStringLiteral("backup_fallback")] = backupFallback;
 
     env[QStringLiteral("items_inserted")]   = out.itemsInserted;
     env[QStringLiteral("items_updated")]    = out.itemsUpdated;

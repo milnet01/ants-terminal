@@ -14792,8 +14792,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"] = QStringLiteral("string");
                         p["description"] = QStringLiteral(
-                            "Where that snapshot goes. Defaults to "
-                            "`pre-migrate.sqlite` beside the store. It is "
+                            "Where that snapshot goes; a failure refuses. "
+                            "Omitted: `pre-migrate.sqlite` in the folder "
+                            "config key claude.roadmap_snapshot_dir names, "
+                            "else the weekly snapshot's recorded folder, else "
+                            "beside the store (ANTS-5247). A named folder must "
+                            "exist; one that fails falls back beside the store "
+                            "and says so in `backup_fallback`. "
+                            "`backup_path_source` names which. It is "
                             "ROLLING -- each run overwrites it -- so name your "
                             "own path to keep a particular one. An existing "
                             "file there that is not a SQLite database is "

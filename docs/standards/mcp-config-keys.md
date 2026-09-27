@@ -60,6 +60,19 @@ When the search finds nothing, the `not_found` envelope now carries `searched`
 (the directories actually looked in) and a `hint` naming this key — so the
 answer is actionable rather than terminal.
 
+## Pre-migration snapshot folder (ANTS-5247)
+
+`claude.roadmap_snapshot_dir` (string, default empty). The folder
+`roadmap_migrate` writes its rolling `pre-migrate.sqlite` to when the call
+passes no `backup_to`. Empty falls back to the folder the weekly snapshot last
+wrote to (its record's `dest=`), then beside the store.
+`docs/specs/ANTS-3855-roadmap-migrate-verb.md` § 2.4 owns the order.
+
+The folder must already exist; it is never created, so an unmounted drive
+cannot turn into a folder on the system drive. A snapshot there that fails is
+retaken beside the store, and the reply says so. Read on every call, so a
+change needs no relaunch.
+
 ## Autonomous model switcher (ANTS-1735 §2.7)
 
 Single Settings toggle "Let Ants pick the Claude model for me" + config-only

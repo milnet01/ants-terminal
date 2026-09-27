@@ -336,3 +336,112 @@ TEST(RoadmapMigrateBackup, Inv8BackupFalseMigratesWithoutOne) {
     EXPECT_FALSE(env.value(QStringLiteral("backup_taken")).toBool());
     EXPECT_EQ(projectCount(storePath, QStringLiteral("bk_none")), 1);
 }
+
+// ANTS-5247 — with no backup_to, the snapshot goes to Request::snapshotDir,
+// and beside the store when that is empty or fails. ANTS-3855 § 2.4, INV-15.
+namespace {
+
+QString besideStore(const QString &storePath) {
+    return QFileInfo(storePath).absolutePath() + QStringLiteral("/pre-migrate.sqlite");
+}
+
+}  // namespace
+
+// INV-10 — a folder that exists is used, and the reply names its rung.
+TEST(RoadmapMigrateBackup, Inv10SnapshotDirIsUsed) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store/store.sqlite"));
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(storePath).absolutePath()));
+    const QString snaps = dir.filePath(QStringLiteral("snaps"));
+    ASSERT_TRUE(QDir().mkpath(snaps));
+
+    auto req = migrateRequest(root);
+    req.snapshotDir = snaps;
+    req.snapshotDirSource = QStringLiteral("config");
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("backup_path")).toString().toStdString(),
+              (snaps + QStringLiteral("/pre-migrate.sqlite")).toStdString());
+    EXPECT_EQ(env.value(QStringLiteral("backup_path_source")).toString().toStdString(),
+              std::string("config"));
+    EXPECT_FALSE(env.contains(QStringLiteral("backup_fallback")));
+    EXPECT_TRUE(QFile::exists(snaps + QStringLiteral("/pre-migrate.sqlite")));
+}
+
+// INV-11 — no folder named: beside storePath, never beside the real store.
+TEST(RoadmapMigrateBackup, Inv11EmptySnapshotDirGoesBesideTheStore) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store/store.sqlite"));
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(storePath).absolutePath()));
+
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, migrateRequest(root));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("backup_path")).toString().toStdString(),
+              besideStore(storePath).toStdString());
+    EXPECT_EQ(env.value(QStringLiteral("backup_path_source")).toString().toStdString(),
+              std::string("beside_store"));
+    EXPECT_TRUE(QFile::exists(besideStore(storePath)));
+}
+
+// INV-12 — a snapshot to the folder that fails is retaken beside the store,
+// and the reply says what was tried. The failure is ANTS-5466's refusal to
+// replace a file that is not a database, which holds for any user, root too.
+TEST(RoadmapMigrateBackup, Inv12FailedFolderFallsBackBesideTheStore) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store/store.sqlite"));
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(storePath).absolutePath()));
+    const QString snaps = dir.filePath(QStringLiteral("snaps"));
+    ASSERT_TRUE(QDir().mkpath(snaps));
+    ASSERT_TRUE(writeFileAt(snaps + QStringLiteral("/pre-migrate.sqlite"),
+                            QByteArrayLiteral("not a database")));
+
+    auto req = migrateRequest(root);
+    req.snapshotDir = snaps;
+    req.snapshotDirSource = QStringLiteral("backup_record");
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("backup_path")).toString().toStdString(),
+              besideStore(storePath).toStdString());
+    EXPECT_EQ(env.value(QStringLiteral("backup_path_source")).toString().toStdString(),
+              std::string("beside_store"));
+    const QJsonObject fb = env.value(QStringLiteral("backup_fallback")).toObject();
+    EXPECT_EQ(fb.value(QStringLiteral("folder")).toString().toStdString(), snaps.toStdString());
+    EXPECT_FALSE(fb.value(QStringLiteral("error")).toString().isEmpty());
+}
+
+// INV-13 — a folder that does not exist is never created: a folder on an
+// unmounted drive would be recreated on the system drive. It falls back.
+TEST(RoadmapMigrateBackup, Inv13MissingFolderIsNotCreated) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store/store.sqlite"));
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(storePath).absolutePath()));
+    const QString gone = dir.filePath(QStringLiteral("unmounted/snaps"));
+
+    auto req = migrateRequest(root);
+    req.snapshotDir = gone;
+    req.snapshotDirSource = QStringLiteral("config");
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(QFileInfo::exists(gone)) << "the missing folder was created";
+    EXPECT_EQ(env.value(QStringLiteral("backup_path")).toString().toStdString(),
+              besideStore(storePath).toStdString());
+    EXPECT_EQ(env.value(QStringLiteral("backup_fallback")).toObject()
+                  .value(QStringLiteral("folder")).toString().toStdString(),
+              gone.toStdString());
+}

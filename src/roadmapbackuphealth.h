@@ -25,4 +25,15 @@ QString stateDir();
 // jobs, where state is never_run, failing or stale.
 QJsonObject assess(const QString &stateDir, const QDateTime &nowUtc, bool storeExists);
 
+// ANTS-5247 — the folder the pre-migration snapshot defaults to (ANTS-3855
+// § 2.4 rungs 2 and 3). `configDir` is claude.roadmap_snapshot_dir and wins
+// when set; otherwise the `dest=` line of the weekly snapshot record. An empty
+// value counts as unset, as assess() reads empty. `source` is "config",
+// "backup_record", or empty when neither names a folder.
+struct SnapshotDest {
+    QString folder;
+    QString source;
+};
+SnapshotDest snapshotDest(const QString &configDir, const QString &stateDir);
+
 }  // namespace RoadmapBackupHealth

@@ -632,6 +632,10 @@ void Config::setClaudeMcpFeedbackRoot(const QString &dir) {
     save();
 }
 
+QString Config::claudeRoadmapSnapshotDir() const {
+    return m_data.value("claude.roadmap_snapshot_dir").toString();
+}
+
 bool Config::claudeMcpOrientationNudgeShown() const {
     return m_data.value("claude.mcp_orientation_nudge_shown").toBool(false);
 }

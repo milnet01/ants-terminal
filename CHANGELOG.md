@@ -136,6 +136,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_migrate's safety snapshot goes to the weekly backup folder, or one you set, instead of the system drive.** (ANTS-5247)
+  With no backup_to it uses the config key claude.roadmap_snapshot_dir,
+  then the folder the weekly snapshot last wrote to, then beside the store.
+  A folder that is missing or fails falls back beside the store, and the
+  reply says which it used (backup_path_source, backup_fallback).
+
 - **roadmap_query's max_body_bytes now shortens bodies on list and section queries too.** (ANTS-5467)
   A search that returns many roadmap items can ask for each item's text
   to be cut shorter, down to 400 bytes (the default stays 2000). The

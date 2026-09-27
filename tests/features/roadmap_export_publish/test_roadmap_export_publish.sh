@@ -124,12 +124,15 @@ XDG_DATA_HOME="$T/data" "$SNAPSHOT" "$T/snaps" >/dev/null 2>&1
 check "INV-12 snapshot succeeds" test $? -eq 0
 check "INV-12 success sets success" test -n "$(recval success "$SREC")"
 check "INV-12 success empties error" test -z "$(recval error "$SREC")"
+check "INV-12 success sets dest to the canonical folder" test "$(recval dest "$SREC")" = "$(cd "$T/snaps" && pwd -P)"
 before=$(recval success "$SREC")
 rm "$T/data/ants-terminal/roadmap.sqlite"
 XDG_DATA_HOME="$T/data" "$SNAPSHOT" "$T/snaps" >/dev/null 2>&1
 check "INV-12 missing store fails" test $? -ne 0
 check "INV-12 failure sets error" test -n "$(recval error "$SREC")"
 check "INV-12 failure keeps success" test "$(recval success "$SREC")" = "$before"
+check "INV-12 failure keeps dest" test "$(recval dest "$SREC")" = "$(cd "$T/snaps" && pwd -P)"
+check "INV-12 record always carries dest=" grep -q "^dest=" "$SREC"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

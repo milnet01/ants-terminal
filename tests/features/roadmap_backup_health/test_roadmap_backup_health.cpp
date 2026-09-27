@@ -109,3 +109,36 @@ TEST(RoadmapBackupHealth, EmptySuccessWithoutErrorIsStale) {
                       QStringLiteral("export")),
               QStringLiteral("stale"));
 }
+
+// ANTS-5247 — snapshotDest() owns ANTS-3855 § 2.4 rungs 2 and 3: the config
+// key wins, then the snapshot record's dest=, and an empty value is unset.
+TEST(RoadmapBackupHealth, Ants5247SnapshotDestOrder) {
+    QTemporaryDir d;
+    const QString rec = d.path() + QStringLiteral("/roadmap-backup-snapshot.state");
+    const auto writeSnap = [&](const QString &dest) {
+        QFile f(rec);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QStringLiteral("attempt=%1\nsuccess=%1\nerror=\ndest=%2\n")
+                    .arg(iso(now()), dest).toUtf8());
+    };
+
+    // No record at all: neither rung names a folder.
+    auto r = RoadmapBackupHealth::snapshotDest(QString(), d.path());
+    EXPECT_TRUE(r.folder.isEmpty());
+    EXPECT_TRUE(r.source.isEmpty());
+
+    writeSnap(QStringLiteral("/srv/backups/roadmap"));
+    r = RoadmapBackupHealth::snapshotDest(QStringLiteral("/cfg/snaps"), d.path());
+    EXPECT_EQ(r.folder, QStringLiteral("/cfg/snaps")) << "the config key must win";
+    EXPECT_EQ(r.source, QStringLiteral("config"));
+
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path());
+    EXPECT_EQ(r.folder, QStringLiteral("/srv/backups/roadmap"));
+    EXPECT_EQ(r.source, QStringLiteral("backup_record"));
+
+    // dest= present but empty (no success yet) reads as unset.
+    writeSnap(QString());
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path());
+    EXPECT_TRUE(r.folder.isEmpty());
+    EXPECT_TRUE(r.source.isEmpty()) << "an empty dest= must not report backup_record";
+}

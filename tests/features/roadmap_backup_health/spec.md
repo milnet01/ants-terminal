@@ -18,3 +18,11 @@ unhealthy jobs with the parent's § 2.5 state.**
 - `success` empty, or older than `kStaleAfterSecs` → `stale`. The boundary is
   checked on both sides with an injected `nowUtc`.
 - Only the unhealthy job is listed, and `hint` names that job's timer.
+
+## ANTS-5247 — the snapshot folder
+
+**`RoadmapBackupHealth::snapshotDest(configDir, stateDir)` returns the folder
+the pre-migration snapshot defaults to, and where it came from.** A non-empty
+`configDir` wins (`config`); else the snapshot record's `dest=`
+(`backup_record`); else nothing. An empty `dest=` counts as unset. Parent:
+`docs/specs/ANTS-3855-roadmap-migrate-verb.md` INV-15.

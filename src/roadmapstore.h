@@ -87,10 +87,10 @@ public:
     // with a space in it that no other writer in this project uses.
     static QString defaultPath();
 
-    // ANTS-4499 — where the rolling pre-migration snapshot goes when a caller
-    // names no path. Beside the store, because that directory is the one
-    // location guaranteed to exist and be writable wherever this binary runs;
-    // a caller wanting it elsewhere (another drive, say) passes its own path.
+    // ANTS-4499 — the rolling pre-migration snapshot beside the live store.
+    // Since ANTS-5247, roadmap_migrate puts it beside the store its run()
+    // opened, and only after the configured and recorded folders (ANTS-3855
+    // § 2.4); this names the file for the live store.
     //
     // Deliberately NOT named `roadmap-*.sqlite`. That glob is what
     // tools/roadmap-store-backup.sh prunes to its KEEP limit, so a matching

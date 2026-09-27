@@ -31,13 +31,26 @@ migration that runs between two of its snapshots.
 - **INV-7** — a `dry_run` takes no snapshot. It writes nothing, so there is
   nothing to protect.
 - **INV-8** — a failed snapshot refuses the migration rather than proceeding
-  silently. A caller that wants the migration anyway says so explicitly.
+  silently. A caller that wants the migration anyway says so explicitly. *(ANTS-5247)* A failed snapshot to a default folder is first retaken
+  beside the store; the refusal fires when `backup_to` fails, or the retake does.
 - **INV-9** *(ANTS-5466)* — a file already at the destination is replaced
   only if it is a SQLite database. Anything else refuses, names the file, and
   is left untouched. `backup_to` is not confined to a project, so a wrong path
   must not delete an unrelated file. The same holds for a leftover
   `<destination>.partial`, except that an empty one is cleared: that is what
   a run killed before it wrote anything leaves.
+
+- **INV-10** *(ANTS-5247)* — with no `backup_to`, a `snapshotDir` that exists
+  receives `pre-migrate.sqlite`, and `backup_path_source` names its rung.
+- **INV-11** *(ANTS-5247)* — with no folder named, the snapshot goes beside
+  `run()`'s `storePath`, never beside the real store; source `beside_store`.
+- **INV-12** *(ANTS-5247)* — a snapshot to the folder that fails is retaken
+  beside `storePath`, and `backup_fallback` names the folder and its error.
+- **INV-13** *(ANTS-5247)* — a `snapshotDir` that does not exist is never
+  created, and falls back as INV-12 does. A folder on an unmounted drive would
+  otherwise be recreated on the system drive.
+
+Parent for INV-10..13: ANTS-3855 INV-15.
 
 ## Notes
 

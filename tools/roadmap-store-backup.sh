@@ -65,5 +65,6 @@ if (( ${#snaps[@]} > KEEP )); then
     rm -f -- "${snaps[@]:0:${#snaps[@]}-KEEP}" || fail "cannot prune old snapshots in $DEST"
 fi
 
-roadmap_backup_record snapshot ok
+# ANTS-5247 — the canonical folder, read by roadmap_migrate's snapshot default.
+roadmap_backup_record snapshot ok "" "$(cd "$DEST" && pwd -P)"
 echo "roadmap-store-backup: wrote $out"
