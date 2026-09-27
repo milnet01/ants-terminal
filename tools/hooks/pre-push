@@ -129,9 +129,6 @@ if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
     fi
 fi
 
-echo "pre-push: running ci.yml's build-test job locally (tools/ci_workflow.py)…"
-echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.sh --full"
-
 # ANTS-5322 — ci.yml's build-test job, as written: configure, BUILD, the whole
 # suite (e2e and perf included, as CI runs them), and the lints. The hook used
 # to test the existing build/ without building, because a build-minute stamp
@@ -139,7 +136,31 @@ echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.s
 # its own TU, so an incremental build is the cost of what changed.
 # ANTS-5375 — tells ci_workflow.py this is the push gate; ci.yml's perf step
 # then skips here and runs on GitHub only (user ruling, 2026-09-26).
-if ! ANTS_PUSH_GATE=1 python3 "$runner" run build-test; then
+#
+# The job runs in CI's own image (ubuntu 24.04: its GCC, mold and Qt) when
+# that image and its build tree are warm, and on this machine otherwise. The
+# image is the match: this box's newer Qt passed ANTS-5479's button test while
+# every CI run failed it. A cold image never runs inside a push; warm it once
+# with `tools/qt62-guard.sh --job build-test --run-job`.
+# ANTS_PREPUSH_NO_UBUNTU24=1 keeps the job on this machine for one push.
+job_in_image=0
+if [[ -z "${ANTS_PREPUSH_NO_UBUNTU24:-}" && -x tools/qt62-guard.sh ]] \
+   && tools/qt62-guard.sh --job build-test --run-job --check-warm; then
+    job_in_image=1
+fi
+if [[ "$job_in_image" == 1 ]]; then
+    echo "pre-push: running ci.yml's build-test job in CI's image (tools/qt62-guard.sh --run-job)…"
+    echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.sh --full"
+    ANTS_PUSH_GATE=1 tools/qt62-guard.sh --job build-test --run-job
+else
+    echo "pre-push: running ci.yml's build-test job on this machine (tools/ci_workflow.py)…"
+    echo "          CI's image is not warm, so this is this box's Qt and compiler, not CI's."
+    echo "          Warm it once: tools/qt62-guard.sh --job build-test --run-job"
+    echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.sh --full"
+    ANTS_PUSH_GATE=1 python3 "$runner" run build-test
+fi
+job_rc=$?
+if (( job_rc != 0 )); then
     echo >&2
     echo "pre-push: ci.yml's build-test job FAILED locally — push blocked." >&2
     echo "          Fix the failure above (or 'git push --no-verify' to override)." >&2
@@ -359,7 +380,9 @@ fi
 # Same scope and --warm-only contract as the leg above.
 #
 # Opt out for one push with ANTS_PREPUSH_NO_UBUNTU24=1.
-if [[ -n "${ANTS_PREPUSH_NO_UBUNTU24:-}" ]]; then
+if [[ "$job_in_image" == 1 ]]; then
+    echo "pre-push: build-test toolchain leg already covered — the job ran in CI's image."
+elif [[ -n "${ANTS_PREPUSH_NO_UBUNTU24:-}" ]]; then
     echo "pre-push: build-test toolchain leg skipped (ANTS_PREPUSH_NO_UBUNTU24 set)."
 elif [[ ! -x tools/qt62-guard.sh ]]; then
     echo "pre-push: ⊘ tools/qt62-guard.sh missing — build-test toolchain guard did NOT run."

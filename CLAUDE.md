@@ -66,17 +66,21 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   no second script. `--stress` adds CPU load.
 - Hunt a flaky test with `ctest --test-dir build --repeat until-fail:5 -R <test>`.
 - `tools/hooks/pre-push` (wired via `core.hooksPath=tools/hooks`) runs
-  `ci.yml`'s `build-test` job, its `build-asan` job when `build-asan/` is
-  warm, and two compile guards: `tools/qt62-guard.sh --warm-only` (the Qt 6.2
-  floor) and `tools/qt62-guard.sh --job build-test` (ubuntu:24.04's GCC 13 and
-  mold). Warm the second once by running it without `--warm-only`.
+  `ci.yml`'s `build-test` job in CI's own image (ubuntu:24.04: its GCC, mold
+  and Qt 6.4) through `tools/qt62-guard.sh --job build-test --run-job`, and on
+  this machine only while that image is cold. Warm it once by running that
+  command. It also runs `build-asan` when `build-asan/` is warm, and the Qt 6.2
+  compile guard `tools/qt62-guard.sh --warm-only`.
+- This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button
+  test). Reproduce a CI-only failure with the `--run-job` command above.
 - A push that `ci.yml`'s `paths-ignore` treats as docs-only skips the hook.
   `--full` runs every job, including those the hook leaves to GitHub.
 - A tool the GitHub runner lacks cannot be caught locally.
   `tests/features/ci_workflow_deps` checks the recipes statically. **A new
   carrier that runs `ctest` must be added to that test.**
 - Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
-  `ANTS_PREPUSH_NO_QT62=1`, `ANTS_PREPUSH_NO_UBUNTU24=1`. The ASan leg's
+  `ANTS_PREPUSH_NO_QT62=1`, `ANTS_PREPUSH_NO_UBUNTU24=1` (runs the job on
+  this machine, with no ubuntu:24.04 leg at all). The ASan leg's
   contract: `tests/features/prepush_asan_gate/spec.md`.
 
 ## Test harnesses

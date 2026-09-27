@@ -71,25 +71,41 @@
 # target links here and fails only there — bench_partition_walk broke three
 # CI pushes that way. Same compile, same caches, own image and volume.
 #
-# Exit: 0 pass (or skipped under --warm-only), 1 compile failure or refusal,
-# 130 interrupted.
+# `--job build-test --run-job` runs that ci.yml job WHOLE in the same image,
+# through tools/ci_workflow.py: build, suite, shellcheck, packaging lints. It
+# is the one local run on CI's Qt (6.4 on ubuntu 24.04; this box has a newer
+# one), so a test that passes here and fails there is caught before a push.
+# ANTS-5479's button test was that case. The working tree is mounted
+# read-write, as a runner's checkout is; build/ and .ccache/ are volumes of
+# their own, so the host's build/ is never touched. `--check-warm` exits 0
+# when that job's caches exist and 3 when they do not.
+#
+# Exit: 0 pass (or skipped under --warm-only), 1 compile/job failure or
+# refusal, 3 not warm (--check-warm only), 130 interrupted.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.." || {
     echo "qt62-guard: cannot cd to repo root" >&2; exit 1; }
 
 mode="run"
 job="qt62-baseline"
+run_job=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --warm-only) mode="warm-only" ;;
-        --clean)     mode="clean" ;;
-        --print)     mode="print" ;;
-        --job)       job="${2:-}"; shift ;;
+        --warm-only)  mode="warm-only" ;;
+        --check-warm) mode="check-warm" ;;
+        --clean)      mode="clean" ;;
+        --print)      mode="print" ;;
+        --run-job)    run_job=1 ;;
+        --job)        job="${2:-}"; shift ;;
         *) echo "qt62-guard: unknown argument '$1' (see the header for usage)" >&2
            exit 1 ;;
     esac
     shift
 done
+if [[ "$run_job" == 1 && "$job" != "build-test" ]]; then
+    echo "qt62-guard: --run-job needs --job build-test (qt62-baseline has no suite)" >&2
+    exit 1
+fi
 
 # Per job: the container base, the ci.yml install step the packages come from,
 # and the name prefix its image and build volume are cached under.
@@ -105,7 +121,11 @@ case "$job" in
         qt62_step="Install Qt6 + build + packaging deps (cached)"
         qt62_prefix="ants-ubuntu24"
         qt62_what="CI's build-test toolchain (ubuntu 24.04, GCC 13, mold)"
-        qt62_cmd="tools/qt62-guard.sh --job build-test" ;;
+        qt62_cmd="tools/qt62-guard.sh --job build-test"
+        if [[ "$run_job" == 1 ]]; then
+            qt62_what="ci.yml's build-test job in CI's image (ubuntu 24.04)"
+            qt62_cmd="tools/qt62-guard.sh --job build-test --run-job"
+        fi ;;
     *) echo "qt62-guard: unknown --job '$job' (qt62-baseline or build-test)" >&2
        exit 1 ;;
 esac
@@ -117,6 +137,13 @@ esac
 # HTTPS when no system GTest is found. The runner has none either, so CI takes
 # the same FetchContent path. These reproduce the runner ENV.
 qt62_extra_pkgs="git ca-certificates"
+# --run-job runs the SUITE, which needs Qt's SQLite driver: the roadmap store
+# and session_message tests open a QSQLITE database. libqt6sql6-sqlite is a
+# Recommends of libqt6sql6t64, which this image installs without; GitHub's
+# runner has it, because those tests pass there. Measured 2026-09-27: without
+# it, 475 tests failed here with "QSQLITE driver not loaded". The compile
+# guard needs no driver, so its image and tag are unchanged.
+[[ "$run_job" == 1 ]] && qt62_extra_pkgs="$qt62_extra_pkgs libqt6sql6-sqlite"
 
 # Host-side, beside nothing else: the markers must outlive a killed run.
 qt62_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ants-terminal/qt62-guard"
@@ -135,9 +162,10 @@ if [[ "$mode" == "clean" ]]; then
     podman image ls --format '{{.Repository}}:{{.Tag}}' \
         | grep "^localhost/$qt62_prefix-baseline:" | xargs -r podman image rm -f
     podman volume ls --format '{{.Name}}' \
-        | grep "^$qt62_prefix-build-" | xargs -r podman volume rm -f
+        | grep -E "^$qt62_prefix-(build|job)-" | xargs -r podman volume rm -f
     # This job's markers only: the other job's volume may be marked interrupted.
-    rm -f "$qt62_state_dir/$qt62_prefix-build-"*.interrupted
+    rm -f "$qt62_state_dir/$qt62_prefix-build-"*.interrupted \
+          "$qt62_state_dir/$qt62_prefix-job-"*.interrupted
     echo "qt62-guard: cache cleared."
     exit 0
 fi
@@ -185,6 +213,12 @@ qt62_resolve() {
     qt62_image="localhost/$qt62_prefix-baseline:$qt62_tag"
     qt62_volume="$qt62_prefix-build-$qt62_tag"
     qt62_container="$qt62_prefix-guard-$qt62_tag"
+    if [[ "$run_job" == 1 ]]; then
+        # Its own tree: the job configures build/ under /src, and a CMake
+        # cache cannot move between binary dirs.
+        qt62_volume="$qt62_prefix-job-$qt62_tag"
+        qt62_container="$qt62_prefix-job-$qt62_tag"
+    fi
     qt62_interrupted_marker="$qt62_state_dir/$qt62_volume.interrupted"
 }
 
@@ -198,6 +232,13 @@ if [[ "$mode" == "print" ]]; then
     echo "packages ($(wc -l <<<"$qt62_pkgs"), extracted from ci.yml):"
     while IFS= read -r l; do echo "  $l"; done <<<"$qt62_pkgs"
     exit 0
+fi
+
+if [[ "$mode" == "check-warm" ]]; then
+    need_podman && podman image exists "$qt62_image" \
+        && podman volume exists "$qt62_volume" \
+        && [[ ! -e "$qt62_interrupted_marker" ]] && exit 0
+    exit 3
 fi
 
 if ! need_podman; then
@@ -297,24 +338,54 @@ mkdir -p "$qt62_state_dir" && : > "$qt62_interrupted_marker" || {
 # from cache. Inside the checkout, so on the same drive as the source rather
 # than under $HOME; gitignored. ccache is in both jobs' ci.yml package lists.
 qt62_ccache="$PWD/.ccache-guard/$qt62_prefix"
+[[ "$run_job" == 1 ]] && qt62_ccache="$PWD/.ccache-guard/$qt62_prefix-job"
 mkdir -p "$qt62_ccache" || {
     echo "qt62-guard: cannot create $qt62_ccache" >&2; exit 1; }
-echo "qt62-guard: compiling for $qt62_what ($qt62_base, tag $qt62_tag)…"
-podman run --rm --security-opt label=disable --init --name "$qt62_container" \
-    -v "$PWD:/src:ro" -v "$qt62_volume:/build" -v "$qt62_ccache:/ccache" \
-    -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2G -e CCACHE_COMPRESS=1 \
-    -w /src "$qt62_image" \
-    bash -euo pipefail -c '
-        cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-        cmake --build /build --parallel
-    ' &
+if [[ "$run_job" == 1 ]]; then
+    # ci.yml's own steps, through the same runner the host leg uses. The job
+    # env points CCACHE_DIR at the workspace's .ccache, so that path is the
+    # mount; ANTS_PUSH_GATE passes through so the push gate skips the perf
+    # step exactly as on the host (ANTS-5375).
+    # --userns=keep-id runs the job as this user, not root: GitHub's runner
+    # is a normal user, and root ignores file modes, so the tests that chmod
+    # a file unreadable and expect a refusal failed here as root (measured
+    # 2026-09-27: five of them). HOME must then be somewhere writable.
+    echo "qt62-guard: running $qt62_what ($qt62_base, tag $qt62_tag)…"
+    podman run --rm --security-opt label=disable --init --name "$qt62_container" \
+        --userns=keep-id -e HOME=/tmp \
+        -v "$PWD:/src" -v "$qt62_volume:/src/build" -v "$qt62_ccache:/src/.ccache" \
+        -e ANTS_PUSH_GATE="${ANTS_PUSH_GATE:-}" \
+        -w /src "$qt62_image" \
+        python3 tools/ci_workflow.py run build-test &
+else
+    echo "qt62-guard: compiling for $qt62_what ($qt62_base, tag $qt62_tag)…"
+    podman run --rm --security-opt label=disable --init --name "$qt62_container" \
+        -v "$PWD:/src:ro" -v "$qt62_volume:/build" -v "$qt62_ccache:/ccache" \
+        -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2G -e CCACHE_COMPRESS=1 \
+        -w /src "$qt62_image" \
+        bash -euo pipefail -c '
+            cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            cmake --build /build --parallel
+        ' &
+fi
 wait $!
 rc=$?
 trap - INT TERM HUP
 rm -f "$qt62_interrupted_marker"
 
+if (( rc != 0 )) && [[ "$run_job" == 1 ]]; then
+    echo >&2
+    echo "qt62-guard: ✗ $qt62_what FAILED." >&2
+    echo "            GitHub runs this same job on the same image, so it would" >&2
+    echo "            fail there too. The failing step is above." >&2
+    exit 1
+fi
+if [[ "$run_job" == 1 ]]; then
+    echo "qt62-guard: ✓ $qt62_what passed."
+    exit 0
+fi
 if (( rc != 0 )); then
     echo >&2
     echo "qt62-guard: ✗ FAILED to build for $qt62_what." >&2

@@ -24,7 +24,7 @@
 #   tools/ci-parity.sh --lints      #  + cppcheck
 #   tools/ci-parity.sh --asan       #  + build-asan (sanitized build, suite, smoke)
 #   tools/ci-parity.sh --qt62       #  + qt62-baseline in an ubuntu:22.04 container
-#   tools/ci-parity.sh --ubuntu24   #  + build-test's toolchain in an ubuntu:24.04 container
+#   tools/ci-parity.sh --ubuntu24   #  + build-test run whole in CI's ubuntu:24.04 image (its Qt too)
 #   tools/ci-parity.sh --full       #  every job above: all of ci.yml
 #   tools/ci-parity.sh --qt62-clean # drop the cached container images + volumes
 #   tools/ci-parity.sh --stress     # add background CPU load (needs stress-ng)
@@ -103,7 +103,7 @@ host_job build-test
 [[ "$do_lints" == 1 ]] && host_job cppcheck
 [[ "$do_asan" == 1 ]] && host_job build-asan
 [[ "$do_qt62" == 1 ]] && container_leg "qt62-baseline: ubuntu:22.04 / Qt 6.2 build"
-[[ "$do_ubuntu24" == 1 ]] && container_leg "build-test toolchain: ubuntu:24.04 / GCC 13 / mold build" --job build-test
+[[ "$do_ubuntu24" == 1 ]] && container_leg "build-test job in CI's image: ubuntu:24.04 (build, suite, lints)" --job build-test --run-job
 
 echo
 echo "══ ci-parity summary ══"
