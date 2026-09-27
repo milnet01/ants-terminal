@@ -67923,7 +67923,7 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-5501] **The pass-headings roadmap render carries no generated-file banner.**
+- ✅ [ANTS-5501] **The pass-headings roadmap render carries no generated-file banner.**
   ANTS-4555 added the banner to the ants-v1 render only. RetroDB's
   pass-headings roadmap.md has had five commits since its 2026-09-26
   migration that each say it was written by hand, then re-imported
@@ -67934,6 +67934,13 @@ project. Reported causes are claims until checked in source.
   Also reported: Slipcase's ROADMAP.md has no banner and check_sync shows
   drift lines, probably a stale 2026-09-03 render. A roadmap_log
   op:render there is the likely fix, which is that project's call.
+  Resolved (2026-09-27): withGeneratedNotice() placed the notice under the
+  format marker, which pass-headings files deliberately lack (ANTS-5230),
+  so they never got it. A pass-headings render now opens with the notice.
+  It still re-detects as pass-headings, and a second migrate-render cycle
+  is byte-stable with one copy. Test RoadmapRenderPassHeadings.Inv8, red
+  before. Each project gains the line on its next roadmap write, as
+  ANTS-4555's rollout did. Suite green.
   **Layman:** Some projects' roadmap files don't say "generated, don't edit", so people keep editing them by hand.
   Kind: fix.
   Source: peer-session claude-dd 2026-09-27 (Hub website survey).
