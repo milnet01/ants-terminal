@@ -568,9 +568,12 @@ next loop's findings land. So the rule is *say it once,
 as briefly as it can be said correctly*, and §2.8 above is what stops that
 becoming a licence to cut the subject itself.
 
-**A fix gets the same scrutiny as new work.** It arrives with the authority
-of having just solved something, and that authority is why nobody reads it
-again. Check what a fix adds as you would check a new section.
+**A fix gets the same scrutiny as new work.** A fix is an edit made to close
+a finding. It arrives with the authority of having just solved something,
+and that authority is why nobody re-checks it. Re-derive each claim it adds —
+a count, an *every*, a *never* — against the source, as you would a new
+section's. Where you can, let something other than the author check it: a
+run, a build, a sweep.
 
 **Delete first, write second.** Where a correction can be made by deleting,
 that is the whole edit:
