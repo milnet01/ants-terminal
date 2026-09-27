@@ -1,6 +1,8 @@
 // ANTS-3833 TU 3/19 — Roadmap read ops.
 #include "remotecontrol.h"
 #include "roadmapparse.h"   // ANTS-4989
+#include <QHash>
+#include <QMutex>
 #include <QRegularExpression>
 #include "remotecontrol_internal.h"
 #include "guithread.h"
@@ -1065,6 +1067,34 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                 if (outcome.externalLostTextTruncated) {
                     out[dryRun ? QStringLiteral("would_discard_text_truncated")
                                : QStringLiteral("discarded_text_truncated")] = true;
+                }
+                // ANTS-5369 — the same text discarded by the previous write to
+                // this file means a session is restoring it by hand and the
+                // store keeps removing it. Remembered per file for the life of
+                // the process, which is what the reported loop needed.
+                if (!dryRun && !outcome.filesWritten.isEmpty()) {
+                    static QMutex mutex;
+                    static QHash<QString, size_t> lastDiscard;
+                    const QString key = outcome.filesWritten.first();
+                    const size_t digest =
+                        qHash(outcome.externalLostText.join(QLatin1Char('\n')));
+                    bool repeated = false;
+                    {
+                        const QMutexLocker lock(&mutex);
+                        const auto it = lastDiscard.constFind(key);
+                        repeated = it != lastDiscard.constEnd() && *it == digest;
+                        lastDiscard.insert(key, digest);
+                    }
+                    if (repeated) {
+                        out[QStringLiteral("discard_repeated")] = true;
+                        out[QStringLiteral("discard_repeated_hint")] = QStringLiteral(
+                            "The previous write to this roadmap discarded the "
+                            "same text. It is being restored by hand and removed "
+                            "each time; write it into the store instead: "
+                            "op:\"set_preamble\" for the title and preamble, "
+                            "op:\"set_intro\" for a section's intro, "
+                            "op:\"set_body\" or op:\"amend_body\" for an item.");
+                    }
                 }
             }
             // ANTS-4947 — where the overwritten file was kept. The echo above

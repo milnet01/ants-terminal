@@ -68,3 +68,14 @@ and drives `RemoteControl::cmdRoadmapLogSetIntroForTest`.
 ## Regression history
 
 - **ANTS-4949 / ANTS-4968:** no op wrote an intro or the preamble.
+
+## ANTS-5369 — a repeated discard is named
+
+Every store-backed roadmap_log write reports text it discarded from the
+file. When a write discards exactly the text the previous write to the same
+file discarded, the reply adds `discard_repeated:true` and
+`discard_repeated_hint`, which names `set_preamble`, `set_intro`, `set_body`
+and `amend_body` as the ways to put that text in the store. The previous
+discard is remembered per file for the life of the process. A dry run
+neither reads nor records it. *Test:*
+`RoadmapLogSetIntro.Ants5369RepeatedDiscardIsNamed`.

@@ -447,3 +447,43 @@ TEST(RoadmapLogSetIntro, Ants5378KeptElementsAreReported) {
     ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
     EXPECT_FALSE(resp.contains(QStringLiteral("kept_elements")));
 }
+
+// ------------------------------------------------------------- ANTS-5369 -----
+
+// A session hand-restoring the same lines after every write sees them
+// discarded every time (UT_MonsterHunt: 25 writes, one six-line preamble).
+// The second identical discard says so, and names the ops that store it.
+TEST(RoadmapLogSetIntro, Ants5369RepeatedDiscardIsNamed) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const auto write = [&](const char *intro) {
+        return rc.cmdRoadmapLogSetIntroForTest(
+            introReq(fx.root, QStringLiteral("work"), QString::fromUtf8(intro)),
+            false).object();
+    };
+    const auto handRestore = [&] {
+        QString md = QString::fromUtf8(readAll(roadmapPath(fx.root)));
+        const int title = md.indexOf(QStringLiteral("\n# "));
+        const int eol = md.indexOf(QLatin1Char('\n'), title + 1);
+        md.insert(eol + 1, QStringLiteral("\nA hand-restored preamble line.\n"));
+        QFile f(roadmapPath(fx.root));
+        return f.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+               f.write(md.toUtf8()) > 0;
+    };
+    ASSERT_TRUE(write("First.").value(QStringLiteral("ok")).toBool());
+
+    ASSERT_TRUE(handRestore());
+    QJsonObject resp = write("Second.");
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    ASSERT_GT(resp.value(QStringLiteral("discarded_text_lines")).toInt(), 0)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(resp.contains(QStringLiteral("discard_repeated")));
+
+    ASSERT_TRUE(handRestore());
+    resp = write("Third.");
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(resp.value(QStringLiteral("discard_repeated")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("discard_repeated_hint")).toString()
+                    .contains(QStringLiteral("set_preamble")));
+}

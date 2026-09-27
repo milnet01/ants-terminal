@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap_log write that discards the same hand-restored text as the previous write says so with `discard_repeated`, and names the op that stores that text.** (ANTS-5369)
+
 - **roadmap_migrate warns with `id_prefix_guessed` when the ids it allocates take their prefix from the folder name, and says how to declare one.** (ANTS-5374)
 
 - **roadmap_log set_intro and amend_intro report the tables and narration a section kept as `kept_elements`, and warn when a new intro brings a table beside a stored one.** (ANTS-5378)
