@@ -67515,6 +67515,18 @@ project. Reported causes are claims until checked in source.
   Source: claude-config-feedback-2026-09-27.
   Lanes: changelog.
 
+- 📋 [ANTS-5493] **roadmap_log amend_intro and set_intro skip fenced code blocks when checking an intro for headings.**
+  The intro heading check reads a `# comment` line inside a ``` fence as a Markdown heading and refuses bad_intro, so an intro carrying a shell sample cannot be amended at all. Skip ``` and ~~~ fenced blocks in the validator, and in the importer that re-parses the intro.
+  **Layman:** Lets a roadmap section's intro keep a code sample and still be edited.
+  Kind: fix.
+  Source: MAME_Curator feedback 2026-09-27.
+
+- 📋 [ANTS-5494] **find_definition finds module-level Python constants assigned from a call.**
+  find_definition symbol:"_ALIAS_RE" lang:"py" returned no definitions for `_ALIAS_RE = re.compile(...)` at column 0 of oneup/gui/repos.py. Treat `^NAME\s*(:[^=]+)?=` at column 0 in a .py file as a definition. Sibling of ANTS-5387, which covers doc_symbols.
+  **Layman:** Stops the definition finder reporting a real Python constant as missing.
+  Kind: fix.
+  Source: OneUp feedback 2026-09-27.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
