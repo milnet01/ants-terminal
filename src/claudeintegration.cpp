@@ -5,6 +5,7 @@
 #include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "configpaths.h"
 #include "debuglog.h"
+#include "mcpdeprecation.h"         // ANTS-5485
 #include "mcpprojection.h"
 #include "mcpspill.h"          // ANTS-2094 — result offload
 #include "secureio.h"
@@ -1990,6 +1991,15 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         responseText =
             mcp::withIgnoredArgs(responseText, ignoredArgKeys);
     }
+    // ANTS-5485 — a deprecated verb's reply names what to use instead, on a
+    // refusal too; before the cache insert, so a hit carries it. Every call is
+    // logged, a cache hit included, because a hit is still a call to measure.
+    if (toolHandled) {
+        if (!cachedHit)
+            responseText = mcp::withDeprecationAdvisory(responseText, toolName);
+        mcp::recordDeprecatedCall(
+            toolName, argsObj.value(QStringLiteral("caller_cwd")).toString());
+    }
     // ANTS-1357 — the body the cache stores on miss-success. The
     // insert itself is finishToolDispatch's, on the GUI thread
     // (ANTS-5072). The cache stores the un-etagged response so
@@ -2136,6 +2146,8 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
                 responseText = mcp::withIgnoredArgs(
                     responseText, ignoredArgKeys);
             }
+            // ANTS-5485 — the offload discards the advisory too; same remedy.
+            responseText = mcp::withDeprecationAdvisory(responseText, toolName);
         }
     }
 
@@ -16483,6 +16495,21 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         meta[QStringLiteral("anthropic/alwaysLoad")] = true;
                         t[QStringLiteral("_meta")] = meta;
                     }
+                    tools.replace(i, t);
+                }
+
+                // ANTS-5485 — a deprecated verb's description LEADS with
+                // what to use instead, ahead of the `[<kind>]` prefix, so it
+                // is the first thing a session reads. Before the snapshot,
+                // so tool_info serves the same line.
+                for (int i = 0; i < tools.size(); ++i) {
+                    QJsonObject t = tools.at(i).toObject();
+                    const QString prefix = mcp::deprecationPrefix(
+                        t.value(QStringLiteral("name")).toString());
+                    const QString desc =
+                        t.value(QStringLiteral("description")).toString();
+                    if (prefix.isEmpty() || desc.startsWith(prefix)) continue;
+                    t[QStringLiteral("description")] = prefix + desc;
                     tools.replace(i, t);
                 }
 

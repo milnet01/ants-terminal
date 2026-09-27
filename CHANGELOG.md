@@ -189,6 +189,16 @@ for security-relevant changes.
 
 - **CI's main build and sanitizer jobs link with mold.** (ANTS-5186)
 
+### Deprecated
+
+- **Twenty obsolete Ants MCP tools are marked deprecated and will be removed after the next release.** (ANTS-5485)
+  Each one still works. Its description and every reply now name what to
+  use instead, and each call is noted in deprecated-calls.jsonl, so the
+  removal can skip anything still in use. They include get_git_status
+  (use git_state), current_state and session_brief (use session_orient),
+  and the unused debt-sweep, cold-eyes, indie-review and test-audit
+  helpers.
+
 ### Removed
 
 - **The roadmap window no longer saves or restores the unused table-view setting.** (ANTS-5233)

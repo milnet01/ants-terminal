@@ -652,6 +652,8 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-2094 — proactive result offload: spill large read bodies to a
     # content-addressed cache file + serve a head+pointer envelope.
     src/mcpspill.cpp
+    # ANTS-5485 — deprecated-verb table, description prefix and call log.
+    src/mcpdeprecation.cpp
     # ANTS-1727 — shared dispatch-brief composer (fence-hardening +
     # section slicing) + LLM client / bounded dispatcher for the
     # review-dialog family (widget-free; Qt6::Network already linked).
@@ -2257,6 +2259,8 @@ if(ANTS_TESTS)
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
                 # ANTS-4932 — ants-mcpd, run as a child process.
                 tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
+                # ANTS-5485 — deprecated verbs are marked, answer and are counted.
+                tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
                 # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.
                 tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
                 # ANTS-5340 — the About dialog's ants-mcpd version line.
@@ -3023,6 +3027,7 @@ if(ANTS_TESTS)
                         tests/features/mcpd_about_version/test_mcpd_about_version.cpp
                         tests/features/mcpd_verify_trust_wiring/test_mcpd_verify_trust_wiring.cpp
                         tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
+                        tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>"
         ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")
