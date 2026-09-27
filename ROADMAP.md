@@ -66112,6 +66112,14 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   get_scrollback, get_cwd and the rest) are product features, not
   workflow steps. Tell claude-config before step 2: its skills grant
   some of these names in allowed-tools.
+  Progress (2026-09-27): step 1 committed. src/mcpdeprecation.cpp holds
+  the table; tools/list prefixes each description; replies carry
+  deprecated:{replacement}; calls append to
+  ~/.local/share/ants-terminal/deprecated-calls.jsonl. Live after an
+  ants-mcpd rebuild and /mcp. STEP 2 (after the Wednesday 2026-09-30
+  release): read that log, remove every verb with no line (schema,
+  dispatch, tests, docs), message claude-config first (message 94 warned
+  it), and look into any verb that WAS called before removing it.
   **Layman:** About twenty old Ants tools cost every Claude session tokens while nothing uses them; mark them, check for a week, then remove them.
   Kind: chore.
   Source: user-request-2026-09-27.
