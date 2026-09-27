@@ -189,7 +189,10 @@ bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QStri
 // noticed — and the same information is carried under `would_write`, matching
 // what changelog_log's dry_run already documents for `bytes`. Callers get both
 // properties: the misleading name is gone, and the useful value is kept.
-void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun);
+// ANTS-5399 — `semanticWrite` false on op:"render" and op:"convert", which
+// ARE the re-layout, so the hint pointing at render is not emitted there.
+void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun,
+                          bool semanticWrite = true);
 // ANTS-4141 part 2 / ANTS-4635 — refresh the derived `.roadmap-counter` cache
 // after a STORE allocation, and report the move.
 //

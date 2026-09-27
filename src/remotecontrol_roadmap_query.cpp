@@ -922,7 +922,7 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
 // are five codes and not one.
 void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                                     const RoadmapRender::Outcome &outcome,
-                                    bool dryRun) {
+                                    bool dryRun, bool semanticWrite) {
     // ANTS-4463 — see remotecontrol_internal.h for why the tense matters.
     if (dryRun) {
         out[QStringLiteral("dry_run")]    = true;
@@ -992,6 +992,27 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
               : outcome.externalRestructuredLines > 0 ? QStringLiteral("structure")
               : outcome.externalRepunctuatedLines > 0 ? QStringLiteral("punctuation")
                                                       : QStringLiteral("restyle_only");
+            // ANTS-5399 — layout drift only: this write re-laid-out the whole
+            // file, and its own change is buried in that diff. Publishing the
+            // re-layout alone first keeps the next write small. Not where text
+            // was lost (rendering first loses it too; discard_hint covers that)
+            // and not on render / convert, which are the re-layout.
+            if (semanticWrite && outcome.externalTextLines == 0) {
+                out[dryRun ? QStringLiteral("would_drift_hint")
+                           : QStringLiteral("drift_hint")] = dryRun
+                    ? QStringLiteral(
+                          "The file has drifted from the store in layout only, "
+                          "so this write would re-lay-out the whole file around "
+                          "its change. Run roadmap_log op:\"render\" first and "
+                          "commit that alone; this write then lands as a small "
+                          "diff.")
+                    : QStringLiteral(
+                          "The file had drifted from the store in layout only, "
+                          "so this write re-laid-out the whole file around its "
+                          "change. Next time, run roadmap_log op:\"render\" "
+                          "first and commit that alone, so the write is a "
+                          "small diff.");
+            }
             // ANTS-4615 — the breakdown. One number could not be acted on: 84
             // drifted lines were 24 bullets restyled into the canonical id form
             // and ONE sentence that no longer existed anywhere. Rides on the

@@ -123,7 +123,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRender(const QJsonObject &req) {
     // files_written / items_rendered / the drift breakdown, in the tense
     // ANTS-4463 requires — the same helper every other write op uses, so a
     // caller reads one envelope shape rather than this op's dialect of it.
-    rcRoadmapWriteFields(env, outcome, dryRun);
+    rcRoadmapWriteFields(env, outcome, dryRun, /*semanticWrite=*/false);  // ANTS-5399
 
     // The reviewable artefact ANTS-4614 asks for. `discarded_edit_lines` (and
     // ANTS-4615's breakdown beside it) already say HOW FAR the file had drifted
@@ -493,7 +493,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     env[QStringLiteral("project_root")]    = root;
     env[QStringLiteral("source_dialect")]  = detected;
     env[QStringLiteral("target_dialect")]  = QStringLiteral("ants-v1");
-    rcRoadmapWriteFields(env, outcome, dryRun);
+    rcRoadmapWriteFields(env, outcome, dryRun, /*semanticWrite=*/false);  // ANTS-5399
 
     // The id report. Asked for by the blocked consumer (Vestige, 2026-09-21)
     // and kept because the op is a one-way bulk rewrite of a version-controlled

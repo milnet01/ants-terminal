@@ -3264,3 +3264,56 @@ TEST(RoadmapWriteHalf, Ants5263DefaultEchoIsCompact) {
             << QJsonDocument(resp).toJson().toStdString();
     }
 }
+
+// ANTS-5399 — a semantic write over a file that only drifted in layout buries
+// its own change in a whole-file re-layout. The reply now says to publish the
+// re-layout alone with op:"render" first. Never on render itself, and never
+// when text was lost, where rendering first would lose the same text.
+TEST(RoadmapWriteHalf, Ants5399LayoutDriftPointsAtRender) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+    const QByteArray canonical = "- \xF0\x9F\x93\x8B [DEMO-0008] **A settling bullet.**";
+    const auto restyle = [&] {
+        QByteArray hand = readAll(roadmap);
+        if (!hand.contains(canonical)) return false;
+        hand.replace(canonical, "- TODO **DEMO-0008** A settling bullet.");
+        return writeFile(roadmap, hand);
+    };
+    ASSERT_TRUE(restyle());
+
+    QJsonObject dry = appendReq(root, QStringLiteral("A bullet after the restyle."));
+    dry[QStringLiteral("dry_run")] = true;
+    QJsonObject env = rc.cmdRoadmapLogAppendForTest(dry).object();
+    ASSERT_EQ(env.value(QStringLiteral("would_discard_reason")).toString(),
+              QStringLiteral("restyle_only"));
+    EXPECT_TRUE(env.value(QStringLiteral("would_drift_hint")).toString()
+                    .contains(QStringLiteral("op:\"render\"")))
+        << QJsonDocument(env).toJson().toStdString();
+
+    env = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the restyle."))).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(env.value(QStringLiteral("drift_hint")).toString()
+                    .contains(QStringLiteral("op:\"render\"")));
+
+    // op:"render" is the remedy, so it does not name itself.
+    ASSERT_TRUE(restyle());
+    QJsonObject render;
+    render[QStringLiteral("caller_cwd")] = root;
+    render[QStringLiteral("op")]         = QStringLiteral("render");
+    env = rc.cmdRoadmapLog(render).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool());
+    EXPECT_FALSE(env.contains(QStringLiteral("drift_hint")));
+}

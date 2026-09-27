@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap_log write over a file that drifted only in layout adds `drift_hint`, suggesting op:"render" committed alone first so the write lands as a small diff.** (ANTS-5399)
+
 - **A roadmap_log write that discards the same hand-restored text as the previous write says so with `discard_repeated`, and names the op that stores that text.** (ANTS-5369)
 
 - **roadmap_migrate warns with `id_prefix_guessed` when the ids it allocates take their prefix from the folder name, and says how to declare one.** (ANTS-5374)

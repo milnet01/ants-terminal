@@ -66962,7 +66962,7 @@ project. Reported causes are claims until checked in source.
   Source: user-request-2026-09-25.
   Lanes: roadmap, ui.
 
-- 📋 [ANTS-5369] **A write that discards the same text as the previous write does not say that a session keeps hand-restoring text the store lacks.**
+- ✅ [ANTS-5369] **A write that discards the same text as the previous write does not say that a session keeps hand-restoring text the store lacks.**
   Found 2026-09-25 reading ANTS-4947's backups: UT_MonsterHunt wrote 25
   times on 2026-09-09..10 and each write reported the SAME six-line
   discarded_text, the project's own preamble. The store held a stale
@@ -66972,6 +66972,11 @@ project. Reported causes are claims until checked in source.
   set_intro / amend_body for a section or item). Suggested: when a
   write's discarded text equals the previous discard for the project,
   add a hint naming the op that writes that text into the store.
+  Resolved (2026-09-27, f09f9b51): write replies remember a digest of
+  the last discarded text per roadmap file (process lifetime); an
+  identical discard adds discard_repeated:true and a hint naming
+  set_preamble / set_intro / set_body / amend_body. Live after an
+  ants-mcpd rebuild and /mcp.
   **Layman:** When someone keeps re-adding the same lines by hand and the tool keeps removing them, the tool should point out the loop and how to fix it properly.
   Kind: enhancement.
   Source: in-session-2026-09-25.

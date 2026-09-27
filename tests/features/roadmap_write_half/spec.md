@@ -327,3 +327,13 @@ fallback, which refused every such bullet `bad_status`.
 
 **Would break this:** leaving the caller to infer the answer from `would_write`, or deriving it from `would_discard_external_edits`.
 
+
+## ANTS-5399 — layout drift points at op:"render"
+
+When a semantic store-backed write finds the file drifted in layout only
+(`discard_reason` of `structure`, `punctuation` or `restyle_only`), the
+reply adds `drift_hint` (`would_drift_hint` on a dry run). It says to run
+`roadmap_log op:"render"` first and commit that alone, so the write lands
+as a small diff. It is absent when text was lost, since rendering first
+loses the same text, and on `render` and `convert`, which are the
+re-layout. *Test:* `RoadmapWriteHalf.Ants5399LayoutDriftPointsAtRender`.
