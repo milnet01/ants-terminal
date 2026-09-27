@@ -325,3 +325,33 @@ TEST(roadmap_log_note_trailer_guard, Ants4532MultiLineNoteIsVerbatim) {
            "bullets into a paragraph";
     EXPECT_TRUE(has(s, "- and a second one"));
 }
+
+// ANTS-5397 — a pass-headings Status line declares its Lanes mid-line by
+// design (`- **Status**: planned (date). Lanes: a, b.`), so RetroDB's house
+// format was refused. `Lanes:` on a Status line is accepted; the same key
+// mid-line anywhere else, and any other key on a Status line, still refuse.
+TEST(roadmap_log_note_trailer_guard, Ants5397StatusLineLanesAccepted) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed()));
+
+    RemoteControl rc(nullptr);
+    const auto annotate = [&](const QString &note) {
+        QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+        r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+        r[QStringLiteral("note")] = note;
+        return rc.cmdRoadmapLogFlipForTest(r).object();
+    };
+    QJsonObject resp = annotate(QStringLiteral(
+        "- **Status**: planned (2026-09-02). Lanes: security, packaging."));
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    resp = annotate(QStringLiteral("The importer now reads Lanes: mid-sentence."));
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_shadowed"));
+    resp = annotate(QStringLiteral("- **Status**: planned. Kind: fix."));
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_shadowed"))
+        << "only Lanes is a Status-line declaration";
+}

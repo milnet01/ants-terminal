@@ -1992,6 +1992,13 @@ bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
             QRegularExpression::CaseInsensitiveOption);
         if (labelOnly.match(before).hasMatch())
             continue;   // a declaration in the render's own shape — allowed
+        // ANTS-5397 — a pass-headings Status line declares its Lanes mid-line
+        // by design (`- **Status**: planned (date). Lanes: a, b.`); there the
+        // key is the declaration, not prose. Lanes only, on that line only.
+        static const QRegularExpression statusLine(
+            QStringLiteral("^\\s*- \\*\\*Status\\*\\*:"));
+        if (field == QLatin1String("lanes") && statusLine.match(before).hasMatch())
+            continue;
         if (!error)
             return true;
         QString quoted = note.mid(lineStart,

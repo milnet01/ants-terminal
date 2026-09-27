@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log accepts a pass-headings Status line that declares its Lanes mid-line, such as `- **Status**: planned (date). Lanes: a, b.`, instead of refusing it as body_shadowed.** (ANTS-5397)
+
 - **Flipping a pass on a pass-headings roadmap the store does not serve keeps the Status line's date and Lanes, rewriting only the status word and re-dating it.** (ANTS-5408)
 
 - **A roadmap legend no longer gains another `🚫 Dropped` line on each migrate cycle: the import reads that line as legend, and existing duplicates collapse into one.** (ANTS-5384)

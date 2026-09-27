@@ -62,3 +62,13 @@ note-carrying ops and both backends give one answer.
   names both remedies (backticks, or a line of its own).
 - **INV-7** — a deliberate declaration survives: the label first on its
   own line, indented or not. `roadmap_write_half` INV-4 depends on it.
+
+## ANTS-5397 — `Lanes:` on a Status line is a declaration
+
+A pass-headings roadmap writes `- **Status**: planned (2026-09-02). Lanes:
+a, b.`, with the Lanes mid-line by design. The mid-line guard accepts the
+`lanes` key when the text before it on its line opens `- **Status**:`.
+Every other key on such a line, and `Lanes:` mid-line anywhere else, still
+refuses `body_shadowed`. The guard runs before the format is known, so the
+exemption holds on every format; the line is a deliberate declaration in
+any of them. *Test:* `Ants5397StatusLineLanesAccepted`.
