@@ -133,3 +133,14 @@ fenced refusal + INV-9 descriptor/schema are source-grep assertions.
 INV-10 is behavioural: two identical flips against a seeded ROADMAP,
 asserting the note appears once and the retry envelope flags
 `note_already_present`.
+
+## ANTS-5359 — a literal backslash-n is warned about
+
+A text field holding the two characters backslash and n, and no real
+newline, is stored as written; the same spelling inside a JSON array
+arrives as a line break. Any successful `roadmap_log` write whose request
+carries one in `note`, `body`, `new_text`, `bullets[].body` or
+`locators[].note` adds a `literal_escape_sequences` entry to `warnings`,
+whose `fields` names each one. It is advisory: the write is unchanged, and a
+field that already holds a real newline is not named. *Tests:*
+`Ants5359LiteralEscapeFieldsNamed`, `Ants5359AnnotateWarnsOnLiteralEscape`.

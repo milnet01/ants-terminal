@@ -67524,8 +67524,11 @@ project. Reported causes are claims until checked in source.
   Source: claude-config-feedback-2026-09-27.
   Lanes: changelog.
 
-- 📋 [ANTS-5493] **roadmap_log amend_intro and set_intro skip fenced code blocks when checking an intro for headings.**
+- ✅ [ANTS-5493] **roadmap_log amend_intro and set_intro skip fenced code blocks when checking an intro for headings.**
   The intro heading check reads a `# comment` line inside a ``` fence as a Markdown heading and refuses bad_intro, so an intro carrying a shell sample cannot be amended at all. Skip ``` and ~~~ fenced blocks in the validator, and in the importer that re-parses the intro.
+  Resolved (2026-09-27, 6957fd5c): the intro guard masks fenced lines
+  with MarkdownScan::fenceMask, as the import does. The importer needed
+  no change. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Lets a roadmap section's intro keep a code sample and still be edited.
   Kind: fix.
   Source: MAME_Curator feedback 2026-09-27.

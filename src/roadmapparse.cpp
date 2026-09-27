@@ -14,6 +14,7 @@
 #include "markdownscan.h"     // ANTS-4504 — CommonMark inline-code-span boundaries
 
 #include <QByteArray>
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStringView>
@@ -1583,6 +1584,26 @@ std::optional<BulletRecord> parsePassHeadingBlock(const QStringList &lines) {
     if (recs.size() != 1)
         return std::nullopt;
     return recs.first();
+}
+
+QStringList literalEscapeFields(const QJsonObject &req) {
+    const auto literal = [](const QJsonValue &v) {
+        const QString s = v.toString();
+        return s.contains(QLatin1String("\\n")) && !s.contains(QLatin1Char('\n'));
+    };
+    QStringList out;
+    for (const char *key : {"note", "body", "new_text"})
+        if (literal(req.value(QLatin1String(key)))) out << QLatin1String(key);
+    const auto scan = [&](const char *array, const char *field) {
+        const QJsonArray arr = req.value(QLatin1String(array)).toArray();
+        for (int i = 0; i < arr.size(); ++i)
+            if (literal(arr.at(i).toObject().value(QLatin1String(field))))
+                out << QStringLiteral("%1[%2].%3")
+                           .arg(QLatin1String(array)).arg(i).arg(QLatin1String(field));
+    };
+    scan("bullets", "body");
+    scan("locators", "note");
+    return out;
 }
 
 ReviewKindMismatch reviewKindMismatch(const QString &kind,

@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <QJsonObject>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -94,6 +95,14 @@ struct ReviewKindMismatch {
     QString suggestedKind;   // "review-fix" or "audit-fix"
 };
 ReviewKindMismatch reviewKindMismatch(const QString &kind, const QString &source);
+
+// ANTS-5359 — the text fields of a roadmap_log request that hold a literal
+// backslash-n and no real newline: `note`, `body`, `new_text`,
+// `bullets[i].body` and `locators[i].note`, named in that form. A scalar
+// string reaches the verb with the escape unexpanded, while the same spelling
+// inside a JSON array arrives as a line break, so the first is almost always
+// a mistake. Returns the decision only; the caller builds the warning.
+QStringList literalEscapeFields(const QJsonObject &req);
 
 struct BulletRecord {
     QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)

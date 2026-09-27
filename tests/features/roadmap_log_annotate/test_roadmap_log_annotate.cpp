@@ -6,6 +6,7 @@
 
 #include "../../_support/expect.h"
 #include "remotecontrol.h"
+#include "roadmapparse.h"
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -14,6 +15,7 @@
 #include <QDir>
 #include <QFile>
 #include <QIODevice>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -567,4 +569,64 @@ TEST(roadmap_log_annotate, Inv11BytesWrittenIsDeltaNotFileSize) {
         << "INV-11: file_bytes must be the post-write file size";
     EXPECT_EQ(written, onDisk - seed.size())
         << "INV-11: bytes_written must equal the size delta";
+}
+
+// ANTS-5359 — a literal backslash-n in a scalar text field is stored as two
+// characters, while the same spelling inside a JSON array reaches the verb as
+// a line break. The write still succeeds; a warning now says so. Advisory
+// only, since a regex quoted in a body legitimately carries one.
+TEST(roadmap_log_annotate, Ants5359LiteralEscapeFieldsNamed) {
+    using RoadmapParse::literalEscapeFields;
+    const QString lit = QStringLiteral("line one\\nline two");
+    QJsonObject r;
+    r[QStringLiteral("note")]     = lit;
+    r[QStringLiteral("body")]     = QStringLiteral("real\nbreak \\n too");
+    r[QStringLiteral("new_text")] = lit;
+    r[QStringLiteral("headline")] = lit;   // not a text-body field
+    QJsonArray bullets;
+    bullets.append(QJsonObject{{QStringLiteral("body"), QStringLiteral("clean")}});
+    bullets.append(QJsonObject{{QStringLiteral("body"), lit}});
+    r[QStringLiteral("bullets")] = bullets;
+    QJsonArray locs;
+    locs.append(QJsonObject{{QStringLiteral("note"), lit}});
+    r[QStringLiteral("locators")] = locs;
+    EXPECT_EQ(literalEscapeFields(r),
+              (QStringList{QStringLiteral("note"), QStringLiteral("new_text"),
+                           QStringLiteral("bullets[1].body"),
+                           QStringLiteral("locators[0].note")}))
+        << "a field that already holds a real newline was written on purpose";
+    EXPECT_TRUE(literalEscapeFields(QJsonObject{
+        {QStringLiteral("note"), QStringLiteral("regex \\d+ only")}}).isEmpty());
+}
+
+TEST(roadmap_log_annotate, Ants5359AnnotateWarnsOnLiteralEscape) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral("now\\nchecks");
+    QJsonObject resp = rc.cmdRoadmapLog(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray warns = resp.value(QStringLiteral("warnings")).toArray();
+    bool found = false;
+    for (const auto &w : warns) {
+        const QJsonObject o = w.toObject();
+        if (o.value(QStringLiteral("code")).toString() ==
+            QStringLiteral("literal_escape_sequences")) {
+            found = true;
+            EXPECT_EQ(o.value(QStringLiteral("fields")).toArray(),
+                      QJsonArray{QStringLiteral("note")});
+        }
+    }
+    EXPECT_TRUE(found) << QJsonDocument(resp).toJson().toStdString();
+
+    r[QStringLiteral("note")] = QStringLiteral("now\nchecks");
+    resp = rc.cmdRoadmapLog(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(resp.contains(QStringLiteral("warnings")))
+        << "a real newline is what the caller meant";
 }

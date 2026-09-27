@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log warns with `literal_escape_sequences` when a note, body or new_text holds a literal backslash-n and no real line break, naming each field.** (ANTS-5359)
+
 - **changelog_log op:"release" with `dated:true` closes a versionless project's changelog under `## <date>`, and a second close the same day merges into that day's section category by category.** (ANTS-5484)
 
 - **roadmap_query `body_match` returns only the body lines that match, with a count of the lines dropped, on list, section and id queries.** (ANTS-5468)

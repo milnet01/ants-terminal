@@ -3815,6 +3815,27 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
     if (!writeHold.held())
         return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_log")));
+    QJsonDocument doc = cmdRoadmapLogDispatch(req);
+    // ANTS-5359 — a literal backslash-n in a scalar text field is stored as
+    // two characters while the write reports ok. Said once here rather than
+    // at each op's success envelopes. Advisory only: a quoted regex carries one.
+    QJsonObject env = doc.object();
+    const QStringList literal = RoadmapParse::literalEscapeFields(req);
+    if (env.value(QStringLiteral("ok")).toBool() && !literal.isEmpty()) {
+        QJsonObject warn;
+        warn[QStringLiteral("code")]    = QStringLiteral("literal_escape_sequences");
+        warn[QStringLiteral("message")] = QStringLiteral(
+            "These fields hold the two characters backslash and n and no real "
+            "line break, so they were stored that way. If a line break was "
+            "meant, rewrite them with a real newline.");
+        warn[QStringLiteral("fields")]  = QJsonArray::fromStringList(literal);
+        rlAddWarning(env, warn);
+        doc = QJsonDocument(env);
+    }
+    return doc;
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
     // ANTS-1566 — caller_cwd-related refusals carry an `example`
     // field so IPC-direct callers (the MCP dispatcher's Required
     // gate catches the empty case upstream for tools/call requests)

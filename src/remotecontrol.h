@@ -1051,6 +1051,9 @@ public:
     // value. Default `op:"append"` preserves ANTS-1424 behaviour
     // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLog(const QJsonObject &req);
+    // ANTS-5359 — cmdRoadmapLog's op dispatch. cmdRoadmapLog holds the write
+    // lock, calls this, and adds the reply-wide advisories every op shares.
+    QJsonDocument cmdRoadmapLogDispatch(const QJsonObject &req);
 
     // ANTS-3855 — roadmap_migrate: load one project's markdown roadmap into
     // the roadmap store. The ONLY production entry point into the migration
