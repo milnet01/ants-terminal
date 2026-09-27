@@ -254,7 +254,10 @@ crashed. Naming only some of them cleared the rest.
 change, ship no behaviour and are outside this section** — they are not
 exceptions to it and owe no commit-body line. So a behaviour-neutral seam a
 test needs may be cut before step 1. It is neutral when the existing
-behavioural tests stay green across it.
+behavioural tests stay green across it. Where none covers the code, green
+shows nothing: the seam counts as a behaviour change, and §1 applies to it. Step 1's red
+test then works at a level that needs no seam, since a test that needs one
+cannot run before it exists.
 
 **Exceptions**, each stated in the commit body so a reader can tell a
 decision from an omission: generated code, where the consumer is what is
@@ -436,6 +439,10 @@ could the author later. Decide it on the condition instead:
   known failure on that host is code-keyed here and owes the item** —
   `skipIf(platform == "darwin")` over a macOS bug reads as host-keyed and is
   not, which is why §10 names it.
+- **Two more owe nothing.** A skip whose reason string names a sibling
+  test which fails on the same defect: that failure is not silent. And a skip keyed on the
+  project's own history, such as no release yet: it waits on work the
+  project will do, not on a defect.
 
 **A skip spelled as an early `return` is still a skip, and nothing finds it.**
 Print a reason and return, and the test reports a PASS — so it claims to have

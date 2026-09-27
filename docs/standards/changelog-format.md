@@ -115,9 +115,12 @@ decide** — as `cut-release` Phase 0e does.
 
 **A project with no version numbers heads each dated section `## YYYY-MM-DD`.**
 Its date is its version. Its preamble replaces the Semantic Versioning clause
-with "Dated sections stand in for versions.", and it writes no `**Theme:**`
+with "Dated sections stand in for versions." or words to that effect, and it writes no `**Theme:**`
 line. The hyphen rule above has no dash to bind here. § 4.3 step 1's move still happens, under
-the date heading; its Theme half, and step 4, bind a versioned release only. `changelog_log op:"release"` cannot write this heading:
+the date heading; its Theme half, and step 4, bind a versioned release only.
+A second close on the same day merges into that date's section, merging its
+`###` blocks so § 4.2's order holds; new bullets go first. Step 3's roadmap flip happens no later than the
+dated close: a close leaves no roadmap ID it cites at 📋 or 🚧. `changelog_log op:"release"` cannot write this heading:
 given the date as `version`, it writes `## [YYYY-MM-DD] - YYYY-MM-DD`.
 
 **It does not reach the feature-grouped `### <date> <Category> — <headline>`

@@ -83,9 +83,10 @@ pedantry: this said *both*, § 6.2 describes two documentation keys, and
 of the three sources omitted a key. Setting them once satisfies § 6.2 on
 that machine only; a fresh
 clone, a colleague's box and CI are each back in breach with nothing said.
-So a repository meeting this section through the shared hook owes something
-a clone executes — a setup step in its README, or a script — rather than a
-command somebody ran once.
+So a repository meeting this section through the shared hook owes a script
+a clone runs, such as the skeleton's `scripts/setup-hooks.sh`, and its README
+names it. Commands written only in prose, `CLAUDE.md` included, do not
+count: a clone runs nothing it has to read first.
 
 **Only the second announces itself, and that asymmetry is the diagnostic.**
 A hook that is not reached runs nothing and prints nothing, so a silent
@@ -134,7 +135,9 @@ disagree, and the script can take a flag — which § 6 asks for where the
 gate can offer one, and a container full of YAML cannot offer.
 
 **A repository-owned gate script is only a mirror when the workflow does
-not call it.** Without that distinction the paragraph above appears to
+not call it.** A wrapper that only loops a matrix's legs over the script the
+workflow calls is not a mirror either, provided a check compares its list of
+legs with the workflow's. Without that distinction the paragraph above appears to
 forbid the arrangement this one prescribes.
 
 **Where the pipeline cannot be inverted** — a workflow you do not
@@ -161,6 +164,12 @@ what you can and **write down which jobs are not covered**, next to the
 command that runs the rest. An uncovered job nobody has named is
 indistinguishable from a covered one, which is the same false confidence
 in a different place.
+
+**A leg that is only sometimes unreachable** — a build box that is down —
+may be left out of one run. The hook then passes only if it prints which
+leg did not run, and the remote pipeline runs that leg. **The hook must know
+the leg did not complete for a transport reason**; an exit code the leg's
+own script could return does not show that.
 
 ## 5. Which tree the run answers for
 
