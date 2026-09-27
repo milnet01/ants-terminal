@@ -49862,6 +49862,16 @@ are closed inline in the feedback files rather than filed here.
   key defaults to that recorded folder, falling back to beside the
   store. Needs a gated amendment to docs/specs/ANTS-3794 § 2.4's
   three-line record format first.
+  Plan (2026-09-27): three edits, one review-contract gate, then build.
+  docs/specs/ANTS-3794 § 2.4: the snapshot record gains
+  `dest=<DEST_DIR>` (readRecord() in src/roadmapbackuphealth.cpp already
+  ignores unknown keys; extend INV-12 in
+  tests/features/roadmap_export_publish). docs/specs/ANTS-3855 (the
+  pre-migration snapshot, ANTS-4499): a snapshot-dir config key,
+  defaulting to the recorded dest, falling back beside the store when
+  unwritable; the reply names the path used. Add its row to
+  docs/standards/mcp-config-keys.md. Gate it in the same batch as
+  ANTS-5287's ANTS-3765 amendment.
   **Layman:** Let the safety copy taken before a migration live on the games drive with the other backups, instead of in your home folder.
   Kind: enhancement.
   Source: in-session-2026-09-20, user decision.
