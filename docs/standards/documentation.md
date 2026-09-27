@@ -588,7 +588,10 @@ that is the whole edit:
    stale. **Where the document names a history file — a record it keeps for
    rule pedigree, never its loop log, whose rows `review-contract` alone
    writes — the pedigree is written there and the rule keeps its
-   instruction.** A document naming none keeps its pedigree inline. Same
+   instruction.** A document naming none gets one first —
+   `docs/history/<doc>.md`, named by § 3.4's rule, unless its kind names
+   another — linked from it,
+   and the pedigree moves there. Same
    ground as § 9.1: a
    document read in full whenever it is consulted pays for its pedigree on
    every read, and the pedigree is not what the reader came for. **Move a

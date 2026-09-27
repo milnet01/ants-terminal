@@ -294,17 +294,13 @@ uncertain case run the full gate.
 ### 6.2 A shared hook must be told
 
 One hook shared between repositories has no way to know what a given
-pipeline reads, and its default will therefore be an extension list —
-which § 6.1 forbids. `~/.claude/githooks/pre-push` reads two keys about
-documentation, and they are not symmetric.
+pipeline reads, so until told it counts no push as documentation-only.
+`~/.claude/githooks/pre-push` reads two keys about documentation.
 
 **`ants.gate.docsGlob` says which paths count. Leaving it unset costs
-COVERAGE**: the hook falls back to a built-in list, which is what § 6.1
-forbids and what produced the 2026-08-19 failure above. **That fallback is
-not an extension list, and calling it one understates it** — it leads with
-a path prefix, so every file under `docs/` counts as documentation whatever
-its extension. Measured 2026-09-26: `docs/conf.py` matches. A docs
-directory holding build scripts is waved through on that entry alone.
+TIME**: no push counts as documentation-only, so every push runs the whole
+gate (§ 1.4). A repository with no gate script owes no key: the hook
+stops before it reads one.
 
 **The key's form: a `|`-separated list of shell patterns, matched against
 each pushed path with the PATH on the left and the pattern on the right.**
@@ -315,12 +311,11 @@ nowhere else, and a project writing its own hook has only this sentence to
 build from: a one-match test classifies a push of a README beside a source
 file as documentation-only and ships the code untested.
 It is positive-match only — there is no negation — so a repository narrows
-it by OMITTING patterns, never by excluding them. `docs/*|CHANGELOG.md|LICENSE`
-is the shape. A value written as `!README.md|*.md` narrows nothing:
+it by OMITTING patterns, never by excluding them. `docs/*|LICENSE`
+is the shape; add a file such as `CHANGELOG.md` only if nothing the pipeline
+runs reads it. A value written as `!README.md|*.md` narrows nothing:
 `README.md` still matches `*.md`, the push is still classified
-documentation-only, and the lost coverage is silent. So a repository
-**relying on a shared hook** that has not set `ants.gate.docsGlob` has not
-satisfied this standard. **A hook that only hands off is not a hook of its
+documentation-only, and the lost coverage is silent. **A hook that only hands off is not a hook of its
 own**: the skeleton's `.githooks/pre-push` execs the machine-wide one, so
 such a repository relies on the shared hook and owes the key. `ci-gate`
 tests it the same way, calling a delegator *the machine-wide hook wearing a
@@ -341,10 +336,8 @@ is. A repository whose script sits outside the hook's own discovery list
 and has not set it is reported as having no gate at all, which is § 2's
 breach with a gate script present.
 
-The fallback is a deliberate compromise rather than an oversight: a hook
-that refused to run until configured would be uninstalled, and one that
-guesses at least says so in its own source. **A repository whose pipeline
-reads markdown must narrow that glob, or keep its own hook** — narrow by
+**A repository whose pipeline reads markdown narrows its glob, or keeps its
+own hook** — narrow by
 dropping the patterns that cover what its suite asserts against, per the
 form above. Nothing checks that it did.
 
