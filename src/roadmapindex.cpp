@@ -136,6 +136,23 @@ const Section *findBySlug(const QVector<Section> &index, const QString &slug) {
     return nullptr;
 }
 
+QString versionOfTitle(const QString &title) {
+    static const QRegularExpression rx(
+        QStringLiteral("^\\s*v?(\\d+\\.\\d+\\.(?:\\d+|x))(?![\\w.])"));
+    const QRegularExpressionMatch m = rx.match(title);
+    return m.hasMatch() ? m.captured(1) : QString();
+}
+
+const Section *findByVersion(const QVector<Section> &index, const QString &version) {
+    const QString want = versionOfTitle(version);
+    if (want.isEmpty() || want != version.trimmed().mid(
+            version.trimmed().startsWith(QLatin1Char('v')) ? 1 : 0))
+        return nullptr;
+    for (const auto &s : index)
+        if (versionOfTitle(s.headingText) == want) return &s;
+    return nullptr;
+}
+
 QStringList descendantSlugs(const QVector<Section> &index,
                             const Section &section) {
     // Containment, not a level comparison: `rollupCounts` below bubbles a

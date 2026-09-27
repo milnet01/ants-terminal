@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query `version:` returns the items of a release, such as "0.10.0" or a patch stream "0.4.x", by the section titled with it; an unknown version lists the ones the roadmap has.** (ANTS-5315)
+
 - **A roadmap_log write over a file that drifted only in layout adds `drift_hint`, suggesting op:"render" committed alone first so the write lands as a small diff.** (ANTS-5399)
 
 - **A roadmap_log write that discards the same hand-restored text as the previous write says so with `discard_repeated`, and names the op that stores that text.** (ANTS-5369)

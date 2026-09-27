@@ -3614,6 +3614,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "regular expression. A malformed one refuses bad_args.");
                     props["body_match"]       = bmProp;
                     props["body_match_regex"] = bmReProp;
+                    // ANTS-5315 — a release, resolved to its section.
+                    QJsonObject verProp; verProp["type"] = "string";
+                                         verProp["description"] = QStringLiteral(
+                        "ANTS-5315. A release, such as \"0.10.0\" or a patch "
+                        "stream \"0.4.x\": selects the section whose title "
+                        "starts with it and answers as section= does. The "
+                        "version IS the section title. Unknown refuses "
+                        "bad_version with `versions`; refuses bad_mode_combo "
+                        "with section, id, ids, section_index, bundles and "
+                        "report.");
+                    props["version"] = verProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.

@@ -1562,6 +1562,39 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     }
     if (bodyMatchActive) out["body_match"] = bodyMatchArg;
 
+    // ANTS-5315 — `version:` names a release; the version IS its section's
+    // title (claude-ab ruling 2026-09-24), so it resolves to that section and
+    // then answers exactly as `section=` does.
+    const QString versionArg = req.value(QStringLiteral("version")).toString().trimmed();
+    if (!versionArg.isEmpty()) {
+        QString why;
+        if (RoadmapIndex::versionOfTitle(versionArg).isEmpty() ||
+            versionArg.size() > 32) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "`version` must be major.minor.patch or a patch stream "
+                "major.minor.x, such as 0.10.0 or 0.4.x");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+        if (!section.isEmpty())      why = QStringLiteral("section");
+        else if (!idArg.isEmpty())   why = QStringLiteral("id");
+        else if (!idsArg.isEmpty())  why = QStringLiteral("ids");
+        else if (mode == QLatin1String("section_index") ||
+                 mode == QLatin1String("bundles") ||
+                 mode == QLatin1String("report"))
+            why = QStringLiteral("mode:") + mode;
+        if (!why.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "version selects a section, so it does not combine with %1").arg(why);
+            out["code"] = QStringLiteral("bad_mode_combo");
+            return QJsonDocument(out);
+        }
+        out["version"] = versionArg.startsWith(QLatin1Char('v')) ? versionArg.mid(1)
+                                                                 : versionArg;
+    }
+
     // ANTS-4715 — `shipped_since` / `shipped_until`: WHICH items closed in a
     // window, where mode:"report" answers only how many. Without it the
     // natural release-time question — what shipped this cycle that the
@@ -2587,8 +2620,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap));
     }
 
-    // ANTS-1287 — section branch.
-    if (!section.isEmpty()) {
+    // ANTS-1287 — section branch. ANTS-5315 — `version` arrives here too.
+    if (!section.isEmpty() || !versionArg.isEmpty()) {
         // INV-9: ensure we have an index even on a cache HIT taken
         // earlier in section-less mode (and vice versa).
         if (m_roadmapIndex.isEmpty()) {
@@ -2603,7 +2636,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             const QString markdown = QString::fromUtf8(f.readAll());
             m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
         }
-        const auto *sec = RoadmapIndex::findBySlug(m_roadmapIndex, section);
+        const auto *sec = versionArg.isEmpty()
+            ? RoadmapIndex::findBySlug(m_roadmapIndex, section)
+            : RoadmapIndex::findByVersion(m_roadmapIndex, versionArg);
+        if (!sec && !versionArg.isEmpty()) {
+            // ANTS-5315 — say which versions there are, so the next call can
+            // name one instead of guessing.
+            QJsonArray versions;
+            for (const auto &s : std::as_const(m_roadmapIndex)) {
+                const QString v = RoadmapIndex::versionOfTitle(s.headingText);
+                if (!v.isEmpty()) versions.append(v);
+            }
+            out["ok"] = false;
+            out["error"] = QStringLiteral("no section is titled with version %1")
+                               .arg(versionArg.left(32));
+            out["code"] = QStringLiteral("bad_version");   // as changelog_query names it
+            out["versions"] = versions;
+            return QJsonDocument(out);
+        }
         if (!sec) {
             // ANTS-1287-INV-10 — bad_section, hygiene parity with INV-11.
             QString verbatim = section;

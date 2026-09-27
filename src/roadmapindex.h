@@ -32,6 +32,14 @@ QVector<Section> buildIndex(const QString &markdown);
 // Linear lookup by slug. Returns nullptr if no match.
 const Section *findBySlug(const QVector<Section> &index, const QString &slug);
 
+// ANTS-5315 — a roadmap grouped by release names each release in its section
+// title (`0.10.0 — Theme`, or a patch stream `0.4.x`). versionOfTitle returns
+// that leading `major.minor.(patch|x)` without a `v`, or empty when the title
+// names none. findByVersion returns the section whose title carries exactly
+// `version` (a leading `v` tolerated), or nullptr.
+QString versionOfTitle(const QString &title);
+const Section *findByVersion(const QVector<Section> &index, const QString &version);
+
 // Returns the substring covering lines [section.lineStart,
 // section.lineEnd), joined with '\n'. First line is the heading.
 QString sliceSection(const QString &markdown, const Section &section);

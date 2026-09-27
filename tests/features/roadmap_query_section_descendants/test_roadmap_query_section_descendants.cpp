@@ -187,3 +187,84 @@ TEST(roadmap_query_section_descendants, Inv6DescendantReportsItsOwnSlug) {
            "INV-6: each descendant reports its own slug, not one shared one");
     EXPECT_EQ(0, expect_finish());
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-5315 — `version:` selects the section whose title is that version, so
+// a caller asks "what is in 0.10.0" without knowing its slug. The version IS
+// the section title (claude-ab ruling 2026-09-24); nothing else holds it.
+
+namespace {
+
+const char *kVersionDoc =
+    "## 0.9.0 — First cut\n"
+    "- ✅ [ANTS-0090] **Shipped in 0.9.**\n"
+    "  Kind: fix.\n"
+    "\n"
+    "## 0.10.0 — Second cut\n"
+    "- 📋 [ANTS-0100] **Planned for 0.10.**\n"
+    "  Kind: fix.\n"
+    "\n"
+    "## 0.4.x — Patches\n"
+    "- 📋 [ANTS-0040] **A patch.**\n"
+    "  Kind: fix.\n"
+    "\n"
+    "## Unscheduled\n"
+    "- 📋 [ANTS-0001] **Not placed.**\n"
+    "  Kind: fix.\n";
+
+}  // namespace
+
+TEST(roadmap_query_section_descendants, Ants5315FindByVersion) {
+    const auto ix = RoadmapIndex::buildIndex(QString::fromUtf8(kVersionDoc));
+    const auto slugOf = [&](const char *v) {
+        const auto *s = RoadmapIndex::findByVersion(ix, QString::fromUtf8(v));
+        return s ? s->slug : QString();
+    };
+    EXPECT_FALSE(slugOf("0.10.0").isEmpty());
+    EXPECT_NE(slugOf("0.10.0"), slugOf("0.9.0")) << "0.1 must not prefix-match 0.10";
+    EXPECT_EQ(slugOf("v0.10.0"), slugOf("0.10.0")) << "a leading v is tolerated";
+    EXPECT_FALSE(slugOf("0.4.x").isEmpty()) << "a patch stream is a version heading";
+    EXPECT_TRUE(slugOf("0.1.0").isEmpty());
+    EXPECT_TRUE(slugOf("0.10").isEmpty()) << "not a version";
+    EXPECT_EQ(RoadmapIndex::versionOfTitle(QStringLiteral("0.10.0 — Second cut")),
+              QStringLiteral("0.10.0"));
+    EXPECT_TRUE(RoadmapIndex::versionOfTitle(QStringLiteral("Unscheduled")).isEmpty());
+}
+
+TEST(roadmap_query_section_descendants, Ants5315VersionFilterThroughTheVerb) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QFile f(tmp.path() + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    f.write(QByteArray("# Roadmap\n\n") + kVersionDoc);
+    f.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = tmp.path();
+    req["version"]    = QStringLiteral("0.10.0");
+    req["status"]     = QStringLiteral("all");
+    QJsonObject out = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray bullets = out.value(QStringLiteral("bullets")).toArray();
+    ASSERT_EQ(bullets.size(), 1) << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(bullets.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("ANTS-0100"));
+    EXPECT_EQ(out.value(QStringLiteral("version")).toString(), QStringLiteral("0.10.0"));
+
+    req["version"] = QStringLiteral("0.3.0");
+    out = rc.cmdRoadmapQuery(req).object();
+    EXPECT_EQ(out.value(QStringLiteral("code")).toString(), QStringLiteral("bad_version"));
+    const QJsonArray versions = out.value(QStringLiteral("versions")).toArray();
+    EXPECT_EQ(versions.size(), 3) << QJsonDocument(out).toJson().toStdString();
+
+    req["version"] = QStringLiteral("1.0");
+    EXPECT_EQ(rc.cmdRoadmapQuery(req).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+
+    req["version"] = QStringLiteral("0.10.0");
+    req["id"]      = QStringLiteral("ANTS-0100");
+    EXPECT_EQ(rc.cmdRoadmapQuery(req).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_mode_combo"));
+}

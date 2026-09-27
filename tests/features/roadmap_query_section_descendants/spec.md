@@ -58,3 +58,19 @@ any of those slugs.
   slug. INV-6 drives the real `cmdRoadmapQuery` envelope rather than
   re-deriving that rule, and asserts the descendant inclusion still holds
   first, so it cannot pass by returning nothing.
+
+## ANTS-5315 — `version:` selects a release section
+
+A roadmap is grouped by release: a version is the title of the section that
+holds it (`## 0.10.0 — Theme`, or a patch stream `## 0.4.x`), per the
+claude-ab ruling recorded in
+`docs/reviews/ANTS-5315-roadmap-versions-handoff-2026-09-24.md`.
+`RoadmapIndex::versionOfTitle` reads a title's leading
+`v?major.minor.(patch|x)`; `findByVersion` returns the section whose title
+carries exactly that version, a leading `v` on either side tolerated.
+`roadmap_query version:` resolves through it and then answers as `section=`
+does, echoing `version`. An unknown version refuses `bad_version` with
+`versions`, every version the roadmap carries; a malformed one refuses
+`bad_args`; it refuses `bad_mode_combo` with `section`, `id`, `ids`, and on
+`section_index`, `bundles` and `report`. *Tests:* `Ants5315FindByVersion`,
+`Ants5315VersionFilterThroughTheVerb`.
