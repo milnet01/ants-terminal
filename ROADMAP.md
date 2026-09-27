@@ -51894,7 +51894,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5290] **One convert envelope reports zero missing Layman lines and 164 of them.**
+- 🚫 [ANTS-5290] **One convert envelope reports zero missing Layman lines and 164 of them.**
   Reported by vestige-5f from a single call, so the two numbers cannot be
   explained by drift between calls.
 
@@ -51915,6 +51915,10 @@ are closed inline in the feedback files rather than filed here.
 
   The reporter measured this on the same envelope as ANTS-5286 and
   ANTS-5287; all three came out of one dry run on a real project.
+  Closed (2026-09-27): duplicate of ANTS-5330, which fixed the same
+  Vestige envelope on 2026-09-26 (d3cf3be2). Both counts now mean open
+  items with no Layman after the convert, locked by
+  RoadmapConvert.laymanMissingCountAgreesWithRows.
   **Layman:** The same reply says nothing is missing in its summary and lists many missing entries in its detail.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
@@ -66333,7 +66337,7 @@ exposed; the three parse defects were found by the Vestige session in its own
 rendered roadmap and are this project's, not theirs — they are the store's
 parse, not that file.
 
-- 📋 [ANTS-5300] **Reach item.milestone from the verb surface — the column ships, nothing can set or filter it.**
+- 🚫 [ANTS-5300] **Reach item.milestone from the verb surface — the column ships, nothing can set or filter it.**
   The user has ruled that every project's roadmap groups open items under
   SemVer milestone headings. `item.milestone TEXT` already exists in the
   DDL at user_version 1, is bound on insert, is read back into
@@ -66350,6 +66354,13 @@ parse, not that file.
   **This is verb work, not a migration** — no `kSchemaVersion` bump, so it
   does not touch the one-way door. That is what makes the change safe for
   every project in the machine-global store.
+  Closed (2026-09-27): superseded by ANTS-5315's accepted decision 1
+  (claude-ab ruling 2026-09-24,
+  docs/reviews/ANTS-5315-roadmap-versions-handoff-2026-09-24.md): an
+  item's version is the title of the section it sits in, derived, not
+  the item.milestone column. Setting is amend_field field:"section";
+  querying is ANTS-5315's roadmap_query `version:` filter. Surfacing the
+  column would make a second holder of the same fact.
   **Layman:** Let a session put an item under a version heading and ask what is in that version.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
