@@ -65990,7 +65990,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-request-2026-09-25.
   Lanes: mcp, ui.
 
-- 📋 [ANTS-5464] **Claude Code sessions served by ants-mcpd can never be asked to trust a project's .ants/verify.json.**
+- ✅ [ANTS-5464] **Claude Code sessions served by ants-mcpd can never be asked to trust a project's .ants/verify.json.**
   verify_changes is registered in registerProjectScopedVerbs
   (src/mcptoolregistry.cpp), so ants-mcpd serves it for every Claude Code
   session. ants-mcpd installs a bare FilePersistedTrustClient
@@ -66010,6 +66010,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   auto-detect fallback stands. Costs one terminal relaunch to install (a
   new terminal-side verb), accepted. Security-sensitive and crosses two
   processes, so it gets a spec first.
+  Resolved (2026-09-27, cc9735e6): ants-mcpd sends
+  ants/verifyTrustPrompt; the terminal answers on the Bulk worker from
+  its own read; verify_changes on the Bulk lane; one ask per call.
+  tests/features/mcpd_trust_prompt covers INV-1..9. Live after one
+  terminal relaunch plus an MCP reconnect.
   **Layman:** Since the MCP moved to its own helper, Claude never asks you before running a project's custom check commands; it quietly uses the default checks instead.
   Kind: review-fix.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (both lanes).
