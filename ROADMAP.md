@@ -47061,6 +47061,15 @@ are closed inline in the feedback files rather than filed here.
   decided against (ANTS-4977 stands; spec § 4.1 is superseded on that
   point). Approved: a guarded hard delete, requiring explicit
   confirmation, for items filed by mistake.
+  Progress (2026-09-27): § 4.5 shipped — op:append refuses an exact
+  duplicate with duplicate_item unless force:true (both backends, dry run
+  too), and append_batch skips the entry. Tests RoadmapItemRemoval.*, red
+  before. ANTS-2043's cases that append an exact duplicate now pass
+  force:true. Still open, needing the user: op:"remove" (§ 4.4). Its
+  id_in_published_roadmap guard cannot pass for a mistaken item, because
+  dropped items stay visible in ROADMAP.md (user decision 2026-09-26), and
+  ANTS-5287 now deletes an item removed from the file on the next
+  roadmap_migrate, which may cover the same need.
   **Layman:** A roadmap item added by mistake cannot be undone — deleting it from the file does not remove it, and the next save writes it straight back.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Fin Break).
