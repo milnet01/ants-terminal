@@ -85705,6 +85705,90 @@ contributors don't duplicate research.
   Source: user-request-2026-09-19.
   Lanes: chrome, network.
 
+### Opt-in usage telemetry and crash reports (user request 2026-09-27)
+
+Off by default. What it may collect: feature and MCP verb use counts, crash and
+hang counts per version, startup time and memory, and the environment mix
+(distro, Qt, display server, package format). What it must never collect:
+terminal content, commands, paths, file names, hostnames, environment values or
+Claude conversations.
+
+Decided by the user 2026-09-27: data goes to our own small collector, and crash
+reports are asked for separately, each time.
+
+- 📋 [ANTS-5486] **Write the opt-in telemetry spec before any code.**
+  Owns: the field ALLOWLIST (a versioned schema; anything not listed is
+  never sent), consent flow, send cadence, retention, deletion by install
+  ID, the collector API, the RAM budget and the reload story. A spec is
+  owed: it is a network contract, a privacy promise and it spans
+  settings, the core, MCP and a server (spec-format.md 1). Gate it with
+  review-contract before building ANTS-5487 onward.
+  **Layman:** Decide in writing exactly what is collected, how people agree to it, and how they can take it back.
+  Kind: doc.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry.
+
+- 📋 [ANTS-5487] **Consent: default-off opt-in dialog, a Settings switch and a preview of what would be sent.**
+  One-time dialog after install or update, default button "Not now".
+  Settings > Privacy: on/off, "Show what would be sent" (the exact JSON),
+  "Reset my install ID", "Delete my data". Respect DO_NOT_TRACK=1 and
+  ANTS_TELEMETRY=0. CMake -DANTS_TELEMETRY=OFF compiles it out for
+  distro packagers. The setting lives in config.json and is re-read, so
+  no relaunch. Spec: ANTS-5486.
+  **Layman:** People are asked once, the answer defaults to no, and they can see exactly what would be shared.
+  Kind: feature.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry, settings.
+
+- 📋 [ANTS-5488] **Collect allowlisted usage counters locally, only while opted in.**
+  Counts per feature and per MCP verb, crash and hang counts, startup
+  time, peak memory, and the environment mix (distro, Qt, Wayland or X11,
+  package format, Ants version). Never content, commands, paths, file
+  names, hostnames, environment values or Claude text. Stored locally
+  until sent, so the preview shows real data. Spec: ANTS-5486.
+  **Layman:** Ants keeps a small tally of which features get used, and only when the person said yes.
+  Kind: feature.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry.
+
+- 📋 [ANTS-5489] **Send the weekly summary to the collector over HTTPS.**
+  One batched POST a week, TLS only, a random install ID and no account.
+  Offline or failed sends are dropped quietly, with no retry storm.
+  Nothing is sent before consent or after it is withdrawn. Spec: ANTS-5486.
+  **Layman:** Once a week, a small summary goes to our own server if the person agreed.
+  Kind: feature.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry, network.
+
+- 📋 [ANTS-5490] **Build the small telemetry collector server.**
+  User decision 2026-09-27: our own collector, not a third party. Candidate
+  host: alongside the Ants Projects Hub website. Rejects fields outside
+  the allowlist; stores no IP address; keeps data only for the retention
+  period; honours delete-by-install-ID. Spec: ANTS-5486.
+  **Layman:** A tiny server of our own receives the summaries, keeps no IP addresses, and deletes on request.
+  Kind: feature.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry, server.
+
+- 📋 [ANTS-5491] **Crash reports: ask each time, show the stripped report, send only on yes.**
+  User decision 2026-09-27: separate from the usage switch, asked per
+  crash. Stack trace and version only; file paths, terminal text and
+  environment values stripped before the preview is shown. Spec: ANTS-5486.
+  **Layman:** After a crash Ants asks whether to send a report, showing it first with personal details removed.
+  Kind: feature.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry, crash.
+
+- 📋 [ANTS-5492] **Publish the telemetry privacy notice and packager notes.**
+  README section and website page listing every collected field, the
+  retention period and how to delete data; Flathub and distro notes
+  (off by default, the build switch). Written from the spec ANTS-5486, and
+  shipped with the first build that can send.
+  **Layman:** A plain page saying what is collected, why, and how to switch it off, for users and distros.
+  Kind: doc.
+  Source: user-request-2026-09-27.
+  Lanes: telemetry, docs.
+
 ### 🔒 Security
 
 - 💭 [ANTS-1095] **Confidential computing.**
