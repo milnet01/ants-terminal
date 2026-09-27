@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **find_definition says where a capped search stopped and which folders it never reached** (ANTS-5478)
+  A capped walk adds `walk_stopped_in`, `walk_unreached` and, when it
+  found nothing, a hint pointing at workspace_search, which has no cap.
+
 - **session_message suggests the project a misspelt `to` probably meant** (ANTS-5473)
   An `unknown_project` refusal carries `candidates[]`, with case folded
   and `_` read as `-`.

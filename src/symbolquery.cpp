@@ -442,6 +442,7 @@ struct ScanState {
     int maxFiles = kDefaultMaxFiles;
     int filesScanned = 0;
     bool walkCapped = false;
+    QString stoppedAt;   // ANTS-5478 — root-relative file the cap stopped at
 
     // Anchors keyed by language ordinal; built once per call.
     // Size == Lang enum cardinality
@@ -794,22 +795,30 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     f.close();
 }
 
-void walk(ScanState &st, const QString &dirPath) {
-    if (st.walkCapped) return;
-    QDir dir(dirPath);
-    const QFileInfoList entries = dir.entryInfoList(
+// The entries walk() visits in one directory, in the order it visits them.
+QFileInfoList walkEntries(const QString &dirPath) {
+    return QDir(dirPath).entryInfoList(
         QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable,
         QDir::Name);
+}
+
+// A directory walk() does not enter.
+bool skippedDir(const QFileInfo &fi) {
+    const QString name = fi.fileName();
+    return name.startsWith(QLatin1Char('.'))
+        || name == QLatin1String("build") || name.startsWith(QLatin1String("build-"))
+        || name == QLatin1String("node_modules");
+}
+
+void walk(ScanState &st, const QString &dirPath) {
+    if (st.walkCapped) return;
+    const QFileInfoList entries = walkEntries(dirPath);
     for (const QFileInfo &fi : entries) {
         if (st.walkCapped) return;
         if (fi.isSymLink()) continue;  // never follow symlinks out of root
 
         if (fi.isDir()) {
-            const QString name = fi.fileName();
-            if (name.startsWith(QLatin1Char('.'))) continue;
-            if (name == QLatin1String("build") ||
-                name.startsWith(QLatin1String("build-"))) continue;
-            if (name == QLatin1String("node_modules")) continue;
+            if (skippedDir(fi)) continue;
             walk(st, fi.absoluteFilePath());
             continue;
         }
@@ -843,8 +852,26 @@ void walk(ScanState &st, const QString &dirPath) {
 
         if (st.langFilter != Lang::Auto && lang != st.langFilter) continue;
 
-        if (st.filesScanned >= st.maxFiles) { st.walkCapped = true; return; }
+        if (st.filesScanned >= st.maxFiles) {
+            st.walkCapped = true;
+            st.stoppedAt = fi.absoluteFilePath().mid(st.rootPrefixLen);   // ANTS-5478
+            return;
+        }
         scanFile(st, fi, lang);
+    }
+}
+
+// ANTS-5478 — where a capped walk stopped, and the top-level directories it
+// never entered, so an empty result is not read as "not defined here".
+void describeCap(const QString &root, const QString &stoppedAt,
+                 QString *stoppedIn, QStringList *unreached) {
+    const QString top = stoppedAt.section(QLatin1Char('/'), 0, 0);
+    if (stoppedAt.contains(QLatin1Char('/'))) *stoppedIn = top;
+    bool past = false;
+    for (const QFileInfo &fi : walkEntries(root)) {
+        if (past && fi.isDir() && !fi.isSymLink() && !skippedDir(fi))
+            *unreached << fi.fileName();
+        if (fi.fileName() == top) past = true;
     }
 }
 
@@ -935,7 +962,11 @@ DefResult findDefinition(const QString &rootCanonical,
     st.defCap = (opts.maxResults > 0) ? opts.maxResults : kDefDefaultResults;
 
     walk(st, QDir::cleanPath(rootCanonical));
-    return finishDefs(st, st.filesScanned, st.walkCapped);
+    DefResult found = finishDefs(st, st.filesScanned, st.walkCapped);
+    if (st.walkCapped)
+        describeCap(QDir::cleanPath(rootCanonical), st.stoppedAt,
+                    &found.walkStoppedIn, &found.walkUnreached);
+    return found;
 }
 
 // ANTS-3680 — N needles in ONE walk. Equivalent to calling findDefinition

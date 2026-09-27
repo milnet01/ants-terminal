@@ -10089,7 +10089,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "source. Use instead of grep + Read cycles for \"where is Foo "
                         "defined?\". Returns {ok, symbol, lang, definitions:[{file, "
                         "line, signature, lang, kind}], definitions_count, "
-                        "files_scanned, truncated, walk_capped}; `kind` is definition, "
+                        "files_scanned, truncated, walk_capped (+ walk_unreached)}; `kind` is definition, "
                         "declaration or local (inside a function body or parameter "
                         "list; ranked last). Refusals: bad_args (symbol missing or not a "
                         "valid identifier), no_project (caller_cwd unresolved).");

@@ -3901,6 +3901,20 @@ QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
         out["hint"] = QStringLiteral("no symbol named '%1'; did you mean the "
                                      "file '%2'?").arg(symbol, res.fileStemHint);
     }
+    // ANTS-5478 — a capped walk says what it did not reach, so an empty
+    // result is not read as "not defined here".
+    if (res.walkCapped) {
+        constexpr int kMaxUnreached = 20;
+        if (!res.walkStoppedIn.isEmpty()) out["walk_stopped_in"] = res.walkStoppedIn;
+        out["walk_unreached"] = QJsonArray::fromStringList(
+            res.walkUnreached.mid(0, kMaxUnreached));
+        out["walk_unreached_count"] = int(res.walkUnreached.size());
+        if (res.definitions.isEmpty() && !out.contains(QStringLiteral("hint")))
+            out["hint"] = QStringLiteral(
+                "the walk stopped at %1 files before reaching every directory; "
+                "workspace_search has no file cap and finds '%2' if it is here")
+                .arg(res.filesScanned).arg(symbol);
+    }
     return QJsonDocument(out);
 }
 

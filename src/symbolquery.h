@@ -90,6 +90,11 @@ struct DefResult {
     int  filesScanned     = 0;
     bool truncated  = false;     // cap dropped entries
     bool walkCapped = false;     // maxFiles cap hit
+    // ANTS-5478 — on a capped walk, the top-level directory it stopped inside
+    // ("" when it stopped among the root's own files) and the top-level
+    // directories after it, in walk order, that it never entered.
+    QString     walkStoppedIn;
+    QStringList walkUnreached;
     // ANTS-1950 — when no definition matched but the query equals a source
     // file's base name, the project-relative path of that file ("" = none).
     // Lets the handler answer "no symbol X; did you mean the file X.cpp?".

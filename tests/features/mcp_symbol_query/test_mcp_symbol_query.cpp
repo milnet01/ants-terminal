@@ -1477,3 +1477,37 @@ TEST(McpSymbolQuery, Ants5313FunctionScopeNamesAreLocal) {
     // those by name (makeFieldsProp and its siblings).
     EXPECT_EQ(kindsIn("keepMe", "user.cpp"), QStringList{QStringLiteral("definition")});
 }
+
+// ANTS-5478 — a walk that hits its file cap with nothing found said only
+// walk_capped:true. On a large tree the definition sits in a directory the
+// walk never reached, so the result read as "not defined here". It now names
+// the directory it stopped in and the top-level ones it never entered.
+TEST(McpSymbolQuery, Ants5478CappedWalkNamesWhatItDidNotReach) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    for (const char *d : {"aaa", "bbb", "ccc"})
+        for (int i = 0; i < 3; ++i)
+            writeFile(root, QStringLiteral("%1/f%2.c").arg(QLatin1String(d)).arg(i),
+                      QStringLiteral("int filler%1(void) { return 0; }\n").arg(i));
+    writeFile(root, QStringLiteral("zzz/target.c"),
+              QStringLiteral("int far_away(void) { return 1; }\n"));
+
+    SymbolQuery::Options o;
+    o.maxFiles = 4;   // stops inside bbb
+    const SymbolQuery::DefResult r =
+        SymbolQuery::findDefinition(root, QStringLiteral("far_away"), o);
+    ASSERT_TRUE(r.walkCapped);
+    EXPECT_TRUE(r.definitions.isEmpty());
+    EXPECT_EQ(r.walkStoppedIn, QStringLiteral("bbb"));
+    EXPECT_EQ(r.walkUnreached,
+              (QStringList{QStringLiteral("ccc"), QStringLiteral("zzz")}));
+
+    // An uncapped walk reports neither.
+    const SymbolQuery::DefResult full =
+        SymbolQuery::findDefinition(root, QStringLiteral("far_away"), {});
+    EXPECT_FALSE(full.walkCapped);
+    EXPECT_EQ(full.definitions.size(), 1);
+    EXPECT_TRUE(full.walkStoppedIn.isEmpty());
+    EXPECT_TRUE(full.walkUnreached.isEmpty());
+}
