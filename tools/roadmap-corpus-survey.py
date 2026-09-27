@@ -236,7 +236,7 @@ def survey(path):
         # the discriminator.
         if status and not (dashed or anyid) and not tail.startswith("**"):
             c["status_no_id_no_headline"] += 1
-            if re.match(r"^(Done|In progress|Planned|Considered)\b", after, re.I) \
+            if re.match(r"^(Done|In progress|Planned|Considered|Dropped)\b", after, re.I) \
                     and len(after) < 160:
                 c["status_legend_lines"] += 1
             continue

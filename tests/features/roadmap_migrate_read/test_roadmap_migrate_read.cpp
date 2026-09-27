@@ -1464,3 +1464,35 @@ TEST(roadmap_migrate_read, Ants5394UnparsedPassHeadingIsNamed) {
     EXPECT_EQ(partitionFault(QString::fromUtf8(md), plan), QString())
         << "INV-11: every note line sits inside a carried span";
 }
+
+// ANTS-5384 — the render injects `- 🚫 Dropped (closed, not done)` into a
+// legend that lacks it. The legend recogniser did not know the word, so a
+// re-migrate imported the line as narration and the next render injected
+// another (RetroArch feedback 2026-09-25). It is now a legend line, and a copy
+// already duplicated collapses into the one entry.
+TEST(roadmap_migrate_read, Ants5384DroppedLegendLineIsLegend) {
+    const QString md = QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n"
+        "- \xE2\x9C\x85 Done (shipped)\n"
+        "- \xF0\x9F\x93\x8B Planned (not started)\n"
+        "- \xF0\x9F\x9A\xAB Dropped (closed, not done)\n"
+        "- \xF0\x9F\x9A\xAB Dropped (closed, not done)\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n");
+    const MigrationPlan plan = planText(md);
+    ASSERT_TRUE(plan.legend.has_value());
+    EXPECT_EQ(plan.legend->entries.value(QStringLiteral("dropped")).toString(),
+              QStringLiteral("Dropped (closed, not done)"));
+    EXPECT_EQ(plan.legend->lastLine, 8) << "both dropped lines belong to the legend";
+    for (const auto &e : plan.elements)
+        EXPECT_FALSE(e.payload.contains(QStringLiteral("Dropped")))
+            << "a legend line was carried as " << e.kind.toStdString();
+    EXPECT_EQ(partitionFault(md, plan), QString());
+}

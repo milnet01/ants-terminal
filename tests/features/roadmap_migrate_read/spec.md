@@ -103,3 +103,12 @@ outside the fence.
 
 **Would break this:** carrying the line as narration without the note.
 
+
+## ANTS-5384 — `Dropped` is a legend status word
+
+The legend recogniser accepts a line beginning with `Dropped`, as it does
+the other four status words, and `tools/roadmap-corpus-survey.py` counts it
+the same way. The render injects `- 🚫 Dropped (closed, not done)` into a
+legend that lacks it; read as narration, that line was injected again on
+every migrate cycle. A run holding it more than once collapses into one
+`dropped` entry. *Test:* `roadmap_migrate_read.Ants5384DroppedLegendLineIsLegend`.

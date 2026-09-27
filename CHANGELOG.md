@@ -217,6 +217,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap legend no longer gains another `🚫 Dropped` line on each migrate cycle: the import reads that line as legend, and existing duplicates collapse into one.** (ANTS-5384)
+
 - **A roadmap render refused over a ragged table row now names the section, the row number and its first cell.** (ANTS-5386)
 
 - **roadmap_log set_intro, amend_intro and set_preamble accept a `#` line inside a fenced code block, so an intro holding a shell sample can be edited.** (ANTS-5493)

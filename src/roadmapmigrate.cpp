@@ -160,11 +160,12 @@ QStringList tableCells(const QString &line) {
 // § 2.11 recognises the legend exactly as tools/roadmap-corpus-survey.py
 // counts it, so the spec and its own oracle cannot disagree: a status-marked
 // bullet § 2.4 rejects, whose text begins with a status word and is under 160
-// characters.
+// characters. ANTS-5384 — `Dropped` too: the render injects that line into a
+// legend lacking it, and read as narration it was injected again every cycle.
 bool looksLikeLegendLine(const QString &text) {
     if (text.size() >= 160) return false;
     static const QRegularExpression rx(
-        QStringLiteral("^(Done|In progress|Planned|Considered)\\b"),
+        QStringLiteral("^(Done|In progress|Planned|Considered|Dropped)\\b"),
         QRegularExpression::CaseInsensitiveOption);
     return rx.match(text).hasMatch();
 }
