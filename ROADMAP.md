@@ -51833,7 +51833,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5287] **A publish resurrects items deleted from the roadmap file.**
+- ✅ [ANTS-5287] **A publish resurrects items deleted from the roadmap file.**
   Found while adjudicating the convert blocker. The reporter's own
   figures showed it and neither of us named it at first.
 
@@ -51885,6 +51885,15 @@ are closed inline in the feedback files rather than filed here.
   delete in a RETAINED section leaves a position gap (check the render
   and export tolerate it); ANTS-3765 § 2.1's Outcome lacks members other
   specs added (itemMatches, updatedItems, sectionsUnchanged, gateFailures).
+  Resolved (2026-09-27): built to ANTS-3765 § 2.7 and ANTS-3855 as
+  gated. RoadmapStore::deleteItem() cascades in ANTS-4487's order;
+  itemIsReferenced() keeps referenced items; the loader counts, guards
+  (more than a quarter needs acceptDeletions) and deletes; a refused load
+  keeps its counts and deleted_item notes; the verb reports items_deleted,
+  deleted_ids and a mass_deletion refusal; convert sets keepAbsent. Red
+  first: RoadmapMigrateLoad.Inv4/Inv17 (x2), RoadmapMigrateVerb.Inv16.
+  Suite 5258/5258. Tail still open: position gaps in retained sections,
+  and § 2.1's missing Outcome members.
   **Layman:** Items removed from the roadmap are kept in the database, and rewriting the file puts every one of them back.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
