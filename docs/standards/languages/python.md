@@ -148,6 +148,14 @@ Python.
   can trigger owes the id**, per that section's shape test; a `skipif`
   keyed on the host — a missing tool, a platform, an optional dependency
   — owes nothing, and filing one for it is the breach's opposite.
+- **A skip ends the test** (`testing.md` §7) — `pytest.skip()` and
+  unittest's `self.skipTest()` both end it, even from a helper. Two
+  things stop that. An `except BaseException:` (or a bare `except:`)
+  swallows the skip and the test runs on. Inside `with self.subTest()`,
+  only that subtest skips and the loop continues. Measured 2026-09-27 by
+  AI Prompts on pytest 9.1.1 and Python 3.13.15. Refute: skip in a
+  helper, then `assert False`, under `pytest -rA` and `python3 -m
+  unittest -v`.
 
 ## Traps
 

@@ -114,8 +114,9 @@ written from that date.
 decide** — as `cut-release` Phase 0e does.
 
 **A project with no version numbers heads each dated section `## YYYY-MM-DD`.**
-Its date is its version. It drops the Semantic Versioning clause from the
-preamble and writes no `**Theme:**` line. § 4.3 step 1's move still happens, under
+Its date is its version. Its preamble replaces the Semantic Versioning clause
+with "Dated sections stand in for versions.", and it writes no `**Theme:**`
+line. The hyphen rule above has no dash to bind here. § 4.3 step 1's move still happens, under
 the date heading; its Theme half, and step 4, bind a versioned release only. `changelog_log op:"release"` cannot write this heading:
 given the date as `version`, it writes `## [YYYY-MM-DD] - YYYY-MM-DD`.
 

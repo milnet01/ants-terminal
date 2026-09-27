@@ -277,8 +277,8 @@ between the two runs. `languages/<name>.md` has the commands.
 **The rebuild is part of the shape, not a spelling.** A project whose
 plain build target does not build its tests runs the previous binary and
 sees a pass — the false green this step exists to prevent, reached by
-following it faithfully. **Rebuild the target that owns the test,
-whichever file you edited**: where tests are compiled into bundles, rebuilding another bundle
+following it faithfully. **Where there is a build step, rebuild the
+target that owns the test, whichever file you edited**: where tests are compiled into bundles, rebuilding another bundle
 leaves the old binary, and its old result, in place.
 
 **§1's definition of red governs this run too.** Removing a fix often
