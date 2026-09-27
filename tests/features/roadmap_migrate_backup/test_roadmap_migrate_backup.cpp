@@ -122,6 +122,51 @@ TEST(RoadmapMigrateBackup, Inv3And4SnapshotRollsAndLeavesNoPartial) {
     EXPECT_FALSE(QFile::exists(dest + QStringLiteral(".partial")));
 }
 
+// INV-9 (ANTS-5466) — a file at the destination that is not a SQLite database
+// is refused and left as it was; so is one at the temp path. An empty temp
+// file is what a killed run leaves, and is cleared.
+TEST(RoadmapMigrateBackup, Inv9RefusesToReplaceAFileThatIsNotADatabase) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + QStringLiteral("/roadmap.sqlite"));
+    ASSERT_TRUE(store.open());
+    writeProbe(store, QStringLiteral("x"), true);
+
+    const QByteArray precious("notes the user wanted to keep\n");
+    const auto plant = [&](const QString &path, const QByteArray &bytes) {
+        QFile f(path);
+        return f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size();
+    };
+    const auto contents = [](const QString &path) {
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray("<unreadable>");
+    };
+
+    // At the destination.
+    const QString dest = dir.path() + QStringLiteral("/notes.txt");
+    ASSERT_TRUE(plant(dest, precious));
+    QString err;
+    EXPECT_FALSE(store.snapshotTo(dest, &err));
+    EXPECT_TRUE(err.contains(dest)) << err.toStdString();
+    EXPECT_EQ(contents(dest), precious);
+
+    // At the temp path beside a free destination.
+    const QString dest2 = dir.path() + QStringLiteral("/snap.sqlite");
+    const QString partial = dest2 + QStringLiteral(".partial");
+    ASSERT_TRUE(plant(partial, precious));
+    err.clear();
+    EXPECT_FALSE(store.snapshotTo(dest2, &err));
+    EXPECT_TRUE(err.contains(partial)) << err.toStdString();
+    EXPECT_EQ(contents(partial), precious);
+    EXPECT_FALSE(QFile::exists(dest2));
+
+    // An empty temp file is cleared, and the snapshot is taken.
+    ASSERT_TRUE(plant(partial, QByteArray()));
+    err.clear();
+    EXPECT_TRUE(store.snapshotTo(dest2, &err)) << err.toStdString();
+    EXPECT_EQ(readProbe(dest2, QStringLiteral("probe_inv9")).toStdString(), std::string("x"));
+}
+
 // INV-5 — the rolling snapshot must not answer to `roadmap-*.sqlite`. That
 // glob is what tools/roadmap-store-backup.sh prunes to its KEEP limit, so a
 // matching name would quietly cost the weekly rotation one kept snapshot.

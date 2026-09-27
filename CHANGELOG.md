@@ -374,6 +374,11 @@ for security-relevant changes.
 
 ### Security
 
+- **A roadmap backup pointed at the wrong path no longer deletes the file there** (ANTS-5466)
+  `roadmap_migrate`'s `backup_to` replaces an existing file only when it
+  is a SQLite database. Anything else refuses `backup_failed`, names the
+  file, and leaves it as it was.
+
 - **The debug log redacts secret-shaped values and escapes every message before writing a line**
 
 - **Path checks follow a symlinked directory or a dangling link before a file exists, so a write cannot land outside the project**

@@ -32,6 +32,12 @@ migration that runs between two of its snapshots.
   nothing to protect.
 - **INV-8** — a failed snapshot refuses the migration rather than proceeding
   silently. A caller that wants the migration anyway says so explicitly.
+- **INV-9** *(ANTS-5466)* — a file already at the destination is replaced
+  only if it is a SQLite database. Anything else refuses, names the file, and
+  is left untouched. `backup_to` is not confined to a project, so a wrong path
+  must not delete an unrelated file. The same holds for a leftover
+  `<destination>.partial`, except that an empty one is cleared: that is what
+  a run killed before it wrote anything leaves.
 
 ## Notes
 

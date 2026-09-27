@@ -65921,6 +65921,15 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Both install ants-mcpd but launch only ants-terminal, so a client has no
   path to register. Needed before ANTS-5308 retires the Python bridge. The
   README states the gap.
+  Decision needed (2026-09-27, left for the user): AppImage — recommend
+  a custom AppRun that runs the bundled ants-mcpd when the first
+  argument is `--mcpd` (register with `claude mcp add ants --
+  /path/Ants.AppImage --mcpd`); it is testable only by the tag-triggered
+  release workflow, so land it early in a cycle, not the day before a
+  release. Flatpak — `flatpak run --command=ants-mcpd <app-id>` starts
+  it, but whether a sandboxed ants-mcpd sees the terminal's /tmp socket
+  and can run rg/git needs a real sandbox test first; recommend doing
+  the AppImage half alone and filing the Flatpak half as its own item.
   **Layman:** People who use the single-file or Flatpak version cannot connect Claude Code the new way yet.
   Kind: package.
   Source: in-session-2026-09-24.

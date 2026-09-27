@@ -271,7 +271,24 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
     // VACUUM INTO refuses a target that already exists, so the temp name has to
     // be free before it runs — including after an earlier run died between the
     // vacuum and the rename below.
+    // ANTS-5466 — `backup_to` is not confined to a project, so a file already
+    // at either path is removed only when it is one of ours: a SQLite database,
+    // or (the temp path only) the empty file a run killed before writing
+    // leaves. Anything else is refused and left alone.
+    const auto replaceable = [](const QString &path, bool emptyIsOurs) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) return false;
+        if (emptyIsOurs && f.size() == 0) return true;
+        static const QByteArray kSqliteMagic("SQLite format 3\0", 16);
+        return f.read(kSqliteMagic.size()) == kSqliteMagic;
+    };
     const QString tmp = destPath + QStringLiteral(".partial");
+    if (QFile::exists(destPath) && !replaceable(destPath, false))
+        return fail(QStringLiteral("%1 exists and is not a SQLite database; "
+                                   "not replacing it").arg(destPath));
+    if (QFile::exists(tmp) && !replaceable(tmp, true))
+        return fail(QStringLiteral("%1 exists and is not a SQLite database; "
+                                   "not replacing it").arg(tmp));
     if (QFile::exists(tmp) && !QFile::remove(tmp))
         return fail(QStringLiteral("cannot clear stale %1").arg(tmp));
 
