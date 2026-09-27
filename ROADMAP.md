@@ -41934,6 +41934,29 @@ in each bullet, not just the reporter's symptom.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #16; ledger TL-29).
   Lanes: ci.
 
+- ✅ [ANTS-5517] **The pre-push gate runs ci.yml's build-test job in CI's own ubuntu 24.04 image.**
+  CI was red from a901796b onward on a test that passed on this box's
+  Qt 6.11 and failed on CI's Qt 6.4. tools/qt62-guard.sh --job build-test
+  --run-job runs the whole job through tools/ci_workflow.py in CI's image,
+  as this user, with Qt's SQLite driver the runner has. The hook uses it
+  when warm and this machine otherwise; ci-parity.sh --ubuntu24 too.
+  Verified: 5251/5251 and every lint green in the image.
+  **Layman:** Tests now run before a push on the same system GitHub uses, so a failure shows up locally instead of in an email.
+  Kind: chore.
+  Source: user-request-2026-09-27 (CI failure emails).
+  Lanes: ci.
+
+- ✅ [ANTS-5518] **FeedbackCompactResolved.LiveRoadmapUnavailable no longer passes on another test's roadmap.**
+  The cross-repo pass scans the corpus's parent for sibling projects;
+  with the corpus at the temp dir's top that parent was the system temp
+  dir, where a concurrent test's ROADMAP.md resolved the ids. The corpus
+  now sits one level down. Red before: a planted /tmp ROADMAP.md failed
+  the old test; green after with it planted.
+  **Layman:** One test failed at random on CI when another test ran beside it.
+  Kind: test.
+  Source: CI run 36331920136.
+  Lanes: tests.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -66094,6 +66117,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   box grows instead.
   Shipped 2026-09-27 in a901796b. Test verify_trust_modal_buttons_fit
   red before, green after; pre-push suite green.
+  Follow-up (2026-09-27): the fix held on Qt 6.11 and failed on CI's
+  Qt 6.4, where QMessageBox re-files "Show Details..." in showEvent and
+  the stylesheet's min-width resets its floor. An event filter restores
+  the floor on each button's ParentChange. Reproduced and fixed in
+  ubuntu 24.04's image (tools/qt62-guard.sh --job build-test --run-job).
   **Layman:** The buttons on the "Trust .ants/verify.json?" dialog cut off their own words.
   Kind: fix.
   Source: user-report-2026-09-27.
@@ -66375,6 +66403,145 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** Keep a checkable record of which documents were reviewed and when.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5502] **A batch quotation check: caller-supplied {path, text, ref?} returns hit, miss, not_run or outside_allowed.**
+  Replaces skills/_shared/quotation-check.sh. Reuse workspace_search
+  match_wrapped's two-sided normalisation; `ref` reads `git show
+  <ref>:<path>`; a miss reports the line and the nearest text. Home:
+  a doc_citations mode or a small verb of its own.
+  **Layman:** Review skills could check every quoted sentence in one call instead of running a script per quote.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A1).
+  Lanes: mcp.
+
+- 📋 [ANTS-5503] **test_results and focused_test parse and map pytest, jest, vitest, cargo and go, not ctest alone.**
+  verify_changes already detects those runners (src/verifyengine.cpp)
+  and mutation_probe already parses pytest/jest/vitest output. Return
+  collected, passed, failed, skipped and durations. Build after
+  ANTS-5498, so nothing-ran never reads as green.
+  **Layman:** The test tools only understand this project's test runner; other projects' tests are invisible to them.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A2).
+  Lanes: mcp.
+
+- 📋 [ANTS-5504] **A review packet builder writes captioned windows, a line-count-preserving scrubbed copy and a hashed shared brief to a file.**
+  Extend cold_eyes_brief (live), not cold_eyes_single_doc or
+  indie_review_brief (retiring under ANTS-5485). Never render
+  prior_loop_fixes. Needs claude-config's answer on the scrub shape:
+  placeholder text, and whether Status values are withheld.
+  Scrub shape decided by claude-config 2026-09-27: replace the loop-log
+  body with a placeholder padded by blank lines to the original line
+  count, so line numbers match; a Status value naming a review outcome
+  becomes `(withheld)`; a pointer-style loop-log section is left as is.
+  Return withheld_ranges and line_count_match.
+  **Layman:** Building a review's reading pack by hand is slow and has leaked review history to reviewers twice.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A3; CFG-0426, CFG-0616).
+  Lanes: mcp.
+
+- 📋 [ANTS-5505] **git_state op:"hooks" reports hooksPath, the pre-push hand-off, ants.gate.* keys and the gate-passed record.**
+  Also surfaced in session_orient. Replaces tools/align-report and
+  tools/ci-gate for the read half: hooksPath and where it is set,
+  whether pre-push hands off, the gate script found, executable and
+  called by CI, and the ants-gate-passed/<tree> record.
+  **Layman:** Checking whether a project's push check is really wired up takes a script today; one call could answer it.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A4; CFG-0608..0610, CFG-0634).
+  Lanes: mcp.
+
+- 📋 [ANTS-5506] **doc_lint gains count-vs-list, duplicate INV, leaked markup, version drift and verb-call-vs-schema checks, plus a CLI with --exit-code.**
+  Each checker is small. The CLI form lets a gate script run doc_lint
+  outside an MCP session. spec_lint's invariant_id_duplicate is the
+  same duplicate-INV checker.
+  CLI shape decided by claude-config 2026-09-27: one JSON argument
+  mirroring the MCP arguments exactly, plus --exit-code, so the CLI
+  shares the verb's schema. Example: doc_lint '{"paths":["docs"]}'
+  --exit-code.
+  **Layman:** Several document checks the skills rely on have no tool behind them, so they are done by hand.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A5, quick win).
+  Lanes: mcp.
+
+- 📋 [ANTS-5507] **roadmap_query and changelog_query gain a lint mode for release consistency.**
+  Changelog ids that are not shipped; shipped ids no entry cites;
+  [Unreleased] not emptied after a tag. tools/check-shipped-coverage.sh
+  (ANTS-4714) does part of it; ANTS-4734 moves that script onto
+  roadmap_query.
+  **Layman:** Before a release, a person checks by hand that the changelog and the roadmap agree.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A6).
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5508] **git_state diff and log gain paths[], an added-text filter, grep, stat and a rename sweep.**
+  Each is small. rename_sweep lists every place still using an old
+  name after a rename over a range; ANTS-4961 is adjacent.
+  **Layman:** Reviewers want to see only the lines a change added, across several files, in one call.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (B10, quick win).
+  Lanes: mcp.
+
+- 📋 [ANTS-5509] **A commit lint over a range checks subjects, cited ids and trailers against commits.md.**
+  Subject is the whole first paragraph, ids resolve, component exists,
+  trailer model. Builds on git_state log.
+  **Layman:** Commit message rules are checked one commit at a time by a hook; nothing checks a whole range.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (B6).
+  Lanes: mcp.
+
+- 📋 [ANTS-5510] **A version check reads .claude/bump.json and reports lockstep drift and unlisted version-bearing files.**
+  Nothing in src/ reads bump.json today. Stray suffixes too.
+  **Layman:** A release can leave one file carrying the old version number and nobody notices until later.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (B7; CFG-0175, CFG-0240).
+  Lanes: mcp.
+
+- 📋 [ANTS-5511] **spec_lint checks header fields: status vocabulary, empty fields, Kind taxonomy, Layman, filename id and duplicate INV.**
+  Adjacent to ANTS-4413 (specs with no Status line).
+  **Layman:** Spec headers drift from the format and only a person reading them notices.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (B8, quick win).
+  Lanes: mcp.
+
+- 📋 [ANTS-5512] **mutation_probe accepts a build_command, so it rebuilds before running the suite.**
+  Related: ANTS-4768 (test-command environment variables).
+  **Layman:** Mutation testing can run the old binary if nothing rebuilds it first.
+  Kind: enhancement.
+  Source: claude-config joint review 2026-09-27 (quick win).
+  Lanes: mcp.
+
+- 📋 [ANTS-5513] **invariant_check reads ADRs as well as specs.**
+  It scans docs/specs only today.
+  **Layman:** Decisions recorded in ADRs are not checked the way spec rules are.
+  Kind: enhancement.
+  Source: claude-config joint review 2026-09-27 (tier C).
+  Lanes: mcp.
+
+- 💭 [ANTS-5514] **A closed-list claim in a document is diffed against what the code enumerates.**
+  Needs a way to name the code-side enumeration per claim; parked
+  until a first real case picks the shape.
+  **Layman:** A document that says "the three modes are ..." goes stale when the code adds a fourth.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (tier C; CFG-0562).
+  Lanes: mcp.
+
+- 📋 [ANTS-5515] **A dependency check covers GitHub Actions, runner images, container bases and end-of-life dates.**
+  audit_run already runs osv-scanner, npm audit, cargo-audit and
+  govulncheck for libraries. This adds `uses:` pins, runs-on images,
+  container FROM lines and runtime EOL dates. Adjacent: ANTS-3428.
+  Serves the check-dependencies skill.
+  **Layman:** Out-of-date build tools and system images are found by hand today, not by a check.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (B1).
+  Lanes: mcp, audit.
+
+- 📋 [ANTS-5516] **A ledger check reports stale in-progress roadmap items and commits that name no roadmap id.**
+  Over a git range. roadmap_branch_drift retires under ANTS-5485, so
+  this lands on a live verb (roadmap_query or git_state). Adjacent:
+  ANTS-3670, tools/check-shipped-coverage.sh.
+  **Layman:** Work marked in progress for weeks, and commits with no roadmap id, are only found by reading.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (B3).
+  Lanes: mcp, roadmap.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
 
