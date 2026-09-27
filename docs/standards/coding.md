@@ -180,8 +180,12 @@ which. Reconciling them is how you find out; waiting for a third fixes
 the bug once and leaves it live in the other copy. **A diverged pair you
 merely found is §1.7's — surface it.**
 
+**Unless a compatibility promise pins the difference** — recorded demos, a
+file format, a wire protocol. Then the copies stay apart, and a comment on
+each names the promise.
+
 Breach: two implementations of one behaviour that disagree, one of which
-your change touches, left separate.
+your change touches, left separate with no comment naming such a promise.
 
 **A PRIVATE helper with one call site is duplication in the other
 direction.** It adds a layer to read through and a name promising

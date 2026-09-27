@@ -279,6 +279,14 @@ C++.
            qPrintable(QString("fg = %1, expected %2")
                       .arg(cell.fg.name(), expected.name())));
   ```
+- **A skip** (`testing.md` §7) — **`GTEST_SKIP()` returns only from the
+  function it is written in.** Called from a helper, it records a skip and
+  the test goes on; a later failure then fails it. So the caller checks
+  `::testing::Test::IsSkipped()` and returns. **And ctest reports a skip as
+  skipped only through `gtest_discover_tests`**: under a plain `add_test`, a
+  binary whose tests all skip exits 0 and reads as passed. Measured
+  2026-09-27 by Ants Terminal on GoogleTest 1.15.2. Refute with a TEST whose
+  helper skips and then `EXPECT_TRUE(false)`, run under both wirings.
 
 ## What checks this
 
