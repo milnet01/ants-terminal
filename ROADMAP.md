@@ -67684,6 +67684,42 @@ project. Reported causes are claims until checked in source.
   Kind: doc-fix.
   Source: review-contract ANTS-3757, 2026-09-27 (filed out of radius).
 
+- 📋 [ANTS-5498] **verify_changes reports all_passed:true when no gate ran.**
+  runVerify (src/verifyengine.cpp) forces allPassed=true when no gate
+  ran, citing its spec's section 4. With no .ants/verify.json every gate
+  is ran:false, skipped_reason "no command configured", and the reply
+  still reads green. Proposed: all_passed false (or absent) when nothing
+  ran, plus ran_count. This changes the spec's contract, so amend it first.
+  **Layman:** The check-my-work tool says everything passed even when it ran no checks at all.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-27 (AI Prompts measurement).
+  Lanes: mcp.
+
+- 📋 [ANTS-5499] **session_message op:send can fail io_error "database is locked" on a transient lock.**
+  Reported: "database is locked Unable to fetch row"; the same call
+  succeeded seconds later. RoadmapStore::sendMessage runs its count
+  SELECT and INSERT without BEGIN IMMEDIATE, so a deferred read-to-write
+  upgrade can return SQLITE_BUSY without honouring busy_timeout (the
+  case roadmapstore.cpp already documents). Reproduce first; then wrap
+  the send in an immediate transaction, or retry once on SQLITE_BUSY,
+  and refuse a distinct code rather than io_error.
+  **Layman:** Sending a note to another project sometimes fails once and works on retry.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.
+  Lanes: roadmap, mcp.
+
+- 📋 [ANTS-5500] **feedback_log from a dot-leaf caller_cwd could resolve the file from the git remote.**
+  ANTS-4613 refuses bad_args with candidates when the leaf starts with a
+  dot (/home/ants/.claude). The candidates already include
+  claude_config_Ants_MCP_Feedback.md. Proposed: when exactly one
+  candidate matches the repo name from the origin remote
+  (milnet01/claude-config, normalised), use it and report path_derived
+  with the reason; otherwise keep the refusal.
+  **Layman:** Filing feedback from the config folder still makes you name the file by hand.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.
+  Lanes: remotecontrol.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
