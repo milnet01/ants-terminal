@@ -265,6 +265,8 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
 // pass-headings to the first only, so RetroDB was told "NOTHING READS THEM"
 // by a migrate whose rows roadmap_query was already serving.
 bool isStoreServedDialect(const QString &format);
+// ANTS-5161 — the same set as a list, for a refusal that names it.
+QStringList storeServedDialects();
 
 // The library seam the two owner wrappers call — the two above are its halves,
 // exposed because the tests drive them separately.

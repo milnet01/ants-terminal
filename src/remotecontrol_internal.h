@@ -189,6 +189,14 @@ bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QStri
 // noticed — and the same information is carried under `would_write`, matching
 // what changelog_log's dry_run already documents for `bytes`. Callers get both
 // properties: the misleading name is gone, and the useful value is kept.
+// ANTS-5161 — the store-only ops' refusal when the shared prologue found no
+// store-served project. It asks the store which case it is: a registered
+// project in a dialect the store does not serve gets `unsupported_format`
+// naming that dialect and the served ones; a missing row gets
+// `project_not_registered` and `noRowAdvice`. `opLead` opens the message.
+QJsonObject rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *store,
+                                    const QString &root, const QString &roadmapPath,
+                                    const QString &opLead, const QString &noRowAdvice);
 // ANTS-5399 — `semanticWrite` false on op:"render" and op:"convert", which
 // ARE the re-layout, so the hint pointing at render is not emitted there.
 void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun,

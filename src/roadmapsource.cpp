@@ -442,9 +442,12 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
     return row->projectId;
 }
 
+QStringList storeServedDialects() {
+    return {QStringLiteral("ants-v1"), QStringLiteral("pass-headings")};
+}
+
 bool isStoreServedDialect(const QString &format) {
-    return format == QLatin1String("ants-v1")
-        || format == QLatin1String("pass-headings");
+    return storeServedDialects().contains(format);
 }
 
 std::optional<QVector<BulletRecord>>

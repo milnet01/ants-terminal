@@ -79,3 +79,14 @@ and `amend_body` as the ways to put that text in the store. The previous
 discard is remembered per file for the life of the process. A dry run
 neither reads nor records it. *Test:*
 `RoadmapLogSetIntro.Ants5369RepeatedDiscardIsNamed`.
+
+## ANTS-5161 — a registered project the store does not serve is named
+
+`repair_trailers`, `backfill_dates` and `render` share one refusal for a
+project the store does not serve. It asks the store first. A project row
+in a dialect outside `RoadmapSource::storeServedDialects()` refuses
+`unsupported_format` with `store_row_present:true`,
+`store_source_format`, and a message naming the served dialects and
+saying a re-migration will not help. No row refuses
+`project_not_registered`. *Test:*
+`RoadmapLogSetIntro.Ants5161RegisteredButNotServedIsNamed`.

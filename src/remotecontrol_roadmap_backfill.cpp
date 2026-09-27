@@ -381,11 +381,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
         QJsonObject env = refusal.object();
         if (env.value(QStringLiteral("code")).toString() ==
                 QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")] = QStringLiteral("project_not_registered");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: backfill_dates needs a store-migrated project — "
-                "the store holds no row for \"%1\". Run roadmap_migrate first.")
-                    .arg(root.isEmpty() ? roadmapPath : root);
+            QString storeErr;
+            env = rlNotStoreServedRefusal(env, roadmapStoreOrNull(nullptr, &storeErr),
+                                          root, roadmapPath,
+                                          QStringLiteral("backfill_dates needs a store-served project"),
+                                          QStringLiteral("Run roadmap_migrate first."));
             return QJsonDocument(env);
         }
         return refusal;

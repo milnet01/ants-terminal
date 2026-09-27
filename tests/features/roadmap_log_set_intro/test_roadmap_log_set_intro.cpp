@@ -487,3 +487,60 @@ TEST(RoadmapLogSetIntro, Ants5369RepeatedDiscardIsNamed) {
     EXPECT_TRUE(resp.value(QStringLiteral("discard_repeated_hint")).toString()
                     .contains(QStringLiteral("set_preamble")));
 }
+
+// ------------------------------------------------------------- ANTS-5161 -----
+
+// A registered project whose roadmap reads as a dialect the store does not
+// serve was told "the store holds no row" by repair_trailers and
+// backfill_dates, and pointed at a re-migration that cannot help (Vestige,
+// 1,026 rows, github-task-list). All three store-only ops now ask the store,
+// as render already did (ANTS-4802), and name the format and the served ones.
+TEST(RoadmapLogSetIntro, Ants5161RegisteredButNotServedIsNamed) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("gfm"));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/ROADMAP.md"),
+        QByteArray("# Roadmap\n\n## 0.7.0\n\n- [x] A shipped task.\n- [ ] An open task.\n")));
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    {
+        auto store = openStore(RoadmapStore::Access::Bulk);
+        ASSERT_TRUE(store);
+        QString err;
+        const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+        ASSERT_TRUE(disc) << err.toStdString();
+        const auto plan = RoadmapMigrate::planFrom(*disc, QStringLiteral("Gfm"),
+                                                   QStringLiteral("gfm"));
+        RoadmapMigrateLoad::Options opts;
+        opts.changedAt   = QStringLiteral("2026-09-27T10:00:00Z");
+        opts.projectRoot = root;
+        ASSERT_TRUE(RoadmapMigrateLoad::load(*store, plan, opts).ok);
+    }
+
+    RemoteControl rc(nullptr);
+    for (const char *op : {"repair_trailers", "backfill_dates", "render"}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QLatin1String(op);
+        req[QStringLiteral("dry_run")]    = true;
+        const QJsonObject resp = rc.cmdRoadmapLog(req).object();
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("unsupported_format")) << op;
+        EXPECT_TRUE(resp.value(QStringLiteral("store_row_present")).toBool()) << op;
+        EXPECT_EQ(resp.value(QStringLiteral("store_source_format")).toString(),
+                  QStringLiteral("github-task-list")) << op;
+        const QString err = resp.value(QStringLiteral("error")).toString();
+        EXPECT_TRUE(err.contains(QStringLiteral("pass-headings"))) << op << ": " << err.toStdString();
+        EXPECT_FALSE(err.contains(QStringLiteral("holds no row"))) << op;
+    }
+
+    // An unregistered root still reads project_not_registered.
+    const QString bare = QDir(tmp.path()).filePath(QStringLiteral("bare"));
+    ASSERT_TRUE(writeFile(bare + QStringLiteral("/ROADMAP.md"), QByteArray("# Roadmap\n\n## Work\n")));
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = QFileInfo(bare).canonicalFilePath();
+    req[QStringLiteral("op")]         = QStringLiteral("repair_trailers");
+    EXPECT_EQ(rc.cmdRoadmapLog(req).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("project_not_registered"));
+}

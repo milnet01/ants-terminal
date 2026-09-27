@@ -43,6 +43,44 @@
 
 using namespace rcdetail;
 
+// ANTS-5161 — see remotecontrol_internal.h. ANTS-4802's answer for render,
+// shared: only the served dialects are store-served (RoadmapSource::
+// migratedProject), while roadmap_migrate reads all three, so a project can be
+// registered with hundreds of rows and still land here. Told "the store holds
+// no row", the reader re-runs the migration, the one action that cannot help.
+QJsonObject rcdetail::rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *store,
+                                              const QString &root,
+                                              const QString &roadmapPath,
+                                              const QString &opLead,
+                                              const QString &noRowAdvice) {
+    const QString subject = root.isEmpty() ? roadmapPath : root;
+    std::optional<RoadmapStore::ProjectRow> row;
+    if (store && !root.isEmpty()) {
+        QString storeErr;
+        const QString canonical = QFileInfo(root).canonicalFilePath();
+        if (!canonical.isEmpty())
+            row = store->readProjectByRoot(canonical, &storeErr);
+    }
+    if (row) {
+        env[QStringLiteral("code")] = QStringLiteral("unsupported_format");
+        env[QStringLiteral("store_row_present")]   = true;
+        env[QStringLiteral("store_source_format")] = row->sourceFormat;
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: %1. \u201C%2\u201D IS registered \u2014 the store records "
+            "format \u201C%3\u201D \u2014 but the store serves only %4, so its "
+            "roadmap is read and written as markdown. Re-running roadmap_migrate "
+            "will not change this.")
+                .arg(opLead, subject, row->sourceFormat,
+                     RoadmapSource::storeServedDialects().join(QStringLiteral(" and ")));
+    } else {
+        env[QStringLiteral("code")]  = QStringLiteral("project_not_registered");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: %1 \u2014 the store holds no row for \"%2\". %3")
+                .arg(opLead, subject, noRowAdvice);
+    }
+    return env;
+}
+
 QJsonDocument RemoteControl::cmdRoadmapLogRender(const QJsonObject &req) {
     QString root, roadmapPath;
     QJsonDocument refusal;
@@ -63,37 +101,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogRender(const QJsonObject &req) {
             // "the store holds no row", the reader re-runs the migration — the
             // one action that cannot help, and the one that writes a second
             // snapshot nothing reads.
-            const QString subject = root.isEmpty() ? roadmapPath : root;
             QString storeErr;
             RoadmapStore *store = roadmapStoreOrNull(nullptr, &storeErr);
-            std::optional<RoadmapStore::ProjectRow> row;
-            if (store && !root.isEmpty()) {
-                const QString canonical = QFileInfo(root).canonicalFilePath();
-                if (!canonical.isEmpty())
-                    row = store->readProjectByRoot(canonical, &storeErr);
-            }
-            env[QStringLiteral("code")] = QStringLiteral("project_not_registered");
-            if (row) {
-                env[QStringLiteral("code")] = QStringLiteral("unsupported_format");
-                env[QStringLiteral("store_row_present")] = true;
-                env[QStringLiteral("store_source_format")] = row->sourceFormat;
-                env[QStringLiteral("error")] = QStringLiteral(
-                    "roadmap_log: render publishes the STORE to the file. “%1” "
-                    "IS registered — the store records format “%2” — but only "
-                    "the ants-v1 dialect is served from the store, so there is "
-                    "no store-side record to publish and its roadmap is read "
-                    "and written as markdown. Re-running roadmap_migrate will "
-                    "not change this; it writes rows no read path consults.")
-                        .arg(subject, row->sourceFormat);
-            } else {
-                env[QStringLiteral("error")] = QStringLiteral(
-                    "roadmap_log: render publishes the STORE to the file, so it "
-                    "needs a store-migrated project — the store holds no row for "
-                    "\"%1\". Run roadmap_migrate first; on a markdown-backed "
-                    "project the file is already the source of truth and there is "
-                    "nothing to publish.")
-                        .arg(subject);
-            }
+            env = rcdetail::rlNotStoreServedRefusal(env, store, root, roadmapPath,
+                QStringLiteral("render publishes the STORE to the file, so it needs a "
+                               "store-served project"),
+                QStringLiteral("Run roadmap_migrate first; on a markdown-backed project "
+                               "the file is already the source of truth and there is "
+                               "nothing to publish."));
             return QJsonDocument(env);
         }
         return refusal;

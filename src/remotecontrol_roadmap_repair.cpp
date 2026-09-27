@@ -106,11 +106,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
         QJsonObject env = refusal.object();
         if (env.value(QStringLiteral("code")).toString()
                 == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("project_not_registered");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: repair_trailers needs a store-migrated project — "
-                "the store holds no row for \"%1\". Run roadmap_migrate first.")
-                    .arg(root.isEmpty() ? roadmapPath : root);
+            QString storeErr;
+            env = rlNotStoreServedRefusal(env, roadmapStoreOrNull(nullptr, &storeErr),
+                                          root, roadmapPath,
+                                          QStringLiteral("repair_trailers needs a store-served project"),
+                                          QStringLiteral("Run roadmap_migrate first."));
             return QJsonDocument(env);
         }
         return refusal;

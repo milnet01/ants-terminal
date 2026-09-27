@@ -229,6 +229,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log repair_trailers and backfill_dates, like render, say when a project is registered but in a roadmap format the store does not serve, instead of claiming the store holds no row for it.** (ANTS-5161)
+
 - **A wrapped note written as its own bullet on a pass-headings item keeps its continuation lines indented under the bullet.** (ANTS-5398)
 
 - **roadmap_log accepts a pass-headings Status line that declares its Lanes mid-line, such as `- **Status**: planned (date). Lanes: a, b.`, instead of refusing it as body_shadowed.** (ANTS-5397)
