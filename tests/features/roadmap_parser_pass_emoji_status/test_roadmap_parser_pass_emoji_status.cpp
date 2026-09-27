@@ -173,3 +173,18 @@ TEST(roadmap_parser_pass_emoji_status, Ants5408FileFlipKeepsDateAndLanes) {
     EXPECT_TRUE(bare.markdown.contains(QStringLiteral("- **Status**: in-progress. Lanes: ui.")))
         << bare.markdown.toStdString();
 }
+
+// ANTS-5398 — a note that is the caller's own bullet is kept as written, but
+// its wrapped continuation lines landed at column 0 while the item's bullets
+// use a two-space indent. They now get the indent a formatted note gets.
+TEST(roadmap_parser_pass_emoji_status, Ants5398CallerBulletContinuationIndented) {
+    using PassHeadingWrite::formatPassNote;
+    using PassHeadingWrite::PassNoteKind;
+    EXPECT_EQ(formatPassNote(QStringLiteral("- Shipped the importer, which now\nreads the late Status line.\n  already indented"),
+                             PassNoteKind::Progress, QStringLiteral("2026-09-27")),
+              QStringLiteral("- Shipped the importer, which now\n  reads the late Status line.\n  already indented"));
+    // The first line is still the caller's, unlabelled.
+    EXPECT_TRUE(formatPassNote(QStringLiteral("- one line"), PassNoteKind::Resolution,
+                               QStringLiteral("2026-09-27"))
+                    == QStringLiteral("- one line"));
+}

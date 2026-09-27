@@ -411,11 +411,14 @@ QString redatePassStatus(const QString &body, const QString &isoDate) {
 QString formatPassNote(const QString &note, PassNoteKind kind,
                        const QString &isoDate) {
     QStringList lines = note.split(QChar('\n'));
-    if (lines.first().startsWith(QStringLiteral("- ")))
-        return note;   // the caller wrote its own bullet
-    const QString label = kind == PassNoteKind::Resolution
-        ? QStringLiteral("Resolution") : QStringLiteral("Progress");
-    lines[0] = QStringLiteral("- **%1** (%2): %3").arg(label, isoDate, lines.first());
+    // The caller wrote its own bullet: its first line is kept as written.
+    // ANTS-5398 — its continuation lines still take the two-space indent
+    // below, or a wrapped note's lines sit at column 0 under the bullet.
+    if (!lines.first().startsWith(QStringLiteral("- "))) {
+        const QString label = kind == PassNoteKind::Resolution
+            ? QStringLiteral("Resolution") : QStringLiteral("Progress");
+        lines[0] = QStringLiteral("- **%1** (%2): %3").arg(label, isoDate, lines.first());
+    }
     for (int k = 1; k < lines.size(); ++k)
         if (!lines.at(k).isEmpty() && !lines.at(k).front().isSpace())
             lines[k] = QStringLiteral("  ") + lines.at(k);

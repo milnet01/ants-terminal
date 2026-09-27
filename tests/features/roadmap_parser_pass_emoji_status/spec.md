@@ -75,3 +75,10 @@ with today's, keeping the rest of the line: `planned (2026-09-02). Lanes:
 security, packaging.` becomes `done (<today>). Lanes: security,
 packaging.`. An undated line keeps its shape. This matches the store route
 (ANTS-5395, ANTS-5404). *Test:* `Ants5408FileFlipKeepsDateAndLanes`.
+
+## ANTS-5398 — a caller's bullet note keeps the item's indent
+
+`formatPassNote` keeps a note that opens with `- ` as the caller's own
+bullet, unlabelled. Its continuation lines not already indented now take
+the two-space indent a labelled note's lines take, so a wrapped note lines
+up under its bullet. *Test:* `Ants5398CallerBulletContinuationIndented`.

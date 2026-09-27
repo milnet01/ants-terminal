@@ -102,7 +102,8 @@ QString insertPassNote(const QString &body, const QString &note);
 enum class PassNoteKind : std::uint8_t { Progress, Resolution };
 // `- **Progress** (<isoDate>): <note>` / `- **Resolution** (...)`, later
 // lines indented two spaces. A note already opening with `- ` is the
-// caller's own bullet and is returned as written.
+// caller's own bullet: its first line is kept as written, and its
+// continuation lines take the same two-space indent (ANTS-5398).
 QString formatPassNote(const QString &note, PassNoteKind kind,
                        const QString &isoDate);
 // Inserts `bullet` directly above the FIRST `- **Status**:` line, where a
