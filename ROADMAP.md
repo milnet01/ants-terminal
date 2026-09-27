@@ -67024,8 +67024,12 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: ci, roadmap.
 
-- 📋 [ANTS-5376] **roadmap_query accepts an array of statuses and takes their union.**
+- ✅ [ANTS-5376] **roadmap_query accepts an array of statuses and takes their union.**
   status:["planned","in-progress"] refuses bad_status today. Accept the array form, or at least say in the refusal hint that `active` means planned plus in-progress.
+  Resolved (2026-09-27): status accepts an array, the union of its
+  elements; an unknown or empty entry refuses bad_status and names it.
+  Both branches share keepStatus. Tests: RoadmapQueryStatusHint Inv3-Inv6.
+  Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Lets a caller ask for several statuses at once instead of being refused.
   Kind: enhancement.
   Source: Album_Builder feedback 2026-09-25.
@@ -67060,8 +67064,11 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: LottoTracker feedback 2026-09-25.
 
-- 📋 [ANTS-5382] **roadmap_query check_sync returns a sample of the drifted lines.**
+- ✅ [ANTS-5382] **roadmap_query check_sync returns a sample of the drifted lines.**
   check_sync gives drift_lines with no content, so judging whether a render is safe takes a dry run, a render and a git diff. Add a capped drift_sample (file vs render) and flag a header-only difference.
+  Resolved (2026-09-27): check_sync adds drift_sample (up to ten
+  {file, render} rows, stable order) and drift_header_only. Tests:
+  RoadmapSourceWitness Ants5382*. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Shows which roadmap lines differ from the store, not just how many.
   Kind: enhancement.
   Source: Snatch feedback 2026-09-25.
