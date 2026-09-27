@@ -67323,8 +67323,10 @@ project. Reported causes are claims until checked in source.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-5475] **mutation_probe counts vitest test files in the baseline and tests in the mutant rows.**
+- ✅ [ANTS-5475] **mutation_probe counts vitest test files in the baseline and tests in the mutant rows.**
   baseline_passed:1 (from 'Test Files 1 passed') against mutant passed:10 failed:1 (from 'Tests N passed'). Parse the same vitest line for both.
+  Resolved (2026-09-27): parseCounts reads vitest/jest counts from the
+  Tests line. Test MutationProbe.Inv2CountParsing.
   **Layman:** The mutation checker compares two different counts on JavaScript tests, so its numbers do not line up.
   Kind: fix.
   Source: MAME_Curator_Ants_MCP_Feedback.md 2026-09-26.
