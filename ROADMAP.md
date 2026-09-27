@@ -66080,6 +66080,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   single TEST(X, Main) harness a skip would mark the whole Main
   Skipped, so the fix is either one TEST per invariant or a counted
   "skipped" line from runMain that is not a failure.
+  Correction (2026-09-27): test_audit_command_rule_trust.cpp is NOT a single
+  TEST(X, Main) harness; it has one TEST per invariant. So the fix is
+  direct: GTEST_SKIP() in testPathCanonicalization, then
+  `if (::testing::Test::IsSkipped()) return;` in
+  TEST(AuditCommandRuleTrust, PathCanonicalization). Told claude-config
+  (session_message 58).
   **Layman:** One test fails on computers that can't make file shortcuts, even though its message says it was skipped.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
@@ -67292,12 +67298,16 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-09-26 triage
 
-- 📋 [ANTS-5467] **roadmap_query honours max_body_bytes on the section and list paths.**
+- ✅ [ANTS-5467] **roadmap_query honours max_body_bytes on the section and list paths.**
   Today max_body_bytes applies to id/ids fetches only; a section or list
   query always emits bodies at the 2000 cap, and that is the path that
   spills. Honour it there, clamped as the targeted path clamps it.
   Reproduced by claude-45 over 26 rows: rows_preview showed bodies far
   above the requested cap.
+  Resolved (2026-09-27): max_body_bytes lowers the list/section cap to
+  [400, 2000], announced when clamped, applied before pagination. Tests:
+  roadmap_query_id_body_cap Ants5467*. Live after an ants-mcpd rebuild
+  and /mcp.
   **Layman:** A roadmap search that returns many items can be told to keep each item's text short.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
