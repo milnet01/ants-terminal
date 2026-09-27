@@ -18988,6 +18988,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   no after_section, plus the 0.9.0-then-0.10.0 order test. It changes
   docs/specs/ANTS-1878's required-field contract, so it waits for that
   amendment and its review-contract gate. Then step 4, the migration.
+  Progress (2026-09-27, 3bad7e79): step 2 done. create_section places a
+  level-2 release title by version with no after_section
+  (docs/specs/ANTS-1878.md § 2.3a, gated loops 5-6), refusing `v`,
+  pre-release and repeated versions as bad_title. Next: step 4, the
+  dry-run-first migration op, CHANGELOG first and tags second, run on
+  Ants Terminal before any other project.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
