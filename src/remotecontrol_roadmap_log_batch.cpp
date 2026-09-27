@@ -11,6 +11,8 @@
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
 #include "readregion.h"   // ANTS-4949 — the shared section-slug ranker
+#include <limits>
+#include <tuple>
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -1209,7 +1211,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     // 1. Required fields.
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
-    const QString afterSection =
+    // ANTS-5315 — derived by § 2.3a when omitted for a level-2 version title.
+    QString afterSection =
         req.value(QStringLiteral("after_section")).toString();
     const QString title =
         req.value(QStringLiteral("title")).toString();
@@ -1222,9 +1225,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     if (callerRaw.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: caller_cwd is required"));
-    if (afterSection.isEmpty())
-        return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: after_section is required"));
     if (!hasLevel)
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: level is required"));
@@ -1287,6 +1287,68 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
 
     // 4. Locate after_section.
     const auto index = RoadmapIndex::buildIndex(markdown);
+
+    // ANTS-5315 — docs/specs/ANTS-1878.md § 2.3a. The version checks run
+    // first, placed or supplied, so bad_title wins over missing_field and
+    // slug_collision wherever both would apply.
+    const QString titleVersion = RoadmapIndex::versionOfTitle(title);
+    if (!titleVersion.isEmpty()) {
+        const QString t = title.trimmed();
+        const bool vPrefix = t.startsWith(QLatin1Char('v'));
+        const int after = (vPrefix ? 1 : 0) + int(titleVersion.size());
+        const bool preRelease = after < t.size() && t.at(after) == QLatin1Char('-');
+        if (vPrefix || preRelease)
+            return rlErr(QStringLiteral("bad_title"),
+                QStringLiteral("roadmap_log: a release title is written %1 with no "
+                               "leading `v` and no pre-release suffix; `-rcN` "
+                               "belongs to the git tag").arg(titleVersion));
+        if (const auto *dup = RoadmapIndex::findByVersion(index, titleVersion))
+            return rlErr(QStringLiteral("bad_title"),
+                QStringLiteral("roadmap_log: section \"%1\" already carries "
+                               "version %2, and roadmap_query version: returns "
+                               "only the first").arg(dup->slug, titleVersion));
+    }
+    bool placedByVersion = false;
+    if (afterSection.isEmpty()) {
+        if (level == 2 && !titleVersion.isEmpty()) {
+            // Versions compare major, minor, patch as numbers; a patch
+            // stream `x` sorts after every numbered patch of its minor.
+            const auto key = [](const QString &v) {
+                const QStringList p = v.split(QLatin1Char('.'));
+                const qint64 patch = p.value(2) == QLatin1String("x")
+                    ? std::numeric_limits<int>::max() : p.value(2).toLongLong();
+                return std::make_tuple(p.value(0).toLongLong(),
+                                       p.value(1).toLongLong(), patch);
+            };
+            const auto want = key(titleVersion);
+            QVector<const RoadmapIndex::Section *> h2;
+            for (const auto &s : index)
+                if (s.level == 2) h2.append(&s);
+            const RoadmapIndex::Section *lower = nullptr;
+            int higherAt = -1;
+            for (int i = 0; i < h2.size(); ++i) {
+                const QString v = RoadmapIndex::versionOfTitle(h2.at(i)->headingText);
+                if (v.isEmpty()) continue;
+                if (key(v) < want) {
+                    if (!lower || key(RoadmapIndex::versionOfTitle(lower->headingText)) < key(v))
+                        lower = h2.at(i);
+                } else if (higherAt < 0 || key(v) < key(RoadmapIndex::versionOfTitle(
+                                                   h2.at(higherAt)->headingText))) {
+                    higherAt = i;
+                }
+            }
+            if (lower)
+                afterSection = lower->slug;
+            else if (higherAt > 0)
+                afterSection = h2.at(higherAt - 1)->slug;
+            placedByVersion = !afterSection.isEmpty();
+        }
+        if (afterSection.isEmpty())
+            return rlErr(QStringLiteral("missing_field"),
+                QStringLiteral("roadmap_log: after_section is required, except "
+                               "for a level-2 release title a place can be "
+                               "derived for"));
+    }
     const RoadmapIndex::Section *sec =
         RoadmapIndex::findBySlug(index, afterSection);
     if (!sec) {
@@ -1514,6 +1576,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
             env[QStringLiteral("ok")]   = true;
             env[QStringLiteral("op")]   = QStringLiteral("create_section");
             env[QStringLiteral("slug")] = newSlug;
+            if (placedByVersion) {                // ANTS-5315 § 2.3a
+                env[QStringLiteral("after_section")]     = afterSection;
+                env[QStringLiteral("placed_by_version")] = true;
+            }
             env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
             // No `line`: a store has no lines — ANTS-3793 INV-2's one declared
             // field difference — and the render, not this op, decides placement.
@@ -1561,6 +1627,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         out["file"]    = QStringLiteral("ROADMAP.md");
         out["line"]    = insertAt + 1;                // 1-based heading line
         out["bytes"]   = previewBytes;
+        if (placedByVersion) {                    // ANTS-5315 § 2.3a
+            out["after_section"]     = afterSection;
+            out["placed_by_version"] = true;
+        }
         return QJsonDocument(out);
     }
 
@@ -1587,6 +1657,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = insertAt + 1;          // 1-based heading line
     out["bytes_written"] = bytesInserted;
+    if (placedByVersion) {                        // ANTS-5315 § 2.3a
+        out["after_section"]     = afterSection;
+        out["placed_by_version"] = true;
+    }
     return QJsonDocument(out);
 }
 

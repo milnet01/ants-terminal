@@ -13,6 +13,8 @@
 #include <cstdio>
 #include "remotecontrol.h"
 #include <QVector>
+#include <utility>
+#include <vector>
 
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -354,4 +356,113 @@ TEST(McpRoadmapLogCreateSection, Ants4848Level2AfterLevel3DoesNotAdoptSiblings) 
     EXPECT_GT(newIdx, subC)
         << "Sub C too: the whole trailing run belongs to Parent, not to the "
            "new section";
+}
+
+// ---------------------------------------------------------------------------
+// INV-11 (ANTS-5315) — docs/specs/ANTS-1878.md § 2.3a. With no after_section,
+// a level-2 version title is placed after the greatest lower version.
+
+namespace {
+
+QString versionRoadmap(const QStringList &headings) {
+    QString md = QStringLiteral("# Test Roadmap\n\n");
+    int n = 9100;
+    for (const QString &h : headings) {
+        md += QStringLiteral("## ") + h + QStringLiteral("\n\n");
+        md += QStringLiteral("- 📋 [ANTS-%1] **Item.**\n  Kind: implement.\n  Source: test.\n\n")
+                  .arg(n++);
+    }
+    return md;
+}
+
+QJsonObject versionReq(const QString &dir, const QString &title) {
+    QJsonObject r = baseReq(dir);
+    r.remove(QStringLiteral("after_section"));
+    r["title"] = title;
+    return r;
+}
+
+// The order the ## headings appear in, as their titles.
+QStringList h2Order(const QString &md) {
+    QStringList out;
+    for (const QString &line : md.split(QLatin1Char('\n')))
+        if (line.startsWith(QStringLiteral("## ")))
+            out << line.mid(3);
+    return out;
+}
+
+}  // namespace
+
+TEST(McpRoadmapLogCreateSection, Ants5315PlacedByVersion) {
+    struct Case { QStringList before; QStringList after; const char *slug; };
+    const Case cases[] = {
+        {{"0.9.0 — A"}, {"0.9.0 — A", "0.10.0 — New"}, "0-9-0-a"},
+        {{"0.9.0 — A", "0.11.0 — C"}, {"0.9.0 — A", "0.10.0 — New", "0.11.0 — C"}, "0-9-0-a"},
+        {{"Unscheduled", "0.11.0 — C"}, {"Unscheduled", "0.10.0 — New", "0.11.0 — C"}, "unscheduled"},
+    };
+    for (const Case &c : cases) {
+        QTemporaryDir dir;
+        writeRoadmap(dir.path(), versionRoadmap(c.before));
+        RemoteControl rc(nullptr);
+        const QJsonObject out = rc.cmdRoadmapLogCreateSectionForTest(
+            versionReq(dir.path(), QStringLiteral("0.10.0 — New"))).object();
+        ASSERT_TRUE(out["ok"].toBool()) << out["error"].toString().toStdString();
+        EXPECT_EQ(h2Order(readRoadmap(dir.path())), c.after)
+            << c.before.join(QStringLiteral(" | ")).toStdString();
+        EXPECT_EQ(out["after_section"].toString(), QString::fromUtf8(c.slug));
+        EXPECT_TRUE(out["placed_by_version"].toBool());
+    }
+}
+
+TEST(McpRoadmapLogCreateSection, Ants5315UnplaceableStillNeedsAfterSection) {
+    for (const auto &c : std::vector<std::pair<QStringList, QString>>{
+             {{"0.11.0 — C"}, QStringLiteral("0.10.0 — New")},   // lowest higher is first
+             {{"0.9.0 — A"}, QStringLiteral("Not a release")}}) { // no version title
+        QTemporaryDir dir;
+        writeRoadmap(dir.path(), versionRoadmap(c.first));
+        RemoteControl rc(nullptr);
+        EXPECT_EQ(rc.cmdRoadmapLogCreateSectionForTest(versionReq(dir.path(), c.second))
+                      .object()["code"].toString(),
+                  QStringLiteral("missing_field")) << c.second.toStdString();
+    }
+}
+
+TEST(McpRoadmapLogCreateSection, Ants5315VersionTitlesRefused) {
+    for (const QString &title : {QStringLiteral("v0.10.0 — X"),
+                                 QStringLiteral("0.10.0-rc1 — X"),
+                                 QStringLiteral("0.9.0 — Again"),      // ## duplicate
+                                 QStringLiteral("0.9.1 — Again")}) {   // ### duplicate
+        for (bool supplied : {false, true}) {
+            QTemporaryDir dir;
+            writeRoadmap(dir.path(),
+                         versionRoadmap({QStringLiteral("0.9.0 — A")}) +
+                             QStringLiteral("### 0.9.1 — Hotfix\n\n"));
+            RemoteControl rc(nullptr);
+            QJsonObject req = versionReq(dir.path(), title);
+            if (supplied) req["after_section"] = QStringLiteral("0-9-0-a");
+            EXPECT_EQ(rc.cmdRoadmapLogCreateSectionForTest(req).object()["code"].toString(),
+                      QStringLiteral("bad_title"))
+                << title.toStdString() << (supplied ? " (supplied)" : " (derived)");
+        }
+    }
+    // A repeated title is a version repeat first, so bad_title beats slug_collision.
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), versionRoadmap({QStringLiteral("0.9.0 — A")}));
+    RemoteControl rc(nullptr);
+    EXPECT_EQ(rc.cmdRoadmapLogCreateSectionForTest(versionReq(dir.path(), QStringLiteral("0.9.0 — A")))
+                  .object()["code"].toString(),
+              QStringLiteral("bad_title"));
+}
+
+TEST(McpRoadmapLogCreateSection, Ants5315SuppliedAfterSectionAddsNoPlacementKeys) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), versionRoadmap({QStringLiteral("0.9.0 — A"),
+                                             QStringLiteral("0.11.0 — C")}));
+    RemoteControl rc(nullptr);
+    QJsonObject req = versionReq(dir.path(), QStringLiteral("0.10.0 — New"));
+    req["after_section"] = QStringLiteral("0-9-0-a");
+    const QJsonObject out = rc.cmdRoadmapLogCreateSectionForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool()) << out["error"].toString().toStdString();
+    EXPECT_FALSE(out.contains(QStringLiteral("placed_by_version")));
+    EXPECT_FALSE(out.contains(QStringLiteral("after_section")));
 }

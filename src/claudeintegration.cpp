@@ -14076,7 +14076,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     afterSectionProp["description"] = QStringLiteral(
                         "Required under op:\"create_section\": slug of "
                         "an existing ## / ### heading. The new heading "
-                        "is inserted at this section's end. Also "
+                        "is inserted at this section's end. ANTS-5315 — "
+                        "optional for a level-2 release title such as "
+                        "\"0.10.0 — Theme\": omitted, it is placed after "
+                        "the greatest lower version and the reply carries "
+                        "after_section with placed_by_version:true. Also "
                         "op:\"move_section\"'s destination (ANTS-4958).");
                     QJsonObject beforeSectionProp;
                     beforeSectionProp["type"] = "string";

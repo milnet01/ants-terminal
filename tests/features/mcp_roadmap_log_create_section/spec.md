@@ -33,6 +33,12 @@ Part of **ANTS-1878**. Full design + invariants live in
 - **INV-10** `bad_intro` regex `^#{1,6}\s` — positive (`## stray`) +
   negative (`#1234 ref`) cases.
 
+- **INV-11** (ANTS-5315) derived release placement per
+  `docs/specs/ANTS-1878.md` § 2.3a — `Ants5315*` cases: placed after the
+  greatest lower version; unplaceable titles still `missing_field`; `v`,
+  pre-release and repeated versions `bad_title` placed or supplied, ahead
+  of `slug_collision`; no placement keys on a supplied `after_section`.
+
 ## Method
 
 `QTemporaryDir` holds a synthetic `ROADMAP.md` per test. The test
