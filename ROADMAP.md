@@ -66048,6 +66048,37 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-report-2026-09-27.
   Lanes: chrome.
 
+- 📋 [ANTS-5480] **VerifyTrustGate MD-1 and MD-2 check the trust dialog by grepping its source.**
+  tests/features/verify_trust_gate slices src/verifytrustmodal.cpp from a
+  function name and greps for strings. A behaviour-neutral refactor
+  (ANTS-5479) failed both. Now that VerifyTrust::buildPromptBox exists,
+  assert on the built box: its informative text has a Gates line and its
+  checkbox starts checked. Found by a testing.md field pass (section 3).
+  **Layman:** Two checks on the trust dialog read its code as text, so moving code around breaks them even when the dialog is fine.
+  Kind: test.
+  Source: field-pass-testing-md-2026-09-27.
+  Lanes: chrome.
+
+- 📋 [ANTS-5481] **The vt_throughput benchmark can only fail on a crash by default.**
+  tests/perf/bench_vt_throughput.cpp gates on ANTS_PERF_MIN_MBPS, an
+  absolute MB/s floor that is off unless set. testing.md section 5 wants a
+  comparison against a stored baseline at a ratio. Consider recording the
+  last CSV and failing on a drop past a set fraction.
+  **Layman:** The speed test never flags a slowdown unless someone types in a number by hand.
+  Kind: test.
+  Source: field-pass-testing-md-2026-09-27.
+  Lanes: perf.
+
+- 📋 [ANTS-5482] **A host-can't-symlink condition in audit_command_rule_trust reports FAIL while saying skipped.**
+  testPathCanonicalization spells a host-keyed skip as
+  expect(false, "... test skipped ..."); return;. testing.md section 7 wants
+  the framework's skip. The single TEST(X, Main) harness makes GTEST_SKIP
+  hide every other invariant, so settle how to skip one invariant first.
+  **Layman:** One test fails on computers that can't make file shortcuts, even though its message says it was skipped.
+  Kind: test.
+  Source: field-pass-testing-md-2026-09-27.
+  Lanes: audit.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
