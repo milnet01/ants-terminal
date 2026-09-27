@@ -67240,8 +67240,11 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
 
-- 📋 [ANTS-5398] **A wrapped note that opens with a list marker gets a continuation indent on a pass-headings item.**
+- ✅ [ANTS-5398] **A wrapped note that opens with a list marker gets a continuation indent on a pass-headings item.**
   RetroDB, PASS-53-2 store-route annotate: rlWrapNote wraps at ~70 columns, and the continuation lines start at column 0 while the item's own bullets use a 2-space indent. Markdown still reads it as one bullet (lazy continuation), so nothing breaks. When the note's first line starts with `- `, indent the rest by two spaces. Low priority.
+  Resolved (2026-09-27, fb5f3f4a): formatPassNote keeps a caller's `- `
+  first line as written and indents its unindented continuation lines by
+  two spaces. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Keeps a long roadmap note lined up with the item's other bullet points.
   Kind: enhancement.
   Source: RetroDB message 2026-09-26.
