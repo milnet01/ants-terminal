@@ -13,3 +13,8 @@ width below what their labels need.
 
 *Test:* `test_verify_trust_modal_buttons_fit.cpp` builds the real dialog,
 shows it off-screen and compares each button's width with its size hint.
+
+INV-1 failed only on Qt 6.4 (CI's ubuntu-24.04). There `QMessageBox`
+re-files "Show Details..." in `showEvent`, and the stylesheet's
+`QDialogButtonBox QPushButton { min-width }` resets that button's minimum.
+Reproduce it in `tools/qt62-guard.sh --job build-test`'s container.

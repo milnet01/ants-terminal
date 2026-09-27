@@ -6,6 +6,7 @@
 #include "guithread.h"
 
 #include <QCheckBox>
+#include <QEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -17,6 +18,29 @@
 namespace VerifyTrust {
 
 namespace {
+
+// ANTS-5479 — a button's floor is its own size hint, so QMessageBox grows
+// to fit the label instead of squeezing it.
+void floorButton(QPushButton *b) {
+    b->setMinimumWidth(b->sizeHint().width());
+}
+
+// Restores a button's floor after it changes parent. Qt 6.4 (CI's
+// ubuntu-24.04) re-files "Show Details..." in showEvent, and the stylesheet's
+// `QDialogButtonBox QPushButton { min-width }` resets its minimum on the way.
+// The ParentChange arrives after that reset and before showEvent sizes the
+// box.
+class ButtonFloorFilter : public QObject {
+public:
+    using QObject::QObject;
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() == QEvent::ParentChange) {
+            if (auto *b = qobject_cast<QPushButton *>(watched))
+                floorButton(b);
+        }
+        return false;
+    }
+};
 
 // First-gate command preview, capped at this many chars + ellipsis.
 constexpr int kCommandPreviewChars = 200;
@@ -152,8 +176,11 @@ PromptControls buildPromptBox(QMessageBox &box,
     // ANTS-5479 — QMessageBox caps its width and squeezed these buttons
     // below their labels. A floor per button makes the box grow instead.
     // Runs after setDetailedText, which adds the "Show Details..." button.
-    for (QPushButton *b : box.findChildren<QPushButton *>())
-        b->setMinimumWidth(b->sizeHint().width());
+    auto *floors = new ButtonFloorFilter(&box);
+    for (QPushButton *b : box.findChildren<QPushButton *>()) {
+        floorButton(b);
+        b->installEventFilter(floors);
+    }
     return {bTrustSha, bTrustRepo, reprompt};
 }
 

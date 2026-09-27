@@ -231,6 +231,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The verify.json trust dialog shows "Show Details..." in full on Qt 6.4 too (Ubuntu 24.04).** (ANTS-5479)
+
 - **roadmap_log repair_trailers and backfill_dates, like render, say when a project is registered but in a roadmap format the store does not serve, instead of claiming the store holds no row for it.** (ANTS-5161)
 
 - **A wrapped note written as its own bullet on a pass-headings item keeps its continuation lines indented under the bullet.** (ANTS-5398)
