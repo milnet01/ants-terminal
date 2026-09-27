@@ -1240,9 +1240,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // ANTS-1289 — verify_changes. It shells out to per-gate build/test
     // commands (verifyengine.cpp waitForFinished), which would freeze the GUI
     // for the gate timeout; ANTS-2132 dispatches it off the GUI thread.
+    // ANTS-5464 — on the Bulk lane: its trust prompt may wait minutes for
+    // the user, and only the Bulk worker should wait with it.
     sink.registerToolProvider("verify_changes",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdVerifyChanges));
+        rcDelegate(rc, &RemoteControl::cmdVerifyChanges, ClaudeIntegration::DispatchLane::Bulk));
 
     // ANTS-1290 — plan_template.
     sink.registerToolProvider("plan_template",

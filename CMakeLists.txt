@@ -686,6 +686,10 @@ add_library(ants_mcpcore_lib STATIC
     # Here rather than in the executable so a test can call the uid checks.
     src/mcpdsocket.cpp
     src/mcpdforwarder.cpp
+    # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust, and the
+    # terminal's answer. Both window-free.
+    src/mcpdtrustclient.cpp
+    src/verifytrustprompt.cpp
     # ANTS-5340 — the build line `ants-mcpd --version` prints, and the lookup
     # Help → About uses to find and ask the binary Claude Code launches.
     src/mcpdversion.cpp
@@ -2251,6 +2255,8 @@ if(ANTS_TESTS)
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
                 # ANTS-4932 — ants-mcpd, run as a child process.
                 tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
+                # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.
+                tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
                 # ANTS-5340 — the About dialog's ants-mcpd version line.
                 tests/features/mcpd_about_version/test_mcpd_about_version.cpp
                 # MC-5 — ants-mcpd never wires a VerifyTrust client into its
@@ -3014,6 +3020,7 @@ if(ANTS_TESTS)
                         tests/features/mcp_tabspecific_contract/test_mcp_tabspecific_contract.cpp
                         tests/features/mcpd_about_version/test_mcpd_about_version.cpp
                         tests/features/mcpd_verify_trust_wiring/test_mcpd_verify_trust_wiring.cpp
+                        tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>"
         ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")

@@ -13,6 +13,7 @@
 #include "config.h"
 #include "debuglog.h"
 #include "mcpdforwarder.h"
+#include "mcpdtrustclient.h"
 #include "mcpdversion.h"
 #include "mcpprojection.h"
 #include "mcpspill.h"
@@ -21,7 +22,6 @@
 #include "rootprovider.h"
 #include "secureio.h"
 #include "tokenusageengine.h"
-#include "verifytrust.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -94,9 +94,10 @@ int main(int argc, char **argv) {
     // ANTS-1337 — verify_changes is served here, so it needs the trust gate
     // the terminal wires too. Without a client, VerifyEngine honours a repo's
     // .ants/verify.json unconditionally. There is no window to prompt from,
-    // so the file-backed client answers Headless for any SHA not already in
-    // verify-trust.json, and the engine falls back to auto-detect.
-    rc.setVerifyTrustClient(std::make_unique<VerifyTrust::FilePersistedTrustClient>());
+    // so ANTS-5464 asks the running terminal to prompt, and trusts only what
+    // then lands in verify-trust.json. With no terminal the answer is
+    // Headless and the engine falls back to auto-detect.
+    rc.setVerifyTrustClient(std::make_unique<mcpd::ForwardingTrustClient>());
     rc.setMcpVerbVocabularyProvider(
         [&pipeline] { return pipeline.registeredToolNames(); });
 

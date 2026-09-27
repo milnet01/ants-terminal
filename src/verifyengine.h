@@ -89,6 +89,15 @@ struct VerifyReport {
     bool              verifyUntrusted = false;
 };
 
+// ANTS-5464 — the anchored read of `<projectPath>/.ants/verify.json` that
+// loadGateConfig and the terminal's trust-prompt handler share. False when
+// the file is absent, resolves outside the root (INV-4), or is unreadable.
+bool readAnchoredConfig(const QString &projectPath, QByteArray *raw);
+
+// The `.ants/verify.json` parser loadGateConfig uses. Empty on a parse
+// error, which also sets `*parseError`.
+QList<GateConfig> parseGateConfig(const QByteArray &raw, bool *parseError);
+
 // Load `.ants/verify.json` if it exists and passes the INV-4
 // path-traversal guard; otherwise auto-detect per § 2.5. On total
 // failure (malformed config, no detectable build system) returns

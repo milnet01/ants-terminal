@@ -27,6 +27,7 @@
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "gitwrap.h"           // ANTS-4999 — readOnlyEnvironment for git probes
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
+#include "verifytrustprompt.h" // ANTS-5464
 #include "branchchip.h"           // ANTS-1109 helper
 #include "clipboardguard.h"       // ANTS-1014 clipboard funnel
 #include "dialogfocus.h"          // ANTS-1050 helper
@@ -1148,6 +1149,17 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // "Trust this repo". RemoteControl takes ownership.
     m_remoteControl->setVerifyTrustClient(
         std::make_unique<VerifyTrust::ModalClient>(this));
+    // ANTS-5464 — ants-mcpd has no window, so it asks here; the same client
+    // decides, from this process's own read of the config. Runs on the Bulk
+    // worker, beside verify_changes, which uses the same client.
+    if (m_claudeIntegration) {
+        m_claudeIntegration->setVerifyTrustPromptHandler(
+            [this](const QJsonObject &params) {
+                return VerifyTrust::answerPromptRequest(
+                    params, m_remoteControl ? m_remoteControl->verifyTrustClient()
+                                            : nullptr);
+            });
+    }
     // ANTS-2132 § 2.7 — the socket's routes with an off-thread MCP twin run on
     // the MCP dispatch worker, so a --remote search no longer freezes the
     // window and RemoteControl's roadmap store stays on one thread (ANTS-5073,

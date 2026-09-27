@@ -87,7 +87,9 @@
         "src/verifytrust.cpp",
         "src/verifytrust.h",
         "src/verifytrustmodal.cpp",
-        "src/verifytrustmodal.h"
+        "src/verifytrustmodal.h",
+        "src/verifytrustprompt.cpp",
+        "src/verifytrustprompt.h"
       ]
     },
     {
@@ -238,6 +240,8 @@
         "src/mcpdmain.cpp",
         "src/mcpdsocket.cpp",
         "src/mcpdsocket.h",
+        "src/mcpdtrustclient.cpp",
+        "src/mcpdtrustclient.h",
         "src/mcpdversion.cpp",
         "src/mcpdversion.h"
       ]

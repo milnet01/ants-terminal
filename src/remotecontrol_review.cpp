@@ -15,6 +15,7 @@
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
 #include "verifyengine.h"
+#include "verifytrust.h"
 #include "gitwrap.h"
 #include "debuglog.h"
 #include <QTimeZone>
@@ -2072,8 +2073,14 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     }
 
     // Step 10 — miss path. runVerify takes (root, opts) and re-calls
-    // loadGateConfig internally; the second call is silent for
-    // already-decided SHAs (spec § 2.1 rationale).
+    // loadGateConfig internally. ANTS-5464 — a Headless answer is not
+    // cached, so a second lookup after one would prompt again in the same
+    // call (a second dialog, or a second wait on the terminal). A lookup
+    // that did not trust the config is therefore not repeated: denying is
+    // always safe. A trusted one keeps the real client, so a file changed
+    // in between is checked again.
+    VerifyTrust::AlwaysDenyClient alreadyDecided;
+    if (probedUntrusted) opts.trustClient = &alreadyDecided;
     preGateMs = wall.elapsed();
     const VerifyEngine::VerifyReport rep =
         VerifyEngine::runVerify(root, opts);

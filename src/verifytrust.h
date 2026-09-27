@@ -128,6 +128,11 @@ protected:
                             const QString &shaHex,
                             const QByteArray &configBytes);
 
+    // True when the trust file, re-read if it changed, holds `shaHex` or a
+    // repo pin for `projectPath` that covers it. ANTS-5464 — a subclass
+    // whose prompt ran in another process checks the outcome here.
+    bool isTrustedNow(const QString &projectPath, const QString &shaHex);
+
 private:
     bool loadFromDisk();
     bool saveToDisk() const;

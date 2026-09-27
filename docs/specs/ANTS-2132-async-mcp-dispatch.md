@@ -577,11 +577,14 @@ where `offThread` is true, so a `TabSpecific` verb stays on the GUI thread
 whichever lane it names. `postToolDispatch` posts to the entry's lane. Socket
 worker routes (§ 2.7) stay on the shared lane.
 
-**Which verbs.** `roadmap_migrate` only. Its handler opens its own
-`Access::Bulk` store connection (ANTS-3855 § 2.2) and reads no `RemoteControl`
-cache, so it shares no in-process state with the shared worker. Its one
-`MainWindow` read, `ants::resolveCallerCwdRoot`, marshals through `onGuiThread`
-as it does on the shared lane (§ 2.5).
+**Which verbs.** `roadmap_migrate` and `verify_changes`. The first opens its
+own `Access::Bulk` store connection (ANTS-3855 § 2.2) and reads no
+`RemoteControl` cache, so it shares no in-process state with the shared worker.
+Its one `MainWindow` read, `ants::resolveCallerCwdRoot`, marshals through
+`onGuiThread` as it does on the shared lane (§ 2.5). `verify_changes` joined it
+with ANTS-5464, because its trust prompt can wait minutes for the user. Its
+cache, in-flight gate and trust client are read by no other verb or socket
+route.
 
 **What now overlaps, and the busy guard.** A roadmap write sent during a
 migration no longer waits in the queue behind it. Unguarded, it could land
@@ -760,12 +763,13 @@ still run one at a time, in arrival order.
   bulk verb has not returned; release it and assert both replies were written.
   Breaks if `postToolDispatch` ignores the entry's lane: the shared call queues
   behind the blocked one and gets no reply.
-- **INV-20** *(amendment, 2026-09-17 — ANTS-5086)* — `roadmap_migrate` is
-  registered on `DispatchLane::Bulk`, and no other verb is. *Test:*
-  `tests/features/mcp_verb_offthread_guard/` — scrape `src/mainwindow.cpp` for
-  `DispatchLane::Bulk` and assert exactly one occurrence, inside the
-  `roadmap_migrate` registration. Breaks if the registration keeps plain
-  `rcDelegate(`: the scrape finds none.
+- **INV-20** *(amendment, 2026-09-17 — ANTS-5086; widened by ANTS-5464)* —
+  `roadmap_migrate` and `verify_changes` are registered on
+  `DispatchLane::Bulk`, and no other verb is. *Test:*
+  `tests/features/mcp_verb_offthread_guard/` — scrape the registration table
+  for `DispatchLane::Bulk` and assert exactly two occurrences, one inside each
+  of those registrations. Breaks if either keeps plain `rcDelegate(`: the
+  scrape finds too few.
 - **INV-21** *(amendment, 2026-09-17 — ANTS-5086)* — A root held exclusively
   refuses every writer `roadmap_busy` and writes nothing; a root with a live
   shared hold refuses a migration `roadmap_busy` once the wait expires. *Test:*
@@ -848,7 +852,8 @@ lanes share it.
   serialised worker delivers the whole of the reported symptom. The bulk lane
   (§ 2.10) is not a thread per verb: it serialises its own verbs and carries
   one verb that shares no in-process state with the shared worker.
-- **Other long verbs on the bulk lane.** § 2.10 moves `roadmap_migrate` only.
+- **Other long verbs on the bulk lane.** § 2.10 moves `roadmap_migrate` and
+  `verify_changes` only.
   A slow `roadmap_log` render still queues on the shared lane; its cost is
   ANTS-4681.
 - **Moving the MCP server itself onto a worker thread** — rejected. It would

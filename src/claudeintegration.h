@@ -365,6 +365,15 @@ public:
     // ANTS-4932 — serverInfo.name in the initialize reply.
     void setServerName(const QString &name) { m_serverName = name; }
 
+    // ANTS-5464 § 2.1 — answers `ants/verifyTrustPrompt` (not a tool). It
+    // runs on the Bulk worker and may block there while a prompt is open; its
+    // return value is the reply's `result`. A host with none answers -32601.
+    using VerifyTrustPromptHandler =
+        std::function<QJsonObject(const QJsonObject &params)>;
+    void setVerifyTrustPromptHandler(VerifyTrustPromptHandler handler) {
+        m_verifyTrustPromptHandler = std::move(handler);
+    }
+
     // ANTS-1404 — return the classification for `toolName`. Static
     // table inside claudeintegration.cpp. ANTS-1520 flipped the
     // fall-through default to Required so a new tool fails CLOSED:
@@ -760,6 +769,7 @@ private:
     QSet<QString> m_forwardedTools;
     Forwarder m_forwarder;
     QString m_serverName = QStringLiteral("ants-terminal");
+    VerifyTrustPromptHandler m_verifyTrustPromptHandler;   // ANTS-5464
     // ANTS-1253: per-tool providers consolidated into a single
     // name-keyed registry. See registerToolProvider() above.
     // ANTS-1419: value type carries the per-tool CallerCwdContract

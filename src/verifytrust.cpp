@@ -70,26 +70,9 @@ QString FilePersistedTrustClient::sha256Hex(const QByteArray &bytes) {
 Decision FilePersistedTrustClient::outcomeForConfig(
         const QString &projectPath,
         const QByteArray &configBytes) {
-    reloadIfChanged();
     const QString shaHex = sha256Hex(configBytes);
-
-    // SHA match wins immediately.
-    if (m_trustedShas.contains(shaHex)) {
+    if (isTrustedNow(projectPath, shaHex)) {
         return {Outcome::Trusted, shaHex};
-    }
-
-    // Repo match — honour the SHA-pin contract.
-    const auto it = m_trustedRepos.find(projectPath);
-    if (it != m_trustedRepos.end()) {
-        if (!it->untilShaChanges) {
-            // Trust this repo forever, regardless of edits.
-            return {Outcome::Trusted, shaHex};
-        }
-        if (it->shaHex == shaHex) {
-            return {Outcome::Trusted, shaHex};
-        }
-        // Repo trusted but SHA changed — fall through to prompt;
-        // user re-confirms the new SHA.
     }
 
     // Session-cache short-circuit: if the user already declined this
@@ -107,6 +90,21 @@ Decision FilePersistedTrustClient::outcomeForConfig(
         m_sessionDenied.insert(shaHex, true);
     }
     return d;
+}
+
+bool FilePersistedTrustClient::isTrustedNow(const QString &projectPath,
+                                            const QString &shaHex) {
+    reloadIfChanged();
+
+    // SHA match wins immediately.
+    if (m_trustedShas.contains(shaHex)) return true;
+
+    // Repo match — honour the SHA-pin contract. A trusted repo whose SHA
+    // changed is not trusted: the user re-confirms the new SHA.
+    const auto it = m_trustedRepos.constFind(projectPath);
+    if (it == m_trustedRepos.cend()) return false;
+    // untilShaChanges=false trusts this repo forever, regardless of edits.
+    return !it->untilShaChanges || it->shaHex == shaHex;
 }
 
 Decision FilePersistedTrustClient::prompt(const QString &projectPath,

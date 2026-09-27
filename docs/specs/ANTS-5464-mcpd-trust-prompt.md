@@ -100,6 +100,12 @@ This item moves `verify_changes` to `DispatchLane::Bulk` in
 `mcp::registerProjectScopedVerbs`. So in both hosts a pending prompt holds
 only the Bulk worker. The main thread and the Shared worker keep answering.
 
+`verify_changes` loads the config twice in one call: once to decide, and
+again inside `runVerify`. A first load that did not trust the config is
+not repeated: the second load denies. So one call asks at most once. A
+trusted first load keeps the real client, so a file changed in between is
+checked again.
+
 On a timeout the terminal's dialog stays open. A later click still saves
 the trust. ANTS-5411 carries it to `ants-mcpd` on its next call.
 

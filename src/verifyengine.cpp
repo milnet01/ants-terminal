@@ -367,6 +367,19 @@ QString gateKey(GateName g) {
     return gateName(g);
 }
 
+bool readAnchoredConfig(const QString &projectPath, QByteArray *raw) {
+    const QString cfgPath = projectPath + QStringLiteral("/.ants/verify.json");
+    if (!QFileInfo::exists(cfgPath)) return false;
+    // INV-4: reject configs that resolve outside the project root.
+    if (!pathStrictlyBelow(cfgPath, QFileInfo(projectPath).canonicalFilePath()))
+        return false;
+    return readFile(cfgPath, raw);
+}
+
+QList<GateConfig> parseGateConfig(const QByteArray &raw, bool *parseError) {
+    return parseVerifyJson(raw, parseError);
+}
+
 QList<GateConfig> loadGateConfig(const QString &projectPath,
                                  QString *configSourceOut,
                                  VerifyTrust::Client *trustClient,
@@ -378,64 +391,55 @@ QList<GateConfig> loadGateConfig(const QString &projectPath,
         if (verifyUntrustedOut) *verifyUntrustedOut = v;
     };
 
-    const QFileInfo rootInfo(projectPath);
-    const QString rootCanon = rootInfo.canonicalFilePath();
-    const QString cfgPath =
-        projectPath + QStringLiteral("/.ants/verify.json");
-    QFileInfo cfgInfo(cfgPath);
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
 
-    if (cfgInfo.exists()) {
-        // INV-4: reject configs that resolve outside the project root.
-        if (!pathStrictlyBelow(cfgPath, rootCanon)) {
-            // Fall through to auto-detect (treat as "no config").
-        } else {
-            QByteArray raw;
-            if (readFile(cfgPath, &raw)) {
-                bool parseErr = false;
-                QList<GateConfig> gates = parseVerifyJson(raw, &parseErr);
-                if (parseErr) {
-                    setSource(QStringLiteral("bad_config"));
-                    return {};
-                }
-                if (!gates.isEmpty()) {
-                    // ANTS-1337 — trust gate. When a client is
-                    // wired, the bespoke config is honoured only if
-                    // the SHA is trusted. Untrusted falls back to
-                    // auto-detect AND surfaces verifyUntrusted=true
-                    // in the report so the caller knows why the
-                    // bespoke commands were skipped.
-                    if (trustClient) {
-                        const auto decision =
-                            trustClient->outcomeForConfig(rootCanon, raw);
-                        if (decision.outcome ==
-                            VerifyTrust::Outcome::Trusted) {
-                            setSource(QStringLiteral(".ants/verify.json"));
-                            return gates;
-                        }
-                        // Untrusted / Headless → fall through to
-                        // auto-detect with the untrusted flag set.
-                        setUntrusted(true);
-                        QList<GateConfig> auto_ = autoDetect(projectPath);
-                        if (auto_.isEmpty()) {
-                            setSource(QStringLiteral("auto (untrusted-bespoke)"));
-                            return {};
-                        }
-                        setSource(QStringLiteral("auto (untrusted-bespoke)"));
-                        return auto_;
-                    }
-                    // Back-compat: no client → honour unconditionally
-                    // (Phase 1; Phase 2 wires the client through
-                    // cmdVerifyChanges).
+    // A config that is absent, outside the root or unreadable falls through
+    // to auto-detect, as if there were none.
+    QByteArray raw;
+    if (readAnchoredConfig(projectPath, &raw)) {
+        bool parseErr = false;
+        QList<GateConfig> gates = parseVerifyJson(raw, &parseErr);
+        if (parseErr) {
+            setSource(QStringLiteral("bad_config"));
+            return {};
+        }
+        if (!gates.isEmpty()) {
+            // ANTS-1337 — trust gate. When a client is
+            // wired, the bespoke config is honoured only if
+            // the SHA is trusted. Untrusted falls back to
+            // auto-detect AND surfaces verifyUntrusted=true
+            // in the report so the caller knows why the
+            // bespoke commands were skipped.
+            if (trustClient) {
+                const auto decision =
+                    trustClient->outcomeForConfig(rootCanon, raw);
+                if (decision.outcome ==
+                    VerifyTrust::Outcome::Trusted) {
                     setSource(QStringLiteral(".ants/verify.json"));
                     return gates;
                 }
-                // Valid JSON but no usable gates — treat as "none"
-                // rather than fall through (INV-1: explicit config
-                // wins, including the choice to configure nothing).
-                setSource(QStringLiteral(".ants/verify.json"));
-                return {};
+                // Untrusted / Headless → fall through to
+                // auto-detect with the untrusted flag set.
+                setUntrusted(true);
+                QList<GateConfig> auto_ = autoDetect(projectPath);
+                if (auto_.isEmpty()) {
+                    setSource(QStringLiteral("auto (untrusted-bespoke)"));
+                    return {};
+                }
+                setSource(QStringLiteral("auto (untrusted-bespoke)"));
+                return auto_;
             }
+            // Back-compat: no client → honour unconditionally
+            // (Phase 1; Phase 2 wires the client through
+            // cmdVerifyChanges).
+            setSource(QStringLiteral(".ants/verify.json"));
+            return gates;
         }
+        // Valid JSON but no usable gates — treat as "none"
+        // rather than fall through (INV-1: explicit config
+        // wins, including the choice to configure nothing).
+        setSource(QStringLiteral(".ants/verify.json"));
+        return {};
     }
 
     QList<GateConfig> auto_ = autoDetect(projectPath);

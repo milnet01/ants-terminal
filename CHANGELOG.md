@@ -167,6 +167,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Trusting a project's own check commands works again for Claude Code sessions served by ants-mcpd** (ANTS-5464)
+  When `verify_changes` meets an untrusted `.ants/verify.json`, ants-mcpd
+  now asks the running terminal, which shows its trust dialog. A grant
+  counts only once it is in the trust file; with no terminal the old
+  fallback applies at once. One call asks at most once, and other MCP
+  calls keep being answered while the dialog is open.
+  Needs one terminal relaunch, then an MCP reconnect.
+
 - **A project trusted or un-trusted in the terminal now takes effect in running Claude sessions without reconnecting the MCP** (ANTS-5411)
 
 - **ants-mcpd answers every request a client sent before closing its input, including ones forwarded to the terminal** (ANTS-5320)

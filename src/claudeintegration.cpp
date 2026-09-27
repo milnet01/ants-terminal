@@ -8,6 +8,7 @@
 #include "mcpprojection.h"
 #include "mcpspill.h"          // ANTS-2094 — result offload
 #include "secureio.h"
+#include "verifytrustprompt.h"  // ANTS-5464 — the method name
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -17115,6 +17116,25 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     ctx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
                 finishToolDispatch(ctx, transformReply(ctx, responseText));
                 return;
+            } else if (method == QLatin1String(VerifyTrust::kPromptMethod)
+                       && m_verifyTrustPromptHandler) {
+                // ANTS-5464 § 2.2 — not a tool. The handler may hold a prompt
+                // open, so it runs on the Bulk worker: the GUI thread and the
+                // Shared worker keep serving (INV-9). The reply is written
+                // from the GUI thread, like every other.
+                const QJsonObject params = request.value("params").toObject();
+                if (postWorkerJob([this, guard, reqId, params,
+                                   handler = m_verifyTrustPromptHandler]() {
+                        const QJsonObject r = handler(params);
+                        QMetaObject::invokeMethod(this, [guard, reqId, r]() {
+                            sendMcpResponse(guard, reqId, &r, nullptr);
+                        }, Qt::QueuedConnection);
+                    }, DispatchLane::Bulk))
+                    return;
+                error["code"] = -32000;
+                error["message"] = QStringLiteral(
+                    "%1: too many MCP calls are already in flight; retry shortly")
+                    .arg(method);
             } else {
                 // JSON-RPC -32601 = Method not found
                 error["code"] = -32601;

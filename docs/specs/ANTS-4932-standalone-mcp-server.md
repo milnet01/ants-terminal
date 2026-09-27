@@ -354,6 +354,11 @@ failed peer check closes the connection. Either way, with no acceptable
 terminal left the forwarded verb answers `no_terminal`, and its `error` names
 the uid check.
 
+**One non-tool method.** The socket also carries `ants/verifyTrustPrompt`,
+which `ants-mcpd` sends to have the terminal prompt for trust in a project's
+`.ants/verify.json`. It makes the same two checks first. It is absent from
+`tools/list` in both hosts ([ANTS-5464](ANTS-5464-mcpd-trust-prompt.md)).
+
 ### 2.6 Socket ownership
 
 ANTS-5144 INV-3 means a live path is never taken over: whichever process binds
