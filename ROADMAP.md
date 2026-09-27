@@ -67347,8 +67347,12 @@ project. Reported causes are claims until checked in source.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-5478] **find_definition returns zero definitions at its file-walk cap without saying what it did not reach.**
+- ✅ [ANTS-5478] **find_definition returns zero definitions at its file-walk cap without saying what it did not reach.**
   On a RetroArch tree: definitions:[] with files_scanned:5000, walk_capped:true, while workspace_search found it at once. Scan without a file cap as workspace_search does, and on a capped walk with zero results name the unreached top-level directories and point at workspace_search. (The reporter's correction withdrew the declared-source-root premise.)
+  Resolved (2026-09-27): a capped walk reports walk_stopped_in,
+  walk_unreached and, with no definitions, a workspace_search hint. The
+  uncapped-scan half (an rg prefilter) was not done; file it if the hint
+  proves insufficient.
   **Layman:** Looking up where a function is defined can wrongly say nowhere on a very large project.
   Kind: fix.
   Source: RetroArch_Ants_MCP_Feedback.md 2026-09-26 (with its correction).
