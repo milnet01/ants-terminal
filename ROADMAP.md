@@ -87009,13 +87009,17 @@ contributors don't duplicate research.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (filed at the blast-radius exit).
   Lanes: verify, docs.
 
-- 📋 [ANTS-5466] **roadmap_migrate's backup_to replaces any existing file at the path it is given.**
+- ✅ [ANTS-5466] **roadmap_migrate's backup_to replaces any existing file at the path it is given.**
   `RoadmapStore::snapshotTo` removes whatever file sits at `destPath` before
   renaming the new snapshot into place. `backup_to` is deliberately not
   confined to a project (`cmdRoadmapMigrate` says why: the store is
   machine-global). So a model passing a wrong `backup_to` deletes that file.
   Proposed: replace an existing destination only if it is a SQLite
   database; otherwise refuse `backup_failed` and name the file.
+  Resolved (2026-09-27): snapshotTo replaces a file at the destination
+  or its .partial only if it carries the SQLite header (an empty
+  .partial is cleared); anything else refuses backup_failed naming the
+  file. Test RoadmapMigrateBackup.Inv9.
   **Layman:** A roadmap backup pointed at the wrong path can delete an unrelated file.
   Kind: security.
   Source: in-session-2026-09-26 (writer-verb survey for the claude-45 session).
