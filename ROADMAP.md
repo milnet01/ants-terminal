@@ -49857,6 +49857,11 @@ are closed inline in the feedback files rather than filed here.
 
   The key belongs in the catalogue at docs/standards/mcp-config-keys.md
   with the other MCP keys.
+  Decided by the user 2026-09-27: the weekly backup job records its
+  destination (a dest= line in its backup record), and the snapshot-dir
+  key defaults to that recorded folder, falling back to beside the
+  store. Needs a gated amendment to docs/specs/ANTS-3794 § 2.4's
+  three-line record format first.
   **Layman:** Let the safety copy taken before a migration live on the games drive with the other backups, instead of in your home folder.
   Kind: enhancement.
   Source: in-session-2026-09-20, user decision.
@@ -51823,6 +51828,11 @@ are closed inline in the feedback files rather than filed here.
   are defensible and the store cannot currently tell them apart, because
   it does not record that the item was ever absent. That is the missing
   state, and it needs settling before any code moves.
+  Decided by the user 2026-09-27: an item absent from the file means
+  DELETED. The next migrate/publish removes it from the store (history
+  keeps the record) instead of re-emitting it. Touches the migrate load
+  contract (ANTS-3765) and ANTS-4487, so a spec amendment and its gate
+  come first.
   **Layman:** Items removed from the roadmap are kept in the database, and rewriting the file puts every one of them back.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
@@ -66973,6 +66983,10 @@ project. Reported causes are claims until checked in source.
   Options: address mail by project root as well as export_slug, keeping
   a mailbox row for an unregistered root; or keep a deregistered
   project's mailbox alive.
+  Decided by the user 2026-09-27: keep a deregistered project's mailbox
+  alive so it can still receive messages. Look first for a way that
+  needs no schema change; if none exists, come back before bumping
+  kSchemaVersion (it locks older builds out).
   **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
   Kind: enhancement.
   Source: in-session-2026-09-25.
