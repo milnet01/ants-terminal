@@ -420,6 +420,16 @@ your paths.
 **§ 1.4's run-more-rather-than-less does not reach this**: condition 2 is
 proof, not uncertainty.
 
+### 7.1 A tree that already passed
+
+**A hook may skip a tip whose exact tree a full local run already passed on
+this machine.** The record is a file named for the tree's hash under
+`<git common dir>/ants-gate-passed/`, written only after a full run, never a
+documentation-only one. The tree covers every file, the gate script
+included, so any change misses and the gate runs. The hook says which
+record it skipped on. `githooks/pre-push` does this; `cut-release` Phase 2b
+writes the record, so a release push does not run the pipeline twice.
+
 ## 8. Anti-patterns
 
 - **A hand-written `ci-local.sh` the workflow does not call.** § 3. It
