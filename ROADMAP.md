@@ -67302,15 +67302,22 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions (2026-09-27 triage)
 
-- 📋 [ANTS-5473] **session_message's unknown_project refusal names no candidate slugs.**
+- ✅ [ANTS-5473] **session_message's unknown_project refusal names no candidate slugs.**
   op:send to "doom_ants" refused unknown_project; the slug was "doom-ants". Add candidates[] (nearest registered slugs), as roadmap_log does for an unknown section.
+  Resolved (2026-09-27): unknown_project carries candidates[] from
+  RoadmapStore::slugCandidates. Test SessionMessage.Ants5473. The
+  '-'/'_' auto-routing half was not done: a suggestion is safer than
+  delivering to a guessed project.
   **Layman:** When a message is sent to a misspelt project name, the refusal should suggest the right one.
   Kind: enhancement.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: mcp.
 
-- 📋 [ANTS-5474] **roadmap_log amend_intro reports replaced_intro_chars as the whole old intro.**
+- ✅ [ANTS-5474] **roadmap_log amend_intro reports replaced_intro_chars as the whole old intro.**
   A one-line amend returned replaced_intro_chars:1771, the old intro's full length. Report the matched span (e.g. matched_chars) on amend_intro; keep replaced_intro_chars for set_intro.
+  Resolved (2026-09-27): replaced_intro_chars counts the matched
+  old_text on amend_intro. Test
+  RoadmapLogSetIntro.Ants5373AmendIntroKeepsTheRest.
   **Layman:** Editing one line of a section intro reports as if the whole intro was replaced.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-26.
@@ -67323,8 +67330,11 @@ project. Reported causes are claims until checked in source.
   Source: MAME_Curator_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: mcp.
 
-- 📋 [ANTS-5476] **spec_log append_loop inserts after the first table segment when a blank line splits the loop log.**
+- ✅ [ANTS-5476] **spec_log append_loop inserts after the first table segment when a blank line splits the loop log.**
   Header, separator, row 1, blank line, rows 2..12: the new row landed after row 1, reported only as row_order:"ambiguous". Treat a continuation block of the same column count as the same table, or refuse naming both candidate lines.
+  Resolved (2026-09-27): rows after a blank line with the header's
+  column count continue the loop log; a second table does not. Test
+  McpSpecLog.Ants5476.
   **Layman:** A review log row can be written into the middle of the log instead of at its end.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-26.
