@@ -1,6 +1,6 @@
 # ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. **Built 2026-09-08** — `Request::maxNotes`, `run()`'s clamp, `notes_summary` and the echoed `max_notes` shipped as specified, with INV-10's third leg proved red against a stubbed `setNotes()` before the code was restored. No contract changed at implementation. **Amended 2026-09-27** — § 2.1, § 2.4, § 2.5, § 3 and § 7 for ANTS-5247 (the snapshot folder) and ANTS-5287 (deleted items); these change direction, so the gate runs before the build.
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. **Built 2026-09-08** — `Request::maxNotes`, `run()`'s clamp, `notes_summary` and the echoed `max_notes` shipped as specified, with INV-10's third leg proved red against a stubbed `setNotes()` before the code was restored. No contract changed at implementation. **Amended 2026-09-27** — § 2.1, § 2.4, § 2.5, § 3 and § 7 for ANTS-5247 (the snapshot folder) and ANTS-5287 (deleted items); gated by review-contract loops 8–9, capped; ready to implement.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
@@ -245,7 +245,8 @@ SEAM — RoadmapMigrateVerb::run(storePath, req)
  7. opts = { changedAt: <one stamp>, projectRoot: root, dryRun: req.dryRun,
             acceptDeletions: req.acceptDeletions }
  8. out  = RoadmapMigrateLoad::load(store, plan, opts)
-                                                      // out.ok false -> migrate_failed
+                                                      // out.ok false, mass_deletion note -> mass_deletion
+                                                      // out.ok false otherwise -> migrate_failed
  9. envelope from `out`, plus `project_id` from step 6's `owner` when it is set
 ```
 
@@ -534,12 +535,16 @@ store" puts the snapshot on the system drive. The user decided the order:
 Rungs 2 and 3 name a folder; the file in it is `pre-migrate.sqlite`, which
 stays outside the weekly job's `roadmap-*.sqlite` prune glob. **A snapshot to
 rung 2 or 3 that fails is retaken beside the store**, so a migration never
-fails for want of a folder. It refuses `backup_failed` only when that retake
-fails too. `backup_path_source` reports the rung used: `backup_to`, `config`,
+fails for want of a folder. **A rung-2 or rung-3 folder that does not already
+exist counts as a failure**: it is never created, because a folder on an
+unmounted drive would be recreated on the system drive and the snapshot would
+land there with no fallback reported. It refuses `backup_failed` only when
+the retake fails too, and that refusal carries `backup_fallback` as well. `backup_path_source` reports the rung used: `backup_to`, `config`,
 `backup_record` or `beside_store`. After a fallback, `backup_fallback` carries
 the folder tried and its error.
 
-`RoadmapBackupHealth::snapshotDest(configDir, stateDir)` owns rungs 2 and 3:
+`RoadmapBackupHealth::snapshotDest(configDir, stateDir)`, in
+`ants_roadmapstore_lib` beside `assess()`, owns rungs 2 and 3:
 it returns the folder and its source (`config`, `backup_record`, or empty
 when neither is set). The handler passes the config key and the state
 directory and copies the result into `Request::snapshotDir` and
@@ -755,9 +760,8 @@ wrote from one it matched — so both are collected where the decision is made,
 never re-derived by the verb.
 
 **`updated_items_truncated` is not a third member.** The verb derives it from
-what it was handed — true exactly when `items_updated` exceeds the array's
-length — and a stored bool would be a second answer to a question those two
-values already settle.
+`Outcome::updatedItemsDropped`, the count of entries the cap dropped: true
+exactly when it is above zero (`src/roadmapmigrateverb.cpp`).
 
 **Only `sectionsUnchanged` joins ANTS-3765 INV-13's dry-run/real-run
 comparison**, which compares the two `Outcome`s "count by count, excluding
@@ -808,6 +812,7 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 | 6 | either lookup fails with an SQL error (distinct from "no row") | `store_failed` |
 | 6 | the slug belongs to a different root, or a re-run changes this root's slug | `slug_collision` |
 | 6 | a re-run changes this root's `project_name` | `bad_args` |
+| 6b | the snapshot fails: an explicit `backup_to`, or the retake beside the store after a rung-2/3 failure (§ 2.4) | `backup_failed`, with `backup_fallback` when a rung was tried first |
 | 8 | `load()` refuses with a `mass_deletion` note — it would delete more than a quarter of the project's stored items and `accept_deletions` is not set (ANTS-5287) | `mass_deletion`, with `items_deleted`, `items_stored`, `deleted_ids` and `deleted_ids_truncated`; no `notes` |
 | 8 | `load()` returns `ok == false` for any other reason — including a lock timeout | `migrate_failed`, `error` = `Outcome::error`, `notes` carried |
 
@@ -1146,7 +1151,8 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   names the rung used. *Test:* `roadmap_migrate_backup`, `run()` driven
   directly with `Request::snapshotDir` set, four legs: a writable folder is
   used; an empty `snapshotDir` lands beside `storePath`; an unwritable folder
-  falls back beside `storePath` and says so in `backup_fallback`; an explicit
+  falls back beside `storePath` and says so in `backup_fallback`; a folder
+  that does not exist falls back the same way and is not created; an explicit
   unwritable `backup_to` still refuses `backup_failed`. The order of rungs 2
   and 3 is a unit test of `RoadmapBackupHealth::snapshotDest(configDir,
   stateDir)`, three legs: both set (config wins, source `config`), record only
@@ -1364,10 +1370,12 @@ remaining legs against the declared-but-unimplemented seam.
   `docs/standards/mcp-config-keys.md` gains `claude.roadmap_snapshot_dir`.
   [ANTS-3794](ANTS-3794-roadmap-store-backup.md) § 2.4's snapshot record gains
   `dest=`: the absolute canonical folder of the last SUCCESSFUL weekly
-  snapshot. Written on success only and kept across a failed run, exactly as
-  `success=` is, so a failure never points the migration at a bad folder.
-  `docs/standards/mcp-error-codes.md` gains `mass_deletion`. The schema gains
-  `backup`, `backup_to` (both shipped with ANTS-4499 and never listed here) and
+  snapshot. Like `success=`, it is always written, empty until the first
+  success, set on success and carried across a failed run, so the record
+  becomes four lines. `snapshotDest()` reads an empty value as unset, as
+  `assess()` does.
+  `docs/standards/mcp-error-codes.md` gains `mass_deletion`. The schema
+  already declares `backup` and `backup_to` (ANTS-4499); it gains
   `accept_deletions`; the description names `items_deleted`, `deleted_ids`,
   `backup_path_source` and `backup_fallback`.
   `tests/features/roadmap_migrate_backup/spec.md` INV-8 narrows: a failed
@@ -1382,6 +1390,7 @@ remaining legs against the declared-but-unimplemented seam.
 
 | Loop | Date | Lanes | Findings (C/H/M/L/I) | Resolution |
 |---|---|---|---|---|
+| 9 (cap) | 2026-09-27 | 2 cold `review-lane`, same brief, packet and scrubbed copy rebuilt from disk after loop 8, line count re-measured; both lanes held every question | **Q1 1 · Q2 2 · Q3 2 · Q4 0** — verified 5, dismissed 0; 1 out-of-radius fixed at the cap | **Five verified, five fixed. CAP REACHED (2 for a spec); ships.** `dest=` pinned as always written and empty until the first success, read empty-as-unset; § 2.5 gains the 6b `backup_failed` row, which INV-4's fixture builds from; § 2.3's step-8 comment now maps `mass_deletion` separately; the schema already declared `backup`/`backup_to` (`src/claudeintegration.cpp`), so only `accept_deletions` is new; a rung-2/3 folder that does not exist is never created (an unmounted drive would be recreated on the system drive) and counts as a failure, with an INV-15 leg. Out of radius, fixed at the cap: § 2.4's `updated_items_truncated` paragraph contradicted the one above it; the code derives it from `updatedItemsDropped`, so the stale one now says so. Open questions settled by grep: `roadmap_migrate` is registered in `src/mcptoolregistry.cpp` (served by ants-mcpd), and `roadmapbackuphealth.cpp` is in `ants_roadmapstore_lib`. **Final-loop own-fix share: 2 of 5** (`dest=` wording and the 6b step, both loop 8's). Calm. **Whole-run span share: 7 of 11** in commit facf6e13's changed lines. No tail. |
 | 8 | 2026-09-27 | 2 cold `review-lane`, identical shared-context file (brief-core + spec overlay + packet of 12 source windows), scrubbed copy; both lanes held every question | **Q1 0 · Q2 1 · Q3 4 · Q4 1** — verified 6, dismissed 0 | **Six verified, six fixed. First loop of a NEW run, gating the ANTS-5247 (snapshot folder) and ANTS-5287 (deleted items) amendments, commit facf6e13.** Both lanes: nothing could falsify config-before-record (Q4) — `RoadmapBackupHealth::snapshotDest(configDir, stateDir)` now owns rungs 2-3 with a three-leg unit test; the seam `Request` and step 7 lacked `acceptDeletions` and the snapshot fields (Q2; `backup`/`backup_to` had shipped undeclared too); `items_stored` had no source and a refused run's ids were unspecified (Q3) — sourced from ANTS-3765's new `itemsStored` and `deleted_item` notes, and the refusal carries no `notes` so the only-`migrate_failed` sentence holds. Q3: `dest=` meaning pinned (absolute canonical, success-only, kept across failures); "beside the store" pinned to `run()`'s `storePath` directory so a temp-store test cannot write the real one. Lane open questions folded: `backup_fallback` shape, `deleted_ids_truncated` in the response block, § 6 routes for INV-15/16, and the two pre-amendment sentences in § 2.4 now point at the amendment. Lanes disclosed commit subjects naming this gate. |
 | 7 (cap) | 2026-09-08 | 3 cold `review-lane`, identical brief, packet and scrubbed copy rebuilt from disk after loop 6's fixes, line count re-measured | **Q1 1 · Q2 2 · Q3 3 · Q4 0** — verified 6, dismissed 1 | **Six verified, six fixed. Cap reached (2 loops for a spec); no deferred findings.** **CORRECTION TO ROW 6, which this run owes rather than edits:** that row states verified 8 / fixed 8. The true loop-6 figure was **verified 9, fixed 8**. Two lanes reported that § 2.4's tail still read "one object per `RoadmapMigrate::Note`"; the orchestrator confirmed the quotation, then omitted it from the fix batch and reconciled the row from recall instead of off the ledger — the one thing 4d's reconciliation exists to catch. All three lanes of THIS loop found it again, which is the cold re-read doing its job, and it is fixed here. **The rest of the loop is the new fields' second-order surface, and all three lanes converged on the sharpest of it:** `max_notes` was declared in § 2.1 and had no route to the code that applies it — § 2.1.1's `Request` carries five members, § 2.3 constructs it positionally, and the cap is applied inside `run()`, which § 6 says is the ONLY thing the tests drive. So INV-10's own new leg was unwritable, and two implementers would have produced two different `run()` signatures. Fixed by adding `maxNotes` to `Request`, passing it at step 0b, and naming `run()` as the clamp site so a direct seam caller is bounded identically. **One lane each for two more, both this amendment's own collateral:** § 2.4's "Four envelope values do not come from `Outcome`, and none of them is a tally" — `notes_summary` is a fifth and IS a tally, and left unstated it reads as an `Outcome` member that would join ANTS-3765 INV-13's count comparison; and INV-10's `*Test:*` routing line still enumerated two legs and said "Both", so a test author building from it would have shipped the whole ANTS-4559 contract with no coverage. **Two lane open questions settled rather than left:** the envelope now echoes the EFFECTIVE `max_notes` (a caller passing 5000 could not otherwise learn it received 2000), and the ~4 MiB ceiling is stated as deliverable VIA THE OFFLOAD PATH — `claude.mcp_offload_large_results` defaults true at a 16 KiB threshold, so no second byte cap is added here. **Dismissed on materiality (1):** `op`'s "see § 2.8" dangles — § 2 ends at § 2.6 — but the deregister op shipped and no one builds differently; routed to `check-doc-facts`, which owns broken cross-references. **Cap verdict — HIGH share, read as COMPLETION rather than oscillation, and the numbers are here so a reader can disagree:** 5 of this loop's 6 findings landed on text this run wrote or invalidated. What separates it from oscillation is their kind — loop 6 settled WHAT the two fields are, loop 7 settled how one REACHES the code, who echoes it, what the enumeration says and what the test asserts. That surface is now closed, and no finding in this loop repaired a loop-6 repair. **Second share (gate vs audit):** 11 of the run's 15 verified findings fall inside 1c's recorded span — the § 2.4 + INV-10 amendment — so this run gated far more than it audited. **Collateral, fixed in the same change:** `tests/features/roadmap_migrate_verb/spec.md` gains the third test leg. Doc 1154 → 1187 lines. **Next reviewer is the implementation**, per the spec cap's own rationale. |
 | 6 | 2026-09-08 | 3 cold `review-lane`, one byte-stable shared-context file, scrubbed copy, packet carrying 6 source windows + the Vestige measurement | **Q1 1 · Q2 5 · Q3 2 · Q4 0** — verified 8, dismissed 0 | **Eight verified, eight fixed. Loop 1 of a NEW run, gating the 2026-09-08 `notes[]` amendment (§ 2.4 + INV-10, for ANTS-4559) which adds `notes_summary` and `max_notes`.** The amendment was armed by a MEASUREMENT rather than by a report: `roadmap_migrate` dry-run on Vestige returned 442 note groups against a 200-row cap, of which 438 were `quarantined_id` at `count: 1` — so 242 ids were dropped, and § 2.4's justification ("A project exceeding 200 has a systemic problem the first 200 notes already describe") was false for any code whose `detail` is unique per occurrence. **All three lanes independently found the same four defects**, every one of them on text the amendment created or invalidated. **The worst is the argument table**: § 2.1 declares eight arguments and states that `additionalProperties: false` makes an undeclared argument a refusal, so an implementer building the schema from it would have shipped a verb that refuses every call passing `max_notes` — the escape hatch the amendment exists to add, unreachable, while INV-10 requires a run under a raised `max_notes`. Also three-lane: the enumerated envelope block omitted `notes_collapsed` (shipped with ANTS-4649) and `notes_summary`, in the block the document itself calls "the one place that claims to enumerate the envelope"; "carries all three fields" on the `migrate_failed` path, already wrong before this amendment and now naming none of five; and the ~400 KiB array bound plus § 4's "capped at 200", both derived at a cap that is now a default, understating the ceiling tenfold in the section an implementer sizes a memory budget against. **One lane each for the remaining two, and both are the sharp kind.** INV-10 asserted the per-row counts sum to `notes_count` UNCONDITIONALLY while the same invariant's new fixture truncates by design — this loop's own collateral, and it would have redded a correct implementation. And § 2.3's step 0b shows the stamp and the `run()` call with no `transient_root` guard, though § 2.5's refusal table assigns that code to step 0b and INV-14 requires it in the handler: pre-existing, and the guard is the one stopping a scratchpad being registered in a machine-global store. INV-4's "Two rows are out of the fixture's reach" was wrong by the same count. **Two lane open questions became findings rather than being answered**: `updated_items`' cap is documented "on `notes[]`'s pattern" and the two have now diverged (it takes no override), and § 6's fixture paragraph was never extended for INV-10's new leg, which needs >200 UNIQUE-detail notes — a repetitive fixture collapses to a handful of rows and passes without exercising anything. **One open question resolved clean** (whether `notes_summary` is emitted under `compact` when empty — `compact`'s documented behaviour already drops empty objects, so nothing is invented), counted nowhere. **1b yield: zero** — every citation windowed, none defective. **Collateral, fixed in the same change:** `tests/features/roadmap_migrate_verb/spec.md` restates INV-10 and carried the same unconditional sum clause. Doc 1120 → 1154 lines. |

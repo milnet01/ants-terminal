@@ -157,7 +157,7 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/ants-terminal/roadmap-backup-<job>.state
 
 `<job>` is `snapshot` (`tools/roadmap-store-backup.sh`) or `export`
 (`tools/roadmap-export-publish.sh`). The file holds three `key=value`
-lines:
+lines, and the `snapshot` record a fourth, `dest=` (ANTS-5247):
 
 ```
 attempt=2026-09-21T00:36:32Z
@@ -169,7 +169,10 @@ error=
 - `attempt` is set on every run that got past the lock.
 - `success` changes only on success. `error` is emptied on success and
   set, flattened to one line, on failure.
-- All three keys are always written. A value not yet set is empty, and
+- `dest=` is the absolute canonical `DEST_DIR` of the last successful
+  snapshot. Like `success`, it is set on success and carried across a
+  failed run. ANTS-3855 § 2.4 reads it for the pre-migration snapshot.
+- Every key a job writes is always written. A value not yet set is empty, and
   `assess()` reads an empty value as absent.
 - Written temp-then-`mv`, so a reader never sees half a file.
 
@@ -324,7 +327,8 @@ timer that is disabled or lost.
   `tests/features/roadmap_backup_health`, injected `nowUtc` either side
   of `kStaleAfterSecs`, a failing record, a missing record.
 - **INV-12** — `tools/roadmap-store-backup.sh` writes the `snapshot`
-  record with the same rules as INV-9. Breaks if the snapshot script
+  record with the same rules as INV-9, `dest=` included: set to the
+  canonical `DEST_DIR` on success, kept on failure. Breaks if the snapshot script
   exits without writing it. *Test:*
   `tests/features/roadmap_export_publish`, which also drives the
   snapshot script against a temporary store.

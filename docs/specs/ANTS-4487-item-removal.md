@@ -123,6 +123,13 @@ unreachable by any argument, which is the opposite of reversible.
 
 ### 4.3 Orphaning keeps its name and states what it is
 
+**Superseded by ANTS-5287 (2026-09-27), decided by the user and gated in
+ANTS-3765 § 2.7:** an item absent from the source is DELETED on the next
+`roadmap_migrate`, with a mass-deletion guard, so removing a bullet and
+re-migrating is a removal path. `orphaned_item` now names only an item kept
+because another row references it, or kept by a `keepAbsent` load. The text
+below is the earlier design, kept as the record.
+
 The word stays, because the behaviour it names — retain, re-file, report — is
 what ANTS-3765 § 2.7 requires and is correct. What changes is that the note is
 no longer silent about its own limits. The migration response gains a sentence
@@ -374,7 +381,9 @@ Label: `features`.
 ## 8. Alternatives considered (and rejected)
 
 **Exclude orphaned items from the render, so reverting the file becomes the
-removal path.** The reporter's third remedy. Rejected: it makes a git revert
+removal path.** The reporter's third remedy. Rejected here, then taken in a
+stronger form by ANTS-5287, which deletes the item instead (§ 4.3). The
+original reasoning: it makes a git revert
 silently destructive, and it contradicts ANTS-3765 § 2.7's INV-4, which
 requires an absent item to be retained and re-filed. Renaming the concept was
 considered instead and also rejected — the behaviour is correct, so § 4.3
@@ -420,7 +429,9 @@ would refuse legitimate sibling items, a worse failure than the one fixed.
 ## 11. Cross-doc impact
 
 - `docs/specs/ANTS-3765-roadmap-migration-load.md` — § 2.7 gains a pointer to
-  the `dropped` route, since it is the section that states orphaning retains.
+  the `dropped` route, for an item decided against. Since ANTS-5287 that
+  section deletes an item removed from the source, so the pointer does not
+  cover an item filed by mistake.
 - `docs/standards/roadmap-format.md` — the `dropped` status gains its render
   and query consequences.
 - `docs/standards/mcp-error-codes.md` — five new refusal codes:
