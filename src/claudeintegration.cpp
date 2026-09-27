@@ -3412,7 +3412,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "the MIDDLE, where a resume plan sits) while a wide "
                         "id-set stays payload-bounded. Pass this to override. "
                         "Ignored on list / section / section_index paths, "
-                        "which always emit at the 2000 cap (ANTS-3402).");
+                        "which always emit at the 2000 cap (ANTS-3402). "
+                        "ANTS-5477 — when a targeted reply would be offloaded, "
+                        "its bodies are shortened with the elision marker until "
+                        "it fits, and it carries `bodies_shrunk_to_fit` plus "
+                        "`max_body_bytes_effective`. A single id asked for by "
+                        "size is exempt: it still spills, so read_spill reaches "
+                        "the middle.");
                     props["max_body_bytes"] = maxBodyProp;
                     // ANTS-4904 — read a progress-log bullet's TAIL.
                     QJsonObject fromEndProp;

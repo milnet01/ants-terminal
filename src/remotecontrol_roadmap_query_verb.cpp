@@ -626,6 +626,41 @@ bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
     return true;
 }
 
+// ANTS-5477 — shorten, then spill. A targeted fetch whose reply would be
+// offloaded lost every body to the spill preview, though the caller had
+// already bounded the rows. Re-elide the bodies with the same marker until the
+// reply fits under the offload threshold; if it still does not fit at the
+// floor, leave it for the spill. Headroom covers what the dispatcher appends
+// after this (read hints, the etag nudge). Returns the cap applied, or 0.
+constexpr int kFitHeadroomBytes = 1024;
+constexpr int kFitMinBodyCap    = 400;
+
+int rcShrinkBodiesToFit(QJsonObject &out, int cap, bool fromEnd) {
+    const qint64 budget = mcp::offloadThresholdBytes() - kFitHeadroomBytes;
+    auto size = [&] {
+        return qint64(QJsonDocument(out).toJson(QJsonDocument::Compact).size());
+    };
+    qint64 bytes = size();
+    if (bytes < budget) return 0;
+    QJsonArray bullets = out.value(QStringLiteral("bullets")).toArray();
+    int applied = 0;
+    while (bytes >= budget && cap > kFitMinBodyCap) {
+        int longBodies = 0;
+        for (const auto &v : std::as_const(bullets))
+            if (v.toObject().value(QStringLiteral("body")).toString().size()
+                > kFitMinBodyCap)
+                ++longBodies;
+        if (longBodies == 0) break;
+        cap = qMax(kFitMinBodyCap,
+                   cap - int((bytes - budget) / longBodies) - 64);
+        rcCapBodyFields(bullets, cap, fromEnd);
+        out[QStringLiteral("bullets")] = bullets;
+        applied = cap;
+        bytes = size();
+    }
+    return applied;
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-1247-INV-1
@@ -1038,6 +1073,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const bool bodyCapClamped =
         req.value(QStringLiteral("max_body_bytes")).isDouble()
         && req.value(QStringLiteral("max_body_bytes")).toInt() != idBodyCap;
+    // ANTS-5477 — shorten a targeted reply's bodies before it spills. Not on
+    // a single id asked for by size: ANTS-4630 made the spill the route to
+    // the middle of a long body there.
+    auto shrinkToFit = [&](QJsonObject &out) {
+        if (!mcp::offloadRequested(req)) return;
+        if (singleIdFetch && reqBodyCap > 0) return;
+        const int cap = rcShrinkBodiesToFit(
+            out, idBodyCap,
+            req.value(QStringLiteral("body_from_end")).toBool(false));
+        if (cap > 0) {
+            out["bodies_shrunk_to_fit"]      = true;
+            out["max_body_bytes_effective"] = cap;
+        }
+    };
 
     // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
     // verbatim from the dispatch lambda (NOT type-gated there) so
@@ -3105,6 +3154,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         if (hasModeArg) out["mode"] = mode;
         if (hasIncludeBodyArg) out["include_body"] = includeBody;
+        shrinkToFit(out);   // ANTS-5477
         // ANTS-1646 — surface duplicate-id descriptors (cache is the
         // full-file array, so they are current) when the same id was
         // seen on more than one bullet — exactly the case an id fetch
@@ -3271,6 +3321,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (!m_roadmapCacheDuplicateIds.isEmpty()) {
             out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
         }
+        shrinkToFit(out);   // ANTS-5477
         return QJsonDocument(out);
     }
 

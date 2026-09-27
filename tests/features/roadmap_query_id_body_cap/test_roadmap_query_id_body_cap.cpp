@@ -7,6 +7,7 @@
 // default, making the raised cap inert. This test locks the behaviour.
 
 #include "../../_support/expect.h"
+#include "mcpspill.h"
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
@@ -703,4 +704,103 @@ TEST(roadmap_query_id_body_cap, Ants4981ClampIsAnnounced) {
     ASSERT_TRUE(asked.value(QStringLiteral("ok")).toBool());
     EXPECT_FALSE(asked.contains(QStringLiteral("body_cap_clamped")))
         << "a cap applied as asked adds no key";
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-5477 — shorten, then spill. Six ids at max_body_bytes:5000 came back
+// offloaded with no bodies at all (Pressless feedback 2026-09-26). On a
+// targeted fetch the offload now waits until the bodies have been shortened
+// with the elision marker and the reply still does not fit.
+
+namespace {
+
+QJsonObject sixIdRequest(const QString &root, bool offload) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    QJsonArray ids;
+    for (int i = 0; i < 6; ++i) ids.append(QStringLiteral("ANTS-%1").arg(7800 + i));
+    req[QStringLiteral("ids")]            = ids;
+    req[QStringLiteral("include_body")]   = true;
+    req[QStringLiteral("max_body_bytes")] = 5000;
+    if (offload) req[QStringLiteral("offload")] = true;
+    return req;
+}
+
+}  // namespace
+
+// ANTS-5477a — an ids fetch that would spill shrinks its bodies to fit instead.
+TEST(roadmap_query_id_body_cap, Ants5477IdsFetchShrinksBodiesToFit) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithNLongBullets(6)));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapQuery(sixIdRequest(tmp.path(), /*offload*/ true)).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+
+    const qint64 bytes =
+        QJsonDocument(resp).toJson(QJsonDocument::Compact).size();
+    EXPECT_LT(bytes, mcp::offloadThresholdBytes())
+        << "the reply is " << bytes << " bytes; the spill fires at "
+        << mcp::offloadThresholdBytes();
+    EXPECT_TRUE(resp.value(QStringLiteral("bodies_shrunk_to_fit")).toBool())
+        << "a shortened reply must say it was shortened";
+
+    const QJsonArray bullets = resp.value(QStringLiteral("bullets")).toArray();
+    ASSERT_EQ(bullets.size(), 6);
+    for (const auto &v : bullets) {
+        const QJsonObject o = v.toObject();
+        const QString body = o.value(QStringLiteral("body")).toString();
+        EXPECT_FALSE(body.isEmpty())
+            << o.value(QStringLiteral("id")).toString().toStdString()
+            << " lost its body; shortening must keep every row's";
+        EXPECT_TRUE(body.contains(QStringLiteral("[body elided")))
+            << "a shortened body carries the elision marker";
+        EXPECT_TRUE(o.value(QStringLiteral("body_truncated")).toBool());
+    }
+}
+
+// ANTS-5477b — with no offload coming, nothing is shortened.
+TEST(roadmap_query_id_body_cap, Ants5477NoShrinkWhenNothingWouldSpill) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithNLongBullets(6)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = sixIdRequest(tmp.path(), /*offload*/ false);
+    req[QStringLiteral("offload")] = false;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(resp.contains(QStringLiteral("bodies_shrunk_to_fit")));
+    for (const auto &v : resp.value(QStringLiteral("bullets")).toArray()) {
+        EXPECT_FALSE(v.toObject().value(QStringLiteral("body")).toString()
+                         .contains(QStringLiteral("[body elided")))
+            << "a ~3 K body under a 5000 cap is returned whole";
+    }
+}
+
+// ANTS-5477c — a single id asked for past the store cap is left to spill:
+// ANTS-4630 made that the route to a long body's middle.
+TEST(roadmap_query_id_body_cap, Ants5477SingleIdExplicitCapStillReachesTheMiddle) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()),
+                          roadmapWithMiddleSentinelBody(1000)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = tmp.path();
+    req[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("include_body")]   = true;
+    req[QStringLiteral("max_body_bytes")] = 200000;
+    req[QStringLiteral("offload")]        = true;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(resp.contains(QStringLiteral("bodies_shrunk_to_fit")));
+    EXPECT_TRUE(bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                          QStringLiteral("ANTS-7777"))
+                    .contains(QStringLiteral("MIDSENTINEL")))
+        << "shortening here would remove the only route to the middle";
 }

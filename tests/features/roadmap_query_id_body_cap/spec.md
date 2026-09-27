@@ -113,3 +113,14 @@ the 2000 floor, or lowered to the id-count ceiling), an id or ids fetch that
 returns bodies carries `body_cap_clamped:true` and `max_body_bytes_effective`.
 A cap applied as asked adds neither key. *Test:*
 `roadmap_query_id_body_cap.Ants4981ClampIsAnnounced`.
+
+## ANTS-5477 — a targeted reply shortens its bodies before it spills
+
+When the result offload is on for the call, an id or ids fetch whose reply
+would reach the offload threshold re-elides its bodies, with the same marker,
+until the reply fits. It then carries `bodies_shrunk_to_fit:true` and
+`max_body_bytes_effective`, and only a reply that still does not fit at the
+floor spills. INV-7's 2000 floor holds when offload is off. A single id asked
+for with `max_body_bytes` is left to spill, since that is ANTS-4630's route
+to the middle of a long body. *Tests:* the three `Ants5477*` cases in
+`test_roadmap_query_id_body_cap.cpp`.

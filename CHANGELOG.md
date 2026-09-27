@@ -175,6 +175,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap_query id or ids fetch shortens its bodies to fit instead of spilling them all.** (ANTS-5477)
+  When a targeted reply would be offloaded, each body is trimmed with the
+  existing elision marker until the reply fits, and the reply says so
+  with `bodies_shrunk_to_fit`. A single id asked for by size still spills,
+  so the middle of a long body stays reachable.
+
 - **The "Trust .ants/verify.json?" dialog shows every button label in full.** (ANTS-5479)
   The dialog now widens to fit its buttons instead of cutting off
   "Show Details...", "Trust this SHA" and "Trust this repo".
