@@ -156,6 +156,14 @@ died at the picker, and the same run with `-P` completed. A container
 runtime that is not Docker is not the obstacle — `act` found rootless
 Podman's socket unaided.
 
+**Name the workflow, and give the image the runner's tools.** `act push`
+also runs every workflow a tag push fires, release and publish jobs
+included, so pass `-W .github/workflows/ci.yml`. And a job that relies on
+a tool GitHub's runner image preinstalls fails at its first step without it
+(Games Hub, 2026-09-27: `pipx: command not found`). **Clean up only the
+containers this run created**, by id: the `act-` name prefix is shared by
+every `act` run on the machine.
+
 ## 4. Jobs that cannot run locally
 
 **Where a job genuinely cannot run locally** — a self-hosted runner, a
