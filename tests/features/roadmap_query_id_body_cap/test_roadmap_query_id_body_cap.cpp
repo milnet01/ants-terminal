@@ -804,3 +804,85 @@ TEST(roadmap_query_id_body_cap, Ants5477SingleIdExplicitCapStillReachesTheMiddle
                     .contains(QStringLiteral("MIDSENTINEL")))
         << "shortening here would remove the only route to the middle";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-5467 — max_body_bytes on the list and section paths. It applied to
+// id/ids fetches only, and the section path emitted bodies up to 16 KiB
+// against INV-3's 2000 (claude-config feedback 2026-09-26: 26 rows came back
+// with bodies far above the cap asked for). Both paths now emit at one list
+// cap, 2000 by default, which max_body_bytes may LOWER to a 400 floor.
+
+namespace {
+
+QJsonObject listRequest(const QString &root, const QString &section, int cap) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = root;
+    req[QStringLiteral("include_body")] = true;
+    if (!section.isEmpty()) req[QStringLiteral("section")] = section;
+    if (cap > 0) req[QStringLiteral("max_body_bytes")] = cap;
+    return req;
+}
+
+}  // namespace
+
+// ANTS-5467a — both paths shorten a body to the cap asked for, head and tail kept.
+TEST(roadmap_query_id_body_cap, Ants5467ListAndSectionHonourASmallerCap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(60)));
+
+    RemoteControl rc(nullptr);
+    for (const QString &section : {QString(), QStringLiteral("work")}) {
+        const QJsonObject resp =
+            rc.cmdRoadmapQuery(listRequest(tmp.path(), section, 800)).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        const QString body =
+            bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                      QStringLiteral("ANTS-7777"));
+        const std::string path = section.isEmpty() ? "list" : "section";
+        EXPECT_EQ(body.size(), 800) << path << " path ignored max_body_bytes";
+        EXPECT_TRUE(body.contains(QStringLiteral("HEADSENTINEL"))) << path;
+        EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL"))) << path;
+        EXPECT_FALSE(resp.contains(QStringLiteral("body_cap_clamped")))
+            << path << ": a cap applied as asked adds no key";
+    }
+}
+
+// ANTS-5467b — the section path's default is INV-3's 2000, not the store cap.
+TEST(roadmap_query_id_body_cap, Ants5467SectionDefaultsToTheListCap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(60)));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapQuery(listRequest(tmp.path(), QStringLiteral("work"), 0))
+            .object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                        QStringLiteral("ANTS-7777")).size(), 2000)
+        << "a section query emits at the 2000 list cap, as INV-3 says";
+}
+
+// ANTS-5467c — outside [400, 2000] the cap is clamped, and the reply says so.
+TEST(roadmap_query_id_body_cap, Ants5467ListCapClampIsAnnounced) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(60)));
+
+    RemoteControl rc(nullptr);
+    const struct { int asked; int applied; } cases[] = {{100, 400}, {6000, 2000}};
+    for (const auto &c : cases) {
+        const QJsonObject resp =
+            rc.cmdRoadmapQuery(listRequest(tmp.path(), QString(), c.asked)).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+        EXPECT_TRUE(resp.value(QStringLiteral("body_cap_clamped")).toBool())
+            << "asked " << c.asked;
+        EXPECT_EQ(resp.value(QStringLiteral("max_body_bytes_effective")).toInt(),
+                  c.applied);
+        EXPECT_EQ(bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                            QStringLiteral("ANTS-7777")).size(), c.applied);
+    }
+}

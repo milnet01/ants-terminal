@@ -124,3 +124,15 @@ floor spills. INV-7's 2000 floor holds when offload is off. A single id asked
 for with `max_body_bytes` is left to spill, since that is ANTS-4630's route
 to the middle of a long body. *Tests:* the three `Ants5477*` cases in
 `test_roadmap_query_id_body_cap.cpp`.
+
+## ANTS-5467 — `max_body_bytes` on the list and section paths
+
+A list or section query that returns bodies emits them at one list cap, 2000
+by default (INV-3). `max_body_bytes` had been ignored on both paths; it may
+now LOWER the cap, clamped to `[400, 2000]`: the 2000 ceiling is INV-3's
+payload bound across many rows, and 400 is the floor ANTS-5477 shortens to.
+The cap is applied before pagination, so a page is sized by the bodies it
+emits; the list path had measured at the 16 KiB store cap. A cap that
+differs from the one asked for is announced as ANTS-4981 announces it.
+`body_from_end` stays targeted-only. *Tests:* the three `Ants5467*` cases in
+`test_roadmap_query_id_body_cap.cpp`.

@@ -939,8 +939,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-3402 — opt-in higher body cap for a TARGETED id/ids fetch. The
     // list default stays kRoadmapQueryBodyCap (2000); a caller after a
     // single large epic body raises it up to kRoadmapQueryBodyStoreCap
-    // (16 KiB). Clamped to [2000, 16384]; ignored on list/section/
-    // section_index paths (they always emit at the 2000 cap).
+    // (16 KiB). Clamped to [2000, 16384]. The list and section paths read
+    // the raw value instead (ANTS-5467, listBodyCap below).
     // ANTS-4091 — 0 ⟹ not supplied. The targeted default is DERIVED from the
     // id count once `ids` is parsed (below), so it is no longer the 2000 list
     // cap; an explicit value still wins.
@@ -1073,6 +1073,28 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const bool bodyCapClamped =
         req.value(QStringLiteral("max_body_bytes")).isDouble()
         && req.value(QStringLiteral("max_body_bytes")).toInt() != idBodyCap;
+    // ANTS-5467 — the list and section paths' body cap. max_body_bytes may
+    // LOWER it, to the floor ANTS-5477 shortens to; the 2000 ceiling is
+    // INV-3's payload bound across many rows. Read raw, not via reqBodyCap,
+    // which is already floored at 2000.
+    const bool listCapAsked =
+        req.value(QStringLiteral("max_body_bytes")).isDouble();
+    const int listBodyCap =
+        listCapAsked
+            ? qBound(kFitMinBodyCap,
+                     req.value(QStringLiteral("max_body_bytes")).toInt(),
+                     kRoadmapQueryBodyCap)
+            : kRoadmapQueryBodyCap;
+    const bool listCapClamped =
+        listCapAsked
+        && req.value(QStringLiteral("max_body_bytes")).toInt() != listBodyCap;
+    // Called only where bodies are emitted: a clamp on a reply carrying none
+    // would describe nothing.
+    auto announceListCap = [&](QJsonObject &out) {
+        if (!listCapClamped) return;
+        out["body_cap_clamped"]         = true;
+        out["max_body_bytes_effective"] = listBodyCap;
+    };
     // ANTS-5477 — shorten a targeted reply's bodies before it spills. Not on
     // a single id asked for by size: ANTS-4630 made the spill the route to
     // the middle of a long body there.
@@ -2777,10 +2799,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // soft-cap measure would weigh a body far larger than anything this path
         // emits, and drop rows it used to fit — a single oversized bullet came
         // back as count:0 / total:1. Same principle as the ANTS-3577 projection
-        // above: shrink to what will be emitted, then measure. The value is
-        // exactly what the cache enforced, so paging is unchanged.
-        if (includeBody)
-            rcCapBodyFields(filtered, kRoadmapQueryBodyStoreCap);
+        // above: shrink to what will be emitted, then measure.
+        // ANTS-5467 — at the list cap, which max_body_bytes may lower. The
+        // bodies were built at 2000 above, so the store cap here trimmed
+        // nothing and a smaller cap asked for was never applied.
+        if (includeBody) {
+            rcCapBodyFields(filtered, listBodyCap);
+            announceListCap(out);
+        }
         // ANTS-4837 — project BEFORE pagination, on ANTS-3577's reasoning: the
         // soft-cap measure then weighs the rows that will actually be emitted,
         // so a narrow projection fits more rows per page instead of paying for
@@ -3464,10 +3490,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // soft-cap measure would weigh a body far larger than anything this path
     // emits, and drop rows it used to fit — a single oversized bullet came
     // back as count:0 / total:1. Same principle as the ANTS-3577 projection
-    // above: shrink to what will be emitted, then measure. The value is
-    // exactly what the cache enforced, so paging is unchanged.
-    if (includeBody)
-        rcCapBodyFields(filtered, kRoadmapQueryBodyStoreCap);
+    // above: shrink to what will be emitted, then measure.
+    // ANTS-5467 — at the list cap this path emits, which max_body_bytes may
+    // lower. Measuring at the store cap weighed each body up to 16 KiB and
+    // then emitted 2000, so a page held fewer rows than fit.
+    if (includeBody) {
+        rcCapBodyFields(filtered, listBodyCap);
+        announceListCap(out);
+    }
     // ANTS-4837 — before pagination; see the section branch for why.
     applyBulletFields(filtered);
     auto page = PaginationEngine::pageBullets(
@@ -3483,9 +3513,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-3402 — else re-truncate to the 2000 list cap: this path emits
     // from m_roadmapCacheBullets, whose bodies are now stored up to
     // kRoadmapQueryBodyStoreCap; the larger body is reserved for the
-    // opt-in id/ids fetch, so a list stays at the 2000 cap.
+    // opt-in id/ids fetch, so a list stays at the 2000 cap. ANTS-5467 — the
+    // cap was applied before pagination above, so only the strip remains.
     if (!includeBody) rcStripBodyFields(page.slice);
-    else              rcCapBodyFields(page.slice, kRoadmapQueryBodyCap);
 
     out["ok"] = true;
     out["bullets"] = page.slice;

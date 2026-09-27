@@ -96,6 +96,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query's max_body_bytes now shortens bodies on list and section queries too.** (ANTS-5467)
+  A search that returns many roadmap items can ask for each item's text
+  to be cut shorter, down to 400 bytes (the default stays 2000). The
+  reply says when the size asked for was adjusted, and a page of results
+  now fits as many items as the shortened text allows.
+
 - **find_definition says where a capped search stopped and which folders it never reached** (ANTS-5478)
   A capped walk adds `walk_stopped_in`, `walk_unreached` and, when it
   found nothing, a hint pointing at workspace_search, which has no cap.
