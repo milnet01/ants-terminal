@@ -67149,8 +67149,13 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: Snatch feedback 2026-09-25.
 
-- 📋 [ANTS-5383] **roadmap_migrate names status bullets it turns into narration.**
+- ✅ [ANTS-5383] **roadmap_migrate names status bullets it turns into narration.**
   A status bullet with an emoji outside the five statuses, or with no bold headline, becomes narration with no id or status, and no note says so, even for an open 🚧 task. Emit a note code with line numbers and count open-status ones separately. Optionally honour status aliases declared in .ants/project.json.
+  Resolved (2026-09-27, 551c0bcb): narrated_status_bullet /
+  narrated_open_status_bullet on the narration branch (legend-shaped
+  lines exempt), unrecognised_status_marker by a scan outside
+  pass-headings sources; spec ANTS-3757 § 2.10 gated first. The optional
+  project.json status aliases were not built.
   **Layman:** Warns when a roadmap import quietly drops open tasks from the task list.
   Kind: fix.
   Source: RetroArch feedback 2026-09-25.
@@ -67406,8 +67411,11 @@ project. Reported causes are claims until checked in source.
   Source: in-session 2026-09-26 (found implementing ANTS-5404).
   Lanes: roadmap.
 
-- 📋 [ANTS-5495] **roadmap_migrate notes a table row whose cell count differs from its header.**
+- ✅ [ANTS-5495] **roadmap_migrate notes a table row whose cell count differs from its header.**
   ANTS-5386 made the render's refusal name the section, row and first cell. Its second half, a migrate note for such rows up front, needs a new code in ANTS-3757 § 2.10's closed note set, so the spec amendment and its gate come first.
+  Resolved (2026-09-27, 551c0bcb): ragged_table_row at the row's line,
+  naming its first cell; row kept as written. Spec ANTS-3757 § 2.10
+  gated first.
   **Layman:** Warns at import time about a broken roadmap table, before it stops the roadmap from being written.
   Kind: fix.
   Source: RetroArch feedback 2026-09-25 (split from ANTS-5386).

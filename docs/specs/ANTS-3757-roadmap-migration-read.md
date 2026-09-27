@@ -789,13 +789,17 @@ are a closed set — an open one becomes prose nobody can grep:
 | `kind_unmapped` | § 2.8 — non-canonical and absent from `roadmap-data-model.md` § 7.4's table. |
 | `orphan_status_line` | § 2.4 — a `- **Status**:` line belonging to no pass block. |
 | `unparsed_heading` | ANTS-5394 — the nearest heading above an `orphan_status_line`, when that heading is `####` or deeper: a block with a Status line and no `Pass N.M` id, such as `#### FU.6`. Named once per heading. The migrate reply lifts these to `unparsed_headings[]`. |
-| `unrecognised_checkbox` | ANTS-5361 — a top-level task-list line whose checkbox is not `[ ]`, `[x]` or `[X]`, such as `- [~]`, outside a fence. It is carried as narration. |
+| `unrecognised_checkbox` | ANTS-5361 — a top-level task-list line whose checkbox is not `[ ]`, `[x]` or `[X]`, such as `- [~]`, outside a fence. § 2.11's position rule carries it as `intro` or `narration`, and the note is raised by a scan wherever it lands. |
 | `narrated_status_bullet` | ANTS-5383 — § 2.4: a top-level status-marked bullet the reader returns that is neither an item (no id, no bold headline) nor a line § 2.11's legend test accepts, whether or not that line joined the planned legend, carried as narration. One per bullet, at its line; `detail` is its first line, trimmed. Raised for ✅, 💭 and 🚫. |
 | `narrated_open_status_bullet` | ANTS-5383 — the same, for 📋 and 🚧. A separate code because an open task carried as narration is lost work rather than a loose note, and the per-code count is how a reader finds them without reading every note. |
 | `unrecognised_status_marker` | ANTS-5383 — a top-level bullet, outside a fence, whose first token after `- ` or `* ` is a pictographic symbol (Unicode category So, variation selectors ignored) that is not one of the five status markers. It is not status-marked, so § 2.11's position rule carries it as `intro` or `narration`; the note is raised wherever it lands, by a scan over every non-fenced line, as `unrecognised_checkbox`'s is. Not raised on a pass-headings source, whose top-level bullets belong to their pass block. One per line; `detail` is the line, trimmed. |
 | `ragged_table_row` | ANTS-5495 — § 2.11: a table row whose cell count differs from its header's. One per row, at its line; `detail` names the row's first cell and both counts. The row is carried as written; the render refuses the table until it is repaired (ANTS-5386 names the row there). |
 | `id_allocation_owed` | § 2.9 — an id-less item, carrying open/closed. |
 | `empty_source` | § 2.3 — a file yielding zero items. |
+| `field_defaulted` | [ANTS-4065](ANTS-4065-import-mapping-contract.md) — a defaulted `kind` or `source`; that spec owns its `detail` and extras. |
+| `unresolved_path` | [ANTS-4065](ANTS-4065-import-mapping-contract.md) — a path an item cites that does not resolve; that spec owns it. |
+| `archive_unrecognised` | [ANTS-3766](ANTS-3766-roadmap-migration-archives.md) § 2.2 — an archive entry never read; `line` 0, `sourceIndex` -1. |
+| `archive_slug_collision` | [ANTS-3766](ANTS-3766-roadmap-migration-archives.md) § 2.3 — an archive section slug equal to a live one; the load half refuses the plan. |
 
 **The set is closed, and every code added to it belongs in this table.**
 [ANTS-3765](ANTS-3765-roadmap-migration-load.md) § 2.11 adds **seven** load-only
@@ -1006,7 +1010,7 @@ to the existing `test_core` bundle's `SOURCES` (never `add_executable` — see
 interpreter.
 
 Fixtures are **committed roadmaps, not the machine's corpus**, which is not
-present in CI — one per format, plus a pathological fixture carrying the
+present in CI — one per format, plus fixtures carrying the
 reference-vs-declaration tokens, a pass block whose first Status line is
 content-free, the orphan Status line, the markdown-link-in-leading-slot case,
 the folded-id collision, a status-marked detail line, a status-legend line, an
