@@ -86,6 +86,23 @@ TEST(SessionMessage, Inv1UnknownRecipientRefusesAndWritesNothing) {
     EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 0);
 }
 
+// ANTS-5473 — the refusal names the slugs that were probably meant. "doom_ants"
+// for "doom-ants" was refused with nothing to go on.
+TEST(SessionMessage, Ants5473UnknownSlugHasCandidates) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    ASSERT_GT(f.addProject(QStringLiteral("doom-ants")), 0);
+    ASSERT_GT(f.addProject(QStringLiteral("vestige")), 0);
+    ASSERT_GT(f.addProject(QStringLiteral("ants-terminal")), 0);
+
+    const QStringList c = f.store->slugCandidates(QStringLiteral("Doom_Ants"));
+    ASSERT_FALSE(c.isEmpty());
+    EXPECT_EQ(c.first(), QStringLiteral("doom-ants"));
+    EXPECT_FALSE(c.contains(QStringLiteral("vestige")))
+        << "a slug sharing nothing with the request is noise, not a candidate";
+    EXPECT_TRUE(f.store->slugCandidates(QStringLiteral("zzz")).isEmpty());
+}
+
 // INV-2 — inbox returns only the calling project's mail. Both messages are
 // unacked and recent, so neither the ack filter nor retention can account for
 // the exclusion; only the recipient predicate can.

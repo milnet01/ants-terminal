@@ -854,6 +854,12 @@ public:
     // sets `error` rather than returning an empty list silently.
     QVector<ProjectRow> listProjects(QString *error = nullptr) const;
 
+    // ANTS-5473 — the registered export slugs nearest `wantSlug`, best first,
+    // for an `unknown_project` refusal to offer. Case is folded and `_` and
+    // spaces read as `-`: an exact match that way ranks first, then slugs
+    // sharing a `-`-separated word. A slug sharing nothing is left out.
+    QStringList slugCandidates(const QString &wantSlug, QString *error = nullptr) const;
+
     // ANTS-4617 — the inverse of registerProject(), and the store had none.
     // The store is MACHINE-GLOBAL, so testing anything destructive against a
     // throwaway copy left a permanent row: `roadmap_query mode:"report"

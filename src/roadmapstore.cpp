@@ -2691,6 +2691,37 @@ RoadmapStore::readProjectByRoot(const QString &canonicalRoot, QString *error) co
     return readProjectWhere(m_db, QStringLiteral("root"), canonicalRoot, error);
 }
 
+QStringList RoadmapStore::slugCandidates(const QString &wantSlug, QString *error) const {
+    constexpr int kMaxCandidates = 5;
+    const auto norm = [](QString s) {
+        s = s.trimmed().toLower();
+        s.replace(QLatin1Char('_'), QLatin1Char('-'));
+        s.replace(QLatin1Char(' '), QLatin1Char('-'));
+        return s;
+    };
+    const QString want = norm(wantSlug);
+    const QStringList wantWords = want.split(QLatin1Char('-'), Qt::SkipEmptyParts);
+
+    struct Scored { int score; QString slug; };
+    QVector<Scored> scored;
+    for (const ProjectRow &p : listProjects(error)) {
+        if (p.exportSlug.isEmpty()) continue;
+        const QString have = norm(p.exportSlug);
+        int score = (have == want) ? 1000 : 0;
+        for (const QString &w : have.split(QLatin1Char('-'), Qt::SkipEmptyParts))
+            if (wantWords.contains(w)) ++score;
+        if (score > 0) scored.push_back({score, p.exportSlug});
+    }
+    std::stable_sort(scored.begin(), scored.end(),
+                     [](const Scored &a, const Scored &b) { return a.score > b.score; });
+    QStringList out;
+    for (const Scored &sc : scored) {
+        if (out.size() >= kMaxCandidates) break;
+        out << sc.slug;
+    }
+    return out;
+}
+
 QVector<RoadmapStore::ProjectRow> RoadmapStore::listProjects(QString *error) const {
     QVector<ProjectRow> out;
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

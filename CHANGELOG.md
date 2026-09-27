@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **session_message suggests the project a misspelt `to` probably meant** (ANTS-5473)
+  An `unknown_project` refusal carries `candidates[]`, with case folded
+  and `_` read as `-`.
+
 - **roadmap_log convert names its guesses for same-titled items, and asks first** (ANTS-5329)
   When several stored items share a bullet's section and title, the
   preview now lists every candidate id. A real convert refuses with
@@ -166,6 +170,12 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **spec_log append_loop writes after the last row of a loop log that has a blank line inside it** (ANTS-5476)
+  Rows after the gap with the same columns are the same table, so the new
+  row no longer lands between loop 1 and loop 2.
+
+- **roadmap_log amend_intro reports only the replaced text in replaced_intro_chars** (ANTS-5474)
 
 - **Trusting a project's own check commands works again for Claude Code sessions served by ants-mcpd** (ANTS-5464)
   When `verify_changes` meets an untrusted `.ants/verify.json`, ants-mcpd

@@ -337,6 +337,10 @@ TEST(RoadmapLogSetIntro, Ants5373AmendIntroKeepsTheRest) {
     EXPECT_EQ(resp.value(QStringLiteral("op")).toString(), QStringLiteral("amend_intro"));
     const std::string md = readAll(roadmapPath(fx.root)).toStdString();
     EXPECT_TRUE(has(md, "## Work\n\nBetter line.\n\n#### Phase\n\nPhase text.\n")) << md;
+    // ANTS-5474 — it counts what was replaced: the match, not the whole intro.
+    EXPECT_EQ(resp.value(QStringLiteral("replaced_intro_chars")).toInt(),
+              int(QStringLiteral("First line.").size()))
+        << QJsonDocument(resp).toJson().toStdString();
 }
 
 // The match must be unique, and a refusal writes nothing.

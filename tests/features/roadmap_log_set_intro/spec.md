@@ -33,7 +33,8 @@ the stored intro: none refuses `intro_match_not_found`, several refuse
 of the intro is kept. The result is checked as INV-2 checks `new_text`.
 
 **INV-10 (ANTS-5373) — a dry run echoes `previous_intro`,** the text
-`replaced_intro_chars` counts.
+`replaced_intro_chars` counts. On `amend_intro` (ANTS-5474) that count is
+the matched `old_text` only, since the rest of the intro is kept.
 
 All three ops are store-only.
 

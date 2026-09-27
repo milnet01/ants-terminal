@@ -333,16 +333,32 @@ EditResult appendLoop(const QString &content, const QString &label,
                 return r;
             }
 
-            // Bound the contiguous data rows below the separator.
+            // Bound the data rows below the separator. ANTS-5476 — a blank
+            // line inside the log does not end it: rows after the gap with the
+            // header's column count continue it, unless they open a table of
+            // their own (a row followed by a separator). Stopping at the gap
+            // put the new row between loop 1 and loop 2.
             int firstData = -1, lastData = -1;
+            const auto isRow = [&](int i) {
+                return lines.at(i).trimmed().startsWith(QLatin1Char('|'));
+            };
             for (int i = sepLine + 1; i < sectionEnd && i < lines.size(); ++i) {
-                if (!lines.at(i).trimmed().startsWith(QLatin1Char('|'))) {
-                    if (firstData >= 0) break;   // the table ended
-                    if (lines.at(i).trimmed().isEmpty()) continue;
-                    break;
+                if (isRow(i)) {
+                    if (firstData < 0) firstData = i;
+                    lastData = i;
+                    continue;
                 }
-                if (firstData < 0) firstData = i;
-                lastData = i;
+                if (!lines.at(i).trimmed().isEmpty()) break;   // prose ends it
+                int next = i;
+                while (next < sectionEnd && next < lines.size() &&
+                       lines.at(next).trimmed().isEmpty())
+                    ++next;
+                const bool continues =
+                    next < sectionEnd && next < lines.size() && isRow(next) &&
+                    slRowCells(lines.at(next)).size() == header.size() &&
+                    !(next + 1 < lines.size() && slIsTableSeparator(lines.at(next + 1)));
+                if (!continues) break;   // the table ended
+                i = next - 1;
             }
 
             // ANTS-4353 — INFER the direction rather than assuming it. Loop

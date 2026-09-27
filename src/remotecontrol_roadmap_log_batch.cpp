@@ -3757,7 +3757,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     if (!preamble)
         env[QStringLiteral("section")] = slug;
     // What was destroyed, as set_body's replaced_body_chars says it.
-    env[QStringLiteral("replaced_intro_chars")] = int(previous.size());
+    // ANTS-5474 — on amend_intro that is the matched `old_text`, not the
+    // whole intro: the rest of it is kept.
+    env[QStringLiteral("replaced_intro_chars")] =
+        amend ? int(oldText.size()) : int(previous.size());
     env[QStringLiteral("intro_chars")]          = int(intro.size());
     // ANTS-5373 — on a preview, the text replaced_intro_chars counts, so a
     // caller can see what the write would remove before making it.

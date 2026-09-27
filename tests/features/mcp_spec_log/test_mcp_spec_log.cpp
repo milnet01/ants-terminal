@@ -555,6 +555,56 @@ TEST(McpSpecLog, Ants4364TableFormAnd4353DirectionInference) {
 // level-2 heading carrying the keyword, so the section no longer has to be
 // last. This locks that in — the fixture deliberately puts a section AFTER the
 // loop log, which is the shape that used to fail.
+// ANTS-5476 — a blank line after row 1 split the table in two, and the new
+// row landed after row 1: between loop 1 and loop 2, in a record that is
+// permanent once committed. Rows after the gap with the same column count are
+// the same table. A second table (its own header and separator) is not.
+TEST(McpSpecLog, Ants5476BlankLineInsideTheLoopLogDoesNotSplitIt) {
+    const QString head = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n"
+        "| 1 | 2026-08-01 | 3 findings |\n"
+        "\n"
+        "| 2 | 2026-08-02 | 1 finding |\n"
+        "| 3 | 2026-08-03 | 0 findings |\n");
+    const auto a = SpecLog::appendLoop(
+        head, QString(), QString(),
+        {QStringLiteral("4"), QStringLiteral("2026-08-14"), QStringLiteral("x")});
+    ASSERT_TRUE(a.ok) << a.error.toStdString();
+    EXPECT_EQ(a.rowOrder, QStringLiteral("oldest_first"));
+    EXPECT_GT(a.content.indexOf(QStringLiteral("| 4 | 2026-08-14")),
+              a.content.indexOf(QStringLiteral("| 3 | 2026-08-03")))
+        << "the row went inside the log, not after its last row:\n"
+        << a.content.toStdString();
+
+    // A different table further down the section is not the loop log.
+    const QString twoTables = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n"
+        "| 1 | 2026-08-01 | 3 findings |\n"
+        "| 2 | 2026-08-02 | 1 finding |\n"
+        "\n"
+        "| Finding | Loop | Fixed |\n"
+        "|---------|------|-------|\n"
+        "| 7 | 9 | yes |\n");
+    const auto b = SpecLog::appendLoop(
+        twoTables, QString(), QString(),
+        {QStringLiteral("3"), QStringLiteral("2026-08-14"), QStringLiteral("x")});
+    ASSERT_TRUE(b.ok) << b.error.toStdString();
+    const qsizetype row = b.content.indexOf(QStringLiteral("| 3 | 2026-08-14"));
+    EXPECT_GT(row, b.content.indexOf(QStringLiteral("| 2 | 2026-08-02")));
+    EXPECT_LT(row, b.content.indexOf(QStringLiteral("| Finding |")))
+        << "the row was written into the second table:\n" << b.content.toStdString();
+}
+
 TEST(McpSpecLog, Ants3651AppendsToLoopLogThatIsNotTheLastSection) {
     const QString before = QStringLiteral(
         "# ANTS-9999 — Fixture\n"

@@ -36,6 +36,16 @@ QJsonDocument refuse(const char *code, const QString &message) {
     return QJsonDocument(e);
 }
 
+// ANTS-5473 — an unknown recipient refusal names the slugs probably meant,
+// so a hyphen-for-underscore slip is fixable without guessing.
+QJsonDocument refuseUnknownProject(const RoadmapStore &store, const QString &to,
+                                   const QString &message) {
+    QJsonObject e = refuse("unknown_project", message).object();
+    e[QStringLiteral("candidates")] =
+        QJsonArray::fromStringList(store.slugCandidates(to));
+    return QJsonDocument(e);
+}
+
 QJsonObject messageToJson(const RoadmapStore::Message &m) {
     QJsonObject o;
     o[QStringLiteral("message_id")]   = double(m.id);
@@ -134,7 +144,7 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
             // skipped for the same reason (see pruneIfWriting above), so a
             // preview cannot destroy aged mail to measure itself.
             if (!store.projectIdForSlug(to))
-                return refuse("unknown_project",
+                return refuseUnknownProject(store, to,
                               QStringLiteral("no project is registered under "
                                              "export_slug \"%1\", so mail to it "
                                              "could never be delivered").arg(to));
@@ -152,9 +162,12 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
 
         qint64 id = 0;
         QString code;
-        if (!store.sendMessage(*self, to, body, from, now, &id, &code, &err))
-            return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
-                          QStringLiteral("session_message: %1").arg(err));
+        if (!store.sendMessage(*self, to, body, from, now, &id, &code, &err)) {
+            const QString msg = QStringLiteral("session_message: %1").arg(err);
+            if (code == QLatin1String("unknown_project"))
+                return refuseUnknownProject(store, to, msg);
+            return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(), msg);
+        }
         pruneIfWriting();
         out[QStringLiteral("message_id")] = double(id);
         out[QStringLiteral("to")]         = to;

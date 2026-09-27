@@ -41,3 +41,7 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
   empty string there would read as "the Status was blank". The verb
   validates no vocabulary, so this is the caller's only project-agnostic
   read of the one in use.
+- T14 — (ANTS-5476) a blank line inside a table-shaped loop log does not
+  end it: rows after the gap with the header's column count are the same
+  table, so append_loop writes after the log's last row. A second table
+  (a row followed by its own separator) is not part of the log.
