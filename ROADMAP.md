@@ -67430,6 +67430,32 @@ project. Reported causes are claims until checked in source.
   Source: RetroArch_Ants_MCP_Feedback.md 2026-09-26 (with its correction).
   Lanes: mcp.
 
+- 📋 [ANTS-5483] **A new project never takes the id of a deregistered one.**
+  project.project_id is INTEGER PRIMARY KEY without AUTOINCREMENT
+  (src/roadmapstore.cpp, CREATE TABLE project), so SQLite reuses the
+  highest deleted rowid: deregister project 30, migrate another, it gets
+  30. Reported by the Ants Projects Hub Website session.
+  Decided by the user 2026-09-27: keep a high-water mark of the highest
+  id ever issued and allocate above it. No table change and no
+  kSchemaVersion bump, so older builds keep working.
+  **Layman:** When a project is removed, its number is never handed to a new one.
+  Kind: fix.
+  Source: claude-config-feedback-2026-09-27.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5484] **changelog_log op:"release" closes a dated section for a versionless project.**
+  changelog-format.md 4.1 permits `## YYYY-MM-DD` for a versionless
+  project. Today the date passed as `version` writes
+  `## [YYYY-MM-DD] - YYYY-MM-DD`, and a second close the same day refuses
+  version_exists (src/changeloglog.cpp).
+  Decided by the user 2026-09-27: add a dated mode (no version) that
+  writes `## <date>`, and a second close the same day merges its entries
+  into that day's section category by category instead of refusing.
+  **Layman:** Projects without version numbers can close their changelog under a plain date heading.
+  Kind: feature.
+  Source: claude-config-feedback-2026-09-27.
+  Lanes: changelog.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
