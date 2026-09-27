@@ -67890,7 +67890,7 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27 (AI Prompts measurement).
   Lanes: mcp.
 
-- 📋 [ANTS-5499] **session_message op:send can fail io_error "database is locked" on a transient lock.**
+- ✅ [ANTS-5499] **session_message op:send can fail io_error "database is locked" on a transient lock.**
   Reported: "database is locked Unable to fetch row"; the same call
   succeeded seconds later. RoadmapStore::sendMessage runs its count
   SELECT and INSERT without BEGIN IMMEDIATE, so a deferred read-to-write
@@ -67898,6 +67898,14 @@ project. Reported causes are claims until checked in source.
   case roadmapstore.cpp already documents). Reproduce first; then wrap
   the send in an immediate transaction, or retry once on SQLITE_BUSY,
   and refuse a distinct code rather than io_error.
+  Resolved (2026-09-27): reproduced exactly ("io_error: database is
+  locked Unable to fetch row") by holding a write lock on a second
+  connection, writing and committing during the send. The send read the
+  inbox count before claiming the write lock, and a commit in between
+  made its snapshot stale, which SQLite refuses at once. sendMessage and
+  ackMessage now open BEGIN IMMEDIATE first (ImmediateTx), which waits
+  under busy_timeout. Test SessionMessage.Ants5499SendWaitsOutAConcurrentWriter,
+  red 3/3 before, green 3/3 after. Suite green.
   **Layman:** Sending a note to another project sometimes fails once and works on retry.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.
