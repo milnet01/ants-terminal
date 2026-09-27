@@ -120,8 +120,9 @@ line. The hyphen rule above has no dash to bind here. § 4.3 step 1's move still
 the date heading; its Theme half, and step 4, bind a versioned release only.
 A second close on the same day merges into that date's section, merging its
 `###` blocks so § 4.2's order holds; new bullets go first. Step 3's roadmap flip happens no later than the
-dated close: a close leaves no roadmap ID it cites at 📋 or 🚧. `changelog_log op:"release"` cannot write this heading:
-given the date as `version`, it writes `## [YYYY-MM-DD] - YYYY-MM-DD`.
+dated close: a close leaves no roadmap ID it cites at 📋 or 🚧. `changelog_log op:"release"` with `dated:true` writes this
+heading and merges a same-day close (ANTS-5484); given the date as
+`version` instead, it writes `## [YYYY-MM-DD] - YYYY-MM-DD`.
 
 **It does not reach the feature-grouped `### <date> <Category> — <headline>`
 subsection.** That em dash is what its writer emits.

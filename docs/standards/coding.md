@@ -331,10 +331,15 @@ tool nobody was watching. The edit is not rejected; it disappears.
 Where the edit is right, the generator is wrong. Fix it there, and the
 correction holds for every later run.
 
-A conformer can only obey this where the file says what it is. Generated
-output declares itself in its own opening lines, or the project lists it
-somewhere a reader will look. Output identified by neither is outside
-this rule, and the generator is where to fix that.
+A conformer can only obey this where the file says what it is, **so a
+generator marks its output**: a "generated — do not edit" line in the
+opening lines, wherever the format can hold a comment. Where it cannot —
+binary, JSON, minified output, a verbatim copy — a README or `CLAUDE.md`
+beside the output says so; the generator's own header is not beside it. A
+copy published elsewhere is declared at its destination. A lockfile named
+by its ecosystem declares itself. A dated measurement snapshot is a record,
+not generated output. This binds from 2026-09-27 (user ruling, CFG-0591):
+existing unmarked output is marked when its generator is next changed.
 
 **The input of record may live outside the repository** — a store, a
 database, a remote API. So output changing without it in the same commit
@@ -342,7 +347,8 @@ is not evidence of anything. What shows a hand edit is output that no
 longer matches what the generator produces.
 
 Breach: a hand edit to generated output that declares itself, or that
-the project lists.
+the project lists; or a generator changed since 2026-09-27 that still
+writes output it could mark and does not.
 
 ## 2. Error handling
 
