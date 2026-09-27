@@ -67127,8 +67127,13 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: RetroArch feedback 2026-09-25.
 
-- 📋 [ANTS-5384] **The renderer stops duplicating its injected legend line on each migrate cycle.**
+- ✅ [ANTS-5384] **The renderer stops duplicating its injected legend line on each migrate cycle.**
   The render injects `- 🚫 Dropped (closed, not done)` into the legend. A re-migrate imports that line as narration and the next render injects another. Skip injection when a legend line already starts with the emoji, and do not import an injected line.
+  Resolved (2026-09-27, 9ca0622c): the migrate legend recogniser (and
+  its survey oracle) accept Dropped, so the injected line is read back
+  as the legend's dropped entry and the render stops injecting.
+  Duplicates in a run collapse. Live after an ants-mcpd rebuild and
+  /mcp; an affected project heals on its next migrate.
   **Layman:** Stops the roadmap legend from growing an extra copy of the same line every import.
   Kind: fix.
   Source: RetroArch feedback 2026-09-25.
