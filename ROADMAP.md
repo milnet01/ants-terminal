@@ -57636,7 +57636,7 @@ it.
   Source: claude_config-feedback-2026-08-25.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4669] **roadmap_log has no amend_batch, so a house-style correction across freshly-appended bullets costs one full read and render per bullet.**
+- ✅ [ANTS-4669] **roadmap_log has no amend_batch, so a house-style correction across freshly-appended bullets costs one full read and render per bullet.**
   append, flip and annotate all have _batch forms; amend_body and
   amend_headline do not. The reporter wrote their bullets in two
   append_batch calls, was then asked to strip hard counts from the prose,
@@ -57663,6 +57663,10 @@ it.
   field parameter on amend_body rather than a separate op, the batch form
   should carry it too. Filing this now rather than after, because the two
   are independently useful.
+  Resolved (2026-09-27, 6ed1dbc0): op:"amend_batch" takes locators[] of
+  {id, old_text, new_text}, amend_body's checks per locator, one commit
+  and render, skipped[] by index. Store-only and id-located;
+  amend_headline has no batch form yet.
   **Layman:** Fixing the same phrase in a batch of just-written roadmap items takes one slow operation each.
   Kind: enhancement.
   Source: Charls_Site-feedback-2026-08-25.
