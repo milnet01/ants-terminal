@@ -84,6 +84,40 @@ bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
 
 QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 
+// ANTS-5499 — a read-then-write method takes the write lock BEFORE its read.
+// Read first and the connection holds a snapshot; a write another connection
+// commits meanwhile makes that snapshot stale, and SQLite refuses the upgrade
+// at once with "database is locked", without honouring busy_timeout.
+// BEGIN IMMEDIATE waits under busy_timeout instead. Opened only when no
+// transaction is already open; any return before commit() rolls back.
+class ImmediateTx {
+public:
+    ImmediateTx(QSqlDatabase &db, bool alreadyOpen) : m_db(db), m_owns(!alreadyOpen) {}
+    ~ImmediateTx() {
+        if (m_owns && m_open)
+            exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
+    }
+    bool begin(QString *error) {
+        if (!m_owns)
+            return true;
+        m_open = exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error);
+        return m_open;
+    }
+    bool commit(QString *error) {
+        if (!m_owns)
+            return true;
+        if (!exec(m_db, QStringLiteral("COMMIT"), error))
+            return false;   // the destructor rolls back
+        m_open = false;
+        return true;
+    }
+
+private:
+    QSqlDatabase &m_db;
+    bool m_owns;
+    bool m_open = false;
+};
+
 // The item columns a field-at-a-time write may target. File-scope rather than
 // a static inside setItemField() because ANTS-3765's clearItemField() gates on
 // the same list, and two copies of an allowlist is one allowlist that will
@@ -1690,6 +1724,12 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                     QStringLiteral("from_session is %1 bytes; the cap is %2")
                         .arg(fromSession.toUtf8().size()).arg(kMailSessionMaxBytes));
 
+    ImmediateTx tx(m_db, m_inTransaction);   // ANTS-5499
+    if (!tx.begin(error)) {
+        if (code) *code = QStringLiteral("io_error");
+        return false;
+    }
+
     const auto to = projectIdForSlug(toSlug, error);
     if (!to)
         return fail("unknown_project",
@@ -1733,7 +1773,12 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
         if (code)  *code  = QStringLiteral("io_error");
         return false;
     }
-    if (messageId) *messageId = ins.lastInsertId().toLongLong();
+    const qint64 newId = ins.lastInsertId().toLongLong();
+    if (!tx.commit(error)) {
+        if (code) *code = QStringLiteral("io_error");
+        return false;
+    }
+    if (messageId) *messageId = newId;
     if (code) code->clear();
     return true;
 }
@@ -1796,6 +1841,12 @@ bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
                               QString *code, QString *error) {
     if (alreadyAcked) *alreadyAcked = false;
 
+    ImmediateTx tx(m_db, m_inTransaction);   // ANTS-5499
+    if (!tx.begin(error)) {
+        if (code) *code = QStringLiteral("io_error");
+        return false;
+    }
+
     // Scoped to the caller's own inbox in the SELECT rather than checked
     // afterwards: a message addressed to another project answers `not_found`,
     // the same code an absent id gets, so a probe cannot use the refusal to
@@ -1818,6 +1869,7 @@ bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
     }
     if (!q.value(0).isNull()) {
         // Idempotent: the FIRST ack is the fact, so the stamp is left alone.
+        // Nothing was written, so the destructor's rollback ends the read.
         if (alreadyAcked) *alreadyAcked = true;
         if (code) code->clear();
         return true;
@@ -1831,6 +1883,10 @@ bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
     if (!u.exec()) {
         if (error) *error = lastErr(u);
         if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    if (!tx.commit(error)) {
+        if (code) *code = QStringLiteral("io_error");
         return false;
     }
     if (code) code->clear();

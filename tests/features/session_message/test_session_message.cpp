@@ -17,13 +17,17 @@
 #include "roadmapstore.h"
 
 #include <QDir>
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QString>
 #include <QTemporaryDir>
 #include <QVariant>
 #include <QVector>
 
+#include <chrono>
+#include <future>
 #include <memory>
+#include <thread>
 
 namespace {
 
@@ -544,4 +548,54 @@ TEST(SessionMessage, Inv4OrientReportsTheInboxOnly) {
     EXPECT_TRUE(block.contains(QStringLiteral("projectIdForRoot")));
     EXPECT_FALSE(block.contains(QStringLiteral("registerProject")))
         << "an orientation READ must never register a project";
+}
+
+// ANTS-5499 — a send racing another connection's write waits for it instead
+// of failing "database is locked". The other connection holds the write lock,
+// writes, and commits after the send has started. A send that reads before it
+// claims the write lock holds a snapshot that commit makes stale, and SQLite
+// refuses that upgrade at once, without honouring busy_timeout.
+TEST(SessionMessage, Ants5499SendWaitsOutAConcurrentWriter) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    ASSERT_GT(a, 0);
+    ASSERT_GT(f.addProject(QStringLiteral("beta")), 0);
+    {
+        QSqlQuery q(f.store->db());
+        ASSERT_TRUE(q.exec(QStringLiteral("CREATE TABLE race_probe (v INTEGER)")));
+    }
+
+    const QString path = f.dir.filePath(QStringLiteral("mail.sqlite"));
+    std::promise<void> locked;
+    auto lockedFuture = locked.get_future();
+    std::thread writer([&path, &locked] {
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                        QStringLiteral("ants5499_writer"));
+            db.setDatabaseName(path);
+            if (db.open()) {
+                QSqlQuery q(db);
+                q.exec(QStringLiteral("BEGIN IMMEDIATE"));
+                q.exec(QStringLiteral("INSERT INTO race_probe VALUES (1)"));
+                locked.set_value();
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                q.exec(QStringLiteral("COMMIT"));
+            } else {
+                locked.set_value();
+            }
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(QStringLiteral("ants5499_writer"));
+    });
+    lockedFuture.wait();
+
+    QString code, err;
+    qint64 id = 0;
+    const bool sent = f.store->sendMessage(a, QStringLiteral("beta"),
+                                           QStringLiteral("hello"), QString(),
+                                           QString::fromLatin1(kT1), &id, &code, &err);
+    writer.join();
+    EXPECT_TRUE(sent) << code.toStdString() << ": " << err.toStdString();
+    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 1);
 }
