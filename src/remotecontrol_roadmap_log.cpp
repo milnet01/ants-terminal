@@ -4145,6 +4145,187 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
     return QJsonDocument(env);
 }
 
+// ANTS-4669 — op:"amend_batch": amend_body's edit on N items, one read, one
+// commit, one render. A house-style correction across freshly-appended bullets
+// cost one full write per bullet, each racing the file watcher — the argument
+// already accepted for flip_batch (ANTS-1690) and annotate_batch (ANTS-4470).
+//
+// Each locator is {id, old_text, new_text} and runs amend_body's own checks:
+// the trailer guard, the unique wrap-tolerant match (WrapMatch::patchOnce) and
+// its refusals. One that fails lands in skipped[] with its index; two aimed at
+// one item apply in order, the second seeing the first. Store-only, as
+// amend_field_batch is: on a markdown project amend_body edits the file.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
+    const QJsonValue listVal = req.value(QStringLiteral("locators"));
+    if (!listVal.isArray() || listVal.toArray().isEmpty())
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_batch\" needs `locators`, a "
+                           "non-empty array of {id, old_text, new_text}")));
+    const QJsonArray list = listVal.toArray();
+    if (list.size() > 500)
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `locators` holds at most 500 entries; "
+                           "got %1").arg(list.size())));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) {
+        QJsonObject env = refusal.object();
+        if (env.value(QStringLiteral("code")).toString()
+                == QLatin1String("op_unsupported")) {
+            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "roadmap_log: op:\"amend_batch\" edits STORED bodies, so it needs "
+                "a store-served project. On a markdown-backed project use "
+                "op:\"amend_body\", once per bullet.");
+        }
+        return QJsonDocument(env);
+    }
+    RoadmapStore &store = *target->store;
+
+    struct Edited { qint64 pk; RoadmapStore::ItemWrite before; QString body; };
+    QHash<qint64, int> slotOf;            // pk -> index into edited
+    QList<Edited> edited;
+    QJsonArray amended, skipped;
+    const auto skip = [&](int index, const QString &id, const QString &code,
+                          const QString &error) {
+        QJsonObject row;
+        row[QStringLiteral("index")] = index;
+        if (!id.isEmpty()) row[QStringLiteral("id")] = id;
+        row[QStringLiteral("code")]  = code;
+        row[QStringLiteral("error")] = error;
+        skipped.append(row);
+    };
+    for (int i = 0; i < list.size(); ++i) {
+        const QJsonObject e = list.at(i).toObject();
+        const QString id = e.value(QStringLiteral("id")).toString().trimmed();
+        const QString oldText = e.value(QStringLiteral("old_text")).toString();
+        QString newText = e.value(QStringLiteral("new_text")).toString();
+        if (id.isEmpty() || oldText.isEmpty() || !e.contains(QStringLiteral("new_text"))) {
+            skip(i, id, QStringLiteral("missing_field"),
+                 QStringLiteral("roadmap_log: each locator needs `id`, a non-empty "
+                                "`old_text` and `new_text`"));
+            continue;
+        }
+        if (oldText.size() > kRcMaxNoteChars || newText.size() > kRcMaxNoteChars) {
+            skip(i, id, QStringLiteral("too_large"),
+                 QStringLiteral("roadmap_log: old_text / new_text exceeds %1-char cap")
+                     .arg(kRcMaxNoteChars));
+            continue;
+        }
+        QStringList scrubbed;
+        rcScrubLeakedToolXml(newText, scrubbed);
+        QString shadowErr;
+        if (rlNoteDeclaresTrailer(newText, &shadowErr, "new_text")) {
+            skip(i, id, QStringLiteral("body_shadowed"),
+                 QStringLiteral("roadmap_log: %1").arg(shadowErr));
+            continue;
+        }
+        QString err;
+        const auto pk = store.findItem(target->projectId, id, &err);
+        if (!pk) {
+            skip(i, id, QStringLiteral("bullet_not_found"),
+                 QStringLiteral("roadmap_log: no bullet with id \"%1\" in this "
+                                "project's store").arg(id));
+            continue;
+        }
+        if (!slotOf.contains(*pk)) {
+            const auto before = store.readItem(*pk, &err);
+            if (!before) {
+                skip(i, id, QStringLiteral("store_failed"), err);
+                continue;
+            }
+            slotOf.insert(*pk, int(edited.size()));
+            edited.append({*pk, *before, before->body});
+        }
+        Edited &slot = edited[slotOf.value(*pk)];
+        const WrapMatch::Patch patch = WrapMatch::patchOnce(
+            slot.body, oldText, newText, WrapMatch::Indent::None);
+        if (patch.structuredBlock) {
+            const QJsonObject r = rlWrappedBlockErr().object();
+            skip(i, id, r.value(QStringLiteral("code")).toString(),
+                 r.value(QStringLiteral("error")).toString());
+            continue;
+        }
+        if (patch.hits != 1) {
+            skip(i, id, patch.hits == 0 ? QStringLiteral("body_match_not_found")
+                                        : QStringLiteral("body_match_ambiguous"),
+                 QStringLiteral("roadmap_log: `old_text` occurs %1 times in %2's "
+                                "body; it must occur exactly once")
+                     .arg(patch.hits).arg(id));
+            continue;
+        }
+        slot.body = patch.wrapped ? rlRewrapLine(patch.text, patch.line) : patch.text;
+        QJsonObject row;
+        row[QStringLiteral("index")] = i;
+        row[QStringLiteral("id")]    = id;
+        if (patch.wrapped) row[QStringLiteral("wrapped_match")] = true;
+        amended.append(row);
+    }
+
+    if (amended.isEmpty()) {
+        QString code = skipped.first().toObject().value(QStringLiteral("code")).toString();
+        for (const QJsonValue &v : std::as_const(skipped))
+            if (v.toObject().value(QStringLiteral("code")).toString() != code) {
+                code = QStringLiteral("bad_args");
+                break;
+            }
+        QJsonObject out = rlFieldRefusal(code,
+            QStringLiteral("roadmap_log op:\"amend_batch\": all %1 edit(s) were "
+                           "refused — nothing was written").arg(skipped.size()));
+        out[QStringLiteral("op")]            = QStringLiteral("amend_batch");
+        out[QStringLiteral("amended")]       = QJsonArray();
+        out[QStringLiteral("amended_count")] = 0;
+        out[QStringLiteral("skipped")]       = skipped;
+        out[QStringLiteral("skipped_count")] = skipped.size();
+        return QJsonDocument(out);
+    }
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    HistoryContext hist;                 // one op, one stamp
+    hist.changedAt = rlHistoryStamp();
+    QString deriveCode;
+    const auto mutate = [&](QString *e) -> bool {
+        for (const Edited &ed : std::as_const(edited)) {
+            if (ed.body == ed.before.body) continue;
+            if (!store.setItemField(ed.pk, QStringLiteral("body"), ed.body,
+                                    QStringLiteral("asserted"), e))
+                return false;
+            hist.record(ed.pk, QStringLiteral("body"), ed.before.body, ed.body);
+            if (!rlDeriveTrailerColumns(store, ed.pk, ed.before, ed.body, {}, &hist,
+                                        e, nullptr, &deriveCode))
+                return false;
+            if (!rlStampModified(store, ed.pk, e))
+                return false;
+        }
+        return rlFlushHistory(store, hist, e);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, target->projectId, root, roadmapPath, dryRun, mutate,
+        &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+        if (!deriveCode.isEmpty())
+            env[QStringLiteral("code")] = deriveCode;
+        return QJsonDocument(env);
+    }
+    rlAttachHistoryNote(env, store, hist);
+    env[QStringLiteral("ok")]            = true;
+    env[QStringLiteral("op")]            = QStringLiteral("amend_batch");
+    env[QStringLiteral("amended")]       = amended;
+    env[QStringLiteral("amended_count")] = amended.size();
+    env[QStringLiteral("skipped")]       = skipped;
+    env[QStringLiteral("skipped_count")] = skipped.size();
+    rcRoadmapWriteFields(env, outcome, dryRun);
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
 // ANTS-4948 — op:"amend_field" field:"section": move items to another section.
 //
 // No other op changes an item's section: every op creates an item in one or

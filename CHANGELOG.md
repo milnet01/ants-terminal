@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"amend_batch" applies the same find-and-replace edit as amend_body to several items in one call, skipping any that do not match.** (ANTS-4669)
+
 - **roadmap_migrate notes a status bullet it carries as loose text (`narrated_status_bullet`, and `narrated_open_status_bullet` for an open task) and a bullet led by an unknown status emoji (`unrecognised_status_marker`), each at its line.** (ANTS-5383)
 
 - **roadmap_migrate notes a table row whose cell count differs from its header (`ragged_table_row`), naming the row, before the render refuses the table.** (ANTS-5495)

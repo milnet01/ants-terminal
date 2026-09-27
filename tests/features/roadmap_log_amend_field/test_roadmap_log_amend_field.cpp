@@ -972,3 +972,73 @@ TEST(RoadmapLogAmendFieldBatch, AllRefusedWritesNothing) {
     EXPECT_EQ(empty.value(QStringLiteral("code")).toString(),
               QStringLiteral("missing_field"));
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4669 — op:"amend_batch": amend_body's edit on several items, one read,
+// one commit, one render. A house-style correction across freshly-appended
+// bullets cost one full write per bullet (Charls_Site feedback 2026-08-25).
+
+namespace {
+
+QJsonObject edit(const QString &id, const QString &oldText, const QString &newText) {
+    QJsonObject e;
+    e[QStringLiteral("id")]       = id;
+    e[QStringLiteral("old_text")] = oldText;
+    e[QStringLiteral("new_text")] = newText;
+    return e;
+}
+
+QJsonObject amendBatchReq(const QString &root, const QJsonArray &locators) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_batch");
+    req[QStringLiteral("locators")]   = locators;
+    return req;
+}
+
+}  // namespace
+
+TEST(RoadmapLogAmendBatch, EditsSeveralBodiesInOneCall) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLog(amendBatchReq(fx.root, {
+        edit(QStringLiteral("DEMO-0007"), QStringLiteral("Closing prose line."),
+             QStringLiteral("Closing line, reworded.")),
+        edit(QStringLiteral("DEMO-0003"), QStringLiteral("Some prose"),
+             QStringLiteral("Other prose")),
+        edit(QStringLiteral("DEMO-0003"), QStringLiteral("Other prose about"),
+             QStringLiteral("Other prose, second pass, about")),   // sees the first
+        edit(QStringLiteral("DEMO-0009"), QStringLiteral("not in the body"),
+             QStringLiteral("x"))})).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("amended_count")).toInt(), 3);
+    const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("index")).toInt(), 3);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_not_found"));
+
+    const auto a = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_TRUE(a->body.contains(QStringLiteral("Closing line, reworded.")));
+    const auto b = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(b->body.contains(QStringLiteral("Other prose, second pass, about it.")))
+        << b->body.toStdString();
+    EXPECT_TRUE(has(readAll(roadmapPath(fx.root)).toStdString(), "Closing line, reworded."))
+        << "and the render published it";
+}
+
+TEST(RoadmapLogAmendBatch, AllRefusedWritesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLog(amendBatchReq(fx.root, {
+        edit(QStringLiteral("DEMO-0404"), QStringLiteral("a"), QStringLiteral("b")),
+        edit(QStringLiteral("DEMO-0007"), QStringLiteral("absent text"), QStringLiteral("b"))}))
+        .object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool(true));
+    EXPECT_EQ(resp.value(QStringLiteral("skipped")).toArray().size(), 2);
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}

@@ -56198,7 +56198,7 @@ filed below.
   Kind: fix.
   Source: in-session-2026-09-08, found while shipping ANTS-4563.
 
-- 📋 [ANTS-5161] **repair_trailers and backfill_dates tell a registered markdown-served project that the store holds no row for it.**
+- ✅ [ANTS-5161] **repair_trailers and backfill_dates tell a registered markdown-served project that the store holds no row for it.**
   Both handlers remap roadmapSectionOpTarget()'s `op_unsupported` to
   `project_not_registered` with the message "the store holds no row for
   <root>. Run roadmap_migrate first." That prologue returns op_unsupported
@@ -56212,6 +56212,11 @@ filed below.
   answers the first), keep project_not_registered for a missing row, and
   give the dialect case its own message naming the format. Sibling of
   ANTS-4602, which fixed the empty root in the same message.
+  Resolved (2026-09-27, 2f528ab6): repair_trailers, backfill_dates and
+  render share rlNotStoreServedRefusal; a registered unserved project
+  gets unsupported_format with store_row_present and
+  store_source_format, naming RoadmapSource::storeServedDialects().
+  Render's stale "only ants-v1" wording fixed with it.
   **Layman:** The repair step told Vestige it isn't in the roadmap database when it is; the real reason is that Vestige's roadmap is still run from its file.
   Kind: fix.
   Source: in-session-2026-09-14 (ANTS-4507 live cleanup).

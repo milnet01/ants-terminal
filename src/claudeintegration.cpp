@@ -13398,6 +13398,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("amend_headline");  // ANTS-4372
                     opEnum.append("amend_field");  // ANTS-4667
                     opEnum.append("amend_field_batch");  // ANTS-5385
+                    opEnum.append("amend_batch");        // ANTS-4669
                     // ANTS-4842 — set_body was dispatched and described for a
                     // release while absent here, so a caller that checked the
                     // enum concluded the op did not exist. That reasoning was
@@ -13949,6 +13950,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "bullet that lacks an id/anchor (keeps a "
                             "narrator-format section anchor-free).");
                         locItemProps["no_anchor"] = p;
+                    }
+                    {   // ANTS-4669 — op:"amend_batch"'s per-item edit.
+                        QJsonObject o; o["type"] = "string";
+                        o["description"] = QStringLiteral(
+                            "op:\"amend_batch\" — the exact text to replace in this "
+                            "item's stored body, as amend_body's `old_text`. Each "
+                            "locator is {id, old_text, new_text}; one read, one "
+                            "commit; a refused locator lands in skipped[].");
+                        locItemProps["old_text"] = o;
+                        QJsonObject n; n["type"] = "string";
+                        n["description"] = QStringLiteral(
+                            "op:\"amend_batch\" — the replacement, as amend_body's "
+                            "`new_text`.");
+                        locItemProps["new_text"] = n;
                     }
                     locItem["properties"] = locItemProps;
                     QJsonObject locatorsProp;

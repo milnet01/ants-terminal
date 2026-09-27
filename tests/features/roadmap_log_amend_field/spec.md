@@ -130,3 +130,16 @@ one open item land together where a Kind alone is refused.
   `amended_count`, `skipped[]` and `skipped_count`.
 
 *Tests:* the four `RoadmapLogAmendFieldBatch.*` cases.
+
+## ANTS-4669 — `op:"amend_batch"`
+
+`locators[]` of `{id, old_text, new_text}` applies `amend_body`'s edit to each
+item's stored body in one read, one commit and one render. Each locator runs
+`amend_body`'s checks: the trailer guard (`body_shadowed`), the unique
+wrap-tolerant match (`body_match_not_found`, `body_match_ambiguous`,
+`body_match_wrapped_block`), `bullet_not_found`. A refused locator lands in
+`skipped[]` with its index; two aimed at one item apply in order, the second
+matching the first's result. All refused writes nothing. Store-only: a
+markdown project refuses `unsupported_format` and is pointed at
+`amend_body`. *Tests:* `RoadmapLogAmendBatch.EditsSeveralBodiesInOneCall`,
+`RoadmapLogAmendBatch.AllRefusedWritesNothing`.
