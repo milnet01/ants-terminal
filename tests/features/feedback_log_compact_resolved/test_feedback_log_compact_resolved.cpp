@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QDir>
 #include <QFile>
 #include <QIODevice>
 #include <QJsonArray>
@@ -408,13 +409,21 @@ TEST(FeedbackCompactResolved, LiveAbsentFileNotFound) {
 
 // roadmap_unavailable — a present v2 file but no resolvable ROADMAP.md.
 TEST(FeedbackCompactResolved, LiveRoadmapUnavailable) {
+    // The corpus sits one level down. The cross-repo pass also scans the
+    // corpus's PARENT for sibling projects (ANTS-4905), and with the corpus
+    // at the temp dir's top that parent is the system temp dir — where a
+    // concurrently running test's ROADMAP.md resolved these ids and made
+    // this refusal flake green on CI.
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
-    const QString p = seed(dir, /*withRoadmap=*/false);
+    const QString corpus = dir.path() + QStringLiteral("/corpus");
+    ASSERT_TRUE(QDir().mkpath(corpus));
+    const QString p = corpus + "/TEST_Ants_MCP_Feedback.md";
+    writeStr(p, fx());
     RemoteControl rc(nullptr);
     QJsonObject req;
     req["op"] = "compact_resolved";
     req["path"] = p;
-    req["caller_cwd"] = dir.path();
+    req["caller_cwd"] = corpus;
     const QJsonObject env = rc.cmdFeedbackLog(req).object();
     EXPECT_FALSE(env.value("ok").toBool());
     EXPECT_EQ(env.value("code").toString(),
