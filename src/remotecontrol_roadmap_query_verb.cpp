@@ -3832,7 +3832,8 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     // patching a matched substring, so it takes no old_text and the body
     // machinery would be dead weight around it. Store-only — on a markdown
     // project the trailer line is body text and amend_body already reaches it.
-    if (op == QStringLiteral("amend_field")) {
+    if (op == QStringLiteral("amend_field") ||
+        op == QStringLiteral("amend_field_batch")) {   // ANTS-5385
         return cmdRoadmapLogAmendField(req);
     }
     // ANTS-4949 / ANTS-4968 — a section's intro, and the roadmap's preamble.

@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"amend_field_batch" sets fields on many roadmap items in one call.** (ANTS-5385)
+  Filling in plain-English summaries and kinds after moving a roadmap
+  into the store no longer takes one call per item per field in a set
+  order. Every change lands together, and a refused entry is listed
+  without stopping the rest.
+
 - **roadmap_query check_sync shows a sample of the lines that differ, and says when only the header does.** (ANTS-5382)
   Up to ten lines come back as file-versus-store pairs, so a session can
   judge whether re-writing ROADMAP.md is safe without a trial run. A

@@ -125,11 +125,11 @@ QByteArray fixture() {
 }
 
 QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
-                     qint64 *projectId) {
+                     qint64 *projectId, const QByteArray &body = fixture()) {
     guard.setEnv("XDG_DATA_HOME",
                  QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
     const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
-    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()))
+    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), body))
         return QString();
     const QString root = QFileInfo(rawRoot).canonicalFilePath();
 
@@ -178,9 +178,9 @@ struct Fx {
     QTemporaryDir tmp;
     qint64 projectId = 0;
     QString root;
-    bool ok() {
+    bool ok(const QByteArray &body = fixture()) {
         if (!tmp.isValid()) return false;
-        root = seedMigrated(guard, tmp, &projectId);
+        root = seedMigrated(guard, tmp, &projectId, body);
         return !root.isEmpty();
     }
 };
@@ -823,4 +823,152 @@ TEST(RoadmapLogAmendField, Ants4948AlreadyThereWritesNothing) {
     EXPECT_FALSE(resp.value(QStringLiteral("amended")).toBool());
     EXPECT_EQ(resp.value(QStringLiteral("moved_count")).toInt(), 0);
     EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-5385 — op:"amend_field_batch". Contract: spec.md § ANTS-5385.
+
+namespace {
+
+// fixture() plus an OPEN item that has no Layman: the item a post-migration
+// backfill is for, and the one the render gate judges.
+QByteArray batchFixture() {
+    QByteArray b = fixture();
+    b += "## Backlog\n"
+         "\n"
+         "- \xF0\x9F\x93\x8B [DEMO-0009] **Migrated with no Layman.**\n"
+         "  Some prose about it.\n"
+         "  Source: seed.\n"
+         "\n";
+    return b;
+}
+
+QJsonObject amendment(const QString &id, const QString &field,
+                      const QJsonValue &value) {
+    QJsonObject e;
+    e[QStringLiteral("id")]    = id;
+    e[QStringLiteral("field")] = field;
+    e[QStringLiteral("value")] = value;
+    return e;
+}
+
+QJsonObject batchReq(const QString &root, const QJsonArray &amendments) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_field_batch");
+    req[QStringLiteral("amendments")] = amendments;
+    return req;
+}
+
+}  // namespace
+
+// ANTS-5385a — several columns on several items, one call.
+TEST(RoadmapLogAmendFieldBatch, SetsSeveralColumnsInOneCall) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(batchReq(fx.root, {
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("source"),
+                  QStringLiteral("backfill")),
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("lanes"),
+                  QJsonArray{QStringLiteral("render")}),
+        amendment(QStringLiteral("DEMO-0009"), QStringLiteral("layman"),
+                  QStringLiteral("A plain sentence for the card."))})).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("amended_count")).toInt(), 3);
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 0);
+
+    const auto a = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(a->source, QStringLiteral("backfill"));
+    EXPECT_EQ(a->lanes, QStringList{QStringLiteral("render")});
+    const auto b = itemOf(QStringLiteral("DEMO-0009"), fx.projectId);
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(b->layman, QStringLiteral("A plain sentence for the card"));
+    EXPECT_TRUE(has(readAll(roadmapPath(fx.root)).toStdString(),
+                    "A plain sentence for the card."))
+        << "and the render published it";
+}
+
+// ANTS-5385b — the gate judges the FINAL state. A Kind alone on an open item
+// with no Layman is refused; the same Kind with a Layman in one batch lands.
+TEST(RoadmapLogAmendFieldBatch, GateJudgesTheFinalState) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject alone = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0009"), QStringLiteral("kind"),
+                 QStringLiteral("fix"))).object();
+    EXPECT_FALSE(alone.value(QStringLiteral("ok")).toBool())
+        << "the premise: one call per field meets the gate in the wrong order\n"
+        << QJsonDocument(alone).toJson().toStdString();
+
+    const QJsonObject both = rc.cmdRoadmapLogAmendFieldForTest(batchReq(fx.root, {
+        amendment(QStringLiteral("DEMO-0009"), QStringLiteral("kind"),
+                  QStringLiteral("fix")),
+        amendment(QStringLiteral("DEMO-0009"), QStringLiteral("layman"),
+                  QStringLiteral("Now it has a card sentence."))})).object();
+    ASSERT_TRUE(both.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(both).toJson().toStdString();
+    const auto item = itemOf(QStringLiteral("DEMO-0009"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->kind, QStringLiteral("fix"));
+}
+
+// ANTS-5385c — a refused entry is skipped with its index; the rest apply.
+TEST(RoadmapLogAmendFieldBatch, RefusedEntriesAreSkippedOthersApply) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(batchReq(fx.root, {
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("kind"),
+                  QStringLiteral("bogus")),                       // bad_kind
+        amendment(QStringLiteral("DEMO-0007"), QStringLiteral("layman"),
+                  QStringLiteral("x")),                           // shadowed
+        amendment(QStringLiteral("DEMO-9999"), QStringLiteral("source"),
+                  QStringLiteral("x")),                           // not found
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("source"),
+                  QStringLiteral("kept")),
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("source"),
+                  QStringLiteral("again"))})).object();          // duplicate
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("amended_count")).toInt(), 1);
+    const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 4);
+    const QStringList codes = {QStringLiteral("bad_kind"),
+                               QStringLiteral("field_shadowed_by_body"),
+                               QStringLiteral("bullet_not_found"),
+                               QStringLiteral("bad_args")};
+    const int indexes[] = {0, 1, 2, 4};
+    for (int i = 0; i < 4; ++i) {
+        const QJsonObject row = skipped.at(i).toObject();
+        EXPECT_EQ(row.value(QStringLiteral("index")).toInt(-1), indexes[i]);
+        EXPECT_EQ(row.value(QStringLiteral("code")).toString(), codes.at(i));
+    }
+    const auto item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->source, QStringLiteral("kept"))
+        << "the first value for a column wins; the second is refused";
+}
+
+// ANTS-5385d — every entry refused: the call refuses and writes nothing.
+TEST(RoadmapLogAmendFieldBatch, AllRefusedWritesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(batchReq(fx.root, {
+        amendment(QStringLiteral("DEMO-9998"), QStringLiteral("source"),
+                  QStringLiteral("x")),
+        amendment(QStringLiteral("DEMO-9999"), QStringLiteral("source"),
+                  QStringLiteral("y"))})).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bullet_not_found"))
+        << "one shared code when every entry failed the same way";
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 2);
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+
+    const QJsonObject empty = rc.cmdRoadmapLogAmendFieldForTest(
+        batchReq(fx.root, QJsonArray{})).object();
+    EXPECT_EQ(empty.value(QStringLiteral("code")).toString(),
+              QStringLiteral("missing_field"));
 }

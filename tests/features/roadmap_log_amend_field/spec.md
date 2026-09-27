@@ -111,3 +111,22 @@ op:"set_body" accepts a `new_text` up to 65536 characters, because it replaces
 a whole body. amend_body and amend_headline keep the 4096-character cap on
 their fragments. A set_body `new_text` past its own cap refuses `too_large`.
 *Test:* `RoadmapLogSetBody.Ants4841WholeBodyCapIsNotTheFragmentCap`.
+
+## ANTS-5385 — `op:"amend_field_batch"`
+
+`amendments:[{id, field, value}]` applies several trailer-column changes in
+one commit and one render. Each entry runs `amend_field`'s own checks. So the
+render gate judges the state after every change, and a Kind plus a Layman for
+one open item land together where a Kind alone is refused.
+
+- A refused entry lands in `skipped[]` with its `index`, `code` and `error`,
+  and costs only itself. A second entry for a column an earlier entry already
+  sets is refused `bad_args`; the first value stands.
+- When every entry is refused the call refuses and writes nothing: the shared
+  code when all failed the same way, else `bad_args`. An absent or empty
+  `amendments` refuses `missing_field`. `field:"section"` is refused per
+  entry, since moving items is `amend_field`'s `locators` form.
+- The reply carries `amended[]` ({id, field, previous, value}),
+  `amended_count`, `skipped[]` and `skipped_count`.
+
+*Tests:* the four `RoadmapLogAmendFieldBatch.*` cases.

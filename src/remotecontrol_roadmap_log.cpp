@@ -3656,42 +3656,38 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     return buildEnvelope(false, static_cast<qint64>(utf8.size()));
 }
 
-// ANTS-4667 — op:"amend_field": write one TRAILER COLUMN after creation.
-//
-// Why it exists. roadmap_log could CREATE a layman / kind / source / lanes /
-// evidence at append time and never change one afterwards. amend_body edits
-// the stored BODY column, and the trailer lines are COMPOSED at render time
-// from their own columns (ANTS-4599), so they are not in the body and
-// amend_body cannot reach them. What made a missing feature a TRAP is that
-// roadmap_query include_body:true returns those composed lines INSIDE `body` —
-// so a caller reads the text back verbatim, passes it as old_text, and is told
-// body_match_not_found about a string it just read.
-//
-// The workaround was one-way: declaring `Layman:` at a line start in the body
-// does set the column, last-wins, and cannot be withdrawn, because the write
-// path recomputes the column by re-parsing the amended body. It also renders
-// plain where a column-sourced one renders bold, so a project that corrected
-// one Layman carried two styles it could not reconcile.
-//
-// Store-only and id-only, both deliberate. The column is the store's, so a
-// markdown project has nothing here to edit — there the trailer line IS body
-// text and amend_body already reaches it. And an id is the store's own key: a
-// headline or anchor locator would re-introduce an ambiguity the key removes,
-// on a write that replaces a value outright rather than patching a match.
-QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = code;
-        env[QStringLiteral("error")] = message;
-        return QJsonDocument(env);
-    };
+namespace {
 
-    const QString id    = req.value(QStringLiteral("id")).toString().trimmed();
-    const QString field = req.value(QStringLiteral("field")).toString().trimmed();
-    // ANTS-4948 — a section is filing, not a trailer column; its own path.
-    if (field == QLatin1String("section"))
-        return cmdRoadmapLogAmendSection(req);
+// ANTS-5385 — one trailer-column change, validated and normalised before any
+// store is opened. Split out of op:"amend_field" so op:"amend_field_batch"
+// runs the same checks on each entry rather than a copy of them.
+struct RlFieldChange {
+    QString     id;
+    QString     field;
+    QString     stored;     // the form setItemField wants
+    QString     display;    // the form echoed back
+    QStringList evNotPath;  // ANTS-4527
+};
+
+// A refusal as a JSON object, so the single op returns it whole and the batch
+// files it in skipped[].
+QJsonObject rlFieldRefusal(const QString &code, const QString &message) {
+    QJsonObject env;
+    env[QStringLiteral("ok")]    = false;
+    env[QStringLiteral("code")]  = code;
+    env[QStringLiteral("error")] = message;
+    return env;
+}
+
+// Reads `id`, `field` and `value` from `src` — the request, or one batch
+// entry. Returns a refusal, or an empty object when `out` is filled.
+QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        return rlFieldRefusal(code, message);
+    };
+    const QString id    = src.value(QStringLiteral("id")).toString().trimmed();
+    const QString field = src.value(QStringLiteral("field")).toString().trimmed();
+    const QJsonObject &req = src;
     if (id.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"amend_field\" needs `id` — the "
@@ -3805,34 +3801,30 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
             QStringList kinds = RoadmapParse::canonicalKinds().values();
             kinds.sort();
             e[QStringLiteral("accepted")] = QJsonArray::fromStringList(kinds);
-            return QJsonDocument(e);
+            return e;
         }
     }
 
-    QString root, roadmapPath;
-    QJsonDocument refusal;
-    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
-    if (!target) {
-        // Remapped for cmdRoadmapLogRender's reason: the shared prologue says
-        // `op_unsupported`, and a caller branching on `code` should get one
-        // this op's contract promises — with the route that DOES work named,
-        // since on a markdown project the trailer line is body text.
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: op:\"amend_field\" writes a STORE column, so it "
-                "needs a store-migrated project. On a markdown-backed project "
-                "the trailer line is body text — use op:\"amend_body\" on the "
-                "`%1:` line itself.").arg(field);
-        }
-        return QJsonDocument(env);
-    }
+    out->id        = id;
+    out->field     = field;
+    out->stored    = stored;
+    out->display   = display;
+    out->evNotPath = evNotPath;
+    return {};
+}
 
-    RoadmapStore &store = *target->store;
+// The store half: the item exists, and no body declaration shadows the
+// column. Returns a refusal, or an empty object with `pk` and `oldValue` set.
+QJsonObject rlLocateFieldChange(RoadmapStore &store, qint64 projectId,
+                                const RlFieldChange &c, qint64 *pkOut,
+                                QString *oldValueOut) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        return rlFieldRefusal(code, message);
+    };
+    const QString &id    = c.id;
+    const QString &field = c.field;
     QString err;
-    const auto pk = store.findItem(target->projectId, id, &err);
+    const auto pk = store.findItem(projectId, id, &err);
     if (!pk)
         return rlErr(QStringLiteral("bullet_not_found"),
             QStringLiteral("roadmap_log: no bullet with id \"%1\" in this "
@@ -3871,6 +3863,83 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
       : field == QLatin1String("lanes")    ? before->lanes.join(QStringLiteral(", "))
                                            : before->evidence.join(QStringLiteral(", "));
 
+    *pkOut       = *pk;
+    *oldValueOut = oldValue;
+    return {};
+}
+
+}  // namespace
+
+// ANTS-4667 — op:"amend_field": write one TRAILER COLUMN after creation.
+//
+// Why it exists. roadmap_log could CREATE a layman / kind / source / lanes /
+// evidence at append time and never change one afterwards. amend_body edits
+// the stored BODY column, and the trailer lines are COMPOSED at render time
+// from their own columns (ANTS-4599), so they are not in the body and
+// amend_body cannot reach them. What made a missing feature a TRAP is that
+// roadmap_query include_body:true returns those composed lines INSIDE `body` —
+// so a caller reads the text back verbatim, passes it as old_text, and is told
+// body_match_not_found about a string it just read.
+//
+// The workaround was one-way: declaring `Layman:` at a line start in the body
+// does set the column, last-wins, and cannot be withdrawn, because the write
+// path recomputes the column by re-parsing the amended body. It also renders
+// plain where a column-sourced one renders bold, so a project that corrected
+// one Layman carried two styles it could not reconcile.
+//
+// Store-only and id-only, both deliberate. The column is the store's, so a
+// markdown project has nothing here to edit — there the trailer line IS body
+// text and amend_body already reaches it. And an id is the store's own key: a
+// headline or anchor locator would re-introduce an ambiguity the key removes,
+// on a write that replaces a value outright rather than patching a match.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
+    // ANTS-5385 — the batch form shares this entry point, as annotate_batch
+    // shares flip_batch's, so one seam reaches both.
+    if (req.value(QStringLiteral("op")).toString()
+            == QLatin1String("amend_field_batch"))
+        return cmdRoadmapLogAmendFieldBatch(req);
+    const QString field = req.value(QStringLiteral("field")).toString().trimmed();
+    // ANTS-4948 — a section is filing, not a trailer column; its own path.
+    if (field == QLatin1String("section"))
+        return cmdRoadmapLogAmendSection(req);
+    RlFieldChange change;
+    if (const QJsonObject r = rlPrepareFieldChange(req, &change); !r.isEmpty())
+        return QJsonDocument(r);
+    const QString &id = change.id;
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) {
+        // Remapped for cmdRoadmapLogRender's reason: the shared prologue says
+        // `op_unsupported`, and a caller branching on `code` should get one
+        // this op's contract promises — with the route that DOES work named,
+        // since on a markdown project the trailer line is body text.
+        QJsonObject env = refusal.object();
+        if (env.value(QStringLiteral("code")).toString()
+                == QLatin1String("op_unsupported")) {
+            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "roadmap_log: op:\"amend_field\" writes a STORE column, so it "
+                "needs a store-migrated project. On a markdown-backed project "
+                "the trailer line is body text — use op:\"amend_body\" on the "
+                "`%1:` line itself.").arg(field);
+        }
+        return QJsonDocument(env);
+    }
+
+    RoadmapStore &store = *target->store;
+    qint64 pkValue = 0;
+    QString oldValue;
+    if (const QJsonObject r = rlLocateFieldChange(store, target->projectId, change,
+                                                  &pkValue, &oldValue);
+        !r.isEmpty())
+        return QJsonDocument(r);
+    const std::optional<qint64> pk = pkValue;
+    const QString &stored  = change.stored;
+    const QString &display = change.display;
+    const QStringList &evNotPath = change.evNotPath;
+
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     HistoryContext hist;               // ANTS-3822 § 2.5 — one op, one stamp
     hist.changedAt = rlHistoryStamp();
@@ -3907,6 +3976,170 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
         rlAddWarning(env, ev);                   // ANTS-4527
     rcRoadmapWriteFields(env, outcome, dryRun);  // ANTS-4463
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+// ANTS-5385 — op:"amend_field_batch": N trailer-column changes, one commit and
+// one render. Backfilling Layman and Kind after a migration took one call per
+// item per field, in a forced order, because the render gate refuses a Kind on
+// an item with no Layman (RetroArch feedback 2026-09-25). Here every change
+// lands before the render runs, so the gate judges the FINAL state.
+//
+// Each entry is {id, field, value} and runs amend_field's own checks. One that
+// fails lands in skipped[] with its index and costs only itself, as in
+// flip_batch; when every entry fails the call refuses and writes nothing.
+// `section` is refused per entry: moving items is amend_field's `locators` form.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req) {
+    const QJsonValue listVal = req.value(QStringLiteral("amendments"));
+    if (!listVal.isArray() || listVal.toArray().isEmpty())
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_field_batch\" needs "
+                           "`amendments`, a non-empty array of {id, field, value}")));
+    const QJsonArray list = listVal.toArray();
+    if (list.size() > 500)
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `amendments` holds at most 500 entries; "
+                           "got %1").arg(list.size())));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) {
+        QJsonObject env = refusal.object();
+        if (env.value(QStringLiteral("code")).toString()
+                == QLatin1String("op_unsupported")) {
+            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "roadmap_log: op:\"amend_field_batch\" writes STORE columns, so "
+                "it needs a store-migrated project. On a markdown-backed "
+                "project the trailer lines are body text — use op:\"amend_body\".");
+        }
+        return QJsonDocument(env);
+    }
+    RoadmapStore &store = *target->store;
+
+    struct Accepted { RlFieldChange change; qint64 pk; QString oldValue; };
+    QList<Accepted> accepted;
+    QJsonArray skipped;
+    QSet<QString> seen;   // id + field: a second change to one column is ambiguous
+    const auto skip = [&](int index, const QString &id, const QJsonObject &why) {
+        QJsonObject row;
+        row[QStringLiteral("index")] = index;
+        if (!id.isEmpty()) row[QStringLiteral("id")] = id;
+        row[QStringLiteral("code")]  = why.value(QStringLiteral("code"));
+        row[QStringLiteral("error")] = why.value(QStringLiteral("error"));
+        if (why.contains(QStringLiteral("accepted")))
+            row[QStringLiteral("accepted")] = why.value(QStringLiteral("accepted"));
+        skipped.append(row);
+    };
+    for (int i = 0; i < list.size(); ++i) {
+        const QJsonObject entry = list.at(i).toObject();
+        const QString id = entry.value(QStringLiteral("id")).toString().trimmed();
+        if (entry.value(QStringLiteral("field")).toString().trimmed()
+                == QLatin1String("section")) {
+            skip(i, id, rlFieldRefusal(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: `section` is not a column; move "
+                               "items with op:\"amend_field\" field:\"section\" "
+                               "and `locators`")));
+            continue;
+        }
+        RlFieldChange change;
+        if (const QJsonObject r = rlPrepareFieldChange(entry, &change); !r.isEmpty()) {
+            skip(i, id, r);
+            continue;
+        }
+        const QString key = change.id + QLatin1Char('\n') + change.field;
+        if (seen.contains(key)) {
+            skip(i, id, rlFieldRefusal(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: an earlier entry already sets `%1` "
+                               "on %2; one value per column per call")
+                    .arg(change.field, change.id)));
+            continue;
+        }
+        qint64 pk = 0;
+        QString oldValue;
+        if (const QJsonObject r = rlLocateFieldChange(store, target->projectId,
+                                                      change, &pk, &oldValue);
+            !r.isEmpty()) {
+            skip(i, id, r);
+            continue;
+        }
+        seen.insert(key);
+        accepted.append({change, pk, oldValue});
+    }
+
+    if (accepted.isEmpty()) {
+        // flip_batch's shape: the shared code when every entry failed the same
+        // way, else bad_args, and skipped[] carries each entry's own.
+        QString code = skipped.first().toObject().value(QStringLiteral("code")).toString();
+        for (const QJsonValue &v : std::as_const(skipped))
+            if (v.toObject().value(QStringLiteral("code")).toString() != code) {
+                code = QStringLiteral("bad_args");
+                break;
+            }
+        QJsonObject out = rlFieldRefusal(code,
+            QStringLiteral("roadmap_log op:\"amend_field_batch\": all %1 "
+                           "amendment(s) were refused — nothing was written")
+                .arg(skipped.size()));
+        out[QStringLiteral("op")]            = QStringLiteral("amend_field_batch");
+        out[QStringLiteral("amended")]       = QJsonArray();
+        out[QStringLiteral("amended_count")] = 0;
+        out[QStringLiteral("skipped")]       = skipped;
+        out[QStringLiteral("skipped_count")] = skipped.size();
+        return QJsonDocument(out);
+    }
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    HistoryContext hist;               // one op, one stamp
+    hist.changedAt = rlHistoryStamp();
+    const auto mutate = [&](QString *e) -> bool {
+        QSet<qint64> stamped;
+        for (const Accepted &a : std::as_const(accepted)) {
+            if (!store.setItemField(a.pk, a.change.field, a.change.stored,
+                                    QStringLiteral("asserted"), e))
+                return false;
+            hist.record(a.pk, a.change.field, a.oldValue, a.change.display);
+            if (!stamped.contains(a.pk)) {
+                if (!rlStampModified(store, a.pk, e))
+                    return false;
+                stamped.insert(a.pk);
+            }
+        }
+        return rlFlushHistory(store, hist, e);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, target->projectId, root, roadmapPath, dryRun, mutate,
+        &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+    rlAttachHistoryNote(env, store, hist);
+
+    QJsonArray amended;
+    QStringList evNotPath;
+    for (const Accepted &a : std::as_const(accepted)) {
+        QJsonObject row;
+        row[QStringLiteral("id")]       = a.change.id;
+        row[QStringLiteral("field")]    = a.change.field;
+        row[QStringLiteral("previous")] = a.oldValue;
+        row[QStringLiteral("value")]    = a.change.display;
+        amended.append(row);
+        evNotPath << a.change.evNotPath;
+    }
+    env[QStringLiteral("ok")]            = true;
+    env[QStringLiteral("op")]            = QStringLiteral("amend_field_batch");
+    env[QStringLiteral("amended")]       = amended;
+    env[QStringLiteral("amended_count")] = amended.size();
+    env[QStringLiteral("skipped")]       = skipped;
+    env[QStringLiteral("skipped_count")] = skipped.size();
+    if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
+        rlAddWarning(env, ev);
+    rcRoadmapWriteFields(env, outcome, dryRun);
     if (dryRun)
         env[QStringLiteral("dry_run")] = true;
     return QJsonDocument(env);

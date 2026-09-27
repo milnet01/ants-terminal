@@ -1272,6 +1272,8 @@ private:
     // the unique-match guard and the atomic write are identical, and a second
     // copy of ~400 lines is how the two drift.
     QJsonDocument cmdRoadmapLogAmendField(const QJsonObject &req);
+    // ANTS-5385 — op:"amend_field_batch": N column changes, one commit.
+    QJsonDocument cmdRoadmapLogAmendFieldBatch(const QJsonObject &req);
     // ANTS-4948 — amend_field's field:"section": moves items to another section.
     QJsonDocument cmdRoadmapLogAmendSection(const QJsonObject &req);
     // ANTS-4808 — `setBodyMode` is op:"set_body": the same locate, store

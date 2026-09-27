@@ -13356,6 +13356,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("amend_body");   // ANTS-3406
                     opEnum.append("amend_headline");  // ANTS-4372
                     opEnum.append("amend_field");  // ANTS-4667
+                    opEnum.append("amend_field_batch");  // ANTS-5385
                     // ANTS-4842 — set_body was dispatched and described for a
                     // release while absent here, so a caller that checked the
                     // enum concluded the op did not exist. That reasoning was
@@ -14296,6 +14297,34 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["position"]      = positionProp;  // ANTS-3432
                     props["sort_col"]      = sortColProp;   // ANTS-3432
                     props["locators"]      = locatorsProp;
+                    // ANTS-5385 — amendments[] for op:"amend_field_batch".
+                    {
+                        QJsonObject entryProps;
+                        QJsonObject idP;    idP["type"] = "string";
+                        QJsonObject fieldP; fieldP["type"] = "string";
+                        fieldP["enum"] = QJsonArray{"layman", "kind", "source",
+                                                    "lanes", "evidence"};
+                        QJsonObject valueP;
+                        valueP["type"] = QJsonArray{"string", "array"};
+                        entryProps["id"]    = idP;
+                        entryProps["field"] = fieldP;
+                        entryProps["value"] = valueP;
+                        QJsonObject entry;
+                        entry["type"]       = "object";
+                        entry["properties"] = entryProps;
+                        entry["required"]   = QJsonArray{"id", "field", "value"};
+                        QJsonObject amendmentsProp;
+                        amendmentsProp["type"]  = "array";
+                        amendmentsProp["items"] = entry;
+                        amendmentsProp["description"] = QStringLiteral(
+                            "op:\"amend_field_batch\" — {id, field, value} "
+                            "entries, each checked as op:\"amend_field\" "
+                            "checks one, all written in ONE commit and render, "
+                            "so the Layman gate judges the final state. A "
+                            "refused entry lands in skipped[] with its index; "
+                            "all refused writes nothing. At most 500.");
+                        props["amendments"] = amendmentsProp;
+                    }
                     props["bullets"]       = bulletsProp;
                     props["section"]       = sectionProp;
                     props["after_section"] = afterSectionProp;
