@@ -46990,7 +46990,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4487] **There is no way to remove an item from the roadmap store: orphaning is a label, and the next render re-injects it.**
+- ✅ [ANTS-4487] **There is no way to remove an item from the roadmap store: orphaning is a label, and the next render re-injects it.**
   Fin Break appended two items by mistake, reverted ROADMAP.md with git, and re-ran
   roadmap_migrate — which reported `items_orphaned:2` and named both in notes as `orphaned_item`.
   That reads as "handled". It is not. Both were still returned by roadmap_query as ordinary 📋
@@ -47070,6 +47070,13 @@ are closed inline in the feedback files rather than filed here.
   dropped items stay visible in ROADMAP.md (user decision 2026-09-26), and
   ANTS-5287 now deletes an item removed from the file on the next
   roadmap_migrate, which may cover the same need.
+  Decided by the user 2026-09-27: drop op:"remove" (§ 4.4). ANTS-5287
+  covers it — delete the bullet, re-run roadmap_migrate, and the item goes
+  after a snapshot, under the mass-deletion guard. Closed: removal path
+  (ANTS-5287), duplicate refusal (§ 4.5, shipped today), dropped status
+  (ANTS-4977). § 4.1 was superseded by the 2026-09-26 decision (dropped
+  stays visible). § 4.2, hiding dropped items from a default roadmap_query,
+  was never decided and is filed separately as a considered item.
   **Layman:** A roadmap item added by mistake cannot be undone — deleting it from the file does not remove it, and the next save writes it straight back.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Fin Break).
@@ -52125,6 +52132,17 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: peer-session-claude-40, in-session-2026-09-21.
   Lanes: mcp.
+
+- 💭 [ANTS-5519] **Should a default roadmap_query leave out dropped items?**
+  ANTS-4487 § 4.2 specified it: the default status becomes every status
+  except dropped; status:"dropped" or "all" still returns them. It was
+  never built, and the 2026-09-26 decision to keep dropped items visible
+  in ROADMAP.md (as 🚫) argues the other way. Needs the user's call before
+  any code: hide by default, or keep today's behaviour.
+  **Layman:** Items marked "dropped" still show up in every list of roadmap items unless you filter them out.
+  Kind: enhancement.
+  Source: ANTS-4487 § 4.2, split out 2026-09-27.
+  Lanes: mcp, roadmap.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
