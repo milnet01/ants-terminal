@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QDate>
 #include <QString>
 #include <QStringList>
 #include <QStringLiteral>
@@ -146,4 +147,29 @@ TEST(roadmap_parser_pass_emoji_status, Inv6FlipRewritesTheLateLine) {
     const auto bullets = RoadmapDialog::parseBullets(r.markdown);
     ASSERT_EQ(bullets.size(), 2);
     EXPECT_EQ(bullets[0].status, kPlanned) << "INV-6: the flip did not take";
+}
+
+// ANTS-5408 — the file route kept only the new keyword, so
+// `planned (2026-09-02). Lanes: security, packaging.` became `done`. It now
+// rewrites the word alone and re-dates the line, as the store route does.
+TEST(roadmap_parser_pass_emoji_status, Ants5408FileFlipKeepsDateAndLanes) {
+    const QString md = QStringLiteral(
+        "#### Pass 53.2 Harden the importer\n"
+        "- **Status**: planned (2026-09-02). Lanes: security, packaging.\n"
+        "- An item bullet.\n");
+    const auto r = PassHeadingWrite::flipPassStatus(
+        md, QStringLiteral("PASS-53-2"), QString(), QStringLiteral("done"));
+    ASSERT_TRUE(r.ok);
+    const QString today = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+    EXPECT_TRUE(r.markdown.contains(
+        QStringLiteral("- **Status**: done (%1). Lanes: security, packaging.").arg(today)))
+        << r.markdown.toStdString();
+
+    // An undated line keeps its shape too.
+    const auto bare = PassHeadingWrite::flipPassStatus(
+        QStringLiteral("#### Pass 1.1 A\n- **Status**: todo. Lanes: ui.\n"),
+        QStringLiteral("PASS-1-1"), QString(), QStringLiteral("in-progress"));
+    ASSERT_TRUE(bare.ok);
+    EXPECT_TRUE(bare.markdown.contains(QStringLiteral("- **Status**: in-progress. Lanes: ui.")))
+        << bare.markdown.toStdString();
 }

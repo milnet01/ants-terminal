@@ -67243,7 +67243,7 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: RetroDB message 2026-09-26.
 
-- 📋 [ANTS-5399] **A roadmap_log write over a drifted file buries its small change in a whole-file re-layout, with no pointer to render first.**
+- ✅ [ANTS-5399] **A roadmap_log write over a drifted file buries its small change in a whole-file re-layout, with no pointer to render first.**
   MAME Curator: a small append_batch over a hand-edited file reported structure
   and restyle drift, no text lost; the new bullets were buried in the diff.
   The reporter asked for no_text_lost:true. `discard_reason` already answers that
@@ -67253,6 +67253,10 @@ project. Reported causes are claims until checked in source.
   hint naming op:"render" and saying to commit that render alone, so the next
   write is a small diff. Consider the same hint on roadmap_query check_sync's
   drifted arm.
+  Resolved (2026-09-27, e2302ea4): semantic writes over layout-only
+  drift add drift_hint / would_drift_hint naming op:"render" committed
+  alone; not on render/convert, not when text was lost. The optional
+  check_sync hint was not added.
   **Layman:** When the roadmap file was hand-edited, adding one item rewrites the whole file, and nothing suggests publishing that rewrite as its own commit first.
   Kind: enhancement.
   Source: MAME_Curator_Ants_MCP_Feedback.md 2026-09-26.

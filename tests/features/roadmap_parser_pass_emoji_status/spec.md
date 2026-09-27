@@ -66,3 +66,12 @@ dispatches to `parsePassHeadingBullets` when the doc is detected as
 markers, no ants-v1 emoji). Synthetic fixtures, no real ROADMAP.md.
 The test FAILS against pre-fix code (the emoji-prefixed headings read
 📋).
+
+## ANTS-5408 — a file-route flip keeps the Status line's date and Lanes
+
+`flipPassStatus` rewrites only the status word of the block's Status line
+(the reader's line, as INV-6) and replaces a date written right after it
+with today's, keeping the rest of the line: `planned (2026-09-02). Lanes:
+security, packaging.` becomes `done (<today>). Lanes: security,
+packaging.`. An undated line keeps its shape. This matches the store route
+(ANTS-5395, ANTS-5404). *Test:* `Ants5408FileFlipKeepsDateAndLanes`.

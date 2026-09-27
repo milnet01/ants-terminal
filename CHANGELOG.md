@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Flipping a pass on a pass-headings roadmap the store does not serve keeps the Status line's date and Lanes, rewriting only the status word and re-dating it.** (ANTS-5408)
+
 - **A roadmap legend no longer gains another `🚫 Dropped` line on each migrate cycle: the import reads that line as legend, and existing duplicates collapse into one.** (ANTS-5384)
 
 - **A roadmap render refused over a ragged table row now names the section, the row number and its first cell.** (ANTS-5386)

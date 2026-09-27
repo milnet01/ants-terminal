@@ -293,6 +293,20 @@ WriteResult flipPassStatus(const QString &markdown,
         // directly under the heading.
         lines.insert(head + 1, QStringLiteral("- **Status**: ") + keyword);
         r.changedLine = head + 1;
+    } else if (QStringList before = lines;
+               rewriteStatusWord(lines, statusLine, keyword, emoji)) {
+        // ANTS-5408 — the word alone, then today's date on that line, as the
+        // store route does (ANTS-5395, ANTS-5404). Writing the value whole
+        // dropped `(2026-09-02). Lanes: security, packaging.` from the line.
+        int j = statusLine;
+        while (j < lines.size() && lines.at(j) == before.at(j)) ++j;
+        if (j < lines.size()) {
+            lines[j] = redatePassStatus(lines.at(j),
+                QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")));
+            r.changedLine = j;
+        } else {
+            r.changedLine = statusLine;   // already this status: unchanged
+        }
     } else {
         // INV-5 — rewrite the value preserving the line's style.
         const QRegularExpressionMatch pm =
