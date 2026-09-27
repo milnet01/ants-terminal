@@ -67344,6 +67344,12 @@ project. Reported causes are claims until checked in source.
 
 - 📋 [ANTS-5477] **roadmap_query spills a targeted ids fetch to a row-shape preview instead of returning rows.**
   Six ids with bullet_fields and max_body_bytes:5000 came back offloaded at ~17.5 KB with no bodies. The caller bounded the rows; trim bodies with the existing elision marker, or return the rows that fit, before dropping all of them.
+  Decision needed (2026-09-27, left for the user): the spill is the
+  shared offload transform, so the fix changes a token-saving default
+  for one path. Recommend: on a targeted id/ids fetch only, shrink each
+  body with the existing elision marker until the reply fits under the
+  offload threshold, and spill only if the rows alone still do not fit.
+  Other paths keep today's behaviour.
   **Layman:** Asking for six specific roadmap items can return none of them, only a pointer to a spill file.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-26.
