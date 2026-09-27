@@ -1496,3 +1496,79 @@ TEST(roadmap_migrate_read, Ants5384DroppedLegendLineIsLegend) {
             << "a legend line was carried as " << e.kind.toStdString();
     EXPECT_EQ(partitionFault(md, plan), QString());
 }
+
+// ANTS-5383 / ANTS-5495 — docs/specs/ANTS-3757 § 2.10's four read-half codes.
+// A status-marked bullet that is neither an item nor a legend line, a bullet
+// led by an unknown pictograph, and a ragged table row all carried silently
+// before; each now leaves a note at its own line.
+TEST(roadmap_migrate_read, Ants5383NarratedStatusBulletsAreNoted) {
+    const QString md = QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n"
+        "- \xE2\x9C\x85 Done (shipped)\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "- \xE2\x9C\x85 fixed a detail beneath the item\n"          // line 12
+        "- \xF0\x9F\x9A\xA7 wire the importer, no headline yet\n"    // line 13
+        "- \xF0\x9F\x93\x8B Planned (a second legend-shaped run)\n"); // line 14
+    const MigrationPlan plan = planText(md);
+    EXPECT_EQ(noteLines(plan, "narrated_status_bullet"), QList<int>{12});
+    EXPECT_EQ(noteLines(plan, "narrated_open_status_bullet"), QList<int>{13})
+        << "a legend-shaped line is legend vocabulary, planned or not";
+    EXPECT_EQ(partitionFault(md, plan), QString());
+}
+
+TEST(roadmap_migrate_read, Ants5383UnrecognisedStatusMarkerIsNoted) {
+    const QString md = QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xE2\x9A\xA0\xEF\xB8\x8F careful: this lands in the intro\n" // line 7
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "- \xE2\xAD\x90 a starred note after the item\n"                 // line 13
+        "- a plain bullet\n"
+        "```\n"
+        "- \xE2\xAD\x90 fenced, not a bullet\n"
+        "```\n");
+    const MigrationPlan plan = planText(md);
+    EXPECT_EQ(noteLines(plan, "unrecognised_status_marker"), (QList<int>{7, 13}));
+    EXPECT_EQ(partitionFault(md, plan), QString());
+}
+
+TEST(roadmap_migrate_read, Ants5495RaggedTableRowIsNoted) {
+    const QString md = QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "| Lane | Note |\n"
+        "|---|---|\n"
+        "| vt | fine |\n"
+        "| chrome | `a | b` split |\n");                                   // line 14
+    const MigrationPlan plan = planText(md);
+    EXPECT_EQ(noteLines(plan, "ragged_table_row"), QList<int>{14});
+    bool named = false;
+    for (const auto &n : plan.notes)
+        if (n.code == QLatin1String("ragged_table_row"))
+            named = n.detail.contains(QStringLiteral("chrome"));
+    EXPECT_TRUE(named) << "the detail names the row's first cell";
+}

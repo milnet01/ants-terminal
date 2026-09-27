@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate notes a status bullet it carries as loose text (`narrated_status_bullet`, and `narrated_open_status_bullet` for an open task) and a bullet led by an unknown status emoji (`unrecognised_status_marker`), each at its line.** (ANTS-5383)
+
+- **roadmap_migrate notes a table row whose cell count differs from its header (`ragged_table_row`), naming the row, before the render refuses the table.** (ANTS-5495)
+
 - **roadmap_log create_section places a level-2 release title such as "0.10.0 — Theme" after the greatest lower version when after_section is omitted, and refuses a `v` prefix, a pre-release suffix or a repeated version.** (ANTS-5315)
 
 - **roadmap_query `version:` returns the items of a release, such as "0.10.0" or a patch stream "0.4.x", by the section titled with it; an unknown version lists the ones the roadmap has.** (ANTS-5315)

@@ -674,6 +674,18 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
                 ln = end + 1;
                 continue;
             }
+            // ANTS-5383 — § 2.10: a status-marked bullet that is neither an
+            // item nor a legend-shaped line is carried as narration, and an
+            // open one is lost work, so say so. A legend-shaped line that did
+            // not join the planned legend is legend vocabulary, not a note.
+            if (!looksLikeLegendLine(text)) {
+                const bool open =
+                    rec->status == QString::fromUtf8(RoadmapParse::kEmojiPlanned) ||
+                    rec->status == QString::fromUtf8(RoadmapParse::kEmojiInProgress);
+                addNote(plan.notes,
+                        open ? "narrated_open_status_bullet" : "narrated_status_bullet",
+                        raw.trimmed(), ln, ctx.index);
+            }
             addElement(QStringLiteral("narration"), verbatim(ln, last), ln, last);
             ln = last + 1;
             continue;
@@ -764,8 +776,19 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
                 QJsonArray cells;
                 for (const QString &c : tableCells(lines.at(k - 1)))
                     cells.append(c);
-                if (header.isEmpty() && rows.isEmpty()) header = cells;
-                else rows.append(cells);
+                if (header.isEmpty() && rows.isEmpty()) {
+                    header = cells;
+                } else {
+                    // ANTS-5495 — § 2.10: kept as written, but the render
+                    // refuses it, so it is named here, before the store has it.
+                    if (cells.size() != header.size())
+                        addNote(plan.notes, "ragged_table_row",
+                                QStringLiteral("row starting \"%1\": %2 cells against %3 columns")
+                                    .arg(cells.isEmpty() ? QString() : cells.at(0).toString().left(60))
+                                    .arg(cells.size()).arg(header.size()),
+                                k, ctx.index);
+                    rows.append(cells);
+                }
             }
             QJsonObject payload;
             payload.insert(QStringLiteral("header"), header);
@@ -862,6 +885,34 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
                 box != QLatin1String("X"))
                 addNote(plan.notes, "unrecognised_checkbox",
                         lines.at(k - 1).trimmed(), k, ctx.index);
+        }
+    }
+
+    // ANTS-5383 — § 2.10: a top-level bullet led by a pictograph that is not
+    // one of the five status markers opens no reader record, so § 2.11's
+    // position rule carries it as intro or narration without a word. A scan,
+    // like the checkbox one above, so the note does not depend on where it
+    // landed. Not on a pass-headings source: its bullets belong to a block.
+    if (src.format != QLatin1String("pass-headings")) {
+        const QStringList markers = {
+            QString::fromUtf8(RoadmapParse::kEmojiPlanned),
+            QString::fromUtf8(RoadmapParse::kEmojiInProgress),
+            QString::fromUtf8(RoadmapParse::kEmojiDone),
+            QString::fromUtf8(RoadmapParse::kEmojiConsidered),
+            QString::fromUtf8(RoadmapParse::kEmojiDropped)};
+        for (int k = 1; k <= n; ++k) {
+            if (inFence[k]) continue;
+            const QString &raw = lines.at(k - 1);
+            if (!raw.startsWith(QStringLiteral("- ")) && !raw.startsWith(QStringLiteral("* ")))
+                continue;
+            const QString head = raw.mid(2);
+            const QList<uint> cps = head.left(2).toUcs4();
+            if (cps.isEmpty() || QChar::category(char32_t(cps.first())) != QChar::Symbol_Other)
+                continue;
+            bool known = false;
+            for (const QString &m : markers) known = known || head.startsWith(m);
+            if (!known)
+                addNote(plan.notes, "unrecognised_status_marker", raw.trimmed(), k, ctx.index);
         }
     }
 
