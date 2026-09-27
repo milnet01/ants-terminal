@@ -67231,8 +67231,11 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
 
-- 📋 [ANTS-5397] **body_shadowed does not refuse a pass-headings Status line whose Lanes sit mid-line by design.**
+- ✅ [ANTS-5397] **body_shadowed does not refuse a pass-headings Status line whose Lanes sit mid-line by design.**
   Split from ANTS-5396. The guard refuses any new_text naming a trailer key mid-line, and RetroDB's house format writes `- **Status**: planned (date). Lanes: a, b.`, so the format's own canonical line is refused. On pass-headings, a `Lanes:` inside a Status line is that format's declaration, not prose.
+  Resolved (2026-09-27, 516e1c30): the mid-line guard accepts `lanes` on
+  a line opening `- **Status**:`; other keys and other lines still
+  refuse. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** Lets sessions write this roadmap style's normal status line without being refused.
   Kind: fix.
   Source: RetroDB feedback 2026-09-26.
