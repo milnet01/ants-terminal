@@ -67610,6 +67610,12 @@ project. Reported causes are claims until checked in source.
   Kind: doc-fix.
   Source: review-contract ANTS-1878 loop 5, 2026-09-27 (filed out of radius).
 
+- 📋 [ANTS-5497] **docs/specs/ANTS-3757 carries three stale claims about its note codes and fixtures.**
+  Found by the ANTS-5383/5495 gate, outside its span. (1) § 2.10's `unrecognised_checkbox` row says the line "is carried as narration"; section-level text before a section's first element is intro (§ 2.11's position rule). (2) § 2.10 says the read-half set is closed and names every shared code, but `archive_unrecognised` (ANTS-3766 § 2.2, per the Note struct comment in src/roadmapmigrate.h) is not in the table. (3) § 6 lists "a pathological fixture" carrying the status-marked detail line; the only such line is fixtures/antsv1/ROADMAP.md:30 and there is no fixture of that name. Fold in directly; do not re-review.
+  **Layman:** Corrects three small inaccuracies in the roadmap-import spec that a test writer could follow.
+  Kind: doc-fix.
+  Source: review-contract ANTS-3757, 2026-09-27 (filed out of radius).
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
