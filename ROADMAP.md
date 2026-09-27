@@ -66091,6 +66091,32 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: field-pass-testing-md-2026-09-27.
   Lanes: audit.
 
+- 📋 [ANTS-5485] **Retire the obsolete Ants MCP verbs: deprecate for one release, then remove the uncalled ones.**
+  User decision 2026-09-27: mark, measure, remove. Step 1 (this week):
+  each verb's description leads "Deprecated: use X instead" and its calls
+  are counted (mcpd-usage records n_calls per verb). Step 2 (after the
+  next Wednesday release): remove every one with no calls, with its
+  schema, dispatch, tests and docs.
+  Candidates, from references in ~/.claude skills, other projects'
+  CLAUDE.md and the feedback corpus (2026-09-27):
+  - Replaced: get_git_status (git_state), current_state and
+    session_brief (session_orient), cross_doc_diff and
+    cold_eyes_cross_doc_diff.
+  - Unused by today's skills: cold_eyes_single_doc, cold_eyes_fold_in;
+    indie_review_orchestrate, _brief, _synthesis_prompt, _fold_in
+    (review-code calls them unused); test_audit_fold_in, _recheck,
+    _synthesis_prompt (review-tests excludes them); debt_sweep_scan,
+    _apply_fix, _triage_prompt, _defer; plan_template;
+    roadmap_branch_drift.
+  Kept: the terminal verbs (last_selection, get_last_command,
+  get_scrollback, get_cwd and the rest) are product features, not
+  workflow steps. Tell claude-config before step 2: its skills grant
+  some of these names in allowed-tools.
+  **Layman:** About twenty old Ants tools cost every Claude session tokens while nothing uses them; mark them, check for a week, then remove them.
+  Kind: chore.
+  Source: user-request-2026-09-27.
+  Lanes: mcp.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
@@ -67085,8 +67111,12 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: RetroArch feedback 2026-09-25.
 
-- 📋 [ANTS-5385] **roadmap_log gains amend_field_batch.**
+- ✅ [ANTS-5385] **roadmap_log gains amend_field_batch.**
   Backfilling Layman and Kind after a migration takes one call per item per field, in a forced order because the render gate refuses Kind on an item without Layman. Take [{id, field, value}] in one commit and judge the gate on the final state.
+  Resolved (2026-09-27): op:"amend_field_batch" with
+  amendments:[{id, field, value}], one commit and render; refused entries
+  land in skipped[]. Tests: RoadmapLogAmendFieldBatch.*. Live after an
+  ants-mcpd rebuild and /mcp.
   **Layman:** Lets a session set fields on many roadmap items in one call.
   Kind: enhancement.
   Source: RetroArch feedback 2026-09-25.
