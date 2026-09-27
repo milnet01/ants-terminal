@@ -431,6 +431,27 @@ TEST(RoadmapRender, TableRefusesShapelessPayload) {
     EXPECT_FALSE(QFileInfo::exists(f->liveAbs())) << "a refused render wrote a file";
 }
 
+// ANTS-5386 — a ragged row names its section, its row and its first cell, so
+// a session can find it. The bare "6 cells against 4 columns" named none of
+// them (RetroArch feedback 2026-09-25, where unescaped `|` was the cause).
+TEST(RoadmapRender, Ants5386RaggedRowIsLocated) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("phase-map"),
+                                          QStringLiteral("Phase map"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+    ASSERT_TRUE(f->store->addElement(*sec, 0, QStringLiteral("table"),
+        QStringLiteral(R"({"header":["A","B"],"rows":[["ok","ok"],["ragged","x","y"]]})"), &err))
+        << err.toStdString();
+
+    EXPECT_FALSE(RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err));
+    EXPECT_TRUE(err.contains(QStringLiteral("phase-map"))) << err.toStdString();
+    EXPECT_TRUE(err.contains(QStringLiteral("row 2"))) << err.toStdString();
+    EXPECT_TRUE(err.contains(QStringLiteral("ragged"))) << err.toStdString();
+    EXPECT_TRUE(err.contains(QStringLiteral("3 cells against 2 columns"))) << err.toStdString();
+}
+
 // INV-12 — the four required § 3.5 pieces are emitted literally. Kind: in
 // particular, even when its value equals § 3.5.3's default: INV-1's oracle
 // cannot see that omission, because a re-parse restores the default.

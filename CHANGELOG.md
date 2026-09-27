@@ -217,6 +217,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap render refused over a ragged table row now names the section, the row number and its first cell.** (ANTS-5386)
+
 - **roadmap_log set_intro, amend_intro and set_preamble accept a `#` line inside a fenced code block, so an intro holding a shell sample can be edited.** (ANTS-5493)
 
 - **A roadmap_query id or ids fetch shortens its bodies to fit instead of spilling them all.** (ANTS-5477)

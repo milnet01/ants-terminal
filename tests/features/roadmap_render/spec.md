@@ -61,3 +61,10 @@ Parsing that line back gives the same headline, and the body does not start
 with a stray `*`. The bold close is the last two stars of a run. *Test:*
 `RoadmapRender.Ants5362ItalicTailHeadlineRoundTrips`, red with the parser's
 `(?!\*)` removed.
+
+## ANTS-5386 — a ragged table row is located
+
+When a stored table row's cell count differs from its header, the render
+refuses with an error naming the section slug, the row number counted from
+1, the row's first cell and both counts. *Test:*
+`RoadmapRender.Ants5386RaggedRowIsLocated`.

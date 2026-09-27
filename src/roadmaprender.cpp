@@ -365,10 +365,16 @@ std::optional<QString> tableText(const QString &payload, QString *error) {
     QStringList lines;
     lines.append(tableRow(header));
     lines.append(QStringLiteral("|") + QStringLiteral(" --- |").repeated(int(header.size())));
-    for (const QJsonValue &r : rows) {
-        const QJsonArray cells = r.toArray();
+    for (int i = 0; i < rows.size(); ++i) {
+        const QJsonArray cells = rows.at(i).toArray();
         if (cells.size() != header.size()) {
-            fail(error, QStringLiteral("table row has %1 cells against %2 columns")
+            // ANTS-5386 — say which row, by number and first cell, or the
+            // author cannot find it. An unescaped `|` is the usual cause.
+            fail(error, QStringLiteral("table row %1 (first cell \"%2\") has %3 "
+                                       "cells against %4 columns")
+                            .arg(i + 1)
+                            .arg(cells.isEmpty() ? QString()
+                                                 : cells.at(0).toString().left(60))
                             .arg(cells.size()).arg(header.size()));
             return std::nullopt;
         }
@@ -677,8 +683,12 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                     // canonical JSON here rather than the author's bytes
                     // (ANTS-3832).
                     const auto text = tableText(e.payload.value_or(QString()), error);
-                    if (!text)
+                    if (!text) {
+                        // ANTS-5386 — and which section it is in.
+                        if (error)
+                            *error = QStringLiteral("section '%1': %2").arg(s.slug, *error);
                         return std::nullopt;
+                    }
                     blocks.append(*text);
                 } else if (e.payload) {
                     // Narration: verbatim — never re-wrapped, never

@@ -67021,13 +67021,18 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Vestige-2026-09-25.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5374] **roadmap_migrate gives id-less bullets ids under a folder-derived prefix without a note.**
+- ✅ [ANTS-5374] **roadmap_migrate gives id-less bullets ids under a folder-derived prefix without a note.**
   Found writing ANTS-5353's test. Migrating a roadmap whose only
   bullet has no id allocates an id under the folder's first four letters
   and records that prefix in the store, so later appends treat it as
   chosen and ANTS-5353's warning never fires. Add a plan or load note
   naming the derived prefix and the project_settings call, the same
   advice ANTS-5353 gives.
+  Resolved (2026-09-27, 74b64dfa): the migrate reply carries an
+  id_prefix_guessed warning (prefix + project_settings advice) when
+  allocated ids took the folder name. A reply warning rather than a note
+  code, leaving ANTS-3757's closed set alone. Live after an ants-mcpd
+  rebuild and /mcp.
   **Layman:** Importing a roadmap whose items have no numbers can give them the wrong letters without saying so.
   Kind: enhancement.
   Source: in-session-2026-09-25.
