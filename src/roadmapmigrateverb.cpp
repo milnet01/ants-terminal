@@ -699,6 +699,23 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("items_unchanged")]  = out.itemsUnchanged;
     env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
     env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
+    // ANTS-5374 — ids are permanent, and once this prefix is in the store later
+    // appends treat it as chosen, so the migration is the one place to say it
+    // was only a guess. Same advice as roadmap_log's (ANTS-5353).
+    if (!out.idPrefixGuessed.isEmpty()) {
+        QJsonObject warn;
+        warn[QStringLiteral("code")]   = QStringLiteral("id_prefix_guessed");
+        warn[QStringLiteral("prefix")] = out.idPrefixGuessed;
+        warn[QStringLiteral("message")] = QStringLiteral(
+            "This roadmap declares no id prefix and its items carry no ids, so "
+            "the ids allocated here take \"%1\" from the folder name. Ids are "
+            "permanent. To give later ids a different prefix, run "
+            "project_settings op:\"set\" id_format:{prefix:\"…\"}; a declared "
+            "prefix wins over this one.").arg(out.idPrefixGuessed);
+        QJsonArray warns = env.value(QStringLiteral("warnings")).toArray();
+        warns.append(warn);
+        env[QStringLiteral("warnings")] = warns;
+    }
     env[QStringLiteral("sections_written")] = out.sectionsWritten;
     // ANTS-4490 — sections_written's partner. "0 written, 236 unchanged" says
     // what happened; `0` alone reads as a broken counter, which is how Vestige

@@ -105,6 +105,9 @@ struct Outcome {
     int     updatedItemsDropped = 0;
     int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
     int     idsAllocated = 0;    // § 2.8
+    // ANTS-5374 — set when those ids took the project folder's name as their
+    // prefix, because nothing declared or carried one. Empty otherwise.
+    QString idPrefixGuessed;
     // INSERTED-or-UPDATED rows, not attempted ones: `sectionsWritten` counts a
     // section created or whose title/level/intro/parent/source_path changed
     // (`source_path` by ANTS-3782 § 2.2 — a section whose only change is its

@@ -220,3 +220,14 @@ preamble, so a roadmap with one heading reported 2 against one section in
   `preamble_written:true`; an unchanged re-run reports `sections_written:0`,
   `sections_unchanged:1` and `preamble_written:false`. Fails against the
   pre-fix tree, which reported 2 and had no `preamble_written`.
+
+## ANTS-5374 — a folder-derived id prefix is announced
+
+When the load allocates ids and the prefix came from the project folder's
+name, because nothing declared one, no stored prefix existed and no parsed
+id carried one, the reply's `warnings` gains `id_prefix_guessed` with the
+`prefix` and advice naming `project_settings`, as `roadmap_log` gives it
+(ANTS-5353). A prefix taken from a declaration, the store or the file's own
+ids is not announced. It is a reply field, not a note code, so
+ANTS-3757 § 2.10's closed set is unchanged. *Test:*
+`RoadmapMigrateVerb.Ants5374FolderPrefixIsAnnounced`.

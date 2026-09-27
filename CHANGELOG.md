@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate warns with `id_prefix_guessed` when the ids it allocates take their prefix from the folder name, and says how to declare one.** (ANTS-5374)
+
 - **roadmap_log set_intro and amend_intro report the tables and narration a section kept as `kept_elements`, and warn when a new intro brings a table beside a stored one.** (ANTS-5378)
 
 - **roadmap_log warns with `literal_escape_sequences` when a note, body or new_text holds a literal backslash-n and no real line break, naming each field.** (ANTS-5359)

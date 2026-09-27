@@ -820,6 +820,7 @@ bool Loader::allocateId(QString *allocated) {
                 // characters of the project root's leaf directory.
                 const QString leaf = QFileInfo(QDir::cleanPath(opts.projectRoot)).fileName();
                 prefix = leaf.left(4).toUpper();
+                out.idPrefixGuessed = prefix;   // ANTS-5374
             }
         }
 

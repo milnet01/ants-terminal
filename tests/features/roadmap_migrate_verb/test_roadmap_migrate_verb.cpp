@@ -2096,3 +2096,38 @@ TEST(roadmap_migrate_verb, Ants5394UnparsedHeadingsReachTheTopLevel) {
     EXPECT_EQ(none.value(QStringLiteral("unparsed_headings_count")).toInt(-1), 0);
     EXPECT_FALSE(none.contains(QStringLiteral("unparsed_headings")));
 }
+
+// ANTS-5374 — a migration that allocates ids under a prefix it took from the
+// folder name says so, with the same advice roadmap_log gives (ANTS-5353).
+// Ids are permanent, and once the prefix is in the store later appends treat
+// it as chosen, so this reply is the one chance to catch it.
+TEST(RoadmapMigrateVerb, Ants5374FolderPrefixIsAnnounced) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    const QString idless = makeProjectRoot(dir, QStringLiteral("proj"), gfmRoadmap());
+    ASSERT_FALSE(idless.isEmpty());
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, request(idless));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_GT(env.value(QStringLiteral("ids_allocated")).toInt(), 0);
+    QJsonObject guessed;
+    for (const auto &w : env.value(QStringLiteral("warnings")).toArray())
+        if (w.toObject().value(QStringLiteral("code")).toString() ==
+            QStringLiteral("id_prefix_guessed"))
+            guessed = w.toObject();
+    EXPECT_EQ(guessed.value(QStringLiteral("prefix")).toString(), QStringLiteral("PROJ"))
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_TRUE(guessed.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("project_settings")));
+
+    // A roadmap whose ids name the prefix chose it; nothing to say.
+    const QString withIds = makeProjectRoot(dir, QStringLiteral("other"), demoRoadmap());
+    const QJsonObject clean =
+        RoadmapMigrateVerb::run(storePath, request(withIds, QStringLiteral("other"),
+                                                   QStringLiteral("Other")));
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(clean.contains(QStringLiteral("warnings")))
+        << QJsonDocument(clean).toJson().toStdString();
+}
