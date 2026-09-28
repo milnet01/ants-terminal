@@ -192,7 +192,9 @@ because it reads as a list nobody filled in.
     comment.** It moves with the line. It excuses every rule on that
     line, where a fingerprint excuses one. A file with no comment syntax,
     such as a JSON fixture, keeps the fingerprint. A fingerprint suits a
-    frozen fixture.
+    frozen fixture. **A comment cannot reach history**: where a history
+    scan runs and the match is already in old commits, those commits
+    still need their fingerprints or an exact-content allow.
   - **A content allowlist is a wider rule unless it cannot match a
     secret.** An exact public identifier qualifies, such as
     `shiboken6.isValid`. A pattern that could match a real key does not.

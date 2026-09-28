@@ -35,6 +35,12 @@ where that is what builds it — or in the project's own standard.
 **C: C11 minimum** unless the project pins another. A pin below that needs
 the same one-line reason in the same place.
 
+**A ceiling is pinned too.** Code that does not build under the compiler's
+default standard pins one it does build under, below that default, with
+the same one-line reason. GCC 15 made C23 the default, and C23 breaks code that
+names an enum constant `false`; an unpinned build of such code fails on
+the next compiler upgrade.
+
 ## Casing
 
 **C++ has no ecosystem-wide convention** — the standard library is
