@@ -50212,7 +50212,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige), verified against ANTS-4491 as shipped.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5257] **On a github-task-list roadmap, roadmap_query enumerates bullets incompletely and returns headline text in the id field.**
+- ✅ [ANTS-5257] **On a github-task-list roadmap, roadmap_query enumerates bullets incompletely and returns headline text in the id field.**
   Reported against Vestige's file. A regex query matched AX1-AX6 and AX9
   and missed AX8, AX11, AX12, AX13. For the bullets it did return, `id`
   carried the headline text ("AX1. Geometric / ray-traced audio
@@ -50289,6 +50289,16 @@ are closed inline in the feedback files rather than filed here.
   differently from the literal path and nobody has accounted for it.
   Body-only is established for LITERAL matching and unverified for regex.
   Do not fix one and assume the other.
+  Resolved (2026-09-28): QueryMatcher::matchesBullet() now searches `id`
+  when it contains whitespace (a title parsed as an id), and both
+  bullet-list paths echo `query_fields`. Literal and regex share this one
+  function over the same text, so they search the same fields; the
+  regex difference Vestige saw came from which bodies the pattern hit,
+  not from a second code path. Proved red by disabling the id clause.
+  Live on Vestige: "Surround output" returns AX8. The `id` column still
+  holds the title on an unconverted github-task-list file; that parse
+  rule is ANTS-5325's spec amendment. Contract:
+  roadmap_query_keyword_filter spec INV-10.
   **Layman:** Searching an old-style roadmap silently returns only some of the matching entries, and labels them with their title where the identifier should be — so you cannot tell a partial answer from a complete one.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige).

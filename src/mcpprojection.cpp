@@ -1,6 +1,7 @@
 #include "mcpprojection.h"
 #include <QRegularExpression>
 
+#include <algorithm>
 #include <atomic>
 
 #include <QJsonArray>
@@ -714,13 +715,28 @@ bool textMatchesQuery(const QString &hayRaw, const QString &needle,
     return QueryMatcher(needle, mode).matches(hayRaw);
 }
 
+QStringList QueryMatcher::bulletFields() {
+    return {QStringLiteral("id (when it contains a space)"),
+            QStringLiteral("headline"), QStringLiteral("headline_full"),
+            QStringLiteral("body")};
+}
+
 bool QueryMatcher::matchesBullet(const QJsonObject &bullet) const {
     // headline + headline_full + body — the text surfaces the list emits.
     // headline_full is present only when a long headline was capped; absent
     // keys stringify to "" and drop out harmlessly. body is present at the
     // pre-pagination filter point (rcStripBodyFields runs post-slice), so
     // the match works even when include_body is false.
+    //
+    // ANTS-5257 — `id` too, but only when it contains whitespace. On a
+    // github-task-list roadmap the bold title is parsed into `id`, so a bullet
+    // could not be found by its own title. A real id never contains a space,
+    // and searching one would make `query:"ants"` match every ANTS-NNNN item.
+    const QString id = bullet.value(QStringLiteral("id")).toString();
+    const bool idIsTitle =
+        std::any_of(id.cbegin(), id.cend(), [](QChar c) { return c.isSpace(); });
     return matches(
+        (idIsTitle ? id + QChar('\n') : QString()) +
         bullet.value(QStringLiteral("headline")).toString() + QChar('\n') +
         bullet.value(QStringLiteral("headline_full")).toString() +
         QChar('\n') + bullet.value(QStringLiteral("body")).toString());

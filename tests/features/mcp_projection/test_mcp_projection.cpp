@@ -1275,6 +1275,31 @@ TEST(QueryMatcher, Ants5104OneMatcherAnswersEveryHaystack) {
     EXPECT_FALSE(bad.matches(noise));
 }
 
+// ANTS-5257 — on a github-task-list roadmap the bold title is parsed into
+// `id`, so a query that ignores `id` cannot find a bullet by its own title
+// (Vestige: "Surround output" missed AX8). A real id never contains a space,
+// so `id` is searched only when it does: `query:"ants"` must not start
+// matching every ANTS-NNNN item on an ants-v1 roadmap.
+TEST(QueryMatcher, Ants5257TitleParsedIntoIdIsSearched) {
+    QJsonObject titled;
+    titled[QStringLiteral("id")] = QStringLiteral("AX8. Surround output");
+    titled[QStringLiteral("headline")] = QStringLiteral("5.1 and 7.1 speaker layouts");
+    titled[QStringLiteral("body")] = QStringLiteral("Uses ALC_SOFT_output_mode.");
+
+    const mcp::QueryMatcher title(QStringLiteral("surround output"),
+                                  mcp::QueryMode::Substring);
+    EXPECT_TRUE(title.matchesBullet(titled));
+    const mcp::QueryMatcher titleRx(QStringLiteral("^AX8\\b"), mcp::QueryMode::Regex);
+    EXPECT_TRUE(titleRx.matchesBullet(titled));
+
+    QJsonObject plain;
+    plain[QStringLiteral("id")] = QStringLiteral("ANTS-1234");
+    plain[QStringLiteral("headline")] = QStringLiteral("A headline.");
+    plain[QStringLiteral("body")] = QStringLiteral("Nothing here.");
+    const mcp::QueryMatcher ants(QStringLiteral("ants"), mcp::QueryMode::Substring);
+    EXPECT_FALSE(ants.matchesBullet(plain));
+}
+
 
 // ANTS-4698 — the DIAGNOSTIC floor. `warning` and `parseable_bullets` survive
 // a `fields` narrowing that does not name them.

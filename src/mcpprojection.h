@@ -250,6 +250,9 @@ public:
     QueryMatcher(const QString &needle, QueryMode mode);
     bool matches(const QString &hay) const;
     bool matchesBullet(const QJsonObject &bullet) const;
+    // ANTS-5257 — the bullet keys matchesBullet() searches, echoed beside
+    // `query` so a caller can see what a zero-hit search covered.
+    static QStringList bulletFields();
 
 private:
     QueryMode          m_mode;

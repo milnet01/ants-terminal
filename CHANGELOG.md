@@ -248,6 +248,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query's `query` finds a github-task-list bullet by its own title, and says which fields it searched** (ANTS-5257)
+  On that dialect the bold title is parsed into `id`, which `query` never
+  searched. It now searches `id` too when the id contains a space, which a
+  real id never does, so `query:"ants"` still does not match every
+  ANTS-NNNN item. Replies carry `query_fields`, naming what was searched.
+
 - **roadmap_migrate's preview shows each change's old and new text, and stops counting a Source full stop as a change** (ANTS-4507)
   Each `updated_items[]` row now carries `values[]`: every column's stored
   `from` and planned `to` text around the first difference, with `diff_at`.

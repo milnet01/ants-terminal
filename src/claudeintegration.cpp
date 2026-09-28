@@ -3524,7 +3524,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     queryProp["description"] = QStringLiteral(
                         "Case-insensitive keyword filter (substring). "
                         "Narrows the list to bullets whose headline (or "
-                        "headline_full) OR body contains this text, "
+                        "headline_full) OR body contains this text — or "
+                        "whose id does, when the id holds a space (a "
+                        "github-task-list title parsed as an id, ANTS-5257; "
+                        "`query_fields` echoes what was searched), "
                         "composing with the status + section= filters — the "
                         "one-call \"find roadmap items mentioning X\". The "
                         "echoed `query` confirms it applied. Matches against "

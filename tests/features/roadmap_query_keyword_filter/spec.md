@@ -19,7 +19,7 @@ It is a list-path filter, not a targeted selector.
 - **INV-3** — the match also covers `headline_full` (the untruncated text
   emitted when a long headline was capped at 120 chars), so a keyword past
   the cap is still findable.
-- **INV-4** — a needle absent from all three text surfaces returns false.
+- **INV-4** — a needle absent from every surface searched returns false.
 - **INV-5** — `cmdRoadmapQuery` wires the filter on BOTH emission branches
   via `applyQueryFilter`, building one `mcp::QueryMatcher` per filter rather
   than a per-bullet `mcp::bulletMatchesQuery` call (ANTS-5104), refuses to combine
@@ -51,6 +51,13 @@ It is a list-path filter, not a targeted selector.
   filter as the cause. **A wrong reason is worse than no reason** — it sends
   the reader to re-issue with flags that change nothing and invites the
   conclusion that the section is full of narrator prose.
+- **INV-10** (ANTS-5257) — the match also covers `id` when `id` contains
+  whitespace. On a github-task-list roadmap the bold title is parsed into
+  `id`, so without this a bullet cannot be found by its own title. A real
+  id never contains a space, so `query:"ants"` still does not match every
+  `ANTS-NNNN` item. Both bullet-list paths echo `query_fields`, naming what
+  was searched. *Test:* `QueryMatcher.Ants5257TitleParsedIntoIdIsSearched`
+  in `tests/features/mcp_projection/`.
 - **INV-7** (ANTS-3420 → ANTS-3422) — the `mainwindow.cpp` `roadmap_query`
   provider forwards `query` (and the ANTS-3402 `max_body_bytes` /
   ANTS-1907 `include_section_etags` / `section_etag_match` companions) to

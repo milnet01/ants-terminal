@@ -3029,7 +3029,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["path"] = path;
         out["count"] = page.slice.size();
         out["filter"] = filterEcho;
-        if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
+        if (!queryArg.isEmpty()) {  // ANTS-3391
+            out["query"] = queryArg;
+            // ANTS-5257 — what the search covered, so a zero-hit reply says
+            // where it looked rather than reading as "no such item".
+            out["query_fields"] =
+                QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
+        }
         if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
         if (!sourceArgs.isEmpty()) {   // ANTS-4985
             out["source"] = QJsonArray::fromStringList(sourceArgs);
@@ -3702,7 +3708,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     out["count"] = page.slice.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filterEcho;
-    if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
+    if (!queryArg.isEmpty()) {  // ANTS-3391
+        out["query"] = queryArg;
+        // ANTS-5257 — what the search covered, so a zero-hit reply says
+        // where it looked rather than reading as "no such item".
+        out["query_fields"] =
+            QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
+    }
     if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
     if (!sourceArgs.isEmpty()) {   // ANTS-4985
         out["source"] = QJsonArray::fromStringList(sourceArgs);
