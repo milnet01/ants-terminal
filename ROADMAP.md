@@ -68549,6 +68549,22 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
   Lanes: mcp, docs.
 
+- 📋 [ANTS-5553] **Tell a session when it has unread session_message mail.**
+  Two claude-config requests sat in Contact List's mailbox from 11:25 and
+  11:45 on 2026-09-28 for about two hours, because nothing prompts a
+  session to call op:"inbox". The user's priority list puts other
+  sessions' requests first, so this silently defeats it.
+  Suggested, cheapest first: an `unread_messages` count in replies a
+  session already gets (a hook line, or Ants verb envelopes), present
+  only when the count is non-zero; a SessionStart or UserPromptSubmit
+  hook line naming the unread count; a tab badge in the terminal.
+  Measured cost claimed by the reporter: about 5 tokens, only when mail
+  is waiting. Serves SIGN-5 (seeing what Claude sessions are doing).
+  **Layman:** A Claude session should notice when another session has sent it a request, instead of the request sitting unread for hours.
+  Kind: feature.
+  Source: contact-list session request 2026-09-28 (session_message 194).
+  Lanes: mcp, claude.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
