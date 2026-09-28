@@ -231,6 +231,31 @@ TEST(AdapterWriteFlip, Inv7AnchorReuseDoesNotReinject) {
     EXPECT_EQ(readCounter(root), 1);
 }
 
+// ANTS-5331 — a prefix holding `_` (3D_Engine → 3D_E) yields `^3d_e-NNNN`.
+// The locator must find the anchor the flip itself wrote.
+TEST(AdapterWriteFlip, Ants5331UnderscoreAnchorLocates) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString md = QStringLiteral(
+        "## Phase 11A\n"
+        "- [ ] 🚧 First headline ^3d_e-0001\n"
+        "- [ ] Second headline\n");
+    const QString root = buildProject(dir, md, 1);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root;
+    req["anchor"]     = QStringLiteral("3d_e-0001");
+    req["to_status"]  = QStringLiteral("shipped");
+    const QJsonObject env = flip(rc, req);
+    EXPECT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().constData();
+    EXPECT_FALSE(env.value("anchor_injected").toBool());
+    const QString after = readFile(root + QStringLiteral("/ROADMAP.md"));
+    EXPECT_TRUE(after.contains(QStringLiteral("- [x] First headline ^3d_e-0001")))
+        << after.toUtf8().constData();
+}
+
 // INV-8 — locator with zero matches refuses with bullet_not_found.
 TEST(AdapterWriteFlip, Inv8BulletNotFound) {
     QTemporaryDir dir;

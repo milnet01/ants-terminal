@@ -234,6 +234,25 @@ TEST(AdapterReadGfm, CaretAnchorExtracted) {
     EXPECT_EQ(bullets[1].anchor, QStringLiteral("vest-0043"));
 }
 
+// ANTS-5331 — op:"flip" writes an anchor from the project prefix, which may
+// carry `_` (3D_Engine → `^3d_e-0042`). The reader accepted only
+// [a-z0-9-], so it did not see the anchor it had written, and the anchor text
+// stayed in the headline.
+TEST(AdapterReadGfm, Ants5331UnderscoreAnchorIsReadAndStripped) {
+    const QString md = QStringLiteral(
+        "## Phase 11A\n"
+        "- [x] **Sh4.** — Shipped item ^3d_e-0042\n"
+        "- [ ] Headline without bold-ID ^3d_e-0043\n");
+    const auto bullets = RoadmapDialog::parseBullets(md);
+    ASSERT_EQ(bullets.size(), 2);
+    EXPECT_EQ(bullets[0].anchor, QStringLiteral("3d_e-0042"));
+    EXPECT_EQ(bullets[1].anchor, QStringLiteral("3d_e-0043"));
+    EXPECT_FALSE(bullets[0].headline.contains(QStringLiteral("^3d_e")))
+        << bullets[0].headline.toStdString();
+    EXPECT_FALSE(bullets[1].headline.contains(QStringLiteral("^3d_e")))
+        << bullets[1].headline.toStdString();
+}
+
 // ANTS-2119 (roadmapdialog M-1) — parseBullets is memoized on a (size, ==)
 // guard to kill the per-render re-parse cost. The memo must be transparent:
 // a repeat call on the same input returns the identical result, and a

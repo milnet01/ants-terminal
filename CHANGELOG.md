@@ -248,6 +248,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Caret anchors whose prefix holds an underscore (`^3d_e-0042`) are read, stripped from the headline, and found by a flip** (ANTS-5331)
+  `roadmap_log op:"flip"` builds an anchor from the project prefix, which
+  can carry `_`, but every anchor pattern accepted only letters, digits and
+  `-`. The anchor text stayed in the headline, and a flip by that anchor
+  could not find the bullet it had marked.
+
 - **roadmap_query's `query` finds a github-task-list bullet by its own title, and says which fields it searched** (ANTS-5257)
   On that dialect the bold title is parsed into `id`, which `query` never
   searched. It now searches `id` too when the id contains a space, which a

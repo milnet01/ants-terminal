@@ -1924,7 +1924,7 @@ bool rcExtractBoldId(const QString &lineHead, QString *id) {
 
 QString rcExtractCaretAnchor(const QString &line) {
     static const QRegularExpression rx(QStringLiteral(
-        "\\^([a-z0-9-]+)\\s*$"));
+        "\\^([a-z0-9_-]+)\\s*$"));
     const auto m = rx.match(line);
     if (!m.hasMatch()) return QString();
     return m.captured(1);
@@ -1952,7 +1952,7 @@ QString rcGfmCanonicalHeadline(const QString &rawHead) {
     if (idx >= 0) s = s.mid(idx + sepLen);  // post-em-dash prose
     s.remove(QStringLiteral("**"));          // de-markup
     static const QRegularExpression rxTrailAnchor(
-        QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+        QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
     s.replace(rxTrailAnchor, QString());
     return s.trimmed();
 }
@@ -1968,7 +1968,7 @@ QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
     QSet<quint64> hashes;
     auto add = [&](QString s) {
         static const QRegularExpression rxTrailAnchor(
-            QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+            QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
         s.replace(rxTrailAnchor, QString());
         const QString n = rcNormaliseHeadline(s);
         if (!n.isEmpty()) hashes.insert(rcFnv1a64(n));

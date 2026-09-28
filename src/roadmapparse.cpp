@@ -207,7 +207,7 @@ QString splitOnEmDash(const QString &head) {
 // Returns the anchor body (without the caret) on match.
 QString extractCaretAnchor(const QString &line) {
     static const QRegularExpression rx(QStringLiteral(
-        "\\^([a-z0-9-]+)\\s*$"));
+        "\\^([a-z0-9_-]+)\\s*$"));
     const auto m = rx.match(line);
     if (!m.hasMatch()) return QString();
     return m.captured(1);
@@ -1402,7 +1402,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         if (!afterSep.isEmpty()) {
             QString h = afterSep;
             static const QRegularExpression rxTrailAnchor(
-                QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+                QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
             h.replace(rxTrailAnchor, QString());
             h = h.trimmed();
             // ANTS-3808 — the bold-ID label and the post-separator
@@ -1532,7 +1532,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         if (nl >= 0) h = h.left(nl);
         // Drop trailing caret anchor + surrounding whitespace.
         static const QRegularExpression rxTrailAnchor(
-            QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+            QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
         h.replace(rxTrailAnchor, QString());
         h.remove(QStringLiteral("**"));  // ANTS-2046 — de-markup
         h = h.trimmed();

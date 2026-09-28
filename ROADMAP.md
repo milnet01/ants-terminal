@@ -66860,6 +66860,15 @@ parse, not that file.
   in the headline. Some anchors sit on sub-bullets and Progress lines.
   Parse an anchor in the id grammar as the id; report anchors on
   non-item lines for a human.
+  Progress (2026-09-28): half one shipped. The six caret-anchor patterns
+  (reader, headline strip, flip locator) rejected `_`, so `^3d_e-0042` was
+  neither read nor stripped, which is why the anchor stayed in the
+  headline. Now accepted; tests AdapterReadGfm.Ants5331... and
+  AdapterWriteFlip.Ants5331..., each shown red first. Half two (adopt a
+  grammatical anchor as the id, report anchors on non-item lines)
+  changes ANTS-3757 § 2.5's position rule, so it is drafted there as
+  INV-15 with ANTS-5325's caption rule (INV-14) and goes to review-contract
+  before any code.
   **Layman:** Ids the tool itself once attached to items are ignored when converting, so those items get new ids instead.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
