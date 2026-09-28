@@ -52178,6 +52178,10 @@ are closed inline in the feedback files rather than filed here.
   section's active ids and neither survey shape fits, which suggests
   the missing shape is narrower than either existing one rather than
   a cap problem at all.
+  Measured (2026-09-28), ants-mcpd usage snapshots over ten sessions:
+  read_spill was 30% of all reply bytes (5 calls, ~55 KB each), the
+  largest share of any verb. Every spill a default avoids removes both
+  the offload and the read-back.
   **Layman:** When a tool's answer is too big it hands back a file reference instead. That works when the bulky part is not what you asked for — but when it IS what you asked for, the usual remedy makes things worse, and each tool currently solves that alone.
   Kind: enhancement.
   Source: peer-session-claude-40, in-session-2026-09-21.
@@ -68057,6 +68061,67 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: peer-session claude-dd 2026-09-27 (Hub website survey).
   Lanes: roadmap.
+
+### Ants MCP feedback from CC sessions — 2026-09-28 triage
+
+- 📋 [ANTS-5520] **The raw-source-search tip fires on a plain file listing such as `find src tests -name '*.py' | sort`.**
+  The PreToolUse tip meant for content searches (grep/rg over source)
+  also fires on `find ... -name` listings, which read no file contents.
+  Fire only when the command reads file contents; a name-only find or ls
+  is a listing.
+  **Layman:** A hint telling you to use a faster search tool pops up even when you were only listing files, not searching inside them.
+  Kind: fix.
+  Source: claude-87 relay of Deedbox session, 2026-09-28.
+  Lanes: hooks.
+
+- 📋 [ANTS-5521] **project_settings op:init leaves source_roots undeclared when detect says no override is needed, and says nothing.**
+  detect reports "no source_roots override needed" and init then writes
+  the other keys only, so project.json does not declare all six. Either
+  init writes source_roots too, or its reply lists it under undeclared[]
+  so the follow-up set is visible.
+  **Layman:** Setting up a project's settings file skips one of the six entries without telling you, so you have to add it by hand.
+  Kind: fix.
+  Source: claude-87 relay of Deedbox session, 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the **Theme:** line by hand.**
+  cut-release adds a **Theme:** line under the new version heading on
+  every cut. A `theme` argument on op:"release" would write it in the
+  same edit.
+  **Layman:** Closing a release in the changelog cannot record the release's theme, so it is typed in by hand each time.
+  Kind: enhancement.
+  Source: claude-87 relay of Pressless session, 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5523] **roadmap_log has no amend_preamble, so fixing one phrase means resending the whole preamble.**
+  set_preamble replaces the whole preamble, including a trailing `---`
+  that only a dry run's previous_intro reveals. An amend_preamble op with
+  old_text/new_text, shaped like amend_intro (ANTS-5373), would be
+  cheaper and could not drop what the caller never saw.
+  **Layman:** Correcting one word at the top of a roadmap means re-sending the whole opening section, including hidden lines.
+  Kind: enhancement.
+  Source: claude-87 relay of MAME_Curator session, 2026-09-28.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-5524] **workspace_search could take an exclude preset for history directories.**
+  A sweep for a renamed term returns hits in journals, docs/history and
+  loop logs, which record the old name on purpose. A named preset (e.g.
+  exclude_preset:"history") expanding to those globs would save the
+  round trip of spelling them each time.
+  **Layman:** Searching for old names keeps finding them in history files, and there is no one-word way to skip those folders.
+  Kind: enhancement.
+  Source: claude-87 relay of MAME_Curator session, 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5525] **file_outline's default max_symbols of 200 is large for a first look at a file.**
+  Measured 2026-09-28 over today's ten ants-mcpd sessions: file_outline
+  was 13% of all reply bytes at 4.9 KB a call. Consider a smaller default
+  with the envelope's existing truncated/symbols_dropped signal saying
+  more exists.
+  **Layman:** The tool that shows a file's layout sends a long list by default, which costs more than a first look needs.
+  Kind: perf.
+  Source: in-session-2026-09-28 (mcpd usage snapshots).
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
