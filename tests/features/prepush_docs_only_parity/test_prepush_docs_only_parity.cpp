@@ -1,6 +1,7 @@
 // ANTS-4726 / ANTS-5322 — the pre-push hook's docs-only decision comes from
 // ci.yml's push `paths-ignore`. It used to be a hand-maintained twin of that
-// list; since ANTS-5322 the hook asks tools/ci_workflow.py, which reads ci.yml,
+// list; since ANTS-5322 the hook asks tools/ci_workflow.py, which reads ci.yml
+// (since ANTS-5542 through the machine-wide hook's ants.gate.docsCommand),
 // so the invariant is that no second list exists and that the one decision is
 // anchored the way the old regex was. See spec.md.
 
@@ -10,7 +11,6 @@
 #include <QProcess>
 #include <QString>
 
-#include <algorithm>
 #include <set>
 #include <sstream>
 #include <string>
@@ -31,7 +31,7 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string trim(std::string s) {
+std::string trim(const std::string &s) {
     const size_t a = s.find_first_not_of(" \t\r\n");
     if (a == std::string::npos) return {};
     const size_t b = s.find_last_not_of(" \t\r\n");
@@ -93,16 +93,24 @@ bool pyyamlPresent() {
 
 }  // namespace
 
-// INV-1 — the hook keeps no list of its own; it asks the runner, which reads
-// ci.yml. A second list is the drift ANTS-4726 was filed about.
+// INV-1 — no list of our own; the machine-wide hook asks the runner, which
+// reads ci.yml. A second list is the drift ANTS-4726 was filed about.
+// ANTS-5542: the gate keeps no list, and the setup script points the hook's
+// docsCommand at the runner rather than setting a docsGlob twin.
 TEST(PrepushDocsOnlyParity, Inv1HookAsksTheWorkflowAndKeepsNoList) {
     expect_reset();
     const std::string sh = ants_test::slurpFile(SRC_PREPUSH_HOOK_PATH);
     ASSERT_FALSE(sh.empty());
     expect(sh.find("docs_only_re") == std::string::npos,
            "5322/no-hand-list", QString());
-    expect(sh.find("docs-only <<<\"$changed\"") != std::string::npos,
-           "5322/asks-the-runner", QString());
+    const std::string setup =
+        ants_test::slurpFile(ANTS_SOURCE_DIR "/tools/setup-git-hooks.sh");
+    ASSERT_FALSE(setup.empty());
+    expect(setup.find("ants.gate.docsCommand 'python3 tools/ci_workflow.py docs-only'")
+               != std::string::npos,
+           "5542/hook-asks-the-runner", QString());
+    expect(setup.find("docsGlob") == std::string::npos,
+           "5542/no-glob-twin", QString());
     ASSERT_EQ(0, expect_finish());
 }
 

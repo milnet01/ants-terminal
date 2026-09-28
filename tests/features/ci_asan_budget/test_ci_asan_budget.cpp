@@ -153,7 +153,7 @@ TEST(CiAsanBudget, Inv6SanitizedSuiteDetectsLeaks) {
     ASSERT_FALSE(job.empty());
     checkLeaksOn("ci.yml build-asan", stepBlockContaining(job, "ctest "));
 
-    // tools/ci-parity.sh and tools/hooks/pre-push both run this step through
+    // tools/ci-parity.sh and tools/local-ci.sh both run this step through
     // tools/ci_workflow.py since ANTS-5322, so ci.yml is the one carrier.
 }
 

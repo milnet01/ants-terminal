@@ -1446,7 +1446,7 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 60
         SKIP_RETURN_CODE 77
-        ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/hooks/pre-push")
+        ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/local-ci.sh")
 
     # ANTS-5322 — tools/ci-parity.sh runs ci.yml's own steps through
     # tools/ci_workflow.py rather than a copy; see
@@ -1483,13 +1483,15 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 30)
 
-    # The pre-push hook's change set: renames and undiffable ranges run the
-    # gate rather than reading as docs-only.
+    # The pre-push hand-off (ANTS-5542): renames and undiffable ranges run the
+    # full gate, a docs-only push runs --docs, and a clone without the gate
+    # settings is refused. Skips (77) without the machine-wide hook.
     add_test(NAME prepush_range
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/prepush_range/test_prepush_range.sh")
     set_tests_properties(prepush_range PROPERTIES
         LABELS "features;fast"
-        TIMEOUT 60)
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
 
     # The OSC 133 shell integration still emits under set -u / nounset,
     # in bash and in zsh (audit TL-27).
@@ -3062,7 +3064,7 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/prepush_docs_only_parity/test_prepush_docs_only_parity.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-4726 — the hook whose docs-only list must match ci.yml's.
-        SRC_PREPUSH_HOOK_PATH="${CMAKE_SOURCE_DIR}/tools/hooks/pre-push")
+        SRC_PREPUSH_HOOK_PATH="${CMAKE_SOURCE_DIR}/tools/local-ci.sh")
     set_property(SOURCE tests/features/qt62_guard_interrupt/test_qt62_guard_interrupt.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-5124 — the Qt 6.2 floor guard whose interrupted-compile

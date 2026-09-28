@@ -104,23 +104,35 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   `.github/workflows/ci.yml`'s jobs through `tools/ci_workflow.py`. There is
   no second script. `--stress` adds CPU load.
 - Hunt a flaky test with `ctest --test-dir build --repeat until-fail:5 -R <test>`.
-- `tools/hooks/pre-push` (wired via `core.hooksPath=tools/hooks`) runs
-  `ci.yml`'s `build-test` job in CI's own image (ubuntu:24.04: its GCC, mold
-  and Qt 6.4) through `tools/qt62-guard.sh --job build-test --run-job`, and on
-  this machine only while that image is cold. Warm it once by running that
-  command. It also runs `build-asan` when `build-asan/` is warm, and the Qt 6.2
-  compile guard `tools/qt62-guard.sh --warm-only`.
+- **Run `tools/setup-git-hooks.sh` once per clone.** It sets
+  `core.hooksPath=tools/hooks` and the `ants.gate.*` keys. Without them the
+  pre-push shim refuses the push.
+- `tools/hooks/pre-push` hands off to the machine-wide hook
+  (`~/.claude/githooks/pre-push`). That hook runs the secret scan, works out
+  what the push changes, and runs `tools/local-ci.sh` in the real checkout.
+  It refuses a push from a tree with uncommitted or untracked files, or of a
+  commit that is not HEAD.
+- `tools/local-ci.sh` runs `ci.yml`'s `build-test` job in CI's own image
+  (ubuntu:24.04: its GCC, mold and Qt 6.4) through
+  `tools/qt62-guard.sh --job build-test --run-job`, and on this machine only
+  while that image is cold. Warm it once by running that command. It also runs
+  `build-asan` when `build-asan/` is warm, and the Qt 6.2 compile guard
+  `tools/qt62-guard.sh --warm-only`.
 - This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button
   test). Reproduce a CI-only failure with the `--run-job` command above.
-- A push that `ci.yml`'s `paths-ignore` treats as docs-only skips the build
-  and suite. It still runs the document checks for what it touches: the README
-  claim check, `check-roadmap.sh`, the standards checks, and the two tests
-  that read `CLAUDE.md`, against the existing `build/`.
-  `--full` runs every job, including those the hook leaves to GitHub.
+- A push that `ci.yml`'s `paths-ignore` treats as docs-only runs
+  `tools/local-ci.sh --docs`: no build, no suite. It runs the document checks
+  for what the push touches: the README claim check, `check-roadmap.sh`, the
+  standards checks, and the two tests that read `CLAUDE.md`, against the
+  existing `build/`.
+- `tools/ci-parity.sh --full` runs every job, including those the hook
+  leaves to GitHub.
 - A tool the GitHub runner lacks cannot be caught locally.
   `tests/features/ci_workflow_deps` checks the recipes statically. **A new
   carrier that runs `ctest` must be added to that test.**
-- Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
+- Escape hatches: `SKIP_LOCAL_CI=1` (skips the gate, keeps the secret
+  scan) and `git push --no-verify` both need the user (`commits.md` § 2.3);
+  `ANTS_PREPUSH_NO_ASAN=1`,
   `ANTS_PREPUSH_NO_QT62=1`, `ANTS_PREPUSH_NO_UBUNTU24=1` (runs the job on
   this machine, with no ubuntu:24.04 leg at all). The ASan leg's
   contract: `tests/features/prepush_asan_gate/spec.md`.

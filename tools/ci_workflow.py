@@ -240,9 +240,9 @@ def glob_rx(pattern):
 def docs_only(paths):
     """True when ci.yml's push trigger would skip every one of `paths`.
 
-    tools/hooks/pre-push asks this instead of keeping its own copy of the list
-    (ANTS-5322): a hand twin of paths-ignore is the drift local-gate.md § 3
-    forbids.
+    The machine-wide pre-push hook asks this, through ants.gate.docsCommand,
+    instead of keeping its own copy of the list (ANTS-5322, ANTS-5542): a
+    hand twin of paths-ignore is the drift local-gate.md § 3 forbids.
     """
     on = load().get(True) or load().get("on") or {}
     ignore = (on.get("push") or {}).get("paths-ignore") or []

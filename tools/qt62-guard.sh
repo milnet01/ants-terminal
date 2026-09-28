@@ -13,7 +13,7 @@
 # running the suite is build-test's remit. This is a COMPILE guard.
 #
 # Why this is a script and not a function inside tools/ci-parity.sh: two
-# callers need it (that script's --qt62 gate, and tools/hooks/pre-push), and
+# callers need it (that script's --qt62 gate, and tools/local-ci.sh), and
 # the image/volume/tag derivation must not exist in two places — a second copy
 # is how the parity harness silently stops reproducing CI.
 #

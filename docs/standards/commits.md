@@ -67,22 +67,23 @@ answer:
   `tools/qt62-guard.sh --clean` reclaims them). A job `ci.yml` gains and the
   script does not claim fails the run; a container leg without podman SKIPs
   loudly and never reports green.
-- **`tools/hooks/pre-push`** runs automatically (wired via
-  `core.hooksPath=tools/hooks`), and runs `ci.yml` itself (ANTS-5322): its
-  `build-test` job — build, suite, lints — always, its `build-asan` job when
-  a warm ASan tree exists, then the Qt 6.2 floor and build-test toolchain
-  guards when the push touches compilable source.
-- **A docs-only push skips the hook entirely** — the hook asks `ci.yml`'s
-  `paths-ignore` itself, so a push touching nothing outside `ROADMAP.md`,
-  `CHANGELOG.md`, `README.md`, `PLUGINS.md`, `LICENSE`, `.roadmap-counter` and
-  `docs/` runs no gate at all. Editing *this file* and pushing it runs
-  nothing. Global § 4.2's exemption then applies and **its two conditions are
-  yours to check by hand**: the last remote run was green, and no job acts on
+- **`tools/hooks/pre-push`** runs automatically (wired by
+  `tools/setup-git-hooks.sh`). It hands off to the machine-wide hook, which
+  runs the secret scan and then `tools/local-ci.sh` (ANTS-5542). That script
+  runs `ci.yml` itself (ANTS-5322): its `build-test` job — build, suite,
+  lints — always, its `build-asan` job when a warm ASan tree exists, then the
+  Qt 6.2 floor and build-test toolchain guards when the push touches
+  compilable source.
+- **A docs-only push builds and tests nothing.** The hook asks `ci.yml`'s
+  `paths-ignore`, so a push touching nothing outside its list runs only
+  `tools/local-ci.sh --docs`: the document checks for what the push touches.
+  Global § 4.2's exemption then applies to the build and suite, and **its two
+  conditions are yours to check by hand**: the last remote run was green, and no job acts on
   the changed paths. The second is not vacuous here — `ci.yml`'s
   `pull_request` trigger has no `paths-ignore`, so the same change opened as a
   PR does get the lint gate.
-- Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
-  `ANTS_PREPUSH_NO_QT62=1`.
+- Escape hatches: `SKIP_LOCAL_CI=1` and `git push --no-verify` (§ 2.3: the
+  user's call), `ANTS_PREPUSH_NO_ASAN=1`, `ANTS_PREPUSH_NO_QT62=1`.
 
 **Run `--full` before a release, when touching packaging- or e2e-sensitive
 code, and whenever a push ADDS a source file.** That last trigger is not
@@ -122,8 +123,8 @@ written down is invisible to it. The script exits non-zero on either finding;
 
 ## What checks this
 
-`tools/hooks/pre-push` (automatic on every push that touches something outside
-the docs-only set above — a docs-only push is gated by nothing),
+`tools/hooks/pre-push` (automatic on every push; a docs-only push gets the
+document checks only),
 `packaging/check-version-drift.sh` (via the hook's and ci-parity's build-test job, and CI), and
 `ci.yml` itself. Nothing checks commit-message *format* — this project has no
 `commit-msg` hook, so § 1's mandate is read, not enforced.

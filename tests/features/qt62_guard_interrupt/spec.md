@@ -5,7 +5,7 @@ give its compile container once a push that is running it gets killed.
 
 ## Problem
 
-`tools/hooks/pre-push` runs `tools/qt62-guard.sh --warm-only` as part of the
+`tools/local-ci.sh` runs `tools/qt62-guard.sh --warm-only` as part of the
 push gate. The guard's compile step is a foreground `podman run` with no
 container name, no `--init`, and no signal trap. On 2026-09-11 a background
 `git push` was stopped for low memory while the guard's `podman run` was
@@ -16,7 +16,7 @@ which this project treats as tree corruption (`.ninja_deps` becomes
 untrustworthy — the same class `build-asan`'s `.ants-prepush-interrupted`
 marker exists to catch), so the only safe move that session had was to wait.
 
-`build-asan`'s leg in `tools/hooks/pre-push` already solves the general shape
+`build-asan`'s leg in `tools/local-ci.sh` already solves the general shape
 of this problem: a `trap` on `TERM INT` around the sanitizer build writes an
 interrupted marker and exits, and a later run refuses to trust a tree behind
 that marker. `qt62-guard.sh` has no equivalent for its own compile step.

@@ -36,7 +36,7 @@ review of this document found that several of them had been assumed.
 | Start a session, in a directory, running a command | `launch` / `new-tab` over the remote-control socket (`src/remotecontrol_terminal.cpp:459`) | **Not MCP verbs.** `cwd` is validated against the FOCUSED PROJECT ROOT, so a sibling worktree is refused unless the caller passes `allow_outside_root:true`, which is a blanket bypass. `command` is control-char filtered *by default*, with `raw:true` as a documented opt-out |
 | Durable cross-session messaging | `session_message` (ANTS-4622) | **Addressed to a PROJECT, never to a session** — and ANTS-4887 folds a worktree back into its main checkout, so the orchestrator and every worker share ONE inbox with no sender identity. Not usable as a worker→orchestrator channel without a discriminator |
 | Shared work record | the machine-global roadmap store, WAL, `busy_timeout` set (explicit `PRAGMA`; Qt's QSQLITE default is 5000 ms, and the store carries a second bulk profile) | **A contended writer blocks up to `busy_timeout` and then FAILS.** ANTS-3756 INV-16 makes that a contract: a write that cannot take the lock in time "fails and reports; it is never retried silently and never dropped". So every worker store write owes a failure branch — see D4. The same section requires `BEGIN IMMEDIATE`: a deferred read-then-write returns `SQLITE_BUSY` on the upgrade WITHOUT honouring `busy_timeout` at all. The WAL switch is separately uncovered, taking an EXCLUSIVE lock below the busy handler |
-| Mechanical verification | `git_state`, `build_status`, `test_results`, `focused_test`, `verify_changes`, `tools/ci-parity.sh`, `tools/hooks/pre-push` | — |
+| Mechanical verification | `git_state`, `build_status`, `test_results`, `focused_test`, `verify_changes`, `tools/ci-parity.sh`, `tools/local-ci.sh` | — |
 | Isolation between concurrent lines of work | git worktrees — CLAUDE.md rule 17 | — |
 
 ### The five problems
@@ -314,7 +314,7 @@ decisive:
 - An `flock` dies with the process holding it, so a killed build cannot
   wedge the machine. A stored lease would need an expiry and a reaper.
 
-`tools/hooks/pre-push` and `tools/ci-parity.sh` acquire the same lock. A
+`tools/local-ci.sh` (the push gate) and `tools/ci-parity.sh` acquire the same lock. A
 hook that cannot acquire it waits rather than failing: a push that blocks
 for a minute is correct, and one that aborts trains people to
 `--no-verify`.

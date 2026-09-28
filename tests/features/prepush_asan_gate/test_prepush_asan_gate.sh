@@ -1,8 +1,8 @@
 #!/bin/bash
-# ANTS-4118 — behavioural test for tools/hooks/pre-push's build-asan cost gate.
+# ANTS-4118 — behavioural test for tools/local-ci.sh's build-asan cost gate.
 # See tests/features/prepush_asan_gate/spec.md.
 #
-# Drives the REAL hook in a throwaway git repo with ctest/cmake/ninja stubbed
+# Drives the REAL gate in a throwaway git repo with ctest/cmake/ninja stubbed
 # on PATH. The stub ninja prints ANTS_TEST_NINJA_EDGES dry-run lines, so "cold
 # tree" vs "warm tree" is a single variable; the stub cmake logs its argv, so
 # "never built that tree" is asserted, not inferred.
@@ -89,7 +89,7 @@ command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' 2>/dev/null \
     || { echo "SKIP: python3 + PyYAML not available"; exit 77; }
 repo="$tmp/repo"
 mkdir -p "$repo/tools" "$repo/.github/workflows"
-cp "$(dirname "$PREPUSH_HOOK")/../ci_workflow.py" "$repo/tools/"
+cp "$(dirname "$PREPUSH_HOOK")/ci_workflow.py" "$repo/tools/"
 cat > "$repo/.github/workflows/ci.yml" <<'EOF'
 on:
   push:
@@ -113,7 +113,6 @@ git -C "$repo" config user.email t@t; git -C "$repo" config user.name t
 echo hi > "$repo/f.txt"
 git -C "$repo" add f.txt
 git -C "$repo" commit -qm init
-sha=$(git -C "$repo" rev-parse HEAD)
 
 mkdir -p "$repo/build" "$repo/build-asan"
 touch "$repo/build/CTestTestfile.cmake"
@@ -132,7 +131,7 @@ run_hook() {
     # to skip the slow leg for one push failed this suite instead. Each case
     # sets only what it is exercising; INV-9 asserts the scrub holds.
     out=$(cd "$repo" && \
-        env -u ANTS_PREPUSH_NO_ASAN -u ANTS_PREPUSH_NO_QT62 \
+        env -u ANTS_PREPUSH_NO_ASAN -u ANTS_PREPUSH_NO_QT62 -u ANTS_PUSH_CHANGED \
             -u ANTS_PREPUSH_ASAN_MAX_EDGES \
         PATH="$tmp/bin:$PATH" \
         CMAKE_CALL_LOG="$tmp/cmake-calls" \
@@ -140,7 +139,7 @@ run_hook() {
         ANTS_TEST_NINJA_EDGES="$edges" \
         ANTS_TEST_NINJA_MODE="$mode" \
         ANTS_TEST_NINJA_REGEN_DONE="$tmp/regen-done" \
-        bash "$PREPUSH_HOOK" origin git@example:x <<<"refs/heads/main $sha refs/heads/main 0000000000000000000000000000000000000000" 2>&1)
+        bash "$PREPUSH_HOOK" </dev/null 2>&1)
     rc=$?
     calls=$(cat "$tmp/cmake-calls")
     ninja_calls=$(cat "$tmp/ninja-calls")
@@ -182,8 +181,8 @@ rm -f "$repo/build-asan/.ants-prepush-interrupted"
 echo "INV-5 — the Release leg is unaffected and the hatch still short-circuits"
 out=$(cd "$repo" && PATH="$tmp/bin:$PATH" CMAKE_CALL_LOG="$tmp/cmake-calls" \
       NINJA_CALL_LOG="$tmp/ninja-calls" \
-      ANTS_PREPUSH_NO_ASAN=1 bash "$PREPUSH_HOOK" origin git@example:x \
-      <<<"refs/heads/main $sha refs/heads/main 0000000000000000000000000000000000000000" 2>&1)
+      ANTS_PREPUSH_NO_ASAN=1 env -u ANTS_PUSH_CHANGED bash "$PREPUSH_HOOK" \
+      </dev/null 2>&1)
 rc=$?
 check "exit 0 with the hatch set" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
 check "hatch branch still reports the skip" \

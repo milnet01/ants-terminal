@@ -15,7 +15,7 @@ except ImportError:
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 RUNNER = os.path.join(ROOT, "tools", "ci_workflow.py")
 PARITY = os.path.join(ROOT, "tools", "ci-parity.sh")
-HOOK = os.path.join(ROOT, "tools", "hooks", "pre-push")
+HOOK = os.path.join(ROOT, "tools", "local-ci.sh")
 HOST_JOBS = ("build-test", "build-asan", "cppcheck")
 GITHUB_ONLY = "always() && github.token != ''"
 failures = []

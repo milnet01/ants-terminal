@@ -326,7 +326,7 @@ export LC_ALL=C.UTF-8
 # label is how this project already says "this assertion needs a quiet host",
 # and every other gate honours it. tests/features/roadmap_read_seam/spec.md
 # puts it plainly -- "A timing assertion on a loaded host is a flake
-# generator" -- and both the default presets and tools/hooks/pre-push filter
+# generator" -- and both the default presets and tools/local-ci.sh filter
 # -LE 'e2e|perf'. The RPM was the ONLY gate running them, by accident, because
 # %%ctest cannot take -LE (see above). Measured 2026-08-26: Inv3Latency's
 # wall-clock p95 missed its 50 ms budget by 0.5% on an OBS worker and by 50%

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # tests/features/prepush_range/test_prepush_range.sh — see spec.md.
 set -u
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+GLOBAL_HOOKS="${ANTS_GLOBAL_HOOKS:-$HOME/.claude/githooks}"
 if ! python3 -c 'import yaml' 2>/dev/null; then
-    echo "[skip] python3 + PyYAML not available"; exit 0
+    echo "[skip] python3 + PyYAML not available"; exit 77
+fi
+if [[ ! -x "$GLOBAL_HOOKS/pre-push" ]]; then
+    echo "[skip] no machine-wide hook at $GLOBAL_HOOKS/pre-push"; exit 77
 fi
 failures=0
 fail() { failures=$((failures + 1)); printf '[FAIL] %s\n' "$*" >&2; }
@@ -16,47 +21,74 @@ git -C "$T" init -q -b main
 git -C "$T" config user.email t@t; git -C "$T" config user.name t
 mkdir -p "$T/tools/hooks" "$T/.github/workflows" "$T/docs"
 cp "$REPO_ROOT/tools/hooks/pre-push" "$T/tools/hooks/pre-push"
+cp "$REPO_ROOT/tools/setup-git-hooks.sh" "$T/tools/setup-git-hooks.sh"
 cp "$REPO_ROOT/.github/workflows/ci.yml" "$T/.github/workflows/ci.yml"
+# The real classifier, reached through the path the setup script configures.
 cat > "$T/tools/ci_workflow.py" <<PY
 #!/usr/bin/env python3
 import subprocess, sys
-if len(sys.argv) > 1 and sys.argv[1] == "docs-only":
-    sys.exit(subprocess.call([sys.executable, "$REPO_ROOT/tools/ci_workflow.py"] + sys.argv[1:],
-                             cwd="$T"))
-print("GATE-RAN")
-sys.exit(0)
+sys.exit(subprocess.call([sys.executable, "$REPO_ROOT/tools/ci_workflow.py"] + sys.argv[1:]))
 PY
+# A stand-in gate: it reports how it was called instead of building.
+cat > "$T/tools/local-ci.sh" <<'SH'
+#!/usr/bin/env bash
+echo "GATE-RAN mode=${1:-full} changed=${ANTS_PUSH_CHANGED-<unset>}" | tr '\n' ' '
+echo
+SH
+chmod +x "$T/tools/local-ci.sh" "$T/tools/hooks/pre-push" "$T/tools/setup-git-hooks.sh"
 printf 'x = 1\n' > "$T/tools/x.py"
 printf '# a\n' > "$T/docs/a.md"
 git -C "$T" add -A; git -C "$T" commit -qm base
 BASE="$(git -C "$T" rev-parse HEAD)"
 
 run_hook() {  # stdin lines -> combined output
-    (cd "$T" && ANTS_PREPUSH_NO_ASAN=1 ANTS_PREPUSH_NO_QT62=1 ANTS_PREPUSH_NO_UBUNTU24=1 \
-        bash tools/hooks/pre-push origin url 2>&1)
+    rm -rf "$T/.git/ants-gate-passed"
+    (cd "$T" && ANTS_GLOBAL_HOOKS="$GLOBAL_HOOKS" bash tools/hooks/pre-push origin url 2>&1)
 }
+
+# INV-4 — without this clone's gate settings the shim refuses.
+out="$(printf 'refs/heads/main %s refs/heads/main %s\n' "$BASE" "$BASE" | run_hook)"
+if grep -q 'settings are missing' <<<"$out" && ! grep -q 'GATE-RAN' <<<"$out"; then
+    pass "INV-4 missing gate settings refuse the push"
+else
+    fail "INV-4 the shim ran without gate settings: $(head -3 <<<"$out")"
+fi
+(cd "$T" && tools/setup-git-hooks.sh >/dev/null)
+# A pushed tip that is not HEAD takes a fresh checkout here, not a refusal.
+git -C "$T" config ants.gate.dirtyTree worktree
+git -C "$T" config ants.gate.worktreeDir "$T/wt"
 
 # INV-1 — a rename of a code file into docs/.
 git -C "$T" mv tools/x.py docs/x.md; git -C "$T" commit -qm rename
 REN="$(git -C "$T" rev-parse HEAD)"
 out="$(printf 'refs/heads/main %s refs/heads/main %s\n' "$REN" "$BASE" | run_hook)"
-if grep -q 'GATE-RAN' <<<"$out" && ! grep -q 'docs-only set' <<<"$out"; then
-    pass "INV-1 a rename out of code runs the gate"
+if grep -q 'GATE-RAN mode=full' <<<"$out"; then
+    pass "INV-1 a rename out of code runs the full gate"
 else
-    fail "INV-1 a rename out of code skipped the gate: $(grep -m1 'docs-only\|GATE' <<<"$out")"
+    fail "INV-1 a rename out of code did not run the full gate: $(grep -m1 'GATE\|pre-push' <<<"$out")"
 fi
 
 # INV-2 — one ref's range cannot be diffed; another ref is docs-only.
 git -C "$T" checkout -q -b side "$BASE"
 printf '# b\n' > "$T/docs/b.md"; git -C "$T" add -A; git -C "$T" commit -qm docs
 DOC="$(git -C "$T" rev-parse HEAD)"
+git -C "$T" checkout -q main
 UNKNOWN="1234567890abcdef1234567890abcdef12345678"
 out="$(printf 'refs/heads/main %s refs/heads/main %s\nrefs/heads/side %s refs/heads/side %s\n' \
         "$REN" "$UNKNOWN" "$DOC" "$BASE" | run_hook)"
-if grep -q 'GATE-RAN' <<<"$out" && ! grep -q 'docs-only set' <<<"$out"; then
-    pass "INV-2 an undiffable range runs the gate"
+if grep -q 'GATE-RAN mode=full changed=<unset>' <<<"$out" && ! grep -q 'mode=--docs' <<<"$out"; then
+    pass "INV-2 an undiffable range runs the full gate with the change set unknown"
 else
-    fail "INV-2 an undiffable range let a docs-only ref skip the gate: $(grep -m1 'docs-only\|GATE' <<<"$out")"
+    fail "INV-2 an undiffable range let a docs-only ref decide: $(grep 'GATE\|pre-push' <<<"$out" | head -3)"
+fi
+
+# INV-3 — a documentation-only push reaches the gate as --docs, with its paths.
+git -C "$T" checkout -q side
+out="$(printf 'refs/heads/side %s refs/heads/side %s\n' "$DOC" "$BASE" | run_hook)"
+if grep -q 'GATE-RAN mode=--docs changed=docs/b.md' <<<"$out"; then
+    pass "INV-3 a docs-only push runs the gate's --docs mode"
+else
+    fail "INV-3 a docs-only push did not run --docs: $(grep 'GATE\|pre-push' <<<"$out" | head -3)"
 fi
 
 if [ "$failures" -gt 0 ]; then printf '%d assertion(s) failed.\n' "$failures" >&2; exit "$failures"; fi

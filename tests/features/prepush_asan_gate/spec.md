@@ -2,7 +2,7 @@
 
 Test contract for ANTS-4118, extended by ANTS-4536 / ANTS-4943 /
 ANTS-4883. Locks the behaviours that stop
-`tools/hooks/pre-push`'s `build-asan` leg from being killed mid-build by a
+`tools/local-ci.sh`'s `build-asan` leg from being killed mid-build by a
 caller's command timeout.
 
 ## Problem
