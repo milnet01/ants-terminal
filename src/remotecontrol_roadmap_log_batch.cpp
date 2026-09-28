@@ -955,6 +955,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         [](const Target &a, const Target &b){ return a.firstLine > b.firstLine; });
     QHash<int, QJsonObject> resultByFirstLine;
     QHash<int, QString> headlineByFirstLine;  // ANTS-2089 — post_bullets echo
+    // ANTS-5095 — walked once, not per target (with project.json re-read each
+    // time). Safe because targets apply bottom-up: an edit to a lower bullet
+    // never moves or changes the lines of a bullet above it.
+    const QVector<GfmBullet> liveGfm = walkGfmBullets(lines, batchFlipIdFormat);
+    const QVector<AntsV1Bullet> liveV1 = walkAntsV1Bullets(lines);
     for (const Target &t : applyOrder) {
         // Locate the live bullet at t.firstLine and apply.
         QString hlText;  // ANTS-2089 — for the post_bullets compact echo
@@ -962,10 +967,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // dominant one: a mixed roadmap flips its GFM and emoji bullets in the
         // same batch.
         if (!t.isV1Bullet) {
-            const QVector<GfmBullet> live = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
-            const auto it = std::find_if(live.begin(), live.end(),
+            const auto it = std::find_if(liveGfm.begin(), liveGfm.end(),
                 [&t](const GfmBullet &b){ return b.firstLine == t.firstLine; });
-            if (it == live.end()) continue;  // should not happen
+            if (it == liveGfm.end()) continue;  // should not happen
             hlText = it->headline;
             // ANTS-4470 — the walk still runs under annotate (it supplies
             // hlText and proves the bullet is still there); only the status
@@ -974,10 +978,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             if (!annotateMode)
                 applyGfmFlip(lines, *it, t.toEmoji, t.anchorToInject);
         } else {
-            const QVector<AntsV1Bullet> live = walkAntsV1Bullets(lines);
-            const auto it = std::find_if(live.begin(), live.end(),
+            const auto it = std::find_if(liveV1.begin(), liveV1.end(),
                 [&t](const AntsV1Bullet &b){ return b.firstLine == t.firstLine; });
-            if (it == live.end()) continue;
+            if (it == liveV1.end()) continue;
             hlText = it->headline;
             if (!annotateMode)                       // ANTS-4470
                 applyAntsV1Flip(lines, *it, t.toEmoji);
