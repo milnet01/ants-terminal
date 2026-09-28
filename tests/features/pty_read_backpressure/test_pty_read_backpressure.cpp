@@ -41,7 +41,7 @@ namespace {
 // absolute path. Empty string on failure.
 QString writeExecutableScript(QTemporaryDir &dir, const QString &name,
                                const QByteArray &body) {
-    const QString path = dir.path() + "/" + name;
+    QString path = dir.path() + "/" + name;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return QString();
     f.write(body);
@@ -116,6 +116,14 @@ void checkPauseHonouredAtOnce() {
     chunkCount = 0;
     pauseRequested = false;
     pty.setReadEnabled(true);
+    // Wait on the first chunk, not a fixed window: under a loaded push hook
+    // the child started later than 600 ms and nothing arrived (push-5531,
+    // 2026-09-28). Then pump a fixed window to catch any further chunk.
+    QElapsedTimer firstChunk;
+    firstChunk.start();
+    while (!pauseRequested && firstChunk.elapsed() < 5000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
     pumpFor(600);
 
     expect(pauseRequested, "ANTS-5026-INV-1-setup",

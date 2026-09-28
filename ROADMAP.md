@@ -64831,6 +64831,11 @@ than re-filed; everything else lands here.
   the question rather than requesting the verb, and the honest first
   step is to measure the noise floor the way that project measured
   every other class it declined.
+  Related ask (2026-09-28, claude-config CFG-0657): a move checker for
+  text moved from a SKILL.md into references/. The survivor check here
+  is its core (the moved block still exists verbatim elsewhere). The
+  skill-specific parts (pointer left, position words, labels kept) stay
+  in Games Hub's tools/move-check.
   **Layman:** After deleting a sentence from a document, nothing checks whether a stale copy of it is still sitting in another file.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08.
@@ -68246,6 +68251,66 @@ project. Reported causes are claims until checked in source.
   Kind: doc-fix.
   Source: review-contract ANTS-1359 loop 1, 2026-09-28 (outside the gated change).
   Lanes: mcp, docs.
+
+- 📋 [ANTS-5537] **spec_lint checks an amended old spec against only the lines the edit changed.**
+  Measured by the requester 2026-09-28: spec_lint over docs/specs
+  reports 1280 findings, mostly newer-layout defects in specs written
+  before the format existed; no spec carries a format marker.
+  Asks: (1) `since:<git-ref>` and `staged:true`; each finding gains
+  `in_diff`. The verb owns each invariant block's extent, so
+  invariant_no_test and command_test_no_expectation are in the diff when
+  any line of the block changed; invariant_id_gap when the diff adds or
+  removes an INV-N; missing_section when the file is new in the range or
+  the diff removes a required heading; test_coverage_* when the diff
+  touches the Tests section or a touched invariant's id;
+  loop_row_no_outcome when the row changed. (2) With `since`,
+  findings[] holds in-diff findings only, and the envelope adds
+  `counts_in_diff` and `counts_out_of_diff` and echoes `since` plus the
+  resolved commit, so the filter leaves a record. (3) A spec stamped
+  `<!-- ants-spec-format: N -->` is always checked in full; report
+  `stamped` per doc. (4) `since` outside a git tree refuses
+  not_a_git_repo; never a silent full-file run. Draft: the requester's
+  cfg-0655-draft-2026-09-28.md, section "Split: the Ants half".
+  **Layman:** When an old design document is touched, the checker should judge only the new edit, not every older gap in the file.
+  Kind: feature.
+  Source: claude-config CFG-0655, relayed by perch-6d 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5538] **Find rule-14 commit-body records across every registered project in one call.**
+  Returns {repo, sha, document, verdict} for each `CLAUDE.md rule 14:`
+  line in commit BODIES, across the store's registered projects. Build on
+  ANTS-5508's git_state log grep, adding a scope:"all" fan-out over
+  registered roots with a per-repo walk budget. Rolodex is writing a
+  script version (tools/rule14-records); match its output shape.
+  **Layman:** One lookup to find every recorded review decision across all projects, instead of searching each project's history by hand.
+  Kind: feature.
+  Source: claude-config CFG-0659, relayed by claude-cd 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5539] **A machine-wide project-facts cache: remote, visibility, workflows, PR opt-in and contract-doc directories per project.**
+  Global CLAUDE.md rule 6 has every session check .github/workflows and
+  `gh repo view` visibility before a push, and rule 7 the PR opt-in
+  signals. A verb reading a store-cached record per registered project
+  (refreshed on a TTL, visibility fetched once) saves those gh calls.
+  OneUp is building tools/project-facts; match its fields. Hot reload:
+  data in the store, no relaunch.
+  **Layman:** Every session needs the same few facts about each project; keep them in one place so nobody has to ask GitHub again.
+  Kind: feature.
+  Source: claude-config CFG-0658, relayed by claude-cd 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5540] **PtyReadBackpressure INV-1 waited a fixed 600 ms for the first chunk and failed once under the pre-push hook's load.**
+  push-5531's hook (ubuntu 24.04 container) failed with "no
+  dataReceived arrived after re-enabling reads". Not reproduced locally:
+  20 serial runs and 12 copies pinned to one core all passed. The test
+  now waits up to 5 s for the first chunk on a condition, then pumps its
+  fixed 600 ms window; the exactly-one-chunk check is unchanged. Close
+  if it does not recur by 2026-10-05; if it does, the read notifier, not
+  the child's start, is the suspect.
+  **Layman:** A terminal test sometimes failed on a busy machine because it gave a helper program too little time to start.
+  Kind: test.
+  Source: in-session-2026-09-28 (push-5531 pre-push run).
+  Lanes: pty.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
@@ -79848,7 +79913,7 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5189] **The ASan CI compile cache still fills its cap and evicts entries.**
+- ✅ [ANTS-5189] **The ASan CI compile cache still fills its cap and evicts entries.**
   Follow-up to ANTS-4652. ci.yml sets CCACHE_MAXSIZE 2G on every job,
   and a recent ASan run's ccache statistics step shows the cache at its
   cap with cleanups, which ANTS-4652's own rule reads as a reason to
@@ -79863,6 +79928,10 @@ acting on it.
   cache reads 2.0/2.0 GB (99.95%), hits 4/754. The build does not fit in
   2G even with -g1, so it evicts during the build. Next: raise the
   build-asan job's CCACHE_MAXSIZE.
+  Resolved (2026-09-28): the 4G cap (aef9f8ea) no longer fills. Manual
+  run 36392962717's ASan stats: Cache size 0.3 / 4.0 GB (6.62%), 387
+  misses, no eviction during the build. The earlier 2.0/2.0 reading came
+  before the cap raise. Re-read the stats step if ASan flags change.
   **Layman:** The memory-checking build's cache is too small, so it keeps throwing away work it will need again.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80081,6 +80150,11 @@ acting on it.
   or keep one key per job and branch, deleting the superseded entry. This
   is the root-cause half of ANTS-5528; that item keeps the cold-start
   half. Low risk: the restore-keys prefix already finds the latest entry.
+  Progress (2026-09-28): e1c938a4 pushed. tools/ci-prune-caches.sh runs
+  after each of the four cache saves (tests/features/ci_cache_prune).
+  Before: 10,516 MiB in 20 entries. Close once the first CI run's prune
+  steps print `deleted cache` and gh cache list shows one entry per
+  prefix.
   **Layman:** Every push stores a fresh copy of the build cache, filling GitHub's storage so the nightly check loses its own copy.
   Kind: perf.
   Source: user-request-2026-09-28 (CI speed-ups).
@@ -80114,6 +80188,17 @@ acting on it.
   check what the release pipeline and cut-rc.sh read from per-commit
   CI results, and decide whether the repo being public (minutes are
   free) makes the saving worth that loss at all.
+  Measured (2026-09-28): 194 main push runs since 2026-09-14, median
+  17.3 min; 90 were created while the previous run was still going.
+  Three of the 37 cancelled runs, sampled (36267045267, 36266711857,
+  35598681863), have NO jobs: with cancel-in-progress false, GitHub
+  already queues one pending run behind the running one and drops older
+  pending ones. So superseded QUEUED commits are skipped today. The only
+  change left is killing a RUNNING run, which on a day like 2026-09-14
+  (36 pushes) could leave main with no finished result for hours.
+  Nothing in packaging/, tools/ or release.yml reads per-commit CI
+  results. Minutes are free (public repo). Recommendation: leave as is;
+  needs the user's call.
   **Layman:** When several changes are pushed quickly, CI still tests every one of them in full, which may not be needed.
   Kind: investigate.
   Source: user-request-2026-09-28 (CI speed-ups).
