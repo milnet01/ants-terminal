@@ -400,3 +400,53 @@ TEST(McpSpecQuery, Ants4468ModeIsDeclaredAndUnknownModeRefuses) {
     const QJsonObject bare = call(QString());
     EXPECT_TRUE(bare.value(QStringLiteral("ok")).toBool());
 }
+
+// ANTS-5096 — gate_drift runs one git per spec, so the walk has an overall
+// deadline: past it the remaining specs are listed as unchecked and the reply
+// says it is partial. And an unreadable spec is reported, not dropped, so the
+// buckets account for every spec the list holds.
+TEST(McpSpecQuery, Ants5096GateDriftIsBoundedAndCountsEverySpec) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString specs = tmp.path() + QStringLiteral("/docs/specs");
+    ASSERT_TRUE(QDir().mkpath(specs));
+    for (const char *n : {"/ANTS-9001-a.md", "/ANTS-9002-b.md"}) {
+        QFile f(specs + QString::fromLatin1(n));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# ANTS-9001 — a spec\n\n**Status:** spec draft (2026-09-28).\n");
+    }
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("mode")]       = QStringLiteral("gate_drift");
+
+    // Budget spent before the first spec: every spec is unchecked.
+    {
+        RemoteControl rc(nullptr);
+        rc.setGateDriftBudgetOverride(0);
+        const QJsonObject out = rc.cmdSpecQuery(req).object();
+        ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(out).toJson().toStdString();
+        EXPECT_TRUE(out.value(QStringLiteral("truncated")).toBool());
+        EXPECT_EQ(out.value(QStringLiteral("unchecked")).toArray().size(), 2);
+    }
+
+    // An unreadable spec lands in a bucket instead of vanishing.
+    const QString locked = specs + QStringLiteral("/ANTS-9002-b.md");
+    ASSERT_TRUE(QFile::setPermissions(locked, QFileDevice::Permissions()));
+    QFile probe(locked);
+    if (probe.open(QIODevice::ReadOnly))
+        GTEST_SKIP() << "running as a user who can read a mode-000 file";
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdSpecQuery(req).object();
+    QFile::setPermissions(locked, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    const QJsonObject counts = out.value(QStringLiteral("counts")).toObject();
+    EXPECT_EQ(counts.value(QStringLiteral("stale")).toInt() +
+              counts.value(QStringLiteral("current")).toInt() +
+              counts.value(QStringLiteral("ungated")).toInt(), 2)
+        << QJsonDocument(out).toJson().toStdString();
+    bool sawReadError = false;
+    for (const QJsonValue &v : out.value(QStringLiteral("ungated")).toArray())
+        if (v.toObject().value(QStringLiteral("read_error")).toBool()) sawReadError = true;
+    EXPECT_TRUE(sawReadError) << QJsonDocument(out).toJson().toStdString();
+}

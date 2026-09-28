@@ -2317,25 +2317,40 @@ static QString sqLastLoopDate(const QString &body) {
     return latest;
 }
 
-QJsonObject specGateDriftEnvelope(const QString &rootCanonical) {
+// ANTS-5096 — `budgetMs` bounds the walk (one git call per spec, up to 500).
+// Past it the remaining specs are listed in `unchecked` and the reply is
+// `truncated`: an unchecked spec is not current.
+QJsonObject specGateDriftEnvelope(const QString &rootCanonical, int budgetMs) {
     const QJsonObject list = specListEnvelope(rootCanonical);
     QJsonObject out;
     out["ok"]        = true;
     out["mode"]      = QStringLiteral("gate_drift");
     out["specs_dir"] = list.value(QStringLiteral("specs_dir"));
 
-    QJsonArray stale, current, ungated;
+    QElapsedTimer clock;
+    clock.start();
+    QJsonArray stale, current, ungated, unchecked;
     for (const QJsonValue &v : list.value(QStringLiteral("specs")).toArray()) {
         const QJsonObject e   = v.toObject();
         const QString     rel = e.value(QStringLiteral("path")).toString();
-        QFile f(rootCanonical + QLatin1Char('/') + rel);
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-        const QString body = QString::fromUtf8(f.readAll());
-        f.close();
-
+        if (clock.elapsed() >= budgetMs) {
+            unchecked.append(rel);
+            continue;
+        }
         QJsonObject row;
         row["path"]   = rel;
         row["status"] = e.value(QStringLiteral("status"));
+        QFile f(rootCanonical + QLatin1Char('/') + rel);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            // ANTS-5096 — reported, not dropped: the buckets account for
+            // every spec the list holds, and a spec nobody could read is not
+            // current.
+            row["read_error"] = true;
+            ungated.append(row);
+            continue;
+        }
+        const QString body = QString::fromUtf8(f.readAll());
+        f.close();
 
         const QString loopDate = sqLastLoopDate(body);
         if (loopDate.isEmpty()) {
@@ -2414,6 +2429,10 @@ QJsonObject specGateDriftEnvelope(const QString &rootCanonical) {
     out["stale"]   = stale;
     out["current"] = current;
     out["ungated"] = ungated;
+    if (!unchecked.isEmpty()) {
+        out["unchecked"] = unchecked;
+        out["truncated"] = true;
+    }
     out["counts"]  = QJsonObject{
         {QStringLiteral("stale"),   stale.size()},
         {QStringLiteral("current"), current.size()},
@@ -2449,7 +2468,8 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         // edited since its last review loop?", which nothing could answer.
         const QString mode = req.value(QStringLiteral("mode")).toString();
         if (mode == QLatin1String("gate_drift")) {
-            return QJsonDocument(specGateDriftEnvelope(rootCanonical));
+            return QJsonDocument(specGateDriftEnvelope(rootCanonical,
+                m_gateDriftBudgetOverride >= 0 ? m_gateDriftBudgetOverride : 30000));
         }
         // ANTS-4468 — an unrecognised mode used to fall through to the list
         // branch, so `mode:"gate-drift"` returned a spec LIST with ok:true and
