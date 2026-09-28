@@ -68605,6 +68605,24 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (review-contract of ANTS-5506, loop 1).
   Lanes: mcp.
 
+- 📋 [ANTS-5555] **roadmap_log create_section refuses to create the first closed version block on a roadmap.**
+  Reported by the claude-config session by message; reproduce
+  from its example before fixing (op:"create_section" with a level-2
+  release title on a roadmap that has no closed version block yet).
+  **Layman:** A tool that adds a new release heading to a roadmap refuses to add the first one.
+  Kind: fix.
+  Source: claude-config session report 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5556] **roadmap_log set_preamble drops the roadmap's format marker.**
+  Reported by the claude-config session by message; reproduce
+  from its example before fixing. The marker is what format detection
+  keys on, so its loss can change how every later read parses the file.
+  **Layman:** Rewriting a roadmap's opening text loses a hidden marker the tools need to read the file.
+  Kind: fix.
+  Source: claude-config session report 2026-09-28.
+  Lanes: mcp, roadmap.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
