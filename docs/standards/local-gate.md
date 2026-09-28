@@ -283,8 +283,10 @@ what you are pushing. `git push origin other-branch` from `main`,
 `git push origin HEAD~2:main`, and a push carrying several refs all pass
 the porcelain check while the gate answers for a commit the remote will
 never receive. So route 2 is available **only when every pushed tip
-equals `HEAD`**: compare each `<local sha>` on stdin against
-`git rev-parse HEAD`, and where any differs, refuse or take route 1.
+equals `HEAD`**: compare each `<local sha>` on stdin, peeled with
+`git rev-parse <local sha>^{commit}`, against `git rev-parse HEAD`, and
+where any differs, refuse or take route 1. Unpeeled, an annotated tag's
+object id never equals `HEAD`, so a release tag is refused.
 
 ### 5.3 Never stash to manufacture a clean tree
 

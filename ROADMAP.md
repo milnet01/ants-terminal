@@ -68581,6 +68581,18 @@ project. Reported causes are claims until checked in source.
   Source: contact-list session request 2026-09-28 (session_message 194).
   Lanes: mcp, claude.
 
+- 📋 [ANTS-5554] **spec_lint on a path that does not exist returns ok:true with no findings instead of refusing.**
+  Measured 2026-09-28 through the live verb: spec_lint with path
+  "docs/specs/no-such-file.md" returned ok:true and findings:[], while a
+  path escaping the root refuses bad_path. A push gate calling it
+  through ANTS-5506's --call with --exit-code would exit 0 on a typo.
+  Refuse a path that resolves to nothing (not_found), as doc_lint and
+  the read verbs should be checked for the same shape.
+  **Layman:** A mistyped file name makes the spec checker report "all clean", so a push check built on it would pass without checking anything.
+  Kind: fix.
+  Source: in-session-2026-09-28 (review-contract of ANTS-5506, loop 1).
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
