@@ -9548,6 +9548,20 @@ extends an existing item, that item carries it instead.
   ANTS-5097 decision for verify_changes, so neither holds the single MCP
   worker past the transport budget. The contract change runs through a
   spec amendment and rule 14's gate.
+  Progress (2026-09-28): three more closed. co_change_family passes
+  --threads and applies a 500-column cap while parsing (rg ignores
+  --max-columns under --json, measured; workspace_search's same inert
+  flag is ANTS-5530), plus cited_by's parse budget (co_change_family
+  Ants5096LongLinesAreNotScanned). spec_query gate_drift stops at a 30 s
+  budget with unchecked[] and truncated, and reports an unreadable spec
+  as ungated with read_error instead of dropping it (mcp_spec_query
+  Ants5096GateDriftIsBoundedAndCountsEverySpec). Both red first. STILL
+  OPEN: focused_test and mutation_probe as background jobs (user decision
+  2026-09-14; spec amendment + rule 14 gate first; re-check the premise,
+  since ants-mcpd now runs one process per session rather than one
+  shared worker), mutation_probe's sidecar baseline, cited_by's scope
+  cap and quadratic overlap check, and the two stale documents
+  (ANTS-1302 § 3.4, ANTS-1248 § 5).
   **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
