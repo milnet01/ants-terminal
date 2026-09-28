@@ -130,6 +130,32 @@ QVector<Field> fieldsOf(const PlannedItem &it, const RoadmapStore::ItemWrite &cu
     };
 }
 
+// ANTS-4507 — the stored and planned text of one differing column, clipped to a
+// window that opens a little before the first difference. A long body that
+// differs only in its last line is otherwise either unreadable or truncated
+// before the part that matters.
+RoadmapMigrateLoad::Outcome::UpdatedItem::Value valueChange(const Field &f,
+                                                            bool suppressed) {
+    constexpr int kLead = 40;
+    constexpr int kWindow = 200;
+    const QString &a = f.storedText;
+    const QString &b = f.planText;
+    int at = 0;
+    const int common = int(qMin(a.size(), b.size()));
+    while (at < common && a.at(at) == b.at(at))
+        ++at;
+    const int start = qMax(0, at - kLead);
+    const auto clip = [&](const QString &s) {
+        QString out = s.mid(start, kWindow);
+        if (start > 0)
+            out.prepend(QStringLiteral("…"));
+        if (start + kWindow < s.size())
+            out.append(QStringLiteral("…"));
+        return out;
+    };
+    return {f.column, clip(a), clip(b), at, suppressed};
+}
+
 // The plan records provenance for the fields it makes a decision about —
 // status, id, kind, source (ANTS-3757 § 2.7–2.9). For the rest it carries the
 // author's own text through unchanged, which is what `asserted` means, and that
@@ -211,6 +237,7 @@ struct Loader {
         // going to happen — a different wrong answer, and a worse one for a
         // reviewer deciding whether to commit.
         QStringList fieldsSuppressed;
+        QVector<RoadmapMigrateLoad::Outcome::UpdatedItem::Value> values;   // ANTS-4507
     };
     bool applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges *chg);
     bool recordHistory(qint64 itemPk, const QString &field, const QString &oldValue,
@@ -665,6 +692,13 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
     for (const Field &f : fieldsOf(it, *cur)) {
         if (f.planText == f.storedText)
             continue;
+        // ANTS-4507 — a stored Source ending in '.' renders the same line as
+        // one without (the render adds the stop only where it is missing), and
+        // the parse drops it. The file cannot hold that difference, so it is
+        // not drift, and the stored text is left as it is.
+        if (f.column == QLatin1String("source")
+            && RoadmapRender::laymanForStore(f.storedText) == f.planText)
+            continue;
 
         const QString prov = provenanceFor(it, f.column);
 
@@ -683,6 +717,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
         if (prov == QLatin1String("defaulted") && !f.storedEmpty) {
             note("field_conflict", QStringLiteral("%1: %2").arg(chg->id, f.column));
             chg->fieldsSuppressed.append(f.column);   // ANTS-4522
+            chg->values.append(valueChange(f, true));
             continue;
         }
 
@@ -697,6 +732,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
                                                                        : it.id,
                                                                    f.column));
                 chg->fieldsSuppressed.append(f.column);   // ANTS-4522
+                chg->values.append(valueChange(f, true));
                 continue;
             }
             if (!store.clearItemField(itemPk, f.column, prov, &err))
@@ -722,6 +758,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
             return false;
         chg->changed = true;
         chg->fields.append(f.column);
+        chg->values.append(valueChange(f, false));
         // ANTS-4065 § 2.6 — `extras` is the one field here outside the governed
         // set. Phrased as an exclusion rather than a list of the eight, so a
         // column added to fieldsOf() is governed by default: a new source-backed
@@ -931,7 +968,8 @@ bool Loader::updateMatched() {
         if (!chg.changed && chg.fieldsSuppressed.isEmpty())
             continue;
         if (out.updatedItems.size() < kMaxUpdatedItems)
-            out.updatedItems.append({chg.id, chg.fields, chg.fieldsSuppressed});
+            out.updatedItems.append({chg.id, chg.fields, chg.fieldsSuppressed,
+                                     chg.values});
         else
             ++out.updatedItemsDropped;
     }

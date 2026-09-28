@@ -216,6 +216,20 @@ void setUpdatedItems(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out) {
         // an item the migration leaves entirely alone.
         o[QStringLiteral("fields_suppressed")] =
             QJsonArray::fromStringList(u.fieldsSuppressed);
+        // ANTS-4507 — the values behind those names, so a re-parse that only
+        // moved whitespace reads as one instead of as an edit.
+        QJsonArray values;
+        for (const auto &v : u.values) {
+            QJsonObject vo;
+            vo[QStringLiteral("field")]   = v.field;
+            vo[QStringLiteral("from")]    = v.from;
+            vo[QStringLiteral("to")]      = v.to;
+            vo[QStringLiteral("diff_at")] = v.diffAt;
+            if (v.suppressed)
+                vo[QStringLiteral("suppressed")] = true;
+            values.append(vo);
+        }
+        o[QStringLiteral("values")] = values;
         arr.append(o);
     }
     env[QStringLiteral("updated_items")] = arr;

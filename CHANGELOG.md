@@ -248,6 +248,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_migrate's preview shows each change's old and new text, and stops counting a Source full stop as a change** (ANTS-4507)
+  Each `updated_items[]` row now carries `values[]`: every column's stored
+  `from` and planned `to` text around the first difference, with `diff_at`.
+  A Source value that differs only by its closing full stop renders the
+  same line, so it is no longer reported. On this project a dry run over an
+  unchanged file went from 165 planned updates to 20, each a real
+  column-versus-body disagreement.
+
 - **Pass-headings roadmap files now open with the "generated — edit it with roadmap_log" notice that ants-v1 files carry.** (ANTS-5501)
 
 - **session_message send and ack wait for a concurrent roadmap write instead of failing "database is locked".** (ANTS-5499)

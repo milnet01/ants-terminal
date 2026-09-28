@@ -97,6 +97,18 @@ struct Outcome {
         // write moves". Folding the two together, as the report suggested,
         // would have the preview claim a change that is not going to happen.
         QStringList fieldsSuppressed;
+        // ANTS-4507 — each differing column's stored (`from`) and planned
+        // (`to`) text, clipped to a window around the first difference, which
+        // starts at `diffAt`. A name without its values could not tell a
+        // re-parse that only moved whitespace from a real edit.
+        struct Value {
+            QString field;
+            QString from;
+            QString to;
+            int     diffAt = 0;
+            bool    suppressed = false;
+        };
+        QVector<Value> values;
     };
     QVector<UpdatedItem> updatedItems;
     // ANTS-4522 — entries the cap dropped. Replaces deriving truncation from

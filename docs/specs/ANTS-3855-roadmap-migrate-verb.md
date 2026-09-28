@@ -569,6 +569,28 @@ and `deleted_ids` from the refused load's `deleted_item` notes, and no
 references them. The pre-migration snapshot is the undo, so
 `accept_deletions:true` with `backup:false` is allowed but unprotected.
 
+`updated_items[].values` carries the text behind each column named in `fields`
+or `fields_suppressed`, in the load's column order:
+
+```json
+"values": [{"field": "body", "from": "…stored text", "to": "…planned text",
+            "diff_at": 1906, "suppressed": true}]
+```
+
+`from` is the stored text and `to` the plan's. `diff_at` is the offset of the
+first differing character. Both texts are clipped to a 200-character window
+opening 40 characters before it, with `…` marking a clipped end. `suppressed`
+appears only on a declined write. A field name alone could not tell a re-parse
+that only moved whitespace from a real edit.
+
+**A `source` differing only by one trailing `.` is not a difference.** The
+render adds the stop only where it is missing and the parse drops it, so both
+values publish the same line and the file cannot hold the change. The stored
+text is left as it is.
+
+**Added 2026-09-28 (ANTS-4507).** On this project the rule took a dry run over
+a store its own file was rendered from from 165 planned updates to 20.
+
 `updated_items[].fields_suppressed` names the columns the plan **differed on
 and the write declines** — "defaulted does not overwrite" and "empty does not
 overwrite", § 2.6's two rules. Each also raises a `field_conflict` note, and

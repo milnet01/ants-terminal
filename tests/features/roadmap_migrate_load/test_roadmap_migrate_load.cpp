@@ -1785,3 +1785,73 @@ TEST(RoadmapMigrateLoad, Ants4522SuppressionOnlyItemStillAppears) {
                   .toStdString(),
               std::string("headline"));
 }
+
+// ANTS-4507 — a field NAME without its values is still a bare count one level
+// down: a whitespace re-parse and a real edit both read `fields:["body"]`. Each
+// entry now carries the stored and planned text around the first difference,
+// and where it starts, for moved and suppressed columns alike.
+TEST(RoadmapMigrateLoad, Ants4507PlanCarriesBeforeAndAfterValues) {
+    Fixture f;
+    ASSERT_TRUE(f.store.open());
+
+    PlannedItem first = item(QStringLiteral("P-1"), QStringLiteral("a headline"),
+                             QStringLiteral("s"), 0);
+    first.body = QString(100, QLatin1Char('x')) + QStringLiteral(" old tail");
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf({first}), f.opts()).ok);
+
+    PlannedItem second = item(QStringLiteral("P-1"), QString(),
+                              QStringLiteral("s"), 0);
+    second.body = QString(100, QLatin1Char('x')) + QStringLiteral(" new tail");
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf({second}), f.opts(true));
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    ASSERT_EQ(out.updatedItems.size(), 1);
+    const auto &vals = out.updatedItems.first().values;
+    ASSERT_EQ(vals.size(), 2);
+
+    const auto &body = vals.at(1);
+    EXPECT_EQ(body.field.toStdString(), std::string("body"));
+    EXPECT_FALSE(body.suppressed);
+    EXPECT_EQ(body.diffAt, 101);
+    // The excerpt opens shortly before the difference, not at the start of a
+    // 100-character run nobody needs to read.
+    EXPECT_TRUE(body.from.endsWith(QStringLiteral(" old tail"))) << body.from.toStdString();
+    EXPECT_TRUE(body.to.endsWith(QStringLiteral(" new tail"))) << body.to.toStdString();
+    EXPECT_LT(body.from.size(), 100);
+
+    const auto &head = vals.at(0);
+    EXPECT_EQ(head.field.toStdString(), std::string("headline"));
+    EXPECT_TRUE(head.suppressed);
+    EXPECT_EQ(head.from.toStdString(), std::string("a headline"));
+    EXPECT_TRUE(head.to.isEmpty());
+    EXPECT_EQ(head.diffAt, 0);
+}
+
+// ANTS-4507 — a stored Source ending in a full stop renders unchanged (the
+// render adds a stop only where one is missing) and re-imports without it. The
+// two values render the same line, so the file cannot hold the difference and
+// it is not drift. Measured: 71 of this project's 165 planned updates.
+TEST(RoadmapMigrateLoad, Ants4507SourceDifferingOnlyByItsStopIsUnchanged) {
+    Fixture f;
+    ASSERT_TRUE(f.store.open());
+
+    PlannedItem first = item(QStringLiteral("P-1"), QStringLiteral("a headline"),
+                             QStringLiteral("s"), 0);
+    first.source = QStringLiteral("in-session-2026-05-16 (follow-on).");
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf({first}), f.opts()).ok);
+
+    PlannedItem second = first;
+    second.source = QStringLiteral("in-session-2026-05-16 (follow-on)");
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf({second}), f.opts(true));
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+    EXPECT_EQ(out.itemsUpdated, 0);
+    EXPECT_EQ(out.itemsUnchanged, 1);
+    EXPECT_TRUE(out.updatedItems.isEmpty());
+
+    // A real change to the value is still one.
+    PlannedItem third = first;
+    third.source = QStringLiteral("in-session-2026-05-17");
+    const auto moved = RoadmapMigrateLoad::load(f.store, planOf({third}), f.opts(true));
+    ASSERT_TRUE(moved.ok) << moved.error.toStdString();
+    EXPECT_EQ(moved.itemsUpdated, 1);
+}

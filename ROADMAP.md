@@ -18830,6 +18830,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   docs/specs/ANTS-1356.md amendment and rule 14's gate, and have the
   rate_limited refusal say how many callers share the bucket. No
   per-connection keying (ANTS-1771 hole).
+  Recurrence (2026-09-28, finbreak feedback): review-code at 20 lanes and
+  review-tests at 12 — every lane hit rate_limited at least once and fell
+  back to Grep, losing the exclude_glob closure the review brief relies on.
+  Suggested: key the limit per agent, raise the budget, or return a short
+  retry_after_ms.
   **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
   Kind: fix.
   Source: in-session-2026-09-11 (performance pass).
@@ -48722,7 +48727,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-19 (Claude Code config + finbreak), corroborated in-session.
   Lanes: roadmap-store, roadmaprender.
 
-- 📋 [ANTS-4507] **items_updated measures round-trip noise rather than drift, so it has no zero point and acting on it is destructive.**
+- ✅ [ANTS-4507] **items_updated measures round-trip noise rather than drift, so it has no zero point and acting on it is destructive.**
   Reported by finbreak, and it RETRACTS an accepted suggestion -- ANTS-4480
   suggestion 3 recommended the dry_run counters as the staleness
   pre-flight, and the reporting session had already written that advice
@@ -48882,6 +48887,16 @@ are closed inline in the feedback files rather than filed here.
   was not touched: a migrate dry run on MAME_Curator shows 8 items whose
   body differs between file and store, so a render from this session
   could discard hand edits there. Left to that project's own session.
+  Resolved (2026-09-28): the last two parts landed. updated_items[] rows
+  carry values[] {field, from, to, diff_at, suppressed?}, clipped to a
+  200-character window around the first difference. Migrate treats a
+  Source differing only by its trailing '.' as unchanged, since both
+  render the same line; no store rows were rewritten. Dry run here: 165
+  planned updates before, 20 after, all real column-vs-body
+  disagreements (layman 8, lanes 7, body 4, extras 2, evidence 1; 143
+  suppressed extras are not updates). ANTS-4480 suggestion 3: the verb
+  description now says the count can be a column disagreeing with its
+  body, and to read values[] first. Spec ANTS-3855 records the field.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.
@@ -50427,7 +50442,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (claude-config), from three cold-reader gate loops on the derived standard.
   Lanes: docs, colony.
 
-- 📋 [ANTS-5260] **op:"convert"'s pre-flight reports the id axis and says nothing about whether prose survives.**
+- ✅ [ANTS-5260] **op:"convert"'s pre-flight reports the id axis and says nothing about whether prose survives.**
   ANTS-5252 and ANTS-5258 give the convert a reviewable ID axis: per bullet,
   what the file holds, what the load did with it, and whether a pairing
   rested on order. Vestige's point is that a one-way rewrite has a SECOND
@@ -50511,6 +50526,13 @@ are closed inline in the feedback files rather than filed here.
   stale store and is the one that misleads — Vestige's own 2,840 is exactly
   that figure, and on this evidence it overstates the risk rather than
   understating it.
+  Resolved (2026-09-28): delivered by ANTS-5286. Text loss is measured
+  against the render AFTER the convert's re-import
+  (DriftBasis::AfterMutation), the figure this item asked for. A dry run
+  reports `would_discard_reason:"text_lost"`; a real run refuses
+  `text_lost` with `discarded_text_lines` and `discarded_text` naming
+  each line, unless accept_text_loss:true. Contract: roadmap_convert
+  spec INV-16, test textLossRefusesUnlessAccepted.
   **Layman:** Before a bulk conversion you can now check that no entry's number changes, but nothing tells you whether the explanatory text around them survives the rewrite.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
@@ -51417,7 +51439,7 @@ are closed inline in the feedback files rather than filed here.
   Source: review-contract CLAUDE.md loop 1, in-session-2026-09-21.
   Lanes: docs, vt.
 
-- 📋 [ANTS-5277] **The convert dry run's own deliverable is unreadable at real scale.**
+- ✅ [ANTS-5277] **The convert dry run's own deliverable is unreadable at real scale.**
   Measured by peer session vestige-5f on the FIRST real-scale run of
   ANTS-4491, against a 1,026-item github-task-list roadmap.
 
@@ -51475,6 +51497,12 @@ are closed inline in the feedback files rather than filed here.
   `roadmap_migrate`'s `max_notes` already does. An unchanged row carries
   none of the risk ANTS-5252 names, so it does not need to be in the
   table at all.
+  Resolved (2026-09-28): delivered by ANTS-5328, which cites this
+  measurement. `max_planned` (0..5000; 0 keeps counts only) sizes the
+  table, `planned_filter:"needs_decision"` keeps only the rows a person
+  must check, and the reply always states how many rows matched. The
+  default stays `all` capped at 200; a caller who wants the decision
+  rows alone asks for them.
   **Layman:** A preview meant to be checked before a one-way change returns so much text in one go that it cannot be displayed at all on a large project.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
