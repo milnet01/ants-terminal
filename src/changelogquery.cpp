@@ -9,6 +9,8 @@
 #include <QHash>
 #include <QRegularExpression>
 
+#include <algorithm>
+
 namespace ChangelogQuery {
 
 namespace {
@@ -309,6 +311,136 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
     }
 
     return result;
+}
+
+}  // namespace ChangelogQuery
+
+namespace ChangelogQuery {
+
+QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
+                                const QString &version) {
+    static const QRegularExpression linkRef(QStringLiteral(R"(^ {0,3}\[[^\]]+\]:\s)"));
+    static const QRegularExpression listItem(
+        QStringLiteral(R"(^ {0,3}(?:[-*+]|[0-9]+[.)])(?:\s|$))"));
+
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+    for (QString &l : lines)
+        if (l.endsWith(QLatin1Char('\r'))) l.chop(1);
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    const QString wanted =
+        version.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0
+            ? QStringLiteral("Unreleased") : version;
+
+    QList<DocFinding::Finding> out;
+    const auto add = [&out, &relPath](int line, const QString &kind, const QString &msg) {
+        DocFinding::Finding f;
+        f.verb          = QStringLiteral("changelog_query");
+        f.kind          = kind;
+        f.file          = relPath;
+        f.line          = line;
+        f.message       = msg;
+        f.emissionIndex = int(out.size());
+        out.append(f);
+    };
+
+    bool inSection = false, selected = false, seenCategory = false;
+    // Prose above a section's first `###` is reported only once that heading
+    // arrives: in a section with no category at all it is a placeholder note
+    // ("(Nothing yet.)" in the skeleton's empty [Unreleased]), not a line
+    // filed in the wrong place.
+    QList<int> pendingProse;
+    bool inFlatCategory = false, inComment = false, themeSeen = false;
+    int  lastCanon = -1;
+    QString lastCanonName;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &l = lines.at(i);
+        if (fence.at(i)) continue;  // fenced code is never a finding
+        if (l.startsWith(QLatin1String("## "))) {
+            QString ver, date;
+            bool unreleased = false;
+            if (!parseVersionHeading(l, ver, date, unreleased)) ver = l.mid(3).trimmed();
+            inSection = true;
+            selected = wanted.isEmpty() || ver == wanted;
+            seenCategory = inFlatCategory = inComment = themeSeen = false;
+            pendingProse.clear();
+            lastCanon = -1;
+            continue;
+        }
+        if (!inSection || !selected) continue;  // the preamble is not a section
+
+        const QString t = l.trimmed();
+        if (inComment) {
+            if (t.contains(QLatin1String("-->"))) inComment = false;
+            continue;
+        }
+        if (t.startsWith(QLatin1String("<!--"))) {
+            inComment = !t.contains(QLatin1String("-->"));
+            continue;
+        }
+        if (t.isEmpty() || linkRef.match(l).hasMatch()) continue;
+
+        QString cat;
+        if (parseCategoryHeading(l, cat)) {
+            if (!seenCategory)
+                for (int p : std::as_const(pendingProse))
+                    add(p, QStringLiteral("prose_before_category"),
+                        QStringLiteral("prose before this section's first ### category heading"));
+            pendingProse.clear();
+            seenCategory = true;
+            const QString c = categoryForHeading(cat);
+            if (c.isEmpty()) {
+                inFlatCategory = false;
+                add(i + 1, QStringLiteral("unknown_category"),
+                    QStringLiteral("\"### %1\" is not a Keep-a-Changelog category")
+                        .arg(cat.left(64)));
+                continue;
+            }
+            // A dated topic's body is prose by design; only a flat block is
+            // bullets alone.
+            inFlatCategory = ChangelogLog::isValidCategory(cat);
+            if (inFlatCategory) {
+                const int idx = ChangelogLog::canonicalCategories().indexOf(c);
+                if (idx < lastCanon)
+                    add(i + 1, QStringLiteral("category_out_of_order"),
+                        QStringLiteral("### %1 comes after ### %2; the order is %3")
+                            .arg(c, lastCanonName,
+                                 ChangelogLog::canonicalCategories().join(QStringLiteral(", "))));
+                else { lastCanon = idx; lastCanonName = c; }
+            }
+            continue;
+        }
+        if (l.startsWith(QLatin1Char('#'))) continue;  // a deeper heading
+
+        const bool item = listItem.match(l).hasMatch();
+        // changelog-format.md § 2: a released section opens with ONE
+        // `**Theme:**` line before its categories. That line, and only it.
+        if (!seenCategory && !item && !themeSeen &&
+            t.startsWith(QLatin1String("**Theme:**"))) {
+            themeSeen = true;
+            continue;
+        }
+        if (!seenCategory) {
+            if (item)
+                add(i + 1, QStringLiteral("bullet_outside_category"),
+                    QStringLiteral("a bullet before this section's first ### category "
+                                   "heading is filed under no category"));
+            else
+                pendingProse << i + 1;
+            continue;
+        }
+        if (inFlatCategory && !item && !l.startsWith(QLatin1Char(' ')) &&
+            !l.startsWith(QLatin1Char('\t')))
+            add(i + 1, QStringLiteral("prose_in_category"),
+                QStringLiteral("a flush-left prose line inside a category block; "
+                               "indent it under its bullet or make it a bullet"));
+    }
+    // Deferred prose lands after later lines; findings are in document order.
+    std::stable_sort(out.begin(), out.end(),
+                     [](const DocFinding::Finding &x, const DocFinding::Finding &y) {
+                         return x.line < y.line;
+                     });
+    for (int k = 0; k < out.size(); ++k) out[k].emissionIndex = k;
+    return out;
 }
 
 }  // namespace ChangelogQuery

@@ -15707,7 +15707,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "Read CHANGELOG.md as structured entries {version, date, "
                         "unreleased, category, text, ids[], body?} instead of the whole "
                         "file. Filters: version, category, query, id / ids[]. mode: "
-                        "entries (default) | version_index | headline_only. Opt-in: "
+                        "entries (default) | version_index | headline_only | lint "
+                        "(read-only format check, findings[]). Opt-in: "
                         "include_body, offset/limit (1..500). caller_cwd Required. "
                         "Refusals: no_changelog, format_mismatch, bad_version, "
                         "bad_category, bad_mode, bad_mode_combo, bad_case, bad_args.");
@@ -15721,7 +15722,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "id / ids[] (look up entries citing a [PROJ-NNNN]). "
                         "mode: entries (default) | version_index (version "
                         "skeleton + per-category counts, no entries) | "
-                        "headline_only (~10x smaller). Opt-in: include_body, "
+                        "headline_only (~10x smaller) | lint (ANTS-5543: a "
+                        "READ-ONLY format check returning findings[] — prose or "
+                        "a bullet above a section's first ### category, an "
+                        "unknown or out-of-order category, flush-left prose "
+                        "inside a category block; pass version:\"Unreleased\" "
+                        "from a push gate, and run it from a shell as "
+                        "`ants-mcpd --call changelog_query '{\"mode\":\"lint\"}' "
+                        "--exit-code`, which exits 3 on a finding). Opt-in: include_body, "
                         "compact, fields, etag_match, offset/limit (1..500). "
                         "caller_cwd Required. Refusals: no_changelog, "
                         "format_mismatch, bad_version, bad_category, bad_mode, "
@@ -15800,13 +15808,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     cqModeEnum.append("entries");
                     cqModeEnum.append("version_index");
                     cqModeEnum.append("headline_only");
+                    cqModeEnum.append("lint");
                     cqMode["enum"] = cqModeEnum;
                     cqMode["description"] = QStringLiteral(
                         "Response mode. \"entries\" (default) returns filtered "
                         "entries; \"version_index\" returns the version "
                         "skeleton with per-category counts (no entries); "
                         "\"headline_only\" narrows each entry to {version, "
-                        "category, text_oneline, ids} (~10x smaller).");
+                        "category, text_oneline, ids} (~10x smaller); \"lint\" "
+                        "checks the file's format and returns findings[] "
+                        "(always present, empty when clean) without writing. "
+                        "It honours `version` and refuses id / ids.");
 
                     QJsonObject cqIncludeBody;
                     cqIncludeBody["type"] = "boolean";

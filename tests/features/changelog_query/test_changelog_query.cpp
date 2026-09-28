@@ -523,3 +523,146 @@ TEST(ChangelogQueryParse, Ants4754BadModeNamesTheVersionArgument) {
            "4754/hint-gives-a-usable-value", QString());
     ASSERT_EQ(0, expect_finish());
 }
+
+// ---- ANTS-5543: the read-only format check --------------------------------
+
+namespace {
+
+// Every shape the check files, once each, beside every shape it must leave
+// alone: preamble prose, a continuation line, a released section's one Theme
+// line, a dated topic's prose body, and a note in a section with no category.
+// The HTML comment, the fenced block and the link reference definition sit
+// inside FLAT category blocks, where each would be prose_in_category if its
+// exemption were lost — placed anywhere else, their exemptions go untested.
+const char kLintFixture[] =
+    "# Changelog\n"
+    "\n"
+    "Intro prose in the preamble is fine.\n"
+    "\n"
+    "## [Unreleased]\n"
+    "\n"
+    "Stray prose before any category.\n"
+    "- A bullet under no category.\n"
+    "\n"
+    "### Fixed\n"
+    "\n"
+    "- **A fix.** (ANTS-1)\n"
+    "  continuation line.\n"
+    "<!-- a comment inside a category block -->\n"
+    "Flush-left stray prose.\n"
+    "\n"
+    "### Added\n"
+    "\n"
+    "- **An addition.**\n"
+    "\n"
+    "### Miscellany\n"
+    "\n"
+    "- **Something.**\n"
+    "\n"
+    "## [1.0.0] - 2026-01-01\n"
+    "\n"
+    "**Theme:** one line is allowed.\n"
+    "- An old bullet under no category.\n"
+    "\n"
+    "### 2026-01-01 Added — A dated topic\n"
+    "\n"
+    "Prose under a dated topic is its body.\n"
+    "\n"
+    "\n"
+    "## [0.1.0] - 2025-01-01\n"
+    "\n"
+    "(Nothing shipped here: a note in a section with no category.)\n"
+    "\n"
+    "## [0.0.1] - 2024-01-01\n"
+    "\n"
+    "### Added\n"
+    "\n"
+    "- **First.**\n"
+    "\n"
+    "```\n"
+    "fenced text inside a category block\n"
+    "```\n"
+    "\n"
+    "[1.0.0]: https://example.invalid/1.0.0\n";
+
+int lineOf(const QString &needle) {
+    return QString::fromUtf8(kLintFixture).split(QLatin1Char('\n')).indexOf(needle) + 1;
+}
+
+QStringList lintShape(const QList<DocFinding::Finding> &fs) {
+    QStringList out;
+    for (const DocFinding::Finding &f : fs)
+        out << QStringLiteral("%1:%2").arg(f.line).arg(f.kind);
+    return out;
+}
+
+}  // namespace
+
+TEST(ChangelogQueryLint, Ants5543EachShapeIsOneFinding) {
+    const auto fs = ChangelogQuery::lint(QString::fromUtf8(kLintFixture),
+                                         QStringLiteral("CHANGELOG.md"));
+    const QStringList want = {
+        QStringLiteral("%1:prose_before_category").arg(lineOf(QStringLiteral("Stray prose before any category."))),
+        QStringLiteral("%1:bullet_outside_category").arg(lineOf(QStringLiteral("- A bullet under no category."))),
+        QStringLiteral("%1:prose_in_category").arg(lineOf(QStringLiteral("Flush-left stray prose."))),
+        QStringLiteral("%1:category_out_of_order").arg(lineOf(QStringLiteral("### Added"))),
+        QStringLiteral("%1:unknown_category").arg(lineOf(QStringLiteral("### Miscellany"))),
+        QStringLiteral("%1:bullet_outside_category").arg(lineOf(QStringLiteral("- An old bullet under no category."))),
+    };
+    EXPECT_EQ(want, lintShape(fs)) << lintShape(fs).join(QLatin1Char(' ')).toStdString();
+    for (const DocFinding::Finding &f : fs) {
+        EXPECT_EQ(QStringLiteral("changelog_query"), f.verb);
+        EXPECT_EQ(QStringLiteral("CHANGELOG.md"), f.file);
+        EXPECT_FALSE(f.autoFixable);
+        EXPECT_FALSE(f.message.isEmpty());
+    }
+}
+
+TEST(ChangelogQueryLint, Ants5543VersionNarrowsBothWays) {
+    const QString md = QString::fromUtf8(kLintFixture);
+    const auto unreleased = ChangelogQuery::lint(md, QStringLiteral("CHANGELOG.md"),
+                                                 QStringLiteral("unreleased"));
+    const auto old = ChangelogQuery::lint(md, QStringLiteral("CHANGELOG.md"),
+                                          QStringLiteral("1.0.0"));
+    EXPECT_EQ(5, unreleased.size()) << lintShape(unreleased).join(QLatin1Char(' ')).toStdString();
+    ASSERT_EQ(1, old.size()) << lintShape(old).join(QLatin1Char(' ')).toStdString();
+    EXPECT_EQ(lineOf(QStringLiteral("- An old bullet under no category.")), old.at(0).line);
+}
+
+// The verb mode: read-only, and `findings` is a top-level array whether or not
+// anything was found — `ants-mcpd --call --exit-code` keys on that key, and a
+// clean file must be a present empty list, not an absent one.
+TEST(ChangelogQueryHandler, Ants5543LintModeIsReadOnly) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/CHANGELOG.md");
+    const QByteArray bytes(kLintFixture);
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(bytes);
+    }
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdChangelogQuery(QJsonObject{
+        {QStringLiteral("caller_cwd"), tmp.path()},
+        {QStringLiteral("mode"), QStringLiteral("lint")}}).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << r.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(6, r.value(QStringLiteral("findings")).toArray().size());
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        EXPECT_EQ(bytes, f.readAll()) << "lint must never write";
+    }
+
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("# Changelog\n\n## [Unreleased]\n\n### Added\n\n- **A thing.**\n");
+    }
+    const QJsonObject clean = rc.cmdChangelogQuery(QJsonObject{
+        {QStringLiteral("caller_cwd"), tmp.path()},
+        {QStringLiteral("mode"), QStringLiteral("lint")}}).object();
+    ASSERT_TRUE(clean.value(QStringLiteral("findings")).isArray())
+        << "a clean file still carries findings:[]";
+    EXPECT_TRUE(clean.value(QStringLiteral("findings")).toArray().isEmpty());
+}

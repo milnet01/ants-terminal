@@ -42,6 +42,26 @@ and source-scrapes the handler wiring.
   `offset` or `limit` says, with `total` equal to that count and no
   truncation.
 
+## The format check (ANTS-5543, `mode:"lint"`)
+
+- **`ChangelogQueryLint.Ants5543EachShapeIsOneFinding`** — one fixture files
+  each kind once, in line order, and leaves alone the preamble, a continuation
+  line, one `**Theme:**` line, a dated topic's prose, a note in a section with
+  no category, and — inside flat category blocks, where losing the exemption
+  would fire — an HTML comment, a fenced block and a link reference.
+- **`ChangelogQueryLint.Ants5543VersionNarrowsBothWays`** — `version` checks
+  one section, and `unreleased` matches `Unreleased`.
+- **`ChangelogQueryHandler.Ants5543LintModeIsReadOnly`** — the verb returns
+  the findings, leaves the file byte-identical, and carries `findings:[]` on a
+  clean file.
+
+Mutations run 2026-09-28 (rebuilt, run, restored, byte-compared), each
+killed: drop the Theme exemption; report placeholder prose immediately; drop
+the link-reference, comment or fence skip (these three SURVIVED until the
+fixture moved those shapes into flat category blocks); never check order;
+treat a dated topic as flat; ignore `version`; never report prose in a
+category.
+
 ## Wiring (source-scrape, INV-1/6/9)
 
 - `changelog_query` registered via `rcDelegate(rc, &RemoteControl::cmdChangelogQuery)`.

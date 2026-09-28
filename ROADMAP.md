@@ -68563,7 +68563,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (push-5531 pre-push run).
   Lanes: pty.
 
-- 📋 [ANTS-5543] **A read-only changelog format check that a project's push gate can run from a shell.**
+- ✅ [ANTS-5543] **A read-only changelog format check that a project's push gate can run from a shell.**
   Case: stray prose in [Unreleased] above its first ### heading. Nothing
   catches it at push time. Checked 2026-09-28 against a throwaway
   changelog holding exactly that:
@@ -68582,6 +68582,15 @@ project. Reported causes are claims until checked in source.
   its only flag is --version. So the check also needs a CLI entry that
   exits non-zero on a finding (e.g. `ants-mcpd --call <verb> <json>`, or
   a small tool) for a gate's --docs mode to run it.
+  Resolved (2026-09-28): changelog_query mode:"lint", read-only,
+  findings[] always present; five kinds (prose_before_category,
+  bullet_outside_category, unknown_category, category_out_of_order,
+  prose_in_category). CLI via ants-mcpd --call ... --exit-code (ANTS-5506).
+  Measured on every CHANGELOG under /mnt/Games/Scripts/Linux: Unreleased is
+  clean everywhere but UT_Ants, whose skeleton placeholder "(Nothing yet.)"
+  still sits above real entries. Released history carries many departures
+  from changelog-format.md (invented categories, multi-line summaries),
+  which is why a gate passes version:"Unreleased".
   **Layman:** Catch a badly placed line in a project's change log before it is pushed, without changing the file.
   Kind: feature.
   Source: claude-config session request 2026-09-28 (user request; the Hub's case).

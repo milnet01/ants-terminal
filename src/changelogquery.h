@@ -7,6 +7,9 @@
 
 #pragma once
 
+#include "docfinding.h"
+
+#include <QList>
 #include <QPair>
 #include <QString>
 #include <QStringList>
@@ -46,5 +49,27 @@ struct ParseResult {
 // roadmap prefix P (e.g. "ANTS"); id extraction collects `<P>-NNNN`
 // tokens from each entry's text+body (§ 3). An empty prefix yields no ids.
 ParseResult parse(const QString &markdown, const QString &idPrefix);
+
+// ANTS-5543 — READ-ONLY format check, so a push gate can catch a misplaced
+// line without changing the file. One finding per offending line, in document
+// order, verb "changelog_query", never autoFixable:
+//
+//   prose_before_category    prose between a `## ` heading and its first `###`
+//                            (a section with no `###` at all may hold a note)
+//   bullet_outside_category  a bullet there, filed under no category
+//   unknown_category         a `###` that is neither one of the six canonical
+//                            categories nor a dated topic
+//   category_out_of_order    a category heading that comes before one it
+//                            follows in Keep-a-Changelog order
+//   prose_in_category        a flush-left prose line inside a flat category
+//                            block (the line normalize would fold)
+//
+// Blank lines, HTML comments, link reference definitions and fenced code are
+// never findings, nor is one `**Theme:**` line before a section's first
+// category (changelog-format.md § 2). Text above the first `## ` (the title
+// and preamble) is not a section. `version` non-empty checks only that
+// `## [<version>]` section ("Unreleased" matches case-insensitively).
+QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
+                                const QString &version = QString());
 
 }  // namespace ChangelogQuery

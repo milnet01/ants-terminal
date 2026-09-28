@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_query mode:"lint"` checks a changelog's layout without writing, and a push gate can run it from a shell** (ANTS-5543)
+  It reports prose or a bullet above a section's first category heading,
+  an unknown or out-of-order category, and stray prose inside a category.
+  From a gate: ants-mcpd --call changelog_query
+  '{"mode":"lint","version":"Unreleased"}' --exit-code exits 3 on a
+  finding.
+
 - **`doc_lint` gains a sixth checker, `doc_facts`, for five facts reviewers used to check by hand** (ANTS-5506)
   A list lead-in whose number does not match the list under it, an INV-N
   defined twice, tool-call markup left in prose, a version claim that

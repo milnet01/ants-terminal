@@ -127,7 +127,8 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         req.value(QStringLiteral("mode")).toString(QStringLiteral("entries"));
     static const QStringList kModes = { QStringLiteral("entries"),
                                         QStringLiteral("version_index"),
-                                        QStringLiteral("headline_only") };
+                                        QStringLiteral("headline_only"),
+                                        QStringLiteral("lint") };
     if (!kModes.contains(mode)) {
         QJsonObject env;
         env[QStringLiteral("ok")]       = false;
@@ -196,11 +197,12 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
                    QStringLiteral("changelog_query: ids exceeds 100 entries"));
     const bool idMode = hasId || hasIds;
 
-    // (5) bad_mode_combo — id/ids + version_index.
-    if (idMode && mode == QLatin1String("version_index"))
+    // (5) bad_mode_combo — id/ids + version_index, or + lint.
+    if (idMode && (mode == QLatin1String("version_index") ||
+                   mode == QLatin1String("lint")))
         return err(QStringLiteral("bad_mode_combo"),
                    QStringLiteral("changelog_query: id/ids cannot combine with "
-                                  "mode:version_index"));
+                                  "mode:%1").arg(mode));
 
     // --- parse (mtime+TTL cache, single-slot, path-keyed) ---
     const QFileInfo fi(clPath);
@@ -290,6 +292,28 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         env[QStringLiteral("accepted")] =
             QJsonArray::fromStringList(ChangelogLog::canonicalCategories());
         return QJsonDocument(env);
+    }
+
+    // ANTS-5543 — the READ-ONLY format check a push gate runs. It reads the
+    // file itself rather than the parse cache: the parse drops exactly the
+    // lines this reports. `findings` is always present, empty when clean,
+    // because `ants-mcpd --call --exit-code` keys on it.
+    if (mode == QLatin1String("lint")) {
+        QString md;
+        QFile f(clPath);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+            md = QString::fromUtf8(f.readAll());
+        const QList<DocFinding::Finding> fs = ChangelogQuery::lint(
+            md, QDir(callerCanonical).relativeFilePath(clPath),
+            hasVersionFilter ? versionFilter : QString());
+        QJsonObject out;
+        out[QStringLiteral("ok")]       = true;
+        out[QStringLiteral("path")]     = clPath;
+        out[QStringLiteral("mode")]     = mode;
+        out[QStringLiteral("findings")] = DocFinding::toJson(fs);
+        out[QStringLiteral("counts")]   = DocFinding::countsByVerbAndKind(fs);
+        if (hasVersionFilter) out[QStringLiteral("version")] = versionFilter;
+        return QJsonDocument(out);
     }
 
     // (9) offset / limit shape (bad_args).
