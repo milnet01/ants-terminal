@@ -219,6 +219,16 @@ TEST(roadmap_log_flip_batch, Inv4Refusals) {
     EXPECT_FALSE(bad.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_status"));
+
+    // ANTS-5095 — the locator list is bounded, at amend_batch's 500. Each
+    // locator walks the file on the markdown path.
+    QJsonArray many;
+    for (int i = 0; i < 501; ++i) many.append(locId(QStringLiteral("ANTS-0042")));
+    const QJsonObject tooMany = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(tmp.path(), QStringLiteral("shipped"), many)).object();
+    EXPECT_FALSE(tooMany.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(tooMany.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
 }
 
 // INV-5 — line_range flips every bullet in the inclusive range.

@@ -21,6 +21,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QString>
 #include <QStringLiteral>
 #include <QTemporaryDir>
@@ -206,6 +208,32 @@ TEST(RoadmapLogSetIntro, HeadingLineRefused) {
                  QStringLiteral("Text.\n## Sneaky\n")), false).object();
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_intro"));
     EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}
+
+// ANTS-5095 — a failed project lookup is a store failure, not an unregistered
+// project. Told "no row", a caller re-runs roadmap_migrate on a project the
+// store already holds, which cannot help.
+TEST(RoadmapLogSetIntro, Ants5095StoreErrorIsNotReportedAsUnregistered) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    {
+        auto store = openStore(RoadmapStore::Access::Bulk);
+        ASSERT_TRUE(store);
+        QSqlQuery q(store->db());
+        ASSERT_TRUE(q.exec(QStringLiteral("ALTER TABLE project RENAME TO project_gone")))
+            << q.lastError().text().toStdString();
+    }
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("convert");
+    req[QStringLiteral("dry_run")]    = true;
+    const QJsonObject resp = rc.cmdRoadmapLog(req).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_NE(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("project_not_registered"))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("store_failed"))
+        << QJsonDocument(resp).toJson().toStdString();
 }
 
 TEST(RoadmapLogSetIntro, MissingSectionNamesSetPreamble) {

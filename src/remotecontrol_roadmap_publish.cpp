@@ -55,13 +55,19 @@ QJsonObject rcdetail::rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *sto
                                               const QString &noRowAdvice) {
     const QString subject = root.isEmpty() ? roadmapPath : root;
     std::optional<RoadmapStore::ProjectRow> row;
+    QString storeErr;
     if (store && !root.isEmpty()) {
-        QString storeErr;
         const QString canonical = QFileInfo(root).canonicalFilePath();
         if (!canonical.isEmpty())
             row = store->readProjectByRoot(canonical, &storeErr);
     }
-    if (row) {
+    if (!row && !storeErr.isEmpty()) {
+        // ANTS-5095 — a failed lookup is not an absent row.
+        env[QStringLiteral("code")]  = QStringLiteral("store_failed");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: %1 — the store could not be read: %2")
+                .arg(opLead, storeErr);
+    } else if (row) {
         env[QStringLiteral("code")] = QStringLiteral("unsupported_format");
         env[QStringLiteral("store_row_present")]   = true;
         env[QStringLiteral("store_source_format")] = row->sourceFormat;
@@ -273,7 +279,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
                                : storeErr);
     RoadmapStore *store = &bulk;
 
+    storeErr.clear();
     const auto row = store->readProjectByRoot(root, &storeErr);
+    // ANTS-5095 — a failed lookup is not an absent row: told "run
+    // roadmap_migrate", the caller re-migrates a project the store holds.
+    if (!row && !storeErr.isEmpty())
+        return refuseWith(QStringLiteral("store_failed"),
+            QStringLiteral("roadmap_log: convert could not read the store's "
+                           "project row: %1. Nothing was written.").arg(storeErr));
     if (!row) {
         // § 6 — the convert refuses rather than migrating implicitly. Migration
         // is a separate operation with its own guards, and running one as a side

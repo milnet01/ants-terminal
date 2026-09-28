@@ -167,6 +167,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     if (locators.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: `locators` is empty"));
+    // ANTS-5095 — bounded at amend_batch's 500: each locator walks the file on
+    // the markdown path.
+    if (locators.size() > 500)
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `locators` holds at most 500 entries; "
+                           "got %1").arg(locators.size()));
     // ANTS-5358 — a locator may carry its own to_status; the call-level one is
     // the fallback, as `status` is on append_batch. It is required only when
     // some locator has none.

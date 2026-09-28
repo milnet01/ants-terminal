@@ -9467,6 +9467,23 @@ extends an existing item, that item carries it instead.
   bodies before the scrub, read-to-commit change checks, backfill
   swallowing a store error, and publish reporting an SQL error as
   unregistered.
+  Progress (2026-09-28): three more closed. (1) publish reported a store
+  error as project_not_registered: rlNotStoreServedRefusal and convert's
+  own lookup now refuse store_failed with the store's error when the
+  lookup failed rather than found nothing (roadmap_log_set_intro
+  Ants5095StoreErrorIsNotReportedAsUnregistered, red first via convert
+  on a store whose project table was renamed). (2) flip_batch and
+  annotate_batch refuse more than 500 locators with bad_args, at
+  amend_batch's cap (roadmap_log_flip_batch INV-4, red first). (3)
+  "backfill swallows a store error and reports ids as undated" is stale:
+  every store read there returns store_failed, and the one `continue`
+  that leaves an id undated is an unreadable git revision, which the
+  reply counts in undated_count. STILL OPEN: flip_batch's markdown path
+  re-walking the file and re-reading project.json per target, the
+  append_batch markdown scrub warning, uncapped bodies before the scrub,
+  the markdown read-to-commit change check, and backfill_dates' time
+  budget (re-measure: the 60 s bridge timeout it cited was the Python
+  bridge's, and ants-mcpd has replaced it).
   **Layman:** Smaller roadmap batch-tool fixes, including one that reports success when nothing changed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch).
