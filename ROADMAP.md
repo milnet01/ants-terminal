@@ -51681,7 +51681,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5282] **Three verbs name the same quantity three ways, and the dry-run echo fields are unnamed.**
+- ✅ [ANTS-5282] **Three verbs name the same quantity three ways, and the dry-run echo fields are unnamed.**
   Two peer sessions hit the same class independently. Neither cost more
   than one round trip, and BOTH reporters went out of their way to say the
   self-correction worked — `fields_available` (ANTS-4930) told them the
@@ -51708,6 +51708,18 @@ are closed inline in the feedback files rather than filed here.
   `row_count` are load-bearing in existing callers; the cheap correct move
   is to document the mapping, or accept the sibling name as an alias, not
   to break an envelope.
+  Resolved (2026-09-28), no code change needed; measured against the live
+  build. The dry-run echo fields are named and returned: changelog_log's
+  description names `category`, `line`, `bytes` and `bullet`, and a
+  dry run with fields:["bullet","category"] returns both; roadmap_log's
+  dry_run schema names `would_be_id` / `would_be_ids`, which append_batch
+  returns (a `first_id` guess lands in fields_unmatched beside
+  fields_available, the one-step correction both reporters used). The
+  "three names for one quantity" half does not hold: file_outline's
+  `total_lines` is the whole file's line count (named in its detail
+  text), while read_region's `returned` is the size of the slice it
+  returned. Different quantities, so an alias would mislead; neither
+  live field is renamed.
   **Layman:** Different tools use different words for the same thing, so a name learned from one tool is wrong in the next.
   Kind: doc.
   Source: peer-sessions finbreak-65 and doom-ants-3b, in-session-2026-09-21.
@@ -66737,7 +66749,7 @@ parse, not that file.
   Source: in-session-2026-09-25.
   Lanes: mcp.
 
-- 📋 [ANTS-5325] **Migrate and convert adopt a prose bold lead-in as a github-task-list bullet's id.**
+- 🚫 [ANTS-5325] **Migrate and convert adopt a prose bold lead-in as a github-task-list bullet's id.**
   fillBulletRecord takes any id-shaped `**...**` lead-in as boldId; makeItem
   then keeps a non-grammatical one as a `quarantined` id. On Vestige 455
   bullets render as `[Terrain System] **wrap ...**`. Fix: for a
@@ -66754,6 +66766,15 @@ parse, not that file.
   prose captions in source, the route § 2.6 prescribes. Open question
   for a spec amendment: a per-project declaration that bold lead-ins
   are prose, so no project has to edit its file to say so.
+  Dropped (2026-09-28, user decision): no roadmap still needs it.
+  Vestige, the only github-task-list project with bold captions,
+  stripped them in source and has converted to ants-v1; a corpus scan
+  found no other github-task-list roadmap with a multi-word bold lead-in
+  (RetroDB's hits are sub-bullets inside pass blocks). The drafted
+  ANTS-3757 amendment (a bold lead-in containing whitespace is a
+  caption; INV-14) is kept as
+  /mnt/Games/Scripts/Linux/cc-jobs/ants3757-amendment-5325-5331.patch if
+  an old-style roadmap turns up.
   **Layman:** Converting an old-style roadmap turns bold captions like 'Terrain System' into fake item ids and cuts them out of the item's text.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21 + 2026-09-25.
@@ -66854,7 +66875,7 @@ parse, not that file.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-21.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5331] **Caret anchors in the project's id grammar are not read as ids by migrate and convert.**
+- ✅ [ANTS-5331] **Caret anchors in the project's id grammar are not read as ids by migrate and convert.**
   Vestige has ten `^3d_e-NNNN` anchors injected by earlier op:flip
   calls; convert allocates fresh 3D_E-S ids and leaves the anchor text
   in the headline. Some anchors sit on sub-bullets and Progress lines.
@@ -66869,6 +66890,13 @@ parse, not that file.
   changes ANTS-3757 § 2.5's position rule, so it is drafted there as
   INV-15 with ANTS-5325's caption rule (INV-14) and goes to review-contract
   before any code.
+  Resolved (2026-09-28): the reader half shipped in 6e4f35fd (underscore
+  anchors read, stripped and located). The id-adoption half was dropped
+  by the user: only Vestige carries anchors, it is already converted,
+  and adopting them now would rename six stored items; it would also
+  have amended roadmap-data-model.md's leading-position rule and
+  roadmap-format.md's anchor definition. Draft kept in the same patch
+  (INV-15).
   **Layman:** Ids the tool itself once attached to items are ignored when converting, so those items get new ids instead.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-09-25.
