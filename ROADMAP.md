@@ -9435,7 +9435,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-5095] **Performance pass findings for roadmap batch, backfill, migrate, publish and repair (medium and low).**
+- ✅ [ANTS-5095] **Performance pass findings for roadmap batch, backfill, migrate, publish and repair (medium and low).**
   Filed separately: ANTS-5051.
   Medium:
   - backfill_dates holds the single MCP worker for up to 180 s and can
@@ -9495,6 +9495,14 @@ extends an existing item, that item carries it instead.
   flip_batch's markdown path re-walking the file and re-reading
   project.json per target, the markdown writers' read-to-commit change
   check, and backfill_dates' time budget (re-measure first).
+  Resolved (2026-09-28): the last items. flip_batch's markdown path walks
+  the file once instead of once per target, and no longer re-reads
+  project.json per target (bottom-up application keeps a single walk
+  valid; 174 roadmap_log tests unchanged and green). backfill_dates'
+  walk budget is 50 s, under a 60 s client timeout. The markdown
+  writers' read-to-commit change check is a refactor across about ten
+  separate commit sites, so it is filed as its own item, ANTS-5529.
+  Every other item of this finding is closed.
   **Layman:** Smaller roadmap batch-tool fixes, including one that reports success when nothing changed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch).
@@ -88065,6 +88073,22 @@ reports are asked for separately, each time.
   **Layman:** A roadmap backup pointed at the wrong path can delete an unrelated file.
   Kind: security.
   Source: in-session-2026-09-26 (writer-verb survey for the claude-45 session).
+  Lanes: roadmap, mcp.
+
+- 📋 [ANTS-5529] **The markdown roadmap writers never check the file is unchanged between reading it and writing it back.**
+  Split from ANTS-5095 as its own piece of work. Every markdown-path
+  write reads ROADMAP.md, edits it in memory and commits with its own
+  QSaveFile, so a write landing in between is overwritten. There is no
+  shared commit helper: roughly ten sites (cmdRoadmapLogAppend,
+  append_batch, flip, flip_batch, bundle_row, create_section,
+  amend_body and rcAtomicWriteRoadmap among them) each need the bytes
+  they read carried to the commit and compared first, refusing with a
+  retryable code when they differ. Store-backed projects are unaffected:
+  their writes go through the store's transaction. Only markdown-served
+  projects (github-task-list, pass-headings, unmigrated) are exposed.
+  **Layman:** If two tools edit an old-style roadmap file at the same moment, one edit can silently overwrite the other.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch), split from ANTS-5095.
   Lanes: roadmap, mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
