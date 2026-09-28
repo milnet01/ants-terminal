@@ -80041,9 +80041,82 @@ acting on it.
   save. ci_asan_budget locks the current guards, so it moves with any
   fix. A manual full run (36392962717) was started to recover the day's
   coverage.
+  Root cause measured (2026-09-28): the repository's GitHub caches held
+  9,559 MiB in 18 entries against the 10 GB limit, because the Release
+  job saves a new 1.35 GB cache per commit. That eviction pressure is
+  filed as its own fix (the rolling-cache item in this section); this
+  item keeps the cold-start half. Recovery: manual run 36392962717
+  passed, ASan included, and re-saved the ASan cache.
   **Layman:** On a busy day of changes, the nightly memory-safety check can lose its saved build and run out of time before it tests anything.
   Kind: fix.
   Source: in-session-2026-09-28 (nightly run 36389329574).
+  Lanes: ci.
+
+- 📋 [ANTS-5531] **Let ccache store the precompiled headers, so CI stops rebuilding ten of them on every job.**
+  Measured 2026-09-28 on CI run 36392962717's slowest-steps list: ten
+  cmake_pch.hxx.gch builds at ~8-11 s each (ants_lua_lib,
+  ants_audit_dialog_lib, ants_audit_lib, ants_claude_lib, ants-terminal,
+  ants_dialogs_lib, ants_core_lib, ants_chrome_lib, ants_vt_lib,
+  ants_mcpcore_lib). ccache does not store PCH generation without
+  `sloppiness=pch_defines,time_macros`, and each PCH gates every compile in
+  its library. The Release build step is 343 s at a 99.2% direct-hit rate
+  (run 36394351258), with 183 of 974 calls uncacheable.
+  Fix: set CCACHE_SLOPPINESS=pch_defines,time_macros (plus
+  include_file_mtime,include_file_ctime if ccache asks) in ci.yml's
+  build-test, build-asan and qt62 jobs and in the local presets. Verify:
+  the uncacheable count drops by the PCH count and the build step shrinks.
+  Low risk: a wrong setting costs misses, not wrong builds.
+  **Layman:** Every CI run rebuilds the same ten shared header bundles from scratch because the build cache refuses to keep them.
+  Kind: perf.
+  Source: user-request-2026-09-28 (CI speed-ups).
+  Lanes: ci, build.
+
+- 📋 [ANTS-5532] **Save one rolling compile cache per job instead of a new 1.35 GB cache per commit.**
+  Measured 2026-09-28: the Release job saves
+  Linux-ccache-release-<sha> (1.35 GB) on every run (`if: always()`),
+  and the repository held 9,559 MiB in 18 cache entries against GitHub's
+  10 GB limit. Least-recently-used eviction then removed the nightly
+  ASan cache, which ANTS-5528 records as that morning's red nightly.
+  Fix: save only when the build compiled something (ccache misses > 0)
+  or keep one key per job and branch, deleting the superseded entry. This
+  is the root-cause half of ANTS-5528; that item keeps the cold-start
+  half. Low risk: the restore-keys prefix already finds the latest entry.
+  **Layman:** Every push stores a fresh copy of the build cache, filling GitHub's storage so the nightly check loses its own copy.
+  Kind: perf.
+  Source: user-request-2026-09-28 (CI speed-ups).
+  Lanes: ci.
+
+- 📋 [ANTS-5533] **Split claudeintegration.cpp, the slowest file to compile — investigate and measure first.**
+  RISKIER: needs thorough investigation and measurement before any
+  change. Measured 2026-09-28: claudeintegration.cpp.o took 49.8 s in CI
+  run 36392962717's ASan build, the slowest step by 3.5x, and on a
+  cache miss it sits on the build's critical path. Most of the file is
+  MCP tool descriptors and schemas. Before splitting: measure a cold
+  Release and ASan build's critical path with and without it, check how
+  often it actually misses the cache (it changes whenever a verb's
+  description changes), and weigh the overlap with ANTS-1043's
+  mainwindow split and the hot-reload design (descriptors could move to a
+  data file the process re-reads). Only split if the measured wall-clock
+  gain is worth the churn.
+  **Layman:** One very large source file takes almost a minute to compile on its own, which holds up full builds.
+  Kind: investigate.
+  Source: user-request-2026-09-28 (CI speed-ups).
+  Lanes: mcp, build.
+
+- 📋 [ANTS-5534] **Cancel superseded CI runs on main — investigate and measure first.**
+  RISKIER: needs thorough investigation and measurement before any
+  change. ci.yml sets `cancel-in-progress` only for branches other than
+  main, so every main push runs every job even when a newer push is
+  already queued. Cancelling would save runner time on busy days (2026-09-28
+  saw about a dozen main pushes). The cost is losing a green or red
+  result per commit, which bisecting a regression and the release gate
+  may rely on. Before changing: count how often main pushes overlap,
+  check what the release pipeline and cut-rc.sh read from per-commit
+  CI results, and decide whether the repo being public (minutes are
+  free) makes the saving worth that loss at all.
+  **Layman:** When several changes are pushed quickly, CI still tests every one of them in full, which may not be needed.
+  Kind: investigate.
+  Source: user-request-2026-09-28 (CI speed-ups).
   Lanes: ci.
 
 ## Memory and performance pass (2026-09-14)
