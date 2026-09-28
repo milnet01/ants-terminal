@@ -29,6 +29,22 @@ cd "$repo_root" || exit 0
 
 zero="0000000000000000000000000000000000000000"
 
+# git's stdin, read once: the secret scan and the range loop both need it.
+push_refs="$(cat)"
+
+# The secret scan over the pushed commits (local-gate.md § 2.1), from the
+# machine-wide hook, which this repo's core.hooksPath otherwise hides. On a
+# machine without that hook, say so rather than skip in silence.
+global_hook="${ANTS_GLOBAL_HOOKS:-$HOME/.claude/githooks}/pre-push"
+if [[ -x "$global_hook" ]]; then
+    if ! "$global_hook" --secrets-only <<<"$push_refs"; then
+        echo "pre-push: the secret scan failed — push blocked." >&2
+        exit 1
+    fi
+else
+    echo "pre-push: no machine-wide hook at $global_hook — no secret scan ran."
+fi
+
 # ANTS-5322 — the pushed repo's own runner and ci.yml. PyYAML is its one
 # dependency; without it there is no gate, and that is said, not skipped.
 runner="$repo_root/tools/ci_workflow.py"
@@ -51,6 +67,7 @@ run_gate=0
 # the skip, which is the decision that can be wrong in the dangerous direction.
 ranges=""
 while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [[ -z "${local_sha:-}" ]] && continue              # blank line (empty stdin)
     [[ "$local_sha" == "$zero" ]] && continue          # branch delete — nothing to test
     if [[ "$remote_sha" == "$zero" ]]; then
         # New branch on the remote: diff against origin/main's merge-base if we
@@ -78,7 +95,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
         fi
         ranges+=" ${remote_sha:0:8}..${local_sha:0:8}"
     fi
-done
+done <<<"$push_refs"
 
 changed="$(printf '%s\n' "$changed" | sed '/^$/d' | sort -u)"
 
