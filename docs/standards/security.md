@@ -180,9 +180,28 @@ because it reads as a list nobody filled in.
   standard input.
 - **A scanner match that is not a secret is excused by its fingerprint,
   never by a wider rule.** A published test password, a key header quoted
-  as text: list each finding's exact fingerprint in `.gitleaksignore`.
-  Never allow a whole path or a whole rule — that also admits the real
-  secret added there later.
+  as text: list each finding's exact fingerprint in `.gitleaksignore`,
+  and commit that file. Never allow a whole path or a whole rule — that
+  also admits the real secret added there later.
+  - **List the form each scan this project runs produces.** A history
+    scan (`gitleaks git`) writes `<commit>:<file>:<rule>:<line>`. A
+    working-tree scan (`gitleaks dir`) writes `<file>:<rule>:<line>`. One
+    form does not excuse the other scan's match.
+  - **In a file that is still edited, use an inline `gitleaks:allow`
+    comment on the matched line, where the file's syntax allows a
+    comment.** It moves with the line. It excuses every rule on that
+    line, where a fingerprint excuses one. A file with no comment syntax,
+    such as a JSON fixture, keeps the fingerprint. A fingerprint suits a
+    frozen fixture.
+  - **A content allowlist is a wider rule unless it cannot match a
+    secret.** An exact public identifier qualifies, such as
+    `shiboken6.isValid`. A pattern that could match a real key does not.
+  - **Scan scope is not an excuse.** Excluding a tree that is not project
+    source narrows where the scan looks, and is allowed with a comment
+    saying so: a virtualenv, build output, VCS internals, a git-ignored
+    runtime or data folder, vendored third-party code, tracked binary
+    media (images, video, fonts). This rule covers
+    a match inside tracked project source.
 
 ## 3. Validate at the boundary, by shape
 
