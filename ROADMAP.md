@@ -41602,6 +41602,14 @@ in each bullet, not just the reporter's symptom.
   runner. The pool cap is computed from nproc and cannot be overridden
   today; making it a cache variable would let CI set it. Measure peak
   memory per compiler process in the ASan job before raising it there.
+  Progress (2026-09-28): measured locally with /usr/bin/time -v on the
+  build-asan compile commands: claudeintegration.cpp peaks at 2.0 GB RSS
+  (2m40s), mainwindow.cpp at 1.4 GB. Four heaviest-case compiles plus
+  one link (link_pool=1) fit the runner's 16 GiB. CMakeLists.txt now
+  takes ANTS_COMPILE_POOL (empty keeps max(2, nproc/4); a non-integer is
+  a configure error), and ci.yml's three configure steps pass 4. Measured
+  on its own CI run, after ANTS-5531's run 36401578174. Close when the
+  next runs show the Build steps shorter and no OOM kill.
   **Layman:** The build machine has four processors but only uses two, because the limit was set for a different computer.
   Kind: investigate.
   Source: in-session-2026-08-25.

@@ -71,7 +71,9 @@ jobs:
     # cancelled at 15m24s with 269/275 TUs done, so realistic floor is
     # ~17m. 25 leaves headroom for two more feature-test packs without
     # another bump. Runner is the GitHub-hosted ubuntu-24.04 (4 vCPU /
-    # 16 GiB) with the in-tree JOB_POOLS cap limiting compile to -j2.
+    # 16 GiB). ANTS-4653: the configure steps set ANTS_COMPILE_POOL=4, where
+    # the in-tree formula alone gives 2 on 4 vCPU; the heaviest ASan compile
+    # peaks at 2.0 GB (measured 2026-09-28), so four fit in 16 GiB.
     #
     # ANTS-5188 — this cap is now a BACKSTOP above the per-step guards below,
     # as build-asan's is (ANTS-4533). At 25 it was the only guard, and it
@@ -137,7 +139,8 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DANTS_COMPILE_POOL=4
           ccache --zero-stats
 
       - name: Build
@@ -338,7 +341,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DANTS_SANITIZERS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DANTS_COMPILE_POOL=4
           ccache --zero-stats
 
       - name: Build
@@ -500,7 +504,8 @@ jobs:
         run: |
           cmake -S . -B build-qt62 -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DANTS_COMPILE_POOL=4
           ccache --zero-stats
 
       - name: Build everything (compile guard — no ctest)

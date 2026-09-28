@@ -284,6 +284,18 @@ else()
         set(_ANTS_COMPILE_CAP 2)
     endif()
 endif()
+# ANTS-4653 — the compile cap is overridable too, for a host whose memory per
+# core differs from this formula's assumption. CI sets 4 on its 4-vCPU, 16 GiB
+# runner: peak RSS per ASan compile measured 2.0 GB (claudeintegration.cpp)
+# and 1.4 GB (mainwindow.cpp) on 2026-09-28. Empty keeps the formula above.
+set(ANTS_COMPILE_POOL "" CACHE STRING
+    "Concurrent compile invocations cap (Ninja JOB_POOLS); empty = max(2, nproc/4)")
+if(NOT ANTS_COMPILE_POOL STREQUAL "")
+    if(NOT ANTS_COMPILE_POOL MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR "ANTS_COMPILE_POOL must be a positive integer, got '${ANTS_COMPILE_POOL}'")
+    endif()
+    set(_ANTS_COMPILE_CAP ${ANTS_COMPILE_POOL})
+endif()
 # ANTS-1558 — link_pool cap is overridable via ANTS_LINK_POOL (default 1).
 # The `fast` preset bumps it to 2 so the link tail runs in pairs on 32 GiB
 # hosts where two concurrent Qt links stay well clear of the OOM ceiling.
