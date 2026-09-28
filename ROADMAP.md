@@ -68408,6 +68408,30 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (push-5531 pre-push run).
   Lanes: pty.
 
+- 📋 [ANTS-5543] **A read-only changelog format check that a project's push gate can run from a shell.**
+  Case: stray prose in [Unreleased] above its first ### heading. Nothing
+  catches it at push time. Checked 2026-09-28 against a throwaway
+  changelog holding exactly that:
+  - changelog_log op:"normalize" dry_run:true returns changed:false,
+    prose_moved:0. It folds prose BETWEEN category blocks only.
+  - changelog_query version:"Unreleased" drops the line silently; no
+    format_mismatch.
+  - doc_lint has no changelog check.
+
+  Wanted: a READ-ONLY check (a changelog_query mode, or a verb) that
+  returns findings and never writes. First finding: prose before the
+  first category heading of a section. Consider the other shapes
+  normalize repairs, and bullets outside a category block.
+
+  A gate is a shell script, and ants-mcpd has no command-line call mode;
+  its only flag is --version. So the check also needs a CLI entry that
+  exits non-zero on a finding (e.g. `ants-mcpd --call <verb> <json>`, or
+  a small tool) for a gate's --docs mode to run it.
+  **Layman:** Catch a badly placed line in a project's change log before it is pushed, without changing the file.
+  Kind: feature.
+  Source: claude-config session request 2026-09-28 (user request; the Hub's case).
+  Lanes: mcp, changelog.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
