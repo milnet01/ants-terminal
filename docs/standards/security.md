@@ -178,6 +178,11 @@ because it reads as a list nobody filled in.
 - **Not on a command line.** Process arguments are readable by other
   users on the same host. Use an environment variable, a file, or
   standard input.
+- **A scanner match that is not a secret is excused by its fingerprint,
+  never by a wider rule.** A published test password, a key header quoted
+  as text: list each finding's exact fingerprint in `.gitleaksignore`.
+  Never allow a whole path or a whole rule — that also admits the real
+  secret added there later.
 
 ## 3. Validate at the boundary, by shape
 
