@@ -421,10 +421,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
                            "root-relative, so there is nothing to walk").arg(root));
     }
 
-    // 180 s and not the bridge's 60: the walk is measured at ~4 s here, and the
-    // budget exists to bound a pathological repository rather than to pace a
-    // normal one. A caller that times out first still leaves the store
-    // untouched — nothing is written until the walk completes.
+    // ANTS-5095 — 50 s, under a 60 s client timeout. The walk is measured at
+    // ~4 s here; the budget bounds a pathological repository. At 180 s a walk
+    // could finish after the client had already reported the call failed and
+    // then write the store, so the caller saw a failure that had in fact
+    // succeeded. Nothing is written until the walk completes.
     // ANTS-5405 — the walk parses by the live file's dialect, and says which,
     // so a zero on a dialect it cannot read is told apart from no history.
     QString dialect;
@@ -439,7 +440,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     QElapsedTimer wall;
     wall.start();
     const RlBackfillWalk walk =
-        rlWalkGitForDates(root, pathspecs, 180000, passHeadings);
+        rlWalkGitForDates(root, pathspecs, 50000, passHeadings);
     if (walk.failed) {
         return blErr(QStringLiteral("git_failed"),
             QStringLiteral("roadmap_log: backfill_dates could not walk the "
