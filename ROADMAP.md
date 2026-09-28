@@ -3430,6 +3430,8 @@ interpretation. Closes the self-graded-homework loop.
   program. Highest signal-per-effort for VT conformance drift.
   Runs a canonical xterm-compliance corpus against our parser; any
   divergence is a finding anchored to a published spec.
+  Serves SIGN-4 (docs/discovery.md, 2026-09-28): automates ANTS-5550's
+  vttest groups in CI.
   **Layman:** Run the standard terminal-compatibility test suite automatically, so we find out straight away if our behaviour drifts from what terminals are supposed to do.
   Kind: implement.
 
@@ -12040,6 +12042,8 @@ they are one change.
   `docs/specs/ANTS-1120.md`.
   Layman: Measure whether the token-saving features actually save tokens, before building any more of them.
   Kind: research. Source: cold-eyes-review-2026-04-30.
+  Serves SIGN-1 (docs/discovery.md, 2026-09-28): token-spend
+  measurement. The bench is ANTS-5545.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
@@ -66411,6 +66415,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   absolute MB/s floor that is off unless set. testing.md section 5 wants a
   comparison against a stored baseline at a ratio. Consider recording the
   last CSV and failing on a drop past a set fraction.
+  Serves SIGN-2 (docs/discovery.md, 2026-09-28): a throughput bench that
+  can fail on a real slowdown.
   **Layman:** The speed test never flags a slowdown unless someone types in a number by hand.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
@@ -66563,6 +66569,102 @@ finish it and to make it the default rather than the alternative.
   Kind: ux.
   Source: user-request-2026-09-04.
   Lanes: mainwindow.
+
+## Signs of success (docs/discovery.md, 2026-09-28)
+
+Items that deliver or measure the signs of success in docs/discovery.md.
+docs/design.md says where each sign lives and how it is measured. Each item
+names the sign it claims (SIGN-1 to SIGN-5).
+
+- 📋 [ANTS-5545] **Build the SIGN-1 token bench: a practice project with one planted bug, its test, and a fixed prompt, at tools/token-bench/.**
+  Claims SIGN-1 (docs/design.md, where each sign lives).
+  The folder holds a small project, one planted bug, the test that
+  fails until it is fixed, and a README naming the prompt and the
+  Claude model both arms use. Neither changes after the first
+  measurement. Also a runner that records each run's token counts by
+  type from the session transcript, and whether the bug's test passed.
+  Overlap: ANTS-1120 (companion instrumentation) measures token spend
+  too; read it before choosing where the counts come from.
+  **Layman:** A fixed practice job so we can compare what Claude Code costs in Ants and in a plain terminal.
+  Kind: test.
+  Source: docs/design.md SIGN-1 (2026-09-28).
+  Lanes: mcp, tools.
+
+- 📋 [ANTS-5546] **Measure SIGN-1: three bench runs in Ants and three in Konsole with no Ants tools, cost by token type at the model's price.**
+  Claims SIGN-1. Pass: Ants' average cost is at least 20% lower. A run
+  counts only when the planted bug's test passes. The Konsole arm runs
+  Claude Code with no Ants MCP server and no Ants hooks; both arms use
+  the README's model with the model auto-switcher off. Record the
+  result, dated, in tools/token-bench/.
+  Blocked-by: ANTS-5545
+  **Layman:** Run the practice job both ways and check Ants costs at least 20% less.
+  Kind: test.
+  Source: docs/design.md SIGN-1 (2026-09-28).
+  Lanes: mcp.
+
+- 📋 [ANTS-5547] **Measure SIGN-2 output speed: time to print one fixed large log file in Ants and in Konsole on the same machine.**
+  Claims SIGN-2 (output half). Pass: Ants is no slower than Konsole.
+  Overlap: ANTS-5134 (the perf suite does not measure what a user
+  waits on) and ANTS-5481 (vt_throughput can only fail on a crash)
+  edit the same perf tooling; order them rather than run together.
+  **Layman:** Check Ants prints a big burst of text at least as fast as Konsole.
+  Kind: test.
+  Source: docs/design.md SIGN-2 (2026-09-28).
+  Lanes: vt, perf.
+
+- 📋 [ANTS-5548] **Measure SIGN-2 typing lag: a keypress appears within 17 ms while a recorded Claude Code session replays.**
+  Claims SIGN-2 (typing half). Pass: every keypress appears within one
+  frame at 60 Hz (17 ms) during the replay. Needs a recorded session to
+  replay and a way to time key-to-paint.
+  Overlap: ANTS-3557 (e2e GUI hooks) may supply the key injection.
+  **Layman:** Check typing never lags while Claude is streaming output.
+  Kind: test.
+  Source: docs/design.md SIGN-2 (2026-09-28).
+  Lanes: vt, perf, e2e.
+
+- 📋 [ANTS-5549] **Terminal-scoped MCP verbs take effect without a terminal relaunch.**
+  Claims SIGN-3 (the unmet half). Project-scoped verbs already update
+  with an ants-mcpd rebuild and reconnect. Terminal-scoped verbs are
+  served by Terminal core and Chrome (docs/design.md), so changing one
+  still needs a relaunch. Several parts are involved, so this needs a
+  spec (write-spec) before any code. Measure: change one verb of each
+  kind, rebuild, reconnect; both are live and open sessions survive.
+  Overlap: ANTS-1043 (mainwindow.cpp split) and ANTS-4919
+  (claudeintegration.cpp split) edit the same files.
+  **Layman:** Fixing a Claude tool that needs a terminal tab should not mean restarting the terminal and losing running sessions.
+  Kind: feature.
+  Source: docs/design.md SIGN-3 (2026-09-28).
+  Lanes: mcp, claude.
+
+- 📋 [ANTS-5550] **Pass SIGN-4's vttest groups: install vttest and run cursor movement, screen features, terminal reports and VT102 insert/delete.**
+  Claims SIGN-4 (vttest half). vttest is not installed on the
+  development machine yet. Pass: every screen in those four groups
+  passes. vttest judges many screens by eye, so write down how each
+  screen is judged before the first run.
+  Overlap: ANTS-1003 (vttest as a CI lane) automates the same run.
+  **Layman:** Run the standard terminal test and fix what fails in the groups everyday programs use.
+  Kind: test.
+  Source: docs/design.md SIGN-4 (2026-09-28).
+  Lanes: vt.
+
+- 📋 [ANTS-5551] **Check SIGN-4's programs: Claude Code, vim, htop, tmux and less display and respond correctly in Ants.**
+  Claims SIGN-4 (programs half). Write one e2e case per program: it
+  starts, draws, takes input and exits cleanly.
+  Overlap: ANTS-3557 (e2e GUI hooks) and docs/qa/e2e/cases.md.
+  **Layman:** Make sure the programs people run every day work properly in Ants.
+  Kind: test.
+  Source: docs/design.md SIGN-4 (2026-09-28).
+  Lanes: vt, e2e.
+
+- 📋 [ANTS-5552] **Check SIGN-5: without leaving the terminal, see each Claude session's status, its cost so far, and the project roadmap.**
+  Claims SIGN-5. Walk it as a user (verify-delivery): every open
+  session's status, its token cost so far, and the roadmap, each
+  reachable inside Ants. File whatever is missing as its own item.
+  Overlap: ANTS-5338 (token reports) and ANTS-4912 (Colony fleet view).
+  **Layman:** Check you can see what every Claude session is doing and costing, and the roadmap, from inside Ants.
+  Kind: test.
+  Source: docs/design.md SIGN-5 (2026-09-28).
+  Lanes: claude, dialogs.
 
 ## Ants MCP — lean-workflow verbs (claude-config session request 2026-09-21)
 
@@ -78747,6 +78849,8 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   activities; whether subagent tokens count toward the parent's activity
   or their own; the measurement basis for "saved" (the estimate ANTS-3572
   already uses, or a measured counterfactual).
+  Serves SIGN-5 (docs/discovery.md, 2026-09-28): the token-cost view.
+  The end-to-end check is ANTS-5552.
   **Layman:** A report showing, for every Claude session, what used the tokens (coding, reviews, specs and so on) and where the tools saved tokens, by day, week and month.
   Kind: feature.
   Source: user-request-2026-09-25.
@@ -82114,6 +82218,9 @@ a modern terminal" release.
   against. The bad baseline was reverted, not committed. That argues
   for --save-baseline taking the best of several runs by default, and
   for refusing or warning when the load average is high.
+  Serves SIGN-2 (docs/discovery.md, 2026-09-28): the perf suite should
+  measure what SIGN-2 names. The Konsole comparison is ANTS-5547, typing
+  lag ANTS-5548.
   **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
