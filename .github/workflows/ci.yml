@@ -90,6 +90,11 @@ jobs:
       # `Cleanups:` line; non-zero means raise it again.
       CCACHE_MAXSIZE: 2G
       CCACHE_COMPRESS: "1"
+      # ANTS-5531 — without these ccache will not store a precompiled header,
+      # so each of the ten per-library PCHs rebuilt on every run and gated
+      # every compile in its library. A wrong setting costs misses, never a
+      # wrong build. The developer's own ccache.conf carries the same pair.
+      CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -173,7 +178,8 @@ jobs:
 
       - name: ccache stats (release)
         if: always()
-        run: ccache --show-stats
+        # ANTS-5190 — verbose: the uncacheable calls are split by reason.
+        run: ccache --show-stats --verbose
 
       - name: Run tests
         working-directory: build
@@ -287,6 +293,11 @@ jobs:
       # whether 4G holds it.
       CCACHE_MAXSIZE: 4G
       CCACHE_COMPRESS: "1"
+      # ANTS-5531 — without these ccache will not store a precompiled header,
+      # so each of the ten per-library PCHs rebuilt on every run and gated
+      # every compile in its library. A wrong setting costs misses, never a
+      # wrong build. The developer's own ccache.conf carries the same pair.
+      CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -369,7 +380,8 @@ jobs:
 
       - name: ccache stats (asan)
         if: always()
-        run: ccache --show-stats
+        # ANTS-5190 — verbose: the uncacheable calls are split by reason.
+        run: ccache --show-stats --verbose
 
       - name: Run audit-rule tests under sanitizers
         working-directory: build-asan
@@ -442,6 +454,11 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 2G
       CCACHE_COMPRESS: "1"
+      # ANTS-5531 — without these ccache will not store a precompiled header,
+      # so each of the ten per-library PCHs rebuilt on every run and gated
+      # every compile in its library. A wrong setting costs misses, never a
+      # wrong build. The developer's own ccache.conf carries the same pair.
+      CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -514,7 +531,8 @@ jobs:
 
       - name: ccache stats (qt62)
         if: always()
-        run: ccache --show-stats
+        # ANTS-5190 — verbose: the uncacheable calls are split by reason.
+        run: ccache --show-stats --verbose
 
   # ANTS-5188 — cppcheck on its own job, off build-test's critical path. Inside
   # build-test its ~3m17s decided whether the Release job hit its cap. Here it
