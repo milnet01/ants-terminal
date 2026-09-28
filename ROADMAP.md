@@ -42048,7 +42048,7 @@ in each bullet, not just the reporter's symptom.
   Source: CI run 36331920136.
   Lanes: tests.
 
-- 📋 [ANTS-5542] **Hand tools/hooks/pre-push off to the machine-wide hook, with Ants' gate as a script it runs.**
+- ✅ [ANTS-5542] **Hand tools/hooks/pre-push off to the machine-wide hook, with Ants' gate as a script it runs.**
   The user asked for one pre-push hook for every project. claude-config
   built the knobs Ants asked for in ~/.claude d96b2a4: ants.gate.inPlace,
   ANTS_PUSH_REFS / ANTS_PUSH_CHANGED, and --secrets-only.
@@ -42072,6 +42072,10 @@ in each bullet, not just the reporter's symptom.
   tools/hooks/pre-push pipes git's stdin to the machine-wide hook's
   --secrets-only; a planted key is refused. The hand-off itself still
   waits on docsCommand and the dirty-tree option.
+  Resolved (2026-09-28): e96a75b0. tools/hooks/pre-push execs the
+  machine-wide hook; tools/local-ci.sh is the gate (full or --docs);
+  tools/setup-git-hooks.sh sets docsCommand, inPlace and
+  dirtyTree=refuse. The first push through it gated in place and passed.
   **Layman:** Use the same push checker every other project uses, so Ants also gets its leaked-password scan and one place to fix the checker.
   Kind: refactor.
   Source: user-request-2026-09-28.
