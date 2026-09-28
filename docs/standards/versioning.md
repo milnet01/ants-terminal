@@ -121,7 +121,8 @@ shipped as a patch in good faith.
   same ground**, and it is an answer rather than a delta for the same reason.
   The usual candidates: a
   command's flags and its output shape, a config file's keys, a save-file
-  or database schema, a URL someone has bookmarked, a plugin or theme
+  or database schema, where a config, save or data file lives on disk, a
+  URL someone has bookmarked, a plugin or theme
   interface, a keyboard shortcut people have in their fingers.
 - **Do not copy another project's list.** The shape generalises and the
   contents do not, so this standard supplies the question and each

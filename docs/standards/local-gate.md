@@ -130,8 +130,10 @@ on every push, documentation-only pushes included:
 
 1. **The secret scan over the pushed commits** ([security.md](security.md)
    § 2). The simplest way is to pipe git's stdin to
-   `~/.claude/githooks/pre-push --secrets-only`, which scans and runs no
-   gate.
+   `~/.claude/githooks/pre-push --secrets-only "$1"`, which scans and runs no
+   gate. Pass the remote: a branch new to it is then scanned against what
+   that remote holds, not every remote, so a commit already on a backup or a
+   fork is still scanned on its way here.
 2. **The gate over the pushed commits, never the working tree** (§ 5).
 3. **On a documentation-only push, the documentation checks** (§ 6), with
    § 6.2's rule that every pushed path must match.
@@ -335,7 +337,9 @@ site that builds from `docs/`. On 2026-08-19 a LocalWebServerManager push
 edited `CLAUDE.md`, took the exemption on the strength of the `.md`, and
 GitHub found the prose count that project's own suite forbids. So decide
 by what the pipeline reads, never by the extension, and let every
-uncertain case run the full gate.
+uncertain case run the full gate. **Ask whether a formatter or linter reads
+prose**: `ruff format --check` formats the Python blocks inside every `.md`,
+which LocalWebServerManager found only by searching for what read its docs.
 
 ### 6.2 A shared hook must be told
 
@@ -521,13 +525,13 @@ hook, the skeleton or `ci-gate` already supplies or reports it.
 | `timeout-minutes` on every job | GitHub: skeleton | sized for a COLD build, or a cold cache reads as a hang |
 | Dependency and compiler caches | both: project | keyed on the lockfile or toolchain; restore by prefix, save per commit, and save with `if: always()`, since a job that timed out skips a normal save and every later run starts colder. One key prefix per job, never shared, or two jobs overwrite each other. Prune older entries after a successful save, or per-commit keys fill GitHub's per-repository limit and evict the one you need. ccache needs `sloppiness=pch_defines,time_macros` for PCH builds to hit, and `base_dir` for hits across checkout paths |
 | A fast linker (`mold`) | both: project | the toolchain supports it, LTO links included: Ubuntu 24.04's `mold` failed GCC LTO links for Vestige. A compile-bound build gains little, so measure first |
-| Compiler cache on MSVC (`ccache` via `CMAKE_VS_GLOBALS`) | both: project | each generated file has one custom command. The `UseMultiToolTask` setting it needs runs dependent custom commands in parallel, and UT_Ants' shader pair raced on GitHub only |
-| Keep a warm build between Windows legs (`git clean -e <dir>`) | local: project | under Git Bash, `MSYS_NO_PATHCONV=1` is set. Without it a leading-`/` argument is rewritten, the exclude matches nothing, and every push rebuilds cold, as UT_Ants' did |
+| Compiler cache on MSVC (`ccache` via `CMAKE_VS_GLOBALS`) | both: project | no custom command in a target consumes another custom command's output in that target; fold a chain into one `add_custom_command` with several `COMMAND`s. The `UseMultiToolTask` setting it needs runs custom commands in parallel, and UT_Ants' two-step shader chain raced on GitHub only. The race is intermittent, so a green run is no evidence against it; only this structural rule is. Debug info is `/Z7`, not `/Zi`, and precompiled headers are off, or most objects miss the cache. Every leg that claims parity installs the same pinned `ccache`, since finding it switches the build route |
+| Keep a warm build between Windows legs (`git clean -e <dir>`) | local: project | under Git Bash, `MSYS_NO_PATHCONV=1` is set. Without it a leading-`/` argument to any native program is rewritten, the exclude matches nothing, and every push rebuilds cold, as UT_Ants' did. Verify by checking the build directory still exists after the clean; `git clean -n -q` prints nothing, so a dry run cannot show it |
 | Build parallelism | both: project | sized from MEMORY per job, measured by peak RSS, not from the CPU count, with an override knob so CI can set it from its runner's memory. An out-of-memory kill reads as an unrelated failure |
 | Test parallelism | both: project | tests share no state (ports, temp paths, the user's config directories), and each has a timeout, for example `ctest -j N --timeout S` |
 | Slow legs (sanitizers, fuzzing) nightly and on demand, not per push | GitHub: project | the nightly's timeout is sized for a cold cache, or the cache is warmed first. Better: size the build's own guard by whether the exact cache key matched (`actions/cache`'s `cache-hit` output), short on a hit and long on a miss |
 | Timing, performance and end-to-end tests outside the push gate | both: project | they still run somewhere scheduled. They are the main flake source on a loaded machine |
-| Warm containers for toolchain-parity legs | local: project | a cold leg is never started inside a push: skip it loudly and name the warm-up command. **Where CI's toolchain differs from the host's, this leg is what makes a local green mean anything**: demoreel and Vestige each passed locally and failed on GitHub. It matches CI only when: (1) the workflow pins its runner, not `*-latest`, which moves with no commit; (2) the image is built from CI's own package list, plus a second list of what the runner image preinstalls, since a missing tool can silently skip a check; (3) the tag is keyed on the whole recipe (base, both lists, pinned tool versions); (4) it runs as the runner's user on the runner's core count, since output can depend on cores; (5) it runs the tree the local gate just ran, and never on CI itself; (6) exiting 0 without reaching the gate's last line is a failure. **Known limit**: the runner takes package updates weekly and the image is frozen, so rebuild it periodically |
+| Warm containers for toolchain-parity legs | local: project | a cold leg is never started inside a push: skip it loudly and name the warm-up command. **Where CI's toolchain differs from the host's, this leg is what makes a local green mean anything**: demoreel and Vestige each passed locally and failed on GitHub. It matches CI only when: (1) the workflow pins its runner, not `*-latest`, which moves with no commit; (2) the image is built from CI's own package list, plus a second list of what the runner image preinstalls, since a missing tool can silently skip a check; (3) the tag is keyed on the whole recipe (base, both lists, pinned tool versions); (4) it runs as the runner's user on the runner's core count, since output can depend on cores; (5) it runs the tree the local gate just ran, and never on CI itself; (6) exiting 0 without reaching the gate's last line is a failure. **A tool on one leg and not the other can change the build route, not only skip a check**, so every parity leg, container or not, installs CI's toolchain-affecting tools from one shared pinned source. **Known limit**: the runner takes package updates weekly and the image is frozen, so rebuild it periodically |
 | A cost check before a long leg (for example `ninja -n`) | local: project | a leg that will not fit the caller's timeout is skipped loudly. A killed build can corrupt the tree |
 
 **`ci-gate` reports the GitHub rows it can read from a workflow**: a job with
