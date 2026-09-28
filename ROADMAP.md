@@ -41629,6 +41629,12 @@ in each bullet, not just the reporter's symptom.
   a configure error), and ci.yml's three configure steps pass 4. Measured
   on its own CI run, after ANTS-5531's run 36401578174. Close when the
   next runs show the Build steps shorter and no OOM kill.
+  Progress (2026-09-28): every CI run since b2e014b6 passed, with no OOM
+  kill. Qt 6.2 floor Build step went from 305 s (09d13677, before) to
+  165-202 s (4961b1b5, e10a84d6, 72c219c4, e96a75b0). ANTS-5531's ccache
+  fix landed the same day, so the pool's share is not isolated. Still
+  open: the nightly ASan job, the memory-heaviest, has not yet run at
+  pool 4.
   **Layman:** The build machine has four processors but only uses two, because the limit was set for a different computer.
   Kind: investigate.
   Source: in-session-2026-08-25.
@@ -41936,7 +41942,7 @@ in each bullet, not just the reporter's symptom.
   Source: user-report-2026-09-24.
   Lanes: claude.
 
-- 📋 [ANTS-5318] **Four mirrored standards have drifted from their committed owners in ~/.claude.**
+- ✅ [ANTS-5318] **Four mirrored standards have drifted from their committed owners in ~/.claude.**
   Found 2026-09-24 when the pre-commit mirror check refused an
   unrelated commit. `tools/check-standard-mirrors.sh` reports
   DRIFTED for docs/standards/coding.md, languages/python.md,
@@ -41947,6 +41953,8 @@ in each bullet, not just the reporter's symptom.
   Fix: on main, re-check `git -C ~/.claude status --porcelain`,
   then `tools/check-standard-mirrors.sh --write`, and commit the
   four mirrors on their own.
+  Resolved (2026-09-28): tools/check-standard-mirrors.sh reports 13 in
+  sync after the --write in d512733c.
   **Layman:** Four shared rule documents copied into this project are out of date, so the commit check refuses commits until they are re-synced.
   Kind: chore.
   Source: in-session-2026-09-24.
@@ -41984,7 +41992,7 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-09-25 (user chose roadmap over now).
   Lanes: build, ci.
 
-- 📋 [ANTS-5342] **The pre-push hook tests the working tree, not the commits being pushed.**
+- ✅ [ANTS-5342] **The pre-push hook tests the working tree, not the commits being pushed.**
   Seen 2026-09-25 pushing 3195fe93: tools/hooks/pre-push built
   build/ from a tree holding uncommitted edits to
   tests/features/mcpd_about_version/test_mcpd_about_version.cpp,
@@ -41995,12 +42003,16 @@ in each bullet, not just the reporter's symptom.
   Options: refuse on a dirty tracked tree with a clear message, or
   test the pushed commit in a separate worktree. The first is cheap;
   the second costs a second build tree.
+  Resolved (2026-09-28) by ANTS-5542 (e96a75b0, d512733c): the
+  machine-wide hook gates in place only when every pushed tip is HEAD
+  and the tree is clean; .ants/gate.conf sets dirtyTree=refuse, so
+  anything else is refused, not tested.
   **Layman:** The safety check before a push can pass on edits that were never committed, so it can approve a push whose real content it never tested.
   Kind: fix.
   Source: in-session-2026-09-25.
   Lanes: build, ci.
 
-- 📋 [ANTS-5422] **The pre-push gate builds and tests the commits being pushed, not whatever the working tree holds.**
+- ✅ [ANTS-5422] **The pre-push gate builds and tests the commits being pushed, not whatever the working tree holds.**
   tools/hooks/pre-push runs build-test over the working tree (the
   `python3 "$runner" run build-test` call) and reads ci.yml's paths-ignore
   from the working tree too. Nothing compares local_sha to HEAD or requires a
@@ -42008,6 +42020,9 @@ in each bullet, not just the reporter's symptom.
   out, can go green for a commit that fails in CI. Options: refuse a push whose
   local_sha is not HEAD or whose tree is dirty (cheap, strict), or run the gate
   in a worktree at local_sha (exact, costs a cold build tree).
+  Resolved (2026-09-28) by ANTS-5542: see ANTS-5342. docsCommand also
+  reads ci.yml from the working tree, which refuse makes the pushed
+  commit.
   **Layman:** The safety check before an upload tests your current files, which may differ from what you are actually uploading.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #1; ledger TL-1).
