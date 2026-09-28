@@ -61522,6 +61522,18 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   tests but executed none of them. The two are independent -- the second is
   worth doing even if the first is declined, because it converts a silent
   wrong verdict into a refusal.
+  Design (2026-09-28, not started): (1) optional `env` object, string to
+  string, merged over QProcessEnvironment::systemEnvironment() in
+  cmdMutationProbe's runTests; a non-object, non-string value, empty key
+  or key holding '=' refuses bad_args; add `env` to the inputSchema
+  props in claudeintegration.cpp. (2) Counts gains `skipped`, parsed
+  from pytest "N skipped", gtest "[  SKIPPED ] N test" and the jest or
+  vitest Tests line. Today pytest's "1 skipped in 0.01s" matches neither
+  regex, so it parses -1/-1 and is refused as baseline_unreadable with
+  the wrong reason. With skipped read, it becomes 0/0 = Empty, and the
+  refusal (code unchanged) gains `baseline_skipped` and a message naming
+  the skips. Test first in tests/features/mutation_probe (bundle
+  test_claude), pure judge plus an end-to-end `sh -c` run as ANTS-5360's.
   **Layman:** A code-mutation check cannot run test suites that need an environment variable, and it cannot tell that such a suite ran nothing.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
