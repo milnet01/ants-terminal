@@ -143,8 +143,8 @@ place when it saves a Claude session real tokens or round-trips
    Two consequences worth knowing. Off-thread verbs on the same lane execute
    one at a time, in arrival order, so no two of them overlap. A verb runs on
    the shared lane unless its registration names
-   `ClaudeIntegration::DispatchLane::Bulk` — today only `roadmap_migrate`
-   and `verify_changes` do — and a verb on the other lane, or on the GUI thread, can run while
+   `ClaudeIntegration::DispatchLane::Bulk` — today `roadmap_migrate`,
+   `verify_changes`, `focused_test` and `mutation_probe` do — and a verb on the other lane, or on the GUI thread, can run while
    yours is running, so state both can reach needs its own guard (ANTS-2132
    § 2.1, § 2.10, § 5). A verb that writes a project's roadmap takes
    `RemoteControl::RoadmapWriteHold` as its first statement and refuses

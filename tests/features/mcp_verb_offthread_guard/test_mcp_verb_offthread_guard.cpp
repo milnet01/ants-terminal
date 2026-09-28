@@ -299,14 +299,15 @@ TEST(McpVerbOffthreadGuard, Main) {
                "INV-6/lane-argument-still-parsed");
     }
 
-    // INV-20 (ANTS-5086, widened by ANTS-5464) — roadmap_migrate and
-    // verify_changes are the verbs on the bulk lane, and no other is.
+    // INV-20 (ANTS-5086, widened by ANTS-5464 and ANTS-5096) — roadmap_migrate,
+    // verify_changes, focused_test and mutation_probe are the verbs on the
+    // bulk lane, and no other is.
     {
         const std::string bulk = "DispatchLane::Bulk";
         std::vector<size_t> hits;
         for (size_t at = mw.find(bulk); at != std::string::npos; at = mw.find(bulk, at + 1))
             hits.push_back(at);
-        expect(hits.size() == 2, "INV-20/exactly-two-bulk-registrations");
+        expect(hits.size() == 4, "INV-20/exactly-four-bulk-registrations");
         const auto insideRegistration = [&](const char *verb) {
             const size_t reg = mw.find(std::string("registerToolProvider(\"") + verb + "\"");
             if (reg == std::string::npos) return false;
@@ -317,6 +318,8 @@ TEST(McpVerbOffthreadGuard, Main) {
         };
         expect(insideRegistration("roadmap_migrate"), "INV-20/bulk-lane-has-roadmap_migrate");
         expect(insideRegistration("verify_changes"), "INV-20/bulk-lane-has-verify_changes");
+        expect(insideRegistration("focused_test"), "INV-20/bulk-lane-has-focused_test");
+        expect(insideRegistration("mutation_probe"), "INV-20/bulk-lane-has-mutation_probe");
     }
 
     // INV-21 (ANTS-5086) — each writer takes its shared hold before its first

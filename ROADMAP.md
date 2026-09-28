@@ -9570,6 +9570,17 @@ extends an existing item, that item carries it instead.
   ok:true). STILL OPEN: focused_test and mutation_probe as background
   jobs (premise re-check first; spec amendment + rule 14 gate), and
   mutation_probe's sidecar baseline.
+  Decided (2026-09-28, user): replaces the 2026-09-14 background-job
+  plan. Premise re-checked: ants-mcpd runs one process per session over
+  stdio (src/mcpdmain.cpp), so a hung focused_test no longer stalls other
+  sessions; it did still stall the same session's Shared-lane verbs (one
+  serial worker, claudeintegration.cpp postWorkerJob). focused_test and
+  mutation_probe now run on DispatchLane::Bulk beside verify_changes and
+  roadmap_migrate; neither touches in-memory state beyond m_roots
+  (McpVerbOffthreadGuard INV-20 widened, red first). No
+  notifications/cancelled handling exists, so a verb still runs to its own
+  timeout after a client gives up. STILL OPEN: mutation_probe's sidecar
+  baseline.
   **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).

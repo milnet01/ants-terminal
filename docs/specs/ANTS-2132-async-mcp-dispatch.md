@@ -763,12 +763,12 @@ still run one at a time, in arrival order.
   bulk verb has not returned; release it and assert both replies were written.
   Breaks if `postToolDispatch` ignores the entry's lane: the shared call queues
   behind the blocked one and gets no reply.
-- **INV-20** *(amendment, 2026-09-17 — ANTS-5086; widened by ANTS-5464)* —
-  `roadmap_migrate` and `verify_changes` are registered on
-  `DispatchLane::Bulk`, and no other verb is. *Test:*
-  `tests/features/mcp_verb_offthread_guard/` — scrape the registration table
-  for `DispatchLane::Bulk` and assert exactly two occurrences, one inside each
-  of those registrations. Breaks if either keeps plain `rcDelegate(`: the
+- **INV-20** *(amendment, 2026-09-17 — ANTS-5086; widened by ANTS-5464 and
+  ANTS-5096)* — `roadmap_migrate`, `verify_changes`, `focused_test` and
+  `mutation_probe` are registered on `DispatchLane::Bulk`, and no other verb
+  is. *Test:* `tests/features/mcp_verb_offthread_guard/` — scrape the
+  registration table for `DispatchLane::Bulk` and assert exactly four
+  occurrences, one inside each of those registrations. Breaks if either keeps plain `rcDelegate(`: the
   scrape finds too few.
 - **INV-21** *(amendment, 2026-09-17 — ANTS-5086)* — A root held exclusively
   refuses every writer `roadmap_busy` and writes nothing; a root with a live
@@ -852,8 +852,10 @@ lanes share it.
   serialised worker delivers the whole of the reported symptom. The bulk lane
   (§ 2.10) is not a thread per verb: it serialises its own verbs and carries
   one verb that shares no in-process state with the shared worker.
-- **Other long verbs on the bulk lane.** § 2.10 moves `roadmap_migrate` and
-  `verify_changes` only.
+- **Other long verbs on the bulk lane.** § 2.10 moves `roadmap_migrate`,
+  `verify_changes`, `focused_test` and `mutation_probe` only. The last two
+  (ANTS-5096) hold the worker for a ctest run; neither touches in-memory state
+  beyond `m_roots`, which the bulk lane's other verbs already read.
   A slow `roadmap_log` render still queues on the shared lane; its cost is
   ANTS-4681.
 - **Moving the MCP server itself onto a worker thread** — rejected. It would

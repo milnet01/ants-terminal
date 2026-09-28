@@ -907,10 +907,12 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
         rcDelegate(rc, &RemoteControl::cmdFileOutline));
     // ANTS-4398 — mutation_probe. Each mutation runs a full test command, so
     // a batch is seconds-to-minutes; ANTS-2132 dispatches it off the GUI
-    // thread, so the window keeps painting for the duration.
+    // thread, so the window keeps painting for the duration. ANTS-5096 — on
+    // the Bulk lane, so the session's other verbs do not queue behind it. It
+    // shares no in-memory state with the Shared lane beyond m_roots.
     sink.registerToolProvider("mutation_probe",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdMutationProbe));
+        rcDelegate(rc, &RemoteControl::cmdMutationProbe, ClaudeIntegration::DispatchLane::Bulk));
     // ANTS-1855 — read_log: filter a log file (debug log or caller_cwd path).
     sink.registerToolProvider("read_log",
         ClaudeIntegration::CallerCwdContract::Required,
@@ -1095,9 +1097,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // changed files (via tests/coverage-map.json), returns the
     // test_results envelope. Expensive (shells out to ctest), MCP-only.
     // See docs/specs/ANTS-1302.md.
+    // ANTS-5096 — on the Bulk lane for the same reason as mutation_probe:
+    // a ctest run holds its worker up to timeout_sec (default 300 s).
     sink.registerToolProvider("focused_test",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdFocusedTest));
+        rcDelegate(rc, &RemoteControl::cmdFocusedTest, ClaudeIntegration::DispatchLane::Bulk));
 
     // ANTS-3745 — build_target_for. Which target owns a source, read from
     // CMakeLists.txt, plus the build and ctest lines that follow. Read-only
