@@ -68036,13 +68036,22 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-5500] **feedback_log from a dot-leaf caller_cwd could resolve the file from the git remote.**
+- ✅ [ANTS-5500] **feedback_log from a dot-leaf caller_cwd could resolve the file from the git remote.**
   ANTS-4613 refuses bad_args with candidates when the leaf starts with a
   dot (/home/ants/.claude). The candidates already include
   claude_config_Ants_MCP_Feedback.md. Proposed: when exactly one
   candidate matches the repo name from the origin remote
   (milnet01/claude-config, normalised), use it and report path_derived
   with the reason; otherwise keep the refusal.
+  Resolved (2026-09-28): resolveFeedbackPath reads the origin URL from
+  <root>/.git/config (no git process), takes the repository name, and
+  adopts the one candidate whose stem normalises to it; none or several
+  keep the ANTS-4613 refusal. Replies carry path_derived plus
+  path_derived_reason. Tests Ants5500DotLeafResolvesFromTheOriginRemote
+  (red first) and Ants5500AmbiguousRemoteMatchStillRefuses; suite
+  5278/5278. Live: feedback_query from /home/ants/.claude with no path
+  resolved claude_config_Ants_MCP_Feedback.md. mcp-feedback-files.md
+  unchanged: an explicit path is still correct advice.
   **Layman:** Filing feedback from the config folder still makes you name the file by hand.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27.

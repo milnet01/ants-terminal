@@ -145,6 +145,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **feedback_log and feedback_query from a dot-named folder such as ~/.claude find their feedback file from the git remote** (ANTS-5500)
+  When the folder's name gives no usable file name, the verbs read the
+  repository name from the git origin remote and use the one feedback
+  file that matches it, saying so in `path_derived_reason`. With no
+  remote, or more than one match, they still ask for an explicit `path`.
+
 - **roadmap_log refuses to append an item whose headline exactly matches one already filed, unless force:true is passed.** (ANTS-4487)
   The refusal (duplicate_item) names the existing item in duplicate_of.
   append_batch skips such an entry and files the rest. Near matches still

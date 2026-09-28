@@ -3306,10 +3306,38 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
 // false), and `existsOut` says whether it currently exists. When
 // `derivedOut` is non-null it reports whether the path was auto-derived
 // from caller_cwd (ANTS-3376) rather than supplied by the caller.
+// ANTS-5500 — the repository name from `<root>/.git/config`'s origin URL
+// (`https://github.com/milnet01/claude-config.git` -> `claude-config`).
+// Read from the file rather than by running git: this is on every
+// feedback call's resolve path. Empty when there is no such remote.
+static QString feedbackOriginRepoName(const QString &root) {
+    QFile f(root + QStringLiteral("/.git/config"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    bool inOrigin = false;
+    while (!f.atEnd()) {
+        const QString line = QString::fromUtf8(f.readLine()).trimmed();
+        if (line.startsWith(QLatin1Char('['))) {
+            inOrigin = line == QStringLiteral("[remote \"origin\"]");
+            continue;
+        }
+        if (!inOrigin || !line.startsWith(QStringLiteral("url"))) continue;
+        const int eq = line.indexOf(QLatin1Char('='));
+        if (eq < 0) continue;
+        QString url = line.mid(eq + 1).trimmed();
+        if (url.endsWith(QStringLiteral(".git"))) url.chop(4);
+        const int cut = int(qMax(url.lastIndexOf(QLatin1Char('/')),
+                                 url.lastIndexOf(QLatin1Char(':'))));
+        return url.mid(cut + 1);
+    }
+    return QString();
+}
+
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                          QString &resolvedOut, bool &existsOut,
-                         QJsonObject &err, bool *derivedOut) {
+                         QJsonObject &err, bool *derivedOut,
+                         QString *derivedReasonOut) {
     if (derivedOut) *derivedOut = false;
+    if (derivedReasonOut) derivedReasonOut->clear();
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     if (rawPath.isEmpty()) {
         // ANTS-3376 — no explicit path: derive the conventional
@@ -3353,6 +3381,33 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                         "explicitly.").arg(leaf));
             const QJsonArray cands = feedbackSiblingCandidates(
                 QDir::cleanPath(sharedRoot + QLatin1Char('/') + leaf));
+            // ANTS-5500 — the leaf has no name, but its origin remote may:
+            // exactly one candidate whose stem normalises to the repository
+            // name is an answer. None, or several, stays a refusal.
+            const QString repo = feedbackOriginRepoName(rootCanonical);
+            if (!repo.isEmpty()) {
+                const QString want = normalizeFeedbackStem(repo);
+                QStringList hits;
+                for (const QJsonValue &c : cands) {
+                    const QString p = c.toString();
+                    if (normalizeFeedbackStem(feedbackStemOf(
+                            QFileInfo(p).fileName())) == want)
+                        hits << p;
+                }
+                if (hits.size() == 1) {
+                    err = QJsonObject();
+                    resolvedOut = hits.first();
+                    existsOut   = true;
+                    if (derivedOut) *derivedOut = true;
+                    if (derivedReasonOut)
+                        *derivedReasonOut = QStringLiteral(
+                            "caller_cwd's leaf \"%1\" begins with a dot; the "
+                            "git origin remote names the repository \"%2\", "
+                            "and exactly one feedback file matches it")
+                                .arg(leaf, repo);
+                    return true;
+                }
+            }
             if (!cands.isEmpty()) {
                 err[QStringLiteral("candidates")] = cands;
                 err[QStringLiteral("hint")] = QStringLiteral(

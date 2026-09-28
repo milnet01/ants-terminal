@@ -627,7 +627,10 @@ QString resolveSpecRelForId(const QString &rootCanonical, const QString &dirRel,
 QJsonObject fbErr(const QString &code, const QString &message);
 QString feedbackCallerLeaf(const QJsonObject &req);
 QJsonObject fbNotFound(const QString &message, const QString &resolved, const QString &callerLeaf = QString());
-bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName, QString &resolvedOut, bool &existsOut, QJsonObject &err, bool *derivedOut = nullptr);
+// ANTS-5500 — `derivedReasonOut` says how a derived path was chosen, where
+// the rule is not the plain leaf convention (a dot leaf matched by its
+// git origin remote). Empty otherwise.
+bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName, QString &resolvedOut, bool &existsOut, QJsonObject &err, bool *derivedOut = nullptr, QString *derivedReasonOut = nullptr);
 QJsonObject gitErr(const char *code, const QString &message, const QByteArray &stderrTail = {});
 bool isValidRange(const QString &range);
 void parseStatusHeader(const QString &headerLine, QJsonObject &out);

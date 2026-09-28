@@ -511,6 +511,77 @@ TEST(McpFeedbackLog, DotLeafRefusalOffersTheSiblings) {
         "claude_config_Ants_MCP_Feedback.md"));
 }
 
+namespace {
+// A dot-leaf project whose git remote names the repo, as ~/.claude's does.
+void writeOriginRemote(const QString &repo, const QString &url) {
+    QDir().mkpath(repo + "/.git");
+    QFile cfg(repo + "/.git/config");
+    ASSERT_TRUE(cfg.open(QIODevice::WriteOnly));
+    cfg.write("[core]\n\tbare = false\n[remote \"origin\"]\n\turl = ");
+    cfg.write(url.toUtf8());
+    cfg.write("\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n");
+    cfg.close();
+}
+}  // namespace
+
+// ANTS-5500 — the dot leaf still has no name of its own, but its origin
+// remote does: `milnet01/claude-config` normalises to the same token as
+// `claude_config_Ants_MCP_Feedback.md`. Exactly one candidate matching it is
+// an answer, so the verb uses it and says why.
+TEST(McpFeedbackLog, Ants5500DotLeafResolvesFromTheOriginRemote) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir(".claude"));
+    writeOriginRemote(root.path() + "/.claude",
+                      "https://github.com/milnet01/claude-config.git");
+    const QString file = root.path() + "/claude_config_Ants_MCP_Feedback.md";
+    QFile sib(file);
+    ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
+    sib.write("# Ants MCP Feedback\n"); sib.close();
+    QFile other(root.path() + "/other_Ants_MCP_Feedback.md");
+    ASSERT_TRUE(other.open(QIODevice::WriteOnly));
+    other.write("# Ants MCP Feedback\n"); other.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/.claude";
+    req["op"] = "append_finding"; req["date"] = "2026-09-28";
+    QJsonArray fs; fs.append(finding("Remote-derived", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    ASSERT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().constData();
+    EXPECT_TRUE(env.value("path_derived").toBool());
+    EXPECT_TRUE(env.value("path_derived_reason").toString().contains("remote"))
+        << QJsonDocument(env).toJson().constData();
+    QFile in(file);
+    ASSERT_TRUE(in.open(QIODevice::ReadOnly));
+    EXPECT_TRUE(in.readAll().contains("Remote-derived"));
+}
+
+// ANTS-5500 guard — two candidates normalising to the remote's name is a
+// guess, so the ANTS-4613 refusal stands.
+TEST(McpFeedbackLog, Ants5500AmbiguousRemoteMatchStillRefuses) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir(".claude"));
+    writeOriginRemote(root.path() + "/.claude",
+                      "git@github.com:milnet01/claude-config.git");
+    for (const char *n : {"/claude_config_Ants_MCP_Feedback.md",
+                          "/Claude-Config_Ants_MCP_Feedback.md"}) {
+        QFile f(root.path() + n);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# Ants MCP Feedback\n"); f.close();
+    }
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/.claude";
+    req["op"] = "append_finding"; req["date"] = "2026-09-28";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "bad_args");
+}
+
 // ANTS-4613 over-reach guard — only the LEAF matters. A perfectly ordinary
 // project that merely SITS under a dotted parent still derives, because its own
 // name is a fine feedback stem.

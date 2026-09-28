@@ -158,13 +158,23 @@ QHash<QString, QJsonObject> RemoteControl::rlResolveForeignFeedbackIds(
 }
 
 // ANTS-1961 — feedback_query: return the un-triaged delta + mapped IDs.
+// ANTS-3376 — a derived path is reported as such; ANTS-5500 adds the reason
+// where the derivation was not the plain leaf convention.
+static void fbMarkDerived(QJsonObject &out, const QString &reason) {
+    out[QStringLiteral("path_derived")] = true;
+    if (!reason.isEmpty())
+        out[QStringLiteral("path_derived_reason")] = reason;
+}
+
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
     bool derived = false;
+    QString derivedReason;   // ANTS-5500
     QJsonObject err;
     if (!resolveFeedbackPath(req, QStringLiteral("feedback_query"),
-                             resolved, exists, err, &derived)) {
+                             resolved, exists, err, &derived,
+                             &derivedReason)) {
         return QJsonDocument(err);
     }
     if (!exists) {
@@ -188,7 +198,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         nf.remove(QStringLiteral("error"));
         nf.remove(QStringLiteral("code"));
         nf[QStringLiteral("path")]                   = resolved;
-        nf[QStringLiteral("path_derived")]           = true;
+        fbMarkDerived(nf, derivedReason);
         nf[QStringLiteral("found")]                  = false;
         nf[QStringLiteral("delta")]                  = QString();
         nf[QStringLiteral("delta_present")]          = false;
@@ -241,7 +251,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     // present on a success, so one branch covers both.
     out["found"]                 = true;
     out["path"]                  = resolved;
-    if (derived) out["path_derived"] = true;  // ANTS-3376
+    if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
     out["delta"]                 = delta;
     out["delta_present"]         = pr.deltaPresent;
     out["delta_line_count"]      = pr.deltaLineCount;
@@ -604,9 +614,11 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
     bool derived = false;
+    QString derivedReason;   // ANTS-5500
     QJsonObject err;
     if (!resolveFeedbackPath(req, QStringLiteral("feedback_log"),
-                             resolved, exists, err, &derived)) {
+                             resolved, exists, err, &derived,
+                             &derivedReason)) {
         return QJsonDocument(err);
     }
 
@@ -779,7 +791,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             static_cast<qint64>(cr.bytesSaved);
         out[QStringLiteral("outcomes")]      = outcomes;
         out[QStringLiteral("skipped")]       = skipped;
-        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -888,7 +900,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         } else {
             out[QStringLiteral("scope_ids")] = QJsonValue(QJsonValue::Null);
         }
-        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -1129,7 +1141,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         // never confused with "there was none to retire".
         out[QStringLiteral("headings_retired")]   = retiredCount;
         out[QStringLiteral("retired_headings")]   = retiredArr;
-        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -1212,7 +1224,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("changed")]     = vr.changed;
         out[QStringLiteral("old_version")] = vr.oldVersion;
         out[QStringLiteral("new_version")] = vr.newVersion;
-        if (derived) out[QStringLiteral("path_derived")] = true;
+        if (derived) fbMarkDerived(out, derivedReason);
         return QJsonDocument(out);
     }
 
@@ -1288,7 +1300,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("changed")]   = tr.changed;
         out[QStringLiteral("old_title")] = tr.oldTitle;
         out[QStringLiteral("new_title")] = tr.newTitle;
-        if (derived) out[QStringLiteral("path_derived")] = true;
+        if (derived) fbMarkDerived(out, derivedReason);
         return QJsonDocument(out);
     }
 
@@ -1393,7 +1405,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("backfilled")]    = backfilled;               // ANTS-3474
         out[QStringLiteral("orphans")]       = orphans;
         out[QStringLiteral("unclassified")]  = stampArr(mr.unclassified);
-        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -1562,7 +1574,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("skipped")]       = skipped;
         out[QStringLiteral("skipped_count")] = skipped.size();
         out[QStringLiteral("changed")]       = anyChange;
-        if (derived) out[QStringLiteral("path_derived")] = true;   // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);   // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -1675,7 +1687,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         if (ar.noteWritten) out[QStringLiteral("note_written")] = true;
         out[QStringLiteral("bytes_delta")] =
             static_cast<qint64>(ar.bytesDelta);
-        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -1871,7 +1883,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
         out["date"]           = date;
         out["created"]        = created;   // would-create
-        if (derived) out["path_derived"] = true;  // ANTS-3376
+        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -1905,7 +1917,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
     out["date"]           = date;
     out["created"]        = created;
-    if (derived) out["path_derived"] = true;  // ANTS-3376
+    if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
     return QJsonDocument(out);
 }
 
