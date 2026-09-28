@@ -521,14 +521,16 @@ hook, the skeleton or `ci-gate` already supplies or reports it.
 | A fast linker (`mold`) | both: project | the toolchain supports it |
 | Build parallelism | both: project | sized from MEMORY per job, measured by peak RSS, not from the CPU count, with an override knob so CI can set it from its runner's memory. An out-of-memory kill reads as an unrelated failure |
 | Test parallelism | both: project | tests share no state (ports, temp paths, the user's config directories), and each has a timeout, for example `ctest -j N --timeout S` |
-| Slow legs (sanitizers, fuzzing) nightly and on demand, not per push | GitHub: project | the nightly's timeout is sized for a cold cache, or the cache is warmed first |
+| Slow legs (sanitizers, fuzzing) nightly and on demand, not per push | GitHub: project | the nightly's timeout is sized for a cold cache, or the cache is warmed first. Better: size the build's own guard by whether the exact cache key matched (`actions/cache`'s `cache-hit` output), short on a hit and long on a miss |
 | Timing, performance and end-to-end tests outside the push gate | both: project | they still run somewhere scheduled. They are the main flake source on a loaded machine |
 | Warm containers for toolchain-parity legs | local: project | a cold leg is never started inside a push: skip it loudly and name the warm-up command |
 | A cost check before a long leg (for example `ninja -n`) | local: project | a leg that will not fit the caller's timeout is skipped loudly. A killed build can corrupt the tree |
 
-**`ci-gate` reports the GitHub rows it can read from a workflow**: a missing
-`concurrency` block, a job with no `timeout-minutes`, and no dependency or
-compiler cache. It reports, and never decides; whether a lever applies is the
+**`ci-gate` reports the GitHub rows it can read from a workflow**: a job with
+no `timeout-minutes`, and a workflow run on branch pushes or pull requests
+with no `concurrency` or no dependency or compiler cache. It asks each such
+workflow separately, and does not ask a tag-only release workflow, which
+must never be cancelled. It reports, and never decides; whether a lever applies is the
 project's judgement. **Nothing checks the other rows mechanically.**
 
 ## What checks this
@@ -542,7 +544,7 @@ project's judgement. **Nothing checks the other rows mechanically.**
 | § 5 the run is over the pushed commits, not the working tree | **`Partial:`** `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally. **Route 1 is not by itself enough**: the gate runs as `( cd "$WORKTREE" && "$GATE" )`, and an absolute `ants.gate.command` resolves to the script in the real checkout, whose own `cd "$(dirname "$0")/.."` then walks back to the working tree. Measured 2026-09-25 — the gate reported the real repository as its `PWD`, an uncommitted file was present, and the hook exited 0. The machine-wide hook now re-anchors an absolute path inside the repository and refuses one outside it; a hook that does not is still exposed. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
 | § 6.2 a repository sets `ants.gate.docsGlob` | **nothing** — the machine-wide hook falls back to a built-in list with no word said, and § 6.2 says so in its own text. **It is the one of the three whose absence is always silent.** An unset `ants.gate.command` is named where no gate script is discoverable (`NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE`, then the key), so for that key an unset and a set one do not produce the same push. **`ants.gate.docsMode` is named only where the hook's `--docs`/`--lint` grep ALSO finds nothing** — a gate spelling its flag either of those ways gets documentation mode with the key unset, and the push is identical to the configured one. So unset-versus-set is visible for `command` alone, and `docsGlob` is the only one that reaches § 2's breach unannounced |
 | § 7 all three conditions hold before the skip | **nothing** — no hook on this machine implements this skip. `~/.claude/githooks/pre-push` classifies a push as documentation-only, but it does that to select § 6's documentation mode: it holds no `gh` call, and after classifying it always runs the gate. So condition 1 is checked by nothing, condition 2 is a read of the pipeline's definition, and the skip is taken by hand or not at all |
-| § 9 speed-ups taken, failing closed | `~/.claude/tools/ci-gate` reports three GitHub rows as advisories: no `concurrency`, a job with no `timeout-minutes`, no cache. **Nothing** checks the rest, or that a speed-up fails closed |
+| § 9 speed-ups taken, failing closed | `~/.claude/tools/ci-gate` reports three GitHub rows as advisories: a job with no `timeout-minutes`, and a push or pull-request workflow with no `concurrency` or no cache. **Nothing** checks the rest, or that a speed-up fails closed |
 
 ## Cold-eyes loop log
 
