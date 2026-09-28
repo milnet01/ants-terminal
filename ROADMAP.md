@@ -80227,7 +80227,7 @@ acting on it.
   Source: user-request-2026-09-28 (CI speed-ups).
   Lanes: mcp, build.
 
-- 📋 [ANTS-5534] **Cancel superseded CI runs on main — investigate and measure first.**
+- 🚫 [ANTS-5534] **Cancel superseded CI runs on main — investigate and measure first.**
   RISKIER: needs thorough investigation and measurement before any
   change. ci.yml sets `cancel-in-progress` only for branches other than
   main, so every main push runs every job even when a newer push is
@@ -80249,6 +80249,9 @@ acting on it.
   Nothing in packaging/, tools/ or release.yml reads per-commit CI
   results. Minutes are free (public repo). Recommendation: leave as is;
   needs the user's call.
+  Decided (2026-09-28, user): leave cancel-in-progress false on main. GitHub
+  already drops superseded queued runs, and cancelling running ones could
+  leave main without a finished result for hours on a busy day.
   **Layman:** When several changes are pushed quickly, CI still tests every one of them in full, which may not be needed.
   Kind: investigate.
   Source: user-request-2026-09-28 (CI speed-ups).
