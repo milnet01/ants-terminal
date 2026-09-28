@@ -79963,7 +79963,7 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5190] **Find out why a warm CI build with a high ccache hit rate still spends minutes compiling.**
+- ✅ [ANTS-5190] **Find out why a warm CI build with a high ccache hit rate still spends minutes compiling.**
   Release CI's ccache statistics show most compiles hitting the cache,
   yet the build step stays long, and some compiler calls are uncacheable.
   Each library builds its own copy of the precompiled Qt header; ccache
@@ -79982,6 +79982,10 @@ acting on it.
   the top 20. So one translation unit is the lever, which ANTS-4919
   (split claudeintegration.cpp) addresses. The warm-build question still
   needs a warm run: read the next nightly's report.
+  Answered (2026-09-28): the uncacheable calls were the precompiled
+  headers and every compile gated on them. With CCACHE_SLOPPINESS set
+  (ANTS-5531) all 975 calls are cacheable and a warm Release Build step
+  dropped from 366 s to 31 s (runs 36400078893, 36402588083).
   **Layman:** Even when almost everything is cached, the GitHub build is still slow, and nobody knows why yet.
   Kind: investigate.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80158,7 +80162,7 @@ acting on it.
   Source: in-session-2026-09-28 (nightly run 36389329574).
   Lanes: ci.
 
-- 📋 [ANTS-5531] **Let ccache store the precompiled headers, so CI stops rebuilding ten of them on every job.**
+- ✅ [ANTS-5531] **Let ccache store the precompiled headers, so CI stops rebuilding ten of them on every job.**
   Measured 2026-09-28 on CI run 36392962717's slowest-steps list: ten
   cmake_pch.hxx.gch builds at ~8-11 s each (ants_lua_lib,
   ants_audit_dialog_lib, ants_audit_lib, ants_claude_lib, ants-terminal,
@@ -80172,6 +80176,11 @@ acting on it.
   build-test, build-asan and qt62 jobs and in the local presets. Verify:
   the uncacheable count drops by the PCH count and the build step shrinks.
   Low risk: a wrong setting costs misses, not wrong builds.
+  Verified (2026-09-28): Release ccache before (run 36400078893)
+  975 calls, 183 uncacheable, Build 366 s. Run 36401578174 (this change)
+  stored the PCHs: 0 uncacheable, 185 misses, Build 381 s. Next run
+  36402588083: 973/975 hits, Build 31 s. The 183 were every TU behind an
+  uncached PCH, not only the ten PCH generations.
   **Layman:** Every CI run rebuilds the same ten shared header bundles from scratch because the build cache refuses to keep them.
   Kind: perf.
   Source: user-request-2026-09-28 (CI speed-ups).

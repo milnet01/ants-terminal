@@ -150,6 +150,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI's compile cache now keeps the precompiled headers, so a warm Release build takes about 31 seconds instead of six minutes.** (ANTS-5531)
+  Before, 183 of 975 compiler calls could not be cached. Now every call
+  can. The build jobs also compile four files at a time instead of two
+  (ANTS-4653).
+
 - **CI keeps one compile cache per job, so a busy day no longer pushes the nightly memory-check build's cache out.** (ANTS-5532)
   After each cache save, CI deletes that job's older copies, and never
   the only one. A local CI run skips the step.
