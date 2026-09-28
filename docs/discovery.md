@@ -36,9 +36,10 @@ Labels are `SIGN-<n>`. They are never reused or renumbered.
 - **SIGN-2 — Fast.** On the same machine, Ants prints a large burst of
   output no slower than Konsole, and typing does not lag while Claude
   Code streams output.
-- **SIGN-3 — No relaunch.** An update to Ants' Claude tools takes effect
-  in a running terminal without a restart, and the Claude sessions
-  running in it survive.
+- **SIGN-3 — No relaunch.** A change to how Ants' Claude tools behave
+  takes effect in a running terminal without a restart, and the Claude
+  sessions running in it survive. Only a new kind of terminal state for
+  the tools to read needs a restart.
 - **SIGN-4 — Programs just work.** Claude Code, vim, htop, tmux and less
   display and respond correctly, and Ants passes vttest's core screens at
   a pass level the design sets.
