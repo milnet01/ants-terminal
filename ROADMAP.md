@@ -67995,12 +67995,21 @@ project. Reported causes are claims until checked in source.
   Kind: doc-fix.
   Source: review-contract ANTS-3757, 2026-09-27 (filed out of radius).
 
-- 📋 [ANTS-5498] **verify_changes reports all_passed:true when no gate ran.**
+- ✅ [ANTS-5498] **verify_changes reports all_passed:true when no gate ran.**
   runVerify (src/verifyengine.cpp) forces allPassed=true when no gate
   ran, citing its spec's section 4. With no .ants/verify.json every gate
   is ran:false, skipped_reason "no command configured", and the reply
   still reads green. Proposed: all_passed false (or absent) when nothing
   ran, plus ran_count. This changes the spec's contract, so amend it first.
+  Resolved (2026-09-28): contract first. ANTS-1289 amended (INV-14:
+  `all_passed` true only when ran_count > 0 and every ran gate passed;
+  `VerifyReport::ranCount`; the `ok:true` envelope carries `ran_count`)
+  and gated by review-contract loops 3-4, calm cap, 9 verified and fixed.
+  ANTS-1359 test 8 amended and gated separately, converged at loop 2;
+  its pre-existing defects went to ANTS-5526. Code: runVerify counts
+  ran gates; the envelope emits ran_count. Tests VerifyEngine.Inv14* and
+  NoneConfigNotCached, all red first; full suite 5276/5276. Live after
+  the next ants-mcpd rebuild and MCP reconnect.
   **Layman:** The check-my-work tool says everything passed even when it ran no checks at all.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-27 (AI Prompts measurement).

@@ -73,13 +73,14 @@ struct VerifyOptions {
     VerifyTrust::Client *trustClient = nullptr;
 };
 
-// Top-level report. `allPassed` is the AND of every gate's
-// `ran && passed`. `configSource` is one of the three documented
-// strings: ".ants/verify.json" | "auto-detected" | "none" |
+// Top-level report. `allPassed` is true only when at least one gate ran
+// and every gate that ran passed (ANTS-1289 INV-14). `configSource` is
+// one of ".ants/verify.json" | "auto-detected" | "none" |
 // "auto (untrusted-bespoke)".
 struct VerifyReport {
     QList<GateResult> gates;
     bool              allPassed = false;
+    int               ranCount = 0;   // gates with ran:true (INV-14)
     QString           configSource;
     // ANTS-1337: when the caller passed a trust client and the
     // `.ants/verify.json` SHA wasn't trusted, the engine fell back

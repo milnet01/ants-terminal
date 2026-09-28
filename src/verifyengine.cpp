@@ -531,21 +531,16 @@ VerifyReport runVerify(const QString &projectPath,
     }
 
     rep.gates = resultsByOrder;
-    rep.allPassed = true;
-    bool anyRan = false;
+    // ANTS-1289 INV-14 (ANTS-5498) — nothing ran, nothing passed. The AND
+    // over the ran gates is vacuously true when none ran, which read as
+    // green on a project that verified nothing.
+    bool anyFailed = false;
     for (const auto &r : rep.gates) {
-        if (r.ran) {
-            anyRan = true;
-            if (!r.passed) {
-                rep.allPassed = false;
-                break;
-            }
-        }
+        if (!r.ran) continue;
+        ++rep.ranCount;
+        if (!r.passed) anyFailed = true;
     }
-    // If no gate ran at all (no config, no auto-detect hit), keep
-    // allPassed:true per § 4 last paragraph — the tool did its job,
-    // there was just nothing to verify.
-    if (!anyRan) rep.allPassed = true;
+    rep.allPassed = rep.ranCount > 0 && !anyFailed;
     return rep;
 }
 

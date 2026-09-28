@@ -346,6 +346,34 @@ TEST(VerifyEngine, Inv6TestsRunWhenBuildPasses) {
 }
 
 // ---------------------------------------------------------------------------
+// INV-14 (ANTS-5498) — nothing ran, nothing passed. With no gate run the AND
+// over the ran gates is vacuously true, which read as green on a project
+// that verified nothing.
+// ---------------------------------------------------------------------------
+TEST(VerifyEngine, Inv14NoGateRanIsNotAllPassed) {
+    QTemporaryDir tmp;   // no .ants/verify.json, no build system
+    ASSERT_TRUE(tmp.isValid());
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec = 30;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+    EXPECT_EQ(rep.ranCount, 0);
+    EXPECT_FALSE(rep.allPassed);
+}
+
+TEST(VerifyEngine, Inv14OnePassingGateIsAllPassed) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".ants/verify.json", R"({
+        "build": {"command": "true", "format": "plain"}
+    })");
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec = 30;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+    EXPECT_EQ(rep.ranCount, 1);
+    EXPECT_TRUE(rep.allPassed);
+}
+
+// ---------------------------------------------------------------------------
 // INV-10 (ANTS-3373) — orphaned-source lint. A basename referenced in any
 // CMakeLists.txt / *.cmake is not orphaned; one that isn't, is. Build/vendor
 // dirs are pruned, so a generated build-tree CMakeLists never masks a real

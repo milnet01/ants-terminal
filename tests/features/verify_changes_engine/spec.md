@@ -61,6 +61,13 @@ Pairs with docs/specs/ANTS-1289.md.
   finishes inside its budget is unaffected by how the timeout path is
   implemented: its real exit code and passed/failed state are reported
   exactly as before.
+- **INV-14 (nothing ran, nothing passed, ANTS-5498)** — `runVerify`
+  reports `ranCount` (gates with `ran:true`) and `allPassed` only when
+  `ranCount > 0` and every ran gate passed. A root with no config and no
+  build system returns `allPassed == false, ranCount == 0`; one passing
+  configured gate returns `allPassed == true, ranCount == 1`. The number
+  matches ANTS-1289 INV-14; the envelope leg is in
+  `verify_changes_build_cache` (`NoneConfigNotCached`).
 
 ## Out of scope
 

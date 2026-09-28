@@ -257,6 +257,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **verify_changes no longer reports all_passed when no check ran, and every reply says how many ran** (ANTS-5498)
+  A project with no configured build, test or lint gate used to come back
+  `all_passed:true`, which read as green when nothing had been verified.
+  It now reports `all_passed:false` with the new `ran_count:0`; any
+  successful reply carries `ran_count`, the number of gates that ran.
+
 - **Caret anchors whose prefix holds an underscore (`^3d_e-0042`) are read, stripped from the headline, and found by a flip** (ANTS-5331)
   `roadmap_log op:"flip"` builds an anchor from the project prefix, which
   can carry `_`, but every anchor pattern accepted only letters, digits and

@@ -292,6 +292,9 @@ TEST(VerifyChangesBuildCache, NoneConfigNotCached) {
     EXPECT_TRUE(env.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(env.value(QStringLiteral("config_source")).toString(),
               QStringLiteral("none"));
+    // ANTS-1289 INV-14 (ANTS-5498) — nothing ran, so nothing passed.
+    EXPECT_FALSE(env.value(QStringLiteral("all_passed")).toBool(true));
+    EXPECT_EQ(env.value(QStringLiteral("ran_count")).toInt(-1), 0);
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 0)
         << "config_source=none should never insert";
 }

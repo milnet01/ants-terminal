@@ -2089,6 +2089,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     QJsonObject env;
     env[QStringLiteral("ok")]               = true;
     env[QStringLiteral("all_passed")]       = rep.allPassed;
+    env[QStringLiteral("ran_count")]        = rep.ranCount;   // ANTS-1289 INV-14
     env[QStringLiteral("project_root")]     = root;
     env[QStringLiteral("config_source")]    = rep.configSource;
     env[QStringLiteral("verify_untrusted")] = rep.verifyUntrusted;
