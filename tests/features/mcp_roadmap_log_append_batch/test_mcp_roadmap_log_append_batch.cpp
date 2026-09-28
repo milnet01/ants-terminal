@@ -127,6 +127,38 @@ TEST(McpRoadmapLogAppendBatch, Inv2MissingFieldsRefuse) {
     }
 }
 
+// ANTS-5095 — bounded before the scrub, whose regex can backtrack: at most
+// 500 bullets, and no body over 64 KiB. Refused whole, with nothing written.
+TEST(McpRoadmapLogAppendBatch, Ants5095BatchIsBoundedBeforeTheScrub) {
+    QTemporaryDir dir;
+    setupProject(dir);
+    RemoteControl rc(nullptr);
+    const QByteArray before = [&] {
+        QFile f(dir.path() + QStringLiteral("/ROADMAP.md"));
+        return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    }();
+    {
+        QJsonArray bs;
+        for (int i = 0; i < 501; ++i) bs.append(bullet("Many."));
+        const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+            baseReq(dir.path(), bs)).object();
+        EXPECT_FALSE(out["ok"].toBool());
+        EXPECT_EQ(out["code"].toString(), QStringLiteral("bad_args"));
+    }
+    {
+        QJsonObject big = bullet("Big body.");
+        big["body"] = QString(65537, QLatin1Char('a'));
+        QJsonArray bs; bs.append(big);
+        const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+            baseReq(dir.path(), bs)).object();
+        EXPECT_FALSE(out["ok"].toBool());
+        EXPECT_EQ(out["code"].toString(), QStringLiteral("bad_args"));
+    }
+    QFile f(dir.path() + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    EXPECT_EQ(f.readAll(), before) << "a refused batch wrote to the roadmap";
+}
+
 // INV-3 — mixed validity: 1 accepted + 1 skipped per failure code.
 TEST(McpRoadmapLogAppendBatch, Inv3MixedValidityHeadlineEmpty) {
     QTemporaryDir dir;

@@ -2220,6 +2220,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                            "non-empty `bullets` array"));
     const QJsonArray bullets =
         req.value(QStringLiteral("bullets")).toArray();
+    // ANTS-5095 — bounded before the tool-call scrub, whose regex can
+    // backtrack: the batch cap the other batch ops use, and set_body's body
+    // ceiling. Refused whole, before anything is read or written.
+    constexpr qsizetype kMaxBatchBullets = 500;
+    constexpr qsizetype kMaxBatchBodyBytes = 65536;
+    if (bullets.size() > kMaxBatchBullets)
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `bullets` holds at most %1 entries; got %2")
+                .arg(kMaxBatchBullets).arg(bullets.size()));
+    for (qsizetype i = 0; i < bullets.size(); ++i) {
+        const qsizetype n = bullets.at(i).toObject()
+                                .value(QStringLiteral("body")).toString().toUtf8().size();
+        if (n > kMaxBatchBodyBytes)
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: bullets[%1].body is %2 bytes; the "
+                               "limit is %3").arg(i).arg(n).arg(kMaxBatchBodyBytes));
+    }
 
     // ANTS-2126 — pass-headings roadmaps route to the heading-format
     // batch writer here, BEFORE the counter read below (a pass roadmap
