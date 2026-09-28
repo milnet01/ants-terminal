@@ -237,6 +237,8 @@
         "src/localsockethub.h",
         "src/mcpdforwarder.cpp",
         "src/mcpdforwarder.h",
+        "src/mcpdcall.cpp",
+        "src/mcpdcall.h",
         "src/mcpdmain.cpp",
         "src/mcpdsocket.cpp",
         "src/mcpdsocket.h",
