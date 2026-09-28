@@ -1,6 +1,6 @@
 # ANTS-5506 — Run an Ants MCP verb from a shell: `ants-mcpd --call`
 
-**Status:** spec draft (2026-09-28).
+**Status:** accepted (2026-09-28), review-contract loops 1 + 2 folded, cap reached.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5506 (claude-config joint review 2026-09-27, A5; CLI shape decided by claude-config 2026-09-27).
 **Composes with:** ANTS-4932 (`ants-mcpd`), ANTS-1116 (`ants-helper`'s exit codes), ANTS-3663 (`doc_lint`, whose new checks this item adds by amending that spec), ANTS-5543 and ANTS-5537 (checks a push gate will call through this).
@@ -20,7 +20,7 @@ ants-mcpd --call <verb> [<json> | -] [--exit-code]
 ```
 
 - `<verb>` is a name `ants-mcpd`'s pipeline answers itself: in `ClaudeIntegration::registeredToolNames()` and not in `mcp::terminalScopedVerbNames()`. That includes the inline `tool_info`. Any other name is a usage error.
-- `<json>` is one JSON object holding the verb's MCP arguments, as the roadmap item's decided shape requires. `-`, or no argument, reads stdin to EOF; empty stdin is `{}`, as `ants-helper` does (ANTS-1116 INV-10). Anything that is not a JSON object is a usage error.
+- `<json>` is one JSON object holding the verb's MCP arguments, as the roadmap item's decided shape requires. No argument is `{}`. Only an explicit `-` reads stdin to EOF, where empty is `{}`. This departs from `ants-helper` (ANTS-1116 INV-10) on purpose: a `pre-push` hook receives git's ref lines on stdin, and a gate script that inherits them must not have them parsed as arguments. Anything that is not a JSON object is a usage error.
 - **With no `caller_cwd` in the object, `--call` adds one: the process's working directory.** Verbs such as `doc_lint` and `spec_lint` are `CallerCwdContract::Required` and refuse without it, and a gate runs from the repository root. ANTS-4932 INV-8 forbids synthesising `caller_cwd` on a *forwarded* request; `--call` forwards nothing.
 - **`--call` removes the reply-shaping arguments** `compact`, `offload`, `fields` and `raw` before dispatch. They change what the reply looks like, never what is checked, and each can hide `findings` or replace the envelope.
 
@@ -29,7 +29,7 @@ The call runs through the same `ClaudeIntegration` pipeline, registry and gates 
 1. **Offload is off** (`mcp::setOffloadConfig` with offloading disabled), so a large result is printed whole.
 2. **Terse responses are off** (`mcp::setTerseDefault(false)`), so default compaction cannot drop an empty `findings`.
 3. **No usage snapshot and no forwarder** are set up (ANTS-5311 § 2.4, ANTS-4932 § 2.5).
-4. **The reply is unwrapped.** stdout carries the tool result's text with the `ants_mcp_data` wrap removed where it is present (`docs/standards/mcp-tools.md`, response-wrap contract; control-plane verbs such as `tool_info` arrive unwrapped). One line, a trailing newline, and nothing else on stdout.
+4. **The reply is unwrapped.** stdout carries the tool result's text with the `ants_mcp_data` wrap removed where it is present (`docs/standards/mcp-tools.md`, response-wrap contract; control-plane verbs such as `tool_info` arrive unwrapped). That text, then a newline, and nothing else on stdout.
 
 The MCP master gate (`claude.mcp_enabled`) is honoured: a user who turned Ants' MCP off has turned these checks off, and a gate sees a refusal rather than a silent pass. Author's call, open to review.
 
@@ -66,8 +66,8 @@ Each call is a fresh process, so a rebuilt `ants-mcpd` is used by the next call;
 
 ## 3. Invariants
 
-- **INV-1** — A call's stdout is the JSON envelope the same verb returns over stdio for the same arguments, unwrapped. Broken by a second dispatch path that shapes the result differently. *Test:* `tests/features/mcpd_call/` runs `ants-mcpd --call spec_lint '<args>'` and the same `tools/call` over stdio, strips the wrap from the second, and compares them.
-- **INV-2** — The exit code follows § 2.2. Broken by any mapping that passes a finding or a refusal as `0`. *Test:* `tests/features/mcpd_call/`, one case per row, each with `--exit-code` unless it says otherwise: a clean fixture gives `0`; a fixture with one finding gives `3`, and `0` without `--exit-code`; `spec_lint` with a `path` escaping the root (`bad_path`) gives `1`; `'[1]'` gives `2`; `tab_list` gives `2`; an unregistered name gives `2`; `tool_info` gives `2`.
+- **INV-1** — A call's stdout is the JSON envelope the same verb returns over stdio, unwrapped, when the stdio run has terse responses and offload off and both runs get the same arguments with an explicit `caller_cwd` and no reply-shaping key. Broken by a second dispatch path that shapes the result differently. *Test:* `tests/features/mcpd_call/` runs `ants-mcpd --call spec_lint '<args>'` and the same `tools/call` over stdio under a config with both settings off, strips the wrap from the second, and compares them.
+- **INV-2** — The exit code follows § 2.2. Broken by any mapping that passes a finding or a refusal as `0`. *Test:* `tests/features/mcpd_call/`, one case per row, each with `--exit-code` unless it says otherwise: a clean fixture gives `0`; a fixture with one finding gives `3`, and `0` without `--exit-code`; `spec_lint` with a `path` escaping the root (`bad_path`) gives `1`; `'[1]'` gives `2`; `tab_list` gives `2`; an unregistered name gives `2`; `tool_info '{"name":"doc_lint"}'` gives `2`.
 - **INV-3** — A result over the offload threshold is printed whole. Broken by leaving offload on. *Test:* `tests/features/mcpd_call/` calls a verb whose reply is larger than the lowest threshold `setOffloadConfig` allows (4096 bytes), with offload enabled in a temporary `HOME`'s config and `"offload":true` in the arguments, and asserts stdout has no spill `handle` and holds the full body.
 - **INV-4** — With `--exit-code`, a non-empty top-level `check_errors` gives `1`. Broken by reading `findings` alone. *Test:* `tests/features/mcpd_call/` calls the mapping function in `src/mcpdcall.cpp` with a synthesised envelope; this tests the mapping, not a verb producing `check_errors`.
 - **INV-5** — With a JSON argument, `--call` reads no stdin and exits after one reply. Broken by falling through to the stdio loop. *Test:* `tests/features/mcpd_call/` runs it with stdin held open and asserts exit within the test's timeout.
@@ -82,6 +82,8 @@ Each call is a fresh process, so a rebuilt `ants-mcpd` is used by the next call;
 - The new `doc_lint` checks. This item adds them by amending ANTS-3663 in place.
 - Terminal-scoped verbs. They need a running terminal, and a gate must not depend on one.
 - A resident server for repeated calls.
+
+**A test's "temporary `HOME`" sets `XDG_CONFIG_HOME` and `XDG_DATA_HOME` inside it as well.** Where either is set, as it is on the development machine (measured 2026-09-28), `HOME` alone redirects neither the config nor the snapshot directory, and INV-3, INV-6, INV-7 and INV-9 would pass against the real ones.
 
 ## 5. Tests
 
