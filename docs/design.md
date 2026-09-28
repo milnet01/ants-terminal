@@ -7,7 +7,7 @@
 [`discovery.md`](discovery.md): every sign of success there is placed below
 in the part that delivers it.
 
-**Status:** draft (2026-09-28). When agreed: `agreed (YYYY-MM-DD)`.
+**Status:** agreed (2026-09-28).
 
 This records a codebase that already exists. Where a fact already has a
 home, this points there rather than copying it.
