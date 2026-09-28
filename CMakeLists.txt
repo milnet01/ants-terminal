@@ -1488,6 +1488,13 @@ if(ANTS_TESTS)
         SKIP_RETURN_CODE 77
         TIMEOUT 60)
 
+    # ANTS-5321 — the AppImage launcher: `--mcpd` starts ants-mcpd.
+    add_test(NAME appimage_apprun
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/appimage_apprun/test_apprun.sh")
+    set_tests_properties(appimage_apprun PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 30)
+
     # tools/mcp-bridge.py: symlink-safe socket pick, sane timeouts, and a
     # reply rather than a crash on a non-object request.
     add_test(NAME mcp_bridge_client

@@ -66112,6 +66112,17 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   release week, never the day before Wednesday's release (only the
   tag-triggered release workflow can test it). File the Flatpak half as
   its own item, after a sandbox test.
+  Progress (2026-09-28, user chose "build the AppImage switch now"):
+  AppImage half built. packaging/appimage/AppRun runs usr/bin/ants-mcpd
+  when the first argument is --mcpd and ants-terminal otherwise;
+  release.yml passes it to linuxdeploy via --custom-apprun and its smoke
+  test now runs `--mcpd --version`. Local test appimage_apprun drives the
+  script against a fake AppDir. Not yet proven end to end: only the
+  tag-triggered release workflow builds the AppImage (a manual dispatch
+  would upload over a real release), so the next RC tag is the first real
+  run. At the 2026-09-30 release, README Getting started step 2 must
+  change: packages then ship ants-mcpd, and AppImage users register
+  `... Ants.AppImage --mcpd`. Flatpak half split to its own item.
   **Layman:** People who use the single-file or Flatpak version cannot connect Claude Code the new way yet.
   Kind: package.
   Source: in-session-2026-09-24.
@@ -66306,6 +66317,17 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: chore.
   Source: user-request-2026-09-27.
   Lanes: mcp.
+
+- 📋 [ANTS-5527] **Make ants-mcpd reachable from the Flatpak.**
+  `flatpak run --command=ants-mcpd <app-id>` starts it, but whether a
+  sandboxed ants-mcpd can see the terminal's socket and run rg and git
+  needs a real sandbox test first. Do that test before changing the
+  manifest. The Flatpak is not yet published (ANTS-1070 is parked), so
+  this matters from the first Flathub release onward.
+  **Layman:** Flatpak users still cannot connect Claude Code to Ants through the new helper program.
+  Kind: package.
+  Source: split from ANTS-5321, 2026-09-28.
+  Lanes: packaging, mcp.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
@@ -77034,11 +77056,17 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-24.
   Lanes: mcp.
 
-- 📋 [ANTS-5311] **Count the calls ants-mcpd serves in token_usage and the status-bar savings.**
+- ✅ [ANTS-5311] **Count the calls ants-mcpd serves in token_usage and the status-bar savings.**
   Deferred from the ANTS-4932 spec (§ 2.3). token_usage stays terminal-scoped
   because it reads the terminal's own counters, so project-scoped calls served
   by ants-mcpd never reach them. Needs a report channel from ants-mcpd to the
   terminal, or a shared counter file both processes write. Blocked by ANTS-4932.
+  Resolved (2026-09-28, status correction): shipped earlier. CHANGELOG
+  [Unreleased] carries "The tokens-saved chip and token_usage count the
+  calls ants-mcpd serves (ANTS-5311)" (each ants-mcpd writes a usage
+  snapshot under ~/.local/share/ants-terminal/mcpd-usage/), and a live
+  token_usage call today returned the `mcpd` block (199 calls, 10
+  sessions). The roadmap status had not been flipped.
   **Layman:** Once the separate MCP helper answers most requests, the terminal's savings counter would only see the few it forwards, so the helper needs a way to report its own numbers.
   Kind: enhancement.
   Source: review-contract-ANTS-4932-loop-2.
@@ -81984,7 +82012,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   [CHANGELOG.md §0.7.3](CHANGELOG.md#073--2026-04-20).
   Kind: implement.
 
-- 📋 [ANTS-1070] **H6.2 — Flathub submission.**
+- 💭 [ANTS-1070] **H6.2 — Flathub submission.**
   PR a new repo against
   [flathub/flathub](https://github.com/flathub/flathub) named
   `org.ants.Terminal`. In-tree prep is complete: the
@@ -82020,6 +82048,11 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   WHAT IS NOT DONE, and it is the one technical gap: no local flatpak-builder run has been made against the 6.11 Sdk or the 5.4.9 Lua pin. Both bumps are unproven by a build. Run `flatpak run org.flatpak.Builder --user --install --force-clean build-flatpak packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml` before any submission; if 6.11 fails, reverting that one runtime line is the fallback.
 
   Parked by the user 2026-09-04 ("skip Flathub for now, tackle it later") after the policy finding.
+  Paused (2026-09-28, user): hold the Flathub submission until the
+  Flathub reviewer the user dealt with changes their position on
+  AI-assisted apps or moves on. Packaging prep stays in place
+  (packaging/flatpak/flathub-submission/, FLATHUB.md). Reopen on the
+  user's word.
 
 - 📋 [ANTS-1071] **H7 — project website + docs site.**
   Static GitHub Pages site
@@ -82150,13 +82183,16 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 
   Found while auditing the Flathub items in a session that stopped short of submitting; ANTS-1070 carries the live state.
 
-- 📋 [ANTS-2168] **Flatpak manifest + metainfo polish + Flathub submission.**
+- 💭 [ANTS-2168] **Flatpak manifest + metainfo polish + Flathub submission.**
   Write the Flatpak manifest (build against org.kde.Platform/Sdk 6.x Qt6 runtime, no network during build, sourced from a tagged release). Add the AppStream bits the validator needs: OARS content-rating, SPDX license, screenshots, homepage URL. Submit via a PR to flathub/flathub (new-pr branch); the build bot + reviewer check sandbox finish-args. On merge, future updates push to the dedicated flathub/<app-id> repo (wire into CI like the AppImage pipeline). DEPENDS ON ANTS-2166 (sandbox-aware spawning) + ANTS-2167 (app-ID rename). Verify current submission steps against flathub.org/docs before acting.
   **Layman:** Package Ants Terminal as a Flatpak and submit it to Flathub so it appears in KDE Discover, GNOME Software and most Linux app stores (AppImage stays as-is alongside it).
   Kind: package.
   Source: user-request-2026-06-24 (Flathub publishing).
   Progress (2026-06-25): manifest + metainfo verified build-ready. appstreamcli validate passes (1 pedantic info only); desktop-file-validate clean; OARS oars-1.1 + SPDX (MIT/CC0-1.0) + 3 captioned screenshots + homepage/bugtracker/vcs URLs all present. make-flathub-manifest.sh correctly emits type:git/tag:v<ver>. FlatpakHostShell + FlatpakLuaModule tests green. Remaining before submission: (1) ANTS-2167 app-ID rename, (2) local flatpak-builder shakedown (flatpak-builder not installed on dev host), (3) the outward-facing flathub/flathub PR — held pending shakedown.
   Build VERIFIED (2026-06-25, commit fd38edf): flatpak-builder build + --user install succeed end-to-end (org.ants.Terminal installed). Found+fixed 4 latent bugs that had made it unbuildable: 6.7 runtime EOL->6.10, Lua `make linux-noreadline`->`make linux`, ANTS_TESTS ON->OFF (hermetic build can't FetchContent googletest), Lua header mirror to /app/include/lua5.4/. Flathub CI lint (flatpak-builder-lint manifest) remaining errors = the SUBMISSION checklist, all submission-stage: (a) appid-url-not-reachable (ants.org) -> resolved by ANTS-2167 rename; (b) finish-args-flatpak-spawn-access + finish-args-home-filesystem-access -> standard terminal-emulator items needing a Flathub reviewer exception (cf Ptyxis/BlackBox); (c) finish-args-unnecessary-xdg-{config,data}-...-create -> redundant under --filesystem=home, removable as part of a holistic home-vs-host finish-args decision at submission; (d) installed icon is ants-terminal.png but Flathub wants <app-id>.png (folds into ANTS-2167 icon rename). Local build is ready to shake down: flatpak run org.ants.Terminal.
+  Paused with ANTS-1070 (2026-09-28, user): the remaining submission
+  polish (icon named for the app ID, home-vs-host finish-args) waits for
+  the Flathub submission to resume.
 
 - 📋 [ANTS-2177] **Include a Flatpak build in every public release + RC (wire into `cut-rc.sh cycle` / `release.yml`).**
   The weekly dual-cut (cut-rc.sh cycle, ANTS-1318 + ANTS-2164) and

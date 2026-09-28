@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **The AppImage starts its bundled MCP helper with `--mcpd`, so AppImage users can connect Claude Code the new way** (ANTS-5321)
+  Register it once with
+  `claude mcp add ants -- /path/to/Ants_Terminal-x86_64.AppImage --mcpd`.
+  Without the switch the AppImage starts the terminal exactly as before.
+
 - **roadmap_log can list, amend, delete and promote a section's narration elements, including the legend list under the preamble** (ANTS-5379)
   `op:"list_elements"` returns a section's items, tables and narration in
   order with their positions (`preamble:true` for the root).

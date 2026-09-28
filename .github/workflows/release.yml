@@ -214,7 +214,10 @@ jobs:
           # Resolve step) so the two update streams never cross.
           UPDATE_INFORMATION: "gh-releases-zsync|milnet01|ants-terminal|${{ steps.tag.outputs.update_channel }}|Ants_Terminal-*-x86_64.AppImage.zsync"
         run: |
-          ./linuxdeploy --appdir AppDir --plugin qt --output appimage
+          # ANTS-5321 — our own AppRun: `--mcpd` starts the bundled
+          # ants-mcpd, anything else starts ants-terminal.
+          ./linuxdeploy --appdir AppDir --plugin qt \
+            --custom-apprun packaging/appimage/AppRun --output appimage
           ls -la "${OUTPUT}" "${OUTPUT}.zsync"
           file "${OUTPUT}"
 
@@ -227,6 +230,8 @@ jobs:
           # which is the standard CI fallback (no fuse, no kernel modules).
           ./"${OUTPUT}" --appimage-extract-and-run --version
           ./"${OUTPUT}" --appimage-extract-and-run --help
+          # ANTS-5321 — the launch switch reaches the bundled MCP helper.
+          ./"${OUTPUT}" --appimage-extract-and-run --mcpd --version
 
       - name: Upload to release
         env:

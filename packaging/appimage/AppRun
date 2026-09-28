@@ -1,0 +1,13 @@
+#!/bin/sh
+# ANTS-5321 — the AppImage entry point. `Ants.AppImage --mcpd` starts the
+# bundled ants-mcpd, the MCP helper Claude Code registers with
+#   claude mcp add ants -- /path/to/Ants.AppImage --mcpd
+# Anything else starts the terminal with its arguments untouched.
+# linuxdeploy takes this via --custom-apprun and runs its plugin hooks
+# (Qt's plugin path) before it.
+HERE="$(dirname "$(readlink -f "$0")")"
+if [ "${1:-}" = "--mcpd" ]; then
+    shift
+    exec "$HERE/usr/bin/ants-mcpd" "$@"
+fi
+exec "$HERE/usr/bin/ants-terminal" "$@"
