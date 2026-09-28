@@ -42068,6 +42068,10 @@ in each bullet, not just the reporter's symptom.
 
   Today Ants pushes get no gitleaks scan, because the repo's own
   core.hooksPath hides the machine-wide hook.
+  Progress (2026-09-28): the secret scan half is done in bafb1970.
+  tools/hooks/pre-push pipes git's stdin to the machine-wide hook's
+  --secrets-only; a planted key is refused. The hand-off itself still
+  waits on docsCommand and the dirty-tree option.
   **Layman:** Use the same push checker every other project uses, so Ants also gets its leaked-password scan and one place to fix the checker.
   Kind: refactor.
   Source: user-request-2026-09-28.
