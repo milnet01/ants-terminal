@@ -7,11 +7,13 @@
 // session in any tab is killed (docs/specs/ANTS-4932-standalone-mcp-server.md).
 //
 // stdout carries the protocol and nothing else: one JSON-RPC reply per line.
-// Diagnostics go to stderr.
+// Diagnostics go to stderr. `--call` (ANTS-5506) runs one verb instead and
+// prints its unwrapped result; docs/specs/ANTS-5506-mcpd-call.md.
 
 #include "claudeintegration.h"
 #include "config.h"
 #include "debuglog.h"
+#include "mcpdcall.h"
 #include "mcpdforwarder.h"
 #include "mcpdtrustclient.h"
 #include "mcpdversion.h"
@@ -61,6 +63,11 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ANTS-5506 — read before stdin, like --version: `--call` never serves stdio.
+    QStringList cliArgs;
+    for (int i = 1; i < argc; ++i) cliArgs << QString::fromLocal8Bit(argv[i]);
+    const mcpd::CallRequest callRequest = mcpd::parseCallRequest(cliArgs);
+
     QCoreApplication app(argc, argv);
     // Same name as the terminal, so every AppConfigLocation path agrees.
     app.setApplicationName(QStringLiteral("Ants Terminal"));
@@ -74,10 +81,12 @@ int main(int argc, char **argv) {
     // § 2.3 — the same config the terminal reads, including the master gate.
     // Read once: a Settings change reaches this process on the next client
     // reconnect, which starts a fresh one.
+    // ANTS-5506 § 2.1 — `--call` turns terse responses and offload off, so a
+    // script reads the whole envelope, empty `findings` included.
     const Config config;
-    mcp::setTerseDefault(config.claudeMcpTerseResponses());
+    mcp::setTerseDefault(!callRequest.isCall && config.claudeMcpTerseResponses());
     mcp::setHintLatchEnabled(config.claudeMcpHintLatch());
-    mcp::setOffloadConfig(config.claudeMcpOffloadLargeResults(),
+    mcp::setOffloadConfig(!callRequest.isCall && config.claudeMcpOffloadLargeResults(),
                           config.claudeMcpOffloadThresholdBytes(),
                           config.claudeMcpOffloadHeadBytes());
     const mcp::ProjectQueryConfig projectQuery{
@@ -108,6 +117,10 @@ int main(int argc, char **argv) {
         return projectQuery;
     };
     mcp::registerProjectScopedVerbs(pipeline, [&rc] { return &rc; }, host);
+
+    // ANTS-5506 — everything above is shared with stdio mode. `--call` builds
+    // no forwarder and no usage snapshot, which is why it returns here.
+    if (callRequest.isCall) return mcpd::runCall(callRequest, pipeline);
 
     // § 2.5 — every terminal-scoped verb goes to the terminal, whole.
     mcpd::Forwarder forwarder;

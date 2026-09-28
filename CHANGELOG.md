@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`ants-mcpd --call <verb> '<json>' --exit-code` runs any project-scoped Ants MCP verb from a shell, so a push gate can use Ants' checks.** (ANTS-5506)
+  stdout carries the verb's JSON result, whole and unwrapped. The exit
+  code is 0 clean, 1 refused or failed, 2 usage, 3 findings, the same
+  convention as ants-helper. The working directory becomes the project
+  when no caller_cwd is given.
+
 - **The AppImage starts its bundled MCP helper with `--mcpd`, so AppImage users can connect Claude Code the new way** (ANTS-5321)
   Register it once with
   `claude mcp add ants -- /path/to/Ants_Terminal-x86_64.AppImage --mcpd`.

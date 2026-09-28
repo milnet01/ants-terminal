@@ -28,10 +28,16 @@ namespace ants_test {
 class McpdSession {
 public:
     // `cwd` becomes the server's process cwd (§ 2.4's fallback root).
-    // `terminalSocket` is exported as ANTS_MCP_SOCKET.
-    McpdSession(const QString &cwd, const QString &terminalSocket) {
+    // `terminalSocket` is exported as ANTS_MCP_SOCKET. `envOverrides` layers
+    // on top of the inherited environment — e.g. a per-case XDG_CONFIG_HOME /
+    // XDG_DATA_HOME pair, when a test needs a config.json the bundle's shared
+    // sandbox (tests/bundle_main_gui.cpp) does not carry (ANTS-5506).
+    McpdSession(const QString &cwd, const QString &terminalSocket,
+                const QHash<QString, QString> &envOverrides = {}) {
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert(QStringLiteral("ANTS_MCP_SOCKET"), terminalSocket);
+        for (auto it = envOverrides.cbegin(); it != envOverrides.cend(); ++it)
+            env.insert(it.key(), it.value());
         m_proc.setProcessEnvironment(env);
         m_proc.setWorkingDirectory(cwd);
         m_proc.setProcessChannelMode(QProcess::SeparateChannels);
@@ -114,7 +120,7 @@ public:
 
     QJsonObject call(const QString &tool, const QJsonObject &args,
                      int timeoutMs = 20000) {
-        const QJsonObject reply = await(sendCall(tool, args), timeoutMs);
+        QJsonObject reply = await(sendCall(tool, args), timeoutMs);
         if (reply.contains(QStringLiteral("test_timeout")))
             return reply;   // ANTS-5339 — surfaced, not flattened to {}
         return payload(reply);

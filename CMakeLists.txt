@@ -700,6 +700,9 @@ add_library(ants_mcpcore_lib STATIC
     # Here rather than in the executable so a test can call the uid checks.
     src/mcpdsocket.cpp
     src/mcpdforwarder.cpp
+    # ANTS-5506 — `ants-mcpd --call`'s parsing and exit-code mapping, here for
+    # the same reason: tests/features/mcpd_call/ calls them directly.
+    src/mcpdcall.cpp
     # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust, and the
     # terminal's answer. Both window-free.
     src/mcpdtrustclient.cpp
@@ -2280,6 +2283,8 @@ if(ANTS_TESTS)
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
                 # ANTS-4932 — ants-mcpd, run as a child process.
                 tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
+                # ANTS-5506 — ants-mcpd --call, run as a child process.
+                tests/features/mcpd_call/test_mcpd_call.cpp
                 # ANTS-5485 — deprecated verbs are marked, answer and are counted.
                 tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
                 # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.
@@ -3057,6 +3062,8 @@ if(ANTS_TESTS)
                         tests/features/mcpd_verify_trust_wiring/test_mcpd_verify_trust_wiring.cpp
                         tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
                         tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
+                        # ANTS-5506 — ants-mcpd --call.
+                        tests/features/mcpd_call/test_mcpd_call.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>"
         ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")

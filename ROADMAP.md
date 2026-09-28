@@ -66854,6 +66854,13 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   mirroring the MCP arguments exactly, plus --exit-code, so the CLI
   shares the verb's schema. Example: doc_lint '{"paths":["docs"]}'
   --exit-code.
+  Progress (2026-09-28): the CLI half shipped. `ants-mcpd --call <verb>
+  '<json>' --exit-code` per docs/specs/ANTS-5506-mcpd-call.md (accepted,
+  review-contract capped calm at 2). tests/features/mcpd_call: 14 cases
+  green; proven red against stubs first; 8 of 8 mutations killed (two
+  survivors fixed by moving INV-3 and INV-9's settings halves onto
+  read_region). Still open: the five new doc_lint checks, which go into
+  docs/specs/ANTS-3663.md as an amendment.
   **Layman:** Several document checks the skills rely on have no tool behind them, so they are done by hand.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A5, quick win).

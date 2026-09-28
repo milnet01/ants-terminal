@@ -52,8 +52,9 @@ Without `--exit-code`, findings never change the code: a caller that wants the e
 
 ### 2.3 Where it lives
 
-- `src/mcpdcall.h` / `src/mcpdcall.cpp`, in the `ants-mcpd` target: argument parsing, the one-shot `McpReplyChannel`, unwrapping, and the envelope-to-exit-code mapping, as free functions a test can call.
-- `src/mcpdmain.cpp`: `main` checks for `--call` before reading stdin, beside the `--version` check. The pipeline and registry setup moves into one function both modes call, so they cannot drift; § 2.1's four differences stay outside it.
+- `src/mcpdcall.h` / `src/mcpdcall.cpp`, in `ants_mcpcore_lib` beside `mcpdsocket.cpp` and `mcpdforwarder.cpp`, so a test can call them: argument parsing, the one-shot `McpReplyChannel`, unwrapping, and the envelope-to-exit-code mapping.
+- `src/mcpdmain.cpp`: `main` parses `--call` before reading stdin, beside the `--version` check. Both modes run the same pipeline and registry setup lines, so they cannot drift; `--call` returns straight after `mcp::registerProjectScopedVerbs`, before the stdio-only forwarder and usage snapshot.
+- Before the call, `--call` sends `tools/list` through the pipeline, as a client does: `tool_info` refuses `tools_not_ready` until something has.
 
 ### 2.4 Reload and cost
 
