@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Hand the push to the machine-wide hook (ANTS-5542). It runs the secret scan,
 # works out what the push changes, and runs tools/local-ci.sh — in full, or
-# with --docs for a documentation-only push. This file exists only because
-# core.hooksPath=tools/hooks, which pre-commit needs, hides that hook.
+# with --docs for a documentation-only push — as .ants/gate.conf says. This
+# file exists only because core.hooksPath=tools/hooks, which pre-commit needs,
+# hides that hook.
 set -euo pipefail
 
 global_hook="${ANTS_GLOBAL_HOOKS:-$HOME/.claude/githooks}/pre-push"
@@ -10,15 +11,6 @@ if [[ ! -x "$global_hook" ]]; then
     echo "pre-push: no machine-wide hook at $global_hook — NOTHING WAS CHECKED." >&2
     echo "          Run tools/local-ci.sh by hand before pushing." >&2
     exit 0
-fi
-
-# Without these the hook would gate in a cold checkout and never see a push
-# as documentation-only. tools/setup-git-hooks.sh sets them.
-if [[ "$(git config --get ants.gate.docsCommand || true)" == "" ||
-      "$(git config --type=bool --get ants.gate.inPlace || true)" != true ]]; then
-    echo "pre-push: this clone's gate settings are missing — push refused." >&2
-    echo "          Run tools/setup-git-hooks.sh once, then push again." >&2
-    exit 1
 fi
 
 exec "$global_hook" "$@"

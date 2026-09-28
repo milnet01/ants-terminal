@@ -105,8 +105,8 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   no second script. `--stress` adds CPU load.
 - Hunt a flaky test with `ctest --test-dir build --repeat until-fail:5 -R <test>`.
 - **Run `tools/setup-git-hooks.sh` once per clone.** It sets
-  `core.hooksPath=tools/hooks` and the `ants.gate.*` keys. Without them the
-  pre-push shim refuses the push.
+  `core.hooksPath=tools/hooks`. How the push hook runs the gate is committed
+  in `.ants/gate.conf`.
 - `tools/hooks/pre-push` hands off to the machine-wide hook
   (`~/.claude/githooks/pre-push`). That hook runs the secret scan, works out
   what the push changes, and runs `tools/local-ci.sh` in the real checkout.

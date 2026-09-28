@@ -23,14 +23,15 @@ covers the docs-only decision itself.
 - **INV-3** — a documentation-only push runs the gate with `--docs`, and
   `ANTS_PUSH_CHANGED` names its paths.
 
-- **INV-4** — a clone without the gate settings that
-  `tools/setup-git-hooks.sh` writes is refused by the shim. Without them the
-  hook would gate in a cold checkout and never see a push as docs-only.
+- **INV-4** — the committed `.ants/gate.conf` governs a clone with no
+  `ants.gate.*` keys of its own: a docs-only push from a clean tree at HEAD
+  runs `--docs` in place. Without it the hook would gate in a cold checkout
+  and never see a push as docs-only.
 
 ## How it is tested
 
 `test_prepush_range.sh` builds a throwaway repository with copies of the
-real shim and setup script, and runs the real machine-wide hook. A stub
+real shim and `.ants/gate.conf`, and runs the real machine-wide hook. A stub
 `tools/ci_workflow.py` forwards to the real runner, so the real docs-only
 decision is used. A stand-in `tools/local-ci.sh` prints how it was called
 instead of building. The test exits 77 (skipped) where the machine-wide hook

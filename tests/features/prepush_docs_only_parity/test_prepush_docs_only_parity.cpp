@@ -95,21 +95,21 @@ bool pyyamlPresent() {
 
 // INV-1 — no list of our own; the machine-wide hook asks the runner, which
 // reads ci.yml. A second list is the drift ANTS-4726 was filed about.
-// ANTS-5542: the gate keeps no list, and the setup script points the hook's
-// docsCommand at the runner rather than setting a docsGlob twin.
+// ANTS-5542: the gate keeps no list, and the committed .ants/gate.conf points
+// the hook's docsCommand at the runner rather than setting a docsGlob twin.
 TEST(PrepushDocsOnlyParity, Inv1HookAsksTheWorkflowAndKeepsNoList) {
     expect_reset();
     const std::string sh = ants_test::slurpFile(SRC_PREPUSH_HOOK_PATH);
     ASSERT_FALSE(sh.empty());
     expect(sh.find("docs_only_re") == std::string::npos,
            "5322/no-hand-list", QString());
-    const std::string setup =
-        ants_test::slurpFile(ANTS_SOURCE_DIR "/tools/setup-git-hooks.sh");
-    ASSERT_FALSE(setup.empty());
-    expect(setup.find("ants.gate.docsCommand 'python3 tools/ci_workflow.py docs-only'")
+    const std::string conf =
+        ants_test::slurpFile(ANTS_SOURCE_DIR "/.ants/gate.conf");
+    ASSERT_FALSE(conf.empty());
+    expect(conf.find("docsCommand = python3 tools/ci_workflow.py docs-only")
                != std::string::npos,
            "5542/hook-asks-the-runner", QString());
-    expect(setup.find("docsGlob") == std::string::npos,
+    expect(conf.find("docsGlob") == std::string::npos,
            "5542/no-glob-twin", QString());
     ASSERT_EQ(0, expect_finish());
 }

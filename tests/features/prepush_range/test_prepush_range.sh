@@ -16,14 +16,15 @@ fail() { failures=$((failures + 1)); printf '[FAIL] %s\n' "$*" >&2; }
 pass() { printf '[ ok ] %s\n' "$*"; }
 
 T="$(mktemp -d -t ants-prepush-range.XXXXXX)"
-trap 'rm -rf "$T"' EXIT
+WT="$(mktemp -d -t ants-prepush-range-wt.XXXXXX)"
+trap 'rm -rf "$T" "$WT"' EXIT
 git -C "$T" init -q -b main
 git -C "$T" config user.email t@t; git -C "$T" config user.name t
-mkdir -p "$T/tools/hooks" "$T/.github/workflows" "$T/docs"
+mkdir -p "$T/tools/hooks" "$T/.github/workflows" "$T/docs" "$T/.ants"
 cp "$REPO_ROOT/tools/hooks/pre-push" "$T/tools/hooks/pre-push"
-cp "$REPO_ROOT/tools/setup-git-hooks.sh" "$T/tools/setup-git-hooks.sh"
+cp "$REPO_ROOT/.ants/gate.conf" "$T/.ants/gate.conf"
 cp "$REPO_ROOT/.github/workflows/ci.yml" "$T/.github/workflows/ci.yml"
-# The real classifier, reached through the path the setup script configures.
+# The real classifier, reached through the path gate.conf configures.
 cat > "$T/tools/ci_workflow.py" <<PY
 #!/usr/bin/env python3
 import subprocess, sys
@@ -35,7 +36,7 @@ cat > "$T/tools/local-ci.sh" <<'SH'
 echo "GATE-RAN mode=${1:-full} changed=${ANTS_PUSH_CHANGED-<unset>}" | tr '\n' ' '
 echo
 SH
-chmod +x "$T/tools/local-ci.sh" "$T/tools/hooks/pre-push" "$T/tools/setup-git-hooks.sh"
+chmod +x "$T/tools/local-ci.sh" "$T/tools/hooks/pre-push"
 printf 'x = 1\n' > "$T/tools/x.py"
 printf '# a\n' > "$T/docs/a.md"
 git -C "$T" add -A; git -C "$T" commit -qm base
@@ -46,17 +47,25 @@ run_hook() {  # stdin lines -> combined output
     (cd "$T" && ANTS_GLOBAL_HOOKS="$GLOBAL_HOOKS" bash tools/hooks/pre-push origin url 2>&1)
 }
 
-# INV-4 — without this clone's gate settings the shim refuses.
-out="$(printf 'refs/heads/main %s refs/heads/main %s\n' "$BASE" "$BASE" | run_hook)"
-if grep -q 'settings are missing' <<<"$out" && ! grep -q 'GATE-RAN' <<<"$out"; then
-    pass "INV-4 missing gate settings refuse the push"
+# INV-4 — a clone with no ants.gate keys of its own takes the committed
+# .ants/gate.conf: a docs-only push reaches the gate as --docs, in place.
+git -C "$T" checkout -q -b side
+printf '# b\n' > "$T/docs/b.md"; git -C "$T" add -A; git -C "$T" commit -qm docs
+DOC="$(git -C "$T" rev-parse HEAD)"
+local_keys="$(git -C "$T" config --local --get-regexp '^ants\.gate\.' || true)"
+out="$(printf 'refs/heads/side %s refs/heads/side %s\n' "$DOC" "$BASE" | run_hook)"
+if [[ -z "$local_keys" ]] && grep -q 'in place' <<<"$out" \
+   && grep -q 'GATE-RAN mode=--docs changed=docs/b.md' <<<"$out"; then
+    pass "INV-4 the committed gate.conf governs a clone with no settings of its own"
 else
-    fail "INV-4 the shim ran without gate settings: $(head -3 <<<"$out")"
+    fail "INV-4 gate.conf did not govern: $(grep 'GATE\|pre-push' <<<"$out" | head -3)"
 fi
-(cd "$T" && tools/setup-git-hooks.sh >/dev/null)
-# A pushed tip that is not HEAD takes a fresh checkout here, not a refusal.
+
+# The later cases push tips that are not HEAD: take a fresh checkout for
+# them rather than gate.conf's refusal. A clone's own key wins over the file.
+git -C "$T" checkout -q main
 git -C "$T" config ants.gate.dirtyTree worktree
-git -C "$T" config ants.gate.worktreeDir "$T/wt"
+git -C "$T" config ants.gate.worktreeDir "$WT"
 
 # INV-1 — a rename of a code file into docs/.
 git -C "$T" mv tools/x.py docs/x.md; git -C "$T" commit -qm rename
@@ -69,10 +78,6 @@ else
 fi
 
 # INV-2 — one ref's range cannot be diffed; another ref is docs-only.
-git -C "$T" checkout -q -b side "$BASE"
-printf '# b\n' > "$T/docs/b.md"; git -C "$T" add -A; git -C "$T" commit -qm docs
-DOC="$(git -C "$T" rev-parse HEAD)"
-git -C "$T" checkout -q main
 UNKNOWN="1234567890abcdef1234567890abcdef12345678"
 out="$(printf 'refs/heads/main %s refs/heads/main %s\nrefs/heads/side %s refs/heads/side %s\n' \
         "$REN" "$UNKNOWN" "$DOC" "$BASE" | run_hook)"
@@ -83,7 +88,6 @@ else
 fi
 
 # INV-3 — a documentation-only push reaches the gate as --docs, with its paths.
-git -C "$T" checkout -q side
 out="$(printf 'refs/heads/side %s refs/heads/side %s\n' "$DOC" "$BASE" | run_hook)"
 if grep -q 'GATE-RAN mode=--docs changed=docs/b.md' <<<"$out"; then
     pass "INV-3 a docs-only push runs the gate's --docs mode"

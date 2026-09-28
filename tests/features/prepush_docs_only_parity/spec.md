@@ -17,8 +17,8 @@ changed paths to `tools/ci_workflow.py docs-only`, which reads ci.yml's push
 agree, and the invariants are about the one decision.
 
 - **INV-1** — no docs-only list of our own. The gate, `tools/local-ci.sh`,
-  holds none (`docs_only_re` is gone). `tools/setup-git-hooks.sh` sets the
-  machine-wide hook's `ants.gate.docsCommand` to the runner and sets no
+  holds none (`docs_only_re` is gone). The committed `.ants/gate.conf` sets
+  the machine-wide hook's `ants.gate.docsCommand` to the runner and sets no
   `docsGlob` twin (ANTS-5542).
 
 - **INV-2** — the decision follows ci.yml and is anchored at the start of the

@@ -85,7 +85,10 @@ that machine only; a fresh
 clone, a colleague's box and CI are each back in breach with nothing said.
 So a repository meeting this section through the shared hook owes a script
 a clone runs, such as the skeleton's `scripts/setup-hooks.sh`, and its README
-names it. Commands written only in prose, `CLAUDE.md` included, do not
+names it. **The keys themselves can travel**: the shared hook also reads
+them from a committed `.ants/gate.conf` (git-config format), and a key in
+the clone's own config wins. `core.hooksPath` cannot go there, so the
+setup script is still owed. Commands written only in prose, `CLAUDE.md` included, do not
 count: a clone runs nothing it has to read first.
 
 **Only the second announces itself, and that asymmetry is the diagnostic.**
@@ -118,6 +121,39 @@ it is where a conformer finds out whether a skip needed the user and where
 the reason gets written. Read it there. **§ 7 classifies one act against
 it** — taking the complete skip by hand — so an editor of `commits.md`
 § 2.3 sweeps that sentence too.
+
+### 2.1 A hook of its own keeps every check the shared hook runs
+
+**A project may keep its own `pre-push` for speed. It may not drop a check
+to get it.** Settled by the user 2026-09-28. So a hook of its own does all of these,
+on every push, documentation-only pushes included:
+
+1. **The secret scan over the pushed commits** ([security.md](security.md)
+   § 2). The simplest way is to pipe git's stdin to
+   `~/.claude/githooks/pre-push --secrets-only`, which scans and runs no
+   gate.
+2. **The gate over the pushed commits, never the working tree** (§ 5).
+3. **On a documentation-only push, the documentation checks** (§ 6), with
+   § 6.2's rule that every pushed path must match.
+4. **A complete skip only on § 7's three conditions.**
+
+**Before writing a hook of its own, check whether a shared-hook knob gives
+the speed-up.** `ants.gate.inPlace` keeps a warm build tree, with
+`ants.gate.dirtyTree` and `ants.gate.worktreeDir` for when it cannot run in
+place. `ants.gate.docsCommand` classifies a push from the CI's own path
+list rather than a second copy of it. The gate receives the pushed range in
+`ANTS_PUSH_REFS` and `ANTS_PUSH_CHANGED`. The shared hook's header documents
+them all. A repository that hands off to the
+shared hook gets all four checks without restating them.
+
+**Scope: a `pre-push` that does not hand off to the shared hook.** A shim
+that only execs it is not a hook of its own (§ 6.2), and neither is one that
+refuses before the exec, for instance until a setup script has run. **It binds from
+2026-09-28.** A hook written before then is not in breach for its past, but
+its next edit brings it into line. `ci-gate` reports a hook of its own that
+neither hands off nor runs a secret scan. **Nothing checks items 2–4
+mechanically**; whether a hook's documentation mode keeps the checks the
+pipeline needs is a judgement only the project can make (§ 6).
 
 ## 3. Execute the pipeline's own definition
 
