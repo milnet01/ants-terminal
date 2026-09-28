@@ -487,6 +487,18 @@ branch name and every author would invent a different collapse.
 branches, fine. On `main` / `master` / shared branches, never —
 use `git revert` + new commit instead.
 
+### 3.4 PR-based feature work, where a project opts in
+
+Trunk-based (§ 3.1) is the default. A project may opt its feature work into pull requests; how it opts in is machine policy, and the user's global `CLAUDE.md` rule 7 names the signals. When opted in:
+
+- Branch per § 3.2.
+- Commit feature work on the branch, every commit `<ID>: <description>` (§ 1.1).
+- Push, then `gh pr create --title "<ID>: <theme>" --body "<changelog body>"`.
+- Wait for CI green (`gh pr checks --watch`).
+- Merge with `gh pr merge --squash`, or `--rebase` if the history is linear.
+
+The PR step is for `Kind: implement` items, where review before merge is worth most. Bug fixes, doc-only, debt-sweep and release commits land directly on the trunk.
+
 ## 4. Push policy
 
 ### 4.1 Pushing can cost something; committing never does
@@ -500,6 +512,8 @@ CI minutes — stack commits and push the batch.** Every push spends
 somebody's quota, so the person paying decides when it is spent, not the
 session. Track what is queued and offer the batch; do not push
 unprompted.
+
+**When the batch goes, it goes in one push** — `git push --follow-tags origin <branch>`, one CI run for the lot — and chore, debt-sweep and docs commits ride in it rather than starting runs of their own. `--follow-tags` sends only the annotated tags reachable from what is being pushed; `--tags` would publish every local tag (§ 4.3).
 
 **Where a push costs nothing — a public repository with free runners, or
 any repository with no CI at all — either cadence is fine.** Push per
