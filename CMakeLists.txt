@@ -2647,6 +2647,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_amend_field/test_roadmap_log_amend_field.cpp
                 # ANTS-4949 / ANTS-4968 — set_intro and set_preamble.
                 tests/features/roadmap_log_set_intro/test_roadmap_log_set_intro.cpp
+                tests/features/roadmap_log_elements/test_roadmap_log_elements.cpp
                 # ANTS-4977 — dropped items published as 🚫.
                 tests/features/roadmap_dropped_status/test_roadmap_dropped_status.cpp
                 # ANTS-4958 — delete_section and move_section.

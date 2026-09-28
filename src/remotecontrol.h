@@ -1295,7 +1295,14 @@ private:
     // mcp_roadmap_log_atomicity test can drive it without the m_main
     // guard. cmdRoadmapLog keeps op-dispatch + the m_main guard, then
     // delegates here for op:"append".
-    QJsonDocument cmdRoadmapLogAppend(const QJsonObject &req);
+    // ANTS-5379 — `replaceNarrationAt` >= 0 files the item AT that position of
+    // the section and removes the narration element there in the same write:
+    // op:"promote_element", which has checked the element is narration.
+    QJsonDocument cmdRoadmapLogAppend(const QJsonObject &req,
+                                      int replaceNarrationAt = -1);
+    // ANTS-5379 — list_elements, amend_element, delete_element and
+    // promote_element: a section's narration and table elements. Store-only.
+    QJsonDocument cmdRoadmapLogElement(const QJsonObject &req);
     // ANTS-1878 — create_section: splice a new ## / ### heading after
     // an existing section. No counter touch; single atomic write.
     QJsonDocument cmdRoadmapLogCreateSection(const QJsonObject &req);

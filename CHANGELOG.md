@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log can list, amend, delete and promote a section's narration elements, including the legend list under the preamble** (ANTS-5379)
+  `op:"list_elements"` returns a section's items, tables and narration in
+  order with their positions (`preamble:true` for the root).
+  `amend_element` replaces a narration's text, `delete_element` removes a
+  narration or table, and `promote_element` files a narration as an item
+  in the same place. Each takes `element_position` and `dry_run`. Before
+  this, no op reached those lines and a hand edit was lost at the next
+  render.
+
 - **roadmap_log op:"amend_batch" applies the same find-and-replace edit as amend_body to several items in one call, skipping any that do not match.** (ANTS-4669)
 
 - **roadmap_migrate notes a status bullet it carries as loose text (`narrated_status_bullet`, and `narrated_open_status_bullet` for an open task) and a bullet led by an unknown status emoji (`unrecognised_status_marker`), each at its line.** (ANTS-5383)

@@ -4263,3 +4263,180 @@ bool rcdetail::rcContainsHtmlEntity(const QString &pattern) {
         QStringLiteral("&(lt|gt|amp|quot|apos|nbsp|#[0-9]+|#x[0-9A-Fa-f]+);"));
     return ent.match(pattern).hasMatch();
 }
+
+// ANTS-5379 — a section's narration and table elements. Contract:
+// tests/features/roadmap_log_elements/spec.md. An element is addressed by its
+// `position` in the section, the key the store gives it (UNIQUE (section_id,
+// position)); list_elements is how a caller learns it.
+QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
+    const QString op = req.value(QStringLiteral("op")).toString();
+    const bool preamble = req.value(QStringLiteral("preamble")).toBool();
+    const bool listing  = op == QStringLiteral("list_elements");
+    const bool promote  = op == QStringLiteral("promote_element");
+    // The live root's slug is the EMPTY string (see cmdRoadmapLogSetIntro).
+    const QString slug = preamble
+        ? QStringLiteral("")
+        : req.value(QStringLiteral("section")).toString().trimmed();
+    if (!preamble && slug.isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: %1 requires `section`, or preamble:true "
+                           "for the elements under the roadmap's preamble").arg(op));
+    if (promote && preamble)
+        return rcSectionOpErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: promote_element files an item, and items "
+                           "belong in a section; name one with `section`"));
+    const bool hasPos = req.value(QStringLiteral("element_position")).isDouble();
+    const int position = req.value(QStringLiteral("element_position")).toInt(-1);
+    if (!listing && (!hasPos || position < 0))
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: %1 requires `element_position`, a non-negative "
+                           "integer from op:\"list_elements\"").arg(op));
+    if (op == QStringLiteral("amend_element") &&
+        !req.value(QStringLiteral("new_text")).isString())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: amend_element requires `new_text`"));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    QString err;
+    const auto sectionId = store.findSection(projectId, slug, &err);
+    if (!sectionId && !err.isEmpty())
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    if (!sectionId) {
+        QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
+            QStringLiteral("roadmap_log: section \"%1\" is not in the store")
+                .arg(slug)).object();
+        if (const auto sections = store.listSectionsOrdered(projectId)) {
+            QStringList slugs;
+            for (const RoadmapStore::SectionRow &sr : *sections)
+                if (!sr.slug.isEmpty()) slugs << sr.slug;
+            env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
+                ReadRegion::rankSectionCandidates(slug, slugs));
+            env[QStringLiteral("sections_total")] = int(slugs.size());
+        }
+        return QJsonDocument(env);
+    }
+    const auto elems = store.listElements(*sectionId, &err);
+    if (!elems)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+
+    if (listing) {
+        QJsonArray out;
+        for (const RoadmapStore::ElementRow &e : *elems) {
+            QJsonObject o;
+            o[QStringLiteral("position")] = e.position;
+            o[QStringLiteral("kind")]     = e.kind;
+            if (e.kind == QLatin1String("narration")) {
+                o[QStringLiteral("text")] = e.payload.value_or(QString());
+            } else if (e.kind == QLatin1String("table")) {
+                const QJsonObject t = QJsonDocument::fromJson(
+                    e.payload.value_or(QString()).toUtf8()).object();
+                o[QStringLiteral("rows")] = int(t.value(QStringLiteral("rows")).toArray().size());
+            } else if (const auto item = store.readItem(e.itemPk, &err)) {
+                o[QStringLiteral("id")] = item->id;   // the fold is lower-cased
+            }
+            out.append(o);
+        }
+        QJsonObject env;
+        env[QStringLiteral("ok")] = true;
+        env[QStringLiteral("op")] = op;
+        if (!preamble) env[QStringLiteral("section")] = slug;
+        env[QStringLiteral("elements")] = out;
+        env[QStringLiteral("count")]    = int(out.size());
+        return QJsonDocument(env);
+    }
+
+    const RoadmapStore::ElementRow *found = nullptr;
+    for (const RoadmapStore::ElementRow &e : *elems)
+        if (e.position == position) found = &e;
+    if (!found)
+        return rcSectionOpErr(QStringLiteral("element_not_found"),
+            QStringLiteral("roadmap_log: section \"%1\" holds no element at position "
+                           "%2; op:\"list_elements\" gives the positions")
+                .arg(slug).arg(position));
+    const QString kind = found->kind;
+    const bool narration = kind == QLatin1String("narration");
+    const bool allowed = narration ||
+        (op == QStringLiteral("delete_element") && kind == QLatin1String("table"));
+    if (!allowed)
+        return rcSectionOpErr(QStringLiteral("element_kind_refused"),
+            QStringLiteral("roadmap_log: %1 does not take a%2 %3 element%4")
+                .arg(op, kind == QLatin1String("item") ? QStringLiteral("n")
+                                                       : QString(), kind,
+                     kind == QLatin1String("item")
+                         ? QStringLiteral("; an item changes through the item ops "
+                                          "(flip, amend_body, amend_field)")
+                         : QString()));
+    const QString previous = found->payload.value_or(QString());
+
+    if (promote) {
+        QJsonObject appendReq = req;
+        appendReq[QStringLiteral("op")] = QStringLiteral("append");
+        appendReq.remove(QStringLiteral("element_position"));
+        if (appendReq.value(QStringLiteral("headline")).toString().trimmed().isEmpty()) {
+            // The narration's first line, without its list marker.
+            static const QRegularExpression kMarker(
+                QStringLiteral("^\\s*(?:[-*+]|\\d+[.)])\\s+"));
+            QString first = previous.section(QChar('\n'), 0, 0);
+            first.remove(kMarker);
+            appendReq[QStringLiteral("headline")] = first.trimmed();
+        }
+        QJsonDocument doc = cmdRoadmapLogAppend(appendReq, position);
+        QJsonObject env = doc.object();
+        if (env.value(QStringLiteral("ok")).toBool()) {
+            env[QStringLiteral("op")]           = op;
+            env[QStringLiteral("element_position")] = position;
+            env[QStringLiteral("removed_text")] = previous;
+        }
+        return QJsonDocument(env);
+    }
+
+    QString newText;
+    if (op == QStringLiteral("amend_element")) {
+        newText = req.value(QStringLiteral("new_text")).toString();
+        newText.remove(QChar('\r'));
+        // A `#` to `###` line outside a fence is a heading the next import
+        // reads as a new section, exactly as set_intro refuses it.
+        static const QRegularExpression kHeading(QStringLiteral("^#{1,3}\\s"));
+        const QStringList lines = newText.split(QChar('\n'));
+        const QVector<bool> fenced = MarkdownScan::fenceMask(lines);
+        for (int i = 0; i < lines.size(); ++i)
+            if (!fenced.value(i) && kHeading.match(lines.at(i)).hasMatch())
+                return rcSectionOpErr(QStringLiteral("bad_element_text"),
+                    QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, "
+                                   "which the next import reads as a new section")
+                        .arg(lines.at(i)));
+        if (newText.trimmed().isEmpty())
+            return rcSectionOpErr(QStringLiteral("bad_element_text"),
+                QStringLiteral("roadmap_log: amend_element's `new_text` is empty; "
+                               "op:\"delete_element\" removes an element"));
+    }
+
+    const bool del = op == QStringLiteral("delete_element");
+    const auto mutate = [&](QString *mErr) -> bool {
+        return del ? store.deleteElement(*sectionId, position, mErr)
+                   : store.setElementPayload(*sectionId, position, newText, mErr);
+    };
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+    env[QStringLiteral("ok")]       = true;
+    env[QStringLiteral("op")]       = op;
+    if (!preamble) env[QStringLiteral("section")] = slug;
+    env[QStringLiteral("element_position")] = position;
+    env[QStringLiteral("kind")]     = kind;
+    if (narration) env[del ? QStringLiteral("removed_text")
+                           : QStringLiteral("previous_text")] = previous;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
+}

@@ -473,6 +473,12 @@ public:
     bool setElementPayload(qint64 sectionId, int position, const QString &payload,
                            QString *error = nullptr);
 
+    // ANTS-5379 — removes one narration or table element. Refuses an item
+    // filing, which leaves by deleteItem() or unfileItem(), and a position
+    // that holds nothing, so a caller's stale position is reported rather
+    // than read as success.
+    bool deleteElement(qint64 sectionId, int position, QString *error = nullptr);
+
     // § 2.6's element rebuild re-files items that already exist, which putItem()
     // cannot do (UNIQUE (project_id, id_fold)) and addElement() must not.
     // Refuses an already-filed item: INV-20's "at most one" is elem_item_uq,

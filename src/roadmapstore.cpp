@@ -1544,6 +1544,43 @@ bool RoadmapStore::setElementPayload(qint64 sectionId, int position,
     return true;
 }
 
+bool RoadmapStore::deleteElement(qint64 sectionId, int position, QString *error) {
+    QSqlQuery sel(m_db);
+    sel.prepare(QStringLiteral(
+        "SELECT kind FROM element WHERE section_id = ? AND position = ?"));
+    sel.addBindValue(sectionId);
+    sel.addBindValue(position);
+    if (!sel.exec()) {
+        if (error)
+            *error = lastErr(sel);
+        return false;
+    }
+    if (!sel.next()) {
+        if (error)
+            *error = QStringLiteral("no element at section %1 position %2")
+                         .arg(sectionId).arg(position);
+        return false;
+    }
+    if (sel.value(0).toString() == QLatin1String("item")) {
+        if (error)
+            *error = QStringLiteral("deleteElement() cannot remove an item filing; "
+                                    "use deleteItem() or unfileItem()");
+        return false;
+    }
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "DELETE FROM element WHERE section_id = ? AND position = ?"));
+    q.addBindValue(sectionId);
+    q.addBindValue(position);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
                             QString *error) {
     // INV-10 — the already-filed check is here rather than left to

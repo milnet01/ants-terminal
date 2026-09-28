@@ -67461,8 +67461,18 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: LocalWebServerManager feedback 2026-09-25.
 
-- 📋 [ANTS-5379] **roadmap_log gains ops to list, amend and delete a section's or the preamble's narration elements.**
+- ✅ [ANTS-5379] **roadmap_log gains ops to list, amend and delete a section's or the preamble's narration elements.**
   No op reaches a narration element: the legend list under the preamble, or narration bullets in a section. set_intro and set_preamble skip them, and a hand edit is discarded by the next render. Wanted: list elements with an index, replace or delete by index, and promote a narration bullet to an item.
+  Resolved (2026-09-28): four store-only ops, addressed by
+  `element_position` (the name `position` is bundle_row's string enum):
+  list_elements, amend_element, delete_element, promote_element. Promote
+  reuses op:"append" with the item filed at the narration's position and
+  the narration removed in the same transaction (new
+  RoadmapStore::deleteElement). Refusals element_not_found,
+  element_kind_refused, bad_element_text. Contract and tests:
+  tests/features/roadmap_log_elements/ (6 cases, red before the ops
+  existed). Live on this project: the preamble's Themes legend lists as
+  narration at position 0. Reload: ants-mcpd rebuild + MCP reconnect.
   **Layman:** Lets sessions fix legend lists and loose notes in the roadmap without hand-editing the generated file.
   Kind: feature.
   Source: LocalWebServerManager and RetroArch feedback 2026-09-25.

@@ -69,7 +69,8 @@ bool rcdetail::rlStampShipped(RoadmapStore &store, qint64 itemPk,
 // test can drive it without the m_main guard. op-dispatch + m_main
 // guard stay in cmdRoadmapLog; everything from field validation onward
 // lives here.
-QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
+QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
+                                                 int replaceNarrationAt) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
         env["ok"]    = false;
@@ -460,7 +461,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             w.status    = status;
             w.headline  = rcSanitizeBulletField(headline, 500);
             w.sectionId = *sectionId;
-            w.position  = maxPos + 1;
+            // ANTS-5379 — promote_element puts the item where the narration was.
+            w.position  = replaceNarrationAt >= 0 ? replaceNarrationAt : maxPos + 1;
             // INV-10 — provenance is per field. `status` and `headline` came
             // from the caller; the five trailer keys and `body` are added by
             // the fill below.
@@ -514,6 +516,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                     QStringLiteral("roadmap_log: %1").arg(shadowErr));
 
             const auto mutate = [&](QString *err) -> bool {
+                // ANTS-5379 — UNIQUE (section_id, position) holds one row per
+                // position, so the narration goes before the item arrives.
+                if (replaceNarrationAt >= 0 &&
+                    !store.deleteElement(*sectionId, replaceNarrationAt, err))
+                    return false;
                 if (!store.putItem(w, err))
                     return false;
                 if (useStablePrefix)

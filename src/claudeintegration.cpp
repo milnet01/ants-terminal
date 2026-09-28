@@ -13418,6 +13418,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("amend_intro");   // ANTS-5373
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
+                    opEnum.append("list_elements");    // ANTS-5379
+                    opEnum.append("amend_element");    // ANTS-5379
+                    opEnum.append("delete_element");   // ANTS-5379
+                    opEnum.append("promote_element");  // ANTS-5379
                     // ANTS-5253 — convert shipped dispatched, described in the
                     // unknown-op refusal, and ABSENT here, which is ANTS-4842's
                     // defect repeated one op later. The guard that item left
@@ -14395,6 +14399,29 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["level"]         = levelProp;
                     props["title"]         = titleProp;
                     props["intro_body"]    = introBodyProp;
+                    {   // ANTS-5379 — the element ops' address.
+                        QJsonObject elemPosProp;
+                        elemPosProp["type"]    = "integer";
+                        elemPosProp["minimum"] = 0;
+                        elemPosProp["description"] = QStringLiteral(
+                            "op:\"amend_element\" / \"delete_element\" / "
+                            "\"promote_element\" — the element's `position` "
+                            "as op:\"list_elements\" reports it. list_elements "
+                            "returns a section's items, tables and narration in "
+                            "order; amend_element replaces a narration's text "
+                            "(`new_text`); delete_element removes a narration or "
+                            "table; promote_element files a narration as an item "
+                            "at the same place, taking op:\"append\"'s fields "
+                            "(headline defaults to the narration's first line). "
+                            "An item element is refused element_kind_refused.");
+                        props["element_position"] = elemPosProp;
+                        QJsonObject preambleProp;
+                        preambleProp["type"] = "boolean";
+                        preambleProp["description"] = QStringLiteral(
+                            "The element ops: address the elements under the "
+                            "roadmap's preamble instead of a `section`.");
+                        props["preamble"] = preambleProp;
+                    }
                     props["status"]        = statusProp;
                     props["to_status"]     = toStatusProp;
                     props["headline"]      = headlineProp;

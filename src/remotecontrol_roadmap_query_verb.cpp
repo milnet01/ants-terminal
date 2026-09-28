@@ -3999,6 +3999,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
         return cmdRoadmapLogDeleteSection(req);
     if (op == QStringLiteral("move_section"))
         return cmdRoadmapLogMoveSection(req);
+    // ANTS-5379 — a section's narration and table elements.
+    if (op == QStringLiteral("list_elements") || op == QStringLiteral("amend_element") ||
+        op == QStringLiteral("delete_element") || op == QStringLiteral("promote_element"))
+        return cmdRoadmapLogElement(req);
     // ANTS-1690 — batch flip: N bullets, one read + one commit.
     // ANTS-4470 — op:"annotate_batch" shares the handler, mirroring exactly how
     // op:"annotate" shares cmdRoadmapLogFlip above: it is this path with the
@@ -4055,7 +4059,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"flip\", \"flip_batch\", \"annotate\", "
                            "\"annotate_batch\", "
                            "\"amend_body\", \"amend_headline\", "
-                           "\"amend_field\", "
+                           "\"amend_field\", \"amend_field_batch\", "
+                           "\"amend_batch\", \"set_body\", "
+                           "\"set_intro\", \"amend_intro\", "
+                           "\"set_preamble\", \"delete_section\", "
+                           "\"move_section\", \"list_elements\", "
+                           "\"amend_element\", \"delete_element\", "
+                           "\"promote_element\", "
                            "\"bundle_row\", \"backfill_dates\", "
                            "\"render\", \"convert\", "
                            "\"repair_trailers\", or "
