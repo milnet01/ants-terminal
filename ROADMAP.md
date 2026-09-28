@@ -62750,6 +62750,9 @@ rather than refiled.
   threshold count the joined body rather than the encoded array. Same
   arithmetic applies to it, so it is likely the same answer, but it was not
   measured.
+  New evidence (2026-09-28, pressless-a5): read_region lines 200-473 of
+  ~/.claude/skills/cut-release/SKILL.md (274 rows, 16.9 KB) spilled with no
+  row preview, and the session fell back to sed.
   **Layman:** Reading several slices of a file returns them in a bulky format that trips the size limit, so a plain shell command wins.
   Kind: enhancement.
   Source: Pressless-feedback-2026-09-06.
