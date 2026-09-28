@@ -5,6 +5,8 @@
 
 #include <QRegularExpression>
 
+#include <utility>
+
 namespace MutationProbe {
 
 ApplyResult applyOne(const QString &content, const Mutation &m) {
@@ -40,7 +42,7 @@ ApplyResult applyOne(const QString &content, const Mutation &m) {
         return r;
     }
     r.ok = true;
-    r.patched = patched;
+    r.patched = std::move(patched);
     return r;
 }
 
@@ -146,6 +148,12 @@ BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c) {
     // the count is the more specific witness.
     if (c.failed > 0) return BaselineVerdict::NotGreen;
     return BaselineVerdict::Green;
+}
+
+MutantVerdict judgeMutant(int exitCode, const Counts &c) {
+    if (exitCode == 0) return MutantVerdict::Survived;
+    if (c.passed < 0 || c.failed < 0) return MutantVerdict::Broken;
+    return MutantVerdict::Killed;
 }
 
 }  // namespace MutationProbe

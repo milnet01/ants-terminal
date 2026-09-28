@@ -281,6 +281,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe reports a mutant that measured nothing as `broken`, not `killed`** (ANTS-5360)
+  A non-zero exit with no readable pass/fail counts, such as pytest failing
+  at collection on a syntax error, now comes back `broken` with the exit
+  code and a summary saying it is not a kill. A test-strength score no
+  longer counts a file that would not load as a caught bug.
+
 - **verify_changes no longer reports all_passed when no check ran, and every reply says how many ran** (ANTS-5498)
   A project with no configured build, test or lint gate used to come back
   `all_passed:true`, which read as green when nothing had been verified.

@@ -34,6 +34,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <cstdint>
+
 namespace MutationProbe {
 
 struct Mutation {
@@ -48,7 +50,7 @@ struct Mutation {
 // point of the field. A run that reports `inert` has told the caller
 // something true and cheap; the alternative is a green test run that means
 // nothing.
-enum class Inert {
+enum class Inert : std::uint8_t {
     No,             // the file changed
     OldTextAbsent,  // `old` does not occur — the commonest, and the one that
                     //   most looks like a surviving mutant
@@ -93,7 +95,7 @@ Counts parseCounts(const QString &output);
 // passed"; and a run that executed nothing, which a gtest binary under a
 // filter matching no test reports as 0/0 with exit 0. Both satisfied a gate
 // whose entire job is to refuse an unproven baseline.
-enum class BaselineVerdict {
+enum class BaselineVerdict : std::uint8_t {
     Green,       // ran, passed something, failed nothing
     NotGreen,    // timed out or exited non-zero
     Unreadable,  // exit 0, counts unparsable (-1)
@@ -101,6 +103,21 @@ enum class BaselineVerdict {
     DidNotRun,   // ANTS-4852 — pytest exit 4/5 with no counts: nothing collected
 };
 BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c);
+
+// ANTS-5360 — the verdict on one applied mutant whose run finished in time.
+//
+// A non-zero exit used to read as `killed` on its own. A mutant that breaks
+// the file's syntax makes pytest fail at collection (exit 2) and print no
+// pass/fail counts, so it was scored as a caught bug when no test ran at all.
+// With no readable counts there is no evidence a test noticed anything, which
+// is the same evidence `judgeBaseline` asks of a baseline. Such a run is
+// `Broken`, never `Killed`.
+enum class MutantVerdict : std::uint8_t {
+    Survived,  // exit 0 — the suite did not notice
+    Killed,    // non-zero exit with readable counts
+    Broken,    // non-zero exit, counts unreadable (-1): nothing was measured
+};
+MutantVerdict judgeMutant(int exitCode, const Counts &c);
 
 // ANTS-4736 — whether the NEXT run would outlive the transport budget.
 //

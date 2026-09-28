@@ -102,3 +102,13 @@ or 5 (pytest's usage-error and no-tests-collected codes) and parsed no counts.
 code and echoing `test_command`, instead of `baseline_not_green`. An exit of 4
 or 5 with parsed counts, any other non-zero exit, and a timeout keep their
 existing verdicts. *Test:* `MutationProbe.Ants4852CollectionFailureIsDidNotRun`.
+
+## ANTS-5360 — a mutant that measured nothing is `broken`
+
+`judgeMutant` decides an applied mutant whose run finished in time. Exit 0 is
+`survived`. A non-zero exit with readable counts is `killed`. A non-zero exit
+whose counts are unreadable (`-1`) is `broken`: no test is known to have run,
+as when the mutant breaks the file's syntax and pytest fails at collection.
+A `broken` result carries `exit_code` and a `summary` saying it is not a kill.
+*Test:* `MutationProbe.Ants5360UnreadableNonZeroExitIsBroken`,
+`MutationProbe.Ants5360CollectionErrorReportsBrokenEndToEnd`.

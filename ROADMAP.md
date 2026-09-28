@@ -67343,12 +67343,18 @@ project. Reported causes are claims until checked in source.
   Source: feedback-OneUp-2026-09-18.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5360] **mutation_probe reports a mutation that breaks the file's syntax as killed.**
+- ✅ [ANTS-5360] **mutation_probe reports a mutation that breaks the file's syntax as killed.**
   Reported by Pressless: a mutant that made pytest fail at collection
   (exit 2, counts -1) came back outcome "killed". Suggested: outcome
   "broken" when the counts are unreadable, the evidence ANTS-4401 already
   uses to refuse a baseline. Related: ANTS-4974 (crash kill vs assertion
   kill).
+  Resolved (2026-09-28): new MutationProbe::judgeMutant. A non-zero exit
+  with unreadable counts (-1) is outcome `broken`, carrying exit_code and
+  a summary; readable counts keep `killed`, exit 0 keeps `survived`.
+  Crash-versus-assertion with readable counts stays ANTS-4974. Tests:
+  MutationProbe.Ants5360UnreadableNonZeroExitIsBroken and
+  …CollectionErrorReportsBrokenEndToEnd, both red before the fix.
   **Layman:** A test-strength check counts a broken file as a caught bug, so the score looks better than it is.
   Kind: fix.
   Source: feedback-Pressless-2026-09-21.

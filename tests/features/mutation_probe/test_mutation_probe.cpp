@@ -537,3 +537,57 @@ TEST(MutationProbe, ConcurrentEditIsNotClobberedByTheRestore) {
     EXPECT_EQ(rs.at(1).toObject().value(QStringLiteral("outcome")).toString().toStdString(),
               std::string("not_run"));
 }
+
+// ANTS-5360 — a mutant that breaks the file's syntax is not a caught bug.
+// Pressless saw pytest fail at collection (exit 2, no counts) come back
+// `killed`. With no readable counts no test is known to have run, so the
+// verdict is `broken`. Readable counts keep `killed`; exit 0 keeps `survived`.
+TEST(MutationProbe, Ants5360UnreadableNonZeroExitIsBroken) {
+    using V = MutationProbe::MutantVerdict;
+    const auto judge = [](int exit, int passed, int failed) {
+        MutationProbe::Counts c;
+        c.passed = passed;
+        c.failed = failed;
+        return MutationProbe::judgeMutant(exit, c);
+    };
+    EXPECT_EQ(judge(2, -1, -1), V::Broken) << "pytest collection error";
+    EXPECT_EQ(judge(1, -1, -1), V::Broken) << "any non-zero exit with no counts";
+    EXPECT_EQ(judge(1, 4, 1), V::Killed) << "a failing test is a kill";
+    EXPECT_EQ(judge(0, 5, 0), V::Survived);
+    EXPECT_EQ(judge(0, -1, -1), V::Survived)
+        << "exit 0 is unchanged by this fix";
+}
+
+TEST(MutationProbe, Ants5360CollectionErrorReportsBrokenEndToEnd) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QString sh = QStandardPaths::findExecutable(QStringLiteral("sh"));
+    ASSERT_FALSE(sh.isEmpty());
+    QJsonArray argv;
+    argv.append(sh);
+    argv.append(QStringLiteral("-c"));
+    argv.append(QStringLiteral(
+        "echo 'ERROR collecting test_palettes.py'; "
+        "echo 'SyntaxError: invalid syntax'; exit 2"));
+    QJsonArray muts; muts.append(mutation(0));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = argv;
+    req[QStringLiteral("mutations")]    = muts;
+    const QJsonObject env = rc.cmdMutationProbe(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonArray rs = env.value(QStringLiteral("results")).toArray();
+    ASSERT_EQ(rs.size(), 1);
+    const QJsonObject r = rs.at(0).toObject();
+    EXPECT_EQ(r.value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("broken"));
+    EXPECT_EQ(r.value(QStringLiteral("exit_code")).toInt(), 2);
+    EXPECT_FALSE(r.value(QStringLiteral("summary")).toString().isEmpty())
+        << "a broken mutant must say why it is not a kill";
+    EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
+}
