@@ -66861,6 +66861,11 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   survivors fixed by moving INV-3 and INV-9's settings halves onto
   read_region). Still open: the five new doc_lint checks, which go into
   docs/specs/ANTS-3663.md as an amendment.
+  Progress (2026-09-28): the five checks are specified as one new doc_lint
+  checker, doc_facts, in docs/specs/ANTS-3663.md § 2.6 (INV-22..INV-28).
+  The duplicate-INV check lives there as invariant_duplicate; spec_lint
+  has no such kind today. review-contract capped calm at 2 (loops 8-9, 17
+  verified, all fixed). Next: build it with write-test and write-code.
   **Layman:** Several document checks the skills rely on have no tool behind them, so they are done by hand.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A5, quick win).
