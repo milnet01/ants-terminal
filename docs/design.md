@@ -123,13 +123,9 @@ Each has one owner. This table points to it.
 
 ## Close calls
 
-The existing decisions are in [`decisions/`](decisions/README.md):
-ADR-0001 to ADR-0005. This design raises no new one.
+The existing decisions are in [`decisions/`](decisions/README.md). This
+design raises no new one.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|------|------|-------|----|----|----|----|---------|
-| 1 | 2026-09-28 | 2 (neutral-lane; each held every question) | 6 | 0 | 3 | — | 9 verified, 9 fixed, 0 dismissed. Lanes: part ownership of MCP verbs, incomplete dependency exceptions, direction wording, SIGN-1 task unnamed, SIGN-3 half-delivered, helper unplaced. Orchestrator, refuting its own fix: upward #includes from Terminal core and Dialogs; two stack "rules out" overclaims. Three open questions resolved clean (C++20, Lua 5.4, no window includes in the window-free layer). Packet defect: its Terminal-core source list omitted remotecontrol_terminal.cpp. |
-| 2 | 2026-09-28 | 2 (neutral-lane; each held every question) | 2 | 0 | 4 | — | 6 verified, 6 fixed, 0 dismissed. Lanes: subsystems.md is not the review partition; SIGN-1 left the token count and the baseline setup open; the terminal-scoped verb route to the main window was unstated (lane-tagged Q2, re-tagged Q3); helper library unplaced. Orchestrator, from an open question: the MCP server reads config once at start. Resolved clean: ants-mcpd runs from build/; no unlisted upward includes. Unrunnable: vttest menu names (not installed), left to the SIGN-4 item. The user changed SIGN-1 to cost, not raw tokens, in discovery.md. |
-| 3 | 2026-09-28 | 2 (neutral-lane; each held every question) | 3 | 1 | 1 | — | 5 verified, 5 fixed, 0 dismissed. SIGN-1: a run counts only when the bug is fixed, one model in both arms, switcher off; SIGN-2: the typing bar had become relative to Konsole, restored as an absolute (one frame); the MCP server forwards terminal-scoped verbs (new verbs join terminalScopedVerbNames()); the parser holds more than parsing; SIGN-5 also rests on MCP core token-usage engine. Layout: the route paragraph split the exceptions list, moved. Include scans of the window-free layer came back clean. Packet defect: a backticked fact ran as a shell command and reached lanes garbled. Capped at loop 3, calm: 1 of 5 final-loop findings landed on text this run wrote (SIGN-1 row). No second share: the whole document is the armed change. |
+The rows are in [`reviews/design-loop-log.md`](reviews/design-loop-log.md).
