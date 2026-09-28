@@ -66631,6 +66631,22 @@ names the sign it claims (SIGN-1 to SIGN-5).
   kind, rebuild, reconnect; both are live and open sessions survive.
   Overlap: ANTS-1043 (mainwindow.cpp split) and ANTS-4919
   (claudeintegration.cpp split) edit the same files.
+  Progress (2026-09-28, write-spec Steps 1-2 done, drafting not started;
+  paused for ANTS-5537 at the user's request). Q1 yes: four parts, a
+  real design choice, and the mcpd-terminal wire contract. Chosen
+  design: the terminal keeps a small, versioned set of raw state reads
+  (tab list with pid/cwd/Claude state; a tab's last N logical rows with
+  wrap flags and the scrollback counters; selection; the OSC 133
+  last-command record; pipeline session fields and counters;
+  caller_cwd-to-tab resolution). All verb logic (caps, trims,
+  since_cursor, ScrollbackErrors, git, env allow-list, JSON) moves into
+  ants_mcpcore_lib behind one state interface, with an in-process
+  backend in the terminal and a socket backend in ants-mcpd. Rejected: a
+  reloadable handler .so (a crash kills every session) and Lua handlers
+  (optional build, no grid access). Specs to cite or amend: ANTS-4932
+  INV-2, INV-4, INV-7, INV-8, INV-10; ANTS-2132 (TabSpecific handlers
+  forced onto the GUI thread). The user narrowed SIGN-3 the same day:
+  only a new kind of terminal state needs a relaunch.
   **Layman:** Fixing a Claude tool that needs a terminal tab should not mean restarting the terminal and losing running sessions.
   Kind: feature.
   Source: docs/design.md SIGN-3 (2026-09-28).
