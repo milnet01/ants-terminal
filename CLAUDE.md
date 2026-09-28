@@ -3,6 +3,30 @@
 Qt6/C++20 terminal emulator. Optional Lua 5.4 plugins. `libutil` for PTY.
 CMake build.
 
+## Priority order
+
+This list is your go-ahead: summarise where things stand in a few lines,
+then start without waiting for me to confirm.
+
+1. Answer requests from other Claude Code sessions. They arrive as messages; do not
+   poll ListAgents for them.
+2. Make Ants MCP modular so it hot-reloads, and the terminal no longer needs a relaunch.
+3. Triage outstanding requests from other sessions in the Ants MCP feedback files.
+4. Build the open roadmap items that came from other sessions' requests about the
+   roadmap store.
+5. Fix every outstanding finding from any review (test, debt, codebase or document),
+   backlogged ones included. Critical items first, then oldest to newest.
+6. Build Colony (multi-session Claude Code).
+7. Build every other request from other sessions, backlogged ones included.
+8. Finish every spec and implementation for migrating the roadmap to the DB.
+9. Migrate the roadmap to the DB.
+10. Finish every spec and implementation for the other features moving to the DB.
+11. Migrate those features to the DB.
+12. Work the open roadmap items that get us to the next version.
+
+Finish each item before starting the next, but go back to 1 whenever a request arrives.
+Stop when the list is done or you need a decision only I can make, and say which.
+
 ## Module map (src/)
 
 Per-subsystem reference: [`docs/subsystems.md`](docs/subsystems.md). Query it
@@ -171,6 +195,10 @@ shared root. Format: [`docs/standards/mcp-feedback-files.md`](docs/standards/mcp
 Triage: `feedback_query` the tail → `roadmap_log op:append` →
 `feedback_log op:"assign_id"` (or an `n/a — <reason>` closure) → once the id
 ships, `feedback_log op:"compact_resolved"`.
+
+This session is the Ants MCP maintainer. An Ants MCP issue it finds itself
+goes straight onto this roadmap with `roadmap_log`, not into a feedback file.
+Global rule 18's `append_finding`-only bullet is for other sessions.
 
 ## Project standards
 
