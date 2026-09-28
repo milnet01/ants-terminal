@@ -80116,6 +80116,16 @@ acting on it.
   filed as its own fix (the rolling-cache item in this section); this
   item keeps the cold-start half. Recovery: manual run 36392962717
   passed, ASan included, and re-saved the ASan cache.
+  Progress (2026-09-28): the eviction cause is gone. ANTS-5532 shipped;
+  the repository's caches fell from 10,516 MiB to about 2.7 GB, so push
+  runs no longer crowd out the ASan entry. What remains is a cold build
+  after a flag or key change. Design for later, not quick: give the
+  restore step an id and set a step env
+  `BUILD_GUARD: <24m on a matched key, else 40m>` read as `timeout
+  "$BUILD_GUARD"` (a `${{ }}` in the run body is forbidden by
+  workflow_no_shell_interpolation). That needs tools/ci_workflow.py to
+  give the expression a local meaning, ci_asan_budget to sum the larger
+  guard, and timeout-minutes raised above 40 + 22.
   **Layman:** On a busy day of changes, the nightly memory-safety check can lose its saved build and run out of time before it tests anything.
   Kind: fix.
   Source: in-session-2026-09-28 (nightly run 36389329574).
@@ -80140,7 +80150,7 @@ acting on it.
   Source: user-request-2026-09-28 (CI speed-ups).
   Lanes: ci, build.
 
-- 📋 [ANTS-5532] **Save one rolling compile cache per job instead of a new 1.35 GB cache per commit.**
+- ✅ [ANTS-5532] **Save one rolling compile cache per job instead of a new 1.35 GB cache per commit.**
   Measured 2026-09-28: the Release job saves
   Linux-ccache-release-<sha> (1.35 GB) on every run (`if: always()`),
   and the repository held 9,559 MiB in 18 cache entries against GitHub's
@@ -80155,6 +80165,10 @@ acting on it.
   Before: 10,516 MiB in 20 entries. Close once the first CI run's prune
   steps print `deleted cache` and gh cache list shows one entry per
   prefix.
+  Verified (2026-09-28, run 36400078893): each prune step printed
+  `kept <newest>, deleted 4` (release, qt62, cppcheck). gh cache list
+  after: one entry per prefix, about 2.7 GB in 7 entries (was 10,516 MiB
+  in 20). The ASan cache survived.
   **Layman:** Every push stores a fresh copy of the build cache, filling GitHub's storage so the nightly check loses its own copy.
   Kind: perf.
   Source: user-request-2026-09-28 (CI speed-ups).

@@ -107,7 +107,7 @@ PruneRun runPrune(const std::string &listing, const std::string &keep,
     p.setProcessEnvironment(env);
     p.setProcessChannelMode(QProcess::MergedChannels);
     p.start(QStringLiteral("bash"),
-            {QStringLiteral(SRC_CI_PRUNE_SCRIPT_PATH),
+            {QString::fromUtf8(SRC_CI_PRUNE_SCRIPT_PATH),
              QStringLiteral("P-"), QString::fromStdString(keep)});
     if (!p.waitForFinished(20000)) { p.kill(); return r; }
     r.exitCode = p.exitStatus() == QProcess::NormalExit ? p.exitCode() : -2;
