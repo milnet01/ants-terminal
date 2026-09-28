@@ -326,7 +326,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         const QJsonValue ex = req.value("exclude_glob");
         QStringList raw;
         if (ex.isString()) raw << ex.toString();
-        else if (ex.isArray()) for (const QJsonValue &v : ex.toArray())
+        else if (ex.isArray()) for (const auto &v : ex.toArray())
             if (v.isString()) raw << v.toString();
 
         for (QString g : raw) {
@@ -701,7 +701,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             if (mpath.startsWith(rootCanonical + QLatin1Char('/')))
                 mpath = mpath.mid(rootCanonical.size() + 1);
             const QJsonArray subs = mdata.value("submatches").toArray();
-            for (const QJsonValue &sv : subs) {
+            for (const auto &sv : subs) {
                 const QString mtext =
                     sv.toObject().value("match").toObject()
                       .value("text").toString();
@@ -970,7 +970,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (dedupOn && matches.size() > 1) {
         QHash<QString, int> firstByKey;  // normalised text → matches index
         QJsonArray collapsed;
-        for (const QJsonValue &v : std::as_const(matches)) {
+        for (const auto &v : std::as_const(matches)) {
             const QJsonObject m = v.toObject();
             QString key = m.value("text").toString().simplified();
             const auto it = firstByKey.find(key);
@@ -1230,6 +1230,9 @@ namespace {
 
 // § 2.1 — argv and run count both stay bounded by this.
 constexpr int kCitedByMaxAnchors      = 64;
+// § 2.1 / § 4 (ANTS-5096) — scope bounds the argv of every run and the
+// de-overlap's pairwise pass. Wider than anchors: a caller may list files.
+constexpr int kCitedByMaxScope        = 256;
 constexpr int kCitedByDefaultMaxCells = 500;
 constexpr int kCitedByMaxCellsCap     = 5000;
 // § 4 — the pathological-case guard, 100× the default `max_cells`. Past it
@@ -1290,7 +1293,7 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
     if (anchorsVal.isArray()) {
         const QJsonArray arr = anchorsVal.toArray();
         anchors.reserve(arr.size());
-        for (const QJsonValue &v : arr) anchors << v.toString();
+        for (const auto &v : arr) anchors << v.toString();
     }
     if (!anchorsVal.isArray() || anchors.isEmpty() ||
         anchors.size() > kCitedByMaxAnchors) {
@@ -1345,7 +1348,13 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
     QStringList scopeRaw;
     const QJsonValue scopeVal = req.value(QStringLiteral("scope"));
     if (scopeVal.isArray()) {
-        for (const QJsonValue &v : scopeVal.toArray())
+        const QJsonArray scopeArr = scopeVal.toArray();
+        if (scopeArr.size() > kCitedByMaxScope) {
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("cited_by: \"scope\" takes at most %1 entries")
+                    .arg(kCitedByMaxScope)));
+        }
+        for (const auto &v : scopeArr)
             if (v.isString() && !v.toString().isEmpty()) scopeRaw << v.toString();
     } else {
         scopeRaw << ProjectSettings::load(rootCanonical).docsDir
@@ -1640,7 +1649,7 @@ static QJsonObject outlineOneFile(const QString &rawPath,
     if (result.value("ok").toBool() && !filter.isEmpty()) {
         const QJsonArray all = result.value(QStringLiteral("symbols")).toArray();
         QJsonArray kept;
-        for (const QJsonValue &v : all) {
+        for (const auto &v : all) {
             if (v.toObject().value(QStringLiteral("name")).toString()
                     .contains(filter, Qt::CaseInsensitive))
                 kept.append(v);
@@ -1767,7 +1776,7 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         const QJsonObject priorEtags =
             req.value(QStringLiteral("etags")).toObject();
         QJsonArray files;
-        for (const QJsonValue &pv : paths) {
+        for (const auto &pv : paths) {
             QJsonObject fileObj = outlineOneFile(
                 pv.toString(), rootCanonical, mode, includeDoc,
                 maxSymbols, maxBytes, withSizes, maxHeadingLevel,
@@ -1798,7 +1807,7 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         // went on to reason about an empty symbol set. The per-file `ok`s
         // carried the truth one level down, where nobody looks.
         int found = 0;
-        for (const QJsonValue &fv : std::as_const(files))
+        for (const auto &fv : std::as_const(files))
             if (fv.toObject().value("ok").toBool()) ++found;
         QJsonObject out;
         out["ok"]            = true;
@@ -1878,7 +1887,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                          .arg(rawPath));
 
     QStringList argv;
-    for (const QJsonValue &v :
+    for (const auto &v :
              req.value(QStringLiteral("test_command")).toArray())
         argv.append(v.toString());
     if (argv.isEmpty())
@@ -2109,7 +2118,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         out[QStringLiteral("baseline_failed")] = bc.failed;
     }
 
-    for (const QJsonValue &mv : muts) {
+    for (const auto &mv : muts) {
         const QJsonObject mo = mv.toObject();
         MutationProbe::Mutation m;
         m.label   = mo.value(QStringLiteral("label")).toString();
@@ -3020,7 +3029,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         // they are — those are the reason to run a preview at all.
         env["dry_run"] = true;
         QJsonArray wouldWrite;
-        for (const QJsonValue &a : std::as_const(applied))
+        for (const auto &a : std::as_const(applied))
             wouldWrite.append(a.toObject().value(QStringLiteral("path")));
         env["would_write"]       = wouldWrite;
         env["would_apply"]       = applied;
@@ -3388,7 +3397,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
             if (!repo.isEmpty()) {
                 const QString want = normalizeFeedbackStem(repo);
                 QStringList hits;
-                for (const QJsonValue &c : cands) {
+                for (const auto &c : cands) {
                     const QString p = c.toString();
                     if (normalizeFeedbackStem(feedbackStemOf(
                             QFileInfo(p).fileName())) == want)
@@ -3682,7 +3691,7 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     QStringList rawStems;
     const QJsonArray stemsArr = req.value(QStringLiteral("stems")).toArray();
-    for (const QJsonValue &v : stemsArr) {
+    for (const auto &v : stemsArr) {
         const QString s = v.toString().trimmed();
         if (!s.isEmpty()) rawStems.append(s);
     }
@@ -3795,7 +3804,7 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
 
         const QJsonArray subs =
             data.value(QStringLiteral("submatches")).toArray();
-        for (const QJsonValue &sv : subs) {
+        for (const auto &sv : subs) {
             const QJsonObject sm = sv.toObject();
             const int bs = sm.value(QStringLiteral("start")).toInt();
             const int be = sm.value(QStringLiteral("end")).toInt();

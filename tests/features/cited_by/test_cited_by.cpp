@@ -70,7 +70,7 @@ int cellCount(const QJsonObject &resp) {
 
 QStringList strings(const QJsonObject &resp, const char *key) {
     QStringList out;
-    for (const QJsonValue &v : resp.value(QLatin1String(key)).toArray())
+    for (const auto &v : resp.value(QLatin1String(key)).toArray())
         out << v.toString();
     return out;
 }
@@ -226,7 +226,7 @@ TEST(CitedBy, Inv5DefaultScope) {
     const QJsonObject resp = run(reqFor(root, {QStringLiteral("anchorX")}));
     ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
     QStringList files;
-    for (const QJsonValue &v : resp.value(QStringLiteral("cells")).toArray())
+    for (const auto &v : resp.value(QStringLiteral("cells")).toArray())
         files << v.toObject().value(QStringLiteral("file")).toString();
     files.sort();
     EXPECT_EQ(files, (QStringList{QStringLiteral("README.md"),
@@ -261,6 +261,33 @@ TEST(CitedBy, Inv6ScopeEscapeAndAnchorArityRefuse) {
     // Positive control over the same fixture.
     EXPECT_TRUE(run(reqFor(root, {QStringLiteral("anchorX")}))
                     .value(QStringLiteral("ok")).toBool());
+}
+
+// ANTS-5096 — scope is capped like anchors, so neither the argv nor the
+// de-overlap's pairwise pass grows with the request (spec § 4). 256 entries
+// pass; 257 refuse bad_args before any path is validated or rg is started.
+TEST(CitedBy, Ants5096ScopeArityRefuses) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/a.md"), "anchorX here\n"));
+
+    QStringList scope{QStringLiteral("docs")};
+    for (int i = 1; i < 256; ++i) scope << QStringLiteral("missing%1").arg(i);
+
+    QJsonObject atCap = reqFor(root, {QStringLiteral("anchorX")});
+    atCap[QStringLiteral("scope")] = QJsonArray::fromStringList(scope);
+    const QJsonObject okResp = run(atCap);
+    EXPECT_TRUE(okResp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(okResp).toJson().toStdString();
+
+    scope << QStringLiteral("missing256");
+    QJsonObject overCap = reqFor(root, {QStringLiteral("anchorX")});
+    overCap[QStringLiteral("scope")] = QJsonArray::fromStringList(scope);
+    const QJsonObject over = run(overCap);
+    EXPECT_FALSE(over.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(over.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
 }
 
 // ---------------------------------------------------------------- INV-7 -----

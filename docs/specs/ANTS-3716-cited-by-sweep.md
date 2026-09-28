@@ -84,7 +84,8 @@ Request:
   `ProjectSettings::load(rootCanonical).docsDir`, else `docs`), `README.md` and
   `CLAUDE.md`. Every entry runs through `PathValidation::validatePath`; a
   root-escaping entry refuses `bad_path`. **A scope entry that does not exist on
-  disk is pruned before argv is built** — see § 2.5.
+  disk is pruned before argv is built** — see § 2.5. More than 256 entries
+  refuses `bad_args` (ANTS-5096).
 - **`case`** (optional) — `insensitive` (default) or `sensitive`. **There is no
   `smart` mode**; § 2.2 gives the measurement that rules it out.
 - **`max_cells`** (optional, default 500, clamp 1–5000).
@@ -435,7 +436,8 @@ which is the failure this verb exists to prevent, arriving through the memory
 guard. So the ceiling costs the *cells* past it and nothing else, and
 `truncated:true` covers both it and `max_cells`. It is 100× the default
 `max_cells`. `anchors` is capped at 64 so neither the argv nor the run count can
-grow unbounded.
+grow unbounded. `scope` is capped at 256 entries, which bounds each run's argv
+and § 2.5's pairwise de-overlap.
 
 ## 5. Out of scope
 

@@ -26,6 +26,7 @@ every `file` absolute and fails every cell assertion for the wrong reason.
 | `Inv4CaseModesAndNoSmart` | INV-4 | `insensitive` is the default, `sensitive` narrows, `smart` refuses `bad_args`. |
 | `Inv5DefaultScope` | INV-5 | An omitted `scope` resolves to the docs dir, `README.md` and `CLAUDE.md` — a match under `other/` does not appear. |
 | `Inv6ScopeEscapeAndAnchorArityRefuse` | INV-6 | `scope:["../outside"]` → `bad_path`; `anchors:[]` → `bad_args`; paired with a positive control over the same fixture. |
+| `Ants5096ScopeArityRefuses` | INV-6 (ANTS-5096) | `scope` with 257 entries → `bad_args`; the same request with 256 → `ok:true`. Red before the cap: 257 entries returned `ok:true`. |
 | `Inv7SortedBeforeCapAndStable` | INV-7 | `cells` is sorted by (anchor, file) and the cap runs after the sort: `cells[0].anchor == "alpha"` on a **single-file** fixture where `zeta` is cited on an earlier line, two files under one anchor in path order, and two truncated calls returning byte-identical envelopes. |
 | `Inv8CappedCellsUncappedFilesCount` | INV-8 | 5 cells over **4 distinct files** with `max_cells:2` → `cells.size()==2`, `cells_count==2`, `truncated:true`, **`files_count==4`**. |
 | `Inv9OneRgCallSiteAndNoProcessInHandlers` | INV-9 | Exactly one `rg.start(` across the RemoteControl TUs; neither handler's body names `QProcess`; the `RgRun` return type carries no refusal envelope, and no `stdoutBytes` buffer: rg's output reaches the handler one line at a time (ANTS-5127). |

@@ -9562,6 +9562,14 @@ extends an existing item, that item carries it instead.
   shared worker), mutation_probe's sidecar baseline, cited_by's scope
   cap and quadratic overlap check, and the two stale documents
   (ANTS-1302 § 3.4, ANTS-1248 § 5).
+  Progress (2026-09-28, later): the two stale documents fixed
+  (ANTS-1248 kill budget, ANTS-1302 in-flight refusal). cited_by's scope
+  now caps at 256 entries (bad_args past it), which also bounds the
+  pairwise de-overlap; spec § 2.1 and § 4 record it
+  (CitedBy.Ants5096ScopeArityRefuses, red first: 257 entries returned
+  ok:true). STILL OPEN: focused_test and mutation_probe as background
+  jobs (premise re-check first; spec amendment + rule 14 gate), and
+  mutation_probe's sidecar baseline.
   **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
@@ -88331,6 +88339,16 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: docs.
+
+- 📋 [ANTS-5541] **remotecontrol_workspace.cpp declares outlineOneFile and outlineFileEtag static at file scope; clang-tidy asks for an anonymous namespace.**
+  misc-use-anonymous-namespace on both. The file's eight
+  performance-implicit-conversion-in-loop warnings were fixed in the
+  ANTS-5096 cited_by commit; these two were left because moving them
+  touches their callers' declarations.
+  **Layman:** Two helper functions in the code-search file are declared in an older style the linter flags.
+  Kind: refactor.
+  Source: in-session-2026-09-28, found while closing ANTS-5096.
+  Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
