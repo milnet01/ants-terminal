@@ -30,8 +30,9 @@ secondary: welcome, but not what the project is judged on.
 Labels are `SIGN-<n>`. They are never reused or renumbered.
 
 - **SIGN-1 — Cheaper.** On a named, repeatable Claude Code task, a
-  session in Ants uses at least 20% fewer tokens than the same task in a
-  plain terminal, averaged over repeated runs. The design names the task.
+  session in Ants costs at least 20% less than the same task in a plain
+  terminal with no Ants tools, averaged over repeated runs. Cost is the
+  tokens weighted at their price. The design names the task.
 - **SIGN-2 — Fast.** On the same machine, Ants prints a large burst of
   output no slower than Konsole, and typing does not lag while Claude
   Code streams output.

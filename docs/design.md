@@ -16,8 +16,8 @@ home, this points there rather than copying it.
 
 Each part is a build target in `CMakeLists.txt`, and **its files are that
 target's source list** — the one list the compiler actually uses.
-[`subsystems.md`](subsystems.md) maps the same files by subject, for review
-and search.
+[`subsystems.md`](subsystems.md) describes the main modules, for reading
+about one. Review lanes come from `.indie-review/partition.json`.
 
 | Part | Target | Responsible for |
 |---|---|---|
@@ -34,7 +34,7 @@ and search.
 | Audit dialog | `ants_audit_dialog_lib` | The audit results window. |
 | Terminal app | `ants-terminal` | The executable: links the parts above into one program. |
 | MCP server | `ants-mcpd` | A separate process serving the project-scoped MCP verbs, so a verb change needs no terminal relaunch. |
-| Helper | `ants-helper` | An optional command-line tool with JSON in and out, off by default (`ANTS_ENABLE_HELPER_CLI`). Qt Core only. |
+| Helper | `ants-helper`, with `ants_helper_lib` | An optional command-line tool with JSON in and out, off by default (`ANTS_ENABLE_HELPER_CLI`). Qt Core only. |
 
 ## What may depend on what
 
@@ -74,6 +74,12 @@ another:**
 - Terminal core reaches up: `src/remotecontrol_terminal.cpp` includes the
   main window's and the terminal widget's headers, and
   `src/sessionmanager.cpp` includes the screen grid's.
+
+**A terminal-scoped verb reaches the main window by one of the two routes
+that exist**: a provider the main window registers
+(`registerToolProvider(` in `src/mainwindow.cpp`), or
+`src/remotecontrol_terminal.cpp`'s existing include. MCP core uses only the
+first, so it stays window-free.
 - The main window (Chrome) calls into Claude UI, Dialogs and the Audit
   dialog. `CMakeLists.txt` resolves these symbol cycles with
   `--start-group` on the `ants-terminal` link line (ANTS-1444).
@@ -86,7 +92,7 @@ Each has one owner. This table points to it.
 |---|---|
 | MCP errors and refusal codes | [`standards/mcp-error-codes.md`](standards/mcp-error-codes.md) |
 | MCP verb contracts | [`standards/mcp-tools.md`](standards/mcp-tools.md) |
-| Configuration | `~/.config/ants-terminal/config.json`, mode 0600, re-read without a relaunch ([`standards/config-hot-reload.md`](standards/config-hot-reload.md)) |
+| Configuration | `~/.config/ants-terminal/config.json`, mode 0600. The terminal re-reads it when it changes ([`standards/config-hot-reload.md`](standards/config-hot-reload.md)); the MCP server reads it once at start, so an MCP setting takes effect on the next MCP reconnect |
 | Persistence | The roadmap store (`~/.local/share/ants-terminal/roadmap.sqlite`), sessions via `QDataStream` + `qCompress` (`CLAUDE.md` § Key design decisions) |
 | Logging | The debug log (`src/debuglog.cpp`), read through the `read_log` verb |
 | Cross-part messages | Qt signals and slots (`CLAUDE.md` § Conventions) |
@@ -96,7 +102,7 @@ Each has one owner. This table points to it.
 
 | Sign | Delivered by | How it is measured |
 |---|---|---|
-| **SIGN-1** Cheaper | MCP core and MCP server | A practice project with one planted bug, kept at `tools/token-bench/`, with its fixed prompt in that folder's README. Neither changes after the first measurement. Claude Code gets that prompt three times in Ants and three in Konsole; Ants' average tokens must be at least 20% lower. |
+| **SIGN-1** Cheaper | MCP core and MCP server | A practice project with one planted bug, kept at `tools/token-bench/`, with its fixed prompt in that folder's README. Neither changes after the first measurement. Claude Code gets that prompt three times in Ants and three in Konsole, where Claude Code runs with no Ants MCP server and no Ants hooks. Each run's cost is its token counts by type, each at its price, and Ants' average must be at least 20% lower. |
 | **SIGN-2** Fast | VT engine and Terminal core | On the same machine: the time to print one fixed large log file, and the time for a keypress to appear while Claude-style output streams. Ants must be no slower than Konsole on both. |
 | **SIGN-3** No relaunch | MCP server, for project-scoped verbs. Terminal-scoped verbs are served by Terminal core and Chrome, so changing one still needs a relaunch: that half of SIGN-3 is not met yet. | Change one verb of each kind, rebuild, reconnect: each change is live and the Claude sessions in open tabs are still running. |
 | **SIGN-4** Programs just work | VT engine | Claude Code, vim, htop, tmux and less display and respond correctly. vttest's cursor-movement, screen-features, terminal-reports and VT102 insert/delete tests all pass. vttest is not installed on the development machine yet. |
@@ -123,3 +129,4 @@ ADR-0001 to ADR-0005. This design raises no new one.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-09-28 | 2 (neutral-lane; each held every question) | 6 | 0 | 3 | — | 9 verified, 9 fixed, 0 dismissed. Lanes: part ownership of MCP verbs, incomplete dependency exceptions, direction wording, SIGN-1 task unnamed, SIGN-3 half-delivered, helper unplaced. Orchestrator, refuting its own fix: upward #includes from Terminal core and Dialogs; two stack "rules out" overclaims. Three open questions resolved clean (C++20, Lua 5.4, no window includes in the window-free layer). Packet defect: its Terminal-core source list omitted remotecontrol_terminal.cpp. |
+| 2 | 2026-09-28 | 2 (neutral-lane; each held every question) | 2 | 0 | 4 | — | 6 verified, 6 fixed, 0 dismissed. Lanes: subsystems.md is not the review partition; SIGN-1 left the token count and the baseline setup open; the terminal-scoped verb route to the main window was unstated (lane-tagged Q2, re-tagged Q3); helper library unplaced. Orchestrator, from an open question: the MCP server reads config once at start. Resolved clean: ants-mcpd runs from build/; no unlisted upward includes. Unrunnable: vttest menu names (not installed), left to the SIGN-4 item. The user changed SIGN-1 to cost, not raw tokens, in discovery.md. |
