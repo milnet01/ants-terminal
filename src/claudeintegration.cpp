@@ -5244,7 +5244,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "Project-relative files and/or dirs to search. "
                             "Defaults to the project's docs dir, README.md and "
                             "CLAUDE.md. Entries absent on disk are pruned; "
-                            "scope_resolved echoes what was actually searched.");
+                            "scope_resolved echoes what was actually searched. "
+                            "Over 256 entries refuses bad_args.");
                         props["scope"] = p;
                     }
                     {
