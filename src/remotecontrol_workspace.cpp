@@ -3743,7 +3743,11 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     }
 
     QStringList argv;
-    argv << QStringLiteral("--json") << QStringLiteral("--line-number");
+    argv << QStringLiteral("--json") << QStringLiteral("--line-number")
+         // ANTS-5096 — workspace_search's thread cap. The column cap is applied
+         // while parsing below: rg ignores --max-columns under --json
+         // (measured, ripgrep 15.2.0).
+         << QStringLiteral("--threads") << QString::number(kWorkspaceSearchThreads);
     for (const QString &p : patterns) argv << QStringLiteral("-e") << p;
     argv << QStringLiteral("--") << rootCanonical;
 
@@ -3756,8 +3760,20 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     // assembler as rg writes it, so neither the stream nor every candidate
     // site is held.
     CoChangeFamily::Assembler assembler(stems, opts);
+    // ANTS-5096 — cited_by's parse budget: equal to the scan's, checked every
+    // 2048 events. Past it the rest of the stream is not parsed and the answer
+    // is reported partial, as a hard kill is.
+    QElapsedTimer parseClock;
+    parseClock.start();
+    int parsedEvents = 0;
+    bool parseOverBudget = false;
     const auto onLine = [&](const QByteArray &evBytes) {
-        if (evBytes.isEmpty()) return;
+        if (evBytes.isEmpty() || parseOverBudget) return;
+        if (++parsedEvents % 2048 == 0 &&
+            parseClock.elapsed() > 2LL * kWorkspaceSearchHardKillMs) {
+            parseOverBudget = true;
+            return;
+        }
         const QJsonObject ev = QJsonDocument::fromJson(evBytes).object();
         if (ev.value(QStringLiteral("type")).toString() !=
             QLatin1String("match")) {
@@ -3772,6 +3788,9 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
         QString text = data.value(QStringLiteral("lines"))
                            .toObject().value(QStringLiteral("text")).toString();
         if (text.endsWith(QLatin1Char('\n'))) text.chop(1);
+        // ANTS-5096 — the column cap: a line longer than it (minified or
+        // generated code) is not assembled.
+        if (text.size() > kWorkspaceSearchMaxColumns) return;
         const QByteArray textUtf8 = text.toUtf8();
 
         const QJsonArray subs =
@@ -3800,7 +3819,7 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
         onLine);
     // ANTS-5052 — a run stopped at the output ceiling is partial: reported
     // through `truncated`, as a hard kill is.
-    const bool cutShort = run.hardKilled || run.outputCapped;
+    const bool cutShort = run.hardKilled || run.outputCapped || parseOverBudget;
     if (run.startFailed || run.crashed) {
         return QJsonDocument(wsErr("rg_failed",
             QStringLiteral("co_change_family: %1")

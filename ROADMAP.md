@@ -88091,6 +88091,21 @@ reports are asked for separately, each time.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch), split from ANTS-5095.
   Lanes: roadmap, mcp.
 
+- 📋 [ANTS-5530] **workspace_search passes --max-columns alongside --json, where ripgrep ignores it, so its per-line cap bounds nothing.**
+  Measured 2026-09-28, ripgrep 15.2.0: `rg --json --max-columns 500` on
+  a 620-character line still emits the whole line as a match event. The
+  flag only shortens human-format output. cmdWorkspaceSearch passes it
+  with --json, and a comment near kWorkspaceSearchMaxColumns
+  (remotecontrol_roadmap_log_batch.cpp) credits it with capping per-line
+  work, which is false. The reply stays bounded by max_match_bytes, but
+  every long line is still parsed whole. Fix as co_change_family now
+  does (ANTS-5096): skip or clip lines past the cap while parsing, drop
+  the inert flag, and correct the comment.
+  **Layman:** A size limit on long lines in the code-search tool never takes effect, so a huge generated file is read in full on every search that hits it.
+  Kind: perf.
+  Source: in-session-2026-09-28, found while closing ANTS-5096.
+  Lanes: mcp.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.

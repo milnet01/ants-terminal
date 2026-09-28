@@ -259,6 +259,31 @@ TEST(CoChangeFamily, OrderingIsDeterministic) {
 }
 
 // INV-7 — a capped answer says so, and keeps the strongest sites.
+// ANTS-5096 — the scan takes workspace_search's bounds: --threads and
+// --max-columns. A match on a line longer than the column cap (500) is not
+// parsed, so a minified or generated file cannot flood the assembler.
+TEST(CoChangeFamily, Ants5096LongLinesAreNotScanned) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const auto put = [&](const char *name, const QByteArray &body) {
+        QFile f(QDir(tmp.path()).filePath(QString::fromLatin1(name)));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    };
+    put("a.cpp", "  claudeMcpEnabled();\n");
+    put("b.cpp", QByteArray(600, 'x') + " claudeMcpEnabled();\n");
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("stem")]       = QStringLiteral("claudeMcpEnabled");
+    const QJsonObject out = rc.cmdCoChangeFamily(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("sites_count")).toInt(), 1)
+        << QJsonDocument(out).toJson().toStdString();
+}
+
 TEST(CoChangeFamily, PartialAnswersAreFlagged) {
     const QVector<Stem> stems = {stemOf("claudeMcpEnabled", 2)};
 
