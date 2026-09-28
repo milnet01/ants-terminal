@@ -88193,6 +88193,38 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: mcp.
 
+- 📋 [ANTS-5535] **find_definition and doc_symbols do not index enumerators, so a spec citing an enum value reads as a dead symbol.**
+  Measured 2026-09-28: find_definition symbol:"Heuristic" returns zero
+  definitions, though src/focusedtest.h declares
+  `enum class Selection { Map, Heuristic, Full };`. doc_lint's
+  doc_symbols then reports `Selection::Full`, `Selection::Map` and
+  `Selection::Heuristic` in docs/specs/ANTS-1302.md as unresolved, which
+  buries the one real stale name among them. The same run flags Qt and
+  POSIX names (QProcess, qScopeGuard, SO_PEERCRED, S_ISSOCK). Fix:
+  index enumerators of `enum` and `enum class` bodies; consider a
+  separate `external` class for names from a known library rather than
+  `unresolved`. Verify: doc_lint over ANTS-1302 no longer lists the
+  Selection values.
+  **Layman:** The tool that checks names in documents cannot see the individual values of a list type, so it reports real names as missing.
+  Kind: fix.
+  Source: in-session-2026-09-28, found while closing ANTS-5096.
+  Lanes: mcp.
+
+- 📋 [ANTS-5536] **ANTS-1248 and ANTS-1302 predate the spec format: no Tests or loop-log section, and ANTS-1248's invariants name no test.**
+  doc_lint (spec_lint) 2026-09-28: both specs lack `## Tests` and
+  `## Cold-eyes loop log`; ANTS-1248 INV-1 to INV-10 each report
+  invariant_no_test. Both features shipped with tests
+  (tests/features/mcp_workspace_search, tests/features/mcp_focused_test).
+  Fix: add a Tests section mapping each invariant to the test that
+  holds it, and name any invariant no test holds. A loop log cannot be
+  written retroactively (documentation.md 9.1), so record that the spec
+  predates the gate rather than inventing rows. Verify: spec_lint over
+  both files reports no missing_section or invariant_no_test.
+  **Layman:** Two older design documents lack the sections that say which tests prove them.
+  Kind: doc-fix.
+  Source: in-session-2026-09-28, found while closing ANTS-5096.
+  Lanes: docs.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
