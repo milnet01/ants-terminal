@@ -68123,6 +68123,31 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (mcpd usage snapshots).
   Lanes: mcp.
 
+- 📋 [ANTS-5526] **ANTS-1359's cache spec contradicts itself on force_refresh, and two of its test clauses cannot fail.**
+  Found by both cold lanes on the ANTS-5498 gate, outside the one clause
+  that gate covered, so filed rather than looped on (review-contract's
+  blast-radius exit).
+  1. [Q2] § 2.7 pseudocode: `cacheable = !preSnapshot.empty && !force`,
+     and the insert requires `cacheable`, so force_refresh never
+     inserts. INV-8 and § 2.4 say it inserts on success. Test 15 checks
+     only cache_hit:false and a re-run, so both builds pass it. Fix: drop
+     `&& !force` (the lookup is already skipped on force) and add a third
+     call to test 15 asserting cache_hit:true. Check the code first.
+  2. [Q4] Test 22 says the 300 s TTL is tested through MissAfterTtl, but
+     that test uses a 100 ms override, so nothing checks the value INV-2
+     promises. Fix: assert kVerifyCacheTtlMsForTest() == 300000.
+  3. Test 13 says timeout_sec:10 is "the floor ... NOT reachable via the
+     public MCP timeout_sec arg": self-contradicting; read how runVerify
+     maps timeout_sec onto minTotalTimeoutSec and restate it.
+  4. Design question: class 2 excludes config_source "none" from the
+     cache; a parsed verify.json with no usable gate reports
+     ".ants/verify.json", ran_count 0, and IS cached. Decide whether
+     the exclusion should key on ran_count == 0.
+  **Layman:** The design notes for the build-result cache contradict themselves on one option and leave two of their tests too weak to catch a mistake.
+  Kind: doc-fix.
+  Source: review-contract ANTS-1359 loop 1, 2026-09-28 (outside the gated change).
+  Lanes: mcp, docs.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
