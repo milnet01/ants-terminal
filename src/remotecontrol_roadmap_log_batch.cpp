@@ -2172,6 +2172,27 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
 // section in a single read + single atomic commit. Semantic parity
 // with cmdRoadmapLogFlipBatch (ok:true even when all-skipped). See
 // docs/specs/ANTS-1879.md.
+// ANTS-4572 / ANTS-4938 — append_batch's scrub warning, batch-wide. Fires when
+// the scrub removed ANYTHING, named or not, and says what went. One helper for
+// both paths: the markdown path once reported named parameters only
+// (ANTS-5095).
+static void rlAddBatchScrubWarning(QJsonObject &env, const QStringList &names,
+                                   int unnamed, const QStringList &fragments) {
+    if (names.isEmpty() && unnamed <= 0) return;
+    QJsonObject warn;
+    warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
+    warn["message"] = QStringLiteral(
+        "Stripped leaked tool-call XML from bullet bodies; resend "
+        "any named siblings as proper JSON fields if intended. "
+        "`removed_fragments` carries what was taken across the "
+        "batch — check it here rather than re-reading the bodies.");
+    if (!names.isEmpty()) warn["lost_parameters"] = QJsonArray::fromStringList(names);
+    if (unnamed > 0) warn["unnamed_fragments_removed"] = unnamed;
+    if (!fragments.isEmpty())
+        warn["removed_fragments"] = QJsonArray::fromStringList(fragments);
+    rlAddWarning(env, warn);
+}
+
 QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -3022,27 +3043,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         // ANTS-4572 — fire when the scrub removed ANYTHING, not only a named
         // parameter pair. A batch is where a silent partial scrub hides best:
         // one bullet of many, and nobody re-reads the rendered file.
-        if (!scrubbedRollup.isEmpty() || scrubbedUnnamedRollup > 0) {
-            QJsonArray names;
-            for (const QString &n : scrubbedRollup) names.append(n);
-            QJsonObject warn;
-            warn["code"]            = QStringLiteral("body_scrubbed_tool_xml");
-            // ANTS-4938 — name what went, batch-wide.
-            warn["message"]         = QStringLiteral(
-                "Stripped leaked tool-call XML from bullet bodies; resend "
-                "any named siblings as proper JSON fields if intended. "
-                "`removed_fragments` carries what was taken across the "
-                "batch — check it here rather than re-reading the bodies.");
-            if (!names.isEmpty()) warn["lost_parameters"] = names;
-            if (scrubbedUnnamedRollup > 0)
-                warn["unnamed_fragments_removed"] = scrubbedUnnamedRollup;
-            if (!scrubbedFragRollup.isEmpty()) {
-                QJsonArray frags;
-                for (const QString &f : scrubbedFragRollup) frags.append(f);
-                warn["removed_fragments"] = frags;
-            }
-            rlAddWarning(env, warn);
-        }
+        rlAddBatchScrubWarning(env, scrubbedRollup, scrubbedUnnamedRollup,
+                               scrubbedFragRollup);
         // ANTS-4527 — rolled up across the batch, as the scrub warning is.
         if (const QJsonObject ev = rlEvidenceAdvisory(evNotPathRollup);
             !ev.isEmpty()) {
@@ -3185,18 +3187,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     if (!possibleDuplicates.isEmpty()) {
         out["possible_duplicates"] = possibleDuplicates;
     }
-    if (!scrubbedRollup.isEmpty()) {
-        QJsonArray names;
-        for (const QString &n : scrubbedRollup) names.append(n);
-        QJsonObject warn;
-        warn["code"]            = QStringLiteral("body_scrubbed_tool_xml");
-        warn["message"]         = QStringLiteral(
-            "Stripped leaked <parameter name=\"…\"> tool-call XML "
-            "from bullet bodies; resend as proper JSON fields if "
-            "intended.");
-        warn["lost_parameters"] = names;
-        rlAddWarning(out, warn);
-    }
+    // ANTS-5095 — the store path's warning: this path reported only a NAMED
+    // parameter, so an unnamed fragment was stripped in silence (ANTS-4572).
+    rlAddBatchScrubWarning(out, scrubbedRollup, scrubbedUnnamedRollup,
+                           scrubbedFragRollup);
     // ANTS-4527 — rolled up over the batch's bullets, like the scrub warning.
     {
         QStringList bad;

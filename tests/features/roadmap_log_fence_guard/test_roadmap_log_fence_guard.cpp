@@ -133,6 +133,39 @@ TEST(roadmap_log_fence_guard, Inv1UnclosedFenceEscapedAndBelowStaysEditable) {
         << QJsonDocument(out).toJson().toStdString();
 }
 
+// ANTS-5095 — append_batch's markdown path raised the scrub warning only for a
+// NAMED parameter, so an unnamed fragment went in silence there while the
+// single append (below) and the store path both reported it.
+TEST(roadmap_log_fence_guard, Ants5095BatchUnnamedScrubIsReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    QJsonObject bullet;
+    bullet["headline"] = QStringLiteral("Batch bullet whose body leaked a bare tag.");
+    bullet["kind"]     = QStringLiteral("fix");
+    bullet["source"]   = QStringLiteral("test");
+    bullet["body"]     = QStringLiteral("The prose is fine and complete.\n</invoke>");
+    QJsonObject req;
+    req["caller_cwd"] = tmp.path();
+    req["op"]         = QStringLiteral("append_batch");
+    req["section"]    = QStringLiteral("backlog");
+    req["status"]     = QStringLiteral("planned");
+    req["bullets"]    = QJsonArray{bullet};
+    RemoteControl rc(nullptr);
+    const QJsonObject a = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+    const QJsonArray warns = a.value(QStringLiteral("warnings")).toArray();
+    bool reported = false;
+    for (const QJsonValue &v : warns) {
+        const QJsonObject w = v.toObject();
+        if (w.value(QStringLiteral("code")).toString() == QStringLiteral("body_scrubbed_tool_xml"))
+            reported = w.value(QStringLiteral("unnamed_fragments_removed")).toInt() > 0;
+    }
+    EXPECT_TRUE(reported) << QJsonDocument(a).toJson().toStdString();
+}
+
 // ANTS-4572 — a scrub that removed something must SAY so, even when what it
 // removed carries no parameter name. `scrubbedNames` only ever held matched
 // <parameter name="X"> pairs, so a stray closing tag, or ANTS-4609's
