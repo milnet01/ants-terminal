@@ -9484,6 +9484,17 @@ extends an existing item, that item carries it instead.
   the markdown read-to-commit change check, and backfill_dates' time
   budget (re-measure: the 60 s bridge timeout it cited was the Python
   bridge's, and ants-mcpd has replaced it).
+  Progress (2026-09-28, later): two more closed. append_batch's markdown
+  path raised body_scrubbed_tool_xml only for a named parameter; both
+  batch paths now share rlAddBatchScrubWarning, which fires on any scrub
+  and names the fragments (roadmap_log_fence_guard
+  Ants5095BatchUnnamedScrubIsReported, red first). append_batch refuses
+  more than 500 bullets or a body over 64 KiB with bad_args before the
+  scrub runs (mcp_roadmap_log_append_batch
+  Ants5095BatchIsBoundedBeforeTheScrub, red first). STILL OPEN:
+  flip_batch's markdown path re-walking the file and re-reading
+  project.json per target, the markdown writers' read-to-commit change
+  check, and backfill_dates' time budget (re-measure first).
   **Layman:** Smaller roadmap batch-tool fixes, including one that reports success when nothing changed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch).
