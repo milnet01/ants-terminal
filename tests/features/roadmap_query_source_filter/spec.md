@@ -54,6 +54,9 @@ scalar-only filter cannot ask "from any review" in one call.
 - **INV-6** — each bullet carries `source` as a field, beside `kind` and
   `lanes`. It was the only trailer column with a stored value and no field of
   its own.
+- **INV-8** (ANTS-5094) — `source` takes at most 32 prefixes; more REFUSES
+  with `bad_args`. Each prefix is tested against every bullet, and a
+  truncated filter would return a result that looks complete.
 
 ## Test shape
 

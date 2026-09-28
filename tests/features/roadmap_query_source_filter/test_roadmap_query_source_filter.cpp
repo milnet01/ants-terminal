@@ -167,6 +167,25 @@ TEST(RoadmapQuerySourceFilter, Inv4EmptyFilterRefusesRatherThanMatchingAll) {
     }
 }
 
+// INV-8 (ANTS-5094) — the prefix list is bounded. Every prefix is tested
+// against every bullet, so an unbounded array is an unbounded scan. Over the
+// cap refuses rather than truncating: a silently shortened filter returns a
+// result that looks complete.
+TEST(RoadmapQuerySourceFilter, Inv8PrefixListOverTheCapRefuses) {
+    QTemporaryDir tmp; const QString root = seed(tmp);
+    QJsonArray many;
+    for (int i = 0; i < 33; ++i) many.append(QStringLiteral("p%1").arg(i));
+    QJsonObject a;
+    a[QStringLiteral("source")] = many;
+    const QJsonObject r = queryWith(root, a);
+    EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+
+    many.removeLast();   // 32 is allowed
+    a[QStringLiteral("source")] = many;
+    EXPECT_TRUE(queryWith(root, a).value(QStringLiteral("ok")).toBool());
+}
+
 // INV-5 — the echo, so a zero-row answer is readable.
 TEST(RoadmapQuerySourceFilter, Inv5EnvelopeEchoesPrefixesAndDropCount) {
     QTemporaryDir tmp; const QString root = seed(tmp);

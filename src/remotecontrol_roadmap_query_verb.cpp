@@ -994,7 +994,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (sv.isString()) {
             raw << sv.toString();
         } else if (sv.isArray()) {
-            for (const auto &e : sv.toArray()) raw << e.toString();
+            // ANTS-5094 — every prefix is tested against every bullet, so the
+            // list is bounded. Refused rather than truncated: a shortened
+            // filter returns a result that looks complete.
+            constexpr qsizetype kMaxSourcePrefixes = 32;
+            const QJsonArray arr = sv.toArray();
+            if (arr.size() > kMaxSourcePrefixes) {
+                out["ok"]    = false;
+                out["error"] = QStringLiteral(
+                    "source takes at most %1 prefixes; %2 were given")
+                        .arg(kMaxSourcePrefixes).arg(arr.size());
+                out["code"]  = QStringLiteral("bad_args");
+                return QJsonDocument(out);
+            }
+            for (const auto &e : arr) raw << e.toString();
         }
         for (QString one : raw) {
             one = one.trimmed();

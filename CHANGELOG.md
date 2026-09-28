@@ -150,6 +150,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query's `source` filter accepts at most 32 prefixes** (ANTS-5094)
+  A longer list is refused with `bad_args` rather than cut short, since a
+  shortened filter would return a result that looks complete.
+
 - **feedback_log and feedback_query from a dot-named folder such as ~/.claude find their feedback file from the git remote** (ANTS-5500)
   When the folder's name gives no usable file name, the verbs read the
   repository name from the git origin remote and use the one feedback

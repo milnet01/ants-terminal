@@ -9373,7 +9373,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-transport).
   Lanes: mcp.
 
-- 📋 [ANTS-5094] **Performance pass findings for roadmap_query and roadmap_log (medium and low).**
+- ✅ [ANTS-5094] **Performance pass findings for roadmap_query and roadmap_log (medium and low).**
   Filed separately: ANTS-5051.
   Medium:
   - The section cache now stores bodies and, for a parent heading, its
@@ -9421,6 +9421,15 @@ extends an existing item, that item carries it instead.
   (mcp_adapter_github_tasklist INV-16). STILL OPEN: any other silent
   rollback outside these four paths (check first), and the source
   filter's element cap.
+  Resolved (2026-09-28): the last two items. The source filter refuses
+  more than 32 prefixes with bad_args (roadmap_query_source_filter
+  INV-8, red first). The silent-rollback check found no file rollback
+  left outside the four paths 59970f50 fixed: a search of the roadmap,
+  changelog, feedback and spec write paths for restore-the-file code
+  returned nothing, and the remaining rollbacks are SQL ROLLBACKs on
+  error paths that already report the first error. Every item of this
+  finding is now closed; the three renders per store write are
+  ANTS-4681's.
   **Layman:** Smaller roadmap-tool fixes: a memory budget blown by caching, and one edit command that can corrupt the roadmap file.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
