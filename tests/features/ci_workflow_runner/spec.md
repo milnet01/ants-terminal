@@ -28,8 +28,9 @@ step a later step runs only if it has `if: always()`; the run exits non-zero.
 
 **INV-4 — what has no local meaning is refused, not guessed.** Each of these
 makes `plan` exit 3: an unknown `uses:` action; an unknown `${{ }}`
-expression; a step `if:` other than `always()` or the one INV-6 names; a key the runner does not
-understand at workflow, job or step level (`defaults`, `strategy`,
+expression; a step `if:` other than `always()` or the ones INV-6 and INV-7 name; a key the runner does not
+understand at workflow, job or step level. A job's `permissions` is understood:
+it scopes GitHub's token, which no local run holds (`defaults`, `strategy`,
 `container`, `continue-on-error` and the rest); and a `run:` that reads a
 `GITHUB_*` or `RUNNER_*` variable the runner does not set, which includes
 writing `$GITHUB_ENV`, `$GITHUB_PATH` or `$GITHUB_OUTPUT`. A refused job fails
@@ -50,6 +51,14 @@ pre-push hook sets it; GitHub never does, so the step always runs there.
 (2026-09-26) that a wall-clock budget on a shared workstation is GitHub's to
 enforce. The test clears the variable before planning, so INV-1 holds inside
 the hook too.
+
+**INV-7 — a GitHub-only step never runs locally (ANTS-5532).** A step whose
+`if:` is exactly `always() && github.token != ''` is planned as a skip naming
+GitHub's cache store, and INV-1 does not count it. Its body is not expanded,
+so its `${{ github.token }}` is not refused. Every step in ci.yml that runs
+`tools/ci-prune-caches.sh` carries the condition: that script deletes entries
+from GitHub's cache store, and locally it would reach the real store through
+the developer's own `gh` login.
 
 ## Not covered
 

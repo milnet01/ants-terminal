@@ -60,6 +60,12 @@ jobs:
   build-test:
     name: Build and test (Release)
     runs-on: ubuntu-24.04
+    # ANTS-5532 — actions: write lets the prune step delete this job's older
+    # cache entries. Job-level permissions replace the workflow's, so
+    # contents: read is restated.
+    permissions:
+      contents: read
+      actions: write
     # Bumped 15→25 (2026-05-13) as the test corpus crossed the prior
     # cap. Reference: ANTS-1248 finished in 13m38s; ANTS-1254 build
     # cancelled at 15m24s with 269/275 TUs done, so realistic floor is
@@ -153,6 +159,18 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-release-${{ github.sha }}
 
+      - name: Prune older caches (release)
+        # ANTS-5532 — keys are per-SHA and cannot be overwritten, so each push
+        # adds an entry; only the newest is ever restored. Deletes nothing
+        # unless the save above landed. Contract: tests/features/ci_cache_prune/.
+        # The token test keeps tools/ci_workflow.py from running it locally.
+        if: always() && github.token != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_PREFIX: ${{ runner.os }}-ccache-release-
+          CACHE_KEY: ${{ runner.os }}-ccache-release-${{ github.sha }}
+        run: bash tools/ci-prune-caches.sh "$CACHE_PREFIX" "$CACHE_KEY"
+
       - name: ccache stats (release)
         if: always()
         run: ccache --show-stats
@@ -236,6 +254,12 @@ jobs:
   build-asan:
     name: Build and test (ASan/UBSan)
     runs-on: ubuntu-24.04
+    # ANTS-5532 — actions: write lets the prune step delete this job's older
+    # cache entries. Job-level permissions replace the workflow's, so
+    # contents: read is restated.
+    permissions:
+      contents: read
+      actions: write
     # ANTS-5343 — nightly, on PRs and on demand; not on a push to main, which
     # waited about half an hour on this job. The pre-push hook still runs it
     # locally when build-asan/ is warm (tools/ci_workflow.py runs it there).
@@ -331,6 +355,18 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-asan-${{ github.sha }}
 
+      - name: Prune older caches (asan)
+        # ANTS-5532 — keys are per-SHA and cannot be overwritten, so each push
+        # adds an entry; only the newest is ever restored. Deletes nothing
+        # unless the save above landed. Contract: tests/features/ci_cache_prune/.
+        # The token test keeps tools/ci_workflow.py from running it locally.
+        if: always() && github.token != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_PREFIX: ${{ runner.os }}-ccache-asan-
+          CACHE_KEY: ${{ runner.os }}-ccache-asan-${{ github.sha }}
+        run: bash tools/ci-prune-caches.sh "$CACHE_PREFIX" "$CACHE_KEY"
+
       - name: ccache stats (asan)
         if: always()
         run: ccache --show-stats
@@ -390,6 +426,12 @@ jobs:
   qt62-baseline:
     name: Qt 6.2 floor build
     runs-on: ubuntu-22.04
+    # ANTS-5532 — actions: write lets the prune step delete this job's older
+    # cache entries. Job-level permissions replace the workflow's, so
+    # contents: read is restated.
+    permissions:
+      contents: read
+      actions: write
     timeout-minutes: 30
     # ANTS-4652 — this job had no compile cache at all and rebuilt the whole
     # tree from scratch every run: 1281 s measured, the second-longest job and
@@ -458,6 +500,18 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-qt62-${{ github.sha }}
 
+      - name: Prune older caches (qt62)
+        # ANTS-5532 — keys are per-SHA and cannot be overwritten, so each push
+        # adds an entry; only the newest is ever restored. Deletes nothing
+        # unless the save above landed. Contract: tests/features/ci_cache_prune/.
+        # The token test keeps tools/ci_workflow.py from running it locally.
+        if: always() && github.token != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_PREFIX: ${{ runner.os }}-ccache-qt62-
+          CACHE_KEY: ${{ runner.os }}-ccache-qt62-${{ github.sha }}
+        run: bash tools/ci-prune-caches.sh "$CACHE_PREFIX" "$CACHE_KEY"
+
       - name: ccache stats (qt62)
         if: always()
         run: ccache --show-stats
@@ -470,6 +524,12 @@ jobs:
   cppcheck:
     name: cppcheck (informational)
     runs-on: ubuntu-24.04
+    # ANTS-5532 — actions: write lets the prune step delete this job's older
+    # cache entries. Job-level permissions replace the workflow's, so
+    # contents: read is restated.
+    permissions:
+      contents: read
+      actions: write
     timeout-minutes: 20
     steps:
       - name: Check out source
@@ -527,3 +587,15 @@ jobs:
         with:
           path: ${{ github.workspace }}/.cppcheck-build
           key: ${{ runner.os }}-cppcheck-${{ github.sha }}
+
+      - name: Prune older caches (cppcheck)
+        # ANTS-5532 — keys are per-SHA and cannot be overwritten, so each push
+        # adds an entry; only the newest is ever restored. Deletes nothing
+        # unless the save above landed. Contract: tests/features/ci_cache_prune/.
+        # The token test keeps tools/ci_workflow.py from running it locally.
+        if: always() && github.token != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_PREFIX: ${{ runner.os }}-cppcheck-
+          CACHE_KEY: ${{ runner.os }}-cppcheck-${{ github.sha }}
+        run: bash tools/ci-prune-caches.sh "$CACHE_PREFIX" "$CACHE_KEY"

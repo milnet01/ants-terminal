@@ -77,7 +77,10 @@ BASH = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
 # needs, container, services, continue-on-error — changes what GitHub runs,
 # so ignoring it would turn a divergence into a silent green.
 WORKFLOW_KEYS = {"name", "on", True, "permissions", "concurrency", "env", "jobs"}
-JOB_KEYS = {"name", "runs-on", "timeout-minutes", "env", "steps", "if"}
+# `permissions` scopes GitHub's token. No local run holds that token, and the
+# one step that uses it (ANTS-5532's cache prune) is skipped here.
+JOB_KEYS = {"name", "runs-on", "timeout-minutes", "env", "steps", "if",
+            "permissions"}
 
 # Job-level `if:` values, each with its local meaning. ANTS-5343: build-asan
 # is skipped on a GitHub push and runs nightly; locally the caller picked the
@@ -98,6 +101,12 @@ STEP_CONDITIONS = {
     "env.ANTS_PUSH_GATE != '1'": (
         lambda: os.environ.get("ANTS_PUSH_GATE") != "1",
         "push gate: this step runs on GitHub, not here (ANTS-5375)"),
+    # ANTS-5532: the cache prune deletes entries from GitHub's cache store
+    # with the job's token. A local run has neither, and must never reach the
+    # real store through the developer's own gh login.
+    "always() && github.token != ''": (
+        lambda: False,
+        "GitHub's cache store: this step runs on GitHub, not here (ANTS-5532)"),
 }
 
 # Runner variables a step may read: the ones RUNNER_ENV sets. A step that

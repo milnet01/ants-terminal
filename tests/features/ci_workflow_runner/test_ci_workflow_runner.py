@@ -17,6 +17,7 @@ RUNNER = os.path.join(ROOT, "tools", "ci_workflow.py")
 PARITY = os.path.join(ROOT, "tools", "ci-parity.sh")
 HOOK = os.path.join(ROOT, "tools", "hooks", "pre-push")
 HOST_JOBS = ("build-test", "build-asan", "cppcheck")
+GITHUB_ONLY = "always() && github.token != ''"
 failures = []
 
 
@@ -55,7 +56,9 @@ for job in HOST_JOBS:
     rc, out = runner("plan", job)
     check(rc == 0, f"INV-1 plan {job} exits 0 (got {rc}: {out[-300:]})")
     planned = [l[4:] for l in out.splitlines() if l.startswith("  | ")]
-    runs = [s for s in ci["jobs"][job]["steps"] if "run" in s]
+    # INV-7 — a GitHub-only step is planned as a skip, not a run.
+    runs = [s for s in ci["jobs"][job]["steps"] if "run" in s
+            and str(s.get("if", "")).strip() != GITHUB_ONLY]
     check(out.count("[run") == len(runs),
           f"INV-1 {job}: {len(runs)} run steps planned")
     body = [l.replace("${{ github.workspace }}", ROOT)
@@ -176,6 +179,25 @@ with tempfile.TemporaryDirectory() as tmp:
     check(rc == 0 and "MARK-FIRST-RAN" in out and "MARK-PERF-RAN" not in out
           and "push gate" in out,
           f"INV-6 the push-gate step is skipped, and says so, under ANTS_PUSH_GATE=1 (got {rc}: {out[-200:]})")
+
+    # INV-7
+    with open(wf, "w") as f:
+        f.write("jobs:\n  j:\n    permissions:\n      actions: write\n"
+                "    steps:\n      - run: echo MARK-FIRST-RAN\n"
+                "      - name: prune\n        if: " + GITHUB_ONLY + "\n"
+                "        env:\n          GH_TOKEN: ${{ github.token }}\n"
+                "        run: echo MARK-PRUNE-RAN\n")
+    rc, out = runner("run", "j", workflow=wf)
+    check(rc == 0 and "MARK-FIRST-RAN" in out and "MARK-PRUNE-RAN" not in out
+          and "GitHub's cache store" in out,
+          f"INV-7 a GitHub-only step is skipped, and says so (got {rc}: {out[-200:]})")
+
+# INV-7 — every ci.yml step that calls the cache prune is GitHub-only.
+prunes = [st for j in ci["jobs"].values() for st in j.get("steps", [])
+          if "ci-prune-caches.sh" in str(st.get("run", ""))]
+check(len(prunes) >= 1 and all(str(st.get("if", "")).strip() == GITHUB_ONLY
+                               for st in prunes),
+      "INV-7 every cache-prune step in ci.yml carries the GitHub-only condition")
 
 # INV-6 — ci.yml's perf step carries the condition, so the hook skips it.
 perf = [st for st in ci["jobs"]["build-test"]["steps"]

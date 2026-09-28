@@ -2914,6 +2914,9 @@ if(ANTS_TESTS)
                 # ANTS-4533 ci.yml's build-asan job stays inside its budget
                 # and goes red, not `cancelled`, when it does not.
                 tests/features/ci_asan_budget/test_ci_asan_budget.cpp
+                # ANTS-5532 each CI cache save prunes the job's older
+                # entries, and never the only one.
+                tests/features/ci_cache_prune/test_ci_cache_prune.cpp
                 # ANTS-1306 task_priors MCP context bundler.
                 tests/features/mcp_task_priors/test_mcp_task_priors.cpp
                 # ANTS-1307 project_conventions MCP convention summary.
@@ -3024,6 +3027,9 @@ if(ANTS_TESTS)
     # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
     # that signature takes name/value PAIRS, so a source needing two defines
     # fails to configure outright.
+    set_property(SOURCE tests/features/ci_cache_prune/test_ci_cache_prune.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CI_PRUNE_SCRIPT_PATH="${CMAKE_SOURCE_DIR}/tools/ci-prune-caches.sh")
     set_property(SOURCE tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"

@@ -150,6 +150,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI keeps one compile cache per job, so a busy day no longer pushes the nightly memory-check build's cache out.** (ANTS-5532)
+  After each cache save, CI deletes that job's older copies, and never
+  the only one. A local CI run skips the step.
+
 - **roadmap_query's `source` filter accepts at most 32 prefixes** (ANTS-5094)
   A longer list is refused with `bad_args` rather than cut short, since a
   shortened filter would return a result that looks complete.
