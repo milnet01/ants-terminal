@@ -79968,6 +79968,25 @@ acting on it.
   Source: user-request-2026-09-25.
   Lanes: ci, build.
 
+- 📋 [ANTS-5528] **The nightly ASan job goes red when its compile cache has been evicted, because a cold build does not fit the 24-minute build guard.**
+  Measured 2026-09-28: scheduled run 36389329574 restored no asan cache
+  (ccache 0/514 hits), reached build step 739 of 997 in 24 minutes and
+  the `timeout 24m` guard exited 124. The seven nightlies before it
+  passed. That day saw many pushes, each saving build-test caches, and
+  GitHub evicts least-recently-used entries past the repository's cache
+  limit; the asan cache is touched only once a day, so it goes first.
+  No test failed; the job verified nothing.
+  Options: a cold-start path (on a miss, build without the guard or with
+  a longer one); keep the asan cache warm (touch it from push runs, or
+  key it so push caches do not crowd it out); or trim what push runs
+  save. ci_asan_budget locks the current guards, so it moves with any
+  fix. A manual full run (36392962717) was started to recover the day's
+  coverage.
+  **Layman:** On a busy day of changes, the nightly memory-safety check can lose its saved build and run out of time before it tests anything.
+  Kind: fix.
+  Source: in-session-2026-09-28 (nightly run 36389329574).
+  Lanes: ci.
+
 ## Memory and performance pass (2026-09-14)
 
 A memory-first pass with a performance pass alongside, over the terminal core,
