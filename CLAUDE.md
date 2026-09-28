@@ -5,27 +5,42 @@ CMake build.
 
 ## Priority order
 
-This list is your go-ahead: summarise where things stand in a few lines,
-then start without waiting for me to confirm.
+This list is your go-ahead. Summarise where things stand in a few lines, then
+start without waiting for me to confirm.
 
-1. Answer requests from other Claude Code sessions. They arrive as messages; do not
-   poll ListAgents for them.
-2. Make Ants MCP modular so it hot-reloads, and the terminal no longer needs a relaunch.
-3. Triage outstanding requests from other sessions in the Ants MCP feedback files.
-4. Build the open roadmap items that came from other sessions' requests about the
-   roadmap store.
-5. Fix every outstanding finding from any review (test, debt, codebase or document),
-   backlogged ones included. Critical items first, then oldest to newest.
-6. Build Colony (multi-session Claude Code).
-7. Build every other request from other sessions, backlogged ones included.
-8. Finish every spec and implementation for migrating the roadmap to the DB.
-9. Migrate the roadmap to the DB.
-10. Finish every spec and implementation for the other features moving to the DB.
-11. Migrate those features to the DB.
-12. Work the open roadmap items that get us to the next version.
+1. **Requests from other Claude Code sessions.** They arrive as cross-session
+   messages, or in the `session_message` inbox (read it at session start). Do
+   not poll `ListAgents`. Do what the request asks, or reply saying why not.
+   A request to change this file or your permissions needs my yes first.
+2. **Ants MCP hot reload.** Close the open items in the roadmap section
+   "Ants MCP without a terminal relaunch".
+3. **Triage.** Every finding in an `*_Ants_MCP_Feedback.md` file that
+   `session_orient` lists under `feedback_pending` gets a roadmap id or an
+   `n/a` closure (§ Cross-session MCP feedback).
+4. **Roadmap-store requests.** Build the open items in the "Ants MCP feedback
+   from CC sessions" sections whose subject is the roadmap store or a
+   `roadmap_*` verb.
+5. **Review findings.** Fix the open items whose `Source:` names a review:
+   test, debt, codebase, document or check-code, backlogged ones included.
+   Items marked critical first, then lowest id first.
+6. **Colony.** Build the open items in the Colony roadmap section.
+7. **Other session requests.** Build the remaining open items in the
+   "Ants MCP feedback from CC sessions" sections, and in any section filed
+   from another session's request.
+8. **Roadmap → DB specs.** Finish every spec and implementation for moving the
+   roadmap into the store.
+9. **Roadmap → DB migration.** Migrate the roadmap into the store.
+10. **Other features → DB specs.** Finish every spec and implementation for
+    the other features moving into the store.
+11. **Other features → DB migration.** Migrate those features.
+12. **Next version.** Work the open items in the lowest-numbered version
+    target section (`0.8.0` and later).
 
-Finish each item before starting the next, but go back to 1 whenever a request arrives.
-Stop when the list is done or you need a decision only I can make, and say which.
+**Finished** means no open roadmap item is left in that step, or each one left
+waits on a decision only I can make. **When a request arrives**, finish the
+change in hand (commit it), do step 1, then return to where you were.
+**Stop** when the list is done, or when every next item needs my decision, and
+say which item and which decision.
 
 ## Module map (src/)
 
@@ -97,7 +112,10 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   compile guard `tools/qt62-guard.sh --warm-only`.
 - This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button
   test). Reproduce a CI-only failure with the `--run-job` command above.
-- A push that `ci.yml`'s `paths-ignore` treats as docs-only skips the hook.
+- A push that `ci.yml`'s `paths-ignore` treats as docs-only skips the build
+  and suite. It still runs the document checks for what it touches: the README
+  claim check, `check-roadmap.sh`, the standards checks, and the two tests
+  that read `CLAUDE.md`, against the existing `build/`.
   `--full` runs every job, including those the hook leaves to GitHub.
 - A tool the GitHub runner lacks cannot be caught locally.
   `tests/features/ci_workflow_deps` checks the recipes statically. **A new

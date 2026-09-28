@@ -125,6 +125,33 @@ if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
         printf '%s\n' "$changed" | head -20 | sed 's/^/            /'
         [[ "$(printf '%s\n' "$changed" | wc -l)" -gt 20 ]] \
             && echo "            … and more"
+        # The document checks still run on a docs-only push. None builds;
+        # each runs only when the push touches what it checks.
+        doc_rc=0
+        if grep -qx 'ROADMAP.md' <<<"$changed"; then
+            tools/check-roadmap.sh || doc_rc=1
+        fi
+        if grep -q '^docs/standards/' <<<"$changed"; then
+            tools/check-standard-mirrors.sh || doc_rc=1
+            tools/check-standards-index.sh || doc_rc=1
+        fi
+        # Two tests read CLAUDE.md's text. Run them against the existing
+        # build/ — they read the file at run time, so no rebuild is needed.
+        if grep -qx 'CLAUDE.md' <<<"$changed"; then
+            if [[ -f build/CTestTestfile.cmake ]]; then
+                if ! ctest_out="$(ctest --test-dir build --output-on-failure \
+                    -R '^(McpSubsystem\.WiringContract|McpOutputSanitisationWiring\.ConventionDocumentedInClaudeMd)$' 2>&1)"; then
+                    doc_rc=1
+                fi
+                printf '%s\n' "$ctest_out" | tail -15
+            else
+                echo "pre-push: no build/ — CLAUDE.md content tests skipped."
+            fi
+        fi
+        if [[ "$doc_rc" -ne 0 ]]; then
+            echo "pre-push: a document check failed — fix it, or --no-verify."
+            exit 1
+        fi
         exit 0
     fi
 fi

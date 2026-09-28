@@ -27,6 +27,7 @@ on:
       - 'CHANGELOG.md'
       - 'README.md'
       - 'PLUGINS.md'
+      - 'CLAUDE.md'
       - 'LICENSE'
       - 'docs/**'
       - '.roadmap-counter'
