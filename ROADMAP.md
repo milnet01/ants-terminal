@@ -68432,6 +68432,21 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session request 2026-09-28 (user request; the Hub's case).
   Lanes: mcp, changelog.
 
+- 📋 [ANTS-5544] **doc_symbols reports CMake options, gtest names and Qt API calls as unresolved symbols.**
+  doc_lint over docs/design.md returned five unresolved_symbol findings,
+  all real names: `ANTS_ENABLE_HELPER_CLI` (a CMake option in
+  CMakeLists.txt), `StandaloneMcpServer` and `Inv1LinksNoGuiLibrary` (a
+  gtest suite and case, TEST(StandaloneMcpServer, Inv1LinksNoGuiLibrary)),
+  and `QDataStream` / `qCompress` (Qt API). Every finding was a false
+  positive, so a reader learns to skip the kind.
+  Options: resolve option() and set() names in CMakeLists.txt; resolve
+  TEST(Suite, Case) names in the test tree; treat a Q-prefixed or
+  q-prefixed identifier as external API (candidate, not finding).
+  **Layman:** The document checker flags real names as missing when they come from the build file, the tests or the Qt library, so its warnings get ignored.
+  Kind: fix.
+  Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
+  Lanes: mcp, docs.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
