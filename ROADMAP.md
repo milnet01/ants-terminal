@@ -42048,6 +42048,31 @@ in each bullet, not just the reporter's symptom.
   Source: CI run 36331920136.
   Lanes: tests.
 
+- 📋 [ANTS-5542] **Hand tools/hooks/pre-push off to the machine-wide hook, with Ants' gate as a script it runs.**
+  The user asked for one pre-push hook for every project. claude-config
+  built the knobs Ants asked for in ~/.claude d96b2a4: ants.gate.inPlace,
+  ANTS_PUSH_REFS / ANTS_PUSH_CHANGED, and --secrets-only.
+
+  Blocked on two more, asked of claude-config 2026-09-28:
+  - ants.gate.docsCommand, so the docs-only decision stays ci.yml's
+    paths-ignore via tools/ci_workflow.py (ANTS-4726) instead of a
+    docsGlob twin.
+  - a refuse option, or a worktree dir off the system drive, for a push
+    from a dirty tree; the default fallback is a cold build in ~/.cache.
+
+  Then: move the gate into a script with a --docs mode that runs the
+  document checks; make tools/hooks/pre-push a shim that execs the
+  machine-wide hook; set ants.gate.command, docsCommand and inPlace in
+  tools/install-hooks.sh; retarget prepush_range, prepush_asan_gate,
+  prepush_docs_only_parity, ci_asan_budget and qt62_guard_interrupt.
+
+  Today Ants pushes get no gitleaks scan, because the repo's own
+  core.hooksPath hides the machine-wide hook.
+  **Layman:** Use the same push checker every other project uses, so Ants also gets its leaked-password scan and one place to fix the checker.
+  Kind: refactor.
+  Source: user-request-2026-09-28.
+  Lanes: ci.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
