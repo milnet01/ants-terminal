@@ -123,7 +123,7 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
 - A push that `ci.yml`'s `paths-ignore` treats as docs-only runs
   `tools/local-ci.sh --docs`: no build, no suite. It runs the document checks
   for what the push touches: the README claim check, `check-roadmap.sh`, the
-  standards checks, and the two tests that read `CLAUDE.md`, against the
+  standards checks, and the tests that read `CLAUDE.md`'s text, against the
   existing `build/`.
 - `tools/ci-parity.sh --full` runs every job, including those the hook
   leaves to GitHub.

@@ -106,7 +106,7 @@ if [[ "$mode" == docs ]]; then
         tools/check-standard-mirrors.sh || doc_rc=1
         tools/check-standards-index.sh || doc_rc=1
     fi
-    # Two tests read CLAUDE.md's text. Run them against the existing build/ —
+    # These tests read CLAUDE.md's text. Run them against the existing build/ —
     # they read the file at run time, so no rebuild is needed.
     if grep -qx 'CLAUDE.md' <<<"$changed"; then
         if [[ -f build/CTestTestfile.cmake ]]; then
