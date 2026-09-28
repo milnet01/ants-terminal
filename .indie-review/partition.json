@@ -306,6 +306,8 @@
         "src/doccitations.h",
         "src/docdedup.cpp",
         "src/docdedup.h",
+        "src/docfacts.cpp",
+        "src/docfacts.h",
         "src/doclint.cpp",
         "src/doclint.h",
         "src/docfinding.cpp",

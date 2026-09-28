@@ -1138,6 +1138,13 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
         return m_claudeIntegration ? m_claudeIntegration->registeredToolNames()
                                    : QStringList();
     });
+    // ANTS-5506 — doc_facts' argument map, installed beside the vocabulary
+    // provider for the same ordering reason. It returns the copy tools/list
+    // publishes, never m_toolParamKeys (cmdDocLint runs on a worker).
+    m_remoteControl->setMcpVerbArgsProvider([this] {
+        return m_claudeIntegration ? m_claudeIntegration->verbArgsSnapshot()
+                                   : QHash<QString, QSet<QString>>();
+    });
     // ANTS-2049 — propagate the `--e2e` launch flag; this is the sole enabler
     // of the inject verbs (false on every normal launch and on secondary
     // File→New Window instances, which default e2eMode=false).

@@ -1914,26 +1914,34 @@ void ClaudeIntegration::shutdownDispatchWorker() {
 QStringList ClaudeIntegration::ignoredArgKeysFor(
     const QString &toolName, const QJsonObject &argsObj) const {
     QStringList ignoredArgKeys;
-    if (m_toolParamKeys.contains(toolName)) {
-        // ANTS-4578 — which dispatch-layer args THIS verb actually
-        // honours. The predicates live here, so the pure helper
-        // cannot ask them; previously it exempted all four
-        // unconditionally and a `fields` sent to a verb with no
-        // projection support did nothing and said nothing.
-        QSet<QString> honoured;
-        if (isEtagSupportedTool(toolName))
-            honoured.insert(QStringLiteral("etag_match"));
-        // ANTS-4524 — `fields` is not here: it is universal now
-        // (mcp::isUniversalDispatchArg), so it can never be the
-        // dropped argument this advisory exists to name.
-        if (mcp::isCompactArgTool(toolName))
-            honoured.insert(QStringLiteral("compact"));
-        if (mcp::isOffloadEligible(toolName))
-            honoured.insert(QStringLiteral("offload"));
+    if (m_toolParamKeys.contains(toolName))
         ignoredArgKeys = mcp::ignoredArgs(
-            argsObj, m_toolParamKeys.value(toolName), honoured);
-    }
+            argsObj, m_toolParamKeys.value(toolName),
+            honouredDispatchArgs(toolName));
     return ignoredArgKeys;
+}
+
+// ANTS-4578 — which dispatch-layer args THIS verb actually honours. The
+// predicates live here, so the pure helper cannot ask them; previously it
+// exempted all four unconditionally and a `fields` sent to a verb with no
+// projection support did nothing and said nothing.
+QSet<QString> ClaudeIntegration::honouredDispatchArgs(const QString &toolName) {
+    QSet<QString> honoured;
+    if (isEtagSupportedTool(toolName))
+        honoured.insert(QStringLiteral("etag_match"));
+    // ANTS-4524 — `fields` is not here: it is universal now
+    // (mcp::isUniversalDispatchArg), so it can never be the
+    // dropped argument this advisory exists to name.
+    if (mcp::isCompactArgTool(toolName))
+        honoured.insert(QStringLiteral("compact"));
+    if (mcp::isOffloadEligible(toolName))
+        honoured.insert(QStringLiteral("offload"));
+    return honoured;
+}
+
+QHash<QString, QSet<QString>> ClaudeIntegration::verbArgsSnapshot() const {
+    QMutexLocker lock(&m_verbArgsMutex);
+    return m_verbArgsPublished;
 }
 
 // ANTS-2132 / ANTS-5072 — the MCP reply transforms, lifted out of
@@ -7227,14 +7235,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
                 tools.append(docDedup);
 
-                // ANTS-3663 — doc_lint: all five deterministic doc checkers in
+                // ANTS-3663 — doc_lint: all six deterministic doc checkers in
                 // one call, over one enumeration and one shared read.
                 QJsonObject docLint;
                 docLint["name"] = "doc_lint";
                 docLint["description"] = QStringLiteral(
                     "Run every deterministic document check in one call "
                     "(doc_integrity, doc_citations, doc_dedup, doc_symbols, "
-                    "spec_lint) and return one findings list in a total order. "
+                    "spec_lint, doc_facts) and return one findings list in a total order. "
                     "Narrow with checks[] (an unknown name refuses bad_args); "
                     "max_findings pages after the sort while counts cover the whole "
                     "run. REPORT-ONLY unless fix:true, which repairs toc_gap only; "
@@ -7247,11 +7255,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "heading order, ungranted skill tools), doc_citations (path:line "
                     "citations that no longer resolve), doc_dedup (the same passage "
                     "written twice), doc_symbols (backticked identifiers that resolve "
-                    "nowhere) and spec_lint (the greppable half of the spec-format "
-                    "contract). One walk and one shared read serve the three native "
-                    "checkers, so this is cheaper than the five calls it replaces. "
+                    "nowhere), spec_lint (the greppable half of the spec-format "
+                    "contract) and doc_facts (a list lead-in whose count is wrong, an "
+                    "INV-N defined twice, leaked tool-call markup, a version claim that "
+                    "disagrees with the project version, an MCP call example passing an "
+                    "argument the verb does not take — run it alone with "
+                    "checks:[\"doc_facts\"]). One walk and one shared read serve the four "
+                    "native checkers, so this is cheaper than the five calls it replaces. "
                     "Narrow with checks[]; an unknown name refuses bad_args rather than "
-                    "reading as all five. findings[] is in a TOTAL order (file, line, "
+                    "reading as all six. findings[] is in a TOTAL order (file, line, "
                     "verb, kind, message) so two runs diff cleanly, and max_findings "
                     "pages it AFTER that sort while counts describes the whole run. "
                     "REPORT-ONLY unless you pass fix:true, which repairs the one "
@@ -7283,9 +7295,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject dlChecks; dlChecks["type"] = "array";
                         dlChecks["items"] = QJsonObject{{"type", "string"}};
                         dlChecks["description"] = QStringLiteral(
-                            "Which checkers to run (default: all five). Values are exactly "
+                            "Which checkers to run (default: all six). Values are exactly "
                             "the `verb` strings the findings carry — doc_integrity, "
-                            "doc_citations, doc_dedup, doc_symbols, spec_lint — so a name "
+                            "doc_citations, doc_dedup, doc_symbols, spec_lint, doc_facts — so a name "
                             "read off a finding can be fed straight back. An unknown name "
                             "REFUSES bad_args with the accepted list: a filter that "
                             "silently widened would return a clean-looking report about a "
@@ -16160,7 +16172,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // per cluster, and a corpus-wide walk is the upper end
                         // (measured: 275 pairs / 128 clusters over docs/).
                         {QStringLiteral("doc_dedup"),         {1200, 12000}},
-                        // ANTS-3663 — doc_lint composes all five checkers, so
+                        // ANTS-3663 — doc_lint composes all six checkers, so
                         // its ceiling is their union over one walk; max_findings
                         // is what a caller bounds it with.
                         {QStringLiteral("doc_lint"),          {1500, 16000}},
@@ -16679,6 +16691,27 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                          pit != props.constEnd(); ++pit)
                         keys.insert(pit.key());
                     m_toolParamKeys.insert(name, keys);
+                }
+
+                // ANTS-5506 — doc_lint's doc_facts reads this map from a
+                // dispatch worker, so it gets a COPY published under a mutex
+                // rather than m_toolParamKeys itself (GUI-thread-only,
+                // ANTS-5072). The set is what a call may pass without an
+                // ignored_args advisory: schema properties, the universal
+                // dispatch args, and the conditional ones this verb honours.
+                {
+                    QHash<QString, QSet<QString>> published;
+                    for (auto kit = m_toolParamKeys.cbegin();
+                         kit != m_toolParamKeys.cend(); ++kit) {
+                        QSet<QString> accepted = kit.value();
+                        accepted.insert(QStringLiteral("caller_cwd"));
+                        accepted.insert(QStringLiteral("encoding"));
+                        accepted.insert(QStringLiteral("fields"));
+                        accepted.unite(honouredDispatchArgs(kit.key()));
+                        published.insert(kit.key(), accepted);
+                    }
+                    QMutexLocker lock(&m_verbArgsMutex);
+                    m_verbArgsPublished = std::move(published);
                 }
 
                 // ANTS-2079 — strip per-op `detail` from the wire payload;

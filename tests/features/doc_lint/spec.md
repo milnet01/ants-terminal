@@ -6,6 +6,14 @@ Contract for `tests/features/doc_lint/test_doc_lint.cpp`. Owning spec:
 Phase-1 rows only. The fix-path invariants belong to ANTS-3669 and to
 `tests/features/doc_lint_fix/`, which does not exist yet.
 
+**ANTS-5506 adds five engine rows for the sixth checker, `doc_facts`:**
+INV-22 (`count_mismatch`), INV-23 (`invariant_duplicate`), INV-24
+(`leaked_markup`), INV-25 (`version_drift`) and INV-27 (`verb_arg_unknown`).
+`doc_facts`'s two verb-layer rows, INV-26 and INV-28, live in
+`tests/features/doc_lint_verb/spec.md` — `cmdDocLint` needs a live
+MainWindow-equivalent to resolve the version and the live verb schema, which
+this directory's fixtures do not have.
+
 `DocLint::run` is filesystem-shaped by nature: two of its five checkers are
 frozen engines that re-read the document themselves, so a seeded temp tree is
 the only honest fixture. The root comes from `../doc_citations/fixture.h`
@@ -26,6 +34,12 @@ make these rows pass or fail for reasons unrelated to `doc_lint`.
 | `Inv17EligibilityFiltersWithoutSkipping` | INV-17 | An ineligible document is not a skip and not an error; a run selecting no spec leaves `spec_lint` out of `checks_run[]`. Carries the `line_count` map-merge assertion. |
 | `Inv19UncheckedDocumentsAreNamed` | INV-19 | Every unchecked document is named with its reason, and the result says it is incomplete. |
 | `Inv20CitationFilesUnderItsDocument` | INV-20 | A citation finding is filed against the document that contains it; the target appears only in `message`. |
+| `Inv22CountMismatchNeedsBothSides` | INV-22 | `count_mismatch` fires only when a lead-in with exactly one cardinal is followed by a list whose top-level count differs; a two-cardinal lead-in, a non-list follow-on and a fenced span are none of them claims. Carries `count_claims_checked`. |
+| `Inv22CountClaimIsOneSentence` | INV-22 | The claim is the lead-in's last sentence, and a number in it is a count only when it stands alone: a numbered item's marker, a label (`Phase 7`), a joined token (`loop-2`), a sum with `one`, and a wrapped paragraph's tail never claim; a parent list's next item and a change of marker kind end the counted list. One positive guard fires. Each case was a false hit on this repo's docs. |
+| `Inv23DuplicateInvariantNamesBoth` | INV-23 | `invariant_duplicate` fires on the second of two bullet definitions of one id inside an Invariants section and names the first's line; a table row, a prose mention and a bullet under another heading are all excluded. |
+| `Inv24LeakedMarkupIgnoresCode` | INV-24 | `leaked_markup` fires on a bare `invoke`/`function_results` tag and ignores the same tag inside an inline code span or a fence. |
+| `Inv25VersionDriftReadsOnlyClaims` | INV-25 | `version_drift` fires only on a plain-text version claim that differs from the injected version; the same text inside backticks, a `CHANGELOG.md` file, and an empty `projectVersion` (which also sets `version_unavailable`) are all excluded. |
+| `Inv27VerbArgsTopLevelOnly` | INV-27 | `verb_arg_unknown` checks only TOP-LEVEL keys of a known verb's `{…}`/`key:value` call against the injected map; a nested key, an unmapped verb name and a non-call span are not checked. An empty `verbArgs` sets `schema_unavailable` and disables the kind. Carries `verb_calls_checked`. |
 | `DISABLED_CorpusCalibration` | — | Not a contract. Prints the figures § 6 asks for, measured against the real docs tree, so a later sweep can re-measure rather than trust a pasted number. Re-runnable. |
 
 ## Two fixture choices worth stating
@@ -56,6 +70,21 @@ therefore re-proven by deleting the rule under test.
 | File a citation finding under the target path instead of the document | `Inv20CitationFilesUnderItsDocument`, plus `Inv9WholeDocumentAlarmsSurvive` and `Inv10CheckerFailureIsContained` as collateral |
 | Count an open per checker rather than per document | `Inv1SharedReadForNativeCheckers` |
 | **Drop the `emissionIndex` tiebreak from the comparator** | **Nothing.** |
+
+**ANTS-5506's mutations, run 2026-09-28 against `src/docfacts.cpp`** (each
+rebuilt, run, restored and byte-compared):
+
+| Mutation | What it actually turned red |
+|---|---|
+| INV-22: a lead-in with two or more numbers still claims | `Inv22CountMismatchNeedsBothSides` (2 findings: (c) fired) |
+| INV-22: count nested items | `Inv22CountMismatchNeedsBothSides` ((b) fired) |
+| INV-23: match bullets under any heading | `Inv23DuplicateInvariantNamesBoth` (the Notes bullet fired) |
+| INV-24: stop removing inline code spans before matching | `Inv24LeakedMarkupIgnoresCode` (3 findings: line 2 fired) |
+| INV-25: drop the `CHANGELOG` exclusion | `Inv25VersionDriftReadsOnlyClaims` (`CHANGELOG.md:3` fired) |
+| INV-27: descend into nested values (key reading AND the nested `{` opening, together) | `Inv27VerbArgsTopLevelOnly` (`bogus` fired) |
+| INV-27: either half of that alone | **Nothing** — each half alone changes no behaviour; a mutant, not a fixture, gap |
+| INV-22 refinements: drop the label rule / the standalone-token rule / `one` in the tally / the wrapped-tail rule / the parent-list break / the marker-kind break | `Inv22CountClaimIsOneSentence`, each one |
+| INV-22 refinement: strip the list marker before counting | **Nothing** — redundant with the standalone-token rule, so the strip was removed |
 
 ### The surviving mutation, and why it is not a weak fixture
 

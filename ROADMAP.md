@@ -66846,7 +66846,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (A4; CFG-0608..0610, CFG-0634).
   Lanes: mcp.
 
-- 📋 [ANTS-5506] **doc_lint gains count-vs-list, duplicate INV, leaked markup, version drift and verb-call-vs-schema checks, plus a CLI with --exit-code.**
+- ✅ [ANTS-5506] **doc_lint gains count-vs-list, duplicate INV, leaked markup, version drift and verb-call-vs-schema checks, plus a CLI with --exit-code.**
   Each checker is small. The CLI form lets a gate script run doc_lint
   outside an MCP session. spec_lint's invariant_id_duplicate is the
   same duplicate-INV checker.
@@ -66866,6 +66866,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   The duplicate-INV check lives there as invariant_duplicate; spec_lint
   has no such kind today. review-contract capped calm at 2 (loops 8-9, 17
   verified, all fixed). Next: build it with write-test and write-code.
+  Resolved (2026-09-28): checker half shipped. doc_lint's sixth checker
+  doc_facts (src/docfacts.{h,cpp}) with count_mismatch,
+  invariant_duplicate, leaked_markup, version_drift and verb_arg_unknown;
+  cmdDocLint injects the version (bump.json, else CMakeLists.txt) and the
+  live verb-argument map published by tools/list under a mutex. Seven
+  spec rows plus a regression row, red first, eleven mutants killed. The
+  first run over docs/ tightened count_mismatch (92 hits to 9, folded
+  back into the spec's section 2.6) and found ANTS-5557 and a leaked tag in
+  ANTS-1963, fixed.
   **Layman:** Several document checks the skills rely on have no tool behind them, so they are done by hand.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A5, quick win).
@@ -66951,6 +66960,22 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B3).
   Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5557] **roadmap_log's schema declares the rotate_minor and retitle_section ops and their minor argument.**
+  doc_facts' first run over docs/ flagged docs/standards/mcp-error-codes.md:
+  `roadmap_log` takes no argument "minor". Verified: cmdRoadmapLog handles
+  op:"rotate_minor" (reads `minor`) and op:"retitle_section"
+  (src/remotecontrol_roadmap_log_batch.cpp), but roadmap_log's inputSchema
+  op enum lists neither and declares no `minor` property. A strict client
+  refuses the op value; any call passing `minor` gets an ignored_args
+  advisory for an argument the verb actually reads. Fix: add both ops to
+  the enum and declare `minor` (and whatever retitle_section reads) in
+  src/claudeintegration.cpp's roadmap_log schema; then a doc_lint
+  checks:["doc_facts"] run over docs/standards shows no verb_arg_unknown.
+  **Layman:** Two roadmap operations work but are missing from the list of what the tool accepts, so clients can't find them and get warned when they use them.
+  Kind: fix.
+  Source: in-session-2026-09-28 (ANTS-5506 doc_facts first run).
+  Lanes: mcp.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
 

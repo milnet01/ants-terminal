@@ -1,14 +1,14 @@
 #pragma once
 // ANTS-3663 — doc_lint: every deterministic doc check in one call.
 //
-// Composes the five deterministic document checkers into ONE findings list so a
+// Composes the six deterministic document checkers into ONE findings list so a
 // review pre-pass costs one call rather than five, each of which re-walks the
 // same tree. Qt6::Core only, in ants_core_lib beside docfinding.h, so it is
 // unit-testable without RemoteControl / MainWindow.
 //
-// THE SHARED READ IS THE POINT, AND IT IS PARTIAL BY CONSTRUCTION. The three
-// NATIVE checkers (doc_dedup, doc_symbols, spec_lint) take document TEXT, so one
-// read serves all three — that is INV-1 and the whole saving. The two ADAPTED
+// THE SHARED READ IS THE POINT, AND IT IS PARTIAL BY CONSTRUCTION. The four
+// NATIVE checkers (doc_dedup, doc_symbols, spec_lint, doc_facts) take document
+// TEXT, so one read serves all four — that is INV-1 and the whole saving. The two ADAPTED
 // engines re-read: DocIntegrity::check consumes a relative-path list and
 // DocCitations::check one document path, and spec § 2.2 freezes both signatures
 // rather than change a shipped, tested engine. So the honest per-document budget
@@ -23,6 +23,7 @@
 //
 // See docs/specs/ANTS-3663.md.
 
+#include <QHash>
 #include <QList>
 #include <QMap>
 #include <QSet>
@@ -41,7 +42,7 @@
 
 namespace DocLint {
 
-// The five checker names. This list is BOTH the `checks[]` vocabulary and the
+// The six checker names. This list is BOTH the `checks[]` vocabulary and the
 // `verb` string every finding carries — one vocabulary, not two (spec § 2.1),
 // so a caller filtering by a name it read off a finding cannot miss.
 const QStringList &checkNames();
@@ -64,7 +65,7 @@ struct Options {
     // gets on its first run.
     QString specsDirRel = QStringLiteral("docs/specs");
 
-    // Empty selects all five. An unknown name is the VERB's refusal to make
+    // Empty selects all six. An unknown name is the VERB's refusal to make
     // (bad_args), not this engine's: it has no error channel and silently
     // running four checks for a caller who asked for a fifth is the failure.
     QSet<QString> checks;
@@ -88,6 +89,14 @@ struct Options {
     // this engine, which has no error channel (INV-16).
     bool fix    = false;
     bool dryRun = false;
+
+    // ANTS-5506 — doc_facts' two injected inputs (spec § 2.6). The engine never
+    // resolves either: the verb reads the version from the project and builds
+    // the argument map from the live tools/list schema. Empty switches the kind
+    // off and raises versionUnavailable / schemaUnavailable, so a clean run is
+    // distinguishable from one that had nothing to compare against.
+    QString                        projectVersion;
+    QHash<QString, QSet<QString>>  verbArgs;  // verb -> accepted top-level keys
 
     Probe *probe = nullptr;  // test-only
 
@@ -166,6 +175,14 @@ struct Stats {
     int  passagesTotal    = 0;
     int  passagesCompared = 0;
     bool dedupTruncated   = false;
+
+    // doc_facts — counters summed; the two flags describe the run's inputs, not
+    // a document, and are set once (spec § 2.6).
+    int  countClaimsChecked   = 0;
+    int  versionClaimsChecked = 0;
+    int  verbCallsChecked     = 0;
+    bool versionUnavailable   = false;
+    bool schemaUnavailable    = false;
 };
 
 struct Result {

@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_lint` gains a sixth checker, `doc_facts`, for five facts reviewers used to check by hand** (ANTS-5506)
+  A list lead-in whose number does not match the list under it, an INV-N
+  defined twice, tool-call markup left in prose, a version claim that
+  disagrees with the project's version (read from .claude/bump.json, else
+  CMakeLists.txt), and an MCP call example passing an argument the verb
+  does not take. Run it alone with checks:["doc_facts"]. Report-only.
+
 - **`ants-mcpd --call <verb> '<json>' --exit-code` runs any project-scoped Ants MCP verb from a shell, so a push gate can use Ants' checks.** (ANTS-5506)
   stdout carries the verb's JSON result, whole and unwrapped. The exit
   code is 0 clean, 1 refused or failed, 2 usage, 3 findings, the same

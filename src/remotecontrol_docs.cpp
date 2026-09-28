@@ -14,6 +14,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QRegularExpression>
 #include <QSet>
 #include <QSaveFile>
 #include <QCryptographicHash>
@@ -1860,6 +1861,41 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
 // "unchanged" — files moved on disk and the envelope says nothing did. There is
 // one registration entry, so the exclusion cannot be phased in later; it ships
 // unconditional from the first version. No `etag_match` property either.
+// ANTS-5506 — doc_facts' version truth (spec § 2.6). `.claude/bump.json` wins
+// because it is the recipe the release tooling bumps from; the root
+// CMakeLists.txt's project(... VERSION ...) is the fallback. Neither → empty,
+// and version_drift reports itself unavailable rather than guessing.
+static QString docLintProjectVersion(const QString &rootCanonical) {
+    const QDir root(rootCanonical);
+    const auto firstMatch = [&rootCanonical](const QString &rel,
+                                             const QString &pattern) -> QString {
+        const QRegularExpression re(pattern);
+        if (rel.isEmpty() || !re.isValid()) return {};
+        // The source must stay inside the project: bump.json is repository
+        // content, and a `../` path would read an arbitrary file.
+        const auto check = PathValidation::validatePath(
+            rel, rootCanonical, QStringLiteral("doc_lint"),
+            QStringLiteral("version_source"));
+        if (check.bad || check.resolved.isEmpty()) return {};
+        QFile f(check.resolved);
+        if (!f.open(QIODevice::ReadOnly)) return {};
+        const QRegularExpressionMatch m =
+            re.match(QString::fromUtf8(f.read(1 << 20)));
+        if (!m.hasMatch()) return {};
+        return (re.captureCount() >= 1 ? m.captured(1) : m.captured(0)).trimmed();
+    };
+
+    QFile bump(root.filePath(QStringLiteral(".claude/bump.json")));
+    if (bump.open(QIODevice::ReadOnly)) {
+        const QJsonObject b = QJsonDocument::fromJson(bump.read(1 << 20)).object();
+        const QString v = firstMatch(b.value(QStringLiteral("version_source")).toString(),
+                                     b.value(QStringLiteral("version_pattern")).toString());
+        if (!v.isEmpty()) return v;
+    }
+    return firstMatch(QStringLiteral("CMakeLists.txt"),
+                      QStringLiteral(R"(project\s*\([^)]*\bVERSION\s+([0-9]+\.[0-9]+\.[0-9]+))"));
+}
+
 QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
@@ -1949,6 +1985,14 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         QStringLiteral("*AUTOMATED_AUDIT_REPORT*"),
         QStringLiteral("*superpowers/*"),
     };
+
+    // ANTS-5506 — doc_facts' two inputs. The provider returns a COPY the
+    // tools/list handler published under a mutex: this runs on a worker, and
+    // the schema map itself belongs to the GUI thread (spec § 2.6).
+    if (opts.checks.isEmpty() || opts.checks.contains(QStringLiteral("doc_facts"))) {
+        opts.projectVersion = docLintProjectVersion(rootCanonical);
+        if (m_mcpVerbArgsProvider) opts.verbArgs = m_mcpVerbArgsProvider();
+    }
 
     const int maxFindings =
         qBound(1, req.value(QStringLiteral("max_findings")).toInt(500), 5000);
@@ -2070,6 +2114,16 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
             {QStringLiteral("passages_total"), result.stats.passagesTotal},
             {QStringLiteral("passages_compared"), result.stats.passagesCompared},
             {QStringLiteral("truncated"), result.stats.dedupTruncated}};
+    if (run.contains(QStringLiteral("doc_facts")))
+        // ANTS-5506 — the two flags are ALWAYS present when doc_facts ran:
+        // without them a clean run and one with nothing to compare against
+        // (no version, no schema yet) are the same envelope.
+        stats[QStringLiteral("doc_facts")] = QJsonObject{
+            {QStringLiteral("count_claims_checked"), result.stats.countClaimsChecked},
+            {QStringLiteral("version_claims_checked"), result.stats.versionClaimsChecked},
+            {QStringLiteral("verb_calls_checked"), result.stats.verbCallsChecked},
+            {QStringLiteral("version_unavailable"), result.stats.versionUnavailable},
+            {QStringLiteral("schema_unavailable"), result.stats.schemaUnavailable}};
     if (!stats.isEmpty()) o[QStringLiteral("check_stats")] = stats;
 
     // ---- ANTS-3669: the fix keys ------------------------------------------

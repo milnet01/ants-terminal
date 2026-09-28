@@ -152,9 +152,14 @@ Listed only where behavior isn't obvious from the name.
   REPORT-ONLY: which copy is canonical is a judgement, so nothing is ever
   auto-fixable and ANTS-3669 refuses to fix one by name. Powers the `doc_dedup`
   MCP verb. ANTS-3660.
-- `doclint` (Qt6::Core, `ants_core_lib`) — composes the five deterministic doc
+- `docfacts` (Qt6::Core, `ants_core_lib`) — `doc_lint`'s sixth checker, five
+  document-fact kinds: `count_mismatch`, `invariant_duplicate`,
+  `leaked_markup`, `version_drift`, `verb_arg_unknown`. Native (text in); the
+  project version and the verb-argument map are injected. Report-only. No
+  standalone verb. ANTS-5506.
+- `doclint` (Qt6::Core, `ants_core_lib`) — composes the six deterministic doc
   checkers over ONE enumeration and one shared read, so a review pre-pass is one
-  call rather than five that each re-walk the tree. The three native checkers
+  call rather than five that each re-walk the tree. The four native checkers
   take document text and share that read; `docintegrity` and `doccitations` are
   frozen engines reached through pure adapters and re-read the document
   themselves, which is why the per-document open budget is three rather than

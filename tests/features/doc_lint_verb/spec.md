@@ -9,6 +9,16 @@ half INV-2 asserts about narrowing, the engine — while wiring rows source-scra
 the registration sites. Same split as the doc_integrity, doc_symbols and
 doc_dedup verb lanes.
 
+**ANTS-5506 adds two `doc_facts` verb-layer rows: INV-26 and INV-28.** Both
+need `cmdDocLint`'s two injected inputs (§ 2.6 of the owning spec) —
+`projectVersion` from `.claude/bump.json`/`CMakeLists.txt`, and the live
+`tools/list` verb schema — which only a real MainWindow-equivalent supplies.
+`docLintBuildResponse` cannot exercise either, so both rows drive a real
+`ants-mcpd` child process over stdio via `ants_test::McpdSession`
+(`tests/features/standalone_mcp_server/mcpd_session.h`), the same harness
+`tests/features/mcpd_call/` uses — `src/mcpdmain.cpp` wires the same
+vocabulary provider `src/mainwindow.cpp` does.
+
 ## What each row locks
 
 | Row | Invariant | Claim |
@@ -17,6 +27,8 @@ doc_dedup verb lanes.
 | `Inv8VerbContractMinimums` | INV-8 | `caller_cwd` is Required at both sites; a supplied path is validated before the walk; a well-formed non-existent in-root path is `ok:true` with empty arrays, **not** a refusal. |
 | `Inv11CapTruncatesAfterTheSort` | INV-11 | The page is a prefix of the uncapped run, the flag is set, and `counts` still describes the whole run. |
 | `Inv13EtagNeverSkipsAFix` | INV-13 | The schema carries no `etag_match`, and `isEtagSupportedTool` has no entry. |
+| `Inv26VersionTruthPrefersBumpFile` | INV-26 | `cmdDocLint` resolves `projectVersion` from `.claude/bump.json` before `CMakeLists.txt`: present, a document claim matching the CMake version but not the bump target produces a `version_drift` finding; absent, the same claim (now matching the CMake fallback) produces none. `version_unavailable` is false in both runs. |
+| `Inv28LiveSchemaIsForwarded` | INV-28 | Once an `ants-mcpd` session has served `tools/list`, `doc_facts`'s `verbArgs` map is populated from the live schema: an unknown top-level key on a real verb call is flagged, including `etag_match` (doc_lint is outside `isEtagSupportedTool`, INV-13), and `schema_unavailable` is false. |
 
 ## Why INV-2's guard run exists
 
@@ -59,3 +71,11 @@ rather than the claim softened. The original arm asserted that the handler
 mentions `checkNames()`; that string also occurs in the `accepted` list the
 refusal emits, so deleting the membership test left every assertion satisfied.
 The arm now requires the negated membership test itself.
+
+**ANTS-5506's mutations, run 2026-09-28** (each rebuilt, run, restored and
+byte-compared):
+
+| Mutation | What it actually turned red |
+|---|---|
+| INV-28: leave `encoding` out of the published `verbArgs` | `Inv28LiveSchemaIsForwarded` (3 findings: `encoding` fired) |
+| INV-26: ignore `.claude/bump.json`'s version | `Inv26VersionTruthPrefersBumpFile` (0 findings where 1 was due) |

@@ -2,6 +2,16 @@
 // INV-3, INV-4, INV-7, INV-9, INV-10, INV-17, INV-19, INV-20. The fix-path rows
 // (INV-5/6/12/14/15/16/18/21) belong to ANTS-3669 and its own directory.
 //
+// ANTS-5506 — the sixth checker, doc_facts, adds five engine rows here:
+// INV-22 (count_mismatch), INV-23 (invariant_duplicate), INV-24
+// (leaked_markup), INV-25 (version_drift) and INV-27 (verb_arg_unknown). Its
+// two verb-layer rows (INV-26, INV-28) live in doc_lint_verb/ because
+// cmdDocLint needs a live MainWindow. THE CODE DOES NOT EXIST YET at the time
+// these rows were written: DocLint::Options carries no projectVersion or
+// verbArgs member, and "doc_facts" is not in DocLint::checkNames(). Every row
+// below is expected to fail to COMPILE until that lands — see the ANTS-3663
+// bug description for the exact interface these rows are written against.
+//
 // Filesystem-shaped by nature: two of the five checkers are frozen engines that
 // re-read the document themselves, so a temp tree is the only honest fixture.
 // The root comes from `../doc_citations/fixture.h` rather than a local copy —
@@ -22,6 +32,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <algorithm>
 #include <string>
 #include <tuple>
 
@@ -36,6 +47,7 @@ const QString kCitations = QStringLiteral("doc_citations");
 const QString kDedup     = QStringLiteral("doc_dedup");
 const QString kSymbols   = QStringLiteral("doc_symbols");
 const QString kSpecLint  = QStringLiteral("spec_lint");
+const QString kDocFacts  = QStringLiteral("doc_facts");
 
 DocLint::Options baseOpts(const Fixture &fx) {
     DocLint::Options o;
@@ -331,7 +343,7 @@ TEST(DocLint, Inv17EligibilityFiltersWithoutSkipping) {
 
     // spec_lint findings come from the spec only.
     for (const DocFinding::Finding &f : r.findings)
-        if (f.verb == kSpecLint) EXPECT_EQ(spec, f.file) << render(r);
+        if (f.verb == kSpecLint) { EXPECT_EQ(spec, f.file) << render(r); }
     // Neither non-spec is a skip or an error — nothing failed.
     EXPECT_FALSE(skippedWith(r, std1, QStringLiteral("read_failed"))) << render(r);
     EXPECT_TRUE(r.checkedDocs.contains(std1)) << render(r);
@@ -412,6 +424,252 @@ TEST(DocLint, Inv20CitationFilesUnderItsDocument) {
         << "the target is named in message, the only place it appears";
     EXPECT_TRUE(r.checkedDocs.contains(doc));
     EXPECT_FALSE(r.checkedDocs.contains(target));
+}
+
+// ANTS-5506 INV-22 — count_mismatch fires only when both sides resolve.
+// (a) "The three steps:" + two bullets -> mismatch (claims three, lists two).
+// (b) "The three steps:" + three bullets, one carrying a nested bullet ->
+//     matches (nested items are not counted, so the top-level count is three).
+// (c) "Two of the three steps:" + two bullets -> not a claim (two cardinals).
+// (d) "The three steps:" + a paragraph -> a claim, but not followed by a list.
+// (e) (a)'s text inside a fence -> not a claim (fenced).
+TEST(DocLint, Inv22CountMismatchNeedsBothSides) {
+    Fixture fx;
+    const QString doc = QStringLiteral("docs/counts.md");
+    fx.write(doc,
+             "# Doc\n"
+             "\n"
+             "The three steps:\n"          // line 3 — (a), mismatch
+             "- one\n"
+             "- two\n"
+             "\n"
+             "The three steps:\n"          // line 7 — (b), matches
+             "- one\n"
+             "- two\n"
+             "  - nested\n"
+             "- three\n"
+             "\n"
+             "Two of the three steps:\n"   // line 13 — (c), two cardinals
+             "- one\n"
+             "- two\n"
+             "\n"
+             "The three steps:\n"          // line 17 — (d), no list follows
+             "Paragraph text, not a list.\n"
+             "\n"
+             "```text\n"                   // line 20 — (e), fenced
+             "The three steps:\n"
+             "- one\n"
+             "- two\n"
+             "```\n");
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kDocFacts};
+    const DocLint::Result r = DocLint::run({doc}, o);
+
+    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("count_mismatch"))) << render(r);
+    const DocFinding::Finding &f = r.findings.at(0);
+    EXPECT_EQ(doc, f.file);
+    EXPECT_EQ(3, f.line) << "filed at the lead-in line, (a)";
+    EXPECT_TRUE(f.message.contains(QStringLiteral("3")) || f.message.contains(QStringLiteral("three")))
+        << "message must name the claimed number: " << render(r);
+    EXPECT_TRUE(f.message.contains(QStringLiteral("2")) || f.message.contains(QStringLiteral("two")))
+        << "message must name the counted number: " << render(r);
+
+    // (a), (b) and (d) are claims; (c) has two cardinals and (e) is fenced.
+    EXPECT_EQ(3, r.stats.countClaimsChecked) << render(r);
+    EXPECT_EQ(QStringList{kDocFacts}, r.checksRun);
+}
+
+// ANTS-5506 INV-22, the claim and the list as measured on this repo's docs.
+// Each case below was a false count_mismatch before the rule it names; the
+// last is the positive guard, without which every absence here is vacuous.
+TEST(DocLint, Inv22CountClaimIsOneSentence) {
+    Fixture fx;
+    const QString doc = QStringLiteral("docs/claims.md");
+    fx.write(doc,
+             "# Doc\n\n"
+             // A numbered item's own marker is not a count.
+             "2. Scan these markers:\n   - a\n   - b\n   - c\n\n"
+             // A number after a capitalised word is a label.
+             "Phase 7 covers:\n\n- a\n- b\n\n"
+             // A number joined to another token is not standalone.
+             "The loop-2 edits:\n\n- a\n- b\n- c\n\n"
+             // `one` makes it a sum, not a claim of three.
+             "Three problems and one other:\n\n- a\n- b\n- c\n- d\n\n"
+             // The tail of a wrapped paragraph: its sentence began earlier.
+             "This paragraph wraps across lines and its tail\n"
+             "mentions six widgets as an aside:\n\n- a\n- b\n\n"
+             // A lead-in that is itself an item: the parent's next item ends it.
+             "- Three signal hookups:\n  - a\n  - b\n  - c\n- next parent item\n\n"
+             // A change of marker kind starts a new list.
+             "Two region scopes:\n\n- a\n- b\n\n1. x\n2. y\n\n"
+             // Positive guard: only the last sentence is the claim, and it is wrong.
+             "Some context here. Two new files:\n\n- only one\n");
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kDocFacts};
+    const DocLint::Result r = DocLint::run({doc}, o);
+
+    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("count_mismatch"))) << render(r);
+    const QStringList lines = QStringLiteral(
+        "# Doc\n\n2. Scan these markers:\n   - a\n   - b\n   - c\n\n"
+        "Phase 7 covers:\n\n- a\n- b\n\nThe loop-2 edits:\n\n- a\n- b\n- c\n\n"
+        "Three problems and one other:\n\n- a\n- b\n- c\n- d\n\n"
+        "This paragraph wraps across lines and its tail\n"
+        "mentions six widgets as an aside:\n\n- a\n- b\n\n"
+        "- Three signal hookups:\n  - a\n  - b\n  - c\n- next parent item\n\n"
+        "Two region scopes:\n\n- a\n- b\n\n1. x\n2. y\n\n"
+        "Some context here. Two new files:\n").split(QLatin1Char('\n'));
+    EXPECT_EQ(lines.indexOf(QStringLiteral("Some context here. Two new files:")) + 1,
+              r.findings.at(0).line) << render(r);
+}
+
+// ANTS-5506 INV-23 — invariant_duplicate names both definitions. INV-1 is
+// defined at line 3 and again at line 9 (the second is the finding); the
+// table row, the prose mention and the bullet under "## 7. Notes" are all
+// excluded — a table row and prose never match the bullet anchor, and a
+// bullet under a non-Invariants heading never fires.
+TEST(DocLint, Inv23DuplicateInvariantNamesBoth) {
+    Fixture fx;
+    const QString doc = QStringLiteral("docs/dupinv.md");
+    fx.write(doc,
+             "## 3. Invariants\n"                                    // 1
+             "\n"                                                    // 2
+             "- **INV-1** \xe2\x80\x94 first definition\n"           // 3
+             "\n"                                                    // 4
+             "| INV-1 | something |\n"                               // 5
+             "\n"                                                    // 6
+             "Prose mentioning INV-1.\n"                             // 7
+             "\n"                                                    // 8
+             "- **INV-1** \xe2\x80\x94 second definition (duplicate)\n"  // 9
+             "\n"                                                    // 10
+             "## 7. Notes\n"                                         // 11
+             "\n"                                                    // 12
+             "- **INV-1** \xe2\x80\x94 a bullet under a different heading\n");  // 13
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kDocFacts};
+    const DocLint::Result r = DocLint::run({doc}, o);
+
+    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("invariant_duplicate"))) << render(r);
+    const DocFinding::Finding &f = r.findings.at(0);
+    EXPECT_EQ(doc, f.file);
+    EXPECT_EQ(9, f.line) << "filed at the SECOND definition";
+    EXPECT_TRUE(f.message.contains(QStringLiteral("3")))
+        << "message must name the first definition's line: " << render(r);
+}
+
+// ANTS-5506 INV-24 — leaked_markup ignores code. Six lines: a bare opening
+// <invoke>; the same tag inside backticks (excluded); a fence opener; the
+// same tag inside the fence (excluded); the fence closer; a bare closing
+// </function_results>. Two findings: lines one and six.
+TEST(DocLint, Inv24LeakedMarkupIgnoresCode) {
+    Fixture fx;
+    const QString doc = QStringLiteral("docs/leaked.md");
+    fx.write(doc,
+             "<invoke>\n"                 // 1 — bare, finding
+             "`<invoke>`\n"               // 2 — inline code span, excluded
+             "```\n"                      // 3 — fence opener
+             "<invoke>\n"                 // 4 — inside fence, excluded
+             "```\n"                      // 5 — fence closer
+             "</function_results>\n");    // 6 — bare, finding
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kDocFacts};
+    const DocLint::Result r = DocLint::run({doc}, o);
+
+    ASSERT_EQ(2, countKind(r, kDocFacts, QStringLiteral("leaked_markup"))) << render(r);
+    QList<int> lines;
+    for (const DocFinding::Finding &f : r.findings)
+        if (f.kind == QStringLiteral("leaked_markup")) lines << f.line;
+    std::sort(lines.begin(), lines.end());
+    ASSERT_EQ(2, lines.size());
+    EXPECT_EQ(1, lines.at(0));
+    EXPECT_EQ(6, lines.at(1));
+}
+
+// ANTS-5506 INV-25 — version_drift reads only claims, against the injected
+// version. Three plain-text lines (a mismatched "Version <strong>", a
+// matching "current version" phrase, and a non-claim "since"); the first
+// repeated inside backticks; a CHANGELOG.md that is never checked; and an
+// empty projectVersion that disables the kind entirely.
+TEST(DocLint, Inv25VersionDriftReadsOnlyClaims) {
+    Fixture fx;
+    const QString doc = QStringLiteral("docs/v.md");
+    fx.write(doc,
+             "# V\n"
+             "\n"
+             "Version <strong>1.2.2</strong> here.\n"       // line 3 — mismatch
+             "\n"
+             "the current version is 1.2.3, noted.\n"       // line 5 — matches
+             "\n"
+             "since 1.0.0 this held.\n"                     // line 7 — not a claim
+             "\n"
+             "`Version <strong>1.2.2</strong> here.`\n");   // line 9 — inline code, excluded
+    const QString changelog = QStringLiteral("CHANGELOG.md");
+    fx.write(changelog, "# Changelog\n\nthe current version is 0.1.0 today.\n");
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kDocFacts};
+    o.projectVersion = QStringLiteral("1.2.3");
+    const DocLint::Result r = DocLint::run({doc, changelog}, o);
+
+    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("version_drift"))) << render(r);
+    const DocFinding::Finding &f = r.findings.at(0);
+    EXPECT_EQ(doc, f.file);
+    EXPECT_EQ(3, f.line) << "filed at the first (mismatched) claim";
+    for (const DocFinding::Finding &g : r.findings)
+        EXPECT_NE(changelog, g.file) << "CHANGELOG.md is never checked: " << render(r);
+
+    DocLint::Options empty = o;
+    empty.projectVersion.clear();
+    const DocLint::Result r2 = DocLint::run({doc, changelog}, empty);
+    EXPECT_EQ(0, countKind(r2, kDocFacts, QStringLiteral("version_drift"))) << render(r2);
+    EXPECT_TRUE(r2.stats.versionUnavailable) << render(r2);
+}
+
+// ANTS-5506 INV-27 — verb_arg_unknown checks top-level keys against the
+// injected map. verbArgs is {roadmap_query: [id, section, caller_cwd,
+// fields]}. (a) a {…} object with a typo'd key -> finding. (b) key:value
+// tokens, both known -> none. (c) a nested key inside a {…} value -> not
+// checked (top-level only). (d) a verb absent from the map -> not checked.
+// (e) the verb followed by anything else -> not a call shape, not checked.
+TEST(DocLint, Inv27VerbArgsTopLevelOnly) {
+    Fixture fx;
+    const QString doc = QStringLiteral("docs/calls.md");
+    fx.write(doc,
+             "# Calls\n"
+             "\n"
+             "(a) `roadmap_query {id:\"X\", sectoin:\"a\"}`\n"   // line 3 — finding
+             "\n"
+             "(b) `roadmap_query id:\"X\" fields:[\"a\"]`\n"     // line 5 — clean
+             "\n"
+             "(c) `roadmap_query {section:{bogus:1}}`\n"         // line 7 — nested, not checked
+             "\n"
+             "(d) `other_verb {x:1}`\n"                          // line 9 — unknown verb
+             "\n"
+             "(e) `roadmap_query sectoin`\n");                   // line 11 — not a call shape
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kDocFacts};
+    o.verbArgs = {{QStringLiteral("roadmap_query"),
+                   {QStringLiteral("id"), QStringLiteral("section"),
+                    QStringLiteral("caller_cwd"), QStringLiteral("fields")}}};
+    const DocLint::Result r = DocLint::run({doc}, o);
+
+    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("verb_arg_unknown"))) << render(r);
+    const DocFinding::Finding &f = r.findings.at(0);
+    EXPECT_EQ(doc, f.file);
+    EXPECT_EQ(3, f.line) << "filed at (a)";
+    EXPECT_TRUE(f.message.contains(QStringLiteral("sectoin")))
+        << "message must name the unknown key: " << render(r);
+    EXPECT_EQ(3, r.stats.verbCallsChecked) << "(a), (b) and (c) — " << render(r);
+
+    DocLint::Options noSchema = baseOpts(fx);
+    noSchema.checks = {kDocFacts};
+    const DocLint::Result r2 = DocLint::run({doc}, noSchema);
+    EXPECT_EQ(0, countKind(r2, kDocFacts, QStringLiteral("verb_arg_unknown"))) << render(r2);
+    EXPECT_TRUE(r2.stats.schemaUnavailable) << render(r2);
 }
 
 // Not a contract — a re-runnable MEASUREMENT, so a later sweep can ask "does

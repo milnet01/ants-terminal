@@ -11,7 +11,7 @@
 // THIS ENGINE IS ANTS-3664 § 2.3's STATED EXCEPTION to the per-document
 // signature. Its siblings score one document alone; a pair needs two, so
 // scoring cannot happen until the walk is done. Hence add()/finish() rather
-// than check(): ANTS-3663 hands each document's text to all five checkers from
+// than check(): ANTS-3663 hands each document's text to every native checker from
 // a single read, and a doc_dedup that took a *path* would re-open every file in
 // the tree and defeat the composition it exists for.
 //

@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QHash>
 #include <QSet>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -741,7 +742,7 @@ public:
     // pair, and ANTS-3663 hoists both arrays whole.
     static QJsonObject docDedupBuildResponse(const DocDedup::Result &result,
                                              const QStringList &checkedDocs);
-    // ANTS-3663 — doc_lint: the five deterministic doc checkers in one call.
+    // ANTS-3663 — doc_lint: the six deterministic doc checkers in one call.
     // Reuses docIntegrityEnumerate for the walk like its siblings; the CAPS
     // belong to the engine, because eliding a document is an observable outcome
     // a test must be able to drive. NOT ETag-eligible, by design: see the
@@ -772,6 +773,14 @@ public:
     // ~74 of them as findings on every document that names one.
     void setMcpVerbVocabularyProvider(std::function<QStringList()> p) {
         m_mcpVerbVocabularyProvider = std::move(p);
+    }
+    // ANTS-5506 — doc_facts' verb -> accepted-argument map (spec § 2.6). The
+    // provider must return a published COPY, never read the GUI thread's
+    // schema map: cmdDocLint runs on a dispatch worker. Empty until the first
+    // tools/list, and then verb_arg_unknown reports itself unavailable.
+    void setMcpVerbArgsProvider(
+        std::function<QHash<QString, QSet<QString>>()> p) {
+        m_mcpVerbArgsProvider = std::move(p);
     }
     // ANTS-2132 § 2.7 — how the socket reaches the MCP dispatch worker.
     // Injected for the same reason as the provider above: MainWindow installs
@@ -1258,6 +1267,8 @@ private:
 
     // ANTS-3661 — see setMcpVerbVocabularyProvider.
     std::function<QStringList()> m_mcpVerbVocabularyProvider;
+    // ANTS-5506 — see setMcpVerbArgsProvider.
+    std::function<QHash<QString, QSet<QString>>()> m_mcpVerbArgsProvider;
     // ANTS-2132 § 2.7 — see setDispatchWorkerPoster.
     std::function<bool(std::function<void()>)> m_dispatchWorkerPoster;
 

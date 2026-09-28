@@ -335,6 +335,15 @@ public:
     // ANTS-5072 — the keys McpCallContext::ignoredArgKeys carries.
     QStringList ignoredArgKeysFor(const QString &toolName,
                                   const QJsonObject &argsObj) const;
+    // ANTS-5506 — the conditional dispatch args `toolName` honours. One set
+    // for the advisory above and for verbArgsSnapshot(), so doc_facts and
+    // ignored_args can never disagree about what a verb accepts.
+    static QSet<QString> honouredDispatchArgs(const QString &toolName);
+    // ANTS-5506 — verb -> every top-level argument it accepts: its schema
+    // properties plus the dispatch args. A COPY published by the tools/list
+    // handler under m_verbArgsMutex, so doc_lint's worker never touches
+    // m_toolParamKeys (spec ANTS-3663 § 2.6). Empty before the first list.
+    QHash<QString, QSet<QString>> verbArgsSnapshot() const;
 
 
     // ANTS-3661 — every MCP verb name this build answers to: the registry's
@@ -836,6 +845,9 @@ private:
     // of silently dropping it. Empty until the first tools/list (Claude Code
     // always lists before any call); an empty map degrades to "no advisory".
     mutable QHash<QString, QSet<QString>> m_toolParamKeys;
+    // ANTS-5506 — see verbArgsSnapshot().
+    mutable QMutex                        m_verbArgsMutex;
+    QHash<QString, QSet<QString>>         m_verbArgsPublished;
 
     // ANTS-1357 — short-TTL idempotent-read cache.
     // Allowlist: get_cwd / get_environment / tab_list / last_audit_summary.

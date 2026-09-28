@@ -1,6 +1,7 @@
 // ANTS-3663 — doc_lint engine. See doclint.h for the design and the spec.
 
 #include "doclint.h"
+#include "docfacts.h"
 #include "markdownscan.h"
 
 #include <QDir>
@@ -29,6 +30,7 @@ const QStringList &checkNames() {
         QStringLiteral("doc_dedup"),
         QStringLiteral("doc_symbols"),
         QStringLiteral("spec_lint"),
+        QStringLiteral("doc_facts"),  // ANTS-5506, spec § 2.6
     };
     return v;
 }
@@ -40,6 +42,7 @@ const QString kCitations = QStringLiteral("doc_citations");
 const QString kDedup     = QStringLiteral("doc_dedup");
 const QString kSymbols   = QStringLiteral("doc_symbols");
 const QString kSpecLint  = QStringLiteral("spec_lint");
+const QString kFacts     = QStringLiteral("doc_facts");
 
 bool selected(const Options &o, const QString &name) {
     return o.checks.isEmpty() || o.checks.contains(name);
@@ -332,15 +335,20 @@ Result run(const QStringList &relDocs, const Options &opts) {
     const bool wantDedup     = selected(opts, kDedup);
     const bool wantSymbols   = selected(opts, kSymbols);
     const bool wantSpecLint  = selected(opts, kSpecLint);
+    const bool wantFacts     = selected(opts, kFacts);
 
     DocDedup::Accumulator acc;
-    bool dedupRan = false, symbolsRan = false, specLintRan = false;
+    bool dedupRan = false, symbolsRan = false, specLintRan = false, factsRan = false;
+
+    DocFacts::Options factsOpts;
+    factsOpts.projectVersion = opts.projectVersion;
+    factsOpts.verbArgs       = opts.verbArgs;
 
     // The run-wide needle budget doc_symbols' per-document Options cannot hold:
     // the engine is per document, the bound is per run, so the caller debits it.
     int symbolBudget = opts.symbols.maxSymbolsPerRun;
 
-    // ---- Phase 1: one enumeration, one read, three native checkers ----------
+    // ---- Phase 1: one enumeration, one read, four native checkers -----------
     for (int i = 0; i < relDocs.size(); ++i) {
         const QString &rel = relDocs.at(i);
 
@@ -408,6 +416,23 @@ Result run(const QStringList &relDocs, const Options &opts) {
             // scalar overwrites it once per document and returns the last one.
             r.stats.lineCount.insert(rel, sl.lineCount);
         }
+
+        // ANTS-5506 — every document is eligible; each kind scopes itself.
+        if (wantFacts && eligible(kFacts, rel, opts)) {
+            factsRan = true;
+            const DocFacts::Result fr = DocFacts::check(text, rel, factsOpts);
+            r.findings.append(fr.findings);
+            r.stats.countClaimsChecked   += fr.countClaimsChecked;
+            r.stats.versionClaimsChecked += fr.versionClaimsChecked;
+            r.stats.verbCallsChecked     += fr.verbCallsChecked;
+        }
+    }
+
+    // Both describe the run's INPUTS, not a document: set once, and only when
+    // doc_facts ran, so a run that never selected it carries neither.
+    if (factsRan) {
+        r.stats.versionUnavailable = opts.projectVersion.isEmpty();
+        r.stats.schemaUnavailable  = opts.verbArgs.isEmpty();
     }
 
     // ---- doc_dedup scores once, over the whole corpus -----------------------
@@ -522,6 +547,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
     if (dedupRan)    r.checksRun << kDedup;
     if (symbolsRan)  r.checksRun << kSymbols;
     if (specLintRan) r.checksRun << kSpecLint;
+    if (factsRan)    r.checksRun << kFacts;
 
     // ---- INV-7: a TOTAL order -----------------------------------------------
     // The first five keys are all properties of a finding, so two findings can

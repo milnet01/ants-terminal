@@ -3,14 +3,29 @@
 // behavioural rows drive the pure helper (and the engine, for the half INV-2
 // asserts about narrowing) while wiring rows source-scrape the registration
 // sites — the pattern ANTS-3601's, ANTS-3661's and ANTS-3660's verb tests use.
+//
+// ANTS-5506 adds two doc_facts verb-layer rows: INV-26 (version truth prefers
+// `.claude/bump.json` over `CMakeLists.txt`) and INV-28 (the live tools/list
+// schema is forwarded into verb_arg_unknown's map). Both need `cmdDocLint`'s
+// two injected inputs (§ 2.6), which only a real MainWindow (or, here,
+// ants-mcpd, which wires the same provider in src/mcpdmain.cpp) supplies — so
+// both drive a real ants-mcpd child process via ants_test::McpdSession, the
+// same harness tests/features/mcpd_call/ uses. THE CODE DOES NOT EXIST YET at
+// the time these rows were written: DocLint::Options carries no
+// projectVersion or verbArgs member, and "doc_facts" is not in
+// DocLint::checkNames() — see the ANTS-3663 bug description for the exact
+// interface these rows are written against.
 
 #include "remotecontrol.h"
 #include "doclint.h"
+
+#include "../standalone_mcp_server/mcpd_session.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -24,6 +39,9 @@
 #if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
 #error "doc_lint_verb test needs the test_claude source-path compile defs"
+#endif
+#ifndef ANTS_MCPD_BIN
+#error "doc_lint_verb test needs ANTS_MCPD_BIN for the INV-26/INV-28 ants-mcpd cases"
 #endif
 
 namespace {
@@ -239,4 +257,200 @@ TEST(DocLintVerb, Inv13EtagNeverSkipsAFix) {
     ASSERT_FALSE(fn.isEmpty()) << "isEtagSupportedTool body not found";
     EXPECT_FALSE(fn.contains(QStringLiteral("\"doc_lint\"")))
         << "an etag_match that matched would report a COMPLETED repair as unchanged";
+}
+
+namespace {
+
+// A version_drift finding count, read out of the wire envelope.
+int wireVersionDriftFindings(const QJsonObject &r) {
+    int n = 0;
+    for (const auto &v : r.value(QStringLiteral("findings")).toArray())
+        if (v.toObject().value(QStringLiteral("kind")).toString() ==
+            QStringLiteral("version_drift"))
+            ++n;
+    return n;
+}
+
+// § 2.6 — version_unavailable is always PRESENT and boolean whenever
+// doc_facts ran, never omitted. Returning the QJsonValue (not toBool())
+// lets the caller tell "false" from "absent": QJsonValue().toBool() is also
+// false, so a bare toBool() comparison passes vacuously against a key the
+// implementation never emits.
+QJsonValue wireDocFactsVersionUnavailable(const QJsonObject &r) {
+    return r.value(QStringLiteral("check_stats")).toObject()
+        .value(QStringLiteral("doc_facts")).toObject()
+        .value(QStringLiteral("version_unavailable"));
+}
+
+// Writes CMakeLists.txt (VERSION 1.0.0), a document claiming that same
+// version, and — when `withBumpFile` — a `.claude/bump.json` whose
+// version_source/version_pattern resolve to 2.0.0. Returns the project's
+// canonical root, or an empty string on failure.
+QString writeVersionTruthFixture(const QTemporaryDir &tmp, const QString &name,
+                                 bool withBumpFile) {
+    const QString proj = tmp.filePath(name);
+    if (!QDir().mkpath(proj + QStringLiteral("/docs"))) return {};
+    if (withBumpFile) {
+        if (!QDir().mkpath(proj + QStringLiteral("/.claude"))) return {};
+        QFile bump(proj + QStringLiteral("/.claude/bump.json"));
+        if (!bump.open(QIODevice::WriteOnly)) return {};
+        const QByteArray bumpBody = QByteArray(
+            "{\n"
+            "  \"version_source\": \"docs/VERSION_TRUTH.txt\",\n"
+            "  \"version_pattern\": \"([0-9]+\\\\.[0-9]+\\\\.[0-9]+)\"\n"
+            "}\n");
+        if (bump.write(bumpBody) != bumpBody.size()) return {};
+        QFile truth(proj + QStringLiteral("/docs/VERSION_TRUTH.txt"));
+        if (!truth.open(QIODevice::WriteOnly)) return {};
+        const QByteArray truthBody = "2.0.0\n";
+        if (truth.write(truthBody) != truthBody.size()) return {};
+    }
+    QFile cmake(proj + QStringLiteral("/CMakeLists.txt"));
+    if (!cmake.open(QIODevice::WriteOnly)) return {};
+    const QByteArray cmakeBody = "project(x VERSION 1.0.0)\n";
+    if (cmake.write(cmakeBody) != cmakeBody.size()) return {};
+    QFile claim(proj + QStringLiteral("/docs/claim.md"));
+    if (!claim.open(QIODevice::WriteOnly)) return {};
+    const QByteArray claimBody =
+        "# Claim\n\nVersion <strong>1.0.0</strong> is what this document says.\n";
+    if (claim.write(claimBody) != claimBody.size()) return {};
+    return QFileInfo(proj).canonicalFilePath();
+}
+
+}  // namespace
+
+// ANTS-5506 INV-26 — cmdDocLint resolves the version from .claude/bump.json
+// BEFORE CMakeLists.txt. With the bump file present (pointing at 2.0.0) the
+// document's "Version <strong>1.0.0" claim mismatches -> one version_drift
+// finding. Without the bump file, the fallback (CMakeLists.txt's own 1.0.0)
+// matches the same claim -> none. version_unavailable is false in both runs:
+// some source always resolves.
+TEST(DocLintVerb, Inv26VersionTruthPrefersBumpFile) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const QString withBump = writeVersionTruthFixture(tmp, QStringLiteral("inv26-with"), true);
+    const QString withoutBump =
+        writeVersionTruthFixture(tmp, QStringLiteral("inv26-without"), false);
+    ASSERT_FALSE(withBump.isEmpty());
+    ASSERT_FALSE(withoutBump.isEmpty());
+
+    ants_test::McpdSession withSession(withBump, tmp.filePath(QStringLiteral("with.sock")));
+    ASSERT_TRUE(withSession.started());
+    const QJsonObject withResult = withSession.call(QStringLiteral("doc_lint"),
+        QJsonObject{{"caller_cwd", withBump}, {"checks", QJsonArray{QStringLiteral("doc_facts")}}});
+    ASSERT_FALSE(withResult.value(QStringLiteral("test_timeout")).toBool())
+        << "doc_lint call (with bump.json) timed out";
+    EXPECT_EQ(1, wireVersionDriftFindings(withResult))
+        << "bump.json points at 2.0.0, the document claims 1.0.0 — a mismatch: "
+        << QJsonDocument(withResult).toJson().toStdString();
+    EXPECT_TRUE(withResult.value(QStringLiteral("checks_run")).toArray()
+                    .contains(QJsonValue(QStringLiteral("doc_facts"))))
+        << "doc_facts must actually have run, or the zero/one-finding "
+           "comparison below is vacuous: "
+        << QJsonDocument(withResult).toJson().toStdString();
+    const QJsonValue withUnavailable = wireDocFactsVersionUnavailable(withResult);
+    ASSERT_TRUE(withUnavailable.isBool())
+        << "version_unavailable must be present and boolean whenever doc_facts "
+           "ran (§ 2.6), not merely absent: "
+        << QJsonDocument(withResult).toJson().toStdString();
+    EXPECT_FALSE(withUnavailable.toBool())
+        << QJsonDocument(withResult).toJson().toStdString();
+
+    ants_test::McpdSession withoutSession(withoutBump, tmp.filePath(QStringLiteral("without.sock")));
+    ASSERT_TRUE(withoutSession.started());
+    const QJsonObject withoutResult = withoutSession.call(QStringLiteral("doc_lint"),
+        QJsonObject{{"caller_cwd", withoutBump}, {"checks", QJsonArray{QStringLiteral("doc_facts")}}});
+    ASSERT_FALSE(withoutResult.value(QStringLiteral("test_timeout")).toBool())
+        << "doc_lint call (without bump.json) timed out";
+    EXPECT_EQ(0, wireVersionDriftFindings(withoutResult))
+        << "no bump.json: falls back to CMakeLists.txt's 1.0.0, matching the "
+           "document's claim — no drift: "
+        << QJsonDocument(withoutResult).toJson().toStdString();
+    EXPECT_TRUE(withoutResult.value(QStringLiteral("checks_run")).toArray()
+                    .contains(QJsonValue(QStringLiteral("doc_facts"))))
+        << "doc_facts must actually have run, or the zero-finding result "
+           "above is vacuous (it never ran at all): "
+        << QJsonDocument(withoutResult).toJson().toStdString();
+    const QJsonValue withoutUnavailable = wireDocFactsVersionUnavailable(withoutResult);
+    ASSERT_TRUE(withoutUnavailable.isBool())
+        << "version_unavailable must be present and boolean whenever doc_facts "
+           "ran (§ 2.6), not merely absent: "
+        << QJsonDocument(withoutResult).toJson().toStdString();
+    EXPECT_FALSE(withoutUnavailable.toBool())
+        << QJsonDocument(withoutResult).toJson().toStdString();
+}
+
+// ANTS-5506 INV-28 — the verb layer forwards the LIVE tools/list schema. An
+// ants-mcpd session that has served tools/list before calling doc_lint sees
+// two verb_arg_unknown findings over three doc_lint call spans: a typo'd
+// "pathz" key, a clean {encoding, path} call, and an "etag_match" key doc_lint
+// does not honour (§ 2.5 — doc_lint is outside isEtagSupportedTool, INV-13).
+// schema_unavailable is false because tools/list was served first.
+TEST(DocLintVerb, Inv28LiveSchemaIsForwarded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString proj = tmp.filePath(QStringLiteral("inv28"));
+    ASSERT_TRUE(QDir().mkpath(proj + QStringLiteral("/docs")));
+    QFile f(proj + QStringLiteral("/docs/calls.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    const QByteArray body =
+        "# Calls\n"
+        "\n"
+        "`doc_lint {pathz:\"docs\"}`\n"
+        "\n"
+        "`doc_lint {encoding:\"tabular\", path:\"docs\"}`\n"
+        "\n"
+        "`doc_lint {etag_match:\"e\"}`\n";
+    ASSERT_EQ(f.write(body), body.size());
+    f.close();
+    const QString root = QFileInfo(proj).canonicalFilePath();
+
+    ants_test::McpdSession session(root, tmp.filePath(QStringLiteral("inv28.sock")));
+    ASSERT_TRUE(session.started());
+
+    // Serve tools/list FIRST — before it, the vocabulary provider's published
+    // copy is empty and verb_arg_unknown does not run at all (§ 2.6).
+    const int listId = session.send(QStringLiteral("tools/list"));
+    const QJsonObject listReply = session.await(listId);
+    ASSERT_FALSE(listReply.value(QStringLiteral("test_timeout")).toBool())
+        << "tools/list timed out";
+
+    const QJsonObject r = session.call(QStringLiteral("doc_lint"),
+        QJsonObject{{"caller_cwd", root}, {"checks", QJsonArray{QStringLiteral("doc_facts")}}});
+    ASSERT_FALSE(r.value(QStringLiteral("test_timeout")).toBool())
+        << "doc_lint call timed out";
+
+    QStringList unknownArgMessages;
+    for (const auto &v : r.value(QStringLiteral("findings")).toArray()) {
+        const QJsonObject fo = v.toObject();
+        if (fo.value(QStringLiteral("kind")).toString() ==
+            QStringLiteral("verb_arg_unknown"))
+            unknownArgMessages << fo.value(QStringLiteral("message")).toString();
+    }
+    ASSERT_EQ(2, unknownArgMessages.size())
+        << QJsonDocument(r).toJson().toStdString();
+    bool sawPathz = false, sawEtagMatch = false;
+    for (const QString &m : unknownArgMessages) {
+        if (m.contains(QStringLiteral("pathz"))) sawPathz = true;
+        if (m.contains(QStringLiteral("etag_match"))) sawEtagMatch = true;
+    }
+    EXPECT_TRUE(sawPathz) << QJsonDocument(r).toJson().toStdString();
+    EXPECT_TRUE(sawEtagMatch)
+        << "doc_lint does not honour ETags (§ 2.5) — etag_match must be "
+           "flagged as an unknown top-level key: "
+        << QJsonDocument(r).toJson().toStdString();
+
+    // § 2.6 — schema_unavailable must be PRESENT and boolean whenever
+    // doc_facts ran, never merely absent: QJsonValue().toBool() is also
+    // false, so a bare toBool() comparison passes vacuously against a key
+    // the implementation never emits.
+    const QJsonValue schemaUnavailable = r.value(QStringLiteral("check_stats")).toObject()
+        .value(QStringLiteral("doc_facts")).toObject()
+        .value(QStringLiteral("schema_unavailable"));
+    ASSERT_TRUE(schemaUnavailable.isBool())
+        << "schema_unavailable must be present and boolean whenever doc_facts ran: "
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_FALSE(schemaUnavailable.toBool())
+        << "tools/list was served before this call: " << QJsonDocument(r).toJson().toStdString();
 }

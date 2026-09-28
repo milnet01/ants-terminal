@@ -596,10 +596,13 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-3653 — doc_citations scan layer: the path:line grammar as a pure
     # function (document text in, tokens out); Qt6::Core-only.
     src/doccitations.cpp
-    # ANTS-3663 — doc_lint engine: composes the five deterministic doc checkers
+    # ANTS-3663 — doc_lint engine: composes the six deterministic doc checkers
     # over one enumeration and one shared read, so a review pre-pass is one call
     # rather than five that each re-walk the tree. Qt6::Core-only.
     src/doclint.cpp
+    # ANTS-5506 — doc_facts: doc_lint's sixth checker (five document-fact
+    # kinds). Native, so it rides doc_lint's shared read. Qt6::Core-only.
+    src/docfacts.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
@@ -3064,6 +3067,11 @@ if(ANTS_TESTS)
                         tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
                         # ANTS-5506 — ants-mcpd --call.
                         tests/features/mcpd_call/test_mcpd_call.cpp
+                        # ANTS-5506 — doc_facts INV-26/INV-28: cmdDocLint's
+                        # two injected inputs (version, live verb schema)
+                        # need a real MainWindow-equivalent, so these two
+                        # rows drive a real ants-mcpd child.
+                        tests/features/doc_lint_verb/test_doc_lint_verb.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>"
         ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")

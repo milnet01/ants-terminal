@@ -969,7 +969,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("doc_dedup",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdDocDedup));
-    // ANTS-3663 — doc_lint: the five deterministic doc checkers in one call.
+    // ANTS-3663 — doc_lint: the six deterministic doc checkers in one call.
     sink.registerToolProvider("doc_lint",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdDocLint));

@@ -109,6 +109,8 @@ int main(int argc, char **argv) {
     rc.setVerifyTrustClient(std::make_unique<mcpd::ForwardingTrustClient>());
     rc.setMcpVerbVocabularyProvider(
         [&pipeline] { return pipeline.registeredToolNames(); });
+    // ANTS-5506 — doc_facts' argument map: the copy tools/list publishes.
+    rc.setMcpVerbArgsProvider([&pipeline] { return pipeline.verbArgsSnapshot(); });
 
     mcp::RegistryHost host;
     host.ci    = &pipeline;

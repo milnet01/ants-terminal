@@ -1,6 +1,6 @@
 // ANTS-3664 — one finding shape for the doc-lint verbs.
 //
-// ANTS-3663 (`doc_lint`) composes five checkers into one findings list, and
+// ANTS-3663 (`doc_lint`) composes six checkers into one findings list, and
 // before this there was nothing to compose them *into*: six unrelated
 // `struct Finding` declarations existed across the tree and no shared
 // serialiser (a search for `findingToJson` returned zero). Written before the
