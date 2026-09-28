@@ -30,10 +30,16 @@ cat > "$T/tools/ci_workflow.py" <<PY
 import subprocess, sys
 sys.exit(subprocess.call([sys.executable, "$REPO_ROOT/tools/ci_workflow.py"] + sys.argv[1:]))
 PY
-# A stand-in gate: it reports how it was called instead of building.
+# A stand-in gate: it reports how it was called instead of building. It
+# declares a --docs mode as the real one does: the machine-wide hook reads the
+# gate script for that flag and runs a docs-only push in full without it.
 cat > "$T/tools/local-ci.sh" <<'SH'
 #!/usr/bin/env bash
-echo "GATE-RAN mode=${1:-full} changed=${ANTS_PUSH_CHANGED-<unset>}" | tr '\n' ' '
+case "${1:-}" in
+    --docs) mode=--docs ;;
+    *)      mode=${1:-full} ;;
+esac
+echo "GATE-RAN mode=$mode changed=${ANTS_PUSH_CHANGED-<unset>}" | tr '\n' ' '
 echo
 SH
 chmod +x "$T/tools/local-ci.sh" "$T/tools/hooks/pre-push"
