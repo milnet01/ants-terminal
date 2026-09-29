@@ -337,6 +337,25 @@ TEST(McpdCall, Inv4CheckErrorsWithExitCodeIsFailed) {
            "CallFindings instead of CallFailed";
 }
 
+// INV-4 (second envelope) — check_errors AND findings both non-empty still
+// gives 1: could-not-check outranks found-a-problem. Why this exists: a
+// mapping that tests findings before check_errors would return 3 (CallFindings).
+TEST(McpdCall, Inv4CheckErrorsOutranksFindings) {
+    const QJsonObject envelope{
+        {"ok", true},
+        {"findings", QJsonArray{QJsonObject{
+            {"rule", QStringLiteral("spec_lint.invariant_no_test")},
+            {"file", QStringLiteral("docs/specs/T-1-demo.md")},
+            {"line", 12},
+            {"message", QStringLiteral("invariant has no test")}}}},
+        {"check_errors", QJsonArray{QStringLiteral("doc_integrity: walk aborted")}}};
+    EXPECT_EQ(mcpd::exitCodeFor(envelope, /*envelopeParsed=*/true, /*exitCodeFlag=*/true),
+              mcpd::CallFailed)
+        << "check_errors and findings are both non-empty: expected CallFailed (1), "
+           "could-not-check outranks found-a-problem; a mapping reading findings "
+           "first would return CallFindings (3)";
+}
+
 // INV-5 — with a JSON argument, --call reads no stdin and exits after one
 // reply. Stdin is left open for the whole wait; falling through to the
 // stdio loop would wait on it forever.
