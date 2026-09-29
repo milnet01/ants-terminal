@@ -33140,6 +33140,7 @@ against current source before filing.
   Decided by the user (2026-09-29): one design for item links covers this,
   ANTS-4079 (Blocked-by) and ANTS-3827 (links through migration). Spec
   under ANTS-4079; this item's split guard is one of its clauses.
+  Contract: docs/specs/ANTS-4079-item-links.md § 2.3 and INV-4, INV-10.
   **Layman:** When we split a reported issue into two tickets, the reporting project only ever sees the first one — so "done" can mean half-done.
   Kind: fix.
   Source: in-session-2026-07-30 (hit twice in one triage pass).
@@ -37527,6 +37528,8 @@ against current source before filing.
   data-model change.
   Decided by the user (2026-09-29): folded into the item-links design
   specified under ANTS-4079, with ANTS-3748.
+  Contract: docs/specs/ANTS-4079-item-links.md § 2.6 and INV-7, INV-8.
+  Option (a), convert both, as roadmap-data-model.md § 6 already states.
 
 - ✅ [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
   User-reported 2026-08-04: "when I paste an image, it doesn't always paste
@@ -39841,6 +39844,9 @@ against current source before filing.
   Decided by the user (2026-09-29): one item-links design covers this,
   ANTS-3748 (a split parent cannot close while a part is open) and
   ANTS-3827 (links survive migration). The spec is written under this id.
+  Spec accepted 2026-09-29: docs/specs/ANTS-4079-item-links.md (covers
+  ANTS-3748 and ANTS-3827; review record docs/reviews/ANTS-4079-item-links-loop-log.md).
+  Ready to build.
   **Layman:** Let an item say which other items must finish first, and warn when that points at nothing or goes in a circle.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild).

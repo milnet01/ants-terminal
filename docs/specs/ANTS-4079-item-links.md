@@ -1,6 +1,6 @@
 # ANTS-4079 — item links: write, guard, read and migrate roadmap relationships
 
-**Status:** spec draft (2026-09-29).
+**Status:** accepted (2026-09-29), review-contract loops 1 + 2 folded, cap reached.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-4079 (in-session-2026-07-30), with ANTS-3748 and ANTS-3827 folded in by user decision 2026-09-29 ("one design for all three").
 **Covers:** ANTS-4079, ANTS-3748, ANTS-3827.
