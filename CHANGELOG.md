@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"amend_preamble" replaces one phrase in a roadmap's preamble and keeps the rest** (ANTS-5523)
+
 - **roadmap_log op:"retitle_section" renames a section on a store-backed roadmap and returns its new slug** (ANTS-5557)
 
 - **The AppImage updates itself.** (ANTS-5560)

@@ -28,6 +28,10 @@ still opens on the format marker and carries one `# ` line.
 **INV-7 — the preamble holds one title and no other heading.** A second
 `# ` line, or any `##` to `######` line, refuses `bad_intro`.
 
+**ANTS-5523 — `amend_preamble` is `amend_intro` on the preamble.** It
+replaces one unique `old_text` there and keeps the rest; no match refuses
+`intro_match_not_found`. *Test:* `RoadmapLogSetPreamble.Ants5523*`.
+
 **INV-9 (ANTS-5373) — `amend_intro` replaces one match.** It takes
 `section`, `old_text` and `new_text`. `old_text` must occur exactly once in
 the stored intro: none refuses `intro_match_not_found`, several refuse

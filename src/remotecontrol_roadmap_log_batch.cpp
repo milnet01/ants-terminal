@@ -3747,10 +3747,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
 // cannot drop the rest, and a dry run echoes the intro it would replace.
 QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
                                                    bool preamble) {
-    const bool amend = !preamble &&
-        req.value(QStringLiteral("op")).toString() == QStringLiteral("amend_intro");
-    const QString opName = preamble ? QStringLiteral("set_preamble")
-                         : amend    ? QStringLiteral("amend_intro")
+    // ANTS-5523 — amend_preamble is amend_intro on the root section.
+    const QString reqOp = req.value(QStringLiteral("op")).toString();
+    const bool amend = reqOp == QStringLiteral("amend_intro")
+                    || reqOp == QStringLiteral("amend_preamble");
+    const QString opName = amend    ? reqOp
+                         : preamble ? QStringLiteral("set_preamble")
                                     : QStringLiteral("set_intro");
     // The live root's slug is the EMPTY string, and a null QString binds as
     // SQL NULL, which matches nothing — hence QStringLiteral("").
@@ -3770,8 +3772,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     const QString oldText = req.value(QStringLiteral("old_text")).toString();
     if (amend && oldText.isEmpty())
         return rcSectionOpErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: amend_intro requires `old_text`, the "
-                           "exact text to replace inside the stored intro"));
+            QStringLiteral("roadmap_log: %1 requires `old_text`, the "
+                           "exact text to replace inside the stored intro")
+                .arg(opName));
 
     // Normalise and check the text the section will hold. Returns a refusal,
     // or a null document with *intro set.
@@ -3861,9 +3864,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
         if (hits != 1)
             return rcSectionOpErr(hits == 0 ? QStringLiteral("intro_match_not_found")
                                             : QStringLiteral("intro_match_ambiguous"),
-                QStringLiteral("roadmap_log: `old_text` occurs %1 times in section "
-                               "\"%2\"'s intro; it must occur exactly once")
-                    .arg(hits).arg(slug));
+                QStringLiteral("roadmap_log: `old_text` occurs %1 times in %2; "
+                               "it must occur exactly once")
+                    .arg(hits).arg(preamble ? QStringLiteral("the preamble")
+                                            : QStringLiteral("section \"%1\"'s intro")
+                                                  .arg(slug)));
         QString replaced = previous;
         replaced.replace(oldText, req.value(QStringLiteral("new_text")).toString());
         const QJsonDocument bad = normalise(replaced, &intro);

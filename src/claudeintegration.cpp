@@ -13457,6 +13457,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("set_intro");     // ANTS-4949
                     opEnum.append("set_preamble");  // ANTS-4968
                     opEnum.append("amend_intro");   // ANTS-5373
+                    opEnum.append("amend_preamble"); // ANTS-5523
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
                     opEnum.append("retitle_section"); // ANTS-5557
@@ -13483,7 +13484,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "the roadmap's title and preamble: `new_text` only, "
                         "one `# ` title line allowed; the render adds the "
                         "format marker and generated-file notice, so omit "
-                        "them. All three store-only, "
+                        "them; \"amend_preamble\" replaces one unique "
+                        "`old_text` in it. All four store-only, "
                         "dry_run previewable (echoing previous_intro), and "
                         "echo replaced_intro_chars (on amend_intro, the "
                         "matched old_text only). "

@@ -572,3 +572,29 @@ TEST(RoadmapLogSetIntro, Ants5161RegisteredButNotServedIsNamed) {
     EXPECT_EQ(rc.cmdRoadmapLog(req).object().value(QStringLiteral("code")).toString(),
               QStringLiteral("project_not_registered"));
 }
+
+// ANTS-5523 — amend_preamble changes one phrase and keeps the rest, through
+// roadmap_log's real dispatch.
+TEST(RoadmapLogSetPreamble, Ants5523AmendPreambleKeepsTheRest) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_preamble");
+    req[QStringLiteral("old_text")]   = QStringLiteral("Wrong Project");
+    req[QStringLiteral("new_text")]   = QStringLiteral("Right Project");
+    const QJsonObject resp = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("op")).toString(), QStringLiteral("amend_preamble"));
+    EXPECT_EQ(resp.value(QStringLiteral("replaced_intro_chars")).toInt(), 13);
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_EQ(md.rfind("<!-- ants-roadmap-format: 1 -->", 0), 0u);
+    EXPECT_TRUE(has(md, "# Right Project \xE2\x80\x94 Roadmap"));
+    EXPECT_FALSE(has(md, "Wrong Project"));
+    EXPECT_TRUE(has(md, "Lorem ipsum")) << "the rest of the preamble is kept";
+
+    req[QStringLiteral("old_text")] = QStringLiteral("Not in the preamble");
+    EXPECT_EQ(rc.cmdRoadmapLog(req).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("intro_match_not_found"));
+}

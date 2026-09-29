@@ -4004,9 +4004,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
         return cmdRoadmapLogAmendBatch(req);
     // ANTS-4949 / ANTS-4968 — a section's intro, and the roadmap's preamble.
     // ANTS-5373 — amend_intro patches one match inside a section's intro.
+    // ANTS-5523 — amend_preamble patches one match inside the preamble.
     if (op == QStringLiteral("set_intro") || op == QStringLiteral("set_preamble") ||
-        op == QStringLiteral("amend_intro"))
-        return cmdRoadmapLogSetIntro(req, op == QStringLiteral("set_preamble"));
+        op == QStringLiteral("amend_intro") || op == QStringLiteral("amend_preamble"))
+        return cmdRoadmapLogSetIntro(req, op == QStringLiteral("set_preamble") ||
+                                          op == QStringLiteral("amend_preamble"));
     // ANTS-4958 — remove an emptied section; move a section with its subsections.
     if (op == QStringLiteral("delete_section"))
         return cmdRoadmapLogDeleteSection(req);
@@ -4079,7 +4081,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"amend_body\", \"amend_headline\", "
                            "\"amend_field\", \"amend_field_batch\", "
                            "\"amend_batch\", \"set_body\", "
-                           "\"set_intro\", \"amend_intro\", "
+                           "\"set_intro\", \"amend_intro\", \"amend_preamble\", "
                            "\"set_preamble\", \"delete_section\", "
                            "\"move_section\", \"retitle_section\", "
                            "\"list_elements\", "
