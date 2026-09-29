@@ -977,6 +977,8 @@ add_library(ants_dialogs_lib STATIC
     # SettingsDialog.
     src/welcomedialog.cpp
     src/claudesetup.cpp
+    # ANTS-5560 — the AppImage self-updater.
+    src/selfupdate.cpp
     src/toggleswitch.cpp
     # ANTS-1727 — shared review-dialog scaffold (ColdEyes/TestAudit base).
     src/reviewdialogbase.cpp
@@ -2096,6 +2098,9 @@ if(ANTS_TESTS)
                 # with Settings (docs/specs/ANTS-5558-welcome-dialog.md INV-1..INV-10).
                 tests/features/welcome_dialog/test_welcome_dialog.cpp
                 tests/features/welcome_dialog/test_claude_setup.cpp
+                # ANTS-5560 — the AppImage updates itself
+                # (docs/specs/ANTS-5560-appimage-self-update.md INV-1..INV-9).
+                tests/features/self_update/test_self_update.cpp
                 # ANTS-5082 — the About text names no retired renderer.
                 tests/features/about_text_current/test_about_text_current.cpp
                 tests/features/portal_session_close/test_portal_session_close.cpp
@@ -2231,6 +2236,12 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/welcome_dialog/test_claude_setup.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
+    set_property(SOURCE tests/features/self_update/test_self_update.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_SELFUPDATE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/selfupdate.cpp"
+        SIGN_SCRIPT_PATH="${CMAKE_SOURCE_DIR}/tools/sign-update-manifest.sh"
+        PUBKEY_PEM_PATH="${CMAKE_SOURCE_DIR}/packaging/update-signing/ants-update.pub.pem"
+        RELEASE_YML_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml")
     set_property(SOURCE tests/features/ui_state_persistence/test_ui_state_persistence.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ROADMAPDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
