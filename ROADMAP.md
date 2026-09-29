@@ -68701,17 +68701,23 @@ project. Reported causes are claims until checked in source.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5565] **roadmap_log amend_field_batch accepts field section, which its schema lists.**
+- ✅ [ANTS-5565] **roadmap_log amend_field_batch accepts field section, which its schema lists.**
   Every row refuses "section is not a column". Three projects hit it. Either
   accept it in the batch or drop it from the item enum.
+  Resolved (2026-09-29): the batch schema already omitted section (the
+  report's premise was stale); its description now points moves at
+  amend_field with locators[]. With ANTS-5566 the mistake costs one row.
   **Layman:** Moving many roadmap items at once is refused item by item, though the tool's own instructions say it works.
   Kind: fix.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5566] **A batch whose every entry fails with the same code and message returns one error with a count.**
+- ✅ [ANTS-5566] **A batch whose every entry fails with the same code and message returns one error with a count.**
   Measured: 164 identical skipped rows, about 25 KB, on UT_MonsterHunt.
   Applies to every *_batch op that fills skipped[].
+  Resolved (2026-09-29): rcSetAllRefusedSkipped, used by every batch op's
+  all-refused reply; rows equal apart from index/id/heading collapse to one
+  with skipped_uniform:true. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** One wrong argument in a big batch sends back the same error hundreds of times, wasting thousands of tokens.
   Kind: enhancement.
   Source: claude_config feedback 2026-09-28.
