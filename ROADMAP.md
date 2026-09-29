@@ -68697,9 +68697,14 @@ project. Reported causes are claims until checked in source.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5564] **roadmap_log set_preamble keeps the ants-roadmap-format marker and generated-file header when new_text omits them.**
+- ✅ [ANTS-5564] **roadmap_log set_preamble keeps the ants-roadmap-format marker and generated-file header when new_text omits them.**
   Only the dry run's previous_intro showed the marker was there. Preserve it
   outside new_text, or refuse text that would drop it.
+  Resolved (2026-09-29): no loss occurs. The render prepends the marker
+  when the stored preamble lacks it (roadmaprender.cpp, hasMarkerInHead);
+  RoadmapLogSetPreamble.ReplacesTheTitle proves the published file opens
+  on it. The dry run's previous_intro misled; the op description now says
+  the render adds the marker and notice.
   **Layman:** Rewriting a roadmap's opening text silently deletes the hidden tag that tells tools which format the file uses.
   Kind: fix.
   Source: claude_config feedback 2026-09-28.
@@ -68737,13 +68742,15 @@ project. Reported causes are claims until checked in source.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5568] **A level-3 theme heading can repeat under two release blocks without slug_collision.**
+- ✅ [ANTS-5568] **A level-3 theme heading can repeat under two release blocks without slug_collision.**
   roadmap-format 3.2 puts theme groups inside each release, but slugs are
   roadmap-wide. Scope a level-3 slug under its parent, or document the suffix
   convention UT_MonsterHunt used. Needs a design choice: slugs are cited.
   Decided by the user (2026-09-29): document the suffix convention
   ("Bot navigation — 0.1.0") and have the slug_collision refusal suggest
   it. Slugs stay roadmap-wide.
+  Resolved (2026-09-29): roadmap-format.md 3.2 states the release-suffix
+  convention; slug_collision's message suggests it.
   **Layman:** The same topic heading, such as 'Bot navigation', cannot appear under two different versions of a roadmap.
   Kind: feature.
   Source: claude_config feedback 2026-09-28.
