@@ -89344,6 +89344,11 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Releases are signed automatically in release.yml (private key as a
   GitHub secret, public key compiled in), and the signature binds the
   version, closing finbreak's downgrade gap.
+  Progress (2026-09-29): contract docs/specs/ANTS-5560-appimage-self-update.md
+  accepted after two review-contract loops (14 fixes, cap reached).
+  Verification uses libsodium, not libcrypto (AppImage soname clash risk).
+  Before the first release after this ships, the user must add the
+  GitHub secret ANTS_UPDATE_SIGNING_KEY.
   **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
   Kind: feature.
   Source: user-request-2026-09-29.
