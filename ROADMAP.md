@@ -88702,6 +88702,20 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: mcp.
 
+- 📋 [ANTS-5559] **Fix the spec_lint findings that are genuinely wrong; leave the pre-layout gaps.**
+  User decision 2026-09-29, after ANTS-5537's live run over docs/specs
+  (since:HEAD~8, all findings out of the diff). In scope: the
+  test_surface_absent / _unresolved / _unwired findings, the
+  command_test_no_expectation findings, and invariant_id_gap candidates
+  that are true gaps rather than a split spec keeping its parent's ids.
+  Out of scope by decision: invariant_no_test, missing_section and the
+  test_coverage kinds on specs written before the layout existed. No
+  exemption stamps. Re-measure the counts with spec_lint before starting.
+  **Layman:** Tidy the handful of design-document mistakes the checker found, without rewriting old documents for shipped features.
+  Kind: doc-fix.
+  Source: user-request-2026-09-29.
+  Lanes: docs.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
@@ -89267,6 +89281,25 @@ reports are asked for separately, each time.
   **Layman:** Each project remembers its own roadmap filters and view.
   Kind: enhancement.
   Source: user-request-2026-09-14.
+
+## Welcome dialog (user request 2026-09-29)
+
+A first-run welcome dialog, and the one-click setup actions it offers.
+
+- 📋 [ANTS-5558] **A welcome dialog thanks new users, lists the features, offers setup buttons and asks for donations.**
+  User decisions 2026-09-29: shown on first launch, and from Help -> Show
+  Welcome at any time. Buttons: install the status-bar hooks, register the
+  Ants MCP server with Claude Code (manual `claude mcp add` today), install
+  the git-context hook, and add shell integration (asks before editing the
+  shell rc file). Donation links: GitHub Sponsors, Patreon and the paybru
+  tip link from .github/FUNDING.yml; the Donate menu gains paybru too.
+  The hook installers are private SettingsDialog members today and move to
+  a shared module. Text lives in a file the dialog re-reads (hot reload).
+  Needs a spec: dialog, settings, startup and a new registration action.
+  **Layman:** The first time Ants Terminal opens, a friendly window says hello, explains what it can do, sets up the Claude Code extras in one click each, and invites a donation.
+  Kind: feature.
+  Source: user-request-2026-09-29.
+  Lanes: ui, claude.
 
 ## How to propose a roadmap item
 
