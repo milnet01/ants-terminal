@@ -568,10 +568,12 @@ pair is a no-op rather than a second row.** Each endpoint is keyed by
 `export_slug || 0x1f || id_fold` — the stable identity, deliberately not
 `item_pk`, which moves when the store is rebuilt — and the pair is ordered on
 that key, so `src` is fixed by the two items and not by which caller wrote
-first. `RoadmapStore::relateItems()` already implements exactly this. **A
-cross-project edge is never normalised**: there the local item is always `src`,
-because the remote endpoint has no `item_pk` to order against
-(`relateCrossProject()`).
+first. `RoadmapStore::relateItems()` implements exactly this, for any two items
+the store holds, in one project or two. **An edge to another project's item
+that the store does not hold is never normalised**: there the local item is
+always `src`, because the remote endpoint has no `item_pk` to order against
+(`relateCrossProject()`). A link to another project's item the store does hold
+is a `relateItems()` row.
 
 Saying this is not optional bookkeeping, because **the schema does not enforce
 it**. The `relationship` table declares no `UNIQUE`; the constraint is the
@@ -579,8 +581,14 @@ partial index `rel_item_uq` on `(type, src_pk, dst_pk)`, which is
 orientation-sensitive — `(A,B)` and `(B,A)` are distinct keys it will happily
 hold at once. The normalisation above is the only thing preventing the
 duplicate, so **any writer that inserts a relationship row without applying it
-breaks INV-1**, and `relateItems()` being the sole writer today is what makes
-that safe rather than the database.
+breaks INV-1**. Only item-to-item rows carry that risk: a cross-project row
+and a document row each have their own partial index (`rel_xproj_uq`,
+`rel_doc_uq`), and their `src` is always the local item. Four functions insert
+rows. `relateItems()` applies the normalisation. `relateCrossProject()` and
+`RoadmapStore::relateDocument()` write the other two shapes, the second a
+`specified-by` row addressed by path. `RoadmapExport::rebuildProject()`
+restores rows an export already normalised. No other code inserts a row, and
+that is what makes it safe rather than the database.
 
 `splits-from`, `blocked-by`, `duplicate-of` and `supersedes` are acyclic —
 `supersedes` included, because "A replaces an earlier decision B" that also

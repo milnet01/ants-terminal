@@ -284,6 +284,24 @@ Optional pieces:
   `src/roadmapparse.cpp`. `Kind:`, `Lanes:` and `Source:` are the
   case-SENSITIVE ones — the opposite grouping to what both this file and
   the global copy previously implied.
+- **Link lines: `Splits-from:`, `Blocked-by:`, `Duplicate-of:`,
+  `Supersedes:`** — the ids this item has that relationship to.
+  `roadmap-data-model.md` § 6 defines the four types. Each line is a
+  comma-separated id list ending in a period. On a store-backed project
+  the relationship rows are the truth: `roadmap_log op:"link"` /
+  `op:"unlink"` writes them, and the render composes one line per type,
+  after every other trailer, in the order above. An id the store cannot
+  hold stays on its line. The pass-headings form is
+  `- **Blocked-by**: ANTS-12`, with no period, directly after the
+  block's Status line. Import also reads `**Blocked-by:**`.
+  Case-sensitive labels.
+  **A line is a declaration only when its whole value is an id list,
+  with at most one closing period.** Any other line starting with one of
+  these keys is prose and stays in the body: `Blocked-by: nothing.`, for
+  one. A body write holding a declaration refuses `body_shadowed` and
+  points at `op:"link"`, since the next render would overwrite a
+  hand-written line. (ANTS-4079; `RoadmapParse::extractLinkLines()` in
+  `src/roadmapparse.cpp`.)
 - **Sub-bullets** — for parametrised work (e.g. "implement for X
   / Y / Z").
 
