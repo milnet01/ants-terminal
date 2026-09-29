@@ -18,6 +18,7 @@
 // had to be elided, so hover-inspection always reveals the whole string.
 
 #include <QLabel>
+#include <algorithm>
 #include <QResizeEvent>
 
 class ElidedLabel : public QLabel {
@@ -58,20 +59,24 @@ public:
     // is unreliable across Qt versions; instead we add a small fixed
     // fudge (sum of two averageCharWidth) to cover the typical
     // padding: 1px 8px from the chip stylesheet plus a safety margin.
+    //
+    // An UNCAPPED label (no maximumWidth) is a stretch slot — the status
+    // message, a title — and takes only the floor as its minimum. Its full
+    // text is unbounded, so demanding its width let one long message raise
+    // the whole window's minimum and widen the window (2026-09-29). Its
+    // sizeHint still asks for the full text, so it shows in full wherever
+    // there is room, and elides where there is not.
     QSize minimumSizeHint() const override {
         const QFontMetrics fm(font());
+        // A floor of 3 averageChar widths keeps an empty or squeezed label a
+        // non-zero placeholder rather than disappearing in a stretch layout.
+        const int floor = fm.averageCharWidth() * 3;
+        const int cap = maximumWidth();
+        const bool capped = cap > 0 && cap < QWIDGETSIZE_MAX;
+        if (!capped) return QSize(floor, fm.height());
         const int textW = fm.horizontalAdvance(m_fullText);
         const int padding = fm.averageCharWidth() * 2;  // ~16 px fudge
-        int w = textW + padding;
-        const int cap = maximumWidth();
-        if (cap > 0 && cap < QWIDGETSIZE_MAX && w > cap) {
-            w = cap;
-        }
-        // Also respect a minimum floor of 3 averageChar widths (the pre-fix
-        // behavior) for safety when fullText is empty — the widget should
-        // still be a non-zero width placeholder rather than disappearing
-        // entirely in a stretch layout.
-        const int floor = fm.averageCharWidth() * 3;
+        int w = std::min(textW + padding, cap);
         if (w < floor) w = floor;
         return QSize(w, fm.height());
     }

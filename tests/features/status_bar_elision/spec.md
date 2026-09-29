@@ -22,9 +22,10 @@ room.
    `ElideLeft`). Tooltip MUST carry the full string so hover reveals
    the un-elided form.
 
-3. **Minimum sizeHint respects the text.** `minimumSizeHint()` MUST
-   return at least the full-text width when the full-text width is ≤
-   `maximumWidth()`. This prevents a parent layout (QStatusBar's
+3. **Minimum sizeHint respects the text.** For a label with a
+   `maximumWidth()` set, `minimumSizeHint()` MUST return at least the
+   full-text width when the full-text width is ≤ that cap. An uncapped
+   label takes only a small floor (invariant 6). This prevents a parent layout (QStatusBar's
    QBoxLayout, in particular) from squeezing the widget below the
    width required to show the text in full.
 
