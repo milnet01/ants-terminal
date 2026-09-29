@@ -34,7 +34,7 @@ namespace {
 
 QString makeProject(const QTemporaryDir &tmp, const char *slug,
                     const QByteArray &rulesBytes) {
-    const QString p = tmp.path() + "/" + slug;
+    QString p = tmp.path() + "/" + slug;
     QDir().mkpath(p);
     QFile f(p + "/audit_rules.json");
     if (!f.open(QIODevice::WriteOnly)) return {};
@@ -115,9 +115,9 @@ void testPathCanonicalization() {
     // Create a symlink pointing at the real project.
     const QString link = tmp.path() + "/linkproj";
     if (!QFile::link(proj, link)) {
-        expect(false, "canonical: symlink creation failed "
-                      "(test skipped on FS that can't symlink)");
-        return;
+        // GTEST_SKIP returns from this helper only; the TEST checks
+        // IsSkipped() before asserting anything further.
+        GTEST_SKIP() << "canonical: this filesystem can't create symlinks";
     }
 
     Config cfg;
@@ -147,5 +147,6 @@ TEST(AuditCommandRuleTrust, CrossProjectIsolation) {
 TEST(AuditCommandRuleTrust, PathCanonicalization) {
     const int before = expect_failures();
     testPathCanonicalization();
+    if (::testing::Test::IsSkipped()) return;
     if (expect_failures() > before) FAIL();
 }
