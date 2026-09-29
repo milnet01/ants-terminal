@@ -45,7 +45,7 @@ dry_run: bool
 
 - A target with this project's prefix must resolve in the store, else the call refuses `link_target_not_found` naming it. A target with another registered project's prefix is stored cross-project, resolved or not, since that project may not have filed it yet.
 - `id` equal to a target refuses `bad_args`.
-- A new `splits-from`, `blocked-by`, `duplicate-of` or `supersedes` edge that would close a cycle among edges of the same type refuses `link_cycle`, with `cycle:[ids…]` in the reply. Checked over the full store, as § 6 requires.
+- A new `splits-from`, `blocked-by`, `duplicate-of` or `supersedes` edge that would close a cycle among edges of the same type refuses `link_cycle`, with `cycle:[ids…]` in the reply, checked over the full store. The check lives in this handler only: `relateItems()` keeps accepting such a write, as ANTS-3810 INV-2 requires, and import (§ 2.5) restores stored rows without it.
 - `relates-to` and `specified-by` are refused `bad_args` here: they come from the body (§ 2.6).
 - Re-adding an existing edge, or removing an absent one, succeeds and reports it in `unchanged:[…]`.
 - Reply: `{ok, op, id, type, linked:[…] | unlinked:[…], unchanged:[…]}` plus the usual render fields.
@@ -65,12 +65,12 @@ A flip to `shipped` of an item that other items name with `splits-from`, where a
            duplicate_of:[…], supersedes:[…], superseded_by:[…],
            relates_to:[…], specified_by:[paths…] }
   ```
-  Each list holds ids (paths for `specified_by`); empty lists are omitted. `blocks`, `parts` and `superseded_by` are the reverse direction, so "what blocks X" and "what X blocks" are one fetch. List and section queries do not carry `links`, to keep them lean.
+  Each list holds ids (paths for `specified_by`); empty lists are omitted. A reverse list, and § 2.3's parts guard, match both row shapes naming the item: `dst_pk`, and the cross-project `dst_project` / `dst_id_fold` pair a part filed in another project carries. `blocks`, `parts` and `superseded_by` are the reverse direction, so "what blocks X" and "what X blocks" are one fetch. List and section queries do not carry `links`, to keep them lean.
 - `feedback_query`: an id in `mapped_ids` that has parts also gets an entry in `mapped_id_parts: {id: [{id, status}]}`. `mapped_id_status` keeps its current meaning, the id's own status.
 
 ### 2.5 Rendering and import of the authored types
 
-`RoadmapRender::bulletText()` composes one trailer line per authored type that has rows, after the existing trailers, in the table order of § 2.1:
+`RoadmapRender::bulletText()` composes one trailer line per authored type that has rows or unresolved ids, after the existing trailers, in the table order of § 2.1:
 
 ```
   Splits-from: ANTS-3718.
@@ -79,18 +79,18 @@ A flip to `shipped` of an item that other items name with `splits-from`, where a
 
 `RoadmapRender::passBlockText()` writes the pass-headings form, `- **Blocked-by**: ANTS-12`, beside its Status line.
 
-On import, `RoadmapParse::trailerValuesIn()` reads these four keys on all three dialects: at a line start, optionally bold, and for pass-headings with the colon outside the bold. A value is a comma-separated id list. Each id becomes a row of that type, subject to § 2.2's rules; an id that cannot be stored is kept in `extras["unresolved_links"]` rather than dropped. A trailer line is a structured field, not prose, so § 6's rule that migration harvests nothing for `blocked-by` from prose still holds.
+On import, `RoadmapParse::trailerValuesIn()` reads these four keys on all three dialects: a line starting `Key:` or `**Key:**` after indentation, and on pass-headings also `- **Key**:` (list marker, colon outside the bold) — the matcher that recognises them, including `lineBeginsTrailerDecl()`, accepts all three shapes. A value is a comma-separated id list. Each id becomes a row of that type, checked as § 2.2 checks a target but with no cycle refusal; an id that cannot be stored goes to `extras["unresolved_links"]`, and the render appends it to that type's line, so the file keeps it. Import removes the four link lines from the stored `body`: the rows are the truth and the render composes the lines. A trailer line is a structured field, not prose, so § 6's rule that migration harvests nothing for `blocked-by` from prose still holds.
 
-The four keys join the recognised-trailer lists (`lineBeginsTrailerDecl()` and its regexes). A body write whose `new_text`, `note` or `body` declares one of them at a line start refuses `body_shadowed`, pointing at `op:"link"`: the rows are the truth, so a hand-written line would be overwritten by the next render.
+A body write whose `new_text`, `note` or `body` declares one of them at a line start refuses `body_shadowed`, pointing at `op:"link"`: the rows are the truth, so a hand-written line would be overwritten by the next render.
 
 ### 2.6 Converted types (ANTS-3827)
 
 At migration and on every body write (the path `rlDeriveTrailerColumns()` already takes), the item's `Dependencies:` and `Spec:` lines are read:
 
-- each comma-separated `Dependencies:` value that resolves to an item id becomes a `relates-to` row (`relateItems()` normalises the direction per § 6); a value that does not stays in `extras["unconverted_dependencies"]`;
+- each comma-separated `Dependencies:` value that resolves to an item id becomes a `relates-to` row: this project's id via `relateItems()`, which normalises the direction per § 6, another registered project's id via `relateCrossProject()`; any other value stays in `extras["unconverted_dependencies"]`;
 - each `Spec:` path becomes a `specified-by` row via `relateDocument()`.
 
-The body keeps both lines as written, and the render composes nothing for these two types, so the file round-trips byte for byte. On a body write the item's `relates-to` and `specified-by` rows are replaced by the new derivation in the same transaction.
+The body keeps both lines as written, and the render composes nothing for these two types, so the file round-trips byte for byte. A `relates-to` row is stored once for both endpoints, so a body write keeps a row touching the item while either endpoint's body declares it, and deletes it once neither does; the item's own `specified-by` rows are replaced by the new derivation. Both in the same transaction.
 
 ### 2.7 Choices and rejected alternatives
 
@@ -106,16 +106,16 @@ The body keeps both lines as written, and the render composes nothing for these 
 - **INV-3** — An edge that would close a cycle of one type refuses `link_cycle` naming the cycle; the same pair under a different type does not. Breaks if the cycle check ignores type or is skipped. *Test:* `tests/features/roadmap_item_links`.
 - **INV-4** — Flipping a parent to `shipped` while a `splits-from` part is `planned` refuses `open_parts` listing that part; once the part is `shipped` or `dropped`, the same flip succeeds. In `flip_batch` the refusal is per locator. Breaks if the guard is absent, counts `dropped` as open, or refuses the whole batch. *Test:* `tests/features/roadmap_item_links`.
 - **INV-5** — A flip of an item with an open `blocked-by` target succeeds and carries `blocked_by_open`. Breaks if it refuses or stays silent. *Test:* `tests/features/roadmap_item_links`.
-- **INV-6** — Render then re-import of a project with rows of all four authored types restores the same rows, on ants-v1 and pass-headings. Breaks if a trailer is not rendered, not parsed, or parsed on one dialect only. *Test:* `tests/features/roadmap_item_links`.
+- **INV-6** — Render then re-import of a project with rows of all four authored types, one unresolved id and one same-type cycle restores the same rows and the same file, on ants-v1 and pass-headings. Breaks if a trailer is not rendered, not parsed, left in the stored body and rendered twice, parsed on one dialect only, or if import refuses the cycle or drops the unresolved id. *Test:* `tests/features/roadmap_item_links`.
 - **INV-7** — Migrating an item whose body carries `Dependencies: ANTS-1, not-an-id` and `Spec: docs/specs/X.md` writes one `relates-to` row, one `specified-by` row, keeps `not-an-id` in `extras`, and leaves the rendered body byte-identical. Breaks if a line is dropped, duplicated by the render, or the unresolvable value is lost. *Test:* `tests/features/roadmap_item_links`.
-- **INV-8** — `amend_body` removing a `Dependencies:` value removes its `relates-to` row in the same commit. Breaks if the rows are derived only at migration. *Test:* `tests/features/roadmap_item_links`.
+- **INV-8** — `amend_body` removing a `Dependencies:` value removes its `relates-to` row in the same commit, unless the other endpoint's body still declares the pair, in which case the row stays. Breaks if the rows are derived only at migration, or if one body's edit deletes a row the other body declares. *Test:* `tests/features/roadmap_item_links`.
 - **INV-9** — A body write declaring `Blocked-by:` at a line start refuses `body_shadowed`. Breaks if the line is accepted and later overwritten by the render. *Test:* `tests/features/roadmap_item_links`.
 - **INV-10** — `feedback_query` on a file citing a parent with an open part reports that part in `mapped_id_parts`, and `mapped_id_status` still reports the parent's own status. Breaks if parts are absent or the status meaning changes. *Test:* `tests/features/roadmap_item_links`.
 - **INV-11** — `roadmap_log`'s published op enum lists `link` and `unlink` (checked by `tests/features/roadmap_log_op_enum`). Breaks if either is dispatched but unpublished. *Test:* `tests/features/roadmap_log_op_enum`.
 
 ## 4. RAM / build cost
 
-No new build target and no new library. The tests join an existing bundle, chosen with `build_target_for` when written. Link lookups use the existing `idx_rel_src` and `idx_rel_dst` indexes, one query per fetched id. The cycle check walks one type's edges and is bounded by that type's row count; nothing is cached, so nothing grows.
+No new build target and no new library. The tests join an existing bundle, chosen with `build_target_for` when written. Link lookups use the existing `idx_rel_src` and `idx_rel_dst` indexes, one query per fetched id; the cross-project reverse match (§ 2.4) has no index and scans the rows carrying `dst_project`. The cycle check walks one type's edges and is bounded by that type's row count; nothing is cached, so nothing grows.
 
 ## 5. Out of scope
 
