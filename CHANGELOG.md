@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **quotation_check verifies up to 500 quotations in one call, each against the file it names, and says found, not found (with the nearest line) or could not check** (ANTS-5502)
+  It normalises both sides exactly as the review skills' quotation-check.sh
+  does, so the two agree. `ref` checks a file as it was at a git revision,
+  and `allowed` limits which files a quotation may cite. `findings` holds
+  every item that is not found and is never trimmed, so a gate can rely
+  on it; `check_errors` names the items that could not be checked.
+
 - **The AppImage starts its bundled MCP helper with `--mcpd`, so AppImage users can connect Claude Code the new way** (ANTS-5321)
   Register it once with
   `claude mcp add ants -- /path/to/Ants_Terminal-x86_64.AppImage --mcpd`.

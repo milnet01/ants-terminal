@@ -1,0 +1,14 @@
+blockquote	HIT
+crlf	HIT
+empty_after_normalise	ERROR
+link_pattern	HIT
+link	HIT
+link_wrapped	HIT
+marks	HIT
+order_break_before_squeeze	HIT
+order_links_before_marks	MISS
+order_squeeze_before_marks	MISS
+plain_hit	HIT
+plain_miss	MISS
+tabs	HIT
+wrapped_quote	HIT

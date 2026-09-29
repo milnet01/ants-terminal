@@ -1,6 +1,6 @@
 # ANTS-5502 — Check many quotations in one call: `quotation_check`
 
-**Status:** spec, review-contract loops 1 + 2 folded, cap reached (2026-09-29). Signed off by the maintainer 2026-09-29 (message 277).
+**Status:** spec, review-contract loops 1 + 2 folded, cap reached (2026-09-29). Signed off by the maintainer 2026-09-29 (message 277). Implemented 2026-09-29 on helper/ANTS-5502.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5502 (claude-config joint review 2026-09-27, A1). Design answers from the maintainer session, 2026-09-28.
 **Composes with:** ANTS-4547 (`src/wrapmatch.h`, the wrapped-quotation rule this verb does NOT use, § 2.6), ANTS-5506 (`ants-mcpd --call --exit-code`, which gates on this verb's top-level `findings`), ANTS-1295 (path validation), ANTS-4374 (a zero says what it looked at).

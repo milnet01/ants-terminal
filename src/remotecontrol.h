@@ -1104,6 +1104,10 @@ public:
     // (ops start / finish / get). Seam: src/runtraceverb.h.
     QJsonDocument cmdRunTrace(const QJsonObject &req);
 
+    // ANTS-5502 — quotation_check: many quotations checked in one call.
+    // Seam: src/quotationcheckverb.h.
+    QJsonDocument cmdQuotationCheck(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by

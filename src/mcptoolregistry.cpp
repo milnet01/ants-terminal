@@ -161,6 +161,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("run_trace",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdRunTrace));
+    // ANTS-5502 — quotation_check: a review's quotations verified in one call.
+    // Required: paths resolve against the caller's project root.
+    sink.registerToolProvider("quotation_check",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdQuotationCheck));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     sink.registerToolProvider("changelog_log",
