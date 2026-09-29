@@ -648,6 +648,18 @@ TEST(ProjectSettingsVerb, Ants4903GetIsTheRead) {
                 || env.contains(QStringLiteral("unavailable")))
         << "the read must still say what is NOT declared";
 
+    // ANTS-5562 — all three ride both ops as arrays, empty when nothing
+    // applies, so absent never has to mean "not computed".
+    for (const QString &op : {QStringLiteral("get"), QStringLiteral("detect")}) {
+        const QJsonObject r = op == QLatin1String("get") ? env
+                                                         : settingsCall(root, op);
+        for (const char *k : {"undeclared", "unavailable", "declared_missing"})
+            EXPECT_TRUE(r.value(QLatin1String(k)).isArray())
+                << "op:" << op.toStdString() << " omits " << k;
+        EXPECT_TRUE(r.value(QStringLiteral("declared_missing")).toArray().isEmpty())
+            << "every declared path resolves here";
+    }
+
     // And the proposal does not: that is what makes this a read.
     EXPECT_FALSE(env.contains(QStringLiteral("suggestion")))
         << "op:get must not carry detect's proposal — the `suggestion` block "

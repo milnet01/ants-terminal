@@ -1875,12 +1875,12 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         else             o[QStringLiteral("suggestion")] = s;
         if (!declared.isEmpty())
             o[QStringLiteral("declared")] = declared;
-        if (!undeclared.isEmpty())
-            o[QStringLiteral("undeclared")] = undeclared;
-        if (!unavailable.isEmpty())
-            o[QStringLiteral("unavailable")] = unavailable;
-        if (!declaredMissing.isEmpty())
-            o[QStringLiteral("declared_missing")] = declaredMissing;
+        // ANTS-5562 — always present, empty when nothing applies: a caller
+        // told to check declared_missing cannot read "absent" as "clean".
+        // compact:true still drops the empty ones for a caller who wants that.
+        o[QStringLiteral("undeclared")]       = undeclared;
+        o[QStringLiteral("unavailable")]      = unavailable;
+        o[QStringLiteral("declared_missing")] = declaredMissing;
         return QJsonDocument(o);
     }
 

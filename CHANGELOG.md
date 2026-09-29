@@ -328,6 +328,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **project_settings get and detect always return undeclared, unavailable and declared_missing, empty when nothing applies** (ANTS-5562)
+
 - **roadmap_log amend_field_batch's description says where section moves go** (ANTS-5565)
   Moves use op:"amend_field" field:"section" with locators[], one call
   per destination.
