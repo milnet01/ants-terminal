@@ -1,6 +1,6 @@
 # ANTS-5502 — Check many quotations in one call: `quotation_check`
 
-**Status:** spec draft (2026-09-29).
+**Status:** spec draft, review-contract loops 1 + 2 folded, cap reached (2026-09-29). Awaiting maintainer sign-off.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5502 (claude-config joint review 2026-09-27, A1). Design answers from the maintainer session, 2026-09-28.
 **Composes with:** ANTS-4547 (`src/wrapmatch.h`, the wrapped-quotation rule this verb does NOT use, § 2.6), ANTS-5506 (`ants-mcpd --call --exit-code`, which gates on this verb's top-level `findings`), ANTS-1295 (path validation), ANTS-4374 (a zero says what it looked at).
@@ -32,11 +32,13 @@ A request whose shape is wrong refuses the whole call with `bad_args`, naming th
 
 The verb reproduces `quotation-check.sh` as of `~/.claude` commit `60fd0be`. The maintainer named `d46646e`; the script changed that same day (CR and tab as whitespace, bold and code marks dropped), and the later version is the one the skills run. Both sides, subject and quotation, pass through the script's steps in the script's order:
 
-1. On each line, remove a leading run of whitespace, one or more `>`, and at most one following space (the script's `STRIP`).
+1. `STRIP`, on each line: `s/^[[:space:]]*>\{1,\} \?//` (POSIX basic syntax).
 2. Replace each CR, tab and newline with a space.
 3. Squeeze each run of spaces to one.
-4. Replace each `[text](url)` with `text` (the script's `LINK`).
-5. Delete every `**`, then every backquote (the script's `MARK`).
+4. `LINK`: `s/\[([^]]*)\]\([^)]*\)/\1/g` (POSIX extended syntax): leftmost, global, non-overlapping.
+5. `MARK`: delete every `**`, then every backquote.
+
+The script's own patterns are the definition; the vectors in INV-1 check this verb against them.
 
 The quotation is then trimmed of leading and trailing spaces. It is a hit when it occurs as a byte substring of the normalised subject, as `grep -F` finds it. Matching is case-sensitive and honours no pattern syntax.
 
@@ -60,7 +62,11 @@ Each item gets exactly one `result`, in input order:
 | `bad_ref` | `ref` is empty, starts with `-`, or holds whitespace or a control character. Git is not run. |
 | `ref_unreadable` | `git cat-file blob <ref>:./<path>` did not start or exited non-zero. It runs in the project root, so `./` makes the path project-relative; git reads a bare path from the repository's top level. `GitWrap::run` is passed a cap of 16 MiB plus one byte, and a blob over 16 MiB is `too_large`, as in the working tree. |
 
-- **`outside_allowed`** — the path is outside the project root after symlinks are resolved, or `allowed` is given and the project-relative path matches none of its globs. The file is never opened. With a `ref`, the lexical project-relative path is what is matched, since a blob has no symlinks on disk.
+- **`outside_allowed`** — the path is outside the project root after symlinks are resolved, or `allowed` is given and the project-relative path matches none of its globs. The file is never opened. With a `ref`, both the root check and `allowed` use the lexical project-relative path, since a blob has no symlinks on disk.
+
+This is a per-item result, not the whole-call `bad_path` refusal `mcp-tools.md` step 4 prescribes for a path argument, and INV-5 replaces that standard's `bad_path` test for this verb. Deliberate: one stray path must not cost a caller the verdicts on every other item (the maintainer's answer 2).
+
+Checks run in this order, and the first that applies decides the result: `bad_path`, then `outside_allowed`, then `text_too_long` and `empty_text`, then `bad_ref`, then reading the subject (`not_found`, `not_a_file`, `unreadable`, `too_large`, `ref_unreadable`), then the match.
 
 Glob grammar for `allowed`: `**` matches any run of characters including `/`; `*` any run without `/`; `?` one character other than `/`; everything else is literal. No braces or classes. Author's call: Qt's wildcard conversion changes meaning across the Qt versions this project builds against (6.2 upward), so the grammar is stated here and implemented by hand.
 
@@ -86,8 +92,8 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 
 ### 2.5 Where it lives
 
-- `src/quotationcheckverb.{h,cpp}` in `ants_core_lib`: the normaliser, the glob matcher and the item loop, as free functions a test calls directly. Its own translation unit, for the reason `docs/standards/mcp-tools.md` § Tests gives.
-- `RemoteControl::cmdQuotationCheck` in `src/remotecontrol_quotation_check.cpp`, a thin handler appended last in `ANTS_RC_SOURCES_REL`: resolves the root, reads the file or the blob (`GitWrap::run` for `ref`), calls the seam.
+- `src/quotationcheckverb.{h,cpp}` in `ants_core_lib`: everything below the resolved root — path validation, reading files and blobs (`GitWrap::run`), the per-`(ref, path)` cache, the normaliser, the glob matcher and the item loop — as free functions taking the root as a parameter, so a test drives every invariant against a temporary directory. Its own translation unit, for the reason `docs/standards/mcp-tools.md` § Tests gives.
+- `RemoteControl::cmdQuotationCheck` in `src/remotecontrol_quotation_check.cpp`, a thin handler appended last in `ANTS_RC_SOURCES_REL`: resolves the root, calls the seam.
 - The schema in the `tools/list` table, with a short description (`mcp-tools.md` step 11). No ETag: the reply depends on many files.
 
 ### 2.6 Alternatives
@@ -98,7 +104,7 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 
 ## 3. Invariants
 
-- **INV-1** — For every vector in `tests/features/mcp_quotation_check/vectors/`, the verb's result equals the script's: HIT to `hit`, MISS to `miss`, ERROR to `not_run`. The vectors cover a plain hit, a plain miss, a blockquote, a `[text](url)` link, a link wrapped across lines, tabs, a CRLF file, bold and code marks, and a quotation wrapped at a line break. Two pin the order of § 2.2: a subject `a ** b` against the quotation `a b`, a MISS because spaces are squeezed before marks go; and a subject `[a]**(b) x` against `a x`, a MISS because links are rendered before marks go. Broken by dropping or reordering any step of § 2.2. *Test:* the expected results are committed beside the vectors and checked on every run. Where the script is installed at `~/.claude/skills/_shared/quotation-check.sh`, the same test also runs it over the vectors and requires the committed expectations to match; elsewhere, that half skips and says so.
+- **INV-1** — For every vector in `tests/features/mcp_quotation_check/vectors/`, the verb's result equals the script's: HIT to `hit`, MISS to `miss`, ERROR to `not_run`. The vectors cover a plain hit, a plain miss, a blockquote, a `[text](url)` link, a link wrapped across lines, tabs, a CRLF file, bold and code marks, and a quotation wrapped at a line break. Three pin the order of § 2.2: a subject `a \nb` (a space before a line break) against the quotation `a b`, a HIT because line breaks become spaces before the squeeze; a subject `a ** b` against `a b`, a MISS because spaces are squeezed before marks go; and a subject `[a]**(b) x` against `a x`, a MISS because links are rendered before marks go. One pins `LINK`'s pattern: a subject `x [a [b](c) y` against `x a [b y`, a HIT. Each expected result was measured with the script. Broken by dropping or reordering any step of § 2.2. *Test:* the expected results are committed beside the vectors and checked on every run. Where the script is installed at `~/.claude/skills/_shared/quotation-check.sh`, the same test also runs it over the vectors and requires the committed expectations to match; elsewhere, that half skips and says so.
 - **INV-2** — Every item gets exactly one result, in input order, and `counts` sums to `items_checked`. Broken by dropping an item that could not be read. *Test:* one item of each result kind in one call.
 - **INV-3** — An item that could not be checked is `not_run` with its reason, never `miss`. Broken by treating a failed read as an empty subject. *Test:* one fixture per `reason` in § 2.3.
 - **INV-4** — Every non-`hit` item is in `findings`, and `max_bytes` never removes one. Broken by capping the whole envelope. *Test:* a `miss`, a `not_run` and an `outside_allowed` item with `max_bytes` small enough to trim `results`: `truncated` is set, `findings` still holds three, and `check_errors` holds the one `not_run`.
@@ -107,7 +113,7 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 - **INV-7** — A miss points at the nearest text. Broken by reporting the file's first line. *Test:* a quotation whose first 20 characters occur on line 7 and whose tail differs gives `matched_prefix_chars` 20, `line` 7, and `nearest` starting with line 7's text.
 - **INV-8** — A subject is read once per `(ref, path)` per call. Broken by reading per item. *Test:* three items on one path give `files_read` 1.
 - **INV-9** — Caps: 501 items refuses `bad_args`; a `text` of 8 KiB plus one byte gives `not_run` / `text_too_long`. Broken by an unbounded loop. *Test:* both cases.
-- **INV-10** — Registered per `mcp-tools.md` § Tests: the registration call is in `mcptoolregistry.cpp`, the schema is `type:"object"` with `additionalProperties:false`, and an empty `caller_cwd` refuses `caller_cwd_required`. Broken by registering outside `registerProjectScopedVerbs` or with another contract. *Test:* the three standard asserts.
+- **INV-10** — Registered per `mcp-tools.md` § Tests: the registration call is in `mcptoolregistry.cpp`, the schema is `type:"object"` with `additionalProperties:false`, and an empty `caller_cwd` refuses `caller_cwd_required`. Broken by registering outside `registerProjectScopedVerbs` or with another contract. *Test:* those three standard asserts; the standard's `bad_path` assert is INV-5's (§ 2.3).
 
 ## 4. Out of scope
 
@@ -117,7 +123,7 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 
 ## 5. Tests
 
-- `tests/features/mcp_quotation_check/` — `spec.md`, `test_mcp_quotation_check.cpp` and `vectors/`. INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10. Drives the seam in `src/quotationcheckverb.cpp` directly; INV-6 uses a temporary git repository, INV-10 the source-text and `tools/list` asserts. `build_target_for` names its bundle once the test exists.
+- `tests/features/mcp_quotation_check/` — `spec.md`, `test_mcp_quotation_check.cpp` and `vectors/`. INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10. Drives the seam in `src/quotationcheckverb.cpp` directly, against a temporary directory; INV-6 uses a temporary git repository, INV-10 the source-text and `tools/list` asserts. `build_target_for` names its bundle once the test exists.
 
 ## Cold-eyes loop log
 
