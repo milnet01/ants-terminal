@@ -503,6 +503,10 @@ void Config::setClaudeAutoModelNudgeShown(bool shown) {
     save();
 }
 
+// ANTS-5558 — stubs; the key lands with the implementation.
+bool Config::welcomeShown() const { return false; }
+void Config::setWelcomeShown(bool) {}
+
 // ANTS-1893 — switch-event surfacing mute toggles. Default TRUE
 // (the three surfaces are the primary trust-building affordance per
 // the spec §1; users who find any noisy flip one off in Settings).

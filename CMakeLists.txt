@@ -973,6 +973,10 @@ add_library(ants_dialogs_lib STATIC
     src/sshdialog.cpp
     src/aidialog.cpp
     src/aboutdialogs.cpp
+    # ANTS-5558 — the welcome dialog and the setup actions it shares with
+    # SettingsDialog.
+    src/welcomedialog.cpp
+    src/claudesetup.cpp
     src/toggleswitch.cpp
     # ANTS-1727 — shared review-dialog scaffold (ColdEyes/TestAudit base).
     src/reviewdialogbase.cpp
@@ -2088,6 +2092,10 @@ if(ANTS_TESTS)
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp
+                # ANTS-5558 — the welcome dialog and the claude_setup module it shares
+                # with Settings (docs/specs/ANTS-5558-welcome-dialog.md INV-1..INV-10).
+                tests/features/welcome_dialog/test_welcome_dialog.cpp
+                tests/features/welcome_dialog/test_claude_setup.cpp
                 # ANTS-5082 — the About text names no retired renderer.
                 tests/features/about_text_current/test_about_text_current.cpp
                 tests/features/portal_session_close/test_portal_session_close.cpp
@@ -2214,6 +2222,12 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTYHANDLER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
     set_property(SOURCE tests/features/help_about_menu/test_help_about_menu.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
+    set_property(SOURCE tests/features/welcome_dialog/test_welcome_dialog.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_WELCOMEDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/welcomedialog.cpp")
+    set_property(SOURCE tests/features/welcome_dialog/test_claude_setup.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
     set_property(SOURCE tests/features/ui_state_persistence/test_ui_state_persistence.cpp

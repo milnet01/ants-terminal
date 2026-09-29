@@ -104,6 +104,11 @@ public:
     bool claudeAutoModelNudgeShown() const;
     void setClaudeAutoModelNudgeShown(bool shown);
 
+    // ANTS-5558 — the welcome dialog opened automatically once. Absent reads
+    // false, so an upgrading user whose config lacks it sees it once too.
+    bool welcomeShown() const;
+    void setWelcomeShown(bool shown);
+
     // ANTS-1893 — switch-event surfacing mute toggles. All three
     // default TRUE; flipping any off persists `false` and immediately
     // disables that surface. The master gate

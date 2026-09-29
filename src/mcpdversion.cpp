@@ -132,4 +132,9 @@ bool isStale(const RunningCopy &copy, const QString &diskVersion) {
     return copy.replaced || copy.version.isEmpty() || copy.version != diskVersion;
 }
 
+// ANTS-5558 — interface stubs; the behaviour lands with the implementation.
+Launch registeredLaunch(const QString &) { return {}; }
+Launch locateLaunch(const QString &, const QString &) { return {}; }
+int projectRegistrationCount(const QString &) { return 0; }
+
 }  // namespace mcpd

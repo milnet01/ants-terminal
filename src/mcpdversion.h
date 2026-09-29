@@ -9,6 +9,7 @@
 
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 namespace mcpd {
 
@@ -20,6 +21,25 @@ QString versionLine();
 // `mcpServers.ants.command` in `claudeJsonPath`, then `appDir/ants-mcpd`, then
 // a PATH search. Each must be executable. Empty when none is.
 QString locateBinary(const QString &claudeJsonPath, const QString &appDir);
+
+// ANTS-5558 — a registration's command and its arguments. An AppImage is
+// registered as `$APPIMAGE --mcpd`, so the arguments are part of the answer.
+struct Launch {
+    QString     program;
+    QStringList args;
+};
+
+// The user-level `mcpServers.ants` registration in `claudeJsonPath`: its
+// command and args, empty when there is none.
+Launch registeredLaunch(const QString &claudeJsonPath);
+
+// What to run to reach ants-mcpd: the registered command and ITS args when
+// that command is executable, else locateBinary's fallbacks with no args.
+Launch locateLaunch(const QString &claudeJsonPath, const QString &appDir);
+
+// How many per-project `projects.<dir>.mcpServers.ants` registrations
+// `claudeJsonPath` holds; each wins over the user one in its project.
+int projectRegistrationCount(const QString &claudeJsonPath);
 
 // Runs `<binary> --version` and returns its first stdout line, or an empty
 // string when it does not start, times out, or exits non-zero.
