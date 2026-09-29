@@ -340,6 +340,9 @@ by what the pipeline reads, never by the extension, and let every
 uncertain case run the full gate. **Ask whether a formatter or linter reads
 prose**: `ruff format --check` formats the Python blocks inside every `.md`,
 which LocalWebServerManager found only by searching for what read its docs.
+Probe each tool with a real defect in a throwaway `.md`: `ruff check -v` lists
+`.md` files as included and lints none of them, so an include list is no
+evidence a tool reads a file.
 
 ### 6.2 A shared hook must be told
 
