@@ -89315,7 +89315,7 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: user-request-2026-09-29.
   Lanes: ui, claude.
 
-- 📋 [ANTS-5560] **Ants Terminal can update itself to a new release.**
+- ✅ [ANTS-5560] **Ants Terminal can update itself to a new release.**
   User request 2026-09-29, after ANTS-5558: a self-updating feature,
   "very, very helpful to users". Start by reviewing how
   /mnt/Games/Scripts/Linux/finbreak implements its working self-update,
@@ -89349,6 +89349,13 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Verification uses libsodium, not libcrypto (AppImage soname clash risk).
   Before the first release after this ships, the user must add the
   GitHub secret ANTS_UPDATE_SIGNING_KEY.
+  Resolved (2026-09-29): shipped in ae052476 (code), e393d6d3 (tests),
+  0b1402b1 (docs). SelfUpdate.* 9/9 green; full suite 5345/5345; GitHub
+  CI run 36549043500 green (Qt 6.2 floor, Release). libsodium optional,
+  AppImage only (user decision 2026-09-29). Signing key is the GitHub
+  secret ANTS_UPDATE_SIGNING_KEY (set 2026-09-29; no other copy).
+  Not yet exercised end to end: the first signed release is the first
+  real run of the sign step and the in-app download.
   **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
   Kind: feature.
   Source: user-request-2026-09-29.
