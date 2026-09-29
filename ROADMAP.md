@@ -56368,7 +56368,7 @@ filed below.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4660] **Three stored items carry a source column captured from a scope operator, and no repair op can reach them.**
+- ✅ [ANTS-4660] **Three stored items carry a source column captured from a scope operator, and no repair op can reach them.**
   ANTS-4608 stopped the parser reading a C++ scope operator as a trailer
   declaration. It does not undo what the old parser already wrote.
 
@@ -56401,6 +56401,12 @@ filed below.
   planned; this item has not been started.
   Probe complete: post_bullets WAS returned on both the dry run and the real
   write. Status restored; nothing about this item changed.
+  Resolved (2026-09-29) as a data fix, not a new repair op: three rows
+  did not justify one. ANTS-3863 and ANTS-4068 carried the garbage as a
+  stored body line, removed with amend_batch so their own `Source:`
+  declarations apply; ANTS-4426's was column-only, set by amend_field to
+  its provenance from git (5b678331). A source-prefix ":" query over all
+  3183 items now matches none.
   **Layman:** A few roadmap entries have a nonsense value saved where their origin should be, left over from a parsing bug.
   Kind: fix.
   Source: in-session-2026-08-25 (measured while fixing ANTS-4608).
