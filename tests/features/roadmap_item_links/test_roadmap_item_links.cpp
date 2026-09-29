@@ -653,3 +653,113 @@ TEST(RoadmapItemLinks, BodyWriteDeclaringALinkLineRefuses) {
     r = rc.cmdRoadmapLog(req).object();
     EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << "prose refused: " << dump(r);
 }
+
+namespace {
+
+// DEMO-0001 depends on DEMO-0002 and on a value no store holds, and names a
+// spec; DEMO-0002 and DEMO-0003 declare each other.
+QByteArray convertedFixture() {
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n\n# Demo \xE2\x80\x94 Roadmap\n\n";
+    md += kPad;
+    md += "\n## Work\n\n";
+    md += item("DEMO-0001", kPlanned, "The parent.",
+               "  Dependencies: DEMO-0002, not-an-id.\n"
+               "  Spec: `docs/specs/X.md` (accepted).\n");
+    md += item("DEMO-0002", kPlanned, "Part one.", "  Dependencies: DEMO-0003.\n");
+    md += item("DEMO-0003", kPlanned, "Part two.", "  Dependencies: DEMO-0002.\n");
+    md += item("DEMO-0004", kPlanned, "A blocker.", "  Dependencies: none.\n");
+    return md;
+}
+
+QJsonObject amend(RemoteControl &rc, const QString &root, const char *id,
+                  const char *oldText, const char *newText) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_body");
+    req[QStringLiteral("id")]         = QString::fromLatin1(id);
+    req[QStringLiteral("old_text")]   = QString::fromUtf8(oldText);
+    req[QStringLiteral("new_text")]   = QString::fromUtf8(newText);
+    return rc.cmdRoadmapLog(req).object();
+}
+
+QJsonObject extrasOf(const QString &root, const char *id) {
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return {};
+    const auto project = store->readProjectByRoot(root);
+    if (!project) { ADD_FAILURE() << "no project for " << root.toStdString(); return {}; }
+    const auto pk = store->findItem(project->projectId, QString::fromLatin1(id));
+    if (!pk) { ADD_FAILURE() << "no item " << id; return {}; }
+    return store->readItem(*pk)->extras;
+}
+
+}  // namespace
+
+// INV-7 — migration converts Dependencies: and Spec: into rows, keeps an
+// unresolvable value in extras, and leaves the rendered body as written.
+TEST(RoadmapItemLinks, MigrationConvertsDependenciesAndSpec) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString root = seedProject(tmp, "demo", convertedFixture(), QStringLiteral("Demo"),
+                                     QStringLiteral("demo"));
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    const QJsonObject l1 = fetch(rc, root, "DEMO-0001").value(QStringLiteral("links")).toObject();
+    EXPECT_EQ(l1.value(QStringLiteral("relates_to")).toArray(), QJsonArray{"DEMO-0002"}) << dump(l1);
+    EXPECT_EQ(l1.value(QStringLiteral("specified_by")).toArray(), QJsonArray{"docs/specs/X.md"})
+        << dump(l1);
+    const QJsonObject l2 = fetch(rc, root, "DEMO-0002").value(QStringLiteral("links")).toObject();
+    EXPECT_EQ(l2.value(QStringLiteral("relates_to")).toArray().size(), 2)
+        << "one row per pair, read from both ends: " << dump(l2);
+    EXPECT_FALSE(fetch(rc, root, "DEMO-0004").contains(QStringLiteral("links")))
+        << "`none` is not a dependency";
+
+    const QJsonObject ex = extrasOf(root, "DEMO-0001");
+    EXPECT_EQ(ex.value(QStringLiteral("unconverted_dependencies")).toArray(),
+              QJsonArray{"not-an-id"}) << dump(ex);
+    EXPECT_FALSE(extrasOf(root, "DEMO-0004").contains(QStringLiteral("unconverted_dependencies")));
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("render");
+    ASSERT_TRUE(rc.cmdRoadmapLog(req).object().value(QStringLiteral("ok")).toBool());
+    const QByteArray md = readAll(QDir(root).filePath(QStringLiteral("ROADMAP.md")));
+    EXPECT_EQ(occurrences(md, "  Dependencies: DEMO-0002, not-an-id.\n"), 1) << md.toStdString();
+    EXPECT_EQ(occurrences(md, "  Spec: `docs/specs/X.md` (accepted).\n"), 1) << md.toStdString();
+    EXPECT_EQ(occurrences(md, "Relates-to"), 0) << "the render composed a converted type";
+}
+
+// INV-8 — a body write re-derives relates-to: a row goes when neither endpoint
+// declares it, and stays while the other endpoint still does.
+TEST(RoadmapItemLinks, BodyWriteRederivesRelatesTo) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString root = seedProject(tmp, "demo", convertedFixture(), QStringLiteral("Demo"),
+                                     QStringLiteral("demo"));
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+    const auto relates = [&](const char *id) {
+        QStringList out;
+        for (const auto &v : fetch(rc, root, id).value(QStringLiteral("links")).toObject()
+                                 .value(QStringLiteral("relates_to")).toArray())
+            out << v.toString();
+        return out;
+    };
+
+    QJsonObject r = amend(rc, root, "DEMO-0001", "DEMO-0002, not-an-id.", "not-an-id.");
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    EXPECT_TRUE(relates("DEMO-0001").isEmpty()) << "the row outlived its only declaration";
+    EXPECT_EQ(relates("DEMO-0002"), QStringList{QStringLiteral("DEMO-0003")});
+
+    r = amend(rc, root, "DEMO-0003", "Dependencies: DEMO-0002.", "Dependencies: none.");
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    EXPECT_EQ(relates("DEMO-0003"), QStringList{QStringLiteral("DEMO-0002")})
+        << "DEMO-0002 still declares the pair";
+
+    r = amend(rc, root, "DEMO-0002", "Dependencies: DEMO-0003.", "Dependencies: none.");
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    EXPECT_TRUE(relates("DEMO-0003").isEmpty()) << "neither end declares it now";
+}

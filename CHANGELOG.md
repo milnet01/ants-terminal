@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap item's `Dependencies:` and `Spec:` lines become links the store can query (`relates_to`, `specified_by`), kept in step with every edit to the item's text** (ANTS-3827)
+
 - **Item links appear in ROADMAP.md as `Blocked-by:`, `Splits-from:`, `Duplicate-of:` and `Supersedes:` lines, and a migration reads them back as links** (ANTS-4079)
   Only a line whose value is a list of ids counts; `Blocked-by: nothing.`
   and other prose stay where they were written. Writing a link line by

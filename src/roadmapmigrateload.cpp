@@ -1161,7 +1161,7 @@ bool Loader::rebuildElements() {
 // restores what the file holds (ANTS-3810 INV-2).
 bool Loader::writeLinks() {
     for (const PlannedItem &it : plan.items) {
-        if (it.links.isEmpty() || it.id.isEmpty())
+        if (it.id.isEmpty())
             continue;
         const auto src = store.findItem(projectId, it.id, &err);
         if (!src) {
@@ -1169,6 +1169,10 @@ bool Loader::writeLinks() {
                 return fail(err);
             continue;
         }
+        // § 2.6 — the converted types, from the lines the body keeps. The
+        // values it cannot hold are already in extras (markUnresolvedLinks).
+        if (!store.syncConvertedLinks(*src, it.body, nullptr, &err))
+            return fail(err);
         const QJsonObject unresolved =
             it.extras.value(QStringLiteral("unresolved_links")).toObject();
         for (auto t = it.links.cbegin(); t != it.links.cend(); ++t) {
@@ -1267,6 +1271,23 @@ void markUnresolvedLinks(const RoadmapStore &store, MigrationPlan &plan) {
         }
         if (!unresolved.isEmpty())
             it.extras.insert(QStringLiteral("unresolved_links"), unresolved);
+
+        // § 2.6 — the same test for the converted `Dependencies:` values,
+        // which syncConvertedLinks() will not store.
+        QJsonArray unconverted;
+        for (const QString &dep : RoadmapParse::convertedLinksIn(it.body).dependencies) {
+            const QString fold = RoadmapParse::foldId(dep);
+            bool resolves = fold != own && planned.contains(fold);
+            if (!resolves && fold != own) {
+                QString ignored;
+                const auto dst = store.resolveLinkTarget(self.value_or(0), dep, &ignored);
+                resolves = dst && (!self || dst->projectId != *self);
+            }
+            if (!resolves)
+                unconverted.append(dep);
+        }
+        if (!unconverted.isEmpty())
+            it.extras.insert(QStringLiteral("unconverted_dependencies"), unconverted);
     }
 }
 }  // namespace

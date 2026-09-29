@@ -344,6 +344,16 @@ bool declaresLinkLine(const QString &text);
 const QStringList &authoredLinkTypes();
 QString linkKeyForType(const QString &type);
 
+// ANTS-4079 § 2.6 — the two CONVERTED link types, read from the body lines that
+// stay in it: every `Dependencies:` value (comma-separated, one closing period
+// dropped, `none` meaning no dependency) and every `….md` path on a `Spec:`
+// line. Both keys are read at a line start, plain or `**Key:**`.
+struct ConvertedLinks {
+    QStringList dependencies;
+    QStringList specPaths;
+};
+ConvertedLinks convertedLinksIn(const QString &body);
+
 // ANTS-3808 § 2.1 (ANTS-4506) — `body` with its TRAILING run of trailer-only
 // lines removed: the block § 2.4's render appends, which the next parse would
 // otherwise file back into the body. Owned here rather than at the migration's

@@ -88,7 +88,9 @@ A body write whose `new_text`, `note` or `body` holds a link declaration, by the
 At migration and on every body write (the path `rlDeriveTrailerColumns()` already takes), the item's `Dependencies:` and `Spec:` lines are read:
 
 - each comma-separated `Dependencies:` value naming an item the store holds, in any project, becomes a `relates-to` row via `relateItems()`, which normalises the direction per § 6, so two bodies declaring each other share one row; a value with a registered project's prefix whose item is not filed yet becomes a row via `relateCrossProject()`, owned by this item's body alone; any other value stays in `extras["unconverted_dependencies"]`;
-- each `Spec:` path becomes a `specified-by` row via `relateDocument()`.
+- each `….md` path on a `Spec:` line becomes a `specified-by` row via `relateDocument()`; the prose around it is ignored.
+
+A `Dependencies:` value of `none` declares no dependency, and is neither a row nor kept in `extras`. `RoadmapParse::convertedLinksIn()` reads both keys, and `RoadmapStore::syncConvertedLinks()` applies the rules below.
 
 The body keeps both lines as written, and the render composes nothing for these two types, so the file round-trips byte for byte. A `relates-to` row is stored once for both endpoints, so a body write keeps a row touching the item while either endpoint's body declares it, and deletes it once neither does; the item's own `specified-by` rows are replaced by the new derivation. Both in the same transaction.
 

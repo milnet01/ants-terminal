@@ -1435,6 +1435,98 @@ RoadmapStore::linksFor(qint64 itemPk, QString *error) const {
     return rows;
 }
 
+bool RoadmapStore::syncConvertedLinks(qint64 itemPk, const QString &body,
+                                      QStringList *unconverted, QString *error) {
+    const auto self = readItem(itemPk, error);
+    if (!self)
+        return false;
+    const RoadmapParse::ConvertedLinks want = RoadmapParse::convertedLinksIn(body);
+
+    QSqlQuery del(m_db);
+    del.prepare(QStringLiteral(
+        "DELETE FROM relationship WHERE type = 'specified-by' AND src_pk = ?"));
+    del.addBindValue(itemPk);
+    if (!del.exec()) {
+        if (error)
+            *error = lastErr(del);
+        return false;
+    }
+    for (const QString &path : want.specPaths)
+        if (!relateDocument(QStringLiteral("specified-by"), itemPk, path, error))
+            return false;
+
+    // What this body declares, resolved as op:"link" resolves a target.
+    QSet<qint64> wantPk;
+    QSet<QPair<QString, QString>> wantCross;
+    for (const QString &dep : want.dependencies) {
+        QString ignored;   // an ambiguous id is unconverted, not a failure
+        const auto t = resolveLinkTarget(self->projectId, dep, &ignored);
+        if (t && t->itemPk && *t->itemPk != itemPk)
+            wantPk.insert(*t->itemPk);
+        else if (t && !t->itemPk && t->projectId != self->projectId)
+            wantCross.insert({t->exportSlug, t->idFold});
+        else if (unconverted)
+            unconverted->append(dep);
+    }
+
+    // Does `other`'s own body declare this item?
+    const auto declaresMe = [&](qint64 other) -> bool {
+        const auto o = readItem(other);
+        if (!o)
+            return false;
+        for (const QString &dep : RoadmapParse::convertedLinksIn(o->body).dependencies) {
+            QString ignored;
+            const auto t = resolveLinkTarget(o->projectId, dep, &ignored);
+            if (t && t->itemPk && *t->itemPk == itemPk)
+                return true;
+        }
+        return false;
+    };
+    const auto dropRow = [&](qint64 relId) {
+        QSqlQuery d(m_db);
+        d.prepare(QStringLiteral("DELETE FROM relationship WHERE rel_id = ?"));
+        d.addBindValue(relId);
+        if (!d.exec() && error)
+            *error = lastErr(d);
+        return d.isActive();
+    };
+
+    QSqlQuery rows(m_db);
+    rows.prepare(QStringLiteral(
+        "SELECT rel_id, src_pk, dst_pk, dst_project, dst_id_fold FROM relationship "
+        "WHERE type = 'relates-to' AND (src_pk = ? OR dst_pk = ?)"));
+    rows.addBindValue(itemPk);
+    rows.addBindValue(itemPk);
+    if (!rows.exec()) {
+        if (error)
+            *error = lastErr(rows);
+        return false;
+    }
+    QVector<qint64> stale;
+    while (rows.next()) {
+        const qint64 relId = rows.value(0).toLongLong();
+        if (!rows.value(2).isNull()) {
+            const qint64 src = rows.value(1).toLongLong(), dst = rows.value(2).toLongLong();
+            const qint64 other = src == itemPk ? dst : src;
+            if (wantPk.remove(other) || declaresMe(other))
+                continue;
+        } else if (wantCross.remove({rows.value(3).toString(), rows.value(4).toString()})) {
+            continue;
+        }
+        stale.append(relId);
+    }
+    for (const qint64 relId : std::as_const(stale))
+        if (!dropRow(relId))
+            return false;
+    for (const qint64 pk : std::as_const(wantPk))
+        if (!relateItems(QStringLiteral("relates-to"), itemPk, pk, error))
+            return false;
+    for (const auto &x : std::as_const(wantCross))
+        if (!relateCrossProject(QStringLiteral("relates-to"), itemPk, x.first, x.second, error))
+            return false;
+    return true;
+}
+
 std::optional<QVector<QPair<qint64, qint64>>>
 RoadmapStore::edgesOfType(const QString &type, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

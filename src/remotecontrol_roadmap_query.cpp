@@ -1544,6 +1544,30 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                 hist->record(itemPk, field, current, QString());
         }
     }
+    // ANTS-4079 § 2.6 — the converted links follow the new body in the same
+    // transaction: relates-to from `Dependencies:`, specified-by from `Spec:`.
+    // A value no row can hold is kept in extras.unconverted_dependencies.
+    QStringList unconverted;
+    if (!store.syncConvertedLinks(itemPk, newBody, &unconverted, error)) {
+        if (code)
+            *code = QStringLiteral("store_failed");
+        return false;
+    }
+    QJsonObject extras = before.extras;
+    if (unconverted.isEmpty())
+        extras.remove(QStringLiteral("unconverted_dependencies"));
+    else
+        extras.insert(QStringLiteral("unconverted_dependencies"),
+                      QJsonArray::fromStringList(unconverted));
+    if (extras != before.extras) {
+        const QString oldText = RoadmapStore::canonicalJson(before.extras);
+        const QString newText = RoadmapStore::canonicalJson(extras);
+        if (!store.setItemField(itemPk, QStringLiteral("extras"), newText,
+                                QStringLiteral("asserted"), error))
+            return false;
+        if (hist)
+            hist->record(itemPk, QStringLiteral("extras"), oldText, newText);
+    }
     return true;
 }
 

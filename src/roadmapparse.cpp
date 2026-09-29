@@ -2019,6 +2019,37 @@ LinkLines extractLinkLines(const QString &body, bool keepFirstLine) {
     return out;
 }
 
+ConvertedLinks convertedLinksIn(const QString &body) {
+    static const QRegularExpression rxDeps(
+        QStringLiteral("^[ \\t]*(?:\\*\\*)?Dependencies:(?:\\*\\*)?[ \\t]*(.*)$"));
+    static const QRegularExpression rxSpec(
+        QStringLiteral("^[ \\t]*(?:\\*\\*)?Spec:(?:\\*\\*)?[ \\t]*(.*)$"));
+    static const QRegularExpression rxPath(
+        QStringLiteral("(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.md\\b"));
+    ConvertedLinks out;
+    for (const QString &line : body.split(QLatin1Char('\n'))) {
+        if (const auto m = rxDeps.match(line); m.hasMatch()) {
+            for (QString v : m.captured(1).split(QLatin1Char(','))) {
+                v = v.trimmed();
+                if (v.endsWith(QLatin1Char('.')))
+                    v.chop(1);
+                v = v.trimmed();
+                if (v.isEmpty() || v.compare(QLatin1String("none"), Qt::CaseInsensitive) == 0)
+                    continue;
+                if (!out.dependencies.contains(v, Qt::CaseInsensitive))
+                    out.dependencies << v;
+            }
+        } else if (const auto s = rxSpec.match(line); s.hasMatch()) {
+            for (auto it = rxPath.globalMatch(s.captured(1)); it.hasNext();) {
+                const QString path = it.next().captured(0);
+                if (!out.specPaths.contains(path))
+                    out.specPaths << path;
+            }
+        }
+    }
+    return out;
+}
+
 bool declaresLinkLine(const QString &text) {
     for (const QString &line : text.split(QLatin1Char('\n')))
         if (!linkLine(line).first.isEmpty())

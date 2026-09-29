@@ -393,6 +393,14 @@ public:
     // store, with cross-project rows that name a filed item resolved to it.
     std::optional<QVector<QPair<qint64, qint64>>> edgesOfType(const QString &type,
                                                               QString *error = nullptr) const;
+    // ANTS-4079 § 2.6 — make one item's CONVERTED rows match `body`. Its
+    // specified-by rows are replaced by the body's Spec: paths. A relates-to row
+    // touching it is kept while either endpoint's body declares the pair and
+    // deleted once neither does; a cross-project one this body owns follows
+    // this body alone. A Dependencies: value no row can hold is appended to
+    // `unconverted`. Runs inside the caller's transaction.
+    bool syncConvertedLinks(qint64 itemPk, const QString &body, QStringList *unconverted,
+                            QString *error = nullptr);
 
     // INV-14 — below the cap nothing is ever evicted; at the cap the history
     // write FAILS AND REPORTS while the item write it accompanies still
