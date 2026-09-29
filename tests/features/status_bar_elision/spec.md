@@ -39,7 +39,27 @@ room.
    tooltip MUST be empty — no stale tooltip from a prior over-cap
    string.
 
+6. **An uncapped message slot never raises the window's minimum
+   width.** With the status-message slot built as `MainWindow` builds
+   it (an `ElidedLabel`, `Qt::ElideMiddle`, stretch 1, no
+   `maximumWidth`), setting a message ~3000 px wide MUST NOT raise the
+   window's or the status bar's `minimumSizeHint().width()` with the
+   message: it stays well under the message's width and is the same for
+   a message twice as long. The window keeps the width it was given,
+   the slot's displayed text is elided (contains "…", keeps the start
+   and end of the message, tooltip carries the full text), and a capped
+   short-text chip beside it is still shown in full. Asserting the
+   elision as well as the width means a fix that merely hides the text
+   cannot pass. The test replays the setters found in `MainWindow`'s
+   real construction of the slot and fails on one it cannot replay, so
+   the test cannot drift from the real slot.
+
 ## Rationale
+
+User report (2026-09-29): the main window widened itself into a very
+wide, short shape. Cause: the uncapped status-message `ElidedLabel`
+returned the full text's width as `minimumSizeHint`, so a long message
+raised the `QStatusBar`'s and the window's minimum width (INV-6).
 
 User report (2026-04-16): git branch chip displayed "…" even when the
 branch name was "main" and the statusbar had plenty of empty space.
@@ -75,3 +95,5 @@ guaranteed to render in full.
   layout-squeeze to "…".
 - **0.6.29**: minimumSizeHint promoted to full-text width (capped
   at maximumWidth). This spec + test lock the new policy.
+- **2026-09-29**: the uncapped status-message slot was found to widen
+  the window (INV-6 added).
