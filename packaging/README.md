@@ -35,6 +35,8 @@ packaging/
 │   ├── za.co.antsprojectshub.AntsTerminal.desktop
 │   ├── za.co.antsprojectshub.AntsTerminal.metainfo.xml
 │   └── ants-terminal.1
+├── update-signing/
+│   └── ants-update.pub.pem        # Public key the AppImage self-updater verifies with
 ├── completions/                   # Shell completions
 │   ├── ants-terminal.bash
 │   ├── _ants-terminal             # zsh
@@ -45,6 +47,13 @@ packaging/
 All three recipes drive CMake, honor `DESTDIR`, and install to the same
 set of paths (see the **Install footprint** table in the repo root
 `README.md`) — no per-distro `%install`-time file shuffling.
+
+**AppImage update signing (ANTS-5560).** `release.yml` signs each AppImage's
+update manifest with `tools/sign-update-manifest.sh`. The private key is the
+GitHub secret `ANTS_UPDATE_SIGNING_KEY`; its public half is
+`update-signing/ants-update.pub.pem`, built into the app. A release without
+the secret fails rather than ship unsigned. The distro recipes do not need
+libsodium: their builds never self-update.
 
 ---
 

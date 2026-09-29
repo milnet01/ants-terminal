@@ -199,6 +199,12 @@ Prefer a specific version? Every release on the
 [Releases page](https://github.com/milnet01/ants-terminal/releases) also carries
 the same build under its version number.
 
+The AppImage keeps itself up to date. When a new version is out, Ants shows
+it on the menu bar. One click downloads it, checks it really came from this
+project, and swaps it in. Then restart now, or keep working and get the new
+version next time you open Ants. You can turn the startup check off in
+Settings → General.
+
 It works on most recent Linux distributions and bundles everything it needs.
 Your settings live in `~/.config/ants-terminal/`.
 

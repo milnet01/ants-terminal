@@ -60,7 +60,7 @@ The signature covers the version, so an old signed build re-published under a ne
 
 ### 2.5 Where it lives
 
-`src/selfupdate.{h,cpp}` holds the pure parts, which tests call directly: manifest parsing and verification (with the public key as a parameter), the install-kind check, the relaunch command and its environment. The download and the swap live there too, reached through `SelfUpdate::Session`, which takes the public key as a parameter like the verifier; production passes the embedded key. `src/updatedialog.{h,cpp}` is the dialog. `MainWindow` keeps the check and the indicator. `compareSemver` moves from `mainwindow.cpp` into `selfupdate`, so the check and the verifier compare versions one way. Ed25519 verification uses libsodium's `crypto_sign_verify_detached`, found with `pkg-config` (`libsodium`).
+`src/selfupdate.{h,cpp}` holds the pure parts, which tests call directly: manifest parsing and verification (with the public key as a parameter), the install-kind check, the relaunch command and its environment. The download and the swap live there too, reached through `SelfUpdate::Session`, which takes the public key as a parameter like the verifier; production passes the embedded key. `src/updatedialog.{h,cpp}` is the dialog. `MainWindow` keeps the check and the indicator. `compareSemver` moves from `mainwindow.cpp` into `selfupdate`, so the check and the verifier compare versions one way. Ed25519 verification uses libsodium's `crypto_sign_verify_detached`, found with `pkg-config` (`libsodium`). libsodium is optional: a build without it reports `NotAppImage`, so it never offers to self-update, which is all a distro package needs. `-DANTS_REQUIRE_SELF_UPDATE=ON` makes it required; `release.yml` and `ci.yml` pass it (user decision 2026-09-29: AppImage only).
 
 ### 2.6 Reload
 
@@ -87,7 +87,7 @@ The dialog and the update settings are read when used, so they need no relaunch.
 
 ## 4. RAM / build cost
 
-The AppImage streams to disk and is hashed as it arrives, so memory holds one network buffer, not the file. The build gains two translation units and a link to libsodium; CI's images and the RPM, deb, Arch and Flatpak recipes gain its development package.
+The AppImage streams to disk and is hashed as it arrives, so memory holds one network buffer, not the file. The build gains two translation units and, where found, a link to libsodium. The release job and CI's `build-test`, `build-asan` and `qt62-baseline` jobs install its development package; the RPM, deb, Arch and Flatpak recipes do not (§ 2.5).
 
 ## 5. Out of scope
 
@@ -115,6 +115,7 @@ The AppImage streams to disk and is hashed as it arrives, so memory holds one ne
 ## 7. Cross-doc impact
 
 - `tests/features/update_available_menubar/spec.md` keeps its invariants; the indicator gains the "Restart to finish" text.
+- `tests/features/github_status_bar/spec.md` INV-3, INV-12, INV-15 and INV-17 follow `compareSemver` into `selfupdate.cpp` and the AppImageUpdate hand-off into `UpdateDialog`.
 - `docs/standards/dependencies.md` § 4 gains a floor row for libsodium, set to the version the Qt 6.2 floor image (Ubuntu 22.04) ships.
 - `README.md` and the CHANGELOG describe updating; `packaging/README.md` names the signing secret.
 - `docs/subsystems.md` and `.indie-review/partition.json` list the new files.

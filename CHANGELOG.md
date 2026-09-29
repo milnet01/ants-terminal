@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **The AppImage updates itself.** (ANTS-5560)
+  When a new version is out, the menu bar says so. One click downloads it,
+  checks its signature so it provably came from this project, and swaps it
+  in. Restart now, or keep working and get it next launch. Skip a version,
+  or turn the startup check off in Settings → General. Package-manager
+  installs keep updating through their package manager.
+
 - **A welcome window greets new users, explains the features, sets things up in one click each and invites a donation** (ANTS-5558)
   It opens once on first launch and any time from Help → Show Welcome.
   For Claude Code users it installs the status-bar hooks and the
@@ -316,6 +323,10 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **A long status-bar message no longer stretches the window wider.**
+  The message now shortens with "…" to fit, and hovering shows the whole
+  text. Long window titles had the same problem and are fixed too.
 
 - **mutation_probe reports a mutant that measured nothing as `broken`, not `killed`** (ANTS-5360)
   A non-zero exit with no readable pass/fail counts, such as pytest failing

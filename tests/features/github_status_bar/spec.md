@@ -66,44 +66,15 @@ same per-tab lifecycle as the Roadmap button. Tab switch fires
 
 A clickable label showing `↗ Update v<X.Y.Z> available` (cyan
 `#5DCFCF`, matches the Thinking state-dot colour). Click is
-intercepted by `MainWindow::handleUpdateClicked` (since 0.7.46 —
-prior versions used `setOpenExternalLinks(true)` and unconditionally
-opened the browser). The handler probes for an AppImage updater
-in this order, taking the first hit:
+intercepted by `MainWindow::handleUpdateClicked`. Since ANTS-5560 it
+routes on `SelfUpdate::installKind()`: an AppImage opens
+`UpdateDialog` (download, verify, swap, then Restart now / Restart
+later); any other install opens the release page
+(`QDesktopServices::openUrl`). The restart warnings live in
+`UpdateDialog`; `docs/specs/ANTS-5560-appimage-self-update.md` owns
+that flow.
 
-1. `AppImageUpdate` (GUI) — preferred, gives the user a progress
-   window they can dismiss.
-2. `appimageupdatetool` (CLI) — silent fallback.
-3. Browser (`QDesktopServices::openUrl`) — only when neither
-   updater is installed or the binary isn't running as an
-   AppImage (`$APPIMAGE` env var unset).
-
-When a tool is found AND `$APPIMAGE` is set, the user is shown a
-**confirmation dialog** *(added 0.7.47)* before the spawn:
-
-> **Update Ants Terminal**
->
-> Download and install the new version now?
->
-> AppImageUpdate will fetch the new release and write it
-> alongside this binary in the background.
->
-> To start using the new version you'll need to **quit and
-> re-launch** Ants Terminal — any active Claude Code sessions in
-> your tabs will be disconnected when you do, and will need to be
-> reconnected after the restart.
->
-> [ Cancel ]   [ **Update** ]
-
-`Update` → launch via `QProcess::startDetached` against the
-on-disk AppImage path; the parent process can quit/restart while
-the download runs. Status-bar message: "AppImageUpdate launched —
-downloading the new version. Quit and restart to use it."
-
-`Cancel` → no spawn; status-bar message "Update cancelled."
-
-Tooltip: `Click to open release notes for v<X.Y.Z> in your browser.
-Currently running v<current>.`
+Tooltip: `Click to update to v<X.Y.Z>. Currently running v<current>.`
 
 Lifecycle (revised in 0.7.47 — user feedback "An hourly check I
 think is a bit much. Let's do the check when the terminal is
@@ -154,8 +125,9 @@ source-grep harness, no Qt link.
   the left side via `addWidget` (next to the git-branch chip,
   shipped 0.7.49). The **update-available** label is on the right
   side via `addPermanentWidget` (next to the Claude Code chrome).
-- **INV-3** The pure helpers `findGitRepoRoot`, `parseGithubOriginSlug`,
-  and `compareSemver` exist in `mainwindow.cpp`.
+- **INV-3** The pure helpers `findGitRepoRoot` and
+  `parseGithubOriginSlug` exist in `mainwindow.cpp`, and
+  `compareSemver` in `selfupdate.cpp` (moved by ANTS-5560).
 - **INV-4** `parseGithubOriginSlug` handles both URL forms — source-
   grep for `https://github.com/` AND `git@github.com:` literals in
   the helper.
@@ -202,31 +174,21 @@ source-grep harness, no Qt link.
   sidecar, AppImageUpdate clients fall back to whole-file fetch
   (slow); with it, only changed blocks transfer.
 
-- **INV-15** *(added 0.7.46)* `MainWindow::handleUpdateClicked`
-  probes for `AppImageUpdate` (GUI) first, `appimageupdatetool`
-  (CLI) second; reads the `$APPIMAGE` env var (set by the AppImage
-  runtime) to find the on-disk path; falls back to
-  `QDesktopServices::openUrl` only when neither tool is installed
-  or the binary isn't running as an AppImage.
+- **INV-15** *(revised ANTS-5560)* `MainWindow::handleUpdateClicked`
+  routes on `SelfUpdate::installKind()`: an AppImage opens
+  `UpdateDialog`, any other install opens the release page with
+  `QDesktopServices::openUrl`. It never hands off to `AppImageUpdate`
+  or `appimageupdatetool`.
 
-- **INV-16** *(added 0.7.46)* The updater is launched via
-  `QProcess::startDetached` so it outlives the parent process —
-  the user can quit and restart Ants Terminal while the download
-  runs without killing the updater.
+- **INV-16** *(revised ANTS-5560)* The relaunch after Restart now is
+  started with `QProcess::startDetached`, so it outlives the quitting
+  process.
 
-- **INV-17** *(added 0.7.47)* `handleUpdateClicked` shows a
-  confirmation dialog **before** invoking
-  `QProcess::startDetached`. The dialog must:
-  (a) be constructed lexically before the `startDetached` call so
-      a `Cancel` short-circuits the spawn,
-  (b) name the user's next step explicitly ("quit and re-launch"
-      / "quit and relaunch"),
-  (c) call out that Claude Code sessions will be disconnected and
-      need to be reconnected (user-feedback 2026-04-27 — the user's
-      primary concern was losing in-flight agent runs),
-  (d) emit a `Update cancelled` status-bar message on Cancel so
-      the click registers a visible acknowledgement (silent
-      cancel feels like a bug).
+- **INV-17** *(revised ANTS-5560)* `UpdateDialog` is non-modal (no
+  `exec()`, no `setModal(true)`), warns that Restart now closes every
+  tab and Claude Code session, and offers Restart now and Restart
+  later. `MainWindow::restartForUpdate` spawns the relaunch from
+  `aboutToQuit`, once the quit is committed.
 
 ## Out of scope
 
@@ -235,9 +197,6 @@ source-grep harness, no Qt link.
   across tab switches.
 - Authenticated GitHub API access (rate limit applies — 60
   requests/hour for unauthenticated, well within the hourly poll).
-- Retroactive in-place update for AppImages built before 0.7.46.
-  The `UPDATE_INFORMATION` ELF note is embedded at build time —
-  v0.7.45 and earlier binaries were built without it and
-  AppImageUpdate refuses to act on them. Those users continue to
-  download manually until they're on 0.7.46+; from there forward,
-  the in-place flow works.
+- Updating a build older than ANTS-5560 in place: it cannot verify a
+  signed update, so its user updates once by hand
+  (`docs/specs/ANTS-5560-appimage-self-update.md` § 2.3 Rollout).

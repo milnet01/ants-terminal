@@ -214,6 +214,13 @@ Listed only where behavior isn't obvious from the name.
   and Settings share: the Claude Code hooks, registering `ants-mcpd` with
   `claude mcp add`, the optional CLAUDE.md note, shell integration. Spec
   ANTS-5558.
+- `selfupdate` (`ants_dialogs_lib`) — the AppImage self-updater's pure
+  parts: signed-manifest verification (libsodium, optional), install kind,
+  the in-place download and swap (`Session`), the relaunch command, and
+  `compareSemver`. Spec ANTS-5560.
+- `updatedialog` (`ants_dialogs_lib`) — the update dialog: Update now / Skip
+  / Later, the download progress, then Restart now / Restart later. Spec
+  ANTS-5560.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs: `ls`,
   `send-text`, `new-tab`, `select-window`, `set-title`, `get-text`,
   `launch`, `tab-list`, `roadmap-query`, `workspace-search`,
