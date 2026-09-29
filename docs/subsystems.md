@@ -293,6 +293,9 @@ Listed only where behavior isn't obvious from the name.
   mailbox verb; the store does the work.
 - `remotecontrol_run_trace` — thin handler for `run_trace`, which records a
   review run's trace-index row; the seam is `runtraceverb` (ANTS-5299).
+- `remotecontrol_quotation_check` — thin handler for `quotation_check`, which
+  checks many quotations in one call; the seam is `quotationcheckverb`
+  (ANTS-5502).
   (`remotecontrol_roadmap_migrate` is the remaining TU and has its own entry
   further down.)
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

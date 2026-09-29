@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **quotation_check verifies up to 500 quotations in one call, each against the file it names, and says found, not found (with the nearest line) or could not check** (ANTS-5502)
+  It normalises both sides exactly as the review skills' quotation-check.sh
+  does, so the two agree. `ref` checks a file as it was at a git revision,
+  and `allowed` limits which files a quotation may cite. `findings` holds
+  every item that is not found and is never trimmed, so a gate can rely
+  on it; `check_errors` names the items that could not be checked.
+
 - **A roadmap item's `Dependencies:` and `Spec:` lines become links the store can query (`relates_to`, `specified_by`), kept in step with every edit to the item's text** (ANTS-3827)
 
 - **Item links appear in ROADMAP.md as `Blocked-by:`, `Splits-from:`, `Duplicate-of:` and `Supersedes:` lines, and a migration reads them back as links** (ANTS-4079)

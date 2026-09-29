@@ -15315,6 +15315,96 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5502 — quotation_check: many quotations verified in one
+                // call. Every property below is read by cmdQuotationCheck (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "quotation_check";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to verify a review's quotations in one call instead of "
+                        "one quotation-check.sh run per quotation.");
+                    t["description"] = QStringLiteral(
+                        "Check that each quotation occurs in the file it names, "
+                        "normalised as quotation-check.sh does (blockquote markers, "
+                        "whitespace, [text](url), ** and backquotes). `items` is 1 to "
+                        "500 {path, text, ref?}. Each gets hit, miss (with the nearest "
+                        "line), not_run (with a reason; never a miss) or "
+                        "outside_allowed. `findings` lists every non-hit and is never "
+                        "trimmed; `check_errors` lists the not_run ones. Refusals: "
+                        "bad_args. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5502. Contract: docs/specs/ANTS-5502-quotation-check.md. "
+                        "not_run reasons: bad_path, not_found, not_a_file, unreadable, "
+                        "too_large (subject over 16 MiB), text_too_long (text over "
+                        "8 KiB), empty_text, bad_ref, ref_unreadable. `ref` reads the "
+                        "blob via git cat-file at that revision. `allowed` globs: ** "
+                        "crosses /, * and ? do not, all else literal; matched against "
+                        "the path after symlinks resolve. max_bytes trims `results` "
+                        "only.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project the paths resolve in.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject item;
+                        item["type"] = "object";
+                        QJsonObject ip;
+                        QJsonObject s;
+                        s["type"] = "string";
+                        ip["path"] = s;
+                        ip["text"] = s;
+                        ip["ref"] = s;
+                        item["properties"] = ip;
+                        QJsonArray req;
+                        req.append(QStringLiteral("path"));
+                        req.append(QStringLiteral("text"));
+                        item["required"] = req;
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = item;
+                        p["minItems"] = 1;
+                        p["maxItems"] = 500;
+                        p["description"] = QStringLiteral(
+                            "{path, text, ref?}: path relative to the project root or "
+                            "absolute; text the quotation as written; ref an optional "
+                            "git revision.");
+                        props["items"] = p;
+                    }
+                    {
+                        QJsonObject s;
+                        s["type"] = "string";
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = s;
+                        p["description"] = QStringLiteral(
+                            "Globs over the project-relative path. An item matching "
+                            "none is outside_allowed and never opened.");
+                        props["allowed"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["description"] = QStringLiteral(
+                            "Response cap in bytes (default 512 KiB). Trims `results` "
+                            "only; `findings` is never trimmed.");
+                        props["max_bytes"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    req.append(QStringLiteral("items"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -16433,6 +16523,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // ANTS-3636 — doc_citations: project-scoped
                         // citation-resolution reader, doc_integrity's sibling.
                         name == QLatin1String("doc_citations") ||
+                        // ANTS-5502 — quotation_check: does each quoted
+                        // sentence occur in the file it names.
+                        name == QLatin1String("quotation_check") ||
                         name == QLatin1String("doc_symbols") ||
                         name == QLatin1String("spec_lint") ||   // ANTS-3662
                         // ANTS-4108 — spec_conformance: spec_lint's executable
@@ -17900,6 +17993,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-5299 — run_trace writes and reads the caller's project trace
     // index; no project, nothing to act on.
     if (toolName == QStringLiteral("run_trace"))          return C::Required;
+    // ANTS-5502 — quotation_check reads files under the caller's project root.
+    if (toolName == QStringLiteral("quotation_check"))    return C::Required;
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;
