@@ -66402,24 +66402,32 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-report-2026-09-27.
   Lanes: chrome.
 
-- 📋 [ANTS-5480] **VerifyTrustGate MD-1 and MD-2 check the trust dialog by grepping its source.**
+- ✅ [ANTS-5480] **VerifyTrustGate MD-1 and MD-2 check the trust dialog by grepping its source.**
   tests/features/verify_trust_gate slices src/verifytrustmodal.cpp from a
   function name and greps for strings. A behaviour-neutral refactor
   (ANTS-5479) failed both. Now that VerifyTrust::buildPromptBox exists,
   assert on the built box: its informative text has a Gates line and its
   checkbox starts checked. Found by a testing.md field pass (section 3).
+  Resolved (2026-09-29): VerifyTrustPrompt (test_chrome) checks the
+  built box; the click-result check stays a scrape of showPrompt only.
+  Proved red by unticking the checkbox and dropping the Gates label.
   **Layman:** Two checks on the trust dialog read its code as text, so moving code around breaks them even when the dialog is fine.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
   Lanes: chrome.
 
-- 📋 [ANTS-5481] **The vt_throughput benchmark can only fail on a crash by default.**
+- ✅ [ANTS-5481] **The vt_throughput benchmark can only fail on a crash by default.**
   tests/perf/bench_vt_throughput.cpp gates on ANTS_PERF_MIN_MBPS, an
   absolute MB/s floor that is off unless set. testing.md section 5 wants a
   comparison against a stored baseline at a ratio. Consider recording the
   last CSV and failing on a drop past a set fraction.
   Serves SIGN-2 (docs/discovery.md, 2026-09-28): a throughput bench that
   can fail on a real slowdown.
+  Resolved (2026-09-29): already delivered by ANTS-5133.
+  tools/perf-report.sh compares every ANTSPERF metric, vt.throughput.*
+  included, against tests/perf/baseline.tsv and exits 1 past a 5%
+  drop. Checked: a baseline with ascii_print x10 reported -89.9%
+  REGRESSION, exit 1. No second gate added to the benchmark itself.
   **Layman:** The speed test never flags a slowdown unless someone types in a number by hand.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
@@ -68667,6 +68675,65 @@ project. Reported causes are claims until checked in source.
   **Layman:** Rewriting a roadmap's opening text loses a hidden marker the tools need to read the file.
   Kind: fix.
   Source: claude-config session report 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5562] **project_settings get and detect always emit declared_missing, undeclared and unavailable, empty when nothing applies.**
+  AI_Prompts' op:get reply carried none of the three keys. Global rule 18
+  tells sessions to read declared_missing[]; absent must not be ambiguous.
+  **Layman:** A project's settings check leaves out its 'nothing missing' lists, so a session cannot tell 'all fine' from 'not checked'.
+  Kind: fix.
+  Source: claude_config feedback 2026-09-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-5563] **roadmap_log create_section places a version lower than every existing one before the lowest version block.**
+  DOOM_Ants hit it converting phases to versions; worked round with
+  after_section plus move_section.
+  **Layman:** Adding an early version like 0.1.0 to a roadmap that starts at 0.8.0 is refused instead of going at the top.
+  Kind: fix.
+  Source: claude_config feedback 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5564] **roadmap_log set_preamble keeps the ants-roadmap-format marker and generated-file header when new_text omits them.**
+  Only the dry run's previous_intro showed the marker was there. Preserve it
+  outside new_text, or refuse text that would drop it.
+  **Layman:** Rewriting a roadmap's opening text silently deletes the hidden tag that tells tools which format the file uses.
+  Kind: fix.
+  Source: claude_config feedback 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5565] **roadmap_log amend_field_batch accepts field section, which its schema lists.**
+  Every row refuses "section is not a column". Three projects hit it. Either
+  accept it in the batch or drop it from the item enum.
+  **Layman:** Moving many roadmap items at once is refused item by item, though the tool's own instructions say it works.
+  Kind: fix.
+  Source: claude_config feedback 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5566] **A batch whose every entry fails with the same code and message returns one error with a count.**
+  Measured: 164 identical skipped rows, about 25 KB, on UT_MonsterHunt.
+  Applies to every *_batch op that fills skipped[].
+  **Layman:** One wrong argument in a big batch sends back the same error hundreds of times, wasting thousands of tokens.
+  Kind: enhancement.
+  Source: claude_config feedback 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5567] **roadmap_log create_section accepts a v-prefixed release title such as v1.2.**
+  finbreak now mixes 0.1.x and v1.x titles because of it.
+  **Layman:** A roadmap whose versions are written 'v1.x' cannot get a new matching version heading.
+  Kind: fix.
+  Source: claude_config feedback 2026-09-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5568] **A level-3 theme heading can repeat under two release blocks without slug_collision.**
+  roadmap-format 3.2 puts theme groups inside each release, but slugs are
+  roadmap-wide. Scope a level-3 slug under its parent, or document the suffix
+  convention UT_MonsterHunt used. Needs a design choice: slugs are cited.
+  Decided by the user (2026-09-29): document the suffix convention
+  ("Bot navigation — 0.1.0") and have the slug_collision refusal suggest
+  it. Slugs stay roadmap-wide.
+  **Layman:** The same topic heading, such as 'Bot navigation', cannot appear under two different versions of a roadmap.
+  Kind: feature.
+  Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
