@@ -39847,6 +39847,18 @@ against current source before filing.
   Spec accepted 2026-09-29: docs/specs/ANTS-4079-item-links.md (covers
   ANTS-3748 and ANTS-3827; review record docs/reviews/ANTS-4079-item-links-loop-log.md).
   Ready to build.
+  Progress (2026-09-29): all five slices built, tested and pushed
+  (a7079970, cab06576, 4154ac83, 36c1bc58, 51939175); every INV-1 to
+  INV-11 has a passing test in tests/features/roadmap_item_links and
+  roadmap_log_op_enum. § 2.5 and § 2.6 were amended by implementation
+  (loop-log rows 2-impl, 2-impl-b). Still owed before this ships: the
+  spec's § 8 standards edits. docs/standards/roadmap-data-model.md § 6
+  must name relateDocument() and RoadmapExport::rebuildProject() beside
+  relateItems() as writers, and say a link to a filed item in another
+  project is a relateItems() row. docs/standards/roadmap-format.md must
+  document the four link trailer lines, the id-list-only rule, and that
+  op:"link" writes them. Then flip ANTS-4079, ANTS-3748 and ANTS-3827
+  shipped.
   **Layman:** Let an item say which other items must finish first, and warn when that points at nothing or goes in a circle.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild).
@@ -87200,6 +87212,22 @@ contributors don't duplicate research.
   Kind: feature.
   Source: user-request-2026-09-19.
   Lanes: chrome, network.
+
+- 💭 [ANTS-5570] **Offer the Claude Code workflow (skills, standards, project skeleton) as an opt-in Ants Terminal add-on.**
+  Asked by the user 2026-09-29; waiting on their decision. The user's
+  condition: it ships with warnings and a disclaimer that we are not
+  responsible for token usage.
+  Recommendation given: yes, as a separate opt-in pack, never on by
+  default; show the cost warning and disclaimer before install; ship a
+  trimmed, portable subset (skills, standards, skeleton) with this
+  machine's paths, projects and trial rules removed; state the token cost
+  on each heavy skill (review skills dispatch several agents). The
+  ~/.claude (claude-config) session owns that material, so it should do
+  the packaging once the user says yes.
+  **Layman:** People who use Ants Terminal could choose to install the same way of working with Claude Code that this machine uses, with a clear warning about token costs.
+  Kind: package.
+  Source: user-question-2026-09-29.
+  Lanes: packaging, claude-integration.
 
 ### Opt-in usage telemetry and crash reports (user request 2026-09-27)
 
