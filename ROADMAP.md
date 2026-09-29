@@ -68503,7 +68503,7 @@ project. Reported causes are claims until checked in source.
   Source: review-contract ANTS-1359 loop 1, 2026-09-28 (outside the gated change).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5537] **spec_lint checks an amended old spec against only the lines the edit changed.**
+- ✅ [ANTS-5537] **spec_lint checks an amended old spec against only the lines the edit changed.**
   Measured by the requester 2026-09-28: spec_lint over docs/specs
   reports 1280 findings, mostly newer-layout defects in specs written
   before the format existed; no spec carries a format marker.
@@ -68525,6 +68525,9 @@ project. Reported causes are claims until checked in source.
   Progress (2026-09-29): contract is an amendment to docs/specs/ANTS-3662.md
   (§ 2.4, INV-9 to INV-15), accepted after two review-contract loops
   (18 fixes, cap reached). Build next: tests first.
+  Resolved (2026-09-29, b90dd6d0): spec_lint since / staged per
+  docs/specs/ANTS-3662.md § 2.4, INV-9 to INV-15. Live check over this
+  repo's specs, since:HEAD~8: 1274 findings, all counts_out_of_diff.
   **Layman:** When an old design document is touched, the checker should judge only the new edit, not every older gap in the file.
   Kind: feature.
   Source: claude-config CFG-0655, relayed by perch-6d 2026-09-28.
