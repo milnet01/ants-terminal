@@ -68522,6 +68522,9 @@ project. Reported causes are claims until checked in source.
   `stamped` per doc. (4) `since` outside a git tree refuses
   not_a_git_repo; never a silent full-file run. Draft: the requester's
   cfg-0655-draft-2026-09-28.md, section "Split: the Ants half".
+  Progress (2026-09-29): contract is an amendment to docs/specs/ANTS-3662.md
+  (§ 2.4, INV-9 to INV-15), accepted after two review-contract loops
+  (18 fixes, cap reached). Build next: tests first.
   **Layman:** When an old design document is touched, the checker should judge only the new edit, not every older gap in the file.
   Kind: feature.
   Source: claude-config CFG-0655, relayed by perch-6d 2026-09-28.
