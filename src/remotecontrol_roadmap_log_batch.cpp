@@ -670,6 +670,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             RoadmapStore::ItemWrite before;
             QString newBody;
             bool    noteAlreadyPresent = false;
+            QStringList blockedByOpen;   // ANTS-4079 § 2.3
         };
         QVector<StoreTarget> resolved;
         for (const Target &t : targets) {
@@ -713,6 +714,40 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                              ? before->body
                              : rlAppendBodyNote(before->body, t.note);
             resolved.append(st);
+        }
+
+        // ANTS-4079 § 2.3 — the parts guard, per locator. A part this same batch
+        // ships counts as shipped, so the check runs over the statuses the
+        // batch would leave; a parent refused here keeps its status, which can
+        // leave a grandparent with an open part, so it repeats until stable.
+        if (!annotateMode) {
+            for (bool changed = true; changed;) {
+                changed = false;
+                QHash<qint64, QString> pending;
+                for (const StoreTarget &st : std::as_const(resolved))
+                    pending.insert(st.itemPk, st.t->toWord);
+                for (qsizetype k = 0; k < resolved.size(); ++k) {
+                    StoreTarget &st = resolved[k];
+                    QString linkErr;
+                    const auto linkCheck =
+                        rlFlipLinks(store, st.itemPk, st.t->toWord, pending, &linkErr);
+                    if (!linkCheck)
+                        return rlErr(QStringLiteral("store_failed"), linkErr);
+                    if (!linkCheck->openParts.isEmpty()) {
+                        QStringList open;
+                        for (const auto &v : linkCheck->openParts)
+                            open << v.toObject().value(QStringLiteral("id")).toString();
+                        skip(st.t->locatorIndex, QStringLiteral("open_parts"),
+                             QStringLiteral("roadmap_log: %1 cannot ship while a part "
+                                            "split from it is still open: %2")
+                                 .arg(st.t->id, open.join(QStringLiteral(", "))));
+                        resolved.removeAt(k);
+                        changed = true;
+                        break;
+                    }
+                    st.blockedByOpen = linkCheck->openBlockers;
+                }
+            }
         }
 
         if (resolved.isEmpty()) {
@@ -855,6 +890,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 for (const QString &n : t.noteScrubbed) dropped.append(n);
                 o["note_scrubbed_params"] = dropped;
             }
+            if (!st.blockedByOpen.isEmpty())   // ANTS-4079 § 2.3
+                o["blocked_by_open"] = QJsonArray::fromStringList(st.blockedByOpen);
             flipped.append(o);
             if (echoHeadline)
                 postBullets.append(rcCompactBullet(

@@ -31,6 +31,7 @@
 
 #pragma once
 #include <QByteArray>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -292,6 +293,22 @@ QString rlStampToday();
 bool rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err);
 bool rlStampShipped(RoadmapStore &store, qint64 itemPk, const QString &oldStatus,
                     const QString &newStatus, QString *err);
+
+// ANTS-4079 § 2.3 — what an item's links say about flipping it to `toWord`.
+// `openParts` ({id, status}) lists the splits-from parts not shipped or
+// dropped, filled only for a flip to shipped: that refuses open_parts.
+// `openBlockers` lists the blocked-by targets not shipped or dropped, filled
+// for a flip to in-progress or shipped: that only warns. `pending` maps an item
+// pk to the status this same op gives it, so a part shipping in the same batch
+// counts as shipped. nullopt on a store error.
+struct RlFlipLinks {
+    QJsonArray openParts;
+    QStringList openBlockers;
+};
+std::optional<RlFlipLinks> rlFlipLinks(RoadmapStore &store, qint64 itemPk,
+                                       const QString &toWord,
+                                       const QHash<qint64, QString> &pending,
+                                       QString *err);
 
 // ANTS-3822 § 2.3 — write the op's collected rows, or none of them.
 //

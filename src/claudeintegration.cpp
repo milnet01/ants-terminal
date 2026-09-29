@@ -3262,7 +3262,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`canonical_id`. Unknown id → {ok:true, "
                         "found:false, count:0}. Cannot combine with "
                         "`section` or mode:section_index "
-                        "(bad_mode_combo).");
+                        "(bad_mode_combo). ANTS-4079 — on a store-backed "
+                        "project the bullet carries `links` when it has any: "
+                        "blocked_by / blocks, splits_from / parts, "
+                        "duplicate_of / duplicated_by, supersedes / "
+                        "superseded_by, relates_to, specified_by. `ids` "
+                        "carries them too.");
                     props["id"] = idProp;
                     // ANTS-1726 — `ids` plural-selector. The N-call
                     // answer to "show me ANTS-1719..1724" in one go;
@@ -13499,7 +13504,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "remove relationship rows from `id` to each of `targets`, "
                         "of one `type`; roadmap_query id: reads them back as "
                         "`links`. A same-type cycle refuses link_cycle naming it "
-                        "in `cycle`; a repeat lands in `unchanged`. "
+                        "in `cycle`; a repeat lands in `unchanged`. A flip to "
+                        "shipped refuses open_parts while a part split from the "
+                        "item is open; an open blocker adds `blocked_by_open`. "
                         "\"delete_section\" (ANTS-4958, store-only) removes a section by "
                         "`section`, refusing section_not_empty while it files "
                         "an item; its intro and narration come back in the "

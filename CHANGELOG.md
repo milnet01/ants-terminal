@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap item split into parts cannot be marked shipped while a part is still open; a flip past an open blocker succeeds and names it in `blocked_by_open`** (ANTS-3748)
+  flip refuses open_parts and lists the open parts. flip_batch refuses per
+  locator, and counts a part shipping in the same batch as shipped. A dropped
+  part counts as closed.
+
 - **roadmap_log links items: op:"link" and op:"unlink" record "blocked by", "split from", "duplicate of" and "supersedes", and roadmap_query id fetches report them both ways under `links`** (ANTS-4079)
   A link to an item in another registered project is kept even before that
   item is filed. A link that would close a loop of the same kind is refused

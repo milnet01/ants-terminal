@@ -313,3 +313,105 @@ TEST(RoadmapItemLinks, LinkArgumentRefusals) {
         << "dry_run wrote";
     EXPECT_EQ(readAll(fx.roadmap()), before);
 }
+
+namespace {
+
+QJsonObject flip(RemoteControl &rc, const QString &root, const char *id, const char *to) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("flip");
+    req[QStringLiteral("id")]         = QString::fromLatin1(id);
+    req[QStringLiteral("to_status")]  = QString::fromLatin1(to);
+    return rc.cmdRoadmapLog(req).object();
+}
+
+// roadmap_query reports status as the emoji; the words read better in asserts.
+QString statusOf(RemoteControl &rc, const QString &root, const char *id) {
+    QString emoji = fetch(rc, root, id).value(QStringLiteral("status")).toString();
+    if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) return QStringLiteral("planned");
+    if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) return QStringLiteral("in-progress");
+    if (emoji == QString::fromUtf8("\xE2\x9C\x85"))     return QStringLiteral("shipped");
+    if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xAB")) return QStringLiteral("dropped");
+    return emoji;
+}
+
+}  // namespace
+
+// INV-4 — a split parent cannot ship while a part is open; dropped counts as closed.
+TEST(RoadmapItemLinks, SplitParentCannotShipWithAnOpenPart) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0002", "splits-from", {"DEMO-0001"})
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0003", "splits-from", {"DEMO-0001"})
+                    .value(QStringLiteral("ok")).toBool());
+    const QString before = statusOf(rc, fx.root, "DEMO-0001");
+
+    QJsonObject r = flip(rc, fx.root, "DEMO-0001", "shipped");
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("open_parts")) << dump(r);
+    const QJsonArray parts = r.value(QStringLiteral("parts")).toArray();
+    ASSERT_EQ(parts.size(), 2) << dump(r);
+    EXPECT_EQ(parts.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("DEMO-0002"));
+    EXPECT_EQ(parts.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("planned"));
+    EXPECT_EQ(statusOf(rc, fx.root, "DEMO-0001"), before) << "the refusal wrote";
+
+    // In-progress is not guarded; only shipping is.
+    EXPECT_TRUE(flip(rc, fx.root, "DEMO-0001", "in-progress")
+                    .value(QStringLiteral("ok")).toBool());
+
+    ASSERT_TRUE(flip(rc, fx.root, "DEMO-0002", "shipped").value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(flip(rc, fx.root, "DEMO-0003", "dropped").value(QStringLiteral("ok")).toBool());
+    r = flip(rc, fx.root, "DEMO-0001", "shipped");
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << "dropped counted as open: " << dump(r);
+}
+
+// INV-4 — in flip_batch the refusal is per locator, and a part shipping in the
+// same batch counts as shipped.
+TEST(RoadmapItemLinks, FlipBatchRefusesPerLocator) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0002", "splits-from", {"DEMO-0001"})
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0004", "splits-from", {"DEMO-0003"})
+                    .value(QStringLiteral("ok")).toBool());
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+    req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    req[QStringLiteral("locators")]   = QJsonArray{
+        QJsonObject{{"id", "DEMO-0001"}},                 // part 0002 stays open
+        QJsonObject{{"id", "DEMO-0003"}},                 // part 0004 ships too
+        QJsonObject{{"id", "DEMO-0004"}}};
+    const QJsonObject r = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    const QJsonArray skipped = r.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << dump(r);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("open_parts")) << dump(r);
+    EXPECT_EQ(statusOf(rc, fx.root, "DEMO-0001"), QStringLiteral("planned"));
+    EXPECT_EQ(statusOf(rc, fx.root, "DEMO-0003"), QStringLiteral("shipped"));
+    EXPECT_EQ(statusOf(rc, fx.root, "DEMO-0004"), QStringLiteral("shipped"));
+}
+
+// INV-5 — an open blocker warns and never refuses.
+TEST(RoadmapItemLinks, OpenBlockerWarnsButDoesNotRefuse) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0001", "blocked-by", {"DEMO-0004"})
+                    .value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject r = flip(rc, fx.root, "DEMO-0001", "in-progress");
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    QStringList open;
+    for (const auto &v : r.value(QStringLiteral("blocked_by_open")).toArray())
+        open << v.toString();
+    EXPECT_EQ(open, QStringList{QStringLiteral("DEMO-0004")}) << dump(r);
+
+    ASSERT_TRUE(flip(rc, fx.root, "DEMO-0004", "shipped").value(QStringLiteral("ok")).toBool());
+    const QJsonObject after = flip(rc, fx.root, "DEMO-0001", "shipped");
+    ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool()) << dump(after);
+    EXPECT_FALSE(after.contains(QStringLiteral("blocked_by_open"))) << dump(after);
+}

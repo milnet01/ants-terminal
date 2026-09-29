@@ -65,6 +65,34 @@ bool rcdetail::rlStampShipped(RoadmapStore &store, qint64 itemPk,
                                 QStringLiteral("store-generated"), err);
 }
 
+std::optional<rcdetail::RlFlipLinks>
+rcdetail::rlFlipLinks(RoadmapStore &store, qint64 itemPk, const QString &toWord,
+                      const QHash<qint64, QString> &pending, QString *err) {
+    RlFlipLinks out;
+    const bool toShipped = toWord == QLatin1String("shipped");
+    if (!toShipped && toWord != QLatin1String("in-progress"))
+        return out;
+    const auto rows = store.linksFor(itemPk, err);
+    if (!rows)
+        return std::nullopt;
+    for (const auto &r : *rows) {
+        // An unfiled far end has no status and is not closed.
+        QString status = r.status;
+        if (r.farPk && pending.contains(*r.farPk))
+            status = pending.value(*r.farPk);
+        const bool closed = status == QLatin1String("shipped") ||
+                            status == QLatin1String("dropped");
+        if (closed)
+            continue;
+        if (toShipped && r.reverse && r.type == QLatin1String("splits-from"))
+            out.openParts.append(QJsonObject{{QStringLiteral("id"), r.id},
+                                             {QStringLiteral("status"), status}});
+        else if (!r.reverse && r.type == QLatin1String("blocked-by"))
+            out.openBlockers << r.id;
+    }
+    return out;
+}
+
 // ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
 // test can drive it without the m_main guard. op-dispatch + m_main
 // guard stay in cmdRoadmapLog; everything from field validation onward
@@ -1372,6 +1400,25 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     if (!before)
         return rlErr(QStringLiteral("store_failed"), seamErr);
 
+    // ANTS-4079 § 2.3 — a split parent cannot ship with a part still open;
+    // an open blocker only warns. Checked before anything is written.
+    QStringList blockedByOpen;
+    if (!annotateMode) {
+        const auto linkCheck =
+            rlFlipLinks(store, *itemPk, targetStatusWord, {}, &seamErr);
+        if (!linkCheck)
+            return rlErr(QStringLiteral("store_failed"), seamErr);
+        if (!linkCheck->openParts.isEmpty()) {
+            QJsonObject env = rlErr(QStringLiteral("open_parts"),
+                QStringLiteral("roadmap_log: %1 cannot ship while a part split "
+                               "from it is still open; ship or drop the parts "
+                               "first").arg(c.id)).object();
+            env[QStringLiteral("parts")] = linkCheck->openParts;
+            return QJsonDocument(env);
+        }
+        blockedByOpen = linkCheck->openBlockers;
+    }
+
     // Idempotent re-annotate, mirroring appendBodyNote()'s
     // noteAlreadyPresent: the markdown path does not append a note
     // the bullet already carries, and a caller re-running an
@@ -1494,6 +1541,8 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     env[QStringLiteral("op")]          = annotateMode
                                             ? QStringLiteral("annotate")
                                             : QStringLiteral("flip");
+    if (!blockedByOpen.isEmpty())   // ANTS-4079 § 2.3 — warns, never refuses
+        env[QStringLiteral("blocked_by_open")] = QJsonArray::fromStringList(blockedByOpen);
     env[QStringLiteral("format")]      = c.format;
     // ANTS-4466 — from the STORE, not from the located bullet, which is the
     // parsed FILE. On this path the file is the render's output, so
