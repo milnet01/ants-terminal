@@ -89336,6 +89336,14 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   signs nothing. So Ants needs a signing key, a .sig step in release.yml
   and an Ed25519 verify (libsodium or OpenSSL EVP) first. A relaunch
   drops every tab and Claude session, so the prompt must say so.
+  User decisions (2026-09-29): Ants checks on its own and tells the
+  user; on the user's click it downloads, verifies and swaps the AppImage,
+  then offers Restart now (warning that every tab and Claude session
+  closes) or Restart later (the new version starts at the next launch).
+  AppImage only; package installs stay with their package manager.
+  Releases are signed automatically in release.yml (private key as a
+  GitHub secret, public key compiled in), and the signature binds the
+  version, closing finbreak's downgrade gap.
   **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
   Kind: feature.
   Source: user-request-2026-09-29.
