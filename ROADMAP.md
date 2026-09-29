@@ -41600,7 +41600,7 @@ in each bullet, not just the reporter's symptom.
   Source: user-request-2026-08-25.
   Lanes: ci.
 
-- 📋 [ANTS-4653] **CI compiles at -j2 on a 4-vCPU runner because JOB_POOLS is tuned for a 32 GiB desktop.**
+- ✅ [ANTS-4653] **CI compiles at -j2 on a 4-vCPU runner because JOB_POOLS is tuned for a 32 GiB desktop.**
   ci.yml's own comment says it: "Runner is the GitHub-hosted ubuntu-24.04
   (4 vCPU / 16 GiB) with the in-tree JOB_POOLS cap limiting compile to -j2."
   That cap is `compile_pool=max(2, nproc/4)`, which on 4 vCPU is 2 — so half
@@ -41639,6 +41639,9 @@ in each bullet, not just the reporter's symptom.
   fix landed the same day, so the pool's share is not isolated. Still
   open: the nightly ASan job, the memory-heaviest, has not yet run at
   pool 4.
+  Resolved (2026-09-29): the nightly run 36533991646 on 4aa3df5b, the
+  first ASan job at pool 4, passed with no OOM kill. Its Build step took
+  14 m 17 s against 21 m 14 s on the 2026-09-27 nightly (run 36300698573).
   **Layman:** The build machine has four processors but only uses two, because the limit was set for a different computer.
   Kind: investigate.
   Source: in-session-2026-08-25.
