@@ -33137,6 +33137,9 @@ against current source before filing.
   (a) is the reporting fix and (b) is the correctness fix; they are
   independent and (b) is the one that stops a wrong ✅ existing in the
   first place.
+  Decided by the user (2026-09-29): one design for item links covers this,
+  ANTS-4079 (Blocked-by) and ANTS-3827 (links through migration). Spec
+  under ANTS-4079; this item's split guard is one of its clauses.
   **Layman:** When we split a reported issue into two tickets, the reporting project only ever sees the first one — so "done" can mean half-done.
   Kind: fix.
   Source: in-session-2026-07-30 (hit twice in one triage pass).
@@ -37522,6 +37525,8 @@ against current source before filing.
   Not a Phase D blocker: ANTS-4065 § 5 puts deciding which
   extension keys deserve real columns out of scope as a
   data-model change.
+  Decided by the user (2026-09-29): folded into the item-links design
+  specified under ANTS-4079, with ANTS-3748.
 
 - ✅ [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
   User-reported 2026-08-04: "when I paste an image, it doesn't always paste
@@ -39828,6 +39833,9 @@ against current source before filing.
   Deliberately NOT exempting pass-headings from the gates: the user's call
   was that a workflow true for two dialects out of three is not a workflow.
   Growing the trailer form is cheaper than converting a 154-item project.
+  Decided by the user (2026-09-29): one item-links design covers this,
+  ANTS-3748 (a split parent cannot close while a part is open) and
+  ANTS-3827 (links survive migration). The spec is written under this id.
   **Layman:** Let an item say which other items must finish first, and warn when that points at nothing or goes in a circle.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild).
@@ -49833,7 +49841,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, observed logging ANTS-4505/4506.
   Lanes: roadmap-mcp.
 
-- 📋 [ANTS-4537] **roadmap_log op:append advanced the id counter by two for one bullet, burning ANTS-4535.**
+- ✅ [ANTS-4537] **roadmap_log op:append advanced the id counter by two for one bullet, burning ANTS-4535.**
   Observed 2026-08-19. Two consecutive single-bullet appends:
 
     ANTS-4534: counter_advanced_past 4533 -> counter_advanced_to 4534
@@ -49884,6 +49892,10 @@ are closed inline in the feedback files rather than filed here.
   Cost is not just cosmetic. Unpredictable ids are why that session twice
   wrote a wrong cross-reference into a bullet body, which ANTS-4580
   covers.
+  Resolved (2026-09-29): the same cause as ANTS-4579, fixed by ANTS-4635
+  (append_batch refreshes the counter before any later call reads it), so
+  the gap was not intentional. Checked: this session's appends and one
+  7-item batch left ANTS-5558 through ANTS-5568 contiguous, no hole.
   **Layman:** Filing one to-do item silently used up two ID numbers, leaving a gap that looks like a lost item.
   Kind: fix.
   Source: in-session-2026-08-19, hit while filing ANTS-4536.
@@ -63800,7 +63812,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp.
 
-- 📋 [ANTS-4933] **No roadmap_log test reaches the store write path, so the branch that actually runs on a migrated project is untested.**
+- ✅ [ANTS-4933] **No roadmap_log test reaches the store write path, so the branch that actually runs on a migrated project is untested.**
   Found while fixing ANTS-4848 and filed rather than papered over, because the gap is structural and not specific to that op.
 
   THE SHAPE. `cmdRoadmapLogCreateSection` resolves `roadmapWriteTarget()`. When it returns a target — a project migrated into the store, which is every project on this machine — the handler returns from inside that branch and the markdown splice below is never reached. Every existing create_section test constructs a bare `QTemporaryDir` plus `RemoteControl(nullptr)` with no registered project, so `roadmapWriteTarget()` is always empty and the tests exercise ONLY the fallback.
@@ -63814,6 +63826,14 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   CHECK FIRST, because it decides whether this is small or large: whether `roadmapWriteTarget()` reaches the same sandboxed path the migrate tests write to. If it resolves a different store the two halves will not meet, and that is the real work rather than the fixture.
 
   DO NOT confuse this with ANTS-4848, which is shipped. This is the coverage that fix could not get.
+  Resolved (2026-09-29, verified): 29 feature dirs now drive roadmap_log
+  through a migrated temp store, covering append, append_batch, flip,
+  flip_batch, annotate, annotate_batch, the amend ops, set_body,
+  bundle_row, render, convert, delete/move/retitle_section, and
+  create_section (RoadmapLogCreateSectionStore.Ants5563, the gap this
+  item named). The store and the migrate tests meet in the sandbox. Each
+  file keeps its own seedMigrated(); not merged, as that is churn with
+  no defect behind it.
   **Layman:** Our roadmap-writing tests all run against a plain folder, which takes a different code path from the one real projects use — so the code that actually runs is the code nobody tests.
   Kind: test.
   Source: in-session-2026-09-07, found while fixing ANTS-4848.
