@@ -88973,6 +88973,21 @@ reports are asked for separately, each time.
   Source: user-request-2026-09-29.
   Lanes: docs.
 
+- 📋 [ANTS-5573] **OSC 133 tests fail when run from an Ants shell, because they read the live ANTS_OSC133_KEY.**
+  Found 2026-09-29 when the pre-push gate blocked 430f4dc3: an Ants
+  tab exports ANTS_OSC133_KEY, so TerminalGrid enforces the HMAC and
+  tests feeding unsigned OSC 133 markers fail, e.g.
+  RisPreservesCallbacks.Main and Osc133RerunSafety.Inv1/2/4.
+  `env -u ANTS_OSC133_KEY ctest -R 'RisPreservesCallbacks|Osc133RerunSafety'`
+  is 8/8 green; with the key set, 3/8. Fix: each affected test (or the
+  bundle's main) clears the variable itself; list them from a full
+  `ctest` run with the key set. Workaround until then: push with
+  `env -u ANTS_OSC133_KEY git push`.
+  **Layman:** Some tests fail when started from inside Ants Terminal itself, because they pick up the terminal's own secret key.
+  Kind: fix.
+  Source: in-session-2026-09-29.
+  Lanes: tests.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
