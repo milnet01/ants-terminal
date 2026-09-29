@@ -50987,7 +50987,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).
   Lanes: mcp.
 
-- 📋 [ANTS-5266] **A roadmap_query field projection can still spill, so the mechanism for asking for less is defeated by the thing it exists to prevent.**
+- ✅ [ANTS-5266] **A roadmap_query field projection can still spill, so the mechanism for asking for less is defeated by the thing it exists to prevent.**
   Measured:
 
       roadmap_query bullet_fields:["id","status","kind","source",
@@ -51086,6 +51086,9 @@ are closed inline in the feedback files rather than filed here.
   advised narrowing to a caller who had applied bullet_fields, limit and
   tabular encoding simultaneously. Worse than unhelpful: it pointed at the
   one class of fix that could not have worked.
+  Resolved (2026-09-29): the fat rows were ANTS-5257 (shipped); the hint
+  half is fixed: offloadBody receives the call's arguments and names the
+  narrowing already applied instead of re-advising it. Proved red first.
   **Layman:** You can ask the roadmap for just five details per entry to keep the answer small — and the answer is still too big to send, which is the exact problem that option was added to solve.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
@@ -51509,7 +51512,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-21, user standing rule.
   Lanes: docs.
 
-- 📋 [ANTS-5275] **The documented cheap startup survey is the roadmap_query call that spills.**
+- ✅ [ANTS-5275] **The documented cheap startup survey is the roadmap_query call that spills.**
   Reported by peer session finbreak-65 (2026-09-21), measured on its own
   project, not on Ants.
 
@@ -51556,6 +51559,10 @@ are closed inline in the feedback files rather than filed here.
   ids of one section and neither survey shape fits. Weigh the two
   together: `roadmap_query` has no shape that is narrow, and none that is
   purely aggregate.
+  Resolved (2026-09-29): the aggregate exists as mode:"report" (about
+  1 KB on 3203 items), and ANTS-5285 shipped the one-section survey; the
+  fix left is finbreak's resumption flow, which it owns. Sent it the
+  cheaper calls by session_message.
   **Layman:** A shortcut meant to give a quick overview at session start returns too much on big projects, so it hands back a file reference instead of the list — exactly where the quick overview was the point.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
@@ -58480,7 +58487,7 @@ it.
   Kind: refactor.
   Source: in-session-2026-08-25, the deferred tail of review-contract's 2026-08-25 run.
 
-- 📋 [ANTS-4681] **Every roadmap_log write re-renders the whole project and rewrites a 4.5 MB file, on the GUI thread.**
+- 💭 [ANTS-4681] **Every roadmap_log write re-renders the whole project and rewrites a 4.5 MB file, on the GUI thread.**
   Measured today: roadmap_log ran 7 of 7 calls between 137 ms and 256 ms,
   the slowest repeatable verb on the surface. Every op — annotate, flip, a
   one-line append — renders all 2,315 items and writes three files, of
@@ -58513,6 +58520,12 @@ it.
   recorded in CLAUDE.md, so the render is the known half; what is not
   measured is the split between rendering and writing. Time them
   separately before optimising either.
+  Re-scoped (2026-09-29): the freeze premise no longer holds; since
+  ANTS-4932 (2026-09-24) roadmap_log runs in ants-mcpd, not the GUI
+  thread. The write lever is in place: the render compares each file and
+  reports unchanged ones in files_unchanged instead of rewriting them.
+  What remains is ~200 ms of render latency in a background process;
+  an incremental render is a large change for that, so parked here.
   **Layman:** Filing one roadmap note rewrites the entire roadmap file, which freezes the window for a fifth of a second every time.
   Kind: perf.
   Source: in-session-2026-08-25, found while diagnosing a user report of the terminal locking up.
