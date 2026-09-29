@@ -89317,6 +89317,21 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   /mnt/Games/Scripts/Linux/finbreak implements its working self-update,
   then spec it (install kinds differ: AppImage, RPM/OBS, deb, source
   build). Help -> Check for Updates exists today and only checks.
+  Research (2026-09-29), finbreak's updater (Python/PySide6; specs
+  docs/specs/FIBR-0054.md Linux, FIBR-0131.md Windows; code
+  src/finbreak/services/update*.py): AppImage only, detected by $APPIMAGE;
+  GitHub /releases/latest, strict numeric version grammar; exact asset
+  suffix plus a raw Ed25519 .sig checked against a key compiled into the
+  app; HTTPS-only redirects, size caps; temp file beside the binary then
+  an atomic rename; detached /bin/sh waiter relaunches after exit; opt-in
+  startup check, Later / Skip / Update now. Its open gap: the signature
+  does not bind the version, so an old signed build can be re-published
+  under a newer tag (FIBR-0169/0333; Pressless PRESS-0023 section 4.3-4.4
+  has a signed-manifest design). Ants today: checkForUpdates only links
+  the release page, or hands $APPIMAGE to AppImageUpdate; release.yml
+  signs nothing. So Ants needs a signing key, a .sig step in release.yml
+  and an Ed25519 verify (libsodium or OpenSSL EVP) first. A relaunch
+  drops every tab and Claude session, so the prompt must say so.
   **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
   Kind: feature.
   Source: user-request-2026-09-29.
