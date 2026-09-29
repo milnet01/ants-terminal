@@ -49,6 +49,7 @@
 #include "claudetranscript.h"
 #include "aboutdialogs.h"          // ANTS-1181 — About-Ants/About-Qt
 #include "welcomedialog.h"         // ANTS-5558 — first-run welcome
+#include "selfupdate.h"           // ANTS-5560 — the self-updater
 #include "auditdialog.h"
 #include "auditrunner.h"      // ANTS-1351 — server-side audit runner.
 #include "testauditengine.h"  // ANTS-1397 — test_audit_* trio engine.
@@ -160,6 +161,13 @@ void sweepKwinScriptOrphansOnce();
 #ifdef ANTS_WAYLAND_LAYER_SHELL
 #include <LayerShellQt/Window>
 #endif
+
+namespace {
+// ANTS-5560 — set by Restart now, cleared if a window refuses to close; read
+// once the quit is committed. Process-wide because Restart now closes every
+// window.
+bool g_relaunchOnQuit = false;
+}  // namespace
 
 namespace mainwindowdetail {
 // Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
@@ -3182,6 +3190,8 @@ void MainWindow::showCloseWindowConfirmDialog(const QString &processName) {
     layout->addLayout(btnRow);
 
     connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
+    // ANTS-5560 — a cancelled close also cancels a pending Restart now.
+    connect(cancelBtn, &QPushButton::clicked, this, [] { g_relaunchOnQuit = false; });
     connect(closeBtn, &QPushButton::clicked, this, [this, dlg, dontAsk]() {
         if (dontAsk->isChecked())
             m_config.setConfirmCloseWithProcesses(false);
@@ -4453,8 +4463,11 @@ void MainWindow::setupStatusBarChrome() {
     // Wrapped in a lambda so the default `userInitiated=false` is
     // forwarded — the bare PMF can't be passed to singleShot's
     // 0-arg slot signature.
-    QTimer::singleShot(5000, this,
-        [this]() { checkForUpdates(/*userInitiated=*/false); });
+    // ANTS-5560 — update.check_on_startup (Settings → General) gates this
+    // startup check only; Help → Check for Updates always runs.
+    QTimer::singleShot(5000, this, [this]() {
+        if (m_config.updateCheckOnStartup()) checkForUpdates(/*userInitiated=*/false);
+    });
 }
 
 
@@ -6460,29 +6473,6 @@ QString parseGithubOriginSlug(const QString &repoRoot) {
     return {};
 }
 
-// Compare two SemVer-shape strings ("X.Y.Z"). Returns 1 if `a` > `b`,
-// -1 if a < b, 0 if equal. Non-numeric components fall back to
-// string compare so unexpected suffixes don't crash.
-int compareSemver(const QString &a, const QString &b) {
-    const QStringList ap = a.split('.');
-    const QStringList bp = b.split('.');
-    const int n = std::max(ap.size(), bp.size());
-    for (int i = 0; i < n; ++i) {
-        const QString as = i < ap.size() ? ap[i] : QStringLiteral("0");
-        const QString bs = i < bp.size() ? bp[i] : QStringLiteral("0");
-        bool aok = false, bok = false;
-        const int ai = as.toInt(&aok);
-        const int bi = bs.toInt(&bok);
-        if (aok && bok) {
-            if (ai != bi) return ai > bi ? 1 : -1;
-        } else {
-            const int c = QString::compare(as, bs);
-            if (c != 0) return c > 0 ? 1 : -1;
-        }
-    }
-    return 0;
-}
-
 }  // namespace
 
 void MainWindow::refreshRepoVisibility() {
@@ -6661,13 +6651,28 @@ void MainWindow::checkForUpdates(bool userInitiated) {
         const QByteArray body = reply->readAll();
         const QJsonDocument doc = QJsonDocument::fromJson(body);
         if (!doc.isObject()) return;
-        QString tag = doc.object().value("tag_name").toString();
+        const QJsonObject rel = doc.object();
+        const QString rawTag = rel.value("tag_name").toString();
+        QString tag = rawTag;
         if (tag.startsWith('v')) tag.remove(0, 1);
         if (tag.isEmpty()) return;
         win->m_latestRemoteVersion = tag;
         const QString current = QString::fromUtf8(ANTS_VERSION);
-        if (compareSemver(tag, current) <= 0) {
-            // Already up-to-date or running a newer dev build.
+        // ANTS-5560 — while a swapped-in update waits for a restart, no check
+        // replaces the "Restart to finish" indicator.
+        if (!win->m_updateInstalledVersion.isEmpty()) {
+            if (userInitiated)
+                win->showStatusMessage(
+                    win->tr("v%1 is installed — restart to finish updating")
+                        .arg(win->m_updateInstalledVersion), 4000);
+            return;
+        }
+        const auto trigger = userInitiated ? SelfUpdate::CheckTrigger::Manual
+                                           : SelfUpdate::CheckTrigger::Startup;
+        if (!SelfUpdate::shouldReport(trigger, tag, current,
+                                      win->m_config.updateSkippedVersion(),
+                                      win->m_config.updateCheckOnStartup())) {
+            // Up to date, a newer dev build, or the skipped version on startup.
             win->m_updateAvailableAction->setVisible(false);
             if (userInitiated) {
                 win->showStatusMessage(
@@ -6679,133 +6684,87 @@ void MainWindow::checkForUpdates(bool userInitiated) {
         }
         const QString url = QStringLiteral(
             "https://github.com/milnet01/ants-terminal/releases/tag/v%1").arg(tag);
+        UpdateDialog::Release release;
+        release.tag = rawTag;
+        release.notes = rel.value("body").toString();
+        release.pageUrl = QUrl(url);
+        for (const QJsonValue &a : rel.value("assets").toArray()) {
+            const QJsonObject o = a.toObject();
+            release.assets.insert(o.value("name").toString(),
+                                  QUrl(o.value("browser_download_url").toString()));
+        }
+        win->m_latestRelease = release;
         // Plain QAction text (no rich-text — menu bars render the
         // string verbatim). The leading ↗ keeps the call-to-action
         // glyph the user is used to from the status-bar variant.
         win->m_updateAvailableAction->setText(
             win->tr("↗ Update v%1 available").arg(tag));
         win->m_updateAvailableAction->setToolTip(
-            win->tr("Click to open release notes for v%1 in your browser. "
-                    "Currently running v%2.").arg(tag, current));
+            win->tr("Click to update to v%1. Currently running v%2.").arg(tag, current));
         win->m_updateAvailableAction->setData(url);
         win->m_updateAvailableAction->setVisible(true);
     });
 }
 
 void MainWindow::handleUpdateClicked(const QString &url) {
-    // Probe for either flavor of the AppImage updater. The GUI
-    // (`AppImageUpdate`) is preferred when present — it shows a
-    // progress window the user can dismiss; the CLI
-    // (`appimageupdatetool`) is the fallback and runs silently.
-    // QStandardPaths::findExecutable returns the absolute path or an
-    // empty string — empty means the binary isn't on PATH.
-    const QString gui = QStandardPaths::findExecutable(
-        QStringLiteral("AppImageUpdate"));
-    const QString cli = QStandardPaths::findExecutable(
-        QStringLiteral("appimageupdatetool"));
-    const QString updater = !gui.isEmpty() ? gui : cli;
-
-    // `$APPIMAGE` is set by the AppImage runtime when the binary is
-    // unpacked from an AppImage; it points at the on-disk AppImage
-    // file. When unset, the user is running an unbundled build —
-    // there's nothing to update in place, so fall back to the
-    // browser flow.
-    const QString appimagePath = qEnvironmentVariable("APPIMAGE");
-
-    if (!updater.isEmpty() && !appimagePath.isEmpty()) {
-        // 0.7.47 — confirm with the user before kicking the
-        // in-place update. The updater itself doesn't auto-restart
-        // the running binary; the user needs to quit + re-launch
-        // to pick up the new version. Any active Claude Code
-        // sessions in tabs will be killed by the relaunch and
-        // need to be reconnected. Surface that explicitly so the
-        // click isn't a footgun for users in the middle of an
-        // agent run. User feedback 2026-04-27.
-        //
-        // 0.7.52 (2026-04-27 indie-review CRITICAL) — was a
-        // QMessageBox::exec() (implicit modal + nested event loop)
-        // which is exactly the QTBUG-79126 / QTBUG-90005 click-drop
-        // shape that the 0.7.50 About-dialog fix retired. On
-        // KDE/KWin + Wayland + frameless+translucent parent the
-        // user clicks Update and *nothing happens* — the modal-grab
-        // handler eats the click. Mirror the same non-modal +
-        // plain QPushButton + clicked→close pattern: dialog is
-        // heap+WA_DeleteOnClose+show()+raise()+activateWindow();
-        // Update click runs the spawn-updater path on close, Cancel
-        // click just closes. See debug_wayland_modal_dialog.md memory.
-        auto *dlg = new QDialog(this);
-        dlg->setAttribute(Qt::WA_DeleteOnClose);
-        dlg->setWindowTitle(tr("Update Ants Terminal"));
-        dlg->setObjectName(QStringLiteral("updateConfirmDialog"));
-
-        auto *layout = new QVBoxLayout(dlg);
-        auto *headline = new QLabel(
-            tr("<b>Download and install the new version now?</b>"), dlg);
-        auto *body = new QLabel(
-            tr("AppImageUpdate will fetch the new release and write "
-               "it alongside this binary in the background.<br><br>"
-               "To start using the new version you'll need to "
-               "<b>quit and re-launch</b> Ants Terminal — any active "
-               "Claude Code sessions in your tabs will be "
-               "disconnected when you do, and will need to be "
-               "reconnected after the restart."), dlg);
-        body->setWordWrap(true);
-        body->setTextFormat(Qt::RichText);
-        layout->addWidget(headline);
-        layout->addWidget(body);
-
-        auto *btnRow = new QHBoxLayout;
-        btnRow->addStretch();
-        auto *cancelBtn = new QPushButton(tr("Cancel"), dlg);
-        cancelBtn->setObjectName(QStringLiteral("updateCancelButton"));
-        connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
-        connect(cancelBtn, &QPushButton::clicked, this, [this]() {
-            showStatusMessage(tr("Update cancelled."), 3000);
-        });
-        auto *updateBtn = new QPushButton(tr("Update"), dlg);
-        updateBtn->setObjectName(QStringLiteral("updateConfirmButton"));
-        updateBtn->setDefault(true);
-        updateBtn->setAutoDefault(true);
-        connect(updateBtn, &QPushButton::clicked, dlg, &QDialog::close);
-        connect(updateBtn, &QPushButton::clicked, this,
-                [this, updater, appimagePath, url]() {
-            // Detached spawn — the updater outlives this binary so
-            // the user can quit and restart while the download runs.
-            // Qt 6 form: static startDetached(program, args). Returns
-            // true on successful fork; we surface the outcome via the
-            // status bar rather than another modal dialog.
-            const bool ok = QProcess::startDetached(
-                updater, QStringList{appimagePath});
-            if (ok) {
-                showStatusMessage(
-                    tr("AppImageUpdate launched — downloading the new "
-                       "version. Quit and restart to use it."),
-                    8000);
-                return;
-            }
-            // Fork failed — fall back to browser so the user isn't
-            // left without recourse.
-            showStatusMessage(
-                tr("AppImageUpdate failed to launch — opening release "
-                   "page in browser instead."),
-                5000);
-            QDesktopServices::openUrl(QUrl(url));
-        });
-        btnRow->addWidget(cancelBtn);
-        btnRow->addWidget(updateBtn);
-        layout->addLayout(btnRow);
-
-        dlg->show();
-        dlg->raise();
-        dlg->activateWindow();
+    // ANTS-5560 § 2.4 — an update already swapped in: offer the restart again.
+    if (m_updateDialog) {
+        m_updateDialog->raise();
+        m_updateDialog->activateWindow();
         return;
     }
+    UpdateDialog *dlg = nullptr;
+    if (!m_updateInstalledVersion.isEmpty()) {
+        dlg = new UpdateDialog(m_config.theme(), m_updateInstalledVersion, this);
+    } else {
+        // Only an AppImage updates itself ($APPIMAGE names it); any other
+        // install is updated by its package manager, so open the release page.
+        const SelfUpdate::InstallKind kind = SelfUpdate::installKind();
+        if (kind == SelfUpdate::InstallKind::NotAppImage || m_latestRelease.tag.isEmpty()) {
+            QDesktopServices::openUrl(QUrl(url));
+            return;
+        }
+        dlg = new UpdateDialog(m_config.theme(), m_latestRelease, kind, this);
+    }
+    m_updateDialog = dlg;
+    connect(dlg, &UpdateDialog::skipRequested, this, [this](const QString &version) {
+        m_config.setUpdateSkippedVersion(version);
+        m_updateAvailableAction->setVisible(false);
+    });
+    connect(dlg, &UpdateDialog::updateInstalled, this, [this](const QString &version) {
+        m_updateInstalledVersion = version;
+        m_updateAvailableAction->setText(tr("↻ Restart to finish updating to v%1").arg(version));
+        m_updateAvailableAction->setToolTip(
+            tr("v%1 is installed. It starts the next time Ants Terminal opens, "
+               "or click to restart now.").arg(version));
+        m_updateAvailableAction->setVisible(true);
+    });
+    connect(dlg, &UpdateDialog::restartNowRequested, this, &MainWindow::restartForUpdate);
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+}
 
-    // Fallback: open the release page in the user's default browser.
-    // QDesktopServices::openUrl is the Qt 6 idiom; it dispatches to
-    // xdg-open under XDG, the Win32 ShellExecute equivalent on
-    // Windows, and `open` on macOS.
-    QDesktopServices::openUrl(QUrl(url));
+void MainWindow::restartForUpdate() {
+    static bool hooked = false;
+    if (!hooked) {
+        hooked = true;
+        connect(qApp, &QCoreApplication::aboutToQuit, qApp, [] {
+            if (!g_relaunchOnQuit) return;
+            const SelfUpdate::Relaunch r = SelfUpdate::relaunchCommand(
+                QCoreApplication::applicationPid(), qEnvironmentVariable("APPIMAGE"),
+                QProcessEnvironment::systemEnvironment());
+            QProcess p;
+            p.setProgram(r.program);
+            p.setArguments(r.arguments);
+            p.setProcessEnvironment(r.environment);
+            p.startDetached();
+        });
+    }
+    g_relaunchOnQuit = true;
+    // The normal close path, so each window saves its session. A window may
+    // still ask about running programs; its Cancel clears the flag.
+    QApplication::closeAllWindows();
 }
 
 void MainWindow::showDiffViewer() {

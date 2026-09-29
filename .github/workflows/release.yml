@@ -126,6 +126,7 @@ jobs:
             libqt6opengl6-dev libqt6openglwidgets6 \
             qt6-wayland qt6-wayland-dev \
             liblua5.4-dev \
+            libsodium-dev \
             libgl-dev libglx-dev libegl-dev libglu1-mesa-dev \
             libfontconfig1-dev libfreetype-dev \
             libxkbcommon-dev libxkbcommon-x11-dev \
@@ -140,7 +141,8 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DANTS_REQUIRE_SELF_UPDATE=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -233,6 +235,17 @@ jobs:
           # ANTS-5321 — the launch switch reaches the bundled MCP helper.
           ./"${OUTPUT}" --appimage-extract-and-run --mcpd --version
 
+      # ANTS-5560 — sign the self-update manifest. The script writes
+      # ${OUTPUT}.manifest and ${OUTPUT}.manifest.sig, verifies the signature
+      # against the committed public key, and exits non-zero without the
+      # secret or on a failed verify, so a release never ships unsigned.
+      - name: Sign the update manifest
+        env:
+          ANTS_UPDATE_SIGNING_KEY: ${{ secrets.ANTS_UPDATE_SIGNING_KEY }}
+          OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: tools/sign-update-manifest.sh "${OUTPUT}" "${VERSION}"
+
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -290,7 +303,8 @@ jobs:
           # and publishing an unversioned RC binary invites the exact mix-up
           # the separate RC channel exists to prevent.
           ALIAS="Ants_Terminal-x86_64.AppImage"
-          UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" )
+          # ANTS-5560 — the signed manifest the in-app updater verifies.
+          UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" )
           if [ "$IS_RC" != "1" ]; then
             cp "${OUTPUT}" "${ALIAS}"
             UPLOADS+=( "${ALIAS}" )
@@ -329,7 +343,7 @@ jobs:
           # reason the other two are: an artefact nothing verifies is one that
           # can go missing quietly, and this is the one a published link
           # depends on.
-          WANT=( "${OUTPUT}" "${OUTPUT}.zsync" )
+          WANT=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" )
           if [ "$IS_RC" != "1" ]; then
             WANT+=( "Ants_Terminal-x86_64.AppImage" )
           fi

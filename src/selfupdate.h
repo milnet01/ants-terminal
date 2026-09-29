@@ -8,7 +8,6 @@
 // fed bytes by the caller so a test needs no network.
 
 #include <QByteArray>
-#include <QFile>
 #include <QNetworkRequest>
 #include <QProcessEnvironment>
 #include <QString>
@@ -19,13 +18,15 @@
 #include <memory>
 
 class QCryptographicHash;
+class QTemporaryFile;
 
 namespace SelfUpdate {
 
 // 1 if a > b, -1 if a < b, 0 if equal ("X.Y.Z"; a missing part is 0).
 int compareSemver(const QString &a, const QString &b);
 
-// § 2.1. Reads APPIMAGE from `env`.
+// § 2.1. Reads APPIMAGE from `env`. A build without libsodium can verify
+// nothing, so it reports NotAppImage (ANTS_HAVE_LIBSODIUM, CMakeLists.txt).
 enum class InstallKind : std::uint8_t { NotAppImage, ReadOnlyDir, Updatable };
 InstallKind installKind(
     const QProcessEnvironment &env = QProcessEnvironment::systemEnvironment());
@@ -118,7 +119,7 @@ private:
     bool       m_accepted = false;
     QString    m_tempPath;
     QString    m_error;
-    std::unique_ptr<QFile> m_file;
+    std::unique_ptr<QTemporaryFile> m_file;
     std::unique_ptr<QCryptographicHash> m_hash;
     qint64     m_received = 0;
 };

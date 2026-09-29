@@ -178,6 +178,11 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "(vim, top, claude, tail -f, ...)", tab);
     layout->addRow(m_confirmCloseWithProcesses);
 
+    // ANTS-5560 — the startup update check; Help → Check for Updates always works.
+    m_updateCheckOnStartup = new QCheckBox(
+        "Check for a new version when Ants Terminal starts", tab);
+    layout->addRow(m_updateCheckOnStartup);
+
     m_editorCmd = new QLineEdit(tab);
     m_editorCmd->setPlaceholderText("code, vim, nano, etc.");
     layout->addRow("Editor Command:", m_editorCmd);
@@ -449,6 +454,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_autoCopy->setChecked(true);
         m_confirmMultilinePaste->setChecked(true);
         m_confirmCloseWithProcesses->setChecked(true);
+        m_updateCheckOnStartup->setChecked(true);
         m_editorCmd->clear();
         m_imagePasteDir->clear();
         m_notificationTimeout->setValue(5);
@@ -1077,6 +1083,7 @@ void SettingsDialog::loadSettings() {
     m_autoCopy->setChecked(m_config->autoCopyOnSelect());
     m_confirmMultilinePaste->setChecked(m_config->confirmMultilinePaste());
     m_confirmCloseWithProcesses->setChecked(m_config->confirmCloseWithProcesses());
+    m_updateCheckOnStartup->setChecked(m_config->updateCheckOnStartup());
     m_editorCmd->setText(m_config->editorCommand());
     m_imagePasteDir->setText(m_config->imagePasteDir());
     if (m_notificationTimeout)
@@ -1214,6 +1221,7 @@ void SettingsDialog::applySettings() {
     m_config->setAutoCopyOnSelect(m_autoCopy->isChecked());
     m_config->setConfirmMultilinePaste(m_confirmMultilinePaste->isChecked());
     m_config->setConfirmCloseWithProcesses(m_confirmCloseWithProcesses->isChecked());
+    m_config->setUpdateCheckOnStartup(m_updateCheckOnStartup->isChecked());
     m_config->setEditorCommand(m_editorCmd->text().trimmed());
     m_config->setImagePasteDir(m_imagePasteDir->text().trimmed());
     m_config->setTabTitleFormat(m_tabTitleFormat->currentData().toString());

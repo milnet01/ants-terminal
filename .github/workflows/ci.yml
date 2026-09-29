@@ -113,7 +113,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache mold
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev cppcheck ripgrep shellcheck python3-yaml
+            liblua5.4-dev libsodium-dev cppcheck ripgrep shellcheck python3-yaml
             appstream desktop-file-utils groff zsh fish
           version: 1.0
 
@@ -141,7 +141,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DANTS_COMPILE_POOL=4
+            -DANTS_COMPILE_POOL=4 \
+            -DANTS_REQUIRE_SELF_UPDATE=ON
           ccache --zero-stats
 
       - name: Build
@@ -316,7 +317,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache mold
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev ripgrep python3-yaml
+            liblua5.4-dev libsodium-dev ripgrep python3-yaml
           version: 1.0
 
       - name: Restore ccache (asan)
@@ -343,7 +344,8 @@ jobs:
             -DANTS_SANITIZERS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DANTS_COMPILE_POOL=4
+            -DANTS_COMPILE_POOL=4 \
+            -DANTS_REQUIRE_SELF_UPDATE=ON
           ccache --zero-stats
 
       - name: Build
@@ -483,7 +485,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
             qt6-wayland qt6-wayland-dev
-            liblua5.4-dev
+            liblua5.4-dev libsodium-dev
             libgl-dev libglx-dev libegl-dev libglu1-mesa-dev
             libfontconfig1-dev libfreetype-dev
             libxkbcommon-dev libxkbcommon-x11-dev
@@ -506,7 +508,8 @@ jobs:
           cmake -S . -B build-qt62 -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DANTS_COMPILE_POOL=4
+            -DANTS_COMPILE_POOL=4 \
+            -DANTS_REQUIRE_SELF_UPDATE=ON
           ccache --zero-stats
 
       - name: Build everything (compile guard — no ctest)

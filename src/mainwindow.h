@@ -35,6 +35,7 @@ class ClaudeTranscriptDialog;
 class ClaudeIntegration;
 #include "rootprovider.h"   // ANTS-4932 — complete type for m_rootProvider
 #include "tokenusageengine.h"   // ANTS-5311 — PeerUsage in tokenSavingsSummary()
+#include "updatedialog.h"       // ANTS-5560 — UpdateDialog::Release member
 class ClaudeTabTracker;
 class ClaudeBgTaskTracker;
 class ClaudeStatusBarController;
@@ -529,6 +530,12 @@ private:
     QAction *m_updateAvailableAction = nullptr;
     QString m_latestRemoteVersion;  // last seen tag_name from GitHub
     QNetworkAccessManager *m_updateNam = nullptr;
+    // ANTS-5560 — the release the last check found (notes + asset URLs, for
+    // UpdateDialog), the version swapped in and awaiting a restart, and the
+    // open update dialog.
+    UpdateDialog::Release m_latestRelease;
+    QString m_updateInstalledVersion;
+    QPointer<UpdateDialog> m_updateDialog;
     // ANTS-1146 — m_claudeLastState / LastDetail / PromptActive /
     // PlanMode / Auditing all moved onto ClaudeStatusBarController.
     // MainWindow's terminal-event handlers poke them via the
@@ -598,14 +605,14 @@ private:
     // launch path doesn't surface negative results that the user
     // didn't ask for.
     void checkForUpdates(bool userInitiated = false);
-    // 0.7.46 — Click handler for the update-available label. Probes
-    // for AppImageUpdate (GUI) or appimageupdatetool (CLI); if found
-    // AND $APPIMAGE is set (binary is running as an AppImage),
-    // launches the updater detached. Falls back to opening the
-    // release page in the browser when neither is installed or the
-    // binary isn't an AppImage. The `url` argument is the release
-    // page URL emitted by the linkActivated signal.
+    // ANTS-5560 — Click handler for the update indicator. A self-updatable
+    // AppImage opens UpdateDialog (a read-only one opens it to say why it
+    // cannot update); any other install opens `url`, the release page. After
+    // an update is swapped in, it offers the restart again.
     void handleUpdateClicked(const QString &url);
+    // ANTS-5560 § 2.4 step 6 — Restart now: close every window through the
+    // normal path, and relaunch the new AppImage once the quit is committed.
+    void restartForUpdate();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

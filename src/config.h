@@ -109,6 +109,14 @@ public:
     bool welcomeShown() const;
     void setWelcomeShown(bool shown);
 
+    // ANTS-5560 — the self-updater's check. update.check_on_startup (default
+    // true) gates the startup check only; update.skipped_version hides that
+    // one version from the startup check, never from Help → Check for Updates.
+    bool updateCheckOnStartup() const;
+    void setUpdateCheckOnStartup(bool enabled);
+    QString updateSkippedVersion() const;
+    void setUpdateSkippedVersion(const QString &version);
+
     // ANTS-1893 — switch-event surfacing mute toggles. All three
     // default TRUE; flipping any off persists `false` and immediately
     // disables that surface. The master gate

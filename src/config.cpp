@@ -512,6 +512,24 @@ void Config::setWelcomeShown(bool shown) {
     save();
 }
 
+bool Config::updateCheckOnStartup() const {
+    return m_data.value("update.check_on_startup").toBool(true);
+}
+
+void Config::setUpdateCheckOnStartup(bool enabled) {
+    if (!storeIfChanged("update.check_on_startup", enabled)) return;
+    save();
+}
+
+QString Config::updateSkippedVersion() const {
+    return m_data.value("update.skipped_version").toString();
+}
+
+void Config::setUpdateSkippedVersion(const QString &version) {
+    if (!storeIfChanged("update.skipped_version", version)) return;
+    save();
+}
+
 // ANTS-1893 — switch-event surfacing mute toggles. Default TRUE
 // (the three surfaces are the primary trust-building affordance per
 // the spec §1; users who find any noisy flip one off in Settings).

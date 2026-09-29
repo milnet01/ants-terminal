@@ -62,6 +62,9 @@ std::string functionBody(const std::string &src, const std::string &sig) {
 TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
     const std::string s = ants_test::slurpMainWindow();
     const std::string yml = ants_test::slurpFile(SRC_RELEASE_WORKFLOW_PATH);
+    // ANTS-5560 — compareSemver and the update dialog left mainwindow.cpp.
+    const std::string su = ants_test::slurpFile(SRC_DIR "/selfupdate.cpp");
+    const std::string ud = ants_test::slurpFile(SRC_DIR "/updatedialog.cpp");
 
     // INV-1: visibility pill is a QLabel member; update notifier is
     // a QAction member after ANTS-1124 (0.7.62) — the update link
@@ -123,8 +126,8 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         fail("INV-3", "findGitRepoRoot helper missing");
     if (!contains(s, "parseGithubOriginSlug"))
         fail("INV-3", "parseGithubOriginSlug helper missing");
-    if (!contains(s, "compareSemver"))
-        fail("INV-3", "compareSemver helper missing");
+    if (!contains(su, "int compareSemver"))
+        fail("INV-3", "compareSemver helper missing from selfupdate.cpp (ANTS-5560)");
 
     // INV-4: parseGithubOriginSlug handles both URL forms.
     {
@@ -259,7 +262,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // table to keep them documented. We assert the function exists
     // and has at least the three-component split shape (`split('.')`).
     {
-        const std::string body = functionBody(s,
+        const std::string body = functionBody(su,
             "int compareSemver");
         if (body.empty())
             fail("INV-12", "compareSemver body not found");
@@ -306,30 +309,30 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
             "`${OUTPUT}.zsync` sidecar — without it, AppImageUpdate "
             "clients fall back to whole-file fetch (slow) or fail");
 
-    // INV-15: handleUpdateClicked probes for AppImageUpdate (GUI)
-    // and appimageupdatetool (CLI) before falling back to the
-    // browser. Source-grep all three names.
+    // INV-15 (revised ANTS-5560): handleUpdateClicked routes by install
+    // kind — an AppImage opens UpdateDialog, anything else opens the release
+    // page. The external AppImageUpdate hand-off is gone (spec § 2.7).
     {
         const std::string body = functionBody(s,
             "void MainWindow::handleUpdateClicked");
         if (body.empty())
             fail("INV-15", "handleUpdateClicked body not found");
-        if (body.find("AppImageUpdate") == std::string::npos)
+        if (body.find("SelfUpdate::installKind") == std::string::npos ||
+                body.find("NotAppImage") == std::string::npos)
             fail("INV-15",
-                "handleUpdateClicked must probe for the AppImageUpdate GUI "
-                "binary before falling back");
-        if (body.find("appimageupdatetool") == std::string::npos)
+                "handleUpdateClicked must route on SelfUpdate::installKind");
+        if (body.find("new UpdateDialog") == std::string::npos)
             fail("INV-15",
-                "handleUpdateClicked must probe for the appimageupdatetool "
-                "CLI as the second-choice updater");
-        if (body.find("APPIMAGE") == std::string::npos)
-            fail("INV-15",
-                "handleUpdateClicked must read the $APPIMAGE env var to "
-                "find the on-disk AppImage path the updater needs as arg");
+                "handleUpdateClicked must open UpdateDialog for an AppImage");
         if (body.find("QDesktopServices::openUrl") == std::string::npos)
             fail("INV-15",
-                "handleUpdateClicked must fall back to "
-                "QDesktopServices::openUrl when no updater is installed");
+                "handleUpdateClicked must open the release page for any "
+                "other install");
+        if (body.find("appimageupdatetool") != std::string::npos ||
+                body.find("\"AppImageUpdate\"") != std::string::npos)
+            fail("INV-15",
+                "handleUpdateClicked must not hand off to AppImageUpdate "
+                "(ANTS-5560 § 2.7)");
     }
 
     // INV-16: detached spawn — the updater outlives this process so
@@ -340,77 +343,27 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
             "running the updater attached would block the parent on its "
             "lifetime and force a still-running terminal to wait on it");
 
-    // INV-17 (added 0.7.47, revised 0.7.52): confirmation dialog before
-    // the updater is launched. User feedback 2026-04-27 — clicking the
-    // badge shouldn't silently kick a download that requires a restart;
-    // the user must be told that they'll need to quit + relaunch and
-    // that active Claude Code sessions will be disconnected.
-    //
-    // 0.7.52 revision: dialog is now a non-modal QDialog with a plain
-    // QPushButton "Update" (mirroring the 0.7.50 About-dialog Wayland
-    // fix — QMessageBox::exec on KDE/KWin + frameless+translucent
-    // parent drops button clicks, QTBUG-79126). Was QMessageBox::exec
-    // before 0.7.52, which is the same shape as the bug 0.7.50 retired.
+    // INV-17 (revised ANTS-5560): the restart warning lives in UpdateDialog.
+    // It is non-modal (Wayland click-drop, QTBUG-79126), warns that Restart
+    // now closes every tab and Claude Code session, and offers Restart later.
     {
-        const std::string body = functionBody(s,
-            "void MainWindow::handleUpdateClicked");
-        if (body.empty())
-            fail("INV-17", "handleUpdateClicked body not found");
-        // Dialog must exist somewhere ahead of startDetached. New
-        // shape: heap QDialog + WA_DeleteOnClose + plain QPushButton
-        // wired to clicked()→close(). Old QMessageBox shape is now
-        // forbidden (negative grep — same Wayland modal-grab trap as
-        // the About dialogs).
-        const auto qmsgPos    = body.find("QMessageBox box(this)");
-        const auto qdialogPos = body.find("new QDialog(this)");
-        const auto detachPos  = body.find("QProcess::startDetached");
-        if (qmsgPos != std::string::npos)
+        if (ud.empty())
+            fail("INV-17", "updatedialog.cpp not readable");
+        if (ud.find(".exec()") != std::string::npos ||
+                ud.find("setModal(true)") != std::string::npos)
+            fail("INV-17", "UpdateDialog must be non-modal");
+        if (ud.find("Claude Code session") == std::string::npos)
             fail("INV-17",
-                "handleUpdateClicked must NOT use QMessageBox box(this) "
-                "+ box.exec() — that's the QTBUG-79126 modal-grab "
-                "click-drop shape the 0.7.50 About-dialog fix retired. "
-                "Use a heap QDialog + plain QPushButton instead.");
-        if (qdialogPos == std::string::npos)
+                "the restart text must say Claude Code sessions will close");
+        if (ud.find("Restart now") == std::string::npos ||
+                ud.find("Restart later") == std::string::npos)
+            fail("INV-17", "UpdateDialog must offer Restart now and Restart later");
+        const std::string restart = functionBody(s,
+            "void MainWindow::restartForUpdate");
+        if (restart.find("aboutToQuit") == std::string::npos)
             fail("INV-17",
-                "handleUpdateClicked must construct a non-modal QDialog "
-                "with `new QDialog(this)` so the user can confirm before "
-                "the updater is kicked");
-        if (detachPos == std::string::npos)
-            fail("INV-17",
-                "handleUpdateClicked must still call "
-                "QProcess::startDetached on Update");
-        // Update click must be wired to QDialog::close so the dialog
-        // dismisses on a single click (matches About-dialog pattern).
-        if (body.find("&QPushButton::clicked") == std::string::npos ||
-                body.find("&QDialog::close") == std::string::npos)
-            fail("INV-17",
-                "handleUpdateClicked must wire QPushButton::clicked to "
-                "QDialog::close on the dialog buttons (Wayland modal "
-                "fix per debug_wayland_modal_dialog.md memory)");
-        // The body must mention the restart consequence — "quit"
-        // and "Claude Code" / "reconnected" — so the warning is
-        // load-bearing rather than a generic confirm prompt.
-        if (body.find("quit and re-launch") == std::string::npos &&
-                body.find("quit and relaunch") == std::string::npos)
-            fail("INV-17",
-                "the dialog text must explicitly mention quitting + "
-                "re-launching as the next user step");
-        if (body.find("Claude Code") == std::string::npos)
-            fail("INV-17",
-                "the dialog text must call out that Claude Code "
-                "sessions will be disconnected — that's the user's "
-                "primary concern per the 2026-04-27 feedback");
-        if (body.find("reconnected") == std::string::npos)
-            fail("INV-17",
-                "the dialog text must say sessions need to be "
-                "reconnected — without that, the user might assume "
-                "the restart preserves session state");
-        // Cancel branch must short-circuit (no detach).
-        if (body.find("Update cancelled") == std::string::npos)
-            fail("INV-17",
-                "Cancel must surface a status-bar acknowledgement so "
-                "the user knows the click was registered but not acted "
-                "on (silent cancel feels like a bug)");
+                "the relaunch must be spawned from aboutToQuit, once the "
+                "quit is committed");
     }
 
     std::puts("OK github_status_bar: 17/17 invariants");

@@ -211,6 +211,31 @@ if(NOT LUA_FOUND)
     endif()
 endif()
 
+# libsodium (ANTS-5560) — Ed25519 verification for the AppImage self-updater.
+# Optional: a build without it never offers to self-update, which is all a
+# distro package needs (it updates through its package manager). The AppImage
+# release build and CI pass -DANTS_REQUIRE_SELF_UPDATE=ON so an updater that
+# cannot verify can never ship.
+option(ANTS_REQUIRE_SELF_UPDATE "Fail configuration when libsodium is missing" OFF)
+if(PkgConfig_FOUND)
+    pkg_check_modules(SODIUM IMPORTED_TARGET libsodium)
+endif()
+if(SODIUM_FOUND)
+    message(STATUS "libsodium ${SODIUM_VERSION} found — AppImage self-update enabled")
+elseif(ANTS_REQUIRE_SELF_UPDATE)
+    message(FATAL_ERROR "ANTS_REQUIRE_SELF_UPDATE is ON but libsodium was not found")
+else()
+    message(STATUS "libsodium not found — AppImage self-update disabled")
+endif()
+# The update-signing public key, compiled in from the committed file so the two
+# cannot differ (spec § 2.2).
+set(_ants_pubkey_pem "${CMAKE_CURRENT_SOURCE_DIR}/packaging/update-signing/ants-update.pub.pem")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_ants_pubkey_pem}")
+file(READ "${_ants_pubkey_pem}" ANTS_UPDATE_PUBKEY_PEM)
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/ants_update_pubkey.h"
+    CONTENT "#pragma once\n// Generated from packaging/update-signing/ants-update.pub.pem.\ninline constexpr char kAntsUpdatePublicKeyPem[] = R\"pem(@ANTS_UPDATE_PUBKEY_PEM@)pem\";\n"
+    @ONLY)
+
 # LayerShellQt (optional — wlr-layer-shell-v1 anchoring for Quake-mode on
 # Wayland compositors). Without it, Quake-mode still works via the regular
 # Qt toplevel path on Wayland but positioning/always-on-top behaviour is at
@@ -979,6 +1004,7 @@ add_library(ants_dialogs_lib STATIC
     src/claudesetup.cpp
     # ANTS-5560 — the AppImage self-updater.
     src/selfupdate.cpp
+    src/updatedialog.cpp
     src/toggleswitch.cpp
     # ANTS-1727 — shared review-dialog scaffold (ColdEyes/TestAudit base).
     src/reviewdialogbase.cpp
@@ -1001,6 +1027,12 @@ target_link_libraries(ants_dialogs_lib
 # the Help → About build line. Values live in build_info_values.cpp compiled
 # into core; no generated include dir or per-build target dependency needed.
 set_target_properties(ants_dialogs_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ANTS-5560 — the self-updater's generated key header and optional libsodium.
+target_include_directories(ants_dialogs_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+if(SODIUM_FOUND)
+    target_link_libraries(ants_dialogs_lib PRIVATE PkgConfig::SODIUM)
+    target_compile_definitions(ants_dialogs_lib PRIVATE ANTS_HAVE_LIBSODIUM=1)
+endif()
 
 if(LUA_FOUND)
     add_library(ants_lua_lib STATIC
