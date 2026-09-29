@@ -89289,7 +89289,7 @@ reports are asked for separately, each time.
 
 A first-run welcome dialog, and the one-click setup actions it offers.
 
-- 📋 [ANTS-5558] **A welcome dialog thanks new users, lists the features, offers setup buttons and asks for donations.**
+- ✅ [ANTS-5558] **A welcome dialog thanks new users, lists the features, offers setup buttons and asks for donations.**
   User decisions 2026-09-29: shown on first launch, and from Help -> Show
   Welcome at any time. Buttons: install the status-bar hooks, register the
   Ants MCP server with Claude Code (manual `claude mcp add` today), install
@@ -89306,6 +89306,10 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   off by default, previews the exact text first, and writes it between
   start/end markers so it can be updated or removed. The automatic
   SessionStart orientation hook stays the default route.
+  Resolved (2026-09-29, 02d4273e): welcome dialog per
+  docs/specs/ANTS-5558-welcome-dialog.md, INV-1 to INV-10 green; setup
+  module src/claudesetup.cpp shared with Settings. Not yet seen on a
+  real screen: a visual check in the running app is still owed.
   **Layman:** The first time Ants Terminal opens, a friendly window says hello, explains what it can do, sets up the Claude Code extras in one click each, and invites a donation.
   Kind: feature.
   Source: user-request-2026-09-29.
