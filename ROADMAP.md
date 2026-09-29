@@ -82925,7 +82925,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Kind: chore.
   Source: planned.
 
-- 📋 [ANTS-1155] **True in-app self-update for the AppImage — no external `AppImageUpdate` dependency, no manual restart.**
+- 🚫 [ANTS-1155] **True in-app self-update for the AppImage — no external `AppImageUpdate` dependency, no manual restart.**
   Today's "Update" click in `MainWindow::handleUpdateClicked`
   (`mainwindow.cpp:5632`) is in-place auto-update *only* when the
   user already has `AppImageUpdate` (GUI) or `appimageupdatetool`
@@ -83005,6 +83005,11 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 
   Lanes: mainwindow, networking (new module), sessionmanager,
   CMake build flags, packaging recipes.
+  Superseded (2026-09-29) by ANTS-5560, which shipped the AppImage
+  self-update without AppImageUpdate. The distro-package bucket (hide the
+  notifier) is declined: user decision 2026-09-29 keeps the notice for
+  package installs, since distro repos lag; clicking opens the release
+  page.
   **Layman:** Update the app from inside the app, without needing a separate updater program installed.
   Kind: implement.
   Source: user-2026-05-02.
@@ -89643,6 +89648,19 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   secret ANTS_UPDATE_SIGNING_KEY (set 2026-09-29; no other copy).
   Not yet exercised end to end: the first signed release is the first
   real run of the sign step and the in-app download.
+  Rehearsed end to end (2026-09-29), nothing public touched. Built
+  0.7.112 and 0.7.113 AppImages with release.yml's steps in
+  ubuntu:22.04 (tests off, -j4, throwaway key); the sign script ran
+  and verified on 22.04's OpenSSL. In a private network namespace a
+  fake GitHub served the release with GitHub-style 302s to a CDN host,
+  behind a CA trusted only there. 0.7.112 showed the update, fetched
+  manifest and sig before the AppImage, swapped the file in place
+  (hash matched 0.7.113, 0755, no temp left), showed Restart now /
+  later, and Restart now relaunched as 0.7.113. It needed a host
+  workaround: ANTS-5574 (no HTTPS where libssl.so is not OpenSSL 3).
+  Also found ANTS-5575. Not rehearsed: FUSE mount (extract-and-run
+  was used), the real GitHub CDN, Restart later. Scripts and
+  screenshots: /mnt/Emulators/ants-update-rehearsal/.
   **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
   Kind: feature.
   Source: user-request-2026-09-29.
@@ -89659,6 +89677,44 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   **Layman:** Installing the hooks should change only the lines it needs, not reformat the whole settings file.
   Kind: enhancement.
   Source: claude-config session 2026-09-29.
+
+- 📋 [ANTS-5574] **The AppImage cannot make any HTTPS connection on a host whose unversioned libssl.so is not OpenSSL 3, so the update check and self-update fail there.**
+  Found 2026-09-29 in the ANTS-5560 rehearsal. The AppImage bundles
+  Ubuntu 22.04's Qt 6.2 and its OpenSSL TLS plugin, which loads the
+  host's unversioned libssl.so. On this openSUSE host that is LibreSSL
+  (libressl-devel: libssl.so -> libssl.so.60), so Qt logs "Incompatible
+  version of OpenSSL (built with OpenSSL >= 3.x, runtime version is <
+  3.x)", falls back to the cert-only backend, and every HTTPS request
+  fails with "TLS initialization failed". Reproduced by running the
+  AppImage with QT_LOGGING_RULES="qt.tlsbackend*=true". Confirmed as the
+  cause: bind-mounting libssl.so.3 / libcrypto.so.3 over the unversioned
+  names inside a private mount namespace made the update check and the
+  whole self-update succeed. The released 0.7.111 AppImage uses the same
+  recipe, so it is likely affected on such hosts too (not run).
+  Fix options: (a) packaging/appimage/AppRun points LD_LIBRARY_PATH at a
+  private dir whose libssl.so / libcrypto.so link to the host's .so.3,
+  without leaking that entry into tab shells; (b) bundle a Qt >= 6.5
+  (which loads libssl.so.3 by version) on the 22.04 runner. Not measured
+  which Qt release changed the load order.
+  **Layman:** On some Linux machines, including this one, the downloadable app can't connect securely to GitHub, so it never finds or installs updates.
+  Kind: fix.
+  Source: in-session-2026-09-29.
+  Lanes: packaging, networking.
+
+- 📋 [ANTS-5575] **The welcome dialog's text is unreadable when the desktop supplies no dark palette: pale blue on light grey.**
+  Seen 2026-09-29 in the ANTS-5560 rehearsal (Xvfb + openbox, no
+  platform theme), screenshot /mnt/Emulators/ants-update-rehearsal/
+  keep/shot1.png. The body text takes the Ants theme colour while the
+  text view's background falls through to Qt's default light Base, the
+  same class of defect ANTS-1240 fixed in the roadmap dialog by setting
+  QPalette::Base and Text on the dialog and its QTextBrowser. Likely
+  real for users on a light desktop theme with a dark Ants theme (not
+  run there). Related, same run: the menu-bar update action, when
+  clicked, shows pale text on a light-blue highlight (shot3.png).
+  **Layman:** On some desktops the welcome window's text is very pale on a light background and almost impossible to read.
+  Kind: fix.
+  Source: in-session-2026-09-29.
+  Lanes: ui.
 
 ## How to propose a roadmap item
 
