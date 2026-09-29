@@ -89354,6 +89354,18 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: user-request-2026-09-29.
   Lanes: ui, packaging.
 
+- 📋 [ANTS-5561] **The Claude settings writer keeps the file's existing layout instead of re-sorting it.**
+  writeClaudeSettings (src/claudesetup.cpp) saves through
+  QJsonDocument::Indented, which sorts keys and re-indents. On
+  2026-09-29 one hooks install turned ~/.claude/settings.json into
+  an 882-line git diff (470+/412-) for a six-event change. The
+  claude-config session keeps that file in git and had to ask
+  whether the change was intended. Fix: keep the original key order
+  and indentation, e.g. edit only the "hooks" subtree in the text.
+  **Layman:** Installing the hooks should change only the lines it needs, not reformat the whole settings file.
+  Kind: enhancement.
+  Source: claude-config session 2026-09-29.
+
 ## How to propose a roadmap item
 
 Open a GitHub issue with:
