@@ -58,7 +58,7 @@ Each item gets exactly one `result`, in input order:
 | `text_too_long` | `text` is over 8 KiB in UTF-8. |
 | `empty_text` | `text` is empty after § 2.2. |
 | `bad_ref` | `ref` is empty, starts with `-`, or holds whitespace or a control character. Git is not run. |
-| `ref_unreadable` | `git show <ref>:<path>` did not start, exited non-zero, or hit `GitWrap::run`'s output cap. |
+| `ref_unreadable` | `git cat-file blob <ref>:./<path>` did not start or exited non-zero. It runs in the project root, so `./` makes the path project-relative; git reads a bare path from the repository's top level. `GitWrap::run` is passed a cap of 16 MiB plus one byte, and a blob over 16 MiB is `too_large`, as in the working tree. |
 
 - **`outside_allowed`** — the path is outside the project root after symlinks are resolved, or `allowed` is given and the project-relative path matches none of its globs. The file is never opened. With a `ref`, the lexical project-relative path is what is matched, since a blob has no symlinks on disk.
 
@@ -74,11 +74,13 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
  normaliser:"quotation-check.sh 60fd0be",
  results:[{index, result}],
  findings:[{index, path, ref?, kind, reason?, matched_prefix_chars?, line?, nearest?}],
+ check_errors:[{index, reason}],
  truncated?, results_dropped?}
 ```
 
 - `results` has one row per item and carries only its position and result. The caller already holds each item's path and text, so echoing them back would spend tokens on what it sent.
 - `findings` holds every item whose result is not `hit`, with `kind` set to that result and the detail § 2.3 names. The detail appears there only, never twice. ANTS-5506's `--exit-code` gates on it (that spec's § 2.2). Author's call: `outside_allowed` counts as a finding, because a lane quoting a file outside its permitted set is itself the defect `allowed` exists to catch.
+- `check_errors` lists every `not_run` item a second time, by index and reason, and is empty otherwise. ANTS-5506 § 2.2 exits `1` on a non-empty `check_errors` and `3` on findings, so a gate can tell "could not check" from "quote not there". Without it every `not_run` would exit `3`, the collapse § 2.3 forbids.
 - `max_bytes` trims `results` only. **`findings` is never trimmed**, since a gate reading a trimmed `findings` array passes. At 500 items it stays bounded by the per-item fields above.
 - `items_checked`, `counts` and `files_read` are always present, so an empty `findings` sits beside the numbers that make it a result (ANTS-4374).
 
@@ -96,11 +98,11 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 
 ## 3. Invariants
 
-- **INV-1** — For every vector in `tests/features/mcp_quotation_check/vectors/`, the verb's result equals the script's: HIT to `hit`, MISS to `miss`, ERROR to `not_run`. The vectors cover a plain hit, a plain miss, a blockquote, a `[text](url)` link, a link wrapped across lines, tabs, a CRLF file, bold and code marks, and a quotation wrapped at a line break. Broken by dropping or reordering any step of § 2.2. *Test:* the expected results are committed beside the vectors and checked on every run. Where the script is installed at `~/.claude/skills/_shared/quotation-check.sh`, the same test also runs it over the vectors and requires the committed expectations to match; elsewhere, that half skips and says so.
+- **INV-1** — For every vector in `tests/features/mcp_quotation_check/vectors/`, the verb's result equals the script's: HIT to `hit`, MISS to `miss`, ERROR to `not_run`. The vectors cover a plain hit, a plain miss, a blockquote, a `[text](url)` link, a link wrapped across lines, tabs, a CRLF file, bold and code marks, and a quotation wrapped at a line break. Two pin the order of § 2.2: a subject `a ** b` against the quotation `a b`, a MISS because spaces are squeezed before marks go; and a subject `[a]**(b) x` against `a x`, a MISS because links are rendered before marks go. Broken by dropping or reordering any step of § 2.2. *Test:* the expected results are committed beside the vectors and checked on every run. Where the script is installed at `~/.claude/skills/_shared/quotation-check.sh`, the same test also runs it over the vectors and requires the committed expectations to match; elsewhere, that half skips and says so.
 - **INV-2** — Every item gets exactly one result, in input order, and `counts` sums to `items_checked`. Broken by dropping an item that could not be read. *Test:* one item of each result kind in one call.
 - **INV-3** — An item that could not be checked is `not_run` with its reason, never `miss`. Broken by treating a failed read as an empty subject. *Test:* one fixture per `reason` in § 2.3.
-- **INV-4** — Every non-`hit` item is in `findings`, and `max_bytes` never removes one. Broken by capping the whole envelope. *Test:* a `miss`, a `not_run` and an `outside_allowed` item with `max_bytes` small enough to trim `results`: `truncated` is set and `findings` still holds three.
-- **INV-5** — Paths resolve before `allowed` is matched. Broken by matching the raw string. *Test:* a symlink inside the root pointing at a file outside it that holds the quoted text gives `outside_allowed`, not `hit`; with `allowed:["docs/**"]`, `src/a.md` gives `outside_allowed` and `docs/x/b.md` is checked.
+- **INV-4** — Every non-`hit` item is in `findings`, and `max_bytes` never removes one. Broken by capping the whole envelope. *Test:* a `miss`, a `not_run` and an `outside_allowed` item with `max_bytes` small enough to trim `results`: `truncated` is set, `findings` still holds three, and `check_errors` holds the one `not_run`.
+- **INV-5** — Paths resolve before `allowed` is matched. Broken by matching the raw string. *Test:* a symlink inside the root pointing at a file outside it that holds the quoted text gives `outside_allowed`, not `hit`; with `allowed:["docs/**"]`, `src/a.md` gives `outside_allowed`, `docs/x/b.md` is checked, and a symlink `docs/l.md` pointing at `src/a.md` gives `outside_allowed`.
 - **INV-6** — An item with `ref` reads the blob at that revision, not the working tree. Broken by ignoring `ref`. *Test:* a temporary repository commits text A, then the working tree changes it to B. Quoting A with `ref:"HEAD"` gives `hit`; without `ref`, `miss`. A `ref` of `-p` gives `not_run` / `bad_ref`.
 - **INV-7** — A miss points at the nearest text. Broken by reporting the file's first line. *Test:* a quotation whose first 20 characters occur on line 7 and whose tail differs gives `matched_prefix_chars` 20, `line` 7, and `nearest` starting with line 7's text.
 - **INV-8** — A subject is read once per `(ref, path)` per call. Broken by reading per item. *Test:* three items on one path give `files_read` 1.
