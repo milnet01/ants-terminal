@@ -2164,7 +2164,9 @@ if(ANTS_TESTS)
                 # a refused GUI marshal must yield Headless without running it.
                 tests/features/verify_trust_modal_gui_thread/test_verify_trust_modal_gui_thread.cpp
                 # ANTS-5479 — the trust dialog never clips a button label.
-                tests/features/verify_trust_modal_buttons_fit/test_verify_trust_modal_buttons_fit.cpp)
+                tests/features/verify_trust_modal_buttons_fit/test_verify_trust_modal_buttons_fit.cpp
+                # ANTS-5480 — MD-1 / MD-2 of verify_trust_gate, on the built dialog.
+                tests/features/verify_trust_gate/test_verify_trust_prompt.cpp)
     # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE

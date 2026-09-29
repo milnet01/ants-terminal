@@ -62,7 +62,7 @@ QString makeProject(QTemporaryDir &tmp, const QByteArray &verifyJson) {
 // Schema uses top-level "build" / "tests" / "lint" keys per
 // docs/specs/ANTS-1289.md § 2.4; each maps to a {command, format}
 // object.
-const QByteArray kSampleConfig =
+constexpr char kSampleConfig[] =
     "{\n"
     "  \"build\": {\"command\": \"echo bespoke-build\"}\n"
     "}\n";
@@ -475,8 +475,10 @@ void testTrustFile() {
 }
 
 // ---- MD-* trust prompt (ANTS-1337 § 4.3) ---------------------------
-// Source scrapes: the prompt is a modal QMessageBox, which a unit test
-// cannot drive.
+// MD-1 and MD-2's checkbox are checked on the built dialog in
+// test_verify_trust_prompt.cpp (ANTS-5480). What a click does is decided
+// after exec(), which a unit test cannot drive, so that half stays a
+// source scrape of showPrompt alone.
 
 void testModalPrompt() {
     const QString srcPath =
@@ -486,19 +488,10 @@ void testModalPrompt() {
     ASSERT_TRUE(sf.open(QIODevice::ReadOnly | QIODevice::Text))
         << "cannot read " << srcPath.toStdString();
     const QString code = QString::fromUtf8(sf.readAll());
-    // ANTS-5479 — the dialog is built by buildPromptBox and run by
-    // showPrompt, which follows it; the slice runs to EOF and covers both.
-    const int s = code.indexOf(QStringLiteral("PromptControls buildPromptBox("));
+    const int s = code.indexOf(QStringLiteral("ModalClient::showPrompt("));
     ASSERT_GE(s, 0);
     const QString body = code.mid(s);
 
-    // MD-1 — the prompt names the gates the config would run.
-    expect(body.contains(QStringLiteral("<b>Gates:</b>")),
-           "MD-1 the trust prompt shows a Gates line");
-    // MD-2 — "Trust this repo" carries a re-prompt checkbox, on by default.
-    expect(body.contains(QStringLiteral("setCheckBox("))
-               && body.contains(QStringLiteral("setChecked(true)")),
-           "MD-2 the trust prompt has a re-prompt checkbox, on by default");
     expect(body.contains(QStringLiteral("reprompt->isChecked()")),
            "MD-2 Trust this repo passes the checkbox's state");
 }
