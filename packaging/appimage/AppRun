@@ -10,4 +10,32 @@ if [ "${1:-}" = "--mcpd" ]; then
     shift
     exec "$HERE/usr/bin/ants-mcpd" "$@"
 fi
+
+# ANTS-5574 — the bundled Qt 6.2 loads OpenSSL by its unversioned name,
+# libssl.so. Where that is LibreSSL or OpenSSL 1.x, Qt turns TLS off and
+# every HTTPS request fails, the update check included. So a private
+# directory, where the unversioned names link to the host's libssl.so.3 and
+# libcrypto.so.3, goes first on LD_LIBRARY_PATH. ANTS_OPENSSL3_SHIM names it
+# so ants-terminal drops it from the environment its tabs inherit
+# (src/appimageenv.h). Skipped without a private XDG_RUNTIME_DIR, or when no
+# OpenSSL 3 is found. ANTS_OPENSSL3_DIRS replaces the search list (tests).
+ants_openssl3_shim() {
+    rt="${XDG_RUNTIME_DIR:-}"
+    { [ -n "$rt" ] && [ -d "$rt" ] && [ -O "$rt" ]; } || return 0
+    for d in ${ANTS_OPENSSL3_DIRS:-/usr/lib64 /usr/lib/x86_64-linux-gnu /lib64 /lib/x86_64-linux-gnu /usr/lib /lib}; do
+        { [ -e "$d/libssl.so.3" ] && [ -e "$d/libcrypto.so.3" ]; } || continue
+        shim="$rt/ants-terminal-openssl3"
+        mkdir -p "$shim" && chmod 700 "$shim" || return 0
+        # Relink only when wrong, so a second launch never sees a gap.
+        for lib in libssl libcrypto; do
+            [ "$(readlink "$shim/$lib.so")" = "$d/$lib.so.3" ] ||
+                ln -sfn "$d/$lib.so.3" "$shim/$lib.so" || return 0
+        done
+        LD_LIBRARY_PATH="$shim${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        ANTS_OPENSSL3_SHIM="$shim"
+        export LD_LIBRARY_PATH ANTS_OPENSSL3_SHIM
+        return 0
+    done
+}
+ants_openssl3_shim
 exec "$HERE/usr/bin/ants-terminal" "$@"

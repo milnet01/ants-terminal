@@ -80,6 +80,8 @@
         "src/dialogshowtracer.h",
         "src/reviewdialogbase.cpp",
         "src/reviewdialogbase.h",
+        "src/appimageenv.cpp",
+        "src/appimageenv.h",
         "src/selfupdate.cpp",
         "src/selfupdate.h",
         "src/themedstylesheet.cpp",

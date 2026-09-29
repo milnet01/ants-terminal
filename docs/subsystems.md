@@ -218,6 +218,9 @@ Listed only where behavior isn't obvious from the name.
   parts: signed-manifest verification (libsodium, optional), install kind,
   the in-place download and swap (`Session`), the relaunch command, and
   `compareSemver`. Spec ANTS-5560.
+- `appimageenv` (`ants_core_lib`) — drops `packaging/appimage/AppRun`'s
+  OpenSSL 3 shim directory from `LD_LIBRARY_PATH` at start-up, so tab shells
+  never inherit it. ANTS-5574.
 - `updatedialog` (`ants_dialogs_lib`) — the update dialog: Update now / Skip
   / Later, the download progress, then Restart now / Restart later. Spec
   ANTS-5560.

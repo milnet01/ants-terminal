@@ -89678,7 +89678,7 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Kind: enhancement.
   Source: claude-config session 2026-09-29.
 
-- 📋 [ANTS-5574] **The AppImage cannot make any HTTPS connection on a host whose unversioned libssl.so is not OpenSSL 3, so the update check and self-update fail there.**
+- ✅ [ANTS-5574] **The AppImage cannot make any HTTPS connection on a host whose unversioned libssl.so is not OpenSSL 3, so the update check and self-update fail there.**
   Found 2026-09-29 in the ANTS-5560 rehearsal. The AppImage bundles
   Ubuntu 22.04's Qt 6.2 and its OpenSSL TLS plugin, which loads the
   host's unversioned libssl.so. On this openSUSE host that is LibreSSL
@@ -89696,12 +89696,22 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   without leaking that entry into tab shells; (b) bundle a Qt >= 6.5
   (which loads libssl.so.3 by version) on the 22.04 runner. Not measured
   which Qt release changed the load order.
+  Resolved (2026-09-29): packaging/appimage/AppRun links libssl.so and
+  libcrypto.so to the host's .so.3 in $XDG_RUNTIME_DIR/ants-terminal-openssl3
+  (0700; skipped without a private runtime dir or an OpenSSL 3) and puts it
+  first on LD_LIBRARY_PATH; main() drops it via AppImageEnv::dropOpenSsl3Shim
+  before QApplication, so tab shells never inherit it. Tests:
+  appimage_apprun (5 new checks, red on the old AppRun) and
+  AppImageOpenSsl3Shim (4; 3 red on a stub). Rehearsed: a rebuilt
+  AppImage in a sandbox whose libssl.so is LibreSSL loaded OpenSSL 3.5.3,
+  updated itself and relaunched; the tab's bash had no LD_LIBRARY_PATH or
+  ANTS_OPENSSL3_SHIM. AppRun also checked under dash in ubuntu:22.04.
   **Layman:** On some Linux machines, including this one, the downloadable app can't connect securely to GitHub, so it never finds or installs updates.
   Kind: fix.
   Source: in-session-2026-09-29.
   Lanes: packaging, networking.
 
-- 📋 [ANTS-5575] **The welcome dialog's text is unreadable when the desktop supplies no dark palette: pale blue on light grey.**
+- ✅ [ANTS-5575] **The welcome dialog's text is unreadable when the desktop supplies no dark palette: pale blue on light grey.**
   Seen 2026-09-29 in the ANTS-5560 rehearsal (Xvfb + openbox, no
   platform theme), screenshot /mnt/Emulators/ants-update-rehearsal/
   keep/shot1.png. The body text takes the Ants theme colour while the
@@ -89711,6 +89721,13 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   real for users on a light desktop theme with a dark Ants theme (not
   run there). Related, same run: the menu-bar update action, when
   clicked, shows pale text on a light-blue highlight (shot3.png).
+  Resolved (2026-09-29): the app stylesheet makes QScrollArea, its
+  viewport and its content widget transparent, so the themed dialog shows
+  through; this also covers Settings, Audit and the review dialogs.
+  ScrollAreaThemeBackground (2 tests) was red on the old sheet (#efefef
+  inside, #181825 outside) and is green. Not yet seen in an AppImage: the
+  rehearsal build predated the fix. The menu-bar highlight contrast noted
+  above is not addressed here.
   **Layman:** On some desktops the welcome window's text is very pale on a light background and almost impossible to read.
   Kind: fix.
   Source: in-session-2026-09-29.

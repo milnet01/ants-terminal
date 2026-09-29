@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "appimageenv.h"
 #include "remotecontrol.h"
 #include "terminalaccessible.h"  // ANTS-1078 — screen-reader factory
 #include "dialogshowtracer.h"
@@ -143,6 +144,10 @@ int scaffoldPlugin(const QString &name) {
 }  // namespace
 
 int main(int argc, char *argv[]) {
+    // ANTS-5574 — the loader has already read AppRun's OpenSSL 3 shim from
+    // LD_LIBRARY_PATH; drop it so the shells in our tabs never inherit it.
+    AppImageEnv::dropOpenSsl3Shim();
+
     // Ignore SIGPIPE — writing to a closed PTY delivers SIGPIPE which would
     // terminate the process.  Qt handles write errors via return codes.
     std::signal(SIGPIPE, SIG_IGN);

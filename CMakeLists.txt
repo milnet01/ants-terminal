@@ -774,6 +774,7 @@ add_library(ants_core_lib STATIC
     src/sessionmanager.cpp
     src/ptyhandler.cpp
     src/vtstream.cpp
+    src/appimageenv.cpp       # ANTS-5574
 )
 target_link_libraries(ants_core_lib
     PUBLIC  ants_mcpcore_lib
@@ -2171,6 +2172,8 @@ if(ANTS_TESTS)
                 tests/features/verify_trust_modal_gui_thread/test_verify_trust_modal_gui_thread.cpp
                 # ANTS-5479 — the trust dialog never clips a button label.
                 tests/features/verify_trust_modal_buttons_fit/test_verify_trust_modal_buttons_fit.cpp
+                # ANTS-5575 — scroll areas show the dialog's themed background.
+                tests/features/scrollarea_theme_background/test_scrollarea_theme_background.cpp
                 # ANTS-5480 — MD-1 / MD-2 of verify_trust_gate, on the built dialog.
                 tests/features/verify_trust_gate/test_verify_trust_prompt.cpp)
     # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
@@ -2276,6 +2279,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/welcome_dialog/test_claude_setup.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
+    set_property(SOURCE tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
     set_property(SOURCE tests/features/self_update/test_self_update.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SELFUPDATE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/selfupdate.cpp"
@@ -3798,6 +3804,8 @@ if(ANTS_TESTS)
                 # grandchild, not just the group leader. Qt6::Core-only
                 # (processgroup.h needs no widget code).
                 tests/features/audit_tool_process_group_kill/test_processgroup_helper.cpp
+                # ANTS-5574 — the AppImage's OpenSSL 3 shim leaves the env.
+                tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
                 tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
                 tests/features/remote_control_ls/test_remote_control_ls.cpp
                 tests/features/remote_control_send_text/test_remote_control_send_text.cpp

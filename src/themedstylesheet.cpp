@@ -169,6 +169,15 @@ QString buildAppStylesheet(const Theme &theme) {
         "  margin-top: 10px; padding-top: 8px; background: transparent; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 10px;"
         "  padding: 0 4px; color: %3; }"
+        // ANTS-5575 — QScrollArea::setWidget turns autoFillBackground on for
+        // the content widget, which then paints the platform palette's
+        // Window colour (light grey without a desktop theme) under text in
+        // the theme's colour. The viewport and that widget paint nothing, so
+        // the themed dialog shows through.
+        "QScrollArea { background: transparent; }"
+        "QScrollArea > QWidget#qt_scrollarea_viewport,"
+        "QScrollArea > QWidget#qt_scrollarea_viewport > QWidget"
+        "  { background: transparent; }"
         "QListWidget, QTreeWidget, QTableWidget { background-color: %1; color: %3;"
         "  border: 1px solid %4; selection-background-color: %5; selection-color: %2;"
         "  alternate-background-color: %2; outline: none; }"

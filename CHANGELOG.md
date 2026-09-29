@@ -374,6 +374,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AppImage connects over HTTPS on systems whose default libssl is not OpenSSL 3 (for example with LibreSSL installed), so update checks and self-update work there.** (ANTS-5574)
+
+- **The welcome window, Settings and other scrolling dialogs keep the theme's background instead of turning light grey on desktops without a dark theme.** (ANTS-5575)
+
 - **Ants no longer rewrites ~/.claude/settings.json when its Claude Code hooks are already installed** (ANTS-5569)
   Its entries stay where they are, and a launch with nothing to add leaves
   the file byte-for-byte unchanged.
