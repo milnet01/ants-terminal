@@ -26,6 +26,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSet>
@@ -1116,4 +1117,28 @@ TEST(RoadmapRotateMinor, Inv13LiveSideFreedBaseIsRefused) {
               QStringLiteral("bad_args"));
     EXPECT_EQ(readAll(livePath(root)), before);
     EXPECT_FALSE(QFile::exists(archivePath(root)));
+}
+
+// ANTS-5557 — retitle_section is reachable through roadmap_log's real
+// dispatch. rotate_minor is NOT: ANTS-4070 § 2.4 keeps it off until the bump
+// recipe owns the rotation event (ANTS-4081), and this pins that.
+TEST(RoadmapRotateMinor, Ants5557RetitleIsDispatchedRotateIsNot) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, twoMinorFixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString oldSlug =
+        RoadmapIndex::slugifyHeading(QString::fromUtf8(kClosedTitle));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdRoadmapLog(
+        retitleReq(root, oldSlug, QString::fromUtf8("0.7.0 \xE2\x80\x94 renamed"), true)).object();
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+
+    const QJsonObject rot = rc.cmdRoadmapLog(rotateReq(root, QStringLiteral("0.7"), true)).object();
+    EXPECT_EQ(rot.value(QStringLiteral("code")).toString(), QStringLiteral("bad_op_combo"))
+        << "rotate_minor must stay unreachable until ANTS-4081";
 }

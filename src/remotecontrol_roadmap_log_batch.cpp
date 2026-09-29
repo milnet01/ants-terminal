@@ -1309,8 +1309,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
                 QStringLiteral("roadmap_log: a release title is written %1 with no "
                                "leading `v` and no pre-release suffix; `-rcN` "
                                "belongs to the git tag. Existing `v`-titled "
-                               "blocks still read as releases, so they need no "
-                               "rename; retitling one changes its slug")
+                               "blocks still read as releases; op:"
+                               "\"retitle_section\" renames one, changing "
+                               "its slug")
                     .arg(titleVersion));
         if (const auto *dup = RoadmapIndex::findByVersion(index, titleVersion))
             return rlErr(QStringLiteral("bad_title"),

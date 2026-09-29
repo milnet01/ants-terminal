@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"retitle_section" renames a section on a store-backed roadmap and returns its new slug** (ANTS-5557)
+
 - **The AppImage updates itself.** (ANTS-5560)
   When a new version is out, the menu bar says so. One click downloads it,
   checks its signature so it provably came from this project, and swaps it

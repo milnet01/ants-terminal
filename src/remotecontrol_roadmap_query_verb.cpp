@@ -4012,6 +4012,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
         return cmdRoadmapLogDeleteSection(req);
     if (op == QStringLiteral("move_section"))
         return cmdRoadmapLogMoveSection(req);
+    // ANTS-5557 — retitle_section (ANTS-4070 § 2.3). rotate_minor stays
+    // unwired: § 2.4 wants the bump recipe to own the rotation event first
+    // (ANTS-4081), and nothing here can tell a minor bump from a patch.
+    if (op == QStringLiteral("retitle_section"))
+        return cmdRoadmapLogRetitleSection(req);
     // ANTS-5379 — a section's narration and table elements.
     if (op == QStringLiteral("list_elements") || op == QStringLiteral("amend_element") ||
         op == QStringLiteral("delete_element") || op == QStringLiteral("promote_element"))
@@ -4076,7 +4081,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"amend_batch\", \"set_body\", "
                            "\"set_intro\", \"amend_intro\", "
                            "\"set_preamble\", \"delete_section\", "
-                           "\"move_section\", \"list_elements\", "
+                           "\"move_section\", \"retitle_section\", "
+                           "\"list_elements\", "
                            "\"amend_element\", \"delete_element\", "
                            "\"promote_element\", "
                            "\"bundle_row\", \"backfill_dates\", "

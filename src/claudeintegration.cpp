@@ -13459,6 +13459,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("amend_intro");   // ANTS-5373
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
+                    opEnum.append("retitle_section"); // ANTS-5557
                     opEnum.append("list_elements");    // ANTS-5379
                     opEnum.append("amend_element");    // ANTS-5379
                     opEnum.append("delete_element");   // ANTS-5379
@@ -13486,6 +13487,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "dry_run previewable (echoing previous_intro), and "
                         "echo replaced_intro_chars (on amend_intro, the "
                         "matched old_text only). "
+                        "\"retitle_section\" (store-only) renames `section` to "
+                        "`title` and returns its new `slug`; a clash refuses "
+                        "bad_args. "
                         "\"delete_section\" (ANTS-4958, store-only) removes a section by "
                         "`section`, refusing section_not_empty while it files "
                         "an item; its intro and narration come back in the "
