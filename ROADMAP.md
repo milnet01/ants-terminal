@@ -66894,11 +66894,14 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5502] **A batch quotation check: caller-supplied {path, text, ref?} returns hit, miss, not_run or outside_allowed.**
+- ✅ [ANTS-5502] **A batch quotation check: caller-supplied {path, text, ref?} returns hit, miss, not_run or outside_allowed.**
   Replaces skills/_shared/quotation-check.sh. Reuse workspace_search
   match_wrapped's two-sided normalisation; `ref` reads `git show
   <ref>:<path>`; a miss reports the line and the nearest text. Home:
   a doc_citations mode or a small verb of its own.
+  Shipped 2026-09-29: merged from helper/ANTS-5502 (built by the
+  UT_MonsterHunt session). Tests in tests/features/mcp_quotation_check
+  cover INV-1 to INV-10; full suite green on the merged tree.
   **Layman:** Review skills could check every quoted sentence in one call instead of running a script per quote.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A1).
@@ -68863,6 +68866,31 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: claude-config session message 2026-09-29.
   Lanes: claude-integration.
+
+- 📋 [ANTS-5571] **A list reply between 16 KB and 20 KB is offloaded untrimmed, because the offload threshold sits below the pagination soft cap.**
+  Reported by finbreak (session_message 281, 2026-09-29): roadmap_query
+  status:"active" bullet_fields:["id","status","kind","headline_oneline"]
+  limit:200 returned 117 rows, 18,211 bytes, offloaded with
+  rows_preview_omitted and 13 rows inline.
+
+  Cause, read in source 2026-09-29: the offload threshold defaults to
+  16384 bytes (src/config.cpp, claude.mcp_offload_threshold_bytes), while
+  PaginationEngine::kSoftCapBytes is 20480 (src/paginationengine.h). A
+  reply between the two is never trimmed by the verb and always spills.
+  It reaches every verb that pages against kSoftCapBytes, not only
+  roadmap_query. An explicit `limit` also skips the auto-truncate, so a
+  caller-sized page has no guard at all.
+
+  Fix direction: make the soft cap derive from the live offload
+  threshold (minus envelope overhead), so a reply the verb chose not to
+  trim always fits inline. Check whether bullet_fields rows should get
+  the same downshift-free truncation headline_only gets.
+
+  Reply to finbreak when this ships.
+  **Layman:** A roadmap list that is a bit too big gets saved to a side file instead of being trimmed to fit, so the asking session needs extra calls.
+  Kind: fix.
+  Source: session-message-281 finbreak 2026-09-29.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
