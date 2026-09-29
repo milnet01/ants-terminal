@@ -39306,7 +39306,7 @@ against current source before filing.
   its named one, leaving `un-gated` as the only corpus word that still
   takes the default. Full suite green.
 
-- 📋 [ANTS-4072] **A bullet-form item inside a pass-headings project has no ID carrier.**
+- ✅ [ANTS-4072] **A bullet-form item inside a pass-headings project has no ID carrier.**
   Filed from the ANTS-4069 gate's loop-3 tail — a decision, not a wording fix.
   `roadmap-format.md` § 3.5.1 keys the carrier on the **project**: a
   pass-headings project derives ids from headings and reads no counter.
@@ -39436,6 +39436,10 @@ against current source before filing.
   The `73` figure from the ANTS-4069 gate is not re-verified and
   is not load-bearing here; the file carries 855 bullets in
   total and the character of the sample is what decided this.
+  Resolved (2026-09-29, verified): docs/standards/roadmap-data-model.md
+  § 7.2 already states the disposition ("On the pass-headings shape only
+  the headings are items, and every other line in a pass block is that
+  pass's body"), naming parsePassHeadingBullets(). Nothing left to write.
 
 - 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
@@ -71353,7 +71357,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-08-28, measured while shipping ANTS-4748.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4758] **roadmap_query's section_index counts a subtree while section= returns direct bullets, and neither says so.**
+- ✅ [ANTS-4758] **roadmap_query's section_index counts a subtree while section= returns direct bullets, and neither says so.**
   MEASURED. `mode:"section_index"` reports a `##` section as carrying 93
   active items. `section=` on that same slug returns 16, with `total` 16 and
   no note. The gap is real and benign — the heading has many `###` children
@@ -71397,6 +71401,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   ANTS-4819's descendant inclusion, every bullet a `section=` query returns is
   stamped with the QUERIED slug rather than its own, so the value is wrong to
   feed back to `roadmap_log op:"append"` and files into the parent silently.
+  Resolved (2026-09-29): the envelope lists `subsections`; with ANTS-4824's
+  per-bullet slugs a caller can tell direct from nested. Proved red first.
   **Layman:** A section's item count and the list of items you get for that same section can disagree by a lot, with nothing saying why.
   Kind: enhancement.
   Source: in-session-2026-08-28, hit while picking work from a parent section.
