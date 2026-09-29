@@ -10,11 +10,8 @@
 #include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
-#include <cstdio>
 #include "remotecontrol.h"
 #include <QVector>
-#include <utility>
-#include <vector>
 
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -415,16 +412,30 @@ TEST(McpRoadmapLogCreateSection, Ants5315PlacedByVersion) {
 }
 
 TEST(McpRoadmapLogCreateSection, Ants5315UnplaceableStillNeedsAfterSection) {
-    for (const auto &c : std::vector<std::pair<QStringList, QString>>{
-             {{"0.11.0 — C"}, QStringLiteral("0.10.0 — New")},   // lowest higher is first
-             {{"0.9.0 — A"}, QStringLiteral("Not a release")}}) { // no version title
-        QTemporaryDir dir;
-        writeRoadmap(dir.path(), versionRoadmap(c.first));
-        RemoteControl rc(nullptr);
-        EXPECT_EQ(rc.cmdRoadmapLogCreateSectionForTest(versionReq(dir.path(), c.second))
-                      .object()["code"].toString(),
-                  QStringLiteral("missing_field")) << c.second.toStdString();
-    }
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), versionRoadmap({QStringLiteral("0.9.0 — A")}));
+    RemoteControl rc(nullptr);
+    EXPECT_EQ(rc.cmdRoadmapLogCreateSectionForTest(
+                  versionReq(dir.path(), QStringLiteral("Not a release")))
+                  .object()["code"].toString(),
+              QStringLiteral("missing_field"));
+}
+
+// ANTS-5563 — lower than every release, and the lowest is the first `##`:
+// placed before it (this case refused missing_field until then).
+TEST(McpRoadmapLogCreateSection, Ants5563LowestGoesBeforeTheFirstRelease) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), versionRoadmap({QStringLiteral("0.11.0 — C"),
+                                             QStringLiteral("Unscheduled")}));
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogCreateSectionForTest(
+        versionReq(dir.path(), QStringLiteral("0.10.0 — New"))).object();
+    ASSERT_TRUE(out["ok"].toBool()) << out["error"].toString().toStdString();
+    EXPECT_EQ(h2Order(readRoadmap(dir.path())),
+              (QStringList{"0.10.0 — New", "0.11.0 — C", "Unscheduled"}));
+    EXPECT_EQ(out["before_section"].toString(), QStringLiteral("0-11-0-c"));
+    EXPECT_FALSE(out.contains(QStringLiteral("after_section")));
+    EXPECT_TRUE(out["placed_by_version"].toBool());
 }
 
 TEST(McpRoadmapLogCreateSection, Ants5315VersionTitlesRefused) {

@@ -35,7 +35,8 @@ Part of **ANTS-1878**. Full design + invariants live in
 
 - **INV-11** (ANTS-5315) derived release placement per
   `docs/specs/ANTS-1878.md` § 2.3a — `Ants5315*` cases: placed after the
-  greatest lower version; unplaceable titles still `missing_field`; `v`,
+  greatest lower version, or before the first release when it is the lowest
+  (`Ants5563*`); unplaceable titles still `missing_field`; `v`,
   pre-release and repeated versions `bad_title` placed or supplied, ahead
   of `slug_collision`; no placement keys on a supplied `after_section`.
 

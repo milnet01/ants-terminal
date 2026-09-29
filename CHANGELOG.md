@@ -193,6 +193,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **create_section's refusal of a `v`-prefixed title says existing `v` blocks still read as releases** (ANTS-5567)
+
 - **A batch roadmap or feedback write that refuses every entry the same way now returns one sample row and a count** (ANTS-5566)
   `skipped_uniform: true` marks it. One argument mistake over 164 entries
   used to echo about 25 KB of identical rows.
@@ -327,6 +329,10 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **roadmap_log create_section places a release lower than every other before the first release block** (ANTS-5563)
+  The reply names the anchor as `before_section`. It used to refuse
+  `missing_field`, so a phase-to-version conversion needed a move.
 
 - **project_settings get and detect always return undeclared, unavailable and declared_missing, empty when nothing applies** (ANTS-5562)
 

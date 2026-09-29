@@ -14142,8 +14142,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "is inserted at this section's end. ANTS-5315 — "
                         "optional for a level-2 release title such as "
                         "\"0.10.0 — Theme\": omitted, it is placed after "
-                        "the greatest lower version and the reply carries "
-                        "after_section with placed_by_version:true. Also "
+                        "the greatest lower version (before the first release "
+                        "when it is the lowest) and the reply carries "
+                        "after_section or before_section with "
+                        "placed_by_version:true. Also "
                         "op:\"move_section\"'s destination (ANTS-4958).");
                     QJsonObject beforeSectionProp;
                     beforeSectionProp["type"] = "string";

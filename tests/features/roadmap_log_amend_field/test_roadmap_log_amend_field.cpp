@@ -996,6 +996,35 @@ TEST(RoadmapLogAmendFieldBatch, UniformRefusalsCollapseToOneRow) {
     EXPECT_EQ(skipped.first().toObject().value(QStringLiteral("index")).toInt(-1), 0);
 }
 
+// ANTS-5563 — create_section's store path, here for this file's migrated-store
+// fixture: a release lower than every other, whose lowest is the first `##`,
+// is filed before it rather than refused.
+TEST(RoadmapLogCreateSectionStore, Ants5563LowestGoesBeforeTheFirstRelease) {
+    QByteArray body =
+        "<!-- ants-roadmap-format: 1 -->\n\n# Demo \xE2\x80\x94 Roadmap\n\n";
+    body += kPad;
+    body += "\n## 0.8.0 \xE2\x80\x94 Later\n\n"
+            "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+            "  Layman: A card sentence.\n  Kind: implement.\n  Source: seed.\n\n";
+    Fx fx; ASSERT_TRUE(fx.ok(body));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("create_section");
+    req[QStringLiteral("level")]      = 2;
+    req[QStringLiteral("title")]      = QStringLiteral("0.1.0 — First");
+    const QJsonObject out = rc.cmdRoadmapLogCreateSectionForTest(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("before_section")).toString(),
+              QStringLiteral("0-8-0-later"));
+    const QString md = QString::fromUtf8(readAll(roadmapPath(fx.root)));
+    const qsizetype first = md.indexOf(QStringLiteral("## 0.1.0"));
+    const qsizetype later = md.indexOf(QStringLiteral("## 0.8.0"));
+    ASSERT_GE(first, 0) << md.toStdString();
+    EXPECT_LT(first, later) << "the render must put 0.1.0 above 0.8.0";
+}
+
 // ---------------------------------------------------------------------------
 // ANTS-4669 — op:"amend_batch": amend_body's edit on several items, one read,
 // one commit, one render. A house-style correction across freshly-appended
