@@ -50261,7 +50261,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-21, found verifying ANTS-4491 after relaunch.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5254] **Nothing mechanically checks that every dispatched roadmap_log op appears in the published op enum.**
+- ✅ [ANTS-5254] **Nothing mechanically checks that every dispatched roadmap_log op appears in the published op enum.**
   The existing guard is an allowlist of op NAMES, so it is blind to every
   op added after it was written. Twice now that blindness shipped an op
   no client could call (set_body, then convert).
@@ -50278,6 +50278,8 @@ are closed inline in the feedback files rather than filed here.
 
   Watch the byte-window trap — scope the scrape to cmdRoadmapLog's body,
   not a fixed offset.
+  Resolved (2026-09-29): RoadmapLogOpEnum checks dispatch vs the live
+  tools/list enum both ways; proved red on the pre-ANTS-5557 state.
   **Layman:** Add a check that compares the list of commands the code accepts against the list it advertises, so a missing one fails the build rather than shipping.
   Kind: test.
   Source: in-session-2026-09-21, generalising ANTS-5253.
