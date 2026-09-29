@@ -89733,6 +89733,18 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: in-session-2026-09-29.
   Lanes: ui.
 
+- 📋 [ANTS-5576] **A highlighted menu-bar entry shows pale text on a light-blue background.**
+  Seen 2026-09-29 in the ANTS-5560 rehearsal (Xvfb, no desktop theme,
+  Dark theme): the open Help menu title and the clicked update action
+  render pale text on a light-blue highlight. Screenshots:
+  /mnt/Emulators/ants-update-rehearsal/keep/shot3.png and f3.png. Likely
+  the selected state in themedstylesheet::buildMenuBarStylesheet; not yet
+  read. Not run on a themed desktop.
+  **Layman:** When you open a menu or click the update notice, its label becomes hard to read against the highlight.
+  Kind: fix.
+  Source: in-session-2026-09-29.
+  Lanes: ui.
+
 ## How to propose a roadmap item
 
 Open a GitHub issue with:
