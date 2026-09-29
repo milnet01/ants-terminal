@@ -38706,7 +38706,7 @@ against current source before filing.
   is bounded, not removed, and this spec's INV-3 is the witness. That bullet's two
   stale claims (the caller list, and the existence/size stat as a candidate) are
   corrected there.
-  Source: :migratedProject()` is the one.
+
 
 - 📋 [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
   `docs/standards/specs.md` § 5.6 fixes the lifecycle as `spec draft` →
@@ -39176,7 +39176,7 @@ against current source before filing.
   a render carrying quarantined ids is conforming except for
   those ids, with the quarantine report as the standing to-do.
   That sentence is the actual finding; the rest resolves.
-  Source: :migratedProject()`, which tests a store row — cutover is not.
+
 
 - ✅ [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
   Raised by the CC session bringing the shared `/start-app` roadmap standard up
@@ -40568,7 +40568,7 @@ against current source before filing.
   that the remaining prize is smaller than it looked: 3.9 ms at site 1, and
   site 3's own full() is already free since ANTS-4431 memoised the body
   through one shared provider, leaving only buildIndex's 4.6 ms.
-  Source: :bulletsFromStore() instead of parsing storeText.full(), so op:append's migrated path reads no body at all.
+  Source: in-session-2026-08-17 (ANTS-3863 implementation).
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
   Hit 2026-08-17 converting six call sites in one `apply_edits` call. All six
@@ -68471,11 +68471,13 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of Pressless session, 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5523] **roadmap_log has no amend_preamble, so fixing one phrase means resending the whole preamble.**
+- ✅ [ANTS-5523] **roadmap_log has no amend_preamble, so fixing one phrase means resending the whole preamble.**
   set_preamble replaces the whole preamble, including a trailing `---`
   that only a dry run's previous_intro reveals. An amend_preamble op with
   old_text/new_text, shaped like amend_intro (ANTS-5373), would be
   cheaper and could not drop what the caller never saw.
+  Resolved (2026-09-29): op:"amend_preamble" shipped; test through the
+  real dispatch, proved red first.
   **Layman:** Correcting one word at the top of a roadmap means re-sending the whole opening section, including hidden lines.
   Kind: enhancement.
   Source: claude-87 relay of MAME_Curator session, 2026-09-28.
