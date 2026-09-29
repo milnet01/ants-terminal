@@ -218,6 +218,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Roadmap window's tabs each keep their own Status and Kind filters, remembered for each project folder**
+  Switching from Custom to Far Future and back no longer replaces Custom's
+  filters, and a Kind choice stays on the tab it was made on. Changing a
+  filter keeps you on the current tab. Reset filters returns that tab to its
+  own defaults. Two terminal tabs in the same folder share one set; other
+  projects keep theirs. The first project opened after updating starts from
+  the filters you had before.
+
 - **A spilled reply's hint names the narrowing the call already applied and points at the levers left, instead of re-advising it** (ANTS-5266)
 
 - **create_section's refusal of a `v`-prefixed title says existing `v` blocks still read as releases** (ANTS-5567)

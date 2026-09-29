@@ -151,12 +151,9 @@ public:
         Comfortable,  // +2px tier; body 15 / h1 18; label held at 12px
     };
 
-    // Pure helpers — preset → mask + preset → sort. `presetMatching`
-    // is the inverse: given a (filter, sort) pair, return the preset
-    // that produced it, or `Custom` if no named preset matches.
+    // Pure helpers — preset → default mask + preset → sort.
     static unsigned filterFor(Preset p);
     static SortOrder sortFor(Preset p);
-    static Preset presetMatching(unsigned filter, SortOrder sort);
 
     // `roadmapPath` is the canonical absolute path to the file. The
     // owning project root for CHANGELOG / git lookups is the directory
@@ -535,12 +532,23 @@ private:
     void captureScrollAnchor();
     void restoreScrollAnchor();
 
-    // ANTS-1150: persist the active preset to Config. Called from
-    // BOTH applyPreset (named-preset path) and onCheckboxToggled
-    // (Custom-divergence path) so m_activePreset's two write sites
-    // both round-trip through disk. Switch-on-enum guarantees
-    // compiler -Wswitch-enum coverage of future Preset additions.
-    void persistActivePreset(Preset p);
+    // Each roadmap tab owns its Status and Kind filters, and the set is
+    // saved per project, keyed by the roadmap's canonical path (user
+    // request 2026-09-29). A tab absent from m_tabFilters is at its
+    // defaults: its preset's mask, and no Kind narrowing.
+    struct TabFilters {
+        unsigned mask = 0;
+        QSet<QString> kinds;
+    };
+    TabFilters tabFiltersFor(Preset p) const;
+    static unsigned defaultMaskFor(Preset p);
+    // Put `f` on the checkboxes and into m_kindFilter without firing their
+    // handlers.
+    void showTabFilters(const TabFilters &f);
+    unsigned statusMaskFromBoxes() const;
+    // Write the active tab and every tab's filters to Config.
+    void saveViewState();
+    static QString presetName(Preset p);
 
     // ANTS-1125 instance wrappers — bind the active dialog state
     // (`m_roadmapPath`, `m_activePreset`, `m_searchBox->text()`) to
@@ -635,6 +643,7 @@ private:
     // narrowing (current behaviour). Populated from the Kind row's
     // checkboxes; passed through to renderHtml on every refresh().
     QSet<QString> m_kindFilter;
+    QHash<int, TabFilters> m_tabFilters;   // keyed by int(Preset)
     // ANTS-1150 — keyed by KindEntry value (matches m_kindFilter
     // entries). Populated during ctor's Kind-row build loop;
     // re-iterated during the persisted-Kind-filter restore so we

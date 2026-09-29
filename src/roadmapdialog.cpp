@@ -514,22 +514,25 @@ unsigned RoadmapDialog::filterFor(Preset p) {
     return 0;
 }
 
+namespace {
+// The six status bits and their saved names, in one table so the mask, the
+// checkboxes and the saved JSON cannot disagree about which is which.
+struct StatusBit { unsigned bit; const char *key; };
+constexpr StatusBit kStatusBits[] = {
+    {RoadmapDialog::ShowDone, "done"},
+    {RoadmapDialog::ShowPlanned, "planned"},
+    {RoadmapDialog::ShowInProgress, "in_progress"},
+    {RoadmapDialog::ShowConsidered, "considered"},
+    {RoadmapDialog::ShowDropped, "dropped"},
+    {RoadmapDialog::ShowCurrent, "current"},
+};
+}  // namespace
+
 RoadmapDialog::SortOrder RoadmapDialog::sortFor(Preset p) {
     if (p == Preset::History) return SortOrder::DescendingChronological;
     return SortOrder::Document;
 }
 
-RoadmapDialog::Preset RoadmapDialog::presetMatching(unsigned filter,
-                                                    SortOrder sort) {
-    const Preset named[] = {
-        Preset::Full, Preset::History, Preset::Current,
-        Preset::Next, Preset::FarFuture,
-    };
-    for (Preset p : named) {
-        if (filterFor(p) == filter && sortFor(p) == sort) return p;
-    }
-    return Preset::Custom;
-}
 
 QStringList RoadmapDialog::collectCurrentBullets() {
     // ANTS-2012 — rebuild() runs on every search keystroke, so neither signal
@@ -2206,13 +2209,12 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                     if (on) m_kindFilter.insert(kindValue);
                     else    m_kindFilter.remove(kindValue);
                     if (m_lastHtml) m_lastHtml->clear();  // force re-render
-                    // ANTS-1150 — persist the Kind filter set on
-                    // every toggle. setRoadmapKindFilters sorts on
-                    // write for stable on-disk ordering.
-                    if (m_config) {
-                        m_config->setRoadmapKindFilters(QStringList(
-                            m_kindFilter.begin(), m_kindFilter.end()));
-                    }
+                    // The Kind set belongs to the tab it was set on
+                    // (user request 2026-09-29), saved per project.
+                    const int key = static_cast<int>(m_activePreset);
+                    m_tabFilters[key] = tabFiltersFor(m_activePreset);
+                    m_tabFilters[key].kinds = m_kindFilter;
+                    saveViewState();
                     rebuild();
                 });
         addToMenu(kindMenu, cb);
@@ -2239,21 +2241,14 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     m_resetFiltersBtn->setFocusPolicy(Qt::StrongFocus);
     m_resetFiltersBtn->setAccessibleName(tr("Clear all roadmap filters"));
     m_resetFiltersBtn->setToolTip(
-        tr("Show every status and every kind again"));
+        tr("Put this tab's filters back to its defaults and clear the search"));
     connect(m_resetFiltersBtn.data(), &QToolButton::clicked, this, [this] {
-        // Drive the checkboxes rather than the model: each one's own toggled
-        // handler owns the filter set, the config write and the rebuild, and
-        // reaching past them is how a reset and a click stop agreeing.
-        for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
-                              m_filterInProgress.data(),
-                              m_filterConsidered.data(),
-                              m_filterDropped.data(),
-                              m_filterCurrent.data()})
-            if (cb) cb->setChecked(true);
-        for (QCheckBox *cb : std::as_const(m_kindCheckboxes))
-            if (cb) cb->setChecked(false);   // empty kind set = show all
+        // This tab only, back to its own defaults: a named tab's statuses
+        // are what the tab is FOR, so "reset" on Far Future is not "show
+        // everything".
+        m_tabFilters.remove(static_cast<int>(m_activePreset));
         if (m_searchBox) m_searchBox->clear();
-        updateFilterSummaries();
+        applyPreset(m_activePreset);
     });
     filterRow->addWidget(m_resetFiltersBtn.data());
     filterRow->addStretch(1);
@@ -2473,14 +2468,9 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         m_expandedItems.clear();
         m_expandedSections.clear();
         if (m_searchBox) m_searchBox->clear();
-        m_kindFilter.clear();
-        for (auto it = m_kindCheckboxes.constBegin();
-                  it != m_kindCheckboxes.constEnd(); ++it) {
-            QSignalBlocker block(it.value());
-            it.value()->setChecked(false);
-        }
-        // Re-apply current preset's default status mask + sort. Same
-        // path as a tab click, but without changing the tab.
+        // Put the current tab back to its defaults. Same path as a tab
+        // click, but without changing the tab.
+        m_tabFilters.remove(static_cast<int>(m_activePreset));
         applyPreset(m_activePreset);
     });
     btnRow->addWidget(resetBtn);
@@ -2596,31 +2586,60 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // "RoadmapDialog" sizeKey — see the ctor head. No hand-rolled
     // geometry round-trip here (ANTS-2012).
 
-    // ANTS-1150 — restore persisted UI state. Order matters
-    // (cold-eyes CRITICAL #1):
-    //   (1) Restore Kind filter set — always (Kind is preset-
-    //       orthogonal).
-    //   (2) Determine persisted preset enum.
-    //   (3) For Custom only — restore status checkboxes silently.
-    //       Named presets get applyPreset's canonical mask anyway
-    //       so a status restore would be dead code.
-    //   (4) Apply the persisted preset (fires rebuild).
-    //
-    // (1) Kind filter set.
+    // Restore this project's roadmap view: the tab last shown and each tab's
+    // own Status and Kind filters, saved per project (user request
+    // 2026-09-29, superseding ANTS-1150's single global set).
+    Preset persisted = Preset::Full;
     if (m_config) {
-        const QStringList persistedKinds = m_config->roadmapKindFilters();
-        m_kindFilter = QSet<QString>(persistedKinds.begin(),
-                                     persistedKinds.end());
-        for (auto it = m_kindCheckboxes.constBegin();
-                  it != m_kindCheckboxes.constEnd(); ++it) {
-            QSignalBlocker block(it.value());
-            it.value()->setChecked(m_kindFilter.contains(it.key()));
+        const auto presetFromName = [](const QString &name) {
+            if (name == QLatin1String("history"))    return Preset::History;
+            if (name == QLatin1String("current"))    return Preset::Current;
+            if (name == QLatin1String("next"))       return Preset::Next;
+            if (name == QLatin1String("far_future")) return Preset::FarFuture;
+            if (name == QLatin1String("custom"))     return Preset::Custom;
+            return Preset::Full;
+        };
+        const auto maskFrom = [](const QJsonObject &status, unsigned fallback) {
+            unsigned mask = 0;
+            for (const StatusBit &b : kStatusBits)
+                if (status.value(QLatin1String(b.key)).toBool((fallback & b.bit) != 0))
+                    mask |= b.bit;
+            return mask;
+        };
+        const QJsonObject state =
+            m_config->roadmapViewState(QFileInfo(m_roadmapPath).canonicalFilePath());
+        if (!state.isEmpty()) {
+            persisted = presetFromName(state.value(QLatin1String("active")).toString());
+            const QJsonObject tabs = state.value(QLatin1String("tabs")).toObject();
+            for (auto it = tabs.constBegin(); it != tabs.constEnd(); ++it) {
+                const Preset p = presetFromName(it.key());
+                if (presetName(p) != it.key()) continue;   // an unknown tab name
+                const QJsonObject tab = it.value().toObject();
+                TabFilters f;
+                // An absent status key reads as the tab's default, so a
+                // status added later (as ANTS-4977's dropped was) shows.
+                f.mask = maskFrom(tab.value(QLatin1String("status")).toObject(), defaultMaskFor(p));
+                for (const auto &k : tab.value(QLatin1String("kinds")).toArray())
+                    if (m_kindCheckboxes.contains(k.toString())) f.kinds.insert(k.toString());
+                m_tabFilters.insert(static_cast<int>(p), f);
+            }
+        } else if (!m_config->hasRoadmapViewStates()) {
+            // The first project opened after this change inherits the old
+            // global settings once, so an upgrade loses nothing: the tab
+            // that was showing, with the Kind set it had, and Custom's
+            // saved statuses.
+            persisted = presetFromName(m_config->roadmapActivePreset());
+            const QJsonObject sf = m_config->roadmapStatusFilters();
+            if (!sf.isEmpty())
+                m_tabFilters[static_cast<int>(Preset::Custom)].mask =
+                    maskFrom(sf, defaultMaskFor(Preset::Custom));
+            const QStringList kinds = m_config->roadmapKindFilters();
+            if (!kinds.isEmpty()) {
+                TabFilters f = tabFiltersFor(persisted);
+                f.kinds = QSet<QString>(kinds.begin(), kinds.end());
+                m_tabFilters.insert(static_cast<int>(persisted), f);
+            }
         }
-        // Belt-and-suspenders (cold-eyes HIGH #4): clear the
-        // rendered-html cache so the first rebuild after restore
-        // re-renders with the restored filter, even if a watcher
-        // fire raced ahead.
-        if (m_lastHtml) m_lastHtml->clear();
 
         // ANTS-1154: restore card / section / table expand state.
         const QStringList exItems = m_config->roadmapExpandedItems();
@@ -2631,48 +2650,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     refreshShippedDatesIfStale();
     refreshLastTouchDatesIfStale();  // ANTS-1237
 
-    // (2) Persisted preset.
-    Preset persisted = Preset::Full;
-    if (m_config) {
-        const QString name = m_config->roadmapActivePreset();
-        if      (name == QLatin1String("history"))    persisted = Preset::History;
-        else if (name == QLatin1String("current"))    persisted = Preset::Current;
-        else if (name == QLatin1String("next"))       persisted = Preset::Next;
-        else if (name == QLatin1String("far_future")) persisted = Preset::FarFuture;
-        else if (name == QLatin1String("custom"))     persisted = Preset::Custom;
-        // Unknown / "full" → Preset::Full default.
-    }
-
-    // (3) Custom-only status restore. If sf.isEmpty() (user picked
-    // Custom via tab click but never toggled a status checkbox, so
-    // onCheckboxToggled never wrote roadmap_status_filters), treat
-    // the missing object as "all on" — equivalent to a fresh-Custom
-    // state. We must NOT silently flip persisted back to Full here:
-    // doing so writes "full" to disk via persistActivePreset and
-    // discards the user's Custom choice without their knowledge.
-    // The .toBool(true) defaults handle the empty case naturally.
-    if (persisted == Preset::Custom && m_config) {
-        const QJsonObject sf = m_config->roadmapStatusFilters();
-        m_suppressCheckboxSignal = true;
-        if (m_filterDone)
-            m_filterDone->setChecked(sf.value(QLatin1String("done")).toBool(true));
-        if (m_filterPlanned)
-            m_filterPlanned->setChecked(sf.value(QLatin1String("planned")).toBool(true));
-        if (m_filterInProgress)
-            m_filterInProgress->setChecked(sf.value(QLatin1String("in_progress")).toBool(true));
-        if (m_filterConsidered)
-            m_filterConsidered->setChecked(sf.value(QLatin1String("considered")).toBool(true));
-        // ANTS-4977 — absent reads as shown, so a filter saved before 🚫
-        // existed does not hide items it never knew about.
-        if (m_filterDropped)
-            m_filterDropped->setChecked(sf.value(QLatin1String("dropped")).toBool(true));
-        if (m_filterCurrent)
-            m_filterCurrent->setChecked(sf.value(QLatin1String("current")).toBool(true));
-        m_suppressCheckboxSignal = false;
-    }
-
-    // (4) Apply the persisted preset (fires rebuild).
-    applyPreset(persisted);
+    applyPreset(persisted);   // fires rebuild
 }
 
 // ANTS-4414 — was `= default`, and had to stop being.
@@ -3195,62 +3173,25 @@ void RoadmapDialog::updateFilterSummaries() {
                           .arg(kindOn).arg(kindTotal));
     }
 
-    // Enabled EXACTLY when something is narrowing the list, so the control
-    // doubles as the at-a-glance answer to "why is this list short?". Search
-    // counts: it narrows as hard as any checkbox and the reset clears it.
+    // Enabled EXACTLY when this tab differs from its own defaults, or a
+    // search is active: reset returns the tab to those defaults and clears
+    // the search, so an enabled button always has something to do.
     const bool searching = m_searchBox && !m_searchBox->text().isEmpty();
+    const bool atDefaults = statusMaskFromBoxes() == defaultMaskFor(m_activePreset) && kindAll;
     if (m_resetFiltersBtn)
-        m_resetFiltersBtn->setEnabled(!statusAll || !kindAll || searching);
+        m_resetFiltersBtn->setEnabled(!atDefaults || searching);
 }
 
 void RoadmapDialog::applyPreset(Preset p) {
-    // Custom is "leave the user's tuning alone" — both checkboxes and
-    // sort order. ANTS-1123 indie-review LOW-3: previously this code
-    // ran `m_sortOrder = sortFor(Custom) = Document` even on the
-    // Custom branch, so clicking the Custom tab from History flipped
-    // descending → document-order silently. Spec INV-13's "Custom →
-    // Document" applies to the named-preset → Custom transition via
-    // checkbox divergence (handled in onCheckboxToggled, which
-    // doesn't call applyPreset). For an explicit Custom tab click we
-    // preserve whatever the user has staged.
-    if (p == Preset::Custom) {
-        m_activePreset = p;
-        persistActivePreset(p);  // ANTS-1150
-        if (m_tabs) {
-            const int idx = static_cast<int>(p);
-            if (m_tabs->currentIndex() != idx) {
-                m_suppressTabSignal = true;
-                m_tabs->setCurrentIndex(idx);
-                m_suppressTabSignal = false;
-            }
-        }
-        rebuild();
-        return;
-    }
-
+    // Each tab shows its OWN filters (user request 2026-09-29): switching
+    // tabs puts that tab's saved Status and Kind sets on the controls,
+    // rather than carrying the previous tab's over. A named tab takes its own
+    // sort; Custom keeps whatever order the user was looking at (ANTS-1123
+    // indie-review LOW-3).
     m_activePreset = p;
-    persistActivePreset(p);  // ANTS-1150
-    const unsigned mask = filterFor(p);
-    m_sortOrder = sortFor(p);
-
-    // Sync the checkboxes to the named preset's mask without
-    // re-firing onCheckboxToggled.
-    {
-        m_suppressCheckboxSignal = true;
-        if (m_filterDone)
-            m_filterDone->setChecked((mask & ShowDone) != 0);
-        if (m_filterPlanned)
-            m_filterPlanned->setChecked((mask & ShowPlanned) != 0);
-        if (m_filterInProgress)
-            m_filterInProgress->setChecked((mask & ShowInProgress) != 0);
-        if (m_filterConsidered)
-            m_filterConsidered->setChecked((mask & ShowConsidered) != 0);
-        if (m_filterDropped)
-            m_filterDropped->setChecked((mask & ShowDropped) != 0);
-        if (m_filterCurrent)
-            m_filterCurrent->setChecked((mask & ShowCurrent) != 0);
-        m_suppressCheckboxSignal = false;
-    }
+    if (p != Preset::Custom)
+        m_sortOrder = sortFor(p);
+    showTabFilters(tabFiltersFor(p));
 
     // Sync the tab bar selection to the preset (silent — no
     // currentChanged loop).
@@ -3262,70 +3203,95 @@ void RoadmapDialog::applyPreset(Preset p) {
             m_suppressTabSignal = false;
         }
     }
-
+    saveViewState();
+    updateFilterSummaries();
     rebuild();
 }
 
 void RoadmapDialog::onCheckboxToggled() {
-    // ANTS-1123 indie-review LOW-4: m_suppressCheckboxSignal is NOT
-    // redundant — Qt's QAbstractButton::toggled doesn't fire on a
-    // no-op `setChecked(currentState)`, but applyPreset switches
-    // between presets that have *different* mask shapes (e.g. Full
-    // vs Current), so any one of those `setChecked` calls actively
-    // flips state and would re-enter onCheckboxToggled and bounce
-    // the tab back to Custom mid-preset-apply. Guard retained.
+    // ANTS-1123 indie-review LOW-4: applyPreset's setChecked calls flip
+    // real state and would re-enter here, so the guard stays.
     if (m_suppressCheckboxSignal) return;
-    // The user diverged from a named preset; flip the tab bar to
-    // Custom (silent) and re-render with the current sort order.
-    if (m_tabs) {
-        unsigned mask = 0;
-        if (m_filterDone && m_filterDone->isChecked()) mask |= ShowDone;
-        if (m_filterPlanned && m_filterPlanned->isChecked()) mask |= ShowPlanned;
-        if (m_filterInProgress && m_filterInProgress->isChecked()) mask |= ShowInProgress;
-        if (m_filterConsidered && m_filterConsidered->isChecked()) mask |= ShowConsidered;
-        if (m_filterDropped && m_filterDropped->isChecked()) mask |= ShowDropped;
-        if (m_filterCurrent && m_filterCurrent->isChecked()) mask |= ShowCurrent;
-        const Preset p = presetMatching(mask, m_sortOrder);
-        m_activePreset = p;
-        persistActivePreset(p);  // ANTS-1150 — second m_activePreset
-                                 // write site (cold-eyes CRITICAL #2)
-        // ANTS-1150 — persist the status-checkbox mask too. Only
-        // matters when p == Custom (named-preset reads from
-        // applyPreset's canonical mask), but unconditional save is
-        // simpler than branching and storeIfChanged short-circuits
-        // on no-change anyway.
-        if (m_config) {
-            QJsonObject sf;
-            sf[QLatin1String("done")]        = m_filterDone        && m_filterDone->isChecked();
-            sf[QLatin1String("planned")]     = m_filterPlanned     && m_filterPlanned->isChecked();
-            sf[QLatin1String("in_progress")] = m_filterInProgress  && m_filterInProgress->isChecked();
-            sf[QLatin1String("considered")]  = m_filterConsidered  && m_filterConsidered->isChecked();
-            sf[QLatin1String("dropped")]     = m_filterDropped     && m_filterDropped->isChecked();
-            sf[QLatin1String("current")]     = m_filterCurrent     && m_filterCurrent->isChecked();
-            m_config->setRoadmapStatusFilters(sf);
-        }
-        const int idx = static_cast<int>(p);
-        if (m_tabs->currentIndex() != idx) {
-            m_suppressTabSignal = true;
-            m_tabs->setCurrentIndex(idx);
-            m_suppressTabSignal = false;
-        }
-    }
+    // A status change belongs to the tab it was made on: that tab keeps it,
+    // and the user stays on it.
+    m_tabFilters[static_cast<int>(m_activePreset)] = tabFiltersFor(m_activePreset);
+    m_tabFilters[static_cast<int>(m_activePreset)].mask = statusMaskFromBoxes();
+    saveViewState();
     rebuild();
 }
 
-void RoadmapDialog::persistActivePreset(Preset p) {
-    if (!m_config) return;
-    const char *name = nullptr;
+// Switch-on-enum, so -Wswitch-enum flags a Preset added without a name.
+QString RoadmapDialog::presetName(Preset p) {
     switch (p) {
-        case Preset::Full:      name = "full";       break;
-        case Preset::History:   name = "history";    break;
-        case Preset::Current:   name = "current";    break;
-        case Preset::Next:      name = "next";       break;
-        case Preset::FarFuture: name = "far_future"; break;
-        case Preset::Custom:    name = "custom";     break;
+        case Preset::Full:      return QStringLiteral("full");
+        case Preset::History:   return QStringLiteral("history");
+        case Preset::Current:   return QStringLiteral("current");
+        case Preset::Next:      return QStringLiteral("next");
+        case Preset::FarFuture: return QStringLiteral("far_future");
+        case Preset::Custom:    return QStringLiteral("custom");
     }
-    if (name) m_config->setRoadmapActivePreset(QString::fromLatin1(name));
+    return QStringLiteral("full");
+}
+
+// A tab's own default statuses. Custom starts showing everything, as Full
+// does; filterFor(Custom) stays 0 because Custom has no preset mask.
+unsigned RoadmapDialog::defaultMaskFor(Preset p) {
+    return p == Preset::Custom ? filterFor(Preset::Full) : filterFor(p);
+}
+
+RoadmapDialog::TabFilters RoadmapDialog::tabFiltersFor(Preset p) const {
+    const auto it = m_tabFilters.constFind(static_cast<int>(p));
+    if (it != m_tabFilters.constEnd())
+        return it.value();
+    TabFilters f;
+    f.mask = defaultMaskFor(p);
+    return f;
+}
+
+unsigned RoadmapDialog::statusMaskFromBoxes() const {
+    unsigned mask = 0;
+    const QCheckBox *boxes[] = {m_filterDone.data(), m_filterPlanned.data(),
+                                m_filterInProgress.data(), m_filterConsidered.data(),
+                                m_filterDropped.data(), m_filterCurrent.data()};
+    for (size_t i = 0; i < std::size(kStatusBits); ++i)
+        if (boxes[i] && boxes[i]->isChecked()) mask |= kStatusBits[i].bit;
+    return mask;
+}
+
+void RoadmapDialog::showTabFilters(const TabFilters &f) {
+    m_suppressCheckboxSignal = true;
+    QCheckBox *boxes[] = {m_filterDone.data(), m_filterPlanned.data(),
+                          m_filterInProgress.data(), m_filterConsidered.data(),
+                          m_filterDropped.data(), m_filterCurrent.data()};
+    for (size_t i = 0; i < std::size(kStatusBits); ++i)
+        if (boxes[i]) boxes[i]->setChecked((f.mask & kStatusBits[i].bit) != 0);
+    m_suppressCheckboxSignal = false;
+    m_kindFilter = f.kinds;
+    for (auto it = m_kindCheckboxes.constBegin(); it != m_kindCheckboxes.constEnd(); ++it) {
+        QSignalBlocker block(it.value());
+        it.value()->setChecked(m_kindFilter.contains(it.key()));
+    }
+    if (m_lastHtml) m_lastHtml->clear();   // the filter changed under the cache
+}
+
+void RoadmapDialog::saveViewState() {
+    if (!m_config) return;
+    QJsonObject tabs;
+    for (auto it = m_tabFilters.constBegin(); it != m_tabFilters.constEnd(); ++it) {
+        QJsonObject status;
+        for (const StatusBit &b : kStatusBits)
+            status[QLatin1String(b.key)] = (it.value().mask & b.bit) != 0;
+        QStringList kinds(it.value().kinds.begin(), it.value().kinds.end());
+        kinds.sort();   // stable on disk, whatever QSet's order
+        QJsonObject tab;
+        tab[QLatin1String("status")] = status;
+        tab[QLatin1String("kinds")]  = QJsonArray::fromStringList(kinds);
+        tabs[presetName(static_cast<Preset>(it.key()))] = tab;
+    }
+    QJsonObject state;
+    state[QLatin1String("active")] = presetName(m_activePreset);
+    state[QLatin1String("tabs")]   = tabs;
+    m_config->setRoadmapViewState(QFileInfo(m_roadmapPath).canonicalFilePath(), state);
 }
 
 void RoadmapDialog::scheduleRebuild() {

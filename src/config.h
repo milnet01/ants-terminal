@@ -78,6 +78,18 @@ public:
     QJsonObject roadmapStatusFilters() const;
     void setRoadmapStatusFilters(const QJsonObject &filters);
 
+    // RoadmapDialog view state PER PROJECT (user request 2026-09-29), keyed
+    // by the canonical path of the roadmap the dialog shows. Shape:
+    //   { "active": "<preset>",
+    //     "tabs": { "<preset>": { "status": {<the six keys above>},
+    //                             "kinds": [<kind values>] } } }
+    // A roadmap tab absent from "tabs" is at its own defaults. An empty
+    // object means the project was never saved. The three global keys above
+    // are read only to seed the first project after upgrade.
+    QJsonObject roadmapViewState(const QString &roadmapPath) const;
+    void setRoadmapViewState(const QString &roadmapPath, const QJsonObject &state);
+    bool hasRoadmapViewStates() const;
+
     // ANTS-1735 §2.7 — autonomous Claude-Code model-switcher knobs.
     // claudeAutoModel() returns a QJsonObject keyed by:
     //   "switch_enabled"   bool — claude.auto_model_switch, default false

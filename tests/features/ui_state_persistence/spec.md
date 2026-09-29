@@ -69,23 +69,19 @@ collision.
   `QSignalBlocker` (token: `QSignalBlocker block(m_tabs)` or
   equivalent on the same scope as the `setCurrentIndex` call).
 
-- **ANTS-1150-INV-10** `roadmapdialog.cpp` calls
-  `setRoadmapActivePreset(` from BOTH `applyPreset` and
-  `onCheckboxToggled` (the two write sites for `m_activePreset`).
-  Verified by extracting each function body and asserting the
-  setter call appears inside.
+- **ANTS-1150-INV-10** *(rewritten 2026-09-29: filters are per roadmap
+  tab and per project, user request)* `roadmapdialog.cpp`'s `applyPreset`
+  and `onCheckboxToggled` both call `saveViewState()`.
 
-- **ANTS-1150-INV-11** `roadmapdialog.cpp` calls
-  `setRoadmapKindFilters(` AND `setRoadmapStatusFilters(`.
+- **ANTS-1150-INV-11** `saveViewState` calls `setRoadmapViewState(`, and
+  the dialog calls none of `setRoadmapKindFilters(`,
+  `setRoadmapStatusFilters(`, `setRoadmapActivePreset(`: the three global
+  keys are a read-only seed.
 
-- **ANTS-1150-INV-12** `roadmapdialog.cpp` ctor restores all
-  three persisted RoadmapDialog keys (greps for the three
-  getters: `roadmapKindFilters()`, `roadmapStatusFilters()`,
-  `roadmapActivePreset()`). The restore order asserts that
-  `roadmapStatusFilters()` is read inside an
-  `if (... == Preset::Custom ...)` guard (the named-preset
-  path skips status restore per the cold-eyes CRITICAL #1
-  fold-in).
+- **ANTS-1150-INV-12** The ctor reads `roadmapViewState(`. The three
+  global getters are read only after the
+  `!m_config->hasRoadmapViewStates()` test, so they seed the first project
+  opened after the change and nothing else.
 
 - **ANTS-1150-INV-13** `auditdialog.h` ctor signature includes
   `Config *config` (third param, no `= nullptr` default per

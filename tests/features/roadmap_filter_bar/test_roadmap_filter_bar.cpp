@@ -16,8 +16,10 @@
 #include <QCheckBox>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLineEdit>
 #include <QString>
+#include <QTabBar>
 #include <QTemporaryDir>
 #include <QToolButton>
 
@@ -206,4 +208,113 @@ TEST(RoadmapFilterBar, ControlsAreKeyboardReachable) {
     EXPECT_NE(btn(dlg, "roadmap-filter-kind-button")->menu(), nullptr);
     EXPECT_EQ(btn(dlg, "roadmap-filter-reset-button")->menu(), nullptr)
         << "reset is an action, not a popup";
+}
+
+namespace {
+// The tab order the dialog's Preset enum fixes: Full, History, Current, Next,
+// Far Future, Custom.
+constexpr int kFarFutureTab = 4;
+constexpr int kCustomTab    = 5;
+constexpr int kFullTab      = 0;
+}  // namespace
+
+// Reported 2026-09-29: filters set on Custom were replaced by Far Future's on a
+// round trip through that tab, and the Kind set followed every tab. Each tab
+// now owns its Status and Kind filters.
+TEST(RoadmapFilterBar, EachTabKeepsItsOwnFilters) {
+    Harness h;
+    Config cfg;
+    RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+    QTabBar *tabs = dlg.findChild<QTabBar *>();
+    ASSERT_NE(tabs, nullptr);
+
+    tabs->setCurrentIndex(kCustomTab);
+    box(dlg, "roadmap-filter-done")->setChecked(false);
+    box(dlg, "roadmap-filter-kind-fix")->setChecked(true);
+    ASSERT_EQ(tabs->currentIndex(), kCustomTab);
+
+    tabs->setCurrentIndex(kFarFutureTab);
+    EXPECT_FALSE(box(dlg, "roadmap-filter-kind-fix")->isChecked())
+        << "Custom's Kind filter followed the user onto Far Future";
+    EXPECT_TRUE(box(dlg, "roadmap-filter-considered")->isChecked());
+    EXPECT_FALSE(box(dlg, "roadmap-filter-planned")->isChecked())
+        << "Far Future shows its own statuses";
+
+    tabs->setCurrentIndex(kCustomTab);
+    EXPECT_FALSE(box(dlg, "roadmap-filter-done")->isChecked())
+        << "Custom lost its own Status filter";
+    EXPECT_TRUE(box(dlg, "roadmap-filter-planned")->isChecked())
+        << "Far Future's statuses were carried onto Custom";
+    EXPECT_TRUE(box(dlg, "roadmap-filter-kind-fix")->isChecked())
+        << "Custom lost its own Kind filter";
+}
+
+// A filter changed on a named tab belongs to that tab: the tab stays, the
+// change is still there on return, and no other tab sees it.
+TEST(RoadmapFilterBar, AFilterChangedOnANamedTabStaysOnThatTab) {
+    Harness h;
+    Config cfg;
+    RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+    QTabBar *tabs = dlg.findChild<QTabBar *>();
+    ASSERT_NE(tabs, nullptr);
+
+    tabs->setCurrentIndex(kFarFutureTab);
+    box(dlg, "roadmap-filter-kind-doc")->setChecked(true);
+    box(dlg, "roadmap-filter-planned")->setChecked(true);
+    EXPECT_EQ(tabs->currentIndex(), kFarFutureTab)
+        << "changing a filter moved the user to another tab";
+
+    tabs->setCurrentIndex(kFullTab);
+    EXPECT_FALSE(box(dlg, "roadmap-filter-kind-doc")->isChecked());
+    tabs->setCurrentIndex(kCustomTab);
+    EXPECT_FALSE(box(dlg, "roadmap-filter-kind-doc")->isChecked());
+
+    tabs->setCurrentIndex(kFarFutureTab);
+    EXPECT_TRUE(box(dlg, "roadmap-filter-kind-doc")->isChecked());
+    EXPECT_TRUE(box(dlg, "roadmap-filter-planned")->isChecked());
+
+    // Reset puts THIS tab back to its own defaults, not to "show everything".
+    btn(dlg, "roadmap-filter-reset-button")->click();
+    EXPECT_FALSE(box(dlg, "roadmap-filter-kind-doc")->isChecked());
+    EXPECT_FALSE(box(dlg, "roadmap-filter-planned")->isChecked());
+    EXPECT_TRUE(box(dlg, "roadmap-filter-considered")->isChecked());
+    EXPECT_FALSE(btn(dlg, "roadmap-filter-reset-button")->isEnabled())
+        << "a tab at its defaults has nothing to reset";
+}
+
+// Filters are remembered per project: reopening the dialog on one roadmap
+// brings back its last tab and that tab's filters, and another project's
+// roadmap is untouched by them. Keyed by the roadmap's path (user request
+// 2026-09-29: "link it to the cwd").
+TEST(RoadmapFilterBar, FiltersAreRememberedPerProject) {
+    Harness h;
+    const QString other = h.dir.filePath(QStringLiteral("other/ROADMAP.md"));
+    QDir().mkpath(QFileInfo(other).path());
+    {
+        QFile f(other);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kFixture);
+    }
+    {
+        Config cfg;
+        RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+        dlg.findChild<QTabBar *>()->setCurrentIndex(kFarFutureTab);
+        box(dlg, "roadmap-filter-kind-doc")->setChecked(true);
+    }
+    {
+        Config cfg;   // a fresh read of the saved file, as after a relaunch
+        RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+        EXPECT_EQ(dlg.findChild<QTabBar *>()->currentIndex(), kFarFutureTab)
+            << "the project's last tab was not restored";
+        EXPECT_TRUE(box(dlg, "roadmap-filter-kind-doc")->isChecked())
+            << "the tab's Kind filter was not restored";
+    }
+    {
+        Config cfg;
+        RoadmapDialog dlg(other, QStringLiteral("light"), nullptr, &cfg);
+        EXPECT_EQ(dlg.findChild<QTabBar *>()->currentIndex(), kFullTab)
+            << "another project took this one's tab";
+        EXPECT_FALSE(box(dlg, "roadmap-filter-kind-doc")->isChecked())
+            << "another project took this one's filters";
+    }
 }

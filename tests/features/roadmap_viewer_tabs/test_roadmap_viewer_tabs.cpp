@@ -104,26 +104,9 @@ static int runMain() {
     if (tabsAdd > filterAdd)
         fail("INV-7", "m_tabs must be added before filterRow");
 
-    // INV-8: presetMatching returns Custom when filter+sort matches no
-    // named preset. Use a deliberately weird combo: Done|Considered with
-    // descending sort.
-    {
-        const unsigned weird =
-            RoadmapDialog::ShowDone | RoadmapDialog::ShowConsidered;
-        if (RoadmapDialog::presetMatching(weird, SortOrder::Document) !=
-            Preset::Custom)
-            fail("INV-8", "weird filter combo should match Custom");
-        // Sanity: the Full preset values DO map back to Full.
-        const unsigned full = RoadmapDialog::filterFor(Preset::Full);
-        if (RoadmapDialog::presetMatching(full, SortOrder::Document) !=
-            Preset::Full)
-            fail("INV-8", "Full filter+Document sort must round-trip");
-        // History must round-trip too.
-        if (RoadmapDialog::presetMatching(
-                RoadmapDialog::filterFor(Preset::History),
-                RoadmapDialog::sortFor(Preset::History)) != Preset::History)
-            fail("INV-8", "History filter+sort must round-trip");
-    }
+    // INV-8 withdrawn 2026-09-29: presetMatching() existed to move a user
+    // who changed a filter onto Custom. Each tab now keeps its own filters
+    // (roadmap_filter_bar's EachTabKeepsItsOwnFilters), so nothing calls it.
 
     // INV-9: DescendingChronological reverses top-level (`## `) section
     // order. Build a synthetic doc with two sections.
@@ -236,15 +219,13 @@ static int runMain() {
                     "legacy geometry round-trip persists window position "
                     "(D4 violation) — must use DialogChrome sizeKey");
 
-    // INV-13 (debt-sweep finding 2.3): sortFor(Custom) is Document.
-    // The Custom preset is the "user has diverged via checkboxes"
-    // tab; it inherits document order so the dialog doesn't silently
-    // re-sort when the user clicks a checkbox.
+    // INV-13 (debt-sweep finding 2.3): sortFor(Custom) is Document, so
+    // Custom never re-sorts the list on its own.
     if (RoadmapDialog::sortFor(Preset::Custom) != SortOrder::Document)
         fail("INV-13",
                     "Custom preset must default to Document sort");
 
-    std::puts("OK roadmap_viewer_tabs: 13/13 invariants");
+    std::puts("OK roadmap_viewer_tabs: 12 invariants (INV-8 withdrawn)");
     return 0;
 }
 

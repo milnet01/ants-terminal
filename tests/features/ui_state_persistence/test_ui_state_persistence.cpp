@@ -407,75 +407,55 @@ TEST(UiStatePersistence, Inv9_settingsDialogWiring) {
     EXPECT_EQ(0, expect_failures()) << "Inv9_settingsDialogWiring failed";
 }
 
+// INV-10 to INV-12 were rewritten 2026-09-29, when the roadmap dialog's filters
+// became per roadmap tab and per project (user request). The three global keys
+// are now a one-time seed, read and never written.
 TEST(UiStatePersistence, Inv10_roadmapDialogPresetWriteSites) {
     expect_reset();
     const std::string rd = readFile(SRC_ROADMAPDIALOG_CPP_PATH);
-    ASSERT_FALSE(rd.empty()) << "ANTS-1150-INV-10: read roadmapdialog.cpp";
+    ASSERT_FALSE(rd.empty()) << "INV-10: read roadmapdialog.cpp";
 
-    // Both call sites for setRoadmapActivePreset (via persistActivePreset
-    // helper or direct). Either spelling counts — the test is "the
-    // setter or its wrapper appears inside both function bodies."
-    const std::string applyBody = extractBody(rd, "void RoadmapDialog::applyPreset");
-    expect(!applyBody.empty(), "ANTS-1150-INV-10: applyPreset body extracted");
-
-    const bool applyPersists =
-        contains(applyBody, "setRoadmapActivePreset(") ||
-        contains(applyBody, "persistActivePreset(");
-    expect(applyPersists,
-           "ANTS-1150-INV-10: applyPreset persists active preset "
-           "(setRoadmapActivePreset or persistActivePreset call)");
-
-    const std::string toggleBody = extractBody(rd, "void RoadmapDialog::onCheckboxToggled");
-    expect(!toggleBody.empty(), "ANTS-1150-INV-10: onCheckboxToggled body extracted");
-
-    const bool togglePersists =
-        contains(toggleBody, "setRoadmapActivePreset(") ||
-        contains(toggleBody, "persistActivePreset(");
-    expect(togglePersists,
-           "ANTS-1150-INV-10: onCheckboxToggled persists active preset "
-           "on Custom-divergence (setRoadmapActivePreset or "
-           "persistActivePreset call)");
+    // Both places the active tab or its filters change save the view.
+    for (const char *fn : {"void RoadmapDialog::applyPreset",
+                           "void RoadmapDialog::onCheckboxToggled"}) {
+        const std::string body = extractBody(rd, fn);
+        expect(!body.empty(), (std::string("INV-10: body extracted: ") + fn).c_str());
+        expect(contains(body, "saveViewState()"),
+               (std::string("INV-10: saves the view state: ") + fn).c_str());
+    }
     EXPECT_EQ(0, expect_failures()) << "Inv10_roadmapDialogPresetWriteSites failed";
 }
 
 TEST(UiStatePersistence, Inv11_roadmapDialogKindStatusWiring) {
     expect_reset();
     const std::string rd = readFile(SRC_ROADMAPDIALOG_CPP_PATH);
-    ASSERT_FALSE(rd.empty()) << "ANTS-1150-INV-11: read roadmapdialog.cpp";
+    ASSERT_FALSE(rd.empty()) << "INV-11: read roadmapdialog.cpp";
 
-    expect(contains(rd, "setRoadmapKindFilters("),
-           "ANTS-1150-INV-11: roadmapdialog.cpp calls setRoadmapKindFilters(");
-    expect(contains(rd, "setRoadmapStatusFilters("),
-           "ANTS-1150-INV-11: roadmapdialog.cpp calls setRoadmapStatusFilters(");
+    const std::string body = extractBody(rd, "void RoadmapDialog::saveViewState");
+    expect(contains(body, "setRoadmapViewState("),
+           "INV-11: saveViewState writes the per-project state");
+    for (const char *legacy : {"setRoadmapKindFilters(", "setRoadmapStatusFilters(",
+                               "setRoadmapActivePreset("})
+        expect(!contains(rd, legacy),
+               (std::string("INV-11: the global key is a read-only seed now: ") + legacy).c_str());
     EXPECT_EQ(0, expect_failures()) << "Inv11_roadmapDialogKindStatusWiring failed";
 }
 
 TEST(UiStatePersistence, Inv12_roadmapDialogCtorRestore) {
     expect_reset();
     const std::string rd = readFile(SRC_ROADMAPDIALOG_CPP_PATH);
-    ASSERT_FALSE(rd.empty()) << "ANTS-1150-INV-12: read roadmapdialog.cpp";
+    ASSERT_FALSE(rd.empty()) << "INV-12: read roadmapdialog.cpp";
 
-    expect(contains(rd, "roadmapKindFilters()"),
-           "ANTS-1150-INV-12: ctor reads roadmapKindFilters()");
-    expect(contains(rd, "roadmapStatusFilters()"),
-           "ANTS-1150-INV-12: ctor reads roadmapStatusFilters()");
-    expect(contains(rd, "roadmapActivePreset()"),
-           "ANTS-1150-INV-12: ctor reads roadmapActivePreset()");
-
-    // Status-filter read MUST be inside an `if (... Preset::Custom ...)`
-    // guard — named-preset path skips it (cold-eyes CRITICAL #1).
-    // Heuristic: find roadmapStatusFilters( and walk back ~400 chars
-    // for "Preset::Custom".
-    const auto sfPos = rd.find("roadmapStatusFilters()");
-    if (sfPos == std::string::npos) {
-        expect(false, "ANTS-1150-INV-12: roadmapStatusFilters() call site not found");
-    } else {
-        const std::size_t lookbackStart = sfPos > 600 ? sfPos - 600 : 0;
-        const std::string preceding = rd.substr(lookbackStart, sfPos - lookbackStart);
-        expect(contains(preceding, "Preset::Custom"),
-               "ANTS-1150-INV-12: roadmapStatusFilters() read is gated "
-               "by Preset::Custom check (cold-eyes CRITICAL #1 "
-               "named-preset-skip path)");
+    expect(contains(rd, "roadmapViewState("), "INV-12: ctor reads roadmapViewState(");
+    // The three global getters seed the first project only: each read sits
+    // after the `!m_config->hasRoadmapViewStates()` test.
+    const auto seed = rd.find("!m_config->hasRoadmapViewStates()");
+    expect(seed != std::string::npos, "INV-12: the seed branch is gated");
+    for (const char *getter : {"roadmapKindFilters()", "roadmapStatusFilters()",
+                               "roadmapActivePreset()"}) {
+        const auto at = rd.find(getter);
+        expect(at != std::string::npos && seed != std::string::npos && at > seed,
+               (std::string("INV-12: read only in the seed branch: ") + getter).c_str());
     }
     EXPECT_EQ(0, expect_failures()) << "Inv12_roadmapDialogCtorRestore failed";
 }

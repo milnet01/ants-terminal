@@ -28,6 +28,9 @@ chrome change rather than a rewrite, and the first row below is what proves it.
 | `SummariesTrackTheCheckboxes` | The buttons say `Status: all` / `Kind: all` at rest; unchecking a status yields `Status: 5 of 6`; checking two kinds yields `Kind: 2 of 12`. The status set counts DOWN from all-on and the kind set counts UP from empty, so a summary derived from the other's shape would be wrong. |
 | `ResetIsEnabledExactlyWhenNarrowed` | The reset button is disabled at rest and enabled by a status uncheck, by a kind check, and — separately — by search text alone. Search counts because it narrows as hard as any checkbox and reset clears it. |
 | `ResetRestoresEveryControl` | Clicking reset re-checks every status, unchecks every kind, clears the search box, and leaves the button disabled again. |
+| `EachTabKeepsItsOwnFilters` | Status and Kind filters set on Custom survive a round trip through Far Future, and Far Future shows its own statuses with no Kind carried in. Reported 2026-09-29. |
+| `AFilterChangedOnANamedTabStaysOnThatTab` | Changing a filter on a named tab keeps that tab selected, the change is there on return, and no other tab sees it. Reset returns the current tab to its own defaults and is disabled there. Every tab's filters are saved per project. |
+| `FiltersAreRememberedPerProject` | Reopening the dialog on a roadmap, with a fresh `Config` as after a relaunch, restores that project's last tab and the tab's Kind filter; another project's roadmap opens at its own defaults. |
 | `ControlsAreKeyboardReachable` | The three buttons take strong focus and the two filter buttons carry a menu, so the collapse costs no keyboard access. |
 
 ## What is NOT locked

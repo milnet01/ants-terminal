@@ -45,8 +45,9 @@ existing parser / renderer (no parser change — pure presentation layer):
   named preset returns `Document`.
 - **INV-7** The tab bar is the first widget in the dialog's vertical
   layout (above the filter checkbox row).
-- **INV-8** `presetMatching(filter, sort)` returns `Custom` when the
-  active filter+sort combo doesn't equal any of the five named presets.
+- **INV-8** *Withdrawn 2026-09-29.* `presetMatching()` moved a user who
+  changed a filter onto Custom. Each tab now keeps its own filters
+  (`roadmap_filter_bar`), and the function was removed.
 - **INV-9** `renderHtml(..., DescendingChronological, ...)` against a
   multi-section markdown emits the sections in reverse document order.
 - **INV-9b** `renderHtml(..., Document, ...)` against the same input
@@ -66,10 +67,9 @@ existing parser / renderer (no parser change — pure presentation layer):
   `"RoadmapDialog"` sizeKey (dialogs.md D3), and the dialog does NOT
   hand-roll `saveGeometry`/`restoreGeometry`/`roadmapDialogGeometry`
   (those persist window position — a D4 violation). *(ANTS-2012)*
-- **INV-13** `sortFor(Preset::Custom)` returns `Document` — when the
-  user diverges from any named preset via the checkbox row, the
-  dialog inherits document order rather than silently re-sorting.
+- **INV-13** `sortFor(Preset::Custom)` returns `Document`, so Custom
+  never re-sorts the list on its own.
 
 Test harness: source-grep for the structural invariants; behavioural
 invariants drive `RoadmapDialog::renderHtml` / `filterFor` / `sortFor` /
-`presetMatching` directly (the same pattern as roadmap_viewer).
+directly (the same pattern as roadmap_viewer).

@@ -423,6 +423,23 @@ void Config::setRoadmapStatusFilters(const QJsonObject &filters) {
     save();
 }
 
+QJsonObject Config::roadmapViewState(const QString &roadmapPath) const {
+    return m_data.value("roadmap_view_state").toObject().value(roadmapPath).toObject();
+}
+
+void Config::setRoadmapViewState(const QString &roadmapPath, const QJsonObject &state) {
+    if (roadmapPath.isEmpty()) return;
+    QJsonObject all = m_data.value("roadmap_view_state").toObject();
+    if (state.isEmpty()) all.remove(roadmapPath);
+    else                 all.insert(roadmapPath, state);
+    if (!storeIfChanged("roadmap_view_state", all)) return;
+    save();
+}
+
+bool Config::hasRoadmapViewStates() const {
+    return m_data.contains("roadmap_view_state");
+}
+
 // ANTS-1735 §2.7 — typed accessor mirrors the roadmapStatusFilters() shape.
 // On-disk keys: claude.auto_model_switch / claude.auto_model_min_dwell_sec /
 // claude.auto_model_floor / claude.auto_model_composer_stale_ms (ANTS-1914) /
