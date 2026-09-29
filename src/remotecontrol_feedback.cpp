@@ -428,6 +428,34 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             }
         }
         out["mapped_id_status"] = statusArr;
+        // ANTS-4079 § 2.4 / ANTS-3748 — a cited id that was split into parts
+        // reports them, so "the parent shipped" is not read as "all of it did".
+        // mapped_id_status keeps its meaning: the id's own status. Read from the
+        // machine-global store, where every migrated project's rows live.
+        {
+            QJsonObject partsById;
+            RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+            if (RoadmapStore *store = roadmapStoreOrNull(&why, nullptr)) {
+                for (const QString &id : pr.mappedIds) {
+                    const auto t = store->resolveLinkTarget(0, id);
+                    if (!t || !t->itemPk)
+                        continue;
+                    const auto rows = store->linksFor(*t->itemPk);
+                    if (!rows)
+                        continue;
+                    QJsonArray parts;
+                    for (const auto &r : *rows)
+                        if (r.reverse && r.type == QLatin1String("splits-from"))
+                            parts.append(QJsonObject{
+                                {QStringLiteral("id"), r.id},
+                                {QStringLiteral("status"), rcStatusEmoji(r.status)}});
+                    if (!parts.isEmpty())
+                        partsById.insert(id, parts);
+                }
+            }
+            if (!partsById.isEmpty())
+                out[QStringLiteral("mapped_id_parts")] = partsById;
+        }
         if (anyStale) {
             out[QStringLiteral("server_build_date")]   = buildDate;
             out[QStringLiteral("server_build_commit")] =

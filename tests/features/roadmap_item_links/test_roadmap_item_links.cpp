@@ -354,7 +354,7 @@ TEST(RoadmapItemLinks, SplitParentCannotShipWithAnOpenPart) {
     EXPECT_EQ(parts.at(0).toObject().value(QStringLiteral("id")).toString(),
               QStringLiteral("DEMO-0002"));
     EXPECT_EQ(parts.at(0).toObject().value(QStringLiteral("status")).toString(),
-              QStringLiteral("planned"));
+              QString::fromUtf8(kPlanned)) << "the emoji, as from_status carries";
     EXPECT_EQ(statusOf(rc, fx.root, "DEMO-0001"), before) << "the refusal wrote";
 
     // In-progress is not guarded; only shipping is.
@@ -414,4 +414,63 @@ TEST(RoadmapItemLinks, OpenBlockerWarnsButDoesNotRefuse) {
     const QJsonObject after = flip(rc, fx.root, "DEMO-0001", "shipped");
     ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool()) << dump(after);
     EXPECT_FALSE(after.contains(QStringLiteral("blocked_by_open"))) << dump(after);
+}
+
+// INV-10 — feedback_query reports a cited parent's parts; mapped_id_status keeps
+// the parent's own status. Feedback files cite ANTS- ids only (FeedbackFile's
+// id pattern), so this case seeds a third project under that prefix.
+TEST(RoadmapItemLinks, FeedbackQueryReportsPartsOfACitedParent) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n\n# Ants \xE2\x80\x94 Roadmap\n\n";
+    md += kPad;
+    md += "\n## Work\n\n";
+    md += item("ANTS-0001", kPlanned, "The parent.");
+    md += item("ANTS-0002", kPlanned, "Part one.");
+    md += item("ANTS-0003", kPlanned, "Part two.");
+    md += item("ANTS-0004", kPlanned, "Unsplit.");
+    const QString ants = seedProject(fx.tmp, "ants", md, QStringLiteral("Ants"),
+                                     QStringLiteral("ants"));
+    ASSERT_FALSE(ants.isEmpty());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(link(rc, ants, "link", "ANTS-0002", "splits-from", {"ANTS-0001"})
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(flip(rc, ants, "ANTS-0003", "shipped").value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(link(rc, ants, "link", "ANTS-0003", "splits-from", {"ANTS-0001"})
+                    .value(QStringLiteral("ok")).toBool());
+
+    const QString fb = QDir(fx.tmp.path()).filePath(QStringLiteral("Demo_Ants_MCP_Feedback.md"));
+    ASSERT_TRUE(writeFile(fb,
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Demo\n\n"
+        "## 2026-09-29 \xE2\x80\x94 s\n\n"
+        "### Finding A\n\n- **What:** a.\n- **Proposed ID:** ANTS-0001\n\n"
+        "### Finding B\n\n- **What:** b.\n- **Proposed ID:** ANTS-0004\n"));
+    QJsonObject req;
+    req[QStringLiteral("path")]       = fb;
+    req[QStringLiteral("caller_cwd")] = ants;
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool()) << dump(env);
+
+    const QJsonObject parts = env.value(QStringLiteral("mapped_id_parts")).toObject();
+    const QJsonArray p1 = parts.value(QStringLiteral("ANTS-0001")).toArray();
+    ASSERT_EQ(p1.size(), 2) << dump(env);
+    EXPECT_EQ(p1.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("ANTS-0002"));
+    EXPECT_EQ(p1.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QString::fromUtf8(kPlanned));
+    EXPECT_EQ(p1.at(1).toObject().value(QStringLiteral("status")).toString(),
+              QString::fromUtf8("\xE2\x9C\x85"));
+    EXPECT_FALSE(parts.contains(QStringLiteral("ANTS-0004"))) << "an id with no parts";
+
+    bool sawParent = false;
+    for (const auto &v : env.value(QStringLiteral("mapped_id_status")).toArray()) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("id")).toString() != QLatin1String("ANTS-0001"))
+            continue;
+        sawParent = true;
+        EXPECT_EQ(o.value(QStringLiteral("status")).toString(), QString::fromUtf8(kPlanned))
+            << "mapped_id_status keeps the parent's own status";
+    }
+    EXPECT_TRUE(sawParent) << dump(env);
 }

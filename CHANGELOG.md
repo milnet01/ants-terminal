@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_query lists the parts of a cited item that was split, in `mapped_id_parts`, so a shipped parent is not read as all of its work shipped** (ANTS-4079)
+
 - **A roadmap item split into parts cannot be marked shipped while a part is still open; a flip past an open blocker succeeds and names it in `blocked_by_open`** (ANTS-3748)
   flip refuses open_parts and lists the open parts. flip_batch refuses per
   locator, and counts a part shipping in the same batch as shipped. A dropped

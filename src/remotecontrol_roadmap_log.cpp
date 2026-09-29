@@ -85,8 +85,9 @@ rcdetail::rlFlipLinks(RoadmapStore &store, qint64 itemPk, const QString &toWord,
         if (closed)
             continue;
         if (toShipped && r.reverse && r.type == QLatin1String("splits-from"))
+            // The emoji, as the flip envelope's from_status / to_status carry.
             out.openParts.append(QJsonObject{{QStringLiteral("id"), r.id},
-                                             {QStringLiteral("status"), status}});
+                                             {QStringLiteral("status"), rcStatusEmoji(status)}});
         else if (!r.reverse && r.type == QLatin1String("blocked-by"))
             out.openBlockers << r.id;
     }
