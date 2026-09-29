@@ -141,10 +141,13 @@ void showAboutAnts(QWidget *parent, const QList<TabShells> &tabs) {
              compilerInfo());
     // ANTS-5340 — ants-mcpd is rebuilt on its own, so ask the binary Claude
     // Code launches, fresh on every open: a rebuild shows with no relaunch.
-    const QString mcpdPath = mcpd::locateBinary(
+    // ANTS-5558 — with the registration's args, so an AppImage registered as
+    // `$APPIMAGE --mcpd` is asked through AppRun's `--mcpd` route.
+    const mcpd::Launch mcpdLaunch = mcpd::locateLaunch(
         QDir::homePath() + QStringLiteral("/.claude.json"),
         QCoreApplication::applicationDirPath());
-    const QString mcpdVersion = mcpd::queryVersion(mcpdPath, 2000);
+    const QString mcpdPath = mcpdLaunch.program;
+    const QString mcpdVersion = mcpd::queryVersion(mcpdLaunch, 2000);
     const QString mcpdLine = QStringLiteral("<br/><b>Ants MCP:</b> %1").arg(
         mcpdPath.isEmpty()      ? QStringLiteral("ants-mcpd not found")
         : mcpdVersion.isEmpty() ? QStringLiteral("no version from %1")

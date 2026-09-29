@@ -503,9 +503,14 @@ void Config::setClaudeAutoModelNudgeShown(bool shown) {
     save();
 }
 
-// ANTS-5558 — stubs; the key lands with the implementation.
-bool Config::welcomeShown() const { return false; }
-void Config::setWelcomeShown(bool) {}
+bool Config::welcomeShown() const {
+    return m_data.value("ui.welcome_shown").toBool(false);
+}
+
+void Config::setWelcomeShown(bool shown) {
+    if (!storeIfChanged("ui.welcome_shown", shown)) return;
+    save();
+}
 
 // ANTS-1893 — switch-event surfacing mute toggles. Default TRUE
 // (the three surfaces are the primary trust-building affordance per

@@ -18,6 +18,9 @@
 #ifndef SRC_SETTINGSDIALOG_H
 #error "SRC_SETTINGSDIALOG_H compile definition required"
 #endif
+#ifndef SRC_CLAUDESETUP_CPP
+#error "SRC_CLAUDESETUP_CPP compile definition required"
+#endif
 #ifndef SRC_CONFIGPATHS_H
 #error "SRC_CONFIGPATHS_H compile definition required"
 #endif
@@ -29,6 +32,9 @@ TEST(ClaudeGitContextHook, Main) {
     const std::string sdH   = ants_test::slurpFile(SRC_SETTINGSDIALOG_H);
     const std::string sdCpp = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP);
     const std::string cpH   = ants_test::slurpFile(SRC_CONFIGPATHS_H);
+    // ANTS-5558 — the installer's file work moved to ants::claude_setup;
+    // SettingsDialog keeps the button, the status label and the wiring.
+    const std::string csCpp = ants_test::slurpFile(SRC_CLAUDESETUP_CPP);
 
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -61,11 +67,11 @@ TEST(ClaudeGitContextHook, Main) {
     // "&SettingsDialog::installClaudeGitContextHook" also contains the
     // identifier but lives hundreds of lines before the body, so a
     // substring match there would slice the wrong region.
-    const std::string anchor = "void SettingsDialog::installClaudeGitContextHook";
-    const std::size_t installerPos = sdCpp.find(anchor);
+    const std::string anchor = "Outcome installGitContextHook()";
+    const std::size_t installerPos = csCpp.find(anchor);
     if (installerPos == std::string::npos) {
-        fail("INV-5 (def): SettingsDialog::installClaudeGitContextHook() "
-             "definition missing from settingsdialog.cpp");
+        fail("INV-5 (def): ants::claude_setup::installGitContextHook() "
+             "definition missing from claudesetup.cpp");
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md\n", failures);
         FAIL();
     }
@@ -73,10 +79,9 @@ TEST(ClaudeGitContextHook, Main) {
     // `void SettingsDialog::` (or end of file). The script body alone
     // is ~2 KiB of string literal; a naive 6 KiB slice truncated the
     // latter half of the function on an earlier iteration.
-    std::size_t nextDef = sdCpp.find("\nvoid SettingsDialog::",
-                                      installerPos + anchor.size());
-    if (nextDef == std::string::npos) nextDef = sdCpp.size();
-    const std::string installer = sdCpp.substr(installerPos, nextDef - installerPos);
+    std::size_t nextDef = csCpp.find("\n// ---", installerPos + anchor.size());
+    if (nextDef == std::string::npos) nextDef = csCpp.size();
+    const std::string installer = csCpp.substr(installerPos, nextDef - installerPos);
 
     // INV-1 (runtime use): the installer writes the path from the
     // ConfigPaths helper, not a hard-coded string.
@@ -114,17 +119,27 @@ TEST(ClaudeGitContextHook, Main) {
              "before each user message");
     }
 
-    // INV-5c: parse-error-refuse pattern is reused verbatim — the corrupt
-    // settings file is rotated aside, not clobbered.
-    if (installer.find("rotateCorruptFileAside") == std::string::npos) {
+    // INV-5c: parse-error-refuse pattern — the corrupt settings file is
+    // rotated aside, not clobbered. ANTS-5558: both installers read the file
+    // through one helper, readClaudeSettings, which does the rotation; the
+    // installer must go through it and return on its refusal.
+    const std::size_t readerPos = csCpp.find("Outcome readClaudeSettings(");
+    const std::string reader = readerPos == std::string::npos
+        ? std::string()
+        : csCpp.substr(readerPos, csCpp.find("\n}\n", readerPos) - readerPos);
+    if (reader.find("rotateCorruptFileAside") == std::string::npos ||
+        installer.find("readClaudeSettings(") == std::string::npos) {
         fail("INV-5c: installer must call rotateCorruptFileAside() on a "
              "parse failure — matches the 0.7.12 /indie-review cross-cutting "
              "fix shape (the settings file may contain unrelated Claude-Code "
              "config the user hand-edited)");
     }
-    // And the refusal path must return before writing.
-    std::regex refuseAndReturn(R"(rotateCorruptFileAside[\s\S]{0,1500}?return\s*;)");
-    if (!std::regex_search(installer, refuseAndReturn)) {
+    // And the refusal path must return before writing: the helper returns a
+    // failed Outcome after the rotation, and the installer returns it.
+    std::regex refuseAndReturn(R"(rotateCorruptFileAside[\s\S]{0,1500}?return\s+fail\()");
+    std::regex installerReturns(R"(readClaudeSettings\([\s\S]{0,200}?if\s*\(!read\.ok\)\s*return\s+read;)");
+    if (!std::regex_search(reader, refuseAndReturn) ||
+        !std::regex_search(installer, installerReturns)) {
         fail("INV-5c (cont): after rotateCorruptFileAside, installer must "
              "return without writing — otherwise a corrupt settings.json "
              "gets silently overwritten");
@@ -132,7 +147,8 @@ TEST(ClaudeGitContextHook, Main) {
 
     // INV-5d + INV-6 + INV-10: dedup loop prevents appending the same
     // entry twice and preserves user-added sibling entries.
-    if (installer.find("ourHookPresent") == std::string::npos) {
+    if (installer.find("ourHookPresent") == std::string::npos &&
+        installer.find("eventRuns(") == std::string::npos) {
         fail("INV-6/10: installer must dedup before appending via an "
              "`ourHookPresent` (or equivalent) scan of existing entries — "
              "prevents (a) duplicates on re-install (INV-6) and (b) clobbering "

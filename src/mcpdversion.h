@@ -37,6 +37,9 @@ Launch registeredLaunch(const QString &claudeJsonPath);
 // that command is executable, else locateBinary's fallbacks with no args.
 Launch locateLaunch(const QString &claudeJsonPath, const QString &appDir);
 
+// `<program> <args...> --version`, first stdout line, as queryVersion above.
+QString queryVersion(const Launch &launch, int timeoutMs);
+
 // How many per-project `projects.<dir>.mcpServers.ants` registrations
 // `claudeJsonPath` holds; each wins over the user one in its project.
 int projectRegistrationCount(const QString &claudeJsonPath);

@@ -89,7 +89,9 @@
         "src/verifytrustmodal.cpp",
         "src/verifytrustmodal.h",
         "src/verifytrustprompt.cpp",
-        "src/verifytrustprompt.h"
+        "src/verifytrustprompt.h",
+        "src/welcomedialog.cpp",
+        "src/welcomedialog.h"
       ]
     },
     {
@@ -502,6 +504,8 @@
         "src/antshelper.cpp",
         "src/antshelper.h",
         "src/antshelpermain.cpp",
+        "src/claudesetup.cpp",
+        "src/claudesetup.h",
         "src/diffviewer.cpp",
         "src/diffviewer.h",
         "src/main.cpp",

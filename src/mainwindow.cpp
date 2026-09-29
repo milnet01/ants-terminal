@@ -48,6 +48,7 @@
 #include "claudeprojects.h"
 #include "claudetranscript.h"
 #include "aboutdialogs.h"          // ANTS-1181 — About-Ants/About-Qt
+#include "welcomedialog.h"         // ANTS-5558 — first-run welcome
 #include "auditdialog.h"
 #include "auditrunner.h"      // ANTS-1351 — server-side audit runner.
 #include "testauditengine.h"  // ANTS-1397 — test_audit_* trio engine.
@@ -2205,6 +2206,11 @@ void MainWindow::setupHelpMenu() {
         AboutDialogs::showAboutQt(this);
     });
 
+    // ANTS-5558 — reopen the welcome dialog at any time, key or no key.
+    QAction *welcomeAction = helpMenu->addAction(tr("Show &Welcome..."));
+    welcomeAction->setObjectName(QStringLiteral("helpShowWelcomeAction"));
+    connect(welcomeAction, &QAction::triggered, this, &MainWindow::showWelcome);
+
     helpMenu->addSeparator();
     // 0.7.47 — manual update check. The startup probe already runs
     // 5 s after launch (see m_updateAvailableAction wiring); this
@@ -2244,6 +2250,29 @@ void MainWindow::setupDonateMenu() {
             QUrl(QStringLiteral("https://www.patreon.com/c/AntsProjectsHub")));
         showStatusMessage(tr("Opening Patreon in your browser…"), 3000);
     });
+
+    // ANTS-5558 — the one-off tip link from .github/FUNDING.yml.
+    QAction *paybruAction = donateMenu->addAction(tr("Tip via &PayBru..."));
+    connect(paybruAction, &QAction::triggered, this, [this]() {
+        QDesktopServices::openUrl(
+            QUrl(QStringLiteral("https://paybru.co.za/tip/ants-projects-hub")));
+        showStatusMessage(tr("Opening PayBru in your browser…"), 3000);
+    });
+}
+
+// ANTS-5558 — one welcome dialog at a time: a second request raises it.
+void MainWindow::showWelcome() {
+    if (m_welcomeDialog) {
+        m_welcomeDialog->raise();
+        m_welcomeDialog->activateWindow();
+        return;
+    }
+    auto *dlg = new WelcomeDialog(QString(), WelcomeDialog::detect(), this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    m_welcomeDialog = dlg;
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 TerminalWidget *MainWindow::createTerminal() {
@@ -4261,6 +4290,10 @@ void MainWindow::showEvent(QShowEvent *event) {
         m_firstShow = false;
         QTimer::singleShot(150, this, [this]() {
             centerWindow();
+        });
+        // ANTS-5558 — once per config, after the window has settled.
+        QTimer::singleShot(600, this, [this]() {
+            welcome::maybeAutoShow(m_config, [this] { showWelcome(); });
         });
     }
 }

@@ -2,7 +2,7 @@
 # Claude Code UserPromptSubmit git-context hook — behavioral test.
 # See tests/features/claude_git_context_hook/spec.md.
 #
-# Extracts the canonical script from src/settingsdialog.cpp (single
+# Extracts the canonical script from src/claudesetup.cpp (single
 # source of truth — no drift), writes it to a temp file, and runs it
 # through five scenarios:
 #
@@ -21,7 +21,7 @@ set -eu
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
 
 
-: "${SRC_SETTINGSDIALOG_CPP:?SRC_SETTINGSDIALOG_CPP env var must be set by CMake}"
+: "${SRC_CLAUDESETUP_CPP:?SRC_CLAUDESETUP_CPP env var must be set by CMake}"
 if ! command -v python3 >/dev/null 2>&1; then
     echo "SKIP: python3 not available (needed to extract script from C++ source)"
     exit 0
@@ -37,17 +37,17 @@ trap 'rm -rf "$tmp"' EXIT
 extracted="$tmp/claude-git-context.sh"
 python3 - <<EOF > "$extracted"
 import ast, re, sys
-text = open("$SRC_SETTINGSDIALOG_CPP").read()
-# Locate the QStringLiteral script body inside installClaudeGitContextHook.
-# Capture everything between the opening '(' and the 'QSaveFile sf(scriptPath)'
-# that immediately follows — handles the last line carrying \`");\` on its tail.
+text = open("$SRC_CLAUDESETUP_CPP").read()
+# ANTS-5558 — the installer moved to ants::claude_setup. Locate the
+# QStringLiteral script body inside installGitContextHook: everything between
+# writeScript's opening literal and the \`if (!wrote.ok)\` that follows it.
 m = re.search(
-    r'void SettingsDialog::installClaudeGitContextHook\s*\(.*?'
-    r'const QString script = QStringLiteral\(\s*\n'
-    r'(.*?)\n\s*QSaveFile sf\b',
+    r'Outcome installGitContextHook\s*\(.*?'
+    r'writeScript\(scriptPath, QStringLiteral\(\s*\n'
+    r'(.*?)\n\s*if \(!wrote\.ok\)',
     text, re.S)
 if not m:
-    sys.exit("ERROR: could not extract script block from SRC_SETTINGSDIALOG_CPP")
+    sys.exit("ERROR: could not extract script block from SRC_CLAUDESETUP_CPP")
 body = m.group(1)
 chunks = []
 for line in body.splitlines():

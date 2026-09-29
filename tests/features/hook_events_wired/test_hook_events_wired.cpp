@@ -15,8 +15,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_SETTINGSDIALOG_CPP
-#  error "SRC_SETTINGSDIALOG_CPP compile definition required"
+#ifndef SRC_CLAUDESETUP_CPP
+#  error "SRC_CLAUDESETUP_CPP compile definition required"
 #endif
 
 namespace {
@@ -74,7 +74,9 @@ std::string join(const std::set<std::string> &s) {
 }  // namespace
 
 TEST(HookEventsWired, Main) {
-    const std::string settings = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP);
+    // ANTS-5558 — claudeHookEvents() moved with the installer to
+    // ants::claude_setup.
+    const std::string settings = ants_test::slurpFile(SRC_CLAUDESETUP_CPP);
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     const std::set<std::string> installed = installedEvents(settings);
@@ -86,7 +88,7 @@ TEST(HookEventsWired, Main) {
     if (installed.empty()) {
         std::fprintf(stderr,
             "FAIL: INV-3: parsed no event names out of claudeHookEvents() "
-            "in src/settingsdialog.cpp — the comparisons below would pass "
+            "in src/claudesetup.cpp — the comparisons below would pass "
             "for the wrong reason.\n");
         ++failures;
     }

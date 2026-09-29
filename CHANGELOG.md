@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **A welcome window greets new users, explains the features, sets things up in one click each and invites a donation** (ANTS-5558)
+  It opens once on first launch and any time from Help → Show Welcome.
+  For Claude Code users it installs the status-bar hooks and the
+  git-context hook, connects the Ants MCP toolkit with
+  `claude mcp add --scope user`, and can add an Ants note to CLAUDE.md;
+  for everyone it sets up bash or zsh shell integration. Anything that
+  edits your own files shows the exact change first. The Donate menu
+  gains a PayBru tip link.
+
 - **spec_lint takes `since:<ref>` or `staged:true` and reports only the findings an edit caused** (ANTS-5537)
   Each finding in a scoped run carries `in_diff`; the rest is counted in
   `counts_out_of_diff` rather than dropped. A spec stamped

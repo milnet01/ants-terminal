@@ -152,6 +152,10 @@ in `.github/FUNDING.yml` (`github: [milnet01]`) and `SUPPORTERS.md`;
 this invariant keeps the in-app link and those docs lockstep so a drift
 in either fires the test.
 
+ANTS-5558 adds `Tip via &PayBru...` after the Patreon item and
+`Show &Welcome...` after `About &Qt...`. Its own INV-2 and INV-10
+(`tests/features/welcome_dialog/`) pin both; nothing here changes.
+
 ## How this test anchors to reality
 
 MainWindow is too heavy to instantiate under a feature test

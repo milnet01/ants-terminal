@@ -129,6 +129,8 @@ private:
     void setupSettingsMenu();
     void setupHelpMenu();
     void setupDonateMenu();
+    // ANTS-5558 — opens the welcome dialog, or raises the open one.
+    void showWelcome();
     void applyTheme(const QString &name);
     void centerWindow();
     void moveViaKWin(int targetX, int targetY);
@@ -651,6 +653,8 @@ private:
 
     // First-show flag (per-instance, not static)
     bool m_firstShow = true;
+    // ANTS-5558 — the open welcome dialog, if any (it deletes on close).
+    QPointer<class WelcomeDialog> m_welcomeDialog;
 
     // XCB position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
     KWinPositionTracker *m_posTracker = nullptr;

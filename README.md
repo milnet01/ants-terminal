@@ -226,14 +226,17 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 1. **Open Ants Terminal.** It works like any terminal straight away.
 2. **Connect Claude Code to it — once per computer.** Claude Code talks to
-   Ants through a small helper program, `ants-mcpd`. For now this needs a
-   copy of the source code (see [Build it yourself](#build-it-yourself)):
-   the helper is not yet in a released package or the AppImage. After
-   building, run this from the source folder:
+   Ants through a small helper program, `ants-mcpd`. The welcome window that
+   opens on first launch has a button that connects it; reopen that window
+   any time from **Help → Show Welcome**. To connect by hand, run this from
+   a source build's folder:
 
    ```bash
-   claude mcp add ants -- "$PWD/build/ants-mcpd"
+   claude mcp add --scope user ants -- "$PWD/build/ants-mcpd"
    ```
+
+   With the AppImage, run
+   `claude mcp add --scope user ants -- /path/to/Ants.AppImage --mcpd`.
 
    When `ants-mcpd` is rebuilt, reconnect Claude Code (`/mcp`) to pick it
    up. Ants itself keeps running, and so do your other sessions. The older

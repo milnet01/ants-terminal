@@ -207,6 +207,13 @@ Listed only where behavior isn't obvious from the name.
   review over `IndieReviewEngine` (one lane per module-map subsystem).
   REUSES the engine's `assembleBriefForDispatch` (already FP-injected +
   fenced); only sum-caps. Tools › Review. Spec ANTS-1258.
+- `welcomedialog` (`ants_dialogs_lib`) — the first-run welcome: thanks, a
+  feature summary, setup rows and donation links. Opens once per config
+  (`ui.welcome_shown`) and from Help › Show Welcome. Spec ANTS-5558.
+- `claudesetup` (`ants_dialogs_lib`) — the setup actions the welcome dialog
+  and Settings share: the Claude Code hooks, registering `ants-mcpd` with
+  `claude mcp add`, the optional CLAUDE.md note, shell integration. Spec
+  ANTS-5558.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs: `ls`,
   `send-text`, `new-tab`, `select-window`, `set-title`, `get-text`,
   `launch`, `tab-list`, `roadmap-query`, `workspace-search`,

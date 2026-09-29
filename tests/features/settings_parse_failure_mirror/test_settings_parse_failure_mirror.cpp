@@ -20,8 +20,8 @@
 #ifndef SRC_CLAUDEALLOWLIST_CPP_PATH
 #  error "SRC_CLAUDEALLOWLIST_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_SETTINGSDIALOG_CPP_PATH
-#  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
+#ifndef SRC_CLAUDESETUP_CPP_PATH
+#  error "SRC_CLAUDESETUP_CPP_PATH compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -51,7 +51,9 @@ int countMatches(const std::string &h, const std::string &n) {
 static int runMain() {
     expect_reset();
     const std::string allowlist = ants_test::slurpFile(SRC_CLAUDEALLOWLIST_CPP_PATH);
-    const std::string settings  = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
+    // ANTS-5558 — the two hook installers moved from SettingsDialog to
+    // ants::claude_setup, where both read settings.json through one helper.
+    const std::string settings  = ants_test::slurpFile(SRC_CLAUDESETUP_CPP_PATH);
 
     // I1 — claudeallowlist.cpp refuses on parse failure.
     expect(contains(allowlist, "rotateCorruptFileAside(m_settingsPath)"),
@@ -78,30 +80,35 @@ static int runMain() {
                "(would risk clobbering"),
            "I3/allowlist-comment-explains-clobber-risk");
 
-    // I2 — settingsdialog.cpp: TWO installers each call
-    // rotateCorruptFileAside(settingsPath) — one per installer.
+    // I2 — claudesetup.cpp: the shared reader rotates a corrupt
+    // settings.json aside, and BOTH installers read through it.
     int rotationCount = countMatches(
         settings, "rotateCorruptFileAside(settingsPath)");
-    expect(rotationCount >= 2,
-           "I2/settingsdialog-two-installers-rotate-corrupt",
+    expect(rotationCount >= 1,
+           "I2/claudesetup-reader-rotates-corrupt",
            "got " + std::to_string(rotationCount));
+    int readerCalls = countMatches(
+        settings, "readClaudeSettings(settingsPath, root)");
+    expect(readerCalls >= 2,
+           "I2/claudesetup-two-installers-read-through-it",
+           "got " + std::to_string(readerCalls));
 
-    // I2 (continued) — each rotation must be followed by an early
-    // `return;` (void context, not `return false`). The dialog
-    // installers are void.
+    // I2 (continued) — the rotation is followed by an early failed return,
+    // and each installer returns that refusal before writing.
     {
         std::regex rotateThenReturn(
-            R"(rotateCorruptFileAside\(settingsPath\)[\s\S]{0,2500}?return\s*;)");
-        // We need TWO matches — one per installer. The simplest way
-        // is to count how many rotations are followed by a `return;`
-        // within the window, by sliding the search forward.
+            R"(rotateCorruptFileAside\(settingsPath\)[\s\S]{0,2500}?return\s+fail\()");
+        expect(std::regex_search(settings, rotateThenReturn),
+               "I2/claudesetup-reader-returns-after-rotation");
+        std::regex callThenReturn(
+            R"(readClaudeSettings\(settingsPath, root\);\s*if\s*\(!read\.ok\)\s*return\s+read;)");
         int matched = 0;
         auto begin = std::sregex_iterator(settings.begin(), settings.end(),
-                                          rotateThenReturn);
+                                          callThenReturn);
         auto end = std::sregex_iterator();
         for (auto it = begin; it != end; ++it) ++matched;
         expect(matched >= 2,
-               "I2/settingsdialog-each-installer-returns-after-rotation",
+               "I2/claudesetup-each-installer-returns-the-refusal",
                "got " + std::to_string(matched));
     }
 

@@ -34,8 +34,8 @@
 #ifndef SRC_CLAUDEALLOWLIST_CPP_PATH
 #  error "SRC_CLAUDEALLOWLIST_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_SETTINGSDIALOG_CPP_PATH
-#  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
+#ifndef SRC_CLAUDESETUP_CPP_PATH
+#  error "SRC_CLAUDESETUP_CPP_PATH compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -149,23 +149,26 @@ void sourceGrepTests() {
     }
 
     {
-        const std::string src = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
-        // Both installers (installClaudeHooks +
-        // installClaudeGitContextHook) target the same settingsPath
-        // variable, so the construction text matches both sites; we
-        // require ≥2 occurrences.
-        size_t pos = 0;
-        int count = 0;
-        const std::string needle = "ConfigWriteLock writeLock(settingsPath)";
-        while ((pos = src.find(needle, pos)) != std::string::npos) {
-            ++count;
-            pos += needle.size();
-        }
-        expect(count >= 2,
-               "I5/settingsdialog-installers-construct-lock-twice",
-               "got " + std::to_string(count));
+        // ANTS-5558 — both hook installers moved to ants::claude_setup and
+        // write settings.json through one helper that takes the lock.
+        const std::string src = ants_test::slurpFile(SRC_CLAUDESETUP_CPP_PATH);
+        auto count = [&src](const std::string &needle) {
+            size_t pos = 0;
+            int n = 0;
+            while ((pos = src.find(needle, pos)) != std::string::npos) {
+                ++n;
+                pos += needle.size();
+            }
+            return n;
+        };
+        expect(count("ConfigWriteLock writeLock(settingsPath)") >= 1,
+               "I5/claudesetup-writer-constructs-lock",
+               "got " + std::to_string(count("ConfigWriteLock writeLock(settingsPath)")));
+        expect(count("writeClaudeSettings(settingsPath, root)") >= 2,
+               "I5/claudesetup-both-installers-write-through-it",
+               "got " + std::to_string(count("writeClaudeSettings(settingsPath, root)")));
         expect(src.find("writeLock.acquired()") != std::string::npos,
-               "I5/settingsdialog-checks-acquired");
+               "I5/claudesetup-checks-acquired");
     }
 }
 

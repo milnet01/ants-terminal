@@ -1484,7 +1484,7 @@ if(ANTS_TESTS)
     set_tests_properties(claude_git_context_script PROPERTIES
         LABELS "features;fast"
         TIMEOUT 30
-        ENVIRONMENT "SRC_SETTINGSDIALOG_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp")
+        ENVIRONMENT "SRC_SETTINGSDIALOG_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp;SRC_CLAUDESETUP_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/claudesetup.cpp")
 
     # ANTS-1252 — token-saving hook pack conformance (shell harness).
     add_test(NAME hook_pack
@@ -2149,6 +2149,7 @@ if(ANTS_TESTS)
         SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_CLAUDESETUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
         COMMANDPALETTE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/commandpalette.cpp"
         DIALOGFOCUS_H="${CMAKE_SOURCE_DIR}/src/dialogfocus.h"
@@ -2993,6 +2994,7 @@ if(ANTS_TESTS)
         # claudeintegration.h; ClaudeIntegration keeps aliases for them.
         SRC_MCP_TOOL_SINK_H_PATH="${CMAKE_SOURCE_DIR}/src/mcptoolsink.h"
         SRC_SETTINGSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_CLAUDESETUP_CPP="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
         # single-file path macros are retired: a scrape reading one TU sees a
@@ -3207,6 +3209,7 @@ if(ANTS_TESTS)
         # ANTS-4999 — every read-only git runner uses readOnlyEnvironment().
         SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_CLAUDESETUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         # Quoted as ONE argument: the value contains ";" separators.
         "ANTS_RC_SOURCES=\"${_ants_rc_joined}\"")
     set_property(SOURCE tests/features/mcp_subsystem/test_mcp_subsystem.cpp
@@ -3596,6 +3599,7 @@ if(ANTS_TESTS)
         # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
         "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_CLAUDESETUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
@@ -4030,6 +4034,7 @@ if(ANTS_TESTS)
         # allowlist; a dormant predicate is what the next verb-author reaches for.
         SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_CLAUDESETUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
         # ANTS-3664 INV-5 — the family's "text in, never opens the document"
         # calling convention. Unblocked once all three engines existed

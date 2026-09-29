@@ -105,8 +105,9 @@ TEST(GitOptionalLocks, Inv3EveryOtherReadOnlyRunnerUsesIt) {
 // INV-4 — the git-context hook script's status call skips optional locks.
 TEST(GitOptionalLocks, Inv4HookScriptStatusSkipsOptionalLocks) {
     const std::string hook = ants_test::slurpFunctionBody(
-        ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH),
-        "void SettingsDialog::installClaudeGitContextHook()");
+        // ANTS-5558 — the installer moved to ants::claude_setup.
+        ants_test::slurpFile(SRC_CLAUDESETUP_CPP_PATH),
+        "Outcome installGitContextHook()");
     ASSERT_FALSE(hook.empty());
     EXPECT_NE(hook.find("GIT_OPTIONAL_LOCKS=0 git status"), std::string::npos);
 }

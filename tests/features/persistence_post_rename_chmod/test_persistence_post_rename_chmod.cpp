@@ -24,8 +24,8 @@
 #ifndef SRC_SESSIONMANAGER_CPP_PATH
 #  error "SRC_SESSIONMANAGER_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_SETTINGSDIALOG_CPP_PATH
-#  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
+#ifndef SRC_CLAUDESETUP_CPP_PATH
+#  error "SRC_CLAUDESETUP_CPP_PATH compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -109,20 +109,28 @@ void checkSessionManager() {
 }
 
 void checkSettingsDialog() {
-    const std::string src = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
+    // ANTS-5558 — the two hook installers moved to ants::claude_setup and
+    // write settings.json through one helper, writeClaudeSettings.
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESETUP_CPP_PATH);
 
-    // I4 — pre-write fd chmod at both QSaveFile sites.
+    // I4 — pre-write fd chmod in the shared writer.
     int fdCount = countOccurrences(src, "setOwnerOnlyPerms(settingsOut)");
     char buf[64];
     std::snprintf(buf, sizeof(buf), "got %d", fdCount);
-    expect(fdCount >= 2,
-           "I4/settingsdialog-pre-write-fd-chmod-twice", buf);
+    expect(fdCount >= 1,
+           "I4/claudesetup-pre-write-fd-chmod", buf);
 
-    // I3 — post-commit path chmod at both QSaveFile sites.
+    // I3 — post-commit path chmod in the shared writer.
     int pathCount = countOccurrences(src, "setOwnerOnlyPerms(settingsPath)");
     std::snprintf(buf, sizeof(buf), "got %d", pathCount);
-    expect(pathCount >= 2,
-           "I3/settingsdialog-post-commit-path-chmod-twice", buf);
+    expect(pathCount >= 1,
+           "I3/claudesetup-post-commit-path-chmod", buf);
+
+    // Both installers write through it.
+    int writerCalls = countOccurrences(src, "writeClaudeSettings(settingsPath, root)");
+    std::snprintf(buf, sizeof(buf), "got %d", writerCalls);
+    expect(writerCalls >= 2,
+           "I3/claudesetup-both-installers-write-through-it", buf);
 
     // I3 (gating) — chmod must come after settingsOut.commit().
     const size_t commitIdx = src.find("settingsOut.commit");

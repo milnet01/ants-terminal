@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -78,10 +79,16 @@ QString locateBinary(const QString &claudeJsonPath, const QString &appDir) {
 }
 
 QString queryVersion(const QString &binary, int timeoutMs) {
-    if (binary.isEmpty()) return {};
+    return queryVersion(Launch{binary, {}}, timeoutMs);
+}
+
+// ANTS-5558 — the args go before `--version`, so an AppImage registration is
+// asked `$APPIMAGE --mcpd --version` rather than starting the terminal.
+QString queryVersion(const Launch &launch, int timeoutMs) {
+    if (launch.program.isEmpty()) return {};
     QProcess p;
     p.setStandardInputFile(QProcess::nullDevice());
-    p.start(binary, {QStringLiteral("--version")});
+    p.start(launch.program, launch.args + QStringList{QStringLiteral("--version")});
     if (!p.waitForFinished(timeoutMs)) {
         p.kill();
         p.waitForFinished(1000);
@@ -132,9 +139,37 @@ bool isStale(const RunningCopy &copy, const QString &diskVersion) {
     return copy.replaced || copy.version.isEmpty() || copy.version != diskVersion;
 }
 
-// ANTS-5558 — interface stubs; the behaviour lands with the implementation.
-Launch registeredLaunch(const QString &) { return {}; }
-Launch locateLaunch(const QString &, const QString &) { return {}; }
-int projectRegistrationCount(const QString &) { return 0; }
+Launch registeredLaunch(const QString &claudeJsonPath) {
+    QFile f(claudeJsonPath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QJsonObject ants = QJsonDocument::fromJson(f.readAll()).object()
+        .value(QStringLiteral("mcpServers")).toObject()
+        .value(QStringLiteral("ants")).toObject();
+    Launch l;
+    l.program = ants.value(QStringLiteral("command")).toString();
+    for (const auto &a : ants.value(QStringLiteral("args")).toArray())
+        l.args.append(a.toString());
+    return l;
+}
+
+Launch locateLaunch(const QString &claudeJsonPath, const QString &appDir) {
+    const Launch reg = registeredLaunch(claudeJsonPath);
+    if (isExecutableFile(reg.program)) return reg;
+    // A fallback binary is not what was registered, so it runs with no args.
+    return Launch{locateBinary(QString(), appDir), {}};
+}
+
+int projectRegistrationCount(const QString &claudeJsonPath) {
+    QFile f(claudeJsonPath);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    const QJsonObject projects = QJsonDocument::fromJson(f.readAll()).object()
+        .value(QStringLiteral("projects")).toObject();
+    int n = 0;
+    for (auto it = projects.constBegin(); it != projects.constEnd(); ++it)
+        if (it.value().toObject().value(QStringLiteral("mcpServers"))
+                .toObject().contains(QStringLiteral("ants")))
+            ++n;
+    return n;
+}
 
 }  // namespace mcpd

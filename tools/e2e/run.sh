@@ -45,7 +45,9 @@ launch_e2e() {
     # lets the gate case (--no-e2e) still be *reachable* to prove the inject
     # gate is --e2e, not mere socket-open: config opens the socket, only --e2e
     # sets m_e2eMode.
-    printf '{"remote_control_enabled": true}\n' \
+    # ANTS-5558 — the welcome dialog opens on a first launch and would take
+    # keyboard focus from the injected keystrokes; mark it already shown.
+    printf '{"remote_control_enabled": true, "ui.welcome_shown": true}\n' \
         > "$d/cfg/ants-terminal/config.json"
     chmod 600 "$d/cfg/ants-terminal/config.json"
     _E2E_SOCK[$tag]="$d/e2e.sock"
