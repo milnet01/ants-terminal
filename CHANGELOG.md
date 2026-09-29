@@ -225,6 +225,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap dialog: sub-section headings indent under their parent, and the parent heading always shows when a sub-section does.** (ANTS-5572)
+
 - **The Roadmap window's tabs each keep their own Status and Kind filters, remembered for each project folder**
   Switching from Custom to Far Future and back no longer replaces Custom's
   filters, and a Kind choice stays on the tab it was made on. Changing a

@@ -178,10 +178,9 @@ constexpr KindEntry kKinds[] = {
 // `.rm-body-first`, `.rm-body-line` (all at the same value per
 // tier). h1Px..h4Px cover the four heading levels. codePx
 // covers `code`, `.rm-toggle`, `.rm-id`, `td`, `th`. metaPx
-// covers `.rm-kind`, `.rm-section-counts`, `.rm-parent`,
-// `.rm-date`. labelPx is `.rm-state-label`; at Compact it shares the
-// 11 px floor with metaPx (ANTS-2211). Vertical padding
-// scales: pMargin is `p` `margin:Npx 0`; hMarginTop /
+// covers `.rm-kind`, `.rm-section-counts`, `.rm-date`.
+// labelPx is `.rm-state-label`; at Compact it shares the 11 px
+// floor with metaPx (ANTS-2211). Vertical padding scales: pMargin is `p` `margin:Npx 0`; hMarginTop /
 // hMarginBottom are h1-h4 `margin:Tpx 0 Bpx 0`; cardPaddingY /
 // cardPaddingX are `.rm-card` `padding:Ypx Xpx`; cardMargin
 // is `.rm-card` `margin:Npx 0`; bodyFirstPaddingTop /
@@ -1231,9 +1230,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // descendants, so their chips are unchanged. Rollup runs on the
     // *filtered* counts, matching the dialog's "chips reflect what's
     // shown" model; in the default (unfiltered) view this reproduces the
-    // MCP's rollup exactly. The flat `countsBySection` is kept for the
-    // INV-12 section-suppression predicate (a parent with no *direct*
-    // visible bullets must still collapse on non-Full presets).
+    // MCP's rollup exactly. ANTS-5572 — the INV-12 suppression predicate
+    // reads the rolled count too, so a parent with visible sub-sections
+    // is never hidden above them.
     const QVector<RoadmapIndex::Section> sectionIndex =
         RoadmapIndex::buildIndex(sourceText);
     const QHash<QString, SectionCounts> rolledCounts =
@@ -1276,7 +1275,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         "p{margin:%8px 0;}"
         "h1,h2,h3,h4{color:%2;font-weight:bold;margin:%9px 0 %10px 0;}"
         "h1{font-size:%11px;} h2{font-size:%12px;}"
-        "h3{font-size:%13px;} h4{font-size:%14px;}"
+        // ANTS-5572 — h3 indents under its h2. Its cards do not: every
+        // card table shares one column grid (ANTS-3762).
+        "h3{font-size:%13px;margin-left:24px;} h4{font-size:%14px;}"
         "code{background:%3;padding:0 4px;border-radius:3px;font-size:%15px;}"
         "a{color:%2;text-decoration:none;}"
         "a:hover{text-decoration:underline;}"
@@ -1291,7 +1292,6 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
         ".rm-section-counts{font-weight:normal;font-size:%16px;color:%6;padding-right:10px;white-space:nowrap;}"
-        ".rm-parent{font-weight:normal;font-size:%16px;color:%6;padding-left:8px;}"
         // ANTS-3392 — each section's cards are one `<table class="rm-cards">`
         // (one `<tr class="rm-card">` per bullet, four `<td class="rm-col-*">`
         // cells) so state / kind / summary / meta line up in aligned columns
@@ -1384,7 +1384,6 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
     const QStringList lines = sourceText.split('\n');
     QString currentSlug;
-    QString currentH2Text;        // most recent h2 (parent for h3 breadcrumb)
     bool sectionVisible = true;   // section header emitted?
     bool sectionExpanded = false; // user has opened this section?
     int headingIdx = 0;
@@ -1397,8 +1396,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
     auto emitSectionHeader = [&](int level, const QString &text,
                                  const QString &slug,
-                                 const SectionCounts &c,
-                                 const QString &parentH2 = QString()) {
+                                 const SectionCounts &c) {
         const QString anchor = tocAnchorAt(headingIdx++);
         html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
         const QString chevron = sectionExpanded
@@ -1443,15 +1441,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         html += QStringLiteral(
             "<a class=\"rm-section-title\" href=\"ants://%1/%2\">%3</a>")
             .arg(verb, slug, applyInline(text));
-        // Parent-h2 breadcrumb on h3 headers — disambiguates orphan
-        // sub-sections (e.g. three different "Performance" h3s) when
-        // their parent h2 was suppressed on non-Full tabs.
-        if (level == 3 && !parentH2.isEmpty()) {
-            html += QStringLiteral(
-                "<a class=\"rm-section-title\" href=\"ants://%1/%2\">"
-                "<span class=\"rm-parent\">· %3</span></a>")
-                .arg(verb, slug, htmlEscape(parentH2));
-        }
+        // ANTS-5572 — no parent breadcrumb on h3 headers: a parent h2
+        // now always renders above its visible sub-sections, and the
+        // h3 is indented under it.
         html += QStringLiteral("</h%1>").arg(level);
     };
 
@@ -1671,9 +1663,6 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             continue;
         }
         if (level == 2 || level == 3) {
-            if (level == 2) {
-                currentH2Text = hText;
-            }
             // ANTS-1239 — compute the slug *before* the TOC skip so
             // seenSlugs advances in lockstep with parseBullets (which
             // has no TOC skip).
@@ -1690,16 +1679,15 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             }
             currentSlug = slug;
             sectionExpanded = opts.expandedSections.contains(slug);
-            const SectionCounts flat = countsBySection.value(slug);
             // ANTS-1693 — chips show the rolled-up (self + descendants)
-            // tally to match the MCP; suppression keys on the *direct*
-            // count so an empty parent still collapses on non-Full.
+            // tally to match the MCP.
             const SectionCounts rolled = rolledCounts.value(slug);
-            // INV-12: on non-Full, suppress sections with 0 visible bullets.
-            sectionVisible = (opts.activePreset == Preset::Full) || flat.visible > 0;
+            // INV-12: on non-Full, suppress sections with 0 visible
+            // bullets. ANTS-5572 — a descendant's bullets count, so a
+            // parent h2 always heads its visible sub-sections.
+            sectionVisible = (opts.activePreset == Preset::Full) || rolled.visible > 0;
             if (sectionVisible) {
-                emitSectionHeader(level, hText, slug, rolled,
-                                  level == 3 ? currentH2Text : QString());
+                emitSectionHeader(level, hText, slug, rolled);
                 // If expanded, emit its bullets as cards.
                 if (sectionExpanded) {
                     const QVector<const BulletRecord *> &bullets = bySection.value(slug);

@@ -270,6 +270,33 @@ static int runMain(int argc, char **argv) {
         if (contains(h, "0.9.0 — far-future"))
             fail("INV-12",
                 "0.9.0 section header rendered when no ✅ inside");
+        // ANTS-5572 — 0.8.0 has no direct bullets, but its ### Features
+        // holds a ✅: the parent MUST head its visible sub-section, and
+        // the h3 carries no "· parent" breadcrumb.
+        if (!contains(h, "0.8.0 — feature delivery"))
+            fail("INV-12",
+                "parent h2 hidden above its visible sub-section");
+        else if (h.find("0.8.0 — feature delivery") > h.find("Features"))
+            fail("INV-12", "parent h2 rendered after its sub-section");
+        if (contains(h, "rm-parent"))
+            fail("INV-12", "h3 still carries the parent breadcrumb");
+    }
+
+    // ANTS-5572 — sub-section headings indent under their parent. Their
+    // cards do not, so every card table keeps one grid (ANTS-3762).
+    {
+        RD::CardRenderOptions opts;
+        opts.activePreset = RD::Preset::Full;
+        opts.expandedSections.insert(QStringLiteral("features"));
+        const QString html = RD::renderCardsHtml(
+            fixtureMarkdown(), /*filter=*/0xFF,
+            {}, QStringLiteral("light"),
+            RD::SortOrder::Document, QString(), {}, opts);
+        const std::string h = html.toStdString();
+        if (!contains(h, "margin-left:24px;} h4{"))
+            fail("INV-12", "h3 style rule carries no indent");
+        if (contains(h, "<table class=\"rm-cards\" style="))
+            fail("INV-12", "h3 cards table indented, breaking the ANTS-3762 grid");
     }
 
     // INV-1 / INV-4 source-grep — anchor comments live next to the

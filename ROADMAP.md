@@ -89539,6 +89539,24 @@ reports are asked for separately, each time.
   Kind: enhancement.
   Source: user-request-2026-09-14.
 
+- ✅ [ANTS-5572] **Roadmap dialog sub-sections indent under a parent heading that always shows.**
+  User question 2026-09-29, from a Games Hub roadmap screenshot: why
+  are some headings bigger than others? Size is the heading level
+  (## vs ###). On a filtered tab a ## with no direct items was hidden
+  (INV-12 counted direct items only), so its ### children looked
+  orphaned and only a grey "· parent" breadcrumb placed them; h3s also
+  sat at the same left edge as h2s. Fix: suppression reads the rolled
+  (self + descendants) count, h3 headings and their cards indent 24px,
+  and the breadcrumb goes.
+  Resolved (2026-09-29): h3 headings indent 24px; their cards stay on
+  the shared ANTS-3762 column grid, so the table is not indented. A
+  parent h2 renders whenever a sub-section is visible; breadcrumb gone.
+  RoadmapDialogCards red on the old code (3 failures), 13/13 green.
+  **Layman:** Smaller sub-section headings now sit indented under their parent heading, so the roadmap's structure is visible at a glance.
+  Kind: ux.
+  Source: user-request-2026-09-29.
+  Lanes: ui.
+
 ## Welcome dialog (user request 2026-09-29)
 
 A first-run welcome dialog, and the one-click setup actions it offers.
