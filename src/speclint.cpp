@@ -7,6 +7,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPair>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStringView>
@@ -238,6 +239,198 @@ QString sectionNameOf(const QString &normalisedHeading) {
     return m.hasMatch() ? m.captured(1).trimmed() : normalisedHeading.trimmed();
 }
 
+// Does a normalised heading satisfy one required entry? A numbered entry is
+// matched exactly, or under ANTS-4738's prefix matching by a heading that
+// continues it after a non-alphanumeric boundary (`## 6. Test` does not match
+// `## 6. Tests`); an unnumbered entry is matched by name (ANTS-4345).
+bool headingSatisfies(const QString &heading, const QString &want,
+                      bool prefixMatch) {
+    if (!headingIsNumbered(want))
+        return sectionNameOf(heading) == sectionNameOf(want);
+    if (heading == want) return true;
+    return prefixMatch && heading.size() > want.size() &&
+           heading.startsWith(want) &&
+           !heading.at(want.size()).isLetterOrNumber();
+}
+
+const QRegularExpression &headingRe() {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^ {0,3}(#{1,6})\s+(\S.*?)\s*$)"));
+    return re;
+}
+
+const QRegularExpression &nextH2Re() {
+    static const QRegularExpression re(QStringLiteral(R"(^ {0,3}##\s+\S)"));
+    return re;
+}
+
+// A heading line as the section check compares it: `## 6. Tests`, or empty.
+QString normalisedHeading(const QString &line) {
+    const auto m = headingRe().match(line);
+    return m.hasMatch() ? collapseWs(m.captured(1) + QLatin1Char(' ') +
+                                     m.captured(2))
+                        : QString();
+}
+
+// The id an invariant anchor line declares, in either form, or empty.
+// ANTS-4107 — `[a-z]?` so a sub-lettered id anchors like any other.
+QString anchorId(const QString &line) {
+    static const QRegularExpression bulletAnchorRe(
+        QStringLiteral(R"(^ {0,3}-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
+    static const QRegularExpression rowAnchorRe(
+        QStringLiteral(R"(^ {0,3}\|\s*(INV-\d+[a-z]?)\s*\|)"));
+    auto m = bulletAnchorRe.match(line);
+    if (!m.hasMatch()) m = rowAnchorRe.match(line);
+    return m.hasMatch() ? m.captured(1) : QString();
+}
+
+int invNumber(const QString &id) {
+    static const QRegularExpression re(QStringLiteral(R"(^INV-(\d+))"));
+    const auto m = re.match(id);
+    return m.hasMatch() ? m.captured(1).toInt() : -1;
+}
+
+// The Tests section as [header, end) 0-based, or {-1, -1}. Strict before loose,
+// the same order the Invariants header uses and for the same reason: a document
+// carrying both a real Tests section and a heading that merely mentions tests
+// must take the real one.
+QPair<int, int> testsSectionRange(const QStringList &lines,
+                                  const QVector<bool> &fence) {
+    static const QRegularExpression testsHdrRe(
+        QStringLiteral(R"(^ {0,3}##\s+(?:\d+\.\s+)?[Tt]ests\b)"));
+    static const QRegularExpression testsHdrLooseRe(
+        QStringLiteral(R"(^ {0,3}##\s+(?:\d+\.\s+)?[^\n]*\b[Tt]ests\b)"));
+    int hdr = -1;
+    for (int i = 0; i < lines.size() && hdr < 0; ++i) {
+        if (i < fence.size() && fence[i]) continue;
+        if (testsHdrRe.match(lines[i]).hasMatch()) hdr = i;
+    }
+    for (int i = 0; i < lines.size() && hdr < 0; ++i) {
+        if (i < fence.size() && fence[i]) continue;
+        if (testsHdrLooseRe.match(lines[i]).hasMatch()) hdr = i;
+    }
+    if (hdr < 0) return {-1, -1};
+    int end = lines.size();
+    for (int i = hdr + 1; i < lines.size(); ++i) {
+        if (i < fence.size() && fence[i]) continue;
+        if (nextH2Re().match(lines[i]).hasMatch()) { end = i; break; }
+    }
+    return {hdr, end};
+}
+
+// ANTS-5537 — what the scope rules need to know about one document, computed
+// once per check() rather than once per finding.
+struct Layout {
+    QStringList   lines;
+    QVector<bool> fence;
+    bool          stamped = false;
+    QPair<int, int> tests{-1, -1};
+
+    explicit Layout(const QString &text)
+        : lines(text.split(QLatin1Char('\n'))),
+          fence(MarkdownScan::fenceMask(lines)),
+          tests(testsSectionRange(lines, fence)) {
+        // Any N counts (spec § 2.4): the stamp says the spec was written under
+        // a format standard, and nothing compares it with the current version.
+        static const QRegularExpression stampRe(
+            QStringLiteral(R"(^<!-- ants-spec-format: [0-9]+ -->\s*$)"));
+        for (int i = 0; i < lines.size() && !stamped; ++i)
+            stamped = !(i < fence.size() && fence[i]) &&
+                      stampRe.match(lines[i]).hasMatch();
+    }
+
+    bool fenced(int i) const { return i < fence.size() && fence[i]; }
+
+    // An invariant's block, as 1-based [first, last]: its anchor line to the
+    // line before the next anchor or heading, or to the end. A fenced line ends
+    // nothing; a table-form invariant's block is its row.
+    QPair<int, int> block(int anchorLine) const {
+        const int i = anchorLine - 1;
+        if (i < 0 || i >= lines.size()) return {0, -1};
+        if (lines[i].trimmed().startsWith(QLatin1Char('|')))
+            return {anchorLine, anchorLine};
+        int j = i + 1;
+        for (; j < lines.size(); ++j) {
+            if (fenced(j)) continue;
+            if (!normalisedHeading(lines[j]).isEmpty() ||
+                !anchorId(lines[j]).isEmpty())
+                break;
+        }
+        return {anchorLine, j};
+    }
+};
+
+bool anyTouched(const DiffScope &d, int first, int last) {
+    for (int l = first; l <= last; ++l)
+        if (d.touched.contains(l)) return true;
+    return false;
+}
+
+// Spec § 2.4's per-kind table. The caller has already answered for an inactive
+// scope, a new file and a stamped document.
+bool inDiff(const DocFinding::Finding &f, const Layout &L,
+            const Options &opts) {
+    const DiffScope &d = opts.diff;
+    const QString &k = f.kind;
+    if (k == QLatin1String("invariant_no_test") ||
+        k == QLatin1String("command_test_no_expectation") ||
+        k == QLatin1String("test_surface_absent") ||
+        k == QLatin1String("test_surface_unresolved") ||
+        k == QLatin1String("test_surface_unwired")) {
+        const auto b = L.block(f.line);
+        return anyTouched(d, b.first, b.second);
+    }
+    if (k == QLatin1String("invariant_id_gap")) {
+        // Per gap, reading `added`, never `touched`: a deletion's neighbours
+        // are touched but were not added, and a reworded anchor is removed and
+        // added under one number.
+        const int missing =
+            invNumber(f.extra.value(QStringLiteral("invariant")).toString());
+        QSet<int> removedNums, addedNums;
+        for (const QString &line : d.removed) {
+            const int n = invNumber(anchorId(line));
+            if (n >= 0) removedNums.insert(n);
+        }
+        for (const int l : d.added) {
+            if (l < 1 || l > L.lines.size() || L.fenced(l - 1)) continue;
+            const int n = invNumber(anchorId(L.lines[l - 1]));
+            if (n >= 0) addedNums.insert(n);
+        }
+        if (missing >= 0 && removedNums.contains(missing) &&
+            !addedNums.contains(missing))
+            return true;
+        return f.line > 0 && d.added.contains(f.line);
+    }
+    if (k == QLatin1String("missing_section")) {
+        const QString want = f.extra.value(QStringLiteral("section")).toString();
+        for (const QString &line : d.removed) {
+            const QString h = normalisedHeading(line);
+            if (!h.isEmpty() && headingSatisfies(h, want, opts.sectionsPrefixMatch))
+                return true;
+        }
+        return false;
+    }
+    const bool testsTouched =
+        L.tests.first >= 0 && anyTouched(d, L.tests.first + 1, L.tests.second);
+    if (k == QLatin1String("test_coverage_gap")) {
+        const auto b = L.block(f.line);
+        return testsTouched || anyTouched(d, b.first, b.second);
+    }
+    if (k == QLatin1String("test_coverage_unverifiable")) return testsTouched;
+    if (k == QLatin1String("loop_row_no_outcome"))
+        return d.touched.contains(f.line);
+    // A kind the table does not name reports in full until someone writes its
+    // rule, rather than vanishing from a scoped run.
+    return true;
+}
+
+bool inDiffFull(const DocFinding::Finding &f, const Layout &L,
+                const Options &opts) {
+    if (!opts.diff.active) return false;
+    if (opts.diff.fileNew || L.stamped) return true;
+    return inDiff(f, L, opts);
+}
+
 }  // namespace
 
 QSet<int> invariantNumbers(const QString &text) {
@@ -323,8 +516,6 @@ Result check(const QString &text, const QString &relPath,
     };
 
     // --- headings (fence-aware) ------------------------------------------
-    static const QRegularExpression headingRe(
-        QStringLiteral(R"(^ {0,3}(#{1,6})\s+(\S.*?)\s*$)"));
     // The Invariants section's line range, mirroring parseSpecBody's own
     // boundaries (its heading regex, then the next `## `). The anchor scan below
     // is confined to it: an `- **INV-4**` written in § 7 as an EXAMPLE is prose,
@@ -338,15 +529,12 @@ Result check(const QString &text, const QString &relPath,
         QStringLiteral(R"(^ {0,3}#{2,3}\s+(?:\d+\.\s+)?[Ii]nvariants\b)"));
     static const QRegularExpression invHdrLooseRe(
         QStringLiteral(R"(^ {0,3}#{2,3}\s+(?:\d+\.\s+)?.*\b[Ii]nvariants\b)"));
-    static const QRegularExpression nextH2Re(QStringLiteral(R"(^ {0,3}##\s+\S)"));
     int invHdrStrict = -1, invHdrLoose = -1;
     QStringList headingLines;   // normalised `## N. Name`
     for (int i = 0; i < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
-        const auto m = headingRe.match(lines[i]);
-        if (m.hasMatch())
-            headingLines.append(collapseWs(m.captured(1) + QLatin1Char(' ') +
-                                           m.captured(2)));
+        const QString h = normalisedHeading(lines[i]);
+        if (!h.isEmpty()) headingLines.append(h);
         if (invHdrStrict < 0 && invHdrRe.match(lines[i]).hasMatch())
             invHdrStrict = i;
         if (invHdrLoose < 0 && invHdrLooseRe.match(lines[i]).hasMatch())
@@ -357,7 +545,7 @@ Result check(const QString &text, const QString &relPath,
     int invEnd   = lines.size();
     for (int i = invStart; invStart >= 0 && i < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
-        if (nextH2Re.match(lines[i]).hasMatch()) { invEnd = i; break; }
+        if (nextH2Re().match(lines[i]).hasMatch()) { invEnd = i; break; }
     }
 
     // --- missing_section (gated on an injected list) ----------------------
@@ -383,52 +571,35 @@ Result check(const QString &text, const QString &relPath,
             if (i < fence.size() && fence[i]) continue;
             if (exemptRe.match(lines[i]).hasMatch()) { r.sectionsExempt = true; break; }
         }
-        const QSet<QString> present(headingLines.begin(), headingLines.end());
-        // ANTS-4345 — a name-keyed index beside the exact one, so an entry
-        // written without a number matches whatever number the document
-        // carries. Built once, not per required entry.
-        QSet<QString> presentNames;
-        presentNames.reserve(headingLines.size());
-        for (const QString &h : headingLines) presentNames.insert(sectionNameOf(h));
-
-        // ANTS-4738 — under prefix matching a numbered entry is satisfied by a
-        // heading that starts with it and continues with a qualifier. The
-        // boundary check is what keeps `## 6. Test` from matching `## 6. Tests`.
-        const auto numberedFound = [&](const QString &want) {
-            if (present.contains(want)) return true;
-            if (!opts.sectionsPrefixMatch) return false;
-            for (const QString &h : headingLines) {
-                if (h.size() <= want.size() || !h.startsWith(want)) continue;
-                if (!h.at(want.size()).isLetterOrNumber()) return true;
-            }
-            return false;
-        };
+        // ANTS-4345 / ANTS-4738 — headingSatisfies() is the one matcher, so
+        // the scope rule for a removed heading (ANTS-5537) cannot disagree
+        // with this check about what satisfies an entry.
         for (const QString &req : opts.requiredSections) {
             const QString want = collapseWs(req);
-            const bool found = headingIsNumbered(want)
-                                   ? numberedFound(want)
-                                   : presentNames.contains(sectionNameOf(want));
+            const bool found = std::any_of(
+                headingLines.cbegin(), headingLines.cend(),
+                [&](const QString &h) {
+                    return headingSatisfies(h, want, opts.sectionsPrefixMatch);
+                });
             if (!found && !r.sectionsExempt)
                 add(QStringLiteral("missing_section"), 0,
-                    QStringLiteral("required section is absent: %1").arg(want));
+                    QStringLiteral("required section is absent: %1").arg(want),
+                    false,
+                    opts.diff.active
+                        ? QJsonObject{{QStringLiteral("section"), want}}
+                        : QJsonObject{});
         }
     }
 
     // --- INV-N anchor lines ----------------------------------------------
     // parseSpecBody supplies neither line numbers nor sections nor loop-log
     // rows, so every `line` on this verb's findings comes from this scan.
-    // ANTS-4107 — `[a-z]?` so a sub-lettered id anchors like any other.
-    static const QRegularExpression bulletAnchorRe(
-        QStringLiteral(R"(^ {0,3}-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
-    static const QRegularExpression rowAnchorRe(
-        QStringLiteral(R"(^ {0,3}\|\s*(INV-\d+[a-z]?)\s*\|)"));
     QHash<QString, int> anchorLine;   // id -> 1-based line, first occurrence
     for (int i = qMax(invStart, 0); invStart >= 0 && i < invEnd; ++i) {
         if (i < fence.size() && fence[i]) continue;
-        auto m = bulletAnchorRe.match(lines[i]);
-        if (!m.hasMatch()) m = rowAnchorRe.match(lines[i]);
-        if (m.hasMatch() && !anchorLine.contains(m.captured(1)))
-            anchorLine.insert(m.captured(1), i + 1);
+        const QString id = anchorId(lines[i]);
+        if (!id.isEmpty() && !anchorLine.contains(id))
+            anchorLine.insert(id, i + 1);
     }
 
     // --- invariant_no_test / command_test_no_expectation -------------------
@@ -697,7 +868,12 @@ Result check(const QString &text, const QString &relPath,
                                "tombstone (candidate — a spec carrying a subset "
                                "of a parent's invariants keeps the parent's ids, "
                                "and renumbering would break the citation)")
-                    .arg(n));
+                    .arg(n),
+                false,
+                opts.diff.active   // ANTS-5537 — the gap rule reads it
+                    ? QJsonObject{{QStringLiteral("invariant"),
+                                   QStringLiteral("INV-%1").arg(n)}}
+                    : QJsonObject{});
         }
     }
 
@@ -733,22 +909,9 @@ Result check(const QString &text, const QString &relPath,
     // they can disagree indefinitely — which is why a citation search cannot
     // find this class and a check has to.
     {
-        static const QRegularExpression testsHdrRe(
-            QStringLiteral(R"(^ {0,3}##\s+(?:\d+\.\s+)?[Tt]ests\b)"));
-        static const QRegularExpression testsHdrLooseRe(
-            QStringLiteral(R"(^ {0,3}##\s+(?:\d+\.\s+)?[^\n]*\b[Tt]ests\b)"));
-        // Strict before loose, the same order the Invariants header uses and
-        // for the same reason: a document carrying both a real Tests section
-        // and a heading that merely mentions tests must take the real one.
-        int hdr = -1;
-        for (int i = 0; i < lines.size() && hdr < 0; ++i) {
-            if (i < fence.size() && fence[i]) continue;
-            if (testsHdrRe.match(lines[i]).hasMatch()) hdr = i;
-        }
-        for (int i = 0; i < lines.size() && hdr < 0; ++i) {
-            if (i < fence.size() && fence[i]) continue;
-            if (testsHdrLooseRe.match(lines[i]).hasMatch()) hdr = i;
-        }
+        // testsSectionRange() is shared with the ANTS-5537 scope rule, so the
+        // section a coverage finding is scoped by is the one it was read from.
+        const auto [hdr, end] = testsSectionRange(lines, fence);
 
         // No Tests section: the comparison has one half. SKIP rather than
         // report every invariant as uncovered — the contract `sectionsChecked`
@@ -756,11 +919,6 @@ Result check(const QString &text, const QString &relPath,
         // `testCoverageChecked` exists to carry.
         if (hdr >= 0 && !ids.isEmpty()) {
             r.testCoverageChecked = true;
-            int end = lines.size();
-            for (int i = hdr + 1; i < lines.size(); ++i) {
-                if (i < fence.size() && fence[i]) continue;
-                if (nextH2Re.match(lines[i]).hasMatch()) { end = i; break; }
-            }
             QString section;
             for (int i = hdr + 1; i < end; ++i)
                 section += lines[i] + QLatin1Char('\n');
@@ -854,13 +1012,20 @@ Result check(const QString &text, const QString &relPath,
         }
     }
 
+    // ANTS-5537 — the stamp is read on every run; `in_diff` only on a scoped
+    // one, where every finding carries it, true or false.
+    const Layout layout(text);
+    r.stamped = layout.stamped;
+    if (opts.diff.active)
+        for (DocFinding::Finding &f : r.findings)
+            f.extra.insert(QStringLiteral("in_diff"),
+                           inDiffFull(f, layout, opts));
     return r;
 }
 
-// ANTS-5537 — stub: the scope rules land with the implementation.
-bool findingInDiff(const DocFinding::Finding &, const QString &,
-                   const Options &) {
-    return false;
+bool findingInDiff(const DocFinding::Finding &f, const QString &text,
+                   const Options &opts) {
+    return inDiffFull(f, Layout(text), opts);
 }
 
 }  // namespace SpecLint

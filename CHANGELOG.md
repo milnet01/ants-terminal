@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_lint takes `since:<ref>` or `staged:true` and reports only the findings an edit caused** (ANTS-5537)
+  Each finding in a scoped run carries `in_diff`; the rest is counted in
+  `counts_out_of_diff` rather than dropped. A spec stamped
+  `<!-- ants-spec-format: N -->`, or new in the range, is checked in full.
+  Refuses `not_a_git_repo`, `bad_args` or `git_failed` instead of falling
+  back to a full-file run. Contract: docs/specs/ANTS-3662.md § 2.4.
+
 - **`changelog_query mode:"lint"` checks a changelog's layout without writing, and a push gate can run it from a shell** (ANTS-5543)
   It reports prose or a bullet above a section's first category heading,
   an unknown or out-of-order category, and stray prose inside a category.

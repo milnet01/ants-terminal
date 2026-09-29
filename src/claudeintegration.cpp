@@ -7064,6 +7064,25 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["caller_cwd"] = slCwd;
                     props["max_findings"] = slMax;
                     props["etag_match"] = slEtag;
+                    // ANTS-5537 — diff scope (docs/specs/ANTS-3662.md § 2.4).
+                    QJsonObject slSince; slSince["type"] = "string";
+                        slSince["description"] = QStringLiteral(
+                            "A git ref. Scope findings to what changed between that "
+                            "commit and the working tree (untracked files count as "
+                            "changed): findings[] holds in-diff findings only, each "
+                            "carrying in_diff:true, and counts_in_diff / "
+                            "counts_out_of_diff account for the rest. A spec stamped "
+                            "<!-- ants-spec-format: N --> is checked in full. Refuses "
+                            "not_a_git_repo, bad_args (unresolvable ref) or git_failed; "
+                            "never falls back to a full-file run.");
+                    QJsonObject slStaged; slStaged["type"] = "boolean";
+                        slStaged["description"] = QStringLiteral(
+                            "true scopes findings to what is staged (index against "
+                            "HEAD, or the empty tree before the first commit), "
+                            "checking each staged spec's index copy. Exclusive with "
+                            "`since` (bad_mode_combo); false is the same as absent.");
+                    props["since"]  = slSince;
+                    props["staged"] = slStaged;
                     // ANTS-4663 — this schema is
                     // additionalProperties:false, so `fields=` was not
                     // merely unhonoured on a corpus run, it was

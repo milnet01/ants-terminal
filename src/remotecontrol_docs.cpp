@@ -4,6 +4,7 @@
 #include "codebaseindex.h"
 #include "docsindex.h"
 #include "speclint.h"            // ANTS-3662 — spec_lint verb
+#include "gitwrap.h"             // ANTS-5537 — spec_lint diff scope
 #include "specconformance.h"     // ANTS-4108 — spec_conformance verb
 #include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
@@ -742,6 +743,146 @@ static QSet<QString> specLintWiredTestDirs(const QString &rootCanonical,
 // pre-pass. caller_cwd Required. `path` routes through PathValidation and then
 // the SAME enumeration doc_integrity uses, defaulted to `specs_dir` rather than
 // `docs_dir`. ETag-304 is applied centrally (isEtagSupportedTool). Engine:
+// ANTS-5537 — what a `since` / `staged` run read from git (spec § 2.4). Either
+// `err` is set and the call refuses, or every walked document has a scope.
+namespace {
+
+struct SpecLintScope {
+    QJsonObject err;                               // non-empty: refuse with it
+    QJsonValue  base = QJsonValue(QJsonValue::Null);
+    QHash<QString, SpecLint::DiffScope> byDoc;     // absent: unchanged document
+    QHash<QString, QString> indexText;             // staged: the index copy
+};
+
+bool specLintGitBroken(const GitWrap::Result &g) {
+    return !g.started || g.crashed || g.hardKilled;
+}
+
+QJsonObject specLintGitFailed(const QString &what, const GitWrap::Result &g) {
+    QJsonObject o = gitErr("git_failed",
+                           QStringLiteral("spec_lint: git %1 failed").arg(what),
+                           g.stderrTail);
+    o[QStringLiteral("exit_code")] = g.exitCode;   // the code's row requires it
+    return o;
+}
+
+// The refusal order is the spec's: a git that cannot run, then the work-tree
+// probe, then the ref. A failure after the probes is git_failed and never an
+// empty diff, because an empty diff puts every finding out of scope and a
+// broken run would then read as a clean one.
+SpecLintScope specLintReadScope(const QString &root, const QString &since,
+                                bool staged, const QStringList &relDocs) {
+    SpecLintScope s;
+    const GitWrap::Result inside = GitWrap::run(
+        root, {QStringLiteral("rev-parse"), QStringLiteral("--is-inside-work-tree")});
+    if (specLintGitBroken(inside)) {
+        s.err = specLintGitFailed(QStringLiteral("rev-parse"), inside);
+        return s;
+    }
+    if (inside.exitCode != 0) {
+        s.err = gitErr("not_a_git_repo",
+                       QStringLiteral("spec_lint: since / staged need the project "
+                                      "root to be inside a git work tree"));
+        return s;
+    }
+    const QString ref = staged ? QStringLiteral("HEAD") : since;
+    const GitWrap::Result resolved = GitWrap::run(
+        root, {QStringLiteral("rev-parse"), QStringLiteral("--verify"),
+               QStringLiteral("--quiet"), ref + QStringLiteral("^{commit}")});
+    if (specLintGitBroken(resolved)) {
+        s.err = specLintGitFailed(QStringLiteral("rev-parse --verify"), resolved);
+        return s;
+    }
+    if (resolved.exitCode == 0) {
+        s.base = QString::fromUtf8(resolved.stdoutBytes).trimmed();
+    } else if (!staged) {
+        s.err = gitErr("bad_args",
+                       QStringLiteral("spec_lint: since '%1' does not resolve to a "
+                                      "commit").arg(since));
+        return s;
+    }   // staged with no commit yet: `git diff --cached` uses the empty tree
+
+    QStringList argv{QStringLiteral("diff")};
+    if (staged) argv << QStringLiteral("--cached");
+    argv << QStringLiteral("--relative") << QStringLiteral("--unified=0")
+         << QStringLiteral("--no-renames") << QStringLiteral("--no-color")
+         << QStringLiteral("--no-ext-diff");
+    if (!staged) argv << s.base.toString();
+    argv << QStringLiteral("--") << relDocs;
+    const GitWrap::Result diff = GitWrap::run(root, argv);
+    if (specLintGitBroken(diff) || diff.exitCode != 0 || diff.stdoutTruncated) {
+        s.err = specLintGitFailed(QStringLiteral("diff"), diff);
+        return s;
+    }
+
+    // New and deleted files, from the file headers only: inside a hunk a
+    // removed line reading `-- x` prints as `--- x` and is not a header.
+    QSet<QString> newFiles, deleted;
+    {
+        bool inHeader = false, oldNull = false;
+        QString oldPath;
+        for (const QString &line : QString::fromUtf8(diff.stdoutBytes).split(QLatin1Char('\n'))) {
+            if (line.startsWith(QLatin1String("diff --git "))) { inHeader = true; continue; }
+            if (line.startsWith(QLatin1String("@@"))) { inHeader = false; continue; }
+            if (!inHeader) continue;
+            if (line.startsWith(QLatin1String("--- "))) {
+                oldNull = line == QLatin1String("--- /dev/null");
+                oldPath = line.startsWith(QLatin1String("--- a/")) ? line.mid(6) : QString();
+            } else if (line.startsWith(QLatin1String("+++ "))) {
+                if (line == QLatin1String("+++ /dev/null")) deleted.insert(oldPath);
+                else if (oldNull && line.startsWith(QLatin1String("+++ b/")))
+                    newFiles.insert(line.mid(6));
+            }
+        }
+    }
+    if (!staged) {   // untracked files count as changed, and as new
+        QStringList lsArgv{QStringLiteral("ls-files"), QStringLiteral("--others"),
+                           QStringLiteral("--exclude-standard"), QStringLiteral("--")};
+        lsArgv << relDocs;
+        const GitWrap::Result ls = GitWrap::run(root, lsArgv);
+        if (specLintGitBroken(ls) || ls.exitCode != 0 || ls.stdoutTruncated) {
+            s.err = specLintGitFailed(QStringLiteral("ls-files"), ls);
+            return s;
+        }
+        for (const QString &p : QString::fromUtf8(ls.stdoutBytes).split(QLatin1Char('\n')))
+            if (!p.isEmpty()) newFiles.insert(p);
+    }
+
+    for (const GitWrap::DiffFile &file : GitWrap::parseDiffHunks(diff.stdoutBytes, true)) {
+        if (deleted.contains(file.path)) continue;   // read from disk, untouched
+        SpecLint::DiffScope &d = s.byDoc[file.path];
+        for (const GitWrap::DiffHunk &h : file.hunks) {
+            if (h.newCount > 0) {
+                for (int l = h.newStart; l < h.newStart + h.newCount; ++l) {
+                    d.added.insert(l);
+                    d.touched.insert(l);
+                }
+            } else {   // a pure deletion touches the lines either side of it
+                if (h.newStart > 0) d.touched.insert(h.newStart);
+                d.touched.insert(h.newStart + 1);
+            }
+            for (const QString &body : h.lines)
+                if (body.startsWith(QLatin1Char('-'))) d.removed << body.mid(1);
+        }
+    }
+    for (const QString &p : std::as_const(newFiles)) s.byDoc[p].fileNew = true;
+
+    if (staged) {   // check what will be committed, so line numbers match it
+        for (auto it = s.byDoc.cbegin(); it != s.byDoc.cend(); ++it) {
+            const GitWrap::Result show = GitWrap::run(
+                root, {QStringLiteral("show"), QStringLiteral(":./") + it.key()});
+            if (specLintGitBroken(show) || show.exitCode != 0 || show.stdoutTruncated) {
+                s.err = specLintGitFailed(QStringLiteral("show"), show);
+                return s;
+            }
+            s.indexText.insert(it.key(), QString::fromUtf8(show.stdoutBytes));
+        }
+    }
+    return s;
+}
+
+}  // namespace
+
 // SpecLint::check. See docs/specs/ANTS-3662.md.
 QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
@@ -767,6 +908,25 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
     if (relDocs.size() > walk.maxDocsPerRun)
         relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+
+    // ANTS-5537 — diff scope. Both argument checks run before any git does, so
+    // a `since` shaped like an option never reaches git's argv; `isValidRange`
+    // rejects a leading `-`, and a range is not a ref. Unscoped runs no git.
+    const QString since = req.value(QStringLiteral("since")).toString();
+    const bool staged = req.value(QStringLiteral("staged")).toBool(false);
+    const bool scoped = !since.isEmpty() || staged;
+    if (!since.isEmpty() && staged)
+        return QJsonDocument(gitErr("bad_mode_combo",
+            QStringLiteral("spec_lint: since and staged:true are exclusive")));
+    if (!since.isEmpty() &&
+        (!isValidRange(since) || since.contains(QLatin1String(".."))))
+        return QJsonDocument(gitErr("bad_args",
+            QStringLiteral("spec_lint: since must be a single git ref")));
+    SpecLintScope scope;
+    if (scoped) {
+        scope = specLintReadScope(rootCanonical, since, staged, relDocs);
+        if (!scope.err.isEmpty()) return QJsonDocument(scope.err);
+    }
 
     // Read ONCE per run, not once per spec: it is the same file for every
     // document in the walk (spec § 4). Absent, or present with no marked block,
@@ -824,6 +984,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
 
     QList<DocFinding::Finding> findings;
     QJsonObject lineCounts;
+    QJsonObject stampedDocs;   // ANTS-5537 — every checked doc, scoped runs only
     QStringList checked;
     bool truncated = false, sectionsChecked = false;
     bool testCoverageChecked = false;   // ANTS-4623
@@ -863,9 +1024,15 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         QFile f(QDir(rootCanonical).filePath(rel));
         if (f.size() > walk.maxDocBytes) continue;
         if (!f.open(QIODevice::ReadOnly)) continue;  // unreadable → INV-15, silently out
-        const QString text = QString::fromUtf8(f.readAll());
+        // ANTS-5537 — under `staged` a changed spec is checked as its index
+        // copy, so line numbers and line_count describe what will be committed.
+        const QString text = scope.indexText.contains(rel)
+                                 ? scope.indexText.value(rel)
+                                 : QString::fromUtf8(f.readAll());
         f.close();
         checked << rel;
+        opts.diff = scope.byDoc.value(rel);
+        opts.diff.active = scoped;
 
         // max_findings is a RUN cap, decremented across documents for the same
         // reason doc_symbols decrements its needle budget: the engine is
@@ -873,6 +1040,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         opts.maxFindings = qMax(1, kScanCeiling - findings.size());
         const SpecLint::Result r = SpecLint::check(text, rel, opts);
         lineCounts[rel] = r.lineCount;
+        stampedDocs[rel] = r.stamped;
         sectionsChecked = sectionsChecked || r.sectionsChecked;
         // ANTS-4623 — any document that had both halves to compare.
         testCoverageChecked = testCoverageChecked || r.testCoverageChecked;
@@ -893,7 +1061,17 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // two runs at different caps comparable.
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
-    QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
+    // ANTS-5537 — a scoped run emits in-diff findings only, and accounts for
+    // the rest in counts rather than dropping it: a filter that leaves no
+    // record of what it removed is a different check that has not been run.
+    QList<DocFinding::Finding> inDiff, outOfDiff;
+    if (scoped)
+        for (const DocFinding::Finding &f : std::as_const(findings))
+            (f.extra.value(QStringLiteral("in_diff")).toBool() ? inDiff
+                                                                : outOfDiff)
+                .append(f);
+    QJsonObject out = specLintBuildResponse(scoped ? inDiff : findings,
+                                            sectionsChecked,
                                             testCoverageChecked,
                                             lineCounts, truncated, checked,
                                             surfacesResolved, surfacesChecked,
@@ -901,6 +1079,19 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
                                             specLintSectionsSourceReason(
                                                 rootCanonical, sectionsSource));
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    if (scoped) {
+        const auto countsOf = [](const QList<DocFinding::Finding> &l) {
+            return DocFinding::countsByVerbAndKind(l)
+                .value(QStringLiteral("spec_lint")).toObject();
+        };
+        out[QStringLiteral("counts")]             = countsOf(findings);
+        out[QStringLiteral("counts_in_diff")]     = countsOf(inDiff);
+        out[QStringLiteral("counts_out_of_diff")] = countsOf(outOfDiff);
+        if (staged) out[QStringLiteral("staged")] = true;
+        else        out[QStringLiteral("since")]  = since;
+        out[QStringLiteral("base_commit")] = scope.base;
+        out[QStringLiteral("stamped")]     = stampedDocs;
+    }
     // ANTS-4110 — say that gaps were suppressed and how many. Emitted only when
     // non-zero: a caller reading a short findings list is entitled to know a
     // check declined to fire, and a constant 0 on every other project is noise.

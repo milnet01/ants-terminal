@@ -1065,3 +1065,45 @@ TEST(SpecLintVerb, Ants5537ScopedEnvelope) {
             << "under staged, base_commit is HEAD";
     }
 }
+
+// Why this exists: git names diff paths, and `:<path>`, from the repository
+// top, while the walk names documents from the project root. Every other
+// fixture here makes the two the same directory, so dropping `--relative`
+// survived the ANTS-5537 mutation run: a project in a subdirectory would have
+// matched no document and reported every finding out of the diff, which reads
+// as a clean edit.
+//
+// INV-15 — the scoped run holds in-diff findings, with the project root one
+// directory below the repository top, under both `since` and `staged`.
+TEST(SpecLintVerb, Ants5537ProjectRootBelowRepoTop) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString top = canon(tmp.path());
+    const QString root = top + QStringLiteral("/sub");
+    const QString specPath = root + QLatin1Char('/') + kSpecRel;
+    ASSERT_TRUE(gitRun(top, {QStringLiteral("init"), QStringLiteral("-q")}));
+    ASSERT_TRUE(writeText(specPath, twoUntested()));
+    ASSERT_TRUE(gitRun(top, {QStringLiteral("add"), QStringLiteral("-A")}));
+    ASSERT_TRUE(gitRun(top, {QStringLiteral("commit"), QStringLiteral("-q"),
+                             QStringLiteral("-m"), QStringLiteral("x")}));
+    ASSERT_TRUE(writeText(specPath, twoUntested(QStringLiteral("second rule, reworded."))));
+
+    const auto expectInv2Only = [](const QJsonObject &r, const char *arm) {
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << arm << ": " << dump(r).toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("checked_docs")).toArray().size(), 1)
+            << arm << ": the walk must find the spec under the project root";
+        const QJsonArray noTest = findingsOfKind(r, "invariant_no_test");
+        ASSERT_EQ(noTest.size(), 1) << arm << ": " << dump(r).toStdString();
+        EXPECT_EQ(noTest.at(0).toObject().value(QStringLiteral("line")).toInt(), 6)
+            << arm << ": the in-diff finding is INV-2's";
+    };
+
+    QJsonObject q;
+    q[QStringLiteral("since")] = QStringLiteral("HEAD");
+    expectInv2Only(callLint(root, q), "since:HEAD");
+
+    ASSERT_TRUE(gitRun(top, {QStringLiteral("add"), QStringLiteral("-A")}));
+    QJsonObject s;
+    s[QStringLiteral("staged")] = true;
+    expectInv2Only(callLint(root, s), "staged:true");
+}
