@@ -89308,6 +89308,17 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: user-request-2026-09-29.
   Lanes: ui, claude.
 
+- 📋 [ANTS-5560] **Ants Terminal can update itself to a new release.**
+  User request 2026-09-29, after ANTS-5558: a self-updating feature,
+  "very, very helpful to users". Start by reviewing how
+  /mnt/Games/Scripts/Linux/finbreak implements its working self-update,
+  then spec it (install kinds differ: AppImage, RPM/OBS, deb, source
+  build). Help -> Check for Updates exists today and only checks.
+  **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
+  Kind: feature.
+  Source: user-request-2026-09-29.
+  Lanes: ui, packaging.
+
 ## How to propose a roadmap item
 
 Open a GitHub issue with:
