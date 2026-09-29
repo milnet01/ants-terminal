@@ -4125,8 +4125,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
         out[QStringLiteral("op")]            = QStringLiteral("amend_field_batch");
         out[QStringLiteral("amended")]       = QJsonArray();
         out[QStringLiteral("amended_count")] = 0;
-        out[QStringLiteral("skipped")]       = skipped;
-        out[QStringLiteral("skipped_count")] = skipped.size();
+        rcSetAllRefusedSkipped(out, skipped);
         return QJsonDocument(out);
     }
 
@@ -4316,8 +4315,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
         out[QStringLiteral("op")]            = QStringLiteral("amend_batch");
         out[QStringLiteral("amended")]       = QJsonArray();
         out[QStringLiteral("amended_count")] = 0;
-        out[QStringLiteral("skipped")]       = skipped;
-        out[QStringLiteral("skipped_count")] = skipped.size();
+        rcSetAllRefusedSkipped(out, skipped);
         return QJsonDocument(out);
     }
 

@@ -174,6 +174,13 @@ bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, cons
 // different actions: fix the call, versus go and repair the roadmap. Empty for
 // every real write, where the row is real and belongs in gate_failures.
 bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QString &err, const RoadmapRender::Outcome &outcome, const QStringList &previewOwnIds = QStringList());
+// ANTS-5566 — writes an all-refused batch's `skipped` and `skipped_count`.
+// When every row is the same apart from the fields echoing the caller's input
+// (index, id, heading), `skipped` keeps the first row only and
+// `skipped_uniform` is true: one argument mistake echoed per entry measured
+// 25 KB over 164 rows, and the copies say nothing the count does not. Rows
+// that differ in anything else, an error naming its id included, are all kept.
+void rcSetAllRefusedSkipped(QJsonObject &out, const QJsonArray &skipped);
 // ANTS-4463 — the dry-run field policy, in ONE place because nine sites emit
 // these fields and nine copies of a rule is nine chances to miss one.
 //

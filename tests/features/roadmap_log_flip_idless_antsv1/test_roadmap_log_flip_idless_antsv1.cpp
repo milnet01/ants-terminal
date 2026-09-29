@@ -270,8 +270,11 @@ TEST(roadmap_log_flip_idless_antsv1, Inv5FlipBatchAllSkippedIsNotOk) {
         << "nothing resolved is a refusal, not a partial success";
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
               QStringLiteral("bullet_not_found"));
-    EXPECT_EQ(resp.value(QStringLiteral("skipped")).toArray().size(), 2)
-        << "skipped[] still carries the per-locator detail";
+    // ANTS-5566 — both rows differ only in locator_index, so one sample row
+    // stands for both; the count keeps the total.
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 2);
+    EXPECT_EQ(resp.value(QStringLiteral("skipped")).toArray().size(), 1);
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped_uniform")).toBool());
 
     // A batch with one resolvable locator stays a partial success.
     QJsonObject good;

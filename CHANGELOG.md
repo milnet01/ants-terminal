@@ -193,6 +193,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **A batch roadmap or feedback write that refuses every entry the same way now returns one sample row and a count** (ANTS-5566)
+  `skipped_uniform: true` marks it. One argument mistake over 164 entries
+  used to echo about 25 KB of identical rows.
+
 - **CI's compile cache now keeps the precompiled headers, so a warm Release build takes about 31 seconds instead of six minutes.** (ANTS-5531)
   Before, 183 of 975 compiler calls could not be cached. Now every call
   can. The build jobs also compile four files at a time instead of two
@@ -323,6 +327,10 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **roadmap_log amend_field_batch's description says where section moves go** (ANTS-5565)
+  Moves use op:"amend_field" field:"section" with locators[], one call
+  per destination.
 
 - **A long status-bar message no longer stretches the window wider.**
   The message now shortens with "…" to fit, and hovering shows the whole

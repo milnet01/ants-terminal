@@ -965,12 +965,35 @@ TEST(RoadmapLogAmendFieldBatch, AllRefusedWritesNothing) {
               QStringLiteral("bullet_not_found"))
         << "one shared code when every entry failed the same way";
     EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 2);
+    EXPECT_EQ(resp.value(QStringLiteral("skipped")).toArray().size(), 2)
+        << "ANTS-5566: errors that differ by id keep every row";
+    EXPECT_FALSE(resp.contains(QStringLiteral("skipped_uniform")));
     EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
 
     const QJsonObject empty = rc.cmdRoadmapLogAmendFieldForTest(
         batchReq(fx.root, QJsonArray{})).object();
     EXPECT_EQ(empty.value(QStringLiteral("code")).toString(),
               QStringLiteral("missing_field"));
+}
+
+// ANTS-5566 — every entry refused with one code and one error: one sample row
+// and the true count, not N copies (164 copies measured 25 KB).
+TEST(RoadmapLogAmendFieldBatch, UniformRefusalsCollapseToOneRow) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(batchReq(fx.root, {
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("section"),
+                  QStringLiteral("backlog")),
+        amendment(QStringLiteral("DEMO-0007"), QStringLiteral("section"),
+                  QStringLiteral("backlog")),
+        amendment(QStringLiteral("DEMO-0009"), QStringLiteral("section"),
+                  QStringLiteral("backlog"))})).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 3);
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped_uniform")).toBool());
+    const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(skipped.first().toObject().value(QStringLiteral("index")).toInt(-1), 0);
 }
 
 // ---------------------------------------------------------------------------

@@ -1533,8 +1533,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: assign_id_batch applied no "
                                "assignment — every one was refused"));
-            e[QStringLiteral("skipped")]       = skipped;
-            e[QStringLiteral("skipped_count")] = skipped.size();
+            rcSetAllRefusedSkipped(e, skipped);
             return QJsonDocument(e);
         }
 

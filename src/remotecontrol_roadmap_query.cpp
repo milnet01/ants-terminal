@@ -1170,6 +1170,29 @@ void rcdetail::rcRoadmapReconcileCounterCache(QJsonObject &env,
     }
 }
 
+void rcdetail::rcSetAllRefusedSkipped(QJsonObject &out, const QJsonArray &skipped) {
+    out[QStringLiteral("skipped_count")] = skipped.size();
+    // The row minus what echoes the caller's own input: the caller already
+    // holds those, and every entry failed. Anything else a row carries, such
+    // as near-miss candidates, makes the rows differ and keeps them all.
+    const auto key = [](const QJsonValue &v) {
+        QJsonObject o = v.toObject();
+        for (const char *echo : {"index", "locator_index", "bullet_index", "id",
+                                 "heading", "heading_line"})
+            o.remove(QLatin1String(echo));
+        return o;
+    };
+    bool uniform = skipped.size() > 1;
+    for (qsizetype i = 1; uniform && i < skipped.size(); ++i)
+        uniform = key(skipped.at(i)) == key(skipped.first());
+    if (!uniform) {
+        out[QStringLiteral("skipped")] = skipped;
+        return;
+    }
+    out[QStringLiteral("skipped")]         = QJsonArray{skipped.first()};
+    out[QStringLiteral("skipped_uniform")] = true;
+}
+
 bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
                                   const QString &err,
                                   const RoadmapRender::Outcome &outcome,

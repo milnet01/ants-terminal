@@ -126,10 +126,15 @@ one open item land together where a Kind alone is refused.
   code when all failed the same way, else `bad_args`. An absent or empty
   `amendments` refuses `missing_field`. `field:"section"` is refused per
   entry, since moving items is `amend_field`'s `locators` form.
+- ANTS-5566: when every entry is refused and the rows are the same apart
+  from `index` and `id`, `skipped[]` holds the first row only and
+  `skipped_uniform` is true; `skipped_count` is still the full count. Rows
+  that differ in anything else keep every row.
+  The same rule covers every batch op's all-refused reply.
 - The reply carries `amended[]` ({id, field, previous, value}),
   `amended_count`, `skipped[]` and `skipped_count`.
 
-*Tests:* the four `RoadmapLogAmendFieldBatch.*` cases.
+*Tests:* the `RoadmapLogAmendFieldBatch.*` cases.
 
 ## ANTS-4669 — `op:"amend_batch"`
 

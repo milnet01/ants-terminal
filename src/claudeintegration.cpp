@@ -14429,7 +14429,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "checks one, all written in ONE commit and render, "
                             "so the Layman gate judges the final state. A "
                             "refused entry lands in skipped[] with its index; "
-                            "all refused writes nothing. At most 500.");
+                            "all refused writes nothing. At most 500. To move "
+                            "items, use op:\"amend_field\" field:\"section\" "
+                            "with locators[], one call per destination.");
                         props["amendments"] = amendmentsProp;
                     }
                     props["bullets"]       = bulletsProp;

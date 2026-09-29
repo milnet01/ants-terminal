@@ -643,8 +643,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         out["file"]          = QStringLiteral("ROADMAP.md");
         out["flipped"]       = QJsonArray();
         out["flipped_count"] = 0;
-        out["skipped"]       = skipped;
-        out["skipped_count"] = skipped.size();
+        rcSetAllRefusedSkipped(out, skipped);
         return QJsonDocument(out);
     }
 
@@ -747,8 +746,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             out["file"]          = QStringLiteral("ROADMAP.md");
             out["flipped"]       = QJsonArray();
             out["flipped_count"] = 0;
-            out["skipped"]       = skipped;
-            out["skipped_count"] = skipped.size();
+            rcSetAllRefusedSkipped(out, skipped);
             return QJsonDocument(out);
         }
 
@@ -2927,8 +2925,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["file"]          = QStringLiteral("ROADMAP.md");
         out["ids"]           = QJsonArray();
         out["applied_count"] = 0;
-        out["skipped"]       = skipped;
-        out["skipped_count"] = skipped.size();
+        rcSetAllRefusedSkipped(out, skipped);
         // ANTS-3793 INV-2's declared field difference: a store has no lines and
         // no spliced byte count.
         if (!writeTarget) {

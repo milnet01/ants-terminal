@@ -45,7 +45,9 @@ leaving the fully id-less case (RetroArch HIGH + Album Builder,
   `flipped_count:0`. Partial success stays `ok:true` (INV-2); with nothing
   applied there is no rest to still apply, and a caller not reading
   `flipped_count` reported a bundle shipped that was still planned.
-  `skipped[]` / `skipped_count` are unchanged.
+  `skipped_count` is the full count. Since ANTS-5566, rows that are the same
+  apart from their `locator_index` collapse to one row with
+  `skipped_uniform:true`.
 
 ## Tests
 
