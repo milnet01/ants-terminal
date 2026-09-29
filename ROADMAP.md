@@ -33105,7 +33105,7 @@ against current source before filing.
   Kind: enhancement.
   Source: DOOM-Ants + finbreak feedback 2026-07-28 (ANTS-3743 detectors 3 and 4).
 
-- 📋 [ANTS-3748] **Splitting a ROADMAP bullet silently makes the parent's ✅ over-claim in every feedback file that cites it.**
+- ✅ [ANTS-3748] **Splitting a ROADMAP bullet silently makes the parent's ✅ over-claim in every feedback file that cites it.**
   Hit TWICE in one session, which is the escalation trigger.
   ANTS-3718 was split into (a) input_hash and (b) the section index
   (ANTS-3740); ANTS-3707 was split into the envelope half and the
@@ -33141,6 +33141,8 @@ against current source before filing.
   ANTS-4079 (Blocked-by) and ANTS-3827 (links through migration). Spec
   under ANTS-4079; this item's split guard is one of its clauses.
   Contract: docs/specs/ANTS-4079-item-links.md § 2.3 and INV-4, INV-10.
+  Shipped 2026-09-29 under ANTS-4079: a split parent refuses open_parts
+  on a flip to shipped while a part is open.
   **Layman:** When we split a reported issue into two tickets, the reporting project only ever sees the first one — so "done" can mean half-done.
   Kind: fix.
   Source: in-session-2026-07-30 (hit twice in one triage pass).
@@ -37456,7 +37458,7 @@ against current source before filing.
   Source: in-session-2026-08-04 (found while grounding ANTS-3810 § 6).
   Resolved (2026-08-15) by taking half (b), which the item called the better outcome: the rule now exists, so the two citations became TRUE rather than needing repair — half (a) turned out to be no edit at all. `docs/standards/testing.md` § Project-local rules gains the mtime-busting rule beside the must-fail-first recipe it protects: restoring a mutated source with a method that PRESERVES mtime (`shutil.copy2`, `cp -p`, `rsync -t`, untar) leaves ninja believing the object is current, so it skips the rebuild, the mutation survives into a green-linking binary, and the proof is vacuous — and the mutations accumulate across a sweep. It went in the PROJECT-LOCAL half, above the mirror divider, deliberately: the mechanism is ninja's, not language-agnostic, so it is not the global standard's to carry. Verified the `git revert` / `git stash` recipes already above it are safe (git stamps a fresh mtime), so the rule is scoped to hand-rolled harnesses, which is where it has bitten. `check-standard-mirrors` still reports 5 in sync.
 
-- 📋 [ANTS-3827] **The migration converts no relationships, though the model says it converts two types.**
+- ✅ [ANTS-3827] **The migration converts no relationships, though the model says it converts two types.**
   `roadmap-data-model.md` § 6's Migration column marks two of the six
   relationship types as converted, not authored: `relates-to` "converted
   from `Dependencies:` (~21 occurrences)" and `specified-by` "converted
@@ -37530,6 +37532,8 @@ against current source before filing.
   specified under ANTS-4079, with ANTS-3748.
   Contract: docs/specs/ANTS-4079-item-links.md § 2.6 and INV-7, INV-8.
   Option (a), convert both, as roadmap-data-model.md § 6 already states.
+  Shipped 2026-09-29 under ANTS-4079: links survive migration (authored
+  link lines import; Dependencies: and Spec: become rows).
 
 - ✅ [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
   User-reported 2026-08-04: "when I paste an image, it doesn't always paste
@@ -39819,7 +39823,7 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-09.
 
-- 📋 [ANTS-4079] **A roadmap item cannot declare what blocks it, so ordering lives only in prose.**
+- ✅ [ANTS-4079] **A roadmap item cannot declare what blocks it, so ordering lives only in prose.**
   A `Blocked-by:` trailer taking comma-separated ids, written into the
   existing `relationships` edge table as type `blocked-by` — the type is
   already in `roadmap-data-model.md` § 6, so this is a carrier for an edge
@@ -39859,6 +39863,8 @@ against current source before filing.
   document the four link trailer lines, the id-list-only rule, and that
   op:"link" writes them. Then flip ANTS-4079, ANTS-3748 and ANTS-3827
   shipped.
+  Shipped 2026-09-29: § 8 standards edits landed (roadmap-data-model.md
+  § 6, roadmap-format.md § 3.5). All INV-1 to INV-11 pass.
   **Layman:** Let an item say which other items must finish first, and warn when that points at nothing or goes in a circle.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild).
