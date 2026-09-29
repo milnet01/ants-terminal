@@ -68716,6 +68716,10 @@ project. Reported causes are claims until checked in source.
   Options: resolve option() and set() names in CMakeLists.txt; resolve
   TEST(Suite, Case) names in the test tree; treat a Q-prefixed or
   q-prefixed identifier as external API (candidate, not finding).
+  Also environment variables (2026-09-29): doc_lint on
+  docs/specs/ANTS-5506-mcpd-call.md reports `HOME`, `XDG_CONFIG_HOME`
+  and `XDG_DATA_HOME` as unresolved symbols. Enum values in the same run
+  are ANTS-5535's.
   **Layman:** The document checker flags real names as missing when they come from the build file, the tests or the Qt library, so its warnings get ignored.
   Kind: fix.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
