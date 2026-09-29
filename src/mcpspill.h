@@ -15,6 +15,7 @@
 // "shadow" across a project relocation (docs/standards/mcp-caches.md).
 
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 
 class QJsonObject;
@@ -68,7 +69,10 @@ bool shouldOffload(qint64 bodyBytes);
 // write failure (dir unwritable, disk full, commit() false) returns `body`
 // unchanged — fail-open (INV-11). Caller must already have checked the
 // threshold + head guard (INV-1) via shouldOffload().
-QString offloadBody(const QString &toolName, const QString &body);
+// ANTS-5266 — `args` is the call's arguments, so the hint does not advise a
+// narrowing the caller already applied.
+QString offloadBody(const QString &toolName, const QString &body,
+                    const QJsonObject &args = QJsonObject());
 
 // read_spill byte-paging slice (INV-5/INV-6).
 struct SpillSlice {

@@ -233,7 +233,38 @@ static void preserveTopLevelFields(QJsonObject &o, const QJsonObject &root,
             QJsonArray::fromStringList(omitted);
 }
 
-QString offloadBody(const QString &toolName, const QString &body) {
+namespace {
+
+// ANTS-5266 — the narrowings this call already applied. A caller who sent a
+// projection, a row cap and the columnar encoding and still spilled was told
+// to do exactly that; those cut keys and rows, never the width of one row.
+QStringList appliedNarrowing(const QJsonObject &args) {
+    QStringList out;
+    for (const char *k : {"fields", "bullet_fields", "limit", "max_results",
+                          "max_bytes", "max_symbols"})
+        if (args.contains(QLatin1String(k))) out << QString::fromLatin1(k);
+    if (args.value(QStringLiteral("encoding")).toString() == QLatin1String("tabular"))
+        out << QStringLiteral("encoding:\"tabular\"");
+    return out;
+}
+
+// The hint for a caller that already narrowed: name what it applied and point
+// at the levers left — which rows come back, or the handle.
+QString narrowedHint(const QStringList &applied, const QString &toolName,
+                     const QString &readSpill) {
+    return QStringLiteral(
+        "Large result spilled although this call already narrowed with %1. "
+        "Those cut keys and rows, not the width of each row, so more of the "
+        "same will not fit. Filter WHICH rows %2 returns (a query, section or "
+        "status argument), or %3")
+        .arg(applied.join(QStringLiteral(", ")), toolName, readSpill);
+}
+
+}  // namespace
+
+QString offloadBody(const QString &toolName, const QString &body,
+                    const QJsonObject &args) {
+    const QStringList applied = appliedNarrowing(args);
     Q_UNUSED(toolName);
     const QByteArray utf8 = body.toUtf8();
     const qint64 total = utf8.size();
@@ -277,6 +308,10 @@ QString offloadBody(const QString &toolName, const QString &body) {
         "re-ask %2 for LESS instead — most verbs take a size cap (`limit`, "
         "`max_results` or `max_bytes`), and a narrower request comes back as "
         "an ordinary envelope with no handle to page.").arg(handle, toolName);
+    if (!applied.isEmpty())
+        o[QStringLiteral("hint")] = narrowedHint(applied, toolName,
+            QStringLiteral("read the full body via read_spill {handle:\"%1\"} "
+                           "(optional offset/max_bytes to page).").arg(handle));
 
     // ANTS-3538 — additive structured preview for array-shaped bodies
     // (§ 2.3.1 / INV-13). Purely additive: the pre-3538 fields above are
@@ -352,6 +387,12 @@ QString offloadBody(const QString &toolName, const QString &body) {
                     "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
                     "row-paged (row_offset/row_count) over the \"%2\" array.")
                     .arg(handle, domKey, toolName);
+                if (!applied.isEmpty())
+                    o[QStringLiteral("hint")] = narrowedHint(applied, toolName,
+                        QStringLiteral("read the full body via read_spill "
+                                       "{handle:\"%1\"}, row-paged "
+                                       "(row_offset/row_count) over the \"%2\" "
+                                       "array.").arg(handle, domKey));
                 // ANTS-4705 — once, here, because a dominant array EXISTS is
                 // exactly when the count is knowable. It used to be set on two
                 // of the three arms below: the head_rows arm and ANTS-4519's

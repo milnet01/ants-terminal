@@ -2131,7 +2131,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         // tested; offloadBody has no internal threshold guard).
         const qint64 bodyBytes = responseText.toUtf8().size();
         if (mcp::shouldOffload(bodyBytes)) {
-            responseText = mcp::offloadBody(toolName, responseText);
+            responseText = mcp::offloadBody(toolName, responseText, argsObj);
             // ANTS-4626 — offloadBody builds a FRESH head+pointer
             // envelope from its own keys, so the ANTS-2175
             // advisory attached above is discarded with the rest

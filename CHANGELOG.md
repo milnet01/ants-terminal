@@ -199,6 +199,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **A spilled reply's hint names the narrowing the call already applied and points at the levers left, instead of re-advising it** (ANTS-5266)
+
 - **create_section's refusal of a `v`-prefixed title says existing `v` blocks still read as releases** (ANTS-5567)
 
 - **A batch roadmap or feedback write that refuses every entry the same way now returns one sample row and a count** (ANTS-5566)

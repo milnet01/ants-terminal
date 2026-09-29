@@ -1324,3 +1324,39 @@ TEST_F(McpResultOffload, Ants4850HintOffersTheCheaperRouteOnBothArms) {
             << hint.toStdString();
     }
 }
+
+// ANTS-5266 — a caller that already narrowed (a projection, a row cap, the
+// columnar encoding) and still spilled was told to narrow. The hint names what
+// was applied and points at the levers left: which rows, or the handle.
+TEST_F(McpResultOffload, Ants5266HintDoesNotReadviseAppliedNarrowing) {
+    QJsonObject args;
+    args[QStringLiteral("bullet_fields")] = QJsonArray{QStringLiteral("id")};
+    args[QStringLiteral("limit")]         = 500;
+    args[QStringLiteral("encoding")]      = QStringLiteral("tabular");
+    for (const bool rowArm : {false, true}) {
+        QString body;
+        if (rowArm) {
+            QString rows;
+            for (int i = 0; i < 400; ++i) {
+                if (i) rows += QLatin1Char(',');
+                rows += QStringLiteral("{\"id\":\"ANTS-%1\"}").arg(9000 + i);
+            }
+            body = QStringLiteral("{\"ok\":true,\"bullets\":[") + rows + QStringLiteral("]}");
+        } else {
+            body = QStringLiteral("{\"blob\":\"") + QString(20000, QLatin1Char('x'))
+                 + QStringLiteral("\"}");
+        }
+        const QString hint = QJsonDocument::fromJson(
+            mcp::offloadBody(QStringLiteral("roadmap_query"), body, args).toUtf8())
+                .object().value(QStringLiteral("hint")).toString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("already narrowed")))
+            << (rowArm ? "rows: " : "plain: ") << hint.toStdString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("bullet_fields"))
+                    && hint.contains(QStringLiteral("limit")))
+            << "names what was applied: " << hint.toStdString();
+        EXPECT_FALSE(hint.contains(QStringLiteral("cheaper")))
+            << "does not re-advise narrowing: " << hint.toStdString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("read_spill")))
+            << hint.toStdString();
+    }
+}
