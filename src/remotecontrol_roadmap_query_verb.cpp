@@ -3055,6 +3055,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["source_filtered_out"] = sourceFilteredOut;
         }
         out["section"] = sec->slug;
+        // ANTS-4758 — name the nested sections this reply also covers
+        // (ANTS-4819), so a caller can descend or tell a direct bullet from a
+        // nested one by its own section_slug. Absent when there are none.
+        {
+            QStringList nested = RoadmapIndex::descendantSlugs(m_roadmapIndex, *sec);
+            nested.removeAll(sec->slug);
+            if (!nested.isEmpty())
+                out["subsections"] = QJsonArray::fromStringList(nested);
+        }
         // ANTS-1907 — always echo the section's etag on a section=
         // response so the caller can hand it back as section_etag_match
         // on the next call and short-circuit when only OTHER sections

@@ -185,6 +185,16 @@ TEST(roadmap_query_section_descendants, Inv6DescendantReportsItsOwnSlug) {
     expect(slugOf.value(QStringLiteral("ANTS-0002")) ==
                QStringLiteral("child-beta"),
            "INV-6: each descendant reports its own slug, not one shared one");
+
+    // ANTS-4758 — the envelope names the nested sections it covered; a leaf
+    // carries no `subsections` key.
+    const QJsonArray sub = out.value(QStringLiteral("subsections")).toArray();
+    expect(sub.size() == 2 && sub.contains(QStringLiteral("child-alpha")) &&
+               sub.contains(QStringLiteral("child-beta")),
+           "ANTS-4758: a parent's reply names its nested sections");
+    req["section"] = QStringLiteral("child-alpha");
+    expect(!rc.cmdRoadmapQuery(req).object().contains(QStringLiteral("subsections")),
+           "ANTS-4758: a leaf's reply carries no subsections key");
     EXPECT_EQ(0, expect_finish());
 }
 
