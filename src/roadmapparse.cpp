@@ -643,9 +643,13 @@ bool lineBeginsTrailerDecl(QStringView line) {
         line = line.mid(1);
     if (line.startsWith(QLatin1String("**")))
         line = line.mid(2);
+    // ANTS-4079 — the four link keys too: the render writes them directly
+    // below the trailers, so a wrapped value must not swallow one.
     for (const QLatin1String key : {QLatin1String("Kind:"), QLatin1String("Source:"),
                                     QLatin1String("Lanes:"), QLatin1String("Layman:"),
-                                    QLatin1String("Evidence:")})
+                                    QLatin1String("Evidence:"), QLatin1String("Splits-from:"),
+                                    QLatin1String("Blocked-by:"), QLatin1String("Duplicate-of:"),
+                                    QLatin1String("Supersedes:")})
         if (line.startsWith(key))
             return true;
     return false;
@@ -1940,6 +1944,86 @@ TrailerValues trailerValuesIn(const QString &body) {
     }
 
     return out;
+}
+
+// ANTS-4079 § 2.5 — see roadmapparse.h.
+const QStringList &authoredLinkTypes() {
+    static const QStringList t{QStringLiteral("splits-from"), QStringLiteral("blocked-by"),
+                               QStringLiteral("duplicate-of"), QStringLiteral("supersedes")};
+    return t;
+}
+
+QString linkKeyForType(const QString &type) {
+    return type.isEmpty() ? QString() : type.left(1).toUpper() + type.mid(1);
+}
+
+namespace {
+// Group 1-3: the key in whichever of the three shapes matched; group 4: value.
+const QRegularExpression &rxLinkLine() {
+    static const QRegularExpression rx(QStringLiteral(
+        "^[ \\t]*(?:[-*][ \\t]+\\*\\*(Splits-from|Blocked-by|Duplicate-of|Supersedes)\\*\\*[ \\t]*:"
+        "|\\*\\*(Splits-from|Blocked-by|Duplicate-of|Supersedes):\\*\\*"
+        "|(Splits-from|Blocked-by|Duplicate-of|Supersedes):)[ \\t]*(.*)$"));
+    return rx;
+}
+
+// The ids of a link line, or empty when the value is not a clean id list.
+QStringList linkIdsIn(QString value) {
+    static const QRegularExpression rxId(
+        QStringLiteral("^[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+$"));
+    value = value.trimmed();
+    if (value.endsWith(QLatin1Char('.')))
+        value.chop(1);
+    QStringList ids;
+    for (const QString &part : value.split(QLatin1Char(','))) {
+        const QString id = part.trimmed();
+        if (!rxId.match(id).hasMatch())
+            return {};
+        ids << id;
+    }
+    return ids;
+}
+
+// The type and ids of one line, or an empty type when it is not a declaration.
+QPair<QString, QStringList> linkLine(const QString &line) {
+    const auto m = rxLinkLine().match(line);
+    if (!m.hasMatch())
+        return {};
+    QString key = m.captured(1);
+    if (key.isEmpty()) key = m.captured(2);
+    if (key.isEmpty()) key = m.captured(3);
+    const QStringList ids = linkIdsIn(m.captured(4));
+    if (ids.isEmpty())
+        return {};
+    return {key.toLower(), ids};
+}
+}  // namespace
+
+LinkLines extractLinkLines(const QString &body, bool keepFirstLine) {
+    LinkLines out;
+    QStringList kept;
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        const auto decl = (keepFirstLine && i == 0) ? QPair<QString, QStringList>()
+                                                    : linkLine(lines.at(i));
+        if (decl.first.isEmpty()) {
+            kept << lines.at(i);
+            continue;
+        }
+        QStringList &ids = out.byType[decl.first];
+        for (const QString &id : decl.second)
+            if (!ids.contains(id, Qt::CaseInsensitive))
+                ids << id;
+    }
+    out.body = out.byType.isEmpty() ? body : kept.join(QLatin1Char('\n'));
+    return out;
+}
+
+bool declaresLinkLine(const QString &text) {
+    for (const QString &line : text.split(QLatin1Char('\n')))
+        if (!linkLine(line).first.isEmpty())
+            return true;
+    return false;
 }
 
 // ANTS-3808 § 2.1, amended by ANTS-4506 — a TRAILING run of trailer-only lines

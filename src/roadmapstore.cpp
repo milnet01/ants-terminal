@@ -1269,6 +1269,61 @@ RoadmapStore::resolveLinkTarget(qint64 callerProjectId, const QString &id,
 }
 
 namespace {
+// A cross-project row stores the far id folded. Restore the prefix's case from
+// any id the far project holds under it, so VEST-0040 does not read back as
+// vest-0040; with no such id the fold is shown as stored.
+QString displayFoldedId(QSqlDatabase &db, const QString &slug, const QString &fold) {
+    const qsizetype dash = fold.lastIndexOf(QLatin1Char('-'));
+    if (dash <= 0)
+        return fold;
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral(
+        "SELECT substr(i.id, 1, ?) FROM item i JOIN project p "
+        "ON p.project_id = i.project_id WHERE p.export_slug = ? "
+        "AND substr(i.id_fold, 1, ?) = ? LIMIT 1"));
+    q.addBindValue(dash + 1);
+    q.addBindValue(slug);
+    q.addBindValue(dash + 1);
+    q.addBindValue(fold.left(dash + 1));
+    return (q.exec() && q.next()) ? q.value(0).toString() + fold.mid(dash + 1) : fold;
+}
+
+// ANTS-4079 § 2.5 — fill ItemWrite::authoredLinks for the items in `byPk`,
+// from one query over their outgoing authored rows. `where` selects the rows'
+// sources (one item, or one project), bound to `key`.
+bool attachAuthoredLinks(QSqlDatabase &db, const QString &where, qint64 key,
+                         QHash<qint64, RoadmapStore::ItemWrite *> &byPk, QString *error) {
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral(
+        "SELECT r.src_pk, r.type, d.id, r.dst_project, r.dst_id_fold "
+        "FROM relationship r JOIN item s ON s.item_pk = r.src_pk "
+        "LEFT JOIN item d ON d.item_pk = r.dst_pk "
+        "WHERE %1 AND r.type IN ('splits-from','blocked-by','duplicate-of','supersedes') "
+        "AND r.dst_path IS NULL ORDER BY r.rel_id").arg(where));
+    q.addBindValue(key);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    while (q.next()) {
+        RoadmapStore::ItemWrite *w = byPk.value(q.value(0).toLongLong());
+        if (!w)
+            continue;
+        const QString id = q.value(2).isNull()
+            ? displayFoldedId(db, q.value(3).toString(), q.value(4).toString())
+            : q.value(2).toString();
+        w->authoredLinks[q.value(1).toString()].append(id);
+    }
+    for (RoadmapStore::ItemWrite *w : std::as_const(byPk)) {
+        const QJsonObject un = w->extras.value(QStringLiteral("unresolved_links")).toObject();
+        for (auto t = un.constBegin(); t != un.constEnd(); ++t)
+            for (const auto &v : t.value().toArray())
+                w->authoredLinks[t.key()].append(v.toString());
+    }
+    return true;
+}
+
 // The WHERE clause naming one authored edge by its row form: dst_pk for a filed
 // target, (dst_project, dst_id_fold) for one that is not.
 QString edgeWhere(const RoadmapStore::LinkTarget &dst) {
@@ -1320,23 +1375,8 @@ RoadmapStore::linksFor(qint64 itemPk, QString *error) const {
     auto &db = const_cast<QSqlDatabase &>(m_db);
     QVector<LinkRow> rows;
 
-    // A cross-project row stores the far id folded. Restore the prefix's case
-    // from any id the far project holds under it, so VEST-0040 does not read
-    // back as vest-0040; with no such id the fold is shown as stored.
     const auto display = [&](const QString &slug, const QString &fold) {
-        const qsizetype dash = fold.lastIndexOf(QLatin1Char('-'));
-        if (dash <= 0)
-            return fold;
-        QSqlQuery q(db);
-        q.prepare(QStringLiteral(
-            "SELECT substr(i.id, 1, ?) FROM item i JOIN project p "
-            "ON p.project_id = i.project_id WHERE p.export_slug = ? "
-            "AND substr(i.id_fold, 1, ?) = ? LIMIT 1"));
-        q.addBindValue(dash + 1);
-        q.addBindValue(slug);
-        q.addBindValue(dash + 1);
-        q.addBindValue(fold.left(dash + 1));
-        return (q.exec() && q.next()) ? q.value(0).toString() + fold.mid(dash + 1) : fold;
+        return displayFoldedId(db, slug, fold);
     };
 
     QSqlQuery f(db);
@@ -2546,7 +2586,12 @@ std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
     }
     if (!q.next())
         return std::nullopt;
-    return itemFromRow(q);
+    ItemWrite w = itemFromRow(q);
+    QHash<qint64, ItemWrite *> byPk{{itemPk, &w}};   // ANTS-4079 § 2.5
+    if (!attachAuthoredLinks(const_cast<QSqlDatabase &>(m_db),
+                             QStringLiteral("r.src_pk = ?"), itemPk, byPk, error))
+        return std::nullopt;
+    return w;
 }
 
 std::optional<QHash<qint64, RoadmapStore::ItemWrite>>
@@ -2562,6 +2607,12 @@ RoadmapStore::readItems(qint64 projectId, QString *error) const {
     QHash<qint64, ItemWrite> out;
     while (q.next())
         out.insert(q.value(22).toLongLong(), itemFromRow(q));
+    QHash<qint64, ItemWrite *> byPk;   // ANTS-4079 § 2.5
+    for (auto it = out.begin(); it != out.end(); ++it)
+        byPk.insert(it.key(), &it.value());
+    if (!attachAuthoredLinks(const_cast<QSqlDatabase &>(m_db),
+                             QStringLiteral("s.project_id = ?"), projectId, byPk, error))
+        return std::nullopt;
     return out;
 }
 

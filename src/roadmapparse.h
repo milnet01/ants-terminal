@@ -21,6 +21,7 @@
 #pragma once
 
 #include <QJsonObject>
+#include <QMap>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -321,6 +322,27 @@ bool isRecognisedKind(const QString &raw);
 // displace a real declaration. When NO capture is recognised the last match is
 // returned raw, so makeItem()'s unmapped branch still sees it.
 TrailerValues trailerValuesIn(const QString &body);
+
+// ANTS-4079 § 2.5 — the four authored link lines: `Splits-from:`,
+// `Blocked-by:`, `Duplicate-of:`, `Supersedes:`, as `Key:` or `**Key:**` after
+// indentation, or `- **Key**:` on pass-headings. A line is a link declaration
+// only when its WHOLE value is a comma-separated list of id tokens, with at
+// most one closing period. Anything else starting with the key — `Blocked-by:
+// nothing.`, a value carrying a parenthetical, a list wrapped onto the next
+// line — is prose and stays prose: the corpus holds such lines, and treating
+// them as links would lift one line of a sentence out of its paragraph.
+struct LinkLines {
+    QMap<QString, QStringList> byType;   // relationship type -> ids, file order
+    QString body;                        // the input with those lines removed
+};
+// `keepFirstLine` leaves line 0 alone: on a bullet it is the head line.
+LinkLines extractLinkLines(const QString &body, bool keepFirstLine);
+// True when any line of `text` is a link declaration by that test.
+bool declaresLinkLine(const QString &text);
+// The four link types in the order the render writes them, and each one's
+// line key (`blocked-by` -> `Blocked-by`).
+const QStringList &authoredLinkTypes();
+QString linkKeyForType(const QString &type);
 
 // ANTS-3808 § 2.1 (ANTS-4506) — `body` with its TRAILING run of trailer-only
 // lines removed: the block § 2.4's render appends, which the next parse would

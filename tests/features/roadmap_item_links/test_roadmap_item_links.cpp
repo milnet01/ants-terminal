@@ -131,6 +131,22 @@ QByteArray vestFixture() {
     return b;
 }
 
+// Migrate (or re-migrate) the ROADMAP.md at `root` into the sandboxed store.
+bool migrate(const QString &root, const QString &name, const QString &slug) {
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return false;
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) { ADD_FAILURE() << "findRoadmaps: " << err.toStdString(); return false; }
+    const auto plan = RoadmapMigrate::planFrom(*disc, name, slug);
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-09-29T11:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(*store, plan, opts);
+    if (!out.ok) { ADD_FAILURE() << "migration load: " << out.error.toStdString(); return false; }
+    return true;
+}
+
 QString seedProject(const QTemporaryDir &tmp, const char *dir, const QByteArray &md,
                     const QString &name, const QString &slug) {
     const QString rawRoot = QDir(tmp.path()).filePath(QString::fromLatin1(dir));
@@ -473,4 +489,167 @@ TEST(RoadmapItemLinks, FeedbackQueryReportsPartsOfACitedParent) {
             << "mapped_id_status keeps the parent's own status";
     }
     EXPECT_TRUE(sawParent) << dump(env);
+}
+
+namespace {
+
+QJsonObject render(RemoteControl &rc, const QString &root) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("render");
+    return rc.cmdRoadmapLog(req).object();
+}
+
+// Every id's `links` object, keyed by id, so two states compare in one EXPECT.
+QJsonObject allLinks(RemoteControl &rc, const QString &root, const QStringList &ids) {
+    QJsonObject out;
+    for (const QString &id : ids)
+        out.insert(id, fetch(rc, root, id.toLatin1().constData())
+                           .value(QStringLiteral("links")).toObject());
+    return out;
+}
+
+int occurrences(const QByteArray &hay, const char *needle) {
+    int n = 0;
+    for (qsizetype at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) ++n;
+    return n;
+}
+
+}  // namespace
+
+// INV-6 (ants-v1) — render then re-import restores the same rows and the same
+// file: all four authored types, a cross-project target, an unresolved id and a
+// same-type cycle. A prose line that is not an id list stays prose (the § 2.5
+// amendment): it is neither a row nor moved.
+TEST(RoadmapItemLinks, TrailersRoundTripOnAntsV1) {
+    Fx fx; ASSERT_TRUE(fx.tmp.isValid());
+    fx.guard.setEnv("XDG_DATA_HOME",
+                    QDir(fx.tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    fx.vestRoot = seedProject(fx.tmp, "vest", vestFixture(), QStringLiteral("Vest"),
+                              QStringLiteral("vest"));
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n\n# Demo \xE2\x80\x94 Roadmap\n\n";
+    md += kPad;
+    md += "\n## Work\n\n";
+    md += item("DEMO-0001", kPlanned, "The parent.", "  Supersedes: DEMO-0003.\n");
+    md += item("DEMO-0002", kPlanned, "Part one.",
+               "  Blocked-by: nothing, it stands alone.\n");
+    md += item("DEMO-0003", kPlanned, "Part two.", "  Supersedes: DEMO-0001.\n");
+    md += item("DEMO-0004", kPlanned, "A blocker.", "  Blocked-by: DEMO-0999.\n");
+    fx.root = seedProject(fx.tmp, "demo", md, QStringLiteral("Demo"), QStringLiteral("demo"));
+    ASSERT_FALSE(fx.root.isEmpty());
+    ASSERT_FALSE(fx.vestRoot.isEmpty());
+    RemoteControl rc(nullptr);
+
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0002", "splits-from", {"DEMO-0001"})
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0003", "blocked-by",
+                     {"DEMO-0004", "VEST-0001", "VEST-0040"}).value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(link(rc, fx.root, "link", "DEMO-0004", "duplicate-of", {"DEMO-0002"})
+                    .value(QStringLiteral("ok")).toBool());
+
+    const QStringList ids{QStringLiteral("DEMO-0001"), QStringLiteral("DEMO-0002"),
+                          QStringLiteral("DEMO-0003"), QStringLiteral("DEMO-0004")};
+    const QJsonObject rowsBefore = allLinks(rc, fx.root, ids);
+    EXPECT_EQ(rowsBefore.value(QStringLiteral("DEMO-0001")).toObject()
+                  .value(QStringLiteral("supersedes")).toArray().size(), 1)
+        << "import restores a same-type cycle: " << dump(rowsBefore);
+    EXPECT_FALSE(rowsBefore.value(QStringLiteral("DEMO-0002")).toObject()
+                     .contains(QStringLiteral("blocked_by")))
+        << "a prose line became a row: " << dump(rowsBefore);
+
+    ASSERT_TRUE(render(rc, fx.root).value(QStringLiteral("ok")).toBool());
+    const QByteArray f1 = readAll(fx.roadmap());
+    EXPECT_TRUE(f1.contains("  Blocked-by: DEMO-0004, VEST-0001, VEST-0040.")) << f1.toStdString();
+    EXPECT_TRUE(f1.contains("  Blocked-by: DEMO-0999.")) << "unresolved id lost";
+    EXPECT_TRUE(f1.contains("  Splits-from: DEMO-0001."));
+    EXPECT_TRUE(f1.contains("  Duplicate-of: DEMO-0002."));
+    // Where the author wrote it, above the trailers: lifted into a link line it
+    // would render the same text, but at the bullet's end.
+    EXPECT_TRUE(f1.contains("  Blocked-by: nothing, it stands alone.\n  **Layman:** A thing."))
+        << "prose line moved or lost: " << f1.toStdString();
+    EXPECT_EQ(occurrences(f1, "Supersedes: DEMO-"), 2) << f1.toStdString();
+    // The link lines follow the trailers they were composed after.
+    EXPECT_LT(f1.indexOf("Source: seed.\n  Splits-from: DEMO-0001."), f1.size());
+    EXPECT_GE(f1.indexOf("Source: seed.\n  Splits-from: DEMO-0001."), 0) << f1.toStdString();
+
+    ASSERT_TRUE(migrate(fx.root, QStringLiteral("Demo"), QStringLiteral("demo")));
+    ASSERT_TRUE(render(rc, fx.root).value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(readAll(fx.roadmap()), f1) << "the file moved on re-import";
+    EXPECT_EQ(allLinks(rc, fx.root, ids), rowsBefore) << "the rows moved on re-import";
+}
+
+// INV-6 (pass-headings) — the `- **Key**:` form, after the Status line.
+TEST(RoadmapItemLinks, TrailersRoundTripOnPassHeadings) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    QByteArray md = "# Passes\n\n";
+    md += kPad;
+    md += "\n## Work\n\n"
+          "#### Pass 1.1 The parent\n"
+          "- **Status**: todo\n"
+          "- **Finding**: one.\n\n"
+          "#### Pass 1.2 A part\n"
+          "- **Status**: todo\n"
+          "- **Splits-from**: PASS-1-1\n"
+          "- **Finding**: two.\n\n"
+          "#### Pass 1.3 Blocked\n"
+          "- **Status**: todo\n"
+          "- **Blocked-by**: PASS-1-1, PASS-9-9\n"
+          "- **Finding**: three.\n";
+    const QString root = seedProject(tmp, "passes", md, QStringLiteral("Passes"),
+                                     QStringLiteral("passes"));
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+    const QStringList ids{QStringLiteral("PASS-1-1"), QStringLiteral("PASS-1-2"),
+                          QStringLiteral("PASS-1-3")};
+    const QJsonObject rows = allLinks(rc, root, ids);
+    EXPECT_EQ(rows.value(QStringLiteral("PASS-1-1")).toObject()
+                  .value(QStringLiteral("parts")).toArray().size(), 1) << dump(rows);
+    EXPECT_EQ(rows.value(QStringLiteral("PASS-1-3")).toObject()
+                  .value(QStringLiteral("blocked_by")).toArray().size(), 1) << dump(rows);
+
+    const QJsonObject r = render(rc, root);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    const QByteArray f1 = readAll(QDir(root).filePath(QStringLiteral("ROADMAP.md")));
+    EXPECT_TRUE(f1.contains("- **Status**: todo\n- **Splits-from**: PASS-1-1\n")) << f1.toStdString();
+    EXPECT_TRUE(f1.contains("- **Blocked-by**: PASS-1-1, PASS-9-9\n")) << "unresolved id lost";
+    EXPECT_EQ(occurrences(f1, "**Blocked-by**"), 1) << f1.toStdString();
+
+    ASSERT_TRUE(migrate(root, QStringLiteral("Passes"), QStringLiteral("passes")));
+    ASSERT_TRUE(render(rc, root).value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(readAll(QDir(root).filePath(QStringLiteral("ROADMAP.md"))), f1);
+    EXPECT_EQ(allLinks(rc, root, ids), rows);
+}
+
+// INV-9 — a body write declaring a link line refuses body_shadowed; prose that
+// is not an id list does not.
+TEST(RoadmapItemLinks, BodyWriteDeclaringALinkLineRefuses) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QByteArray before = readAll(fx.roadmap());
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("set_body");
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0001");
+    req[QStringLiteral("new_text")]   = QStringLiteral("Some prose.\nBlocked-by: DEMO-0004.");
+    QJsonObject r = rc.cmdRoadmapLog(req).object();
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("body_shadowed")) << dump(r);
+    EXPECT_TRUE(r.value(QStringLiteral("error")).toString().contains(QStringLiteral("op:\"link\"")))
+        << dump(r);
+    EXPECT_EQ(readAll(fx.roadmap()), before);
+
+    QJsonObject note;
+    note[QStringLiteral("caller_cwd")] = fx.root;
+    note[QStringLiteral("op")]         = QStringLiteral("annotate");
+    note[QStringLiteral("id")]         = QStringLiteral("DEMO-0001");
+    note[QStringLiteral("note")]       = QStringLiteral("**Splits-from:** DEMO-0002");
+    r = rc.cmdRoadmapLog(note).object();
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("body_shadowed")) << dump(r);
+
+    req[QStringLiteral("new_text")] = QStringLiteral("Blocked-by: nothing yet, it can start.");
+    r = rc.cmdRoadmapLog(req).object();
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << "prose refused: " << dump(r);
 }

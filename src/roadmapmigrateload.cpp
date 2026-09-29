@@ -214,6 +214,7 @@ struct Loader {
     bool matchItems();
     bool updateMatched();
     bool rebuildElements();
+    bool writeLinks();   // ANTS-4079 § 2.5
     bool writeTail();
 
     bool allocateId(QString *allocated);
@@ -279,7 +280,7 @@ bool Loader::run() {
         return fail(err);
 
     if (!resolveSections() || !matchItems() || !updateMatched() ||
-        !rebuildElements() || !writeTail())
+        !rebuildElements() || !writeLinks() || !writeTail())
         return false;
     return true;
 }
@@ -1153,6 +1154,51 @@ bool Loader::rebuildElements() {
     return true;
 }
 
+// ANTS-4079 § 2.5 — one row per link line id, once every item has a pk. The
+// ids markUnresolvedLinks() could not place are skipped here and live on in
+// `extras`. Insert-if-absent, because a re-migration keeps matched items and
+// with them their rows. No cycle refusal: op:"link" owns that, and import
+// restores what the file holds (ANTS-3810 INV-2).
+bool Loader::writeLinks() {
+    for (const PlannedItem &it : plan.items) {
+        if (it.links.isEmpty() || it.id.isEmpty())
+            continue;
+        const auto src = store.findItem(projectId, it.id, &err);
+        if (!src) {
+            if (!err.isEmpty())
+                return fail(err);
+            continue;
+        }
+        const QJsonObject unresolved =
+            it.extras.value(QStringLiteral("unresolved_links")).toObject();
+        for (auto t = it.links.cbegin(); t != it.links.cend(); ++t) {
+            const QJsonArray skip = unresolved.value(t.key()).toArray();
+            for (const QString &id : t.value()) {
+                if (skip.contains(id))
+                    continue;
+                const auto dst = store.resolveLinkTarget(projectId, id, &err);
+                if (!dst) {
+                    if (!err.isEmpty())
+                        return fail(err);
+                    continue;
+                }
+                const auto has = store.hasRelation(t.key(), *src, *dst, &err);
+                if (!has)
+                    return fail(err);
+                if (*has)
+                    continue;
+                const bool ok = dst->itemPk
+                    ? store.relateItems(t.key(), *src, *dst->itemPk, &err)
+                    : store.relateCrossProject(t.key(), *src, dst->exportSlug,
+                                               dst->idFold, &err);
+                if (!ok)
+                    return fail(err);
+            }
+        }
+    }
+    return true;
+}
+
 bool Loader::writeTail() {
     if (plan.legend && !store.setLegend(projectId, plan.legend->entries, &err))
         return fail(err);
@@ -1186,6 +1232,43 @@ bool Loader::writeTail() {
     return true;
 }
 
+}  // namespace
+
+namespace {
+// ANTS-4079 § 2.5 — a link id the store will not hold goes to the item's
+// `extras` as `unresolved_links` BEFORE any write, so the matched-item field
+// comparison sees the same extras on every re-run and the render can put the
+// id back in its line. An id resolves when the plan files it, or when another
+// project holds it or owns its prefix; an id of this project the plan drops,
+// or the item's own id, does not.
+void markUnresolvedLinks(const RoadmapStore &store, MigrationPlan &plan) {
+    const std::optional<qint64> self = store.projectIdForSlug(plan.exportSlug);
+    QSet<QString> planned;
+    for (const PlannedItem &it : std::as_const(plan.items))
+        if (!it.id.isEmpty())
+            planned.insert(RoadmapParse::foldId(it.id));
+    for (PlannedItem &it : plan.items) {
+        QJsonObject unresolved;
+        const QString own = RoadmapParse::foldId(it.id);
+        for (auto t = it.links.cbegin(); t != it.links.cend(); ++t) {
+            QJsonArray ids;
+            for (const QString &id : t.value()) {
+                const QString fold = RoadmapParse::foldId(id);
+                bool resolves = fold != own && planned.contains(fold);
+                if (!resolves && fold != own) {
+                    const auto dst = store.resolveLinkTarget(self.value_or(0), id);
+                    resolves = dst && (!self || dst->projectId != *self);
+                }
+                if (!resolves)
+                    ids.append(id);
+            }
+            if (!ids.isEmpty())
+                unresolved.insert(t.key(), ids);
+        }
+        if (!unresolved.isEmpty())
+            it.extras.insert(QStringLiteral("unresolved_links"), unresolved);
+    }
+}
 }  // namespace
 
 namespace RoadmapMigrateLoad {
@@ -1285,7 +1368,10 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
     if (!opts.borrowTransaction && !store.begin(&err))
         return refuse("project_refused", err);
 
-    Loader loader{store, plan, opts, out, sourcePaths};
+    // ANTS-4079 § 2.5 — the one plan-level edit a load makes, on a copy.
+    MigrationPlan linked = plan;
+    markUnresolvedLinks(store, linked);
+    Loader loader{store, linked, opts, out, sourcePaths};
     if (!loader.run()) {
         // Every failure but § 2.5's one stated exception aborts the project.
         // The rollback's own error cannot displace the first one: the first is

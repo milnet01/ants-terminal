@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **Item links appear in ROADMAP.md as `Blocked-by:`, `Splits-from:`, `Duplicate-of:` and `Supersedes:` lines, and a migration reads them back as links** (ANTS-4079)
+  Only a line whose value is a list of ids counts; `Blocked-by: nothing.`
+  and other prose stay where they were written. Writing a link line by
+  hand into a body is refused and points at op:"link".
+
 - **feedback_query lists the parts of a cited item that was split, in `mapped_id_parts`, so a shipped parent is not read as all of its work shipped** (ANTS-4079)
 
 - **A roadmap item split into parts cannot be marked shipped while a part is still open; a flip past an open blocker succeeds and names it in `blocked_by_open`** (ANTS-3748)

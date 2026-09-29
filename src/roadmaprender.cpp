@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -96,9 +97,30 @@ QString withStop(const QString &value) {
 // store keeps it.
 QString passBlockText(const RoadmapStore::ItemWrite &it) {
     const QString pass = PassHeadingWrite::designatorFromPassId(it.id);
-    return PassHeadingWrite::formatPassBlock(
+    const QString block = PassHeadingWrite::formatPassBlock(
         pass, it.headline.simplified(),
         PassHeadingWrite::passStatusKeyword(it.status), it.body);
+    // ANTS-4079 § 2.5 — the dialect's link lines, `- **Blocked-by**: …`,
+    // directly after the block's Status line, where import reads them.
+    QStringList links;
+    for (const QString &type : RoadmapParse::authoredLinkTypes()) {
+        const QStringList ids = it.authoredLinks.value(type);
+        if (!ids.isEmpty())
+            links << QStringLiteral("- **%1**: %2")
+                         .arg(RoadmapParse::linkKeyForType(type), ids.join(QStringLiteral(", ")));
+    }
+    if (links.isEmpty())
+        return block;
+    QStringList lines = block.split(QLatin1Char('\n'));
+    static const QRegularExpression statusLine(
+        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    qsizetype at = 1;   // after the heading when a block has no Status line
+    for (qsizetype i = 1; i < lines.size(); ++i)
+        if (statusLine.match(lines.at(i)).hasMatch()) { at = i + 1; break; }
+    for (qsizetype k = 0; k < links.size(); ++k)
+        lines.insert(at + k, links.at(k));
+    return lines.join(QLatin1Char('\n'));
 }
 
 QString laymanForStore(const QString &value) {
@@ -170,6 +192,16 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // period would read as part of the last path (roadmap-format.md § 3.5).
     if (emitted.evidence)
         appendIndented(&lines, QStringLiteral("Evidence: ") + it.evidence.join(QStringLiteral(", ")));
+    // ANTS-4079 § 2.5 — the authored links, composed from the rows (and any id
+    // extras kept unresolved), after every other trailer, in the type order
+    // of § 2.1. Import removes these lines from the body, so they never render
+    // twice.
+    for (const QString &type : RoadmapParse::authoredLinkTypes()) {
+        const QStringList ids = it.authoredLinks.value(type);
+        if (!ids.isEmpty())
+            appendIndented(&lines, RoadmapParse::linkKeyForType(type) + QStringLiteral(": ")
+                                       + withStop(ids.join(QStringLiteral(", "))));
+    }
 
     return lines.join(QLatin1Char('\n'));
 }

@@ -30,6 +30,7 @@
 #include "roadmapparse.h"
 
 #include <QJsonObject>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -51,6 +52,9 @@ struct PlannedItem {
     int         position = 0;  // § 2.11 — the ONE per-section sequence, shared
                                // with that section's PlannedElements
     QJsonObject extras;        // source_status, source_kind — verbatim (§ 2.7, § 2.8)
+    // ANTS-4079 § 2.5 — the item's authored link lines, type -> ids in file
+    // order, already removed from `body`. The load turns them into rows.
+    QMap<QString, QStringList> links;
     QJsonObject provenance;    // per field: asserted | defaulted | migrated
                                // (roadmap-data-model.md § 7.7)
     // § 2.9 — the allocation obligation rides on the ITEM, not only on a note:

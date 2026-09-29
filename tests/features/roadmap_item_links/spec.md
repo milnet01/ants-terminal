@@ -22,14 +22,15 @@ drives `roadmap_log`, `roadmap_query` and `feedback_query` through
   and carries `blocked_by_open`.
 - **INV-6** Render then re-import restores the same rows and the same
   file, on ants-v1 and pass-headings. The cases include all four authored
-  types, one unresolved id and one same-type cycle.
+  types, one unresolved id and one same-type cycle. A line starting with a
+  link key whose value is not an id list stays prose, where it was written.
 - **INV-7** Migration turns `Dependencies:` and `Spec:` lines into
   `relates-to` and `specified-by` rows. It keeps an unresolvable value in
   `extras`, and leaves the rendered body byte-identical.
 - **INV-8** Removing a `Dependencies:` value with `amend_body` removes its
   row. The row stays while the other endpoint still declares the pair.
-- **INV-9** A body write declaring `Blocked-by:` at a line start refuses
-  `body_shadowed`.
+- **INV-9** A body write declaring a link line refuses `body_shadowed`;
+  prose after the key does not.
 - **INV-10** `feedback_query` reports a cited parent's open part in
   `mapped_id_parts`, and `mapped_id_status` keeps the parent's own status.
 

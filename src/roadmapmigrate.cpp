@@ -311,7 +311,16 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     // invented ones.
     it.headline = joinWrapped(rec.headlineFull.isEmpty() ? rec.headline
                                                          : rec.headlineFull);
-    it.body        = bodyWithoutHeadPrefix(rec);   // ANTS-3808 § 2.1
+    // ANTS-4079 § 2.5 — the link lines come out BEFORE the trailing-run strip:
+    // the render writes them last, so left in they would stop that strip at
+    // the first line and keep every trailer above them in the body. A bullet's
+    // first line is its head; a pass block's body has no head line.
+    const RoadmapParse::LinkLines links = RoadmapParse::extractLinkLines(
+        rec.body, rec.format != QLatin1String("pass-headings"));
+    BulletRecord unlinked = rec;
+    unlinked.body  = links.body;
+    it.links       = links.byType;
+    it.body        = bodyWithoutHeadPrefix(unlinked);   // ANTS-3808 § 2.1
     it.layman      = rec.layman;
     it.lanes       = rec.lanes;
     it.evidence    = rec.evidence;

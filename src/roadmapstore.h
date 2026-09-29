@@ -305,6 +305,11 @@ public:
         QStringList lanes, evidence;
         QJsonObject extras;
         QJsonObject provenance;
+        // ANTS-4079 § 2.5 — READ-ONLY. The item's authored links, type -> ids:
+        // its relationship rows in insertion order, then any id kept in
+        // extras.unresolved_links. readItem() / readItems() fill it so every
+        // render of the item writes its link lines; putItem() ignores it.
+        QMap<QString, QStringList> authoredLinks;
         // INV-20 — an item is filed by its element row, and putItem() creates
         // exactly one. There is no item.section column: order and filing live
         // once, in element.

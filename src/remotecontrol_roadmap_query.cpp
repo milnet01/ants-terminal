@@ -1990,10 +1990,27 @@ QString rcdetail::rlWrapNote(const QString &note) {
     return lines.join(QLatin1Char('\n'));
 }
 
+// ANTS-4079 § 2.5 — the message for a link line in caller text. The rows are
+// the truth and the render composes the line, so a hand-written one would be
+// overwritten on the next write; op:"link" is where the fact goes.
+static QString rlLinkLineShadowMessage(const char *argName) {
+    return QStringLiteral(
+        "`%1` declares a link line (Splits-from:, Blocked-by:, Duplicate-of: or "
+        "Supersedes: followed by ids). Links are relationship rows: write them "
+        "with roadmap_log op:\"link\", and the render composes the line. Prose "
+        "that is not an id list after the key is not a declaration.")
+        .arg(QString::fromLatin1(argName));
+}
+
 bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
                                      const char *argName) {
     if (note.isEmpty())
         return false;
+    if (RoadmapParse::declaresLinkLine(note)) {   // ANTS-4079 § 2.5
+        if (error)
+            *error = rlLinkLineShadowMessage(argName);
+        return true;
+    }
     for (const RlTrailerKey &k : kRlTrailerKeys) {
         const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(note);
         const QString fromNote = rlBodyValueFor(tv, k);
@@ -2138,6 +2155,11 @@ bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
     QString body = bulletReq.value(QStringLiteral("body")).toString();
     rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals,
                          removedFragments);   // ANTS-4938
+    if (RoadmapParse::declaresLinkLine(body)) {   // ANTS-4079 § 2.5
+        if (error)
+            *error = rlLinkLineShadowMessage("body");
+        return false;
+    }
     const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(body);
     w.body = body;
 
