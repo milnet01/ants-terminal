@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log links items: op:"link" and op:"unlink" record "blocked by", "split from", "duplicate of" and "supersedes", and roadmap_query id fetches report them both ways under `links`** (ANTS-4079)
+  A link to an item in another registered project is kept even before that
+  item is filed. A link that would close a loop of the same kind is refused
+  and the loop is named.
+
 - **roadmap_query section= names the nested sections its reply also covers in `subsections`** (ANTS-4758)
 
 - **roadmap_log op:"amend_preamble" replaces one phrase in a roadmap's preamble and keeps the rest** (ANTS-5523)

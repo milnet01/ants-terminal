@@ -10,6 +10,7 @@
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
+#include "roadmaplinks.h"   // ANTS-4079
 #include "readregion.h"   // ANTS-4949 — the shared section-slug ranker
 #include <limits>
 #include <tuple>
@@ -4162,6 +4163,140 @@ QJsonDocument RemoteControl::cmdRoadmapLogDeleteSectionForTest(const QJsonObject
 
 QJsonDocument RemoteControl::cmdRoadmapLogMoveSectionForTest(const QJsonObject &req) {
     return cmdRoadmapLogMoveSection(req);
+}
+
+// ANTS-4079 § 2.2 — op:"link" / op:"unlink". Every target is resolved and every
+// cycle checked BEFORE the transaction opens, so a refusal writes nothing and
+// the targets of one call are judged together: an edge earlier in `targets`
+// counts toward the cycle a later one would close. The cycle check lives here
+// and nowhere else — relateItems() keeps accepting a cycle, as ANTS-3810 INV-2
+// requires of the store, and import restores stored rows without it.
+QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
+    const bool unlink = req.value(QStringLiteral("op")).toString() == QLatin1String("unlink");
+    const QString opName = unlink ? QStringLiteral("unlink") : QStringLiteral("link");
+    for (const char *key : {"id", "type", "targets"})
+        if (!req.contains(QLatin1String(key)))
+            return rcSectionOpErr(QStringLiteral("missing_field"),
+                QStringLiteral("roadmap_log: %1 requires `%2`").arg(opName, QLatin1String(key)));
+    const QString id   = req.value(QStringLiteral("id")).toString();
+    const QString type = req.value(QStringLiteral("type")).toString();
+    if (!RoadmapLinks::isAuthored(type))
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `type` must be splits-from, blocked-by, "
+                           "duplicate-of or supersedes; relates-to and specified-by "
+                           "come from the body's Dependencies: and Spec: lines"));
+    const QJsonArray rawTargets = req.value(QStringLiteral("targets")).toArray();
+    QStringList targets;
+    for (const auto &v : rawTargets) {
+        const QString t = v.toString().trimmed();
+        if (t.isEmpty())
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: every `targets` entry must be a non-empty id"));
+        if (t.compare(id, Qt::CaseInsensitive) == 0)
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: %1 cannot link to itself").arg(id));
+        if (!targets.contains(t, Qt::CaseInsensitive))
+            targets << t;
+    }
+    if (targets.isEmpty())
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `targets` must be a non-empty array of ids"));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    QString err;
+    const auto srcPk = store.findItem(projectId, id, &err);
+    if (!srcPk)
+        return rcSectionOpErr(err.isEmpty() ? QStringLiteral("bullet_not_found")
+                                            : QStringLiteral("store_failed"),
+            err.isEmpty() ? QStringLiteral("roadmap_log: %1 is not in the store").arg(id) : err);
+
+    struct Edge { QString shown; RoadmapStore::LinkTarget dst; };
+    QVector<Edge> todo;
+    QStringList unchanged;
+    std::optional<QVector<QPair<qint64, qint64>>> edges;
+    for (const QString &t : std::as_const(targets)) {
+        const auto dst = store.resolveLinkTarget(projectId, t, &err);
+        if (!dst && !err.isEmpty())
+            return rcSectionOpErr(QStringLiteral("link_target_not_found"),
+                QStringLiteral("roadmap_log: %1").arg(err));
+        if (!dst || (!dst->itemPk && dst->projectId == projectId)) {
+            QJsonObject env = rcSectionOpErr(QStringLiteral("link_target_not_found"),
+                QStringLiteral("roadmap_log: %1 is not filed in this project, and its "
+                               "prefix names no other registered project").arg(t)).object();
+            env[QStringLiteral("target")] = t;
+            return QJsonDocument(env);
+        }
+        const auto exists = store.hasRelation(type, *srcPk, *dst, &err);
+        if (!exists)
+            return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        if (*exists != unlink) {   // link of a present edge, unlink of an absent one
+            unchanged << t;
+            continue;
+        }
+        if (!unlink && dst->itemPk) {
+            if (!edges) {
+                edges = store.edgesOfType(type, &err);
+                if (!edges)
+                    return rcSectionOpErr(QStringLiteral("store_failed"), err);
+            }
+            const QVector<qint64> cycle = RoadmapLinks::cycleThrough(*edges, *srcPk, *dst->itemPk);
+            if (!cycle.isEmpty()) {
+                QJsonArray ids;
+                for (const qint64 pk : cycle) {
+                    const auto row = store.readItem(pk, &err);
+                    ids.append(row ? row->id : QString::number(pk));
+                }
+                QJsonObject env = rcSectionOpErr(QStringLiteral("link_cycle"),
+                    QStringLiteral("roadmap_log: %1 %2 %3 would close a %2 cycle")
+                        .arg(id, type, t)).object();
+                env[QStringLiteral("cycle")] = ids;
+                return QJsonDocument(env);
+            }
+            edges->append({*srcPk, *dst->itemPk});
+        }
+        todo.append({t, *dst});
+    }
+
+    const auto mutate = [&](QString *mErr) -> bool {
+        for (const Edge &e : std::as_const(todo)) {
+            if (unlink) {
+                if (store.unrelate(type, *srcPk, e.dst, mErr) < 0)
+                    return false;
+            } else if (e.dst.itemPk ? !store.relateItems(type, *srcPk, *e.dst.itemPk, mErr)
+                                    : !store.relateCrossProject(type, *srcPk, e.dst.exportSlug,
+                                                                e.dst.idFold, mErr)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+
+    QStringList done;
+    for (const Edge &e : std::as_const(todo)) done << e.shown;
+    env[QStringLiteral("ok")]   = true;
+    env[QStringLiteral("op")]   = opName;
+    env[QStringLiteral("id")]   = id;
+    env[QStringLiteral("type")] = type;
+    env[unlink ? QStringLiteral("unlinked") : QStringLiteral("linked")] =
+        QJsonArray::fromStringList(done);
+    env[QStringLiteral("unchanged")] = QJsonArray::fromStringList(unchanged);
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
 }
 
 // ANTS-1248: workspace_search — structured ripgrep wrapper for MCP +

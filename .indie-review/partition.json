@@ -169,6 +169,8 @@
         "src/roadmapfoldin.h",
         "src/roadmapindex.cpp",
         "src/roadmapindex.h",
+        "src/roadmaplinks.cpp",
+        "src/roadmaplinks.h",
         "src/roadmapparse.cpp",
         "src/roadmapparse.h",
         "src/roadmaprender.cpp",

@@ -809,6 +809,7 @@ add_library(ants_roadmapstore_lib STATIC
     src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
     src/roadmapbackuphealth.cpp  # ANTS-3794 — is the store still backed up?
     src/roadmaprender.cpp   # ANTS-3758 — the render: store → ROADMAP.md
+    src/roadmaplinks.cpp    # ANTS-4079 — item links: key names, JSON, cycles
     # ANTS-3793 — the read seam. Here and not in ants_core_lib for the same
     # reason the render is: it reads the store, and its records are defined as
     # what parseBullets() would make of roadmaprender.cpp's bulletText().
@@ -2743,6 +2744,9 @@ if(ANTS_TESTS)
                 tests/features/roadmap_dropped_status/test_roadmap_dropped_status.cpp
                 # ANTS-4958 — delete_section and move_section.
                 tests/features/roadmap_log_section_ops/test_roadmap_log_section_ops.cpp
+                # ANTS-4079 — item links: link/unlink, the parts guard, links on
+                # id fetches, trailer round-trip, converted Dependencies:/Spec:.
+                tests/features/roadmap_item_links/test_roadmap_item_links.cpp
                 # ANTS-4580 — {{id:N}} tokens in append_batch.
                 tests/features/roadmap_append_batch_id_tokens/test_roadmap_append_batch_id_tokens.cpp
                 # ANTS-4970 — a wrapped amend_body match re-wraps.

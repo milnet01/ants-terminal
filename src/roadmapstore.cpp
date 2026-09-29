@@ -1186,6 +1186,238 @@ bool RoadmapStore::relateCrossProject(const QString &type, qint64 srcPk,
     return true;
 }
 
+bool RoadmapStore::relateDocument(const QString &type, qint64 srcPk,
+                                  const QString &dstPath, QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "INSERT INTO relationship (type, src_pk, dst_path) VALUES (?,?,?)"));
+    q.addBindValue(type);
+    q.addBindValue(srcPk);
+    q.addBindValue(dstPath);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+// ANTS-4079 § 2.2. lower() in SQL rather than QString::toLower(), for findItem()'s
+// reason: id_fold is SQLite's ASCII-only fold.
+std::optional<RoadmapStore::LinkTarget>
+RoadmapStore::resolveLinkTarget(qint64 callerProjectId, const QString &id,
+                                QString *error) const {
+    if (error)
+        error->clear();
+    auto &db = const_cast<QSqlDatabase &>(m_db);
+    LinkTarget t;
+    t.idFold = RoadmapParse::foldId(id);
+
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral(
+        "SELECT i.item_pk, i.project_id, p.export_slug FROM item i "
+        "JOIN project p ON p.project_id = i.project_id WHERE i.id_fold = lower(?) "
+        "ORDER BY (i.project_id = ?) DESC, i.project_id"));
+    q.addBindValue(id);
+    q.addBindValue(callerProjectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (q.next()) {
+        t.itemPk     = q.value(0).toLongLong();
+        t.projectId  = q.value(1).toLongLong();
+        t.exportSlug = q.value(2).toString();
+        if (t.projectId != callerProjectId && q.next()) {
+            if (error)
+                *error = QStringLiteral("%1 is held by more than one other project").arg(id);
+            return std::nullopt;
+        }
+        return t;
+    }
+
+    const qsizetype dash = id.lastIndexOf(QLatin1Char('-'));
+    if (dash <= 0)
+        return std::nullopt;
+    const QString prefix = id.left(dash);
+    QSqlQuery p(db);
+    p.prepare(QStringLiteral(
+        "SELECT DISTINCT i.project_id, pr.export_slug FROM item i "
+        "JOIN project pr ON pr.project_id = i.project_id "
+        "WHERE substr(i.id_fold, 1, length(?) + 1) = lower(?) || '-' "
+        "ORDER BY (i.project_id = ?) DESC, i.project_id"));
+    p.addBindValue(prefix);
+    p.addBindValue(prefix);
+    p.addBindValue(callerProjectId);
+    if (!p.exec()) {
+        if (error)
+            *error = lastErr(p);
+        return std::nullopt;
+    }
+    if (!p.next())
+        return std::nullopt;
+    t.projectId  = p.value(0).toLongLong();
+    t.exportSlug = p.value(1).toString();
+    if (t.projectId != callerProjectId && p.next()) {
+        if (error)
+            *error = QStringLiteral("the prefix of %1 is used by more than one other project")
+                         .arg(id);
+        return std::nullopt;
+    }
+    return t;
+}
+
+namespace {
+// The WHERE clause naming one authored edge by its row form: dst_pk for a filed
+// target, (dst_project, dst_id_fold) for one that is not.
+QString edgeWhere(const RoadmapStore::LinkTarget &dst) {
+    return dst.itemPk ? QStringLiteral("type = ? AND src_pk = ? AND dst_pk = ?")
+                      : QStringLiteral("type = ? AND src_pk = ? AND dst_project = ? "
+                                       "AND dst_id_fold = ?");
+}
+void bindEdge(QSqlQuery &q, const QString &type, qint64 srcPk,
+              const RoadmapStore::LinkTarget &dst) {
+    q.addBindValue(type);
+    q.addBindValue(srcPk);
+    if (dst.itemPk) {
+        q.addBindValue(*dst.itemPk);
+    } else {
+        q.addBindValue(dst.exportSlug);
+        q.addBindValue(dst.idFold);
+    }
+}
+}  // namespace
+
+std::optional<bool> RoadmapStore::hasRelation(const QString &type, qint64 srcPk,
+                                              const LinkTarget &dst, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral("SELECT 1 FROM relationship WHERE ") + edgeWhere(dst));
+    bindEdge(q, type, srcPk, dst);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    return q.next();
+}
+
+int RoadmapStore::unrelate(const QString &type, qint64 srcPk, const LinkTarget &dst,
+                           QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("DELETE FROM relationship WHERE ") + edgeWhere(dst));
+    bindEdge(q, type, srcPk, dst);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return -1;
+    }
+    return q.numRowsAffected();
+}
+
+std::optional<QVector<RoadmapStore::LinkRow>>
+RoadmapStore::linksFor(qint64 itemPk, QString *error) const {
+    auto &db = const_cast<QSqlDatabase &>(m_db);
+    QVector<LinkRow> rows;
+
+    // A cross-project row stores the far id folded. Restore the prefix's case
+    // from any id the far project holds under it, so VEST-0040 does not read
+    // back as vest-0040; with no such id the fold is shown as stored.
+    const auto display = [&](const QString &slug, const QString &fold) {
+        const qsizetype dash = fold.lastIndexOf(QLatin1Char('-'));
+        if (dash <= 0)
+            return fold;
+        QSqlQuery q(db);
+        q.prepare(QStringLiteral(
+            "SELECT substr(i.id, 1, ?) FROM item i JOIN project p "
+            "ON p.project_id = i.project_id WHERE p.export_slug = ? "
+            "AND substr(i.id_fold, 1, ?) = ? LIMIT 1"));
+        q.addBindValue(dash + 1);
+        q.addBindValue(slug);
+        q.addBindValue(dash + 1);
+        q.addBindValue(fold.left(dash + 1));
+        return (q.exec() && q.next()) ? q.value(0).toString() + fold.mid(dash + 1) : fold;
+    };
+
+    QSqlQuery f(db);
+    f.prepare(QStringLiteral(
+        "SELECT r.type, d.item_pk, d.id, d.status, r.dst_project, r.dst_id_fold, r.dst_path "
+        "FROM relationship r LEFT JOIN item d ON d.item_pk = r.dst_pk "
+        "WHERE r.src_pk = ? ORDER BY r.type, r.rel_id"));
+    f.addBindValue(itemPk);
+    if (!f.exec()) {
+        if (error)
+            *error = lastErr(f);
+        return std::nullopt;
+    }
+    while (f.next()) {
+        LinkRow r;
+        r.type = f.value(0).toString();
+        if (!f.value(1).isNull()) {
+            r.farPk  = f.value(1).toLongLong();
+            r.id     = f.value(2).toString();
+            r.status = f.value(3).toString();
+        } else if (!f.value(4).isNull()) {
+            r.id = display(f.value(4).toString(), f.value(5).toString());
+        } else {
+            r.path = f.value(6).toString();
+        }
+        rows.append(r);
+    }
+
+    QSqlQuery b(db);
+    b.prepare(QStringLiteral(
+        "SELECT r.type, s.item_pk, s.id, s.status FROM relationship r "
+        "JOIN item s ON s.item_pk = r.src_pk WHERE r.dst_pk = ? "
+        "UNION ALL "
+        "SELECT r.type, s.item_pk, s.id, s.status FROM relationship r "
+        "JOIN item s ON s.item_pk = r.src_pk "
+        "JOIN item me ON me.item_pk = ? "
+        "JOIN project p ON p.project_id = me.project_id "
+        "WHERE r.dst_project = p.export_slug AND r.dst_id_fold = me.id_fold "
+        "ORDER BY 1, 3"));
+    b.addBindValue(itemPk);
+    b.addBindValue(itemPk);
+    if (!b.exec()) {
+        if (error)
+            *error = lastErr(b);
+        return std::nullopt;
+    }
+    while (b.next()) {
+        LinkRow r;
+        r.type    = b.value(0).toString();
+        r.reverse = true;
+        r.farPk   = b.value(1).toLongLong();
+        r.id      = b.value(2).toString();
+        r.status  = b.value(3).toString();
+        rows.append(r);
+    }
+    return rows;
+}
+
+std::optional<QVector<QPair<qint64, qint64>>>
+RoadmapStore::edgesOfType(const QString &type, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT src_pk, dst_pk FROM relationship WHERE type = ? AND dst_pk IS NOT NULL "
+        "UNION ALL "
+        "SELECT r.src_pk, i.item_pk FROM relationship r "
+        "JOIN project p ON p.export_slug = r.dst_project "
+        "JOIN item i ON i.project_id = p.project_id AND i.id_fold = r.dst_id_fold "
+        "WHERE r.type = ?"));
+    q.addBindValue(type);
+    q.addBindValue(type);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    QVector<QPair<qint64, qint64>> edges;
+    while (q.next())
+        edges.append({q.value(0).toLongLong(), q.value(1).toLongLong()});
+    return edges;
+}
+
 std::optional<qint64> RoadmapStore::historyBytes() const {
     // ANTS-5046 — begin()'s write lock means no other connection can change
     // `history`, so the first sum in a transaction serves the rest of it.

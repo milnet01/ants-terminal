@@ -13462,6 +13462,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
                     opEnum.append("retitle_section"); // ANTS-5557
+                    opEnum.append("link");            // ANTS-4079
+                    opEnum.append("unlink");          // ANTS-4079
                     opEnum.append("list_elements");    // ANTS-5379
                     opEnum.append("amend_element");    // ANTS-5379
                     opEnum.append("delete_element");   // ANTS-5379
@@ -13493,6 +13495,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "\"retitle_section\" (store-only) renames `section` to "
                         "`title` and returns its new `slug`; a clash refuses "
                         "bad_args. "
+                        "\"link\" / \"unlink\" (ANTS-4079, store-only) write or "
+                        "remove relationship rows from `id` to each of `targets`, "
+                        "of one `type`; roadmap_query id: reads them back as "
+                        "`links`. A same-type cycle refuses link_cycle naming it "
+                        "in `cycle`; a repeat lands in `unchanged`. "
                         "\"delete_section\" (ANTS-4958, store-only) removes a section by "
                         "`section`, refusing section_not_empty while it files "
                         "an item; its intro and narration come back in the "
@@ -14475,6 +14482,29 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "The element ops: address the elements under the "
                             "roadmap's preamble instead of a `section`.");
                         props["preamble"] = preambleProp;
+                    }
+                    {   // ANTS-4079 — op:"link" / op:"unlink" operands.
+                        QJsonObject linkTypeProp;
+                        linkTypeProp["type"] = "string";
+                        linkTypeProp["enum"] = QJsonArray{
+                            QStringLiteral("splits-from"), QStringLiteral("blocked-by"),
+                            QStringLiteral("duplicate-of"), QStringLiteral("supersedes")};
+                        linkTypeProp["description"] = QStringLiteral(
+                            "op:\"link\" / \"unlink\" — the relationship `id` has "
+                            "to each of `targets`. relates-to and specified-by are "
+                            "not written here: they come from the body's "
+                            "Dependencies: and Spec: lines.");
+                        props["type"] = linkTypeProp;
+                        QJsonObject linkTargetsProp;
+                        linkTargetsProp["type"]     = "array";
+                        linkTargetsProp["minItems"] = 1;
+                        linkTargetsProp["items"]    = QJsonObject{{"type", "string"}};
+                        linkTargetsProp["description"] = QStringLiteral(
+                            "op:\"link\" / \"unlink\" — the target ids, in this or "
+                            "any registered project. An unfiled id of this project "
+                            "refuses link_target_not_found; one of another project "
+                            "is stored for when it is filed.");
+                        props["targets"] = linkTargetsProp;
                     }
                     props["status"]        = statusProp;
                     props["to_status"]     = toStatusProp;

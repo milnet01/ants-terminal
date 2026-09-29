@@ -344,6 +344,50 @@ public:
     bool relateCrossProject(const QString &type, qint64 srcPk,
                             const QString &dstProject, const QString &dstIdFold,
                             QString *error = nullptr);
+    // ANTS-4079 § 2.1 — the third row form, for `specified-by`: the target is a
+    // document path, not an item.
+    bool relateDocument(const QString &type, qint64 srcPk, const QString &dstPath,
+                        QString *error = nullptr);
+
+    // ANTS-4079 § 2.2 — where a link target lives. `itemPk` is set when the store
+    // holds the item; otherwise `projectId` / `exportSlug` name the project whose
+    // prefix the id carries, which may be the caller's own.
+    struct LinkTarget {
+        std::optional<qint64> itemPk;
+        qint64 projectId = 0;
+        QString exportSlug;
+        QString idFold;
+    };
+    // nullopt with `error` clear: no project holds the id, and none holds an id
+    // with its prefix (everything before the last '-'). The prefix is read from
+    // the ids items hold, not from id_prefix, which migration never writes.
+    // An id held by several projects resolves to the caller's own, and is an
+    // error otherwise.
+    std::optional<LinkTarget> resolveLinkTarget(qint64 callerProjectId, const QString &id,
+                                                QString *error = nullptr) const;
+    // One authored edge, by its row form. nullopt on an SQL error.
+    std::optional<bool> hasRelation(const QString &type, qint64 srcPk,
+                                    const LinkTarget &dst, QString *error = nullptr) const;
+    // Rows deleted, or -1 on an SQL error.
+    int unrelate(const QString &type, qint64 srcPk, const LinkTarget &dst,
+                 QString *error = nullptr);
+
+    // ANTS-4079 § 2.4 — every row naming the item, both directions. A reverse
+    // row matches `dst_pk`, or the cross-project (dst_project, dst_id_fold) pair
+    // naming it from another project. `id` is the far end's display id (its
+    // prefix case restored where the store can see it); `path` is set instead
+    // for a `specified-by` row; `status` is empty where the far end is unfiled.
+    struct LinkRow {
+        QString type;
+        bool reverse = false;
+        QString id, path, status;
+        std::optional<qint64> farPk;
+    };
+    std::optional<QVector<LinkRow>> linksFor(qint64 itemPk, QString *error = nullptr) const;
+    // ANTS-4079 § 2.2 — every item-to-item edge of one type, across the whole
+    // store, with cross-project rows that name a filed item resolved to it.
+    std::optional<QVector<QPair<qint64, qint64>>> edgesOfType(const QString &type,
+                                                              QString *error = nullptr) const;
 
     // INV-14 — below the cap nothing is ever evicted; at the cap the history
     // write FAILS AND REPORTS while the item write it accompanies still

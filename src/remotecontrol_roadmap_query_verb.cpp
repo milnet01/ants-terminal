@@ -12,6 +12,7 @@
 #include "mcpprojection.h"
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
+#include "roadmaplinks.h"   // ANTS-4079 — `links` on id fetches
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the report reads "today" through the seam
 #include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include "passheadingwrite.h"   // ANTS-2126 — the pass-headings writer (moved from TU 2)
@@ -3304,6 +3305,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // include_body:false. A case-only mismatch returns bad_case with
     // the canonical id so a wrong-case caller gets the exact spelling
     // (mirrors section= ANTS-1524) rather than a bare found:false.
+    // ANTS-4079 § 2.4 — `links` on an id / ids fetch, read from the store's
+    // relationship rows. A bullet with none omits the key; list and section
+    // queries never carry it, to keep survey rows lean. A markdown-backed
+    // project has no rows, so nothing is attached there.
+    const auto attachLinks = [&](QJsonArray &arr) {
+        if (callerCanonical.isEmpty() || arr.isEmpty())
+            return;
+        RoadmapSource::ReadError linkWhy = RoadmapSource::ReadError::None;
+        RoadmapStore *store = roadmapStoreOrNull(&linkWhy, nullptr);
+        if (!store)
+            return;
+        const auto pid = RoadmapSource::migratedProject(
+            *store, rcProjectRootFor(callerCanonical), text, nullptr, &linkWhy);
+        if (!pid)
+            return;
+        for (qsizetype k = 0; k < arr.size(); ++k) {
+            QJsonObject b = arr.at(k).toObject();
+            const auto pk = store->findItem(*pid, b.value(QStringLiteral("id")).toString());
+            if (!pk)
+                continue;
+            const auto rows = store->linksFor(*pk);
+            if (!rows || rows->isEmpty())
+                continue;
+            b[QStringLiteral("links")] = RoadmapLinks::toJson(*rows);
+            arr.replace(k, b);
+        }
+    };
     if (!idArg.isEmpty()) {
         QJsonArray matches;
         for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
@@ -3355,6 +3383,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 return QJsonDocument(out);
             }
         }
+        attachLinks(matches);     // ANTS-4079
         applyBodyMatch(matches);  // ANTS-5468 — before the cap
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
         // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only
@@ -3442,6 +3471,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 seen.insert(bid);
             }
         }
+        attachLinks(matches);     // ANTS-4079
         applyBodyMatch(matches);  // ANTS-5468 — before the cap
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
         // ANTS-4904 — the plural ids[] arm of the same targeted path.
@@ -4023,6 +4053,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
         return cmdRoadmapLogDeleteSection(req);
     if (op == QStringLiteral("move_section"))
         return cmdRoadmapLogMoveSection(req);
+    // ANTS-4079 § 2.2 — authored relationship rows.
+    if (op == QStringLiteral("link") || op == QStringLiteral("unlink"))
+        return cmdRoadmapLogLink(req);
     // ANTS-5557 — retitle_section (ANTS-4070 § 2.3). rotate_minor stays
     // unwired: § 2.4 wants the bump recipe to own the rotation event first
     // (ANTS-4081), and nothing here can tell a minor bump from a patch.
@@ -4093,6 +4126,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"set_intro\", \"amend_intro\", \"amend_preamble\", "
                            "\"set_preamble\", \"delete_section\", "
                            "\"move_section\", \"retitle_section\", "
+                           "\"link\", \"unlink\", "
                            "\"list_elements\", "
                            "\"amend_element\", \"delete_element\", "
                            "\"promote_element\", "

@@ -1347,6 +1347,9 @@ private:
     // roadmap's structure (user decision 2026-09-19).
     QJsonDocument cmdRoadmapLogDeleteSection(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogMoveSection(const QJsonObject &req);
+    // ANTS-4079 § 2.2 — link / unlink: write or remove authored relationship
+    // rows. Store-only. See docs/specs/ANTS-4079-item-links.md.
+    QJsonDocument cmdRoadmapLogLink(const QJsonObject &req);
     // ANTS-4501 § 2.3 — backfill_dates: walk this project's git history over
     // its roadmap files and fill `created` / `shipped` for the rows that
     // predate § 2.2's forward stamping. One-off and opt-in; never a side
