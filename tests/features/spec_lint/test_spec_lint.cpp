@@ -1603,3 +1603,281 @@ TEST(SpecLint, Ants4890GapMessageNamesWhatItDidNotConsult) {
            "made it read as a coverage claim about the document: "
         << f->message.toStdString();
 }
+
+// ===========================================================================
+// ANTS-5537 — diff scope, engine half (ANTS-3662 § 2.4; INV-11 to INV-14).
+// Pure: text and an injected SpecLint::DiffScope in, findings with `in_diff`
+// out. The verb half (INV-9, INV-10, INV-15) is in spec_lint_verb/.
+// ===========================================================================
+namespace {
+
+SpecLint::Options scopedOpts(const QSet<int> &added, const QSet<int> &touched,
+                             const QStringList &removed = {},
+                             bool fileNew = false) {
+    SpecLint::Options o;
+    o.diff.active  = true;
+    o.diff.fileNew = fileNew;
+    o.diff.added   = added;
+    o.diff.touched = touched;
+    o.diff.removed = removed;
+    return o;
+}
+
+// The finding of `kind` whose `line` is `line`, or nullptr.
+const DocFinding::Finding *findingAt(const SpecLint::Result &r, const char *kind,
+                                     int line) {
+    for (const auto &f : r.findings)
+        if (f.kind == QString::fromUtf8(kind) && f.line == line) return &f;
+    return nullptr;
+}
+
+// The invariant_id_gap finding for one missing number, read from the
+// `extra.invariant` key § 2.4 adds ("INV-2").
+const DocFinding::Finding *gapFor(const SpecLint::Result &r, const char *id) {
+    for (const auto &f : r.findings)
+        if (f.kind == QLatin1String("invariant_id_gap") &&
+            f.extra.value(QStringLiteral("invariant")).toString() ==
+                QString::fromUtf8(id))
+            return &f;
+    return nullptr;
+}
+
+// `in_diff` must be PRESENT and equal `want`: an absent key would read as false
+// through toBool() and let a scoped run that emits nothing pass every
+// `false` arm.
+void expectInDiff(const DocFinding::Finding *f, bool want, const char *what) {
+    ASSERT_NE(f, nullptr) << what << ": finding not emitted";
+    ASSERT_TRUE(f->extra.contains(QStringLiteral("in_diff")))
+        << what << ": a scoped run must emit in_diff on every finding";
+    EXPECT_EQ(f->extra.value(QStringLiteral("in_diff")).toBool(), want)
+        << what << ": expected in_diff=" << want;
+}
+
+}  // namespace
+
+// Why this exists: a spec written before the format standard carries every
+// newer-layout defect, so amending one invariant buried the finding that edit
+// caused among the inherited ones (ANTS-5537).
+//
+// INV-11 — a block-scoped finding is in_diff exactly when a touched line lies
+// in its invariant's block. Touching a CONTINUATION line, not the anchor, fails
+// an implementation that scopes by the finding's own line; touching the heading
+// after INV-2 fails a block that runs past the next heading.
+TEST(SpecLint, Ants5537BlockKindsScopeByBlock) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"                                   // 1
+        "\n"                                                    // 2
+        "## 3. Invariants\n"                                    // 3
+        "\n"                                                    // 4
+        "- **INV-1** — first rule.\n"                           // 5
+        "- **INV-2** — second rule, worded long enough that it\n"  // 6
+        "  wraps onto a continuation line.\n"                   // 7
+        "\n"                                                    // 8
+        "## 4. After\n"                                         // 9
+        "\n"                                                    // 10
+        "text\n");                                              // 11
+
+    // Arm 1: only INV-2's second line is touched.
+    {
+        const auto r = SpecLint::check(doc, QStringLiteral("s.md"),
+                                       scopedOpts({7}, {7}));
+        ASSERT_EQ(countKind(r, "invariant_no_test"), 2);
+        expectInDiff(findingAt(r, "invariant_no_test", 6), true,
+                     "INV-2 (continuation line 7 touched)");
+        expectInDiff(findingAt(r, "invariant_no_test", 5), false,
+                     "INV-1 (nothing of its block touched)");
+    }
+    // Arm 2: only the heading after INV-2 is touched.
+    {
+        const auto r = SpecLint::check(doc, QStringLiteral("s.md"),
+                                       scopedOpts({9}, {9}));
+        ASSERT_EQ(countKind(r, "invariant_no_test"), 2);
+        expectInDiff(findingAt(r, "invariant_no_test", 6), false,
+                     "INV-2 (heading line 9 lies past its block)");
+        expectInDiff(findingAt(r, "invariant_no_test", 5), false,
+                     "INV-1 (heading line 9 touched)");
+    }
+}
+
+// INV-12 — invariant_id_gap follows the anchor numbers; missing_section follows
+// new files and removed headings. Arms (a)-(f) are the spec's, every one active.
+TEST(SpecLint, Ants5537GapAndSectionScope) {
+    const QString base = QStringLiteral(
+        "# ANTS-1 — a spec\n"                       // 1
+        "\n"                                        // 2
+        "## 1. Problem\n"                           // 3
+        "\n"                                        // 4
+        "text\n"                                    // 5
+        "\n"                                        // 6
+        "## 3. Invariants\n"                        // 7
+        "\n"                                        // 8
+        "- **INV-1** — one. *Test:* a → b.\n"       // 9
+        "- **INV-3** — three. *Test:* c → d.\n");   // 10
+    const QString withInv4 =
+        base + QStringLiteral("- **INV-4** — four. *Test:* e → f.\n");  // 11
+    const QStringList req = {QStringLiteral("## 1. Problem"),
+                             QStringLiteral("## 2. Surface"),
+                             QStringLiteral("## 3. Invariants")};
+    const auto opts = [&](SpecLint::Options o) {
+        o.requiredSections = req;
+        return o;
+    };
+    const QString inv1Old = QStringLiteral("- **INV-1** — one, old wording. *Test:* a → b.");
+    const QString inv2Old = QStringLiteral("- **INV-2** — two. *Test:* b → c.");
+    const QString surface = QStringLiteral("## 2. Surface");
+
+    // (a) a removed INV-2 anchor and nothing adds one → the gap is in the diff.
+    {
+        const auto r = SpecLint::check(
+            base, QStringLiteral("s.md"), opts(scopedOpts({}, {}, {inv2Old})));
+        expectInDiff(gapFor(r, "INV-2"), true, "(a) removed INV-2 anchor");
+    }
+    // (b) INV-1 reworded (removed + added, same number) → no gap change.
+    {
+        const auto r = SpecLint::check(
+            base, QStringLiteral("s.md"),
+            opts(scopedOpts({9}, {9}, {inv1Old})));
+        expectInDiff(gapFor(r, "INV-2"), false,
+                     "(b) a reworded anchor opens no gap");
+    }
+    // (c) INV-4 appended: only that anchor added; the older gap stays out.
+    {
+        const auto r = SpecLint::check(
+            withInv4, QStringLiteral("s.md"), opts(scopedOpts({11}, {11})));
+        expectInDiff(gapFor(r, "INV-2"), false,
+                     "(c) a new last invariant leaves an older gap out");
+    }
+    // (d) INV-3's anchor is touched but not added (a deletion just above it).
+    {
+        const auto r = SpecLint::check(
+            base, QStringLiteral("s.md"), opts(scopedOpts({}, {10})));
+        expectInDiff(gapFor(r, "INV-2"), false,
+                     "(d) the gap rule reads added, not touched");
+    }
+    // (e) a removed line that is the missing section's heading.
+    {
+        const auto r = SpecLint::check(
+            base, QStringLiteral("s.md"), opts(scopedOpts({}, {}, {surface})));
+        const auto *f = [&]() -> const DocFinding::Finding * {
+            for (const auto &x : r.findings)
+                if (x.kind == QLatin1String("missing_section")) return &x;
+            return nullptr;
+        }();
+        expectInDiff(f, true, "(e) removed heading of the missing section");
+    }
+    // (f) a new file, nothing touched.
+    {
+        const auto r = SpecLint::check(
+            base, QStringLiteral("s.md"),
+            opts(scopedOpts({}, {}, {}, /*fileNew=*/true)));
+        const auto *f = [&]() -> const DocFinding::Finding * {
+            for (const auto &x : r.findings)
+                if (x.kind == QLatin1String("missing_section")) return &x;
+            return nullptr;
+        }();
+        expectInDiff(f, true, "(f) missing_section in a new file");
+    }
+}
+
+// INV-13 — the coverage kinds follow the Tests section; a loop row follows its
+// own line; a kind with no rule is always in the diff.
+TEST(SpecLint, Ants5537CoverageAndLoopRowScope) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"                                        // 1
+        "\n"                                                         // 2
+        "## 3. Invariants\n"                                         // 3
+        "\n"                                                         // 4
+        "- **INV-1** — one. *Test:* a → b.\n"                        // 5
+        "- **INV-2** — two. *Test:* c → d.\n"                        // 6
+        "\n"                                                         // 7
+        "## 6. Tests\n"                                              // 8
+        "\n"                                                         // 9
+        "INV-1 is covered by the fixture.\n"                         // 10
+        "\n"                                                         // 11
+        "## Cold-eyes loop log\n"                                    // 12
+        "\n"                                                         // 13
+        "| Loop | Date | Lanes | C | H | M | L | I | Outcome |\n"    // 14
+        "|---|---|---|---|---|---|---|---|---|\n"                    // 15
+        "| 1 | 2026-01-01 | a | 0 | 1 | 0 | 0 | 0 |  |\n");          // 16
+
+    // A Tests-section line touched: the coverage gap is in, the loop row out.
+    {
+        const auto r = SpecLint::check(doc, QStringLiteral("s.md"),
+                                       scopedOpts({10}, {10}));
+        ASSERT_EQ(countKind(r, "test_coverage_gap"), 1);
+        ASSERT_EQ(countKind(r, "loop_row_no_outcome"), 1);
+        expectInDiff(firstOfKind(r, "test_coverage_gap"), true,
+                     "coverage gap, Tests-section line touched");
+        expectInDiff(firstOfKind(r, "loop_row_no_outcome"), false,
+                     "loop row, only a Tests-section line touched");
+    }
+    // Only the loop row touched: the row is in, the gap out.
+    {
+        const auto r = SpecLint::check(doc, QStringLiteral("s.md"),
+                                       scopedOpts({16}, {16}));
+        ASSERT_EQ(countKind(r, "test_coverage_gap"), 1);
+        ASSERT_EQ(countKind(r, "loop_row_no_outcome"), 1);
+        expectInDiff(firstOfKind(r, "loop_row_no_outcome"), true,
+                     "loop row, its own line touched");
+        expectInDiff(firstOfKind(r, "test_coverage_gap"), false,
+                     "coverage gap, only the loop row touched");
+    }
+    // The "no rule" half, through the public rule function.
+    {
+        const SpecLint::Options o = scopedOpts({}, {});
+        DocFinding::Finding f;
+        f.verb = QStringLiteral("spec_lint");
+        f.kind = QStringLiteral("future_kind");
+        f.file = QStringLiteral("s.md");
+        f.line = 5;
+        EXPECT_TRUE(SpecLint::findingInDiff(f, doc, o))
+            << "a kind the table does not name is always in the diff";
+        f.kind = QStringLiteral("invariant_no_test");
+        EXPECT_FALSE(SpecLint::findingInDiff(f, doc, o))
+            << "a named kind with nothing touched is out of the diff";
+    }
+}
+
+// INV-14 — every finding in a stamped document, or a new file, is in_diff; a
+// stamp inside fenced code does not count.
+TEST(SpecLint, Ants5537StampAndNewFileCheckInFull) {
+    const QString stampLine = QStringLiteral("<!-- ants-spec-format: 2 -->\n");
+    const QString head = QStringLiteral("# ANTS-1 — a spec\n");
+    const QString tail = QStringLiteral(
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — first.\n"
+        "- **INV-2** — second.\n");
+
+    // Stamped on its own line: both in, and Result::stamped set.
+    {
+        const auto r = SpecLint::check(head + stampLine + tail,
+                                       QStringLiteral("s.md"),
+                                       scopedOpts({}, {}));
+        ASSERT_EQ(countKind(r, "invariant_no_test"), 2);
+        for (const auto &f : r.findings)
+            expectInDiff(&f, true, "stamped document");
+        EXPECT_TRUE(r.stamped);
+    }
+    // The same line inside a fence: both out, not stamped.
+    {
+        const auto r = SpecLint::check(
+            head + QStringLiteral("```\n") + stampLine + QStringLiteral("```\n") + tail,
+            QStringLiteral("s.md"), scopedOpts({}, {}));
+        ASSERT_EQ(countKind(r, "invariant_no_test"), 2);
+        for (const auto &f : r.findings)
+            expectInDiff(&f, false, "stamp inside a fence");
+        EXPECT_FALSE(r.stamped);
+    }
+    // Unstamped, but a new file: both in.
+    {
+        const auto r = SpecLint::check(
+            head + tail, QStringLiteral("s.md"),
+            scopedOpts({}, {}, {}, /*fileNew=*/true));
+        ASSERT_EQ(countKind(r, "invariant_no_test"), 2);
+        for (const auto &f : r.findings)
+            expectInDiff(&f, true, "new file");
+        EXPECT_FALSE(r.stamped);
+    }
+}

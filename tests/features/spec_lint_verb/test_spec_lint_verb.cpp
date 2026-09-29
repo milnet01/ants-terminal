@@ -12,9 +12,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -695,4 +698,370 @@ TEST(SpecLintVerb, Ants4737WalkHandsTheCallerCapToTheBuilder) {
     // throughout. The pair is what that contract needs.
     EXPECT_NE(body.find("sectionsSource, callerCap"), std::string::npos)
         << "max_findings must reach specLintBuildResponse, or nothing trims";
+}
+
+// ===========================================================================
+// ANTS-5537 — diff scope, verb half (ANTS-3662 § 2.4; INV-9, INV-10, INV-15).
+// End to end through RemoteControl::cmdSpecLint against a QTemporaryDir, with
+// real git repositories. The engine half (INV-11 to INV-14) is in
+// spec_lint/test_spec_lint.cpp.
+// ===========================================================================
+namespace {
+
+const QString kSpecRel = QStringLiteral("docs/specs/ANTS-1.md");
+
+bool writeText(const QString &path, const QString &text) {
+    QDir().mkpath(QFileInfo(path).path());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    const QByteArray b = text.toUtf8();
+    const bool ok = f.write(b) == b.size();
+    f.close();
+    return ok;
+}
+
+// Resolved once, before any test shims PATH, so fixture setup always runs the
+// real git.
+QString realGit() {
+    static const QString g = QStandardPaths::findExecutable(QStringLiteral("git"));
+    return g;
+}
+
+bool gitRun(const QString &dir, const QStringList &args, QString *out = nullptr) {
+    QProcess p;
+    p.setWorkingDirectory(dir);
+    p.start(realGit(),
+            QStringList{QStringLiteral("-c"), QStringLiteral("user.email=t@example.invalid"),
+                        QStringLiteral("-c"), QStringLiteral("user.name=t"),
+                        QStringLiteral("-c"), QStringLiteral("commit.gpgsign=false")}
+                << args);
+    if (!p.waitForFinished(20000)) return false;
+    if (out) *out = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+}
+
+QString canon(const QString &p) { return QFileInfo(p).canonicalFilePath(); }
+
+// Restores PATH on every exit path, including a failed ASSERT.
+struct PathGuard {
+    QByteArray old = qgetenv("PATH");
+    ~PathGuard() { qputenv("PATH", old); }
+    void set(const QString &p) { qputenv("PATH", p.toUtf8()); }
+    void prepend(const QString &dir) { set(dir + QLatin1Char(':') + QString::fromUtf8(old)); }
+};
+
+// An executable `git` in `dir` with the given shell body.
+bool writeShim(const QString &dir, const QString &body) {
+    const QString path = dir + QStringLiteral("/git");
+    if (!writeText(path, QStringLiteral("#!/bin/sh\n") + body)) return false;
+    return QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                           QFileDevice::ExeOwner);
+}
+
+QJsonObject callLint(const QString &root, QJsonObject req = {}) {
+    req[QStringLiteral("caller_cwd")] = root;
+    RemoteControl rc(nullptr);
+    return rc.cmdSpecLint(req).object();
+}
+
+QString dump(const QJsonObject &o) {
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
+void expectRefusal(const QJsonObject &r, const char *code, const char *arm) {
+    EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool())
+        << arm << ": expected a refusal, got " << dump(r).toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QString::fromUtf8(code))
+        << arm << ": wrong code in " << dump(r).toStdString();
+}
+
+QJsonArray findingsOfKind(const QJsonObject &r, const char *kind) {
+    QJsonArray out;
+    for (const auto &v : r.value(QStringLiteral("findings")).toArray())
+        if (v.toObject().value(QStringLiteral("kind")).toString() ==
+            QString::fromUtf8(kind))
+            out.append(v);
+    return out;
+}
+
+// Two invariants, neither with a test clause.
+QString twoUntested(const QString &inv2Body = QStringLiteral("second rule.")) {
+    return QStringLiteral("# ANTS-1 — a spec\n"
+                          "\n"
+                          "## 3. Invariants\n"
+                          "\n"
+                          "- **INV-1** — first rule.\n"
+                          "- **INV-2** — ") + inv2Body + QStringLiteral("\n");
+}
+
+// A committed repository holding `kSpecRel`.
+bool makeRepo(const QString &root, const QString &specText, bool commit = true) {
+    return gitRun(root, {QStringLiteral("init"), QStringLiteral("-q")}) &&
+           writeText(root + QLatin1Char('/') + kSpecRel, specText) &&
+           gitRun(root, {QStringLiteral("add"), QStringLiteral("-A")}) &&
+           (!commit || gitRun(root, {QStringLiteral("commit"), QStringLiteral("-q"),
+                                     QStringLiteral("-m"), QStringLiteral("x")}));
+}
+
+}  // namespace
+
+// Why this exists: `since` / `staged` are new arguments, and an implementation
+// that probes git on every call, or adds the new keys empty, changes every
+// existing caller's envelope (ANTS-5537).
+//
+// INV-9 — a call with neither since nor staged runs no git and emits no key
+// § 2.4 adds. The marker is what catches a git probe whose failure the verb
+// ignores.
+TEST(SpecLintVerb, Ants5537UnscopedRunsNoGit) {
+    QTemporaryDir tmp, shim;
+    ASSERT_TRUE(tmp.isValid() && shim.isValid());
+    const QString root = canon(tmp.path());
+    const QString shimDir = canon(shim.path());
+    const QString marker = shimDir + QStringLiteral("/git-ran.marker");
+
+    // A standard with a required-sections block, so `missing_section` fires;
+    // INV-1 and INV-3, so `invariant_id_gap` fires. Both are the kinds § 2.4
+    // gives an extra key when scoped, so an unscoped run must omit it.
+    ASSERT_TRUE(writeText(
+        root + QStringLiteral("/docs/standards/spec-format.md"),
+        QStringLiteral("# Spec format\n\n<!-- required-sections -->\n```\n"
+                       "## 1. Problem\n## 3. Invariants\n## 9. Missing\n```\n")));
+    ASSERT_TRUE(writeText(
+        root + QLatin1Char('/') + kSpecRel,
+        QStringLiteral("# ANTS-1 — a spec\n\n## 1. Problem\n\ntext\n\n"
+                       "## 3. Invariants\n\n"
+                       "- **INV-1** — a. *Test:* x → y.\n"
+                       "- **INV-3** — c. *Test:* x → y.\n")));
+    ASSERT_TRUE(writeShim(shimDir,
+                          QStringLiteral("echo ran >> '%1'\nexit 0\n").arg(marker)));
+
+    PathGuard path;
+    path.prepend(shimDir);
+    const QJsonObject r = callLint(root);
+
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r).toStdString();
+    for (const char *key : {"counts_in_diff", "counts_out_of_diff", "base_commit",
+                            "stamped", "since", "staged"})
+        EXPECT_FALSE(r.contains(QString::fromUtf8(key)))
+            << "an unscoped envelope must not carry `" << key << "`";
+
+    const QJsonArray gaps = findingsOfKind(r, "invariant_id_gap");
+    const QJsonArray missing = findingsOfKind(r, "missing_section");
+    EXPECT_GE(gaps.size(), 1) << "fixture must produce an id gap: " << dump(r).toStdString();
+    EXPECT_GE(missing.size(), 1)
+        << "fixture must produce a missing_section: " << dump(r).toStdString();
+    for (const auto &v : r.value(QStringLiteral("findings")).toArray())
+        EXPECT_FALSE(v.toObject().contains(QStringLiteral("in_diff")))
+            << "no in_diff on an unscoped finding: " << dump(v.toObject()).toStdString();
+    for (const auto &v : gaps)
+        EXPECT_FALSE(v.toObject().contains(QStringLiteral("invariant")))
+            << "no `invariant` key on an unscoped id gap";
+    for (const auto &v : missing)
+        EXPECT_FALSE(v.toObject().contains(QStringLiteral("section")))
+            << "no `section` key on an unscoped missing_section";
+
+    EXPECT_FALSE(QFile::exists(marker))
+        << "an unscoped call must not start git at all (marker was written)";
+}
+
+// Why this exists: an empty diff puts every finding out of scope, so a git
+// failure read as "no changes" reports a broken run as a clean one
+// (ANTS-5537).
+//
+// INV-10 — each § 2.4 refusal fires on its case, and a git failure is never
+// read as an empty diff.
+TEST(SpecLintVerb, Ants5537RefusalsNeverFallBack) {
+    QTemporaryDir repoTmp, plainTmp, noCommitTmp, shim, emptyDir, failShim;
+    ASSERT_TRUE(repoTmp.isValid() && plainTmp.isValid() && noCommitTmp.isValid() &&
+                shim.isValid() && emptyDir.isValid() && failShim.isValid());
+    const QString repo    = canon(repoTmp.path());
+    const QString plain   = canon(plainTmp.path());
+    const QString noCommit = canon(noCommitTmp.path());
+    ASSERT_TRUE(makeRepo(repo, twoUntested()));
+    ASSERT_TRUE(writeText(plain + QLatin1Char('/') + kSpecRel, twoUntested()));
+    ASSERT_TRUE(makeRepo(noCommit, twoUntested(), /*commit=*/false));
+
+    const auto since = [](const QString &ref) {
+        QJsonObject q;
+        q[QStringLiteral("since")] = ref;
+        return q;
+    };
+
+    // since in a non-repository root → not_a_git_repo.
+    expectRefusal(callLint(plain, since(QStringLiteral("HEAD"))), "not_a_git_repo",
+                  "since:HEAD in a non-repository");
+
+    // A ref git cannot resolve → bad_args.
+    expectRefusal(callLint(repo, since(QStringLiteral("no-such-ref"))), "bad_args",
+                  "since:no-such-ref");
+
+    // An option-shaped since is refused before git runs at all.
+    {
+        const QString marker = canon(shim.path()) + QStringLiteral("/git-ran.marker");
+        ASSERT_TRUE(writeShim(canon(shim.path()),
+                              QStringLiteral("echo ran >> '%1'\nexit 0\n").arg(marker)));
+        PathGuard path;
+        path.prepend(canon(shim.path()));
+        expectRefusal(callLint(repo, since(QStringLiteral("--output=x"))), "bad_args",
+                      "since:--output=x");
+        EXPECT_FALSE(QFile::exists(marker))
+            << "an invalid since must never reach git (marker was written)";
+    }
+
+    // Both modes → bad_mode_combo.
+    {
+        QJsonObject q = since(QStringLiteral("HEAD"));
+        q[QStringLiteral("staged")] = true;
+        expectRefusal(callLint(repo, q), "bad_mode_combo", "since with staged:true");
+    }
+
+    // staged:false is the same as absent → not refused.
+    {
+        QJsonObject q = since(QStringLiteral("HEAD"));
+        q[QStringLiteral("staged")] = false;
+        const QJsonObject r = callLint(repo, q);
+        EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool())
+            << "since with staged:false must not be refused: " << dump(r).toStdString();
+        EXPECT_FALSE(r.contains(QStringLiteral("staged")))
+            << "staged:false is not echoed";
+    }
+
+    // git cannot start → git_failed, never ok:true.
+    {
+        PathGuard path;
+        path.set(canon(emptyDir.path()));
+        expectRefusal(callLint(repo, since(QStringLiteral("HEAD"))), "git_failed",
+                      "since:HEAD with no git on PATH");
+    }
+
+    // git passes both rev-parse probes and fails on diff → git_failed. This is
+    // the arm an all-out-of-diff fallback hides in.
+    {
+        ASSERT_TRUE(writeShim(canon(failShim.path()),
+            QStringLiteral(
+                "case \"$*\" in\n"
+                "  *is-inside-work-tree*) echo true; exit 0;;\n"
+                "  *rev-parse*) echo 0123456789abcdef0123456789abcdef01234567; exit 0;;\n"
+                "  *diff*) echo boom >&2; exit 129;;\n"
+                "  *) exit 0;;\n"
+                "esac\n")));
+        PathGuard path;
+        path.prepend(canon(failShim.path()));
+        expectRefusal(callLint(repo, since(QStringLiteral("HEAD"))), "git_failed",
+                      "since:HEAD, diff exits non-zero");
+    }
+
+    // staged in a repository with no commit and one staged spec → ok, no base
+    // commit, every finding in the diff.
+    {
+        QJsonObject q;
+        q[QStringLiteral("staged")] = true;
+        const QJsonObject r = callLint(noCommit, q);
+        EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r).toStdString();
+        ASSERT_TRUE(r.contains(QStringLiteral("base_commit")))
+            << "staged run must report base_commit: " << dump(r).toStdString();
+        EXPECT_TRUE(r.value(QStringLiteral("base_commit")).isNull())
+            << "no commit yet, so base_commit is null: " << dump(r).toStdString();
+        const QJsonArray fs = r.value(QStringLiteral("findings")).toArray();
+        EXPECT_GE(fs.size(), 1) << dump(r).toStdString();
+        for (const auto &v : fs) {
+            EXPECT_TRUE(v.toObject().value(QStringLiteral("in_diff")).toBool())
+                << "every finding of a staged new file is in_diff: "
+                << dump(v.toObject()).toStdString();
+        }
+    }
+}
+
+// Why this exists: a scoped run that drops out-of-diff findings without
+// accounting for them is a different check that has not been run, and one that
+// reads the working tree under `staged` reports lines that are not the ones
+// being committed (ANTS-5537).
+//
+// INV-15 — a scoped envelope holds in-diff findings only and accounts for the
+// rest; under staged the index copy is the one checked.
+TEST(SpecLintVerb, Ants5537ScopedEnvelope) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    const QString specPath = root + QLatin1Char('/') + kSpecRel;
+    ASSERT_TRUE(makeRepo(root, twoUntested()));
+    QString head;
+    ASSERT_TRUE(gitRun(root, {QStringLiteral("rev-parse"), QStringLiteral("HEAD")}, &head));
+    ASSERT_EQ(head.size(), 40);
+
+    const auto sumOf = [](const QJsonObject &o) {
+        int n = 0;
+        for (auto it = o.begin(); it != o.end(); ++it) n += it.value().toInt();
+        return n;
+    };
+
+    // --- since:HEAD after rewording INV-2's body (spec line 6) -------------
+    ASSERT_TRUE(writeText(specPath, twoUntested(QStringLiteral("second rule, reworded."))));
+    {
+        QJsonObject q;
+        q[QStringLiteral("since")] = QStringLiteral("HEAD");
+        const QJsonObject r = callLint(root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r).toStdString();
+
+        const QJsonArray noTest = findingsOfKind(r, "invariant_no_test");
+        ASSERT_EQ(noTest.size(), 1) << dump(r).toStdString();
+        EXPECT_EQ(noTest.at(0).toObject().value(QStringLiteral("line")).toInt(), 6)
+            << "the one in-diff finding is INV-2's";
+        EXPECT_TRUE(noTest.at(0).toObject().value(QStringLiteral("in_diff")).toBool());
+
+        const QJsonObject counts = r.value(QStringLiteral("counts")).toObject();
+        const QJsonObject in     = r.value(QStringLiteral("counts_in_diff")).toObject();
+        const QJsonObject out    = r.value(QStringLiteral("counts_out_of_diff")).toObject();
+        EXPECT_EQ(counts.value(QStringLiteral("invariant_no_test")).toInt(), 2)
+            << "counts is the full scan, as today";
+        EXPECT_EQ(in.value(QStringLiteral("invariant_no_test")).toInt(), 1);
+        EXPECT_EQ(out.value(QStringLiteral("invariant_no_test")).toInt(), 1);
+        QSet<QString> kinds;
+        for (const QString &k : counts.keys()) kinds.insert(k);
+        for (const QString &k : in.keys()) kinds.insert(k);
+        for (const QString &k : out.keys()) kinds.insert(k);
+        for (const QString &k : std::as_const(kinds))
+            EXPECT_EQ(in.value(k).toInt() + out.value(k).toInt(), counts.value(k).toInt())
+                << "in + out must equal counts for kind " << k.toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("findings_total")).toInt(), sumOf(in))
+            << "findings_total is the sum of counts_in_diff";
+        EXPECT_EQ(r.value(QStringLiteral("findings")).toArray().size(), sumOf(in))
+            << "findings[] holds in-diff findings only";
+        EXPECT_EQ(r.value(QStringLiteral("since")).toString(), QStringLiteral("HEAD"));
+        EXPECT_EQ(r.value(QStringLiteral("base_commit")).toString(), head);
+        const QJsonObject stamped = r.value(QStringLiteral("stamped")).toObject();
+        ASSERT_TRUE(stamped.contains(kSpecRel)) << "stamped names every checked doc: "
+                                                << dump(r).toStdString();
+        EXPECT_FALSE(stamped.value(kSpecRel).toBool());
+    }
+
+    // --- staged:true: stage the edit, then add an UNSTAGED blank line above
+    // INV-1 on disk. The index copy is what will be committed.
+    ASSERT_TRUE(gitRun(root, {QStringLiteral("add"), kSpecRel}));
+    ASSERT_TRUE(writeText(specPath,
+        QStringLiteral("# ANTS-1 — a spec\n"
+                       "\n"
+                       "## 3. Invariants\n"
+                       "\n"
+                       "\n"   // the unstaged blank line: INV-1 is now line 6 on disk
+                       "- **INV-1** — first rule.\n"
+                       "- **INV-2** — second rule, reworded.\n")));
+    {
+        QJsonObject q;
+        q[QStringLiteral("staged")] = true;
+        const QJsonObject r = callLint(root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r).toStdString();
+
+        const QJsonArray noTest = findingsOfKind(r, "invariant_no_test");
+        ASSERT_EQ(noTest.size(), 1) << dump(r).toStdString();
+        EXPECT_EQ(noTest.at(0).toObject().value(QStringLiteral("line")).toInt(), 6)
+            << "INV-2's line in the INDEX copy (6), not on disk (7)";
+        EXPECT_EQ(r.value(QStringLiteral("line_count")).toObject()
+                      .value(kSpecRel).toInt(), 6)
+            << "line_count is the index copy's";
+        EXPECT_TRUE(r.value(QStringLiteral("staged")).toBool());
+        EXPECT_FALSE(r.contains(QStringLiteral("since")));
+        EXPECT_EQ(r.value(QStringLiteral("base_commit")).toString(), head)
+            << "under staged, base_commit is HEAD";
+    }
 }

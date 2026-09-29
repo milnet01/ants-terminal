@@ -857,4 +857,10 @@ Result check(const QString &text, const QString &relPath,
     return r;
 }
 
+// ANTS-5537 — stub: the scope rules land with the implementation.
+bool findingInDiff(const DocFinding::Finding &, const QString &,
+                   const Options &) {
+    return false;
+}
+
 }  // namespace SpecLint

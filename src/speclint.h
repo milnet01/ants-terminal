@@ -45,6 +45,17 @@
 
 namespace SpecLint {
 
+// ANTS-5537 — the diff a scoped run read, handed in by the verb: this engine
+// runs no git and opens nothing (spec § 2.4). `active` false is the unscoped
+// run, which emits no `in_diff` and no key § 2.4 adds.
+struct DiffScope {
+    bool        active = false;  // since or staged was passed
+    bool        fileNew = false; // absent at the base, untracked, or index-added
+    QSet<int>   added;           // 1-based lines the diff added
+    QSet<int>   touched;         // added, plus the neighbours of a deletion
+    QStringList removed;         // text of every line the diff deleted
+};
+
 struct Options {
     // The required-section list, read once per run from the format standard's
     // `<!-- required-sections -->` block. This engine is Qt6::Core-only and
@@ -106,6 +117,9 @@ struct Options {
     // A directory-scoped checker with no cap is one bad corpus away from an
     // unbounded response. Per call; the verb decrements a run-wide budget.
     int maxFindings = 500;
+
+    // ANTS-5537 — the scope of a `since` / `staged` run (spec § 2.4).
+    DiffScope diff;
 };
 
 struct Result {
@@ -183,7 +197,19 @@ struct Result {
 
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;
+
+    // ANTS-5537 — the document carries an `ants-spec-format: N` stamp outside
+    // fenced code, so a scoped run checks it in full. Set on every run; only a
+    // scoped run emits it.
+    bool stamped = false;
 };
+
+// ANTS-5537 — is this finding caused by the diff in `opts.diff` (spec § 2.4's
+// per-kind table)? Public so a test can reach the rule for a kind no check
+// emits yet. Reads `extra.invariant` for a gap and `extra.section` for a
+// missing section.
+bool findingInDiff(const DocFinding::Finding &f, const QString &text,
+                   const Options &opts);
 
 // `text` is the document's content; `relPath` is only carried onto findings.
 Result check(const QString &text, const QString &relPath,
