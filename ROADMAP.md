@@ -68677,17 +68677,21 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session report 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5562] **project_settings get and detect always emit declared_missing, undeclared and unavailable, empty when nothing applies.**
+- ✅ [ANTS-5562] **project_settings get and detect always emit declared_missing, undeclared and unavailable, empty when nothing applies.**
   AI_Prompts' op:get reply carried none of the three keys. Global rule 18
   tells sessions to read declared_missing[]; absent must not be ambiguous.
+  Resolved (2026-09-29): the three arrays are always emitted by get and
+  detect. Test extended in Ants4903GetIsTheRead, proved red first.
   **Layman:** A project's settings check leaves out its 'nothing missing' lists, so a session cannot tell 'all fine' from 'not checked'.
   Kind: fix.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5563] **roadmap_log create_section places a version lower than every existing one before the lowest version block.**
+- ✅ [ANTS-5563] **roadmap_log create_section places a version lower than every existing one before the lowest version block.**
   DOOM_Ants hit it converting phases to versions; worked round with
   after_section plus move_section.
+  Resolved (2026-09-29): placed before the first release, reply names
+  before_section; markdown and store routes tested, proved red.
   **Layman:** Adding an early version like 0.1.0 to a roadmap that starts at 0.8.0 is refused instead of going at the top.
   Kind: fix.
   Source: claude_config feedback 2026-09-28.
@@ -68723,8 +68727,11 @@ project. Reported causes are claims until checked in source.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5567] **roadmap_log create_section accepts a v-prefixed release title such as v1.2.**
+- ✅ [ANTS-5567] **roadmap_log create_section accepts a v-prefixed release title such as v1.2.**
   finbreak now mixes 0.1.x and v1.x titles because of it.
+  Resolved (2026-09-29): kept the refusal (house style 1.2.0); the
+  message now says existing v-titled blocks still read as releases and
+  need no rename, since retitling changes a slug.
   **Layman:** A roadmap whose versions are written 'v1.x' cannot get a new matching version heading.
   Kind: fix.
   Source: claude_config feedback 2026-09-28.
