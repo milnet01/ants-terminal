@@ -39868,6 +39868,9 @@ against current source before filing.
   Doing (2) without (1) is the hole § 2.4 describes. Until both land the
   operations are dead code outside the test suite, which is the reason this
   has an id rather than a sentence in § 5.
+  Progress (2026-09-29): retitle_section is wired (ANTS-5557); § 2.4's
+  reason covers rotation only. Left: (1) the bump.json rotation step,
+  then (2) wire rotate_minor and declare `minor`. A test pins rotate off.
   **Layman:** Hook archive rotation into the release step, then turn it on as a normal command.
   Kind: implement.
   Source: in-session-2026-08-10 (ANTS-4070 implementation).
@@ -66975,7 +66978,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B3).
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5557] **roadmap_log's schema declares the rotate_minor and retitle_section ops and their minor argument.**
+- ✅ [ANTS-5557] **roadmap_log's schema declares the rotate_minor and retitle_section ops and their minor argument.**
   doc_facts' first run over docs/ flagged docs/standards/mcp-error-codes.md:
   `roadmap_log` takes no argument "minor". Verified: cmdRoadmapLog handles
   op:"rotate_minor" (reads `minor`) and op:"retitle_section"
@@ -66986,6 +66989,10 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   the enum and declare `minor` (and whatever retitle_section reads) in
   src/claudeintegration.cpp's roadmap_log schema; then a doc_lint
   checks:["doc_facts"] run over docs/standards shows no verb_arg_unknown.
+  Resolved (2026-09-29): retitle_section wired (dispatch, enum,
+  description). rotate_minor deliberately NOT wired: the body's premise
+  that cmdRoadmapLog handled both was wrong; § 2.4 keeps rotate for
+  ANTS-4081. A test pins retitle on and rotate off.
   **Layman:** Two roadmap operations work but are missing from the list of what the tool accepts, so clients can't find them and get warned when they use them.
   Kind: fix.
   Source: in-session-2026-09-28 (ANTS-5506 doc_facts first run).
@@ -68659,19 +68666,23 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (review-contract of ANTS-5506, loop 1).
   Lanes: mcp.
 
-- 📋 [ANTS-5555] **roadmap_log create_section refuses to create the first closed version block on a roadmap.**
+- ✅ [ANTS-5555] **roadmap_log create_section refuses to create the first closed version block on a roadmap.**
   Reported by the claude-config session by message; reproduce
   from its example before fixing (op:"create_section" with a level-2
   release title on a roadmap that has no closed version block yet).
+  Duplicate of ANTS-5563 (same claude-config report, also filed from
+  its feedback file), shipped 2026-09-29.
   **Layman:** A tool that adds a new release heading to a roadmap refuses to add the first one.
   Kind: fix.
   Source: claude-config session report 2026-09-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5556] **roadmap_log set_preamble drops the roadmap's format marker.**
+- ✅ [ANTS-5556] **roadmap_log set_preamble drops the roadmap's format marker.**
   Reported by the claude-config session by message; reproduce
   from its example before fixing. The marker is what format detection
   keys on, so its loss can change how every later read parses the file.
+  Duplicate of ANTS-5564 (same claude-config report), closed
+  2026-09-29: no marker loss occurs; the render re-adds it.
   **Layman:** Rewriting a roadmap's opening text loses a hidden marker the tools need to read the file.
   Kind: fix.
   Source: claude-config session report 2026-09-28.
