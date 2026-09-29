@@ -15,7 +15,7 @@ Nothing greets a new user. Every setup step is buried: the two Claude Code hook 
 
 ### 2.1 When it appears
 
-- **Automatically, once.** After the main window is first shown, if the config key `ui.welcome_shown` is false or absent, `MainWindow` opens the dialog and sets the key to true. An upgrading user whose config lacks the key sees it once too.
+- **Automatically, once.** After the main window is first shown, `MainWindow` calls `welcome::maybeAutoShow(Config &, show)`: if the config key `ui.welcome_shown` is false or absent, it calls `show` and sets the key to true. An upgrading user whose config lacks the key sees it once too.
 - **On demand.** Help gains `Show &Welcome...`, placed after `About &Qt...`. It opens a fresh dialog whether or not the key is set.
 - The dialog is non-modal, heap-allocated with `WA_DeleteOnClose`, and shown with `show()`, `raise()` and `activateWindow()`; it never calls `exec()` or `setModal(true)`. That is `help_about_menu` Invariant 7's shape, adopted here for its Wayland reason.
 - A second request while one is open raises the open one rather than making another.
@@ -32,6 +32,8 @@ One window, `WelcomeDialog`, built through `DialogChrome::install(this, themeNam
 6. A Close button (a plain `QPushButton`, as the About dialog uses).
 
 Each setup row shows its current state beside its button: installed, partly installed, or not installed. The button reads "Install" or "Reinstall" to match. States are read when the dialog opens and again after each action.
+
+**Previews.** A row that asks before writing shows a non-modal preview dialog owned by the welcome dialog. The module's writer is called only from the preview's accept handler.
 
 The text is compiled in. The Donate menu gains a third item, `Tip via &PayBru...`, after the Patreon one, opening the same URL.
 
@@ -55,11 +57,12 @@ Four rows:
 
 1. **Status-bar hooks.** `installStatusHooks()` / `statusHooksStatus()`: the moved `installClaudeHooks` work.
 2. **Connect Ants MCP to Claude Code.** `registerMcp()` / `mcpStatus()`.
-   - The command registered is `$APPIMAGE --mcpd` when the environment names an AppImage, else the `ants-mcpd` that `mcpd::locateBinary` finds beside the running binary or on `PATH`. None found: the row's state is `Unavailable` with the reason, and its button is disabled.
+   - The command registered is `$APPIMAGE --mcpd` when the environment names an AppImage: the AppImage bundles `usr/bin/ants-mcpd`, and its `AppRun` routes `--mcpd` to it. Otherwise it is the `ants-mcpd` beside the running binary, else on `PATH`, found with `mcpd::locateBinary(QString(), appDir)`, which skips the registered-command step. None found: the row's state is `Unavailable` with the reason, and its button is disabled.
    - It runs `claude mcp add --scope user ants -- <command...>` through `QProcess` with an argv list, never a shell. `--scope user` is required: the default scope is per project, and Ants reads the user scope's `mcpServers.ants.command` in `~/.claude.json`.
-   - Already registered with the same command: `Installed`, and the button re-registers. Registered with a command that no longer exists: `Partial`. Re-registering runs `claude mcp remove --scope user ants` first, because `add` refuses an existing name.
+   - Registered with the command and arguments this build would register: `Installed`. Registered with anything else, including a command that no longer exists: `Partial`, and the button moves the registration to this build. Re-registering runs `claude mcp remove --scope user ants` first, because `add` refuses an existing name.
+   - A per-project registration named `ants` (`projects.<dir>.mcpServers.ants` in `~/.claude.json`, which the README's old command created) wins over the user one in its project. The row's detail says how many exist; the dialog does not remove them.
    - A non-zero exit shows the command's stderr. Success says the toolkit reaches Claude Code sessions started from then on, and running ones after `/mcp` reconnects.
-   - `mcpd`'s file-local `registeredCommand` becomes a declared function in `mcpdversion.h` so this module can read the registration.
+   - `mcpd`'s file-local `registeredCommand` becomes a declared function in `mcpdversion.h` returning the command and its `args`. The About dialog's version query passes those args before `--version`, so an AppImage registration is asked `$APPIMAGE --mcpd --version` rather than starting the terminal.
 3. **Git-context hook.** `installGitContextHook()` / `gitContextStatus()`: the moved `installClaudeGitContextHook` work.
 4. **Ants notes in CLAUDE.md** (optional). `installClaudeMdNote()` / `claudeMdNoteStatus()` / `removeClaudeMdNote()`.
    - The button first shows the exact text to be written and the file path, and writes nothing unless the user confirms.
@@ -75,12 +78,12 @@ The dialog is built on every open, so every state it shows is read fresh. Its te
 `installShellIntegration()` / `shellIntegrationStatus()`, in the same module.
 
 - **Shell.** The basename of `$SHELL`: `bash` or `zsh`. Anything else is `Unavailable`, "supported for bash and zsh".
-- **Script.** The first existing of `<appDir>/../share/ants-terminal/shell-integration/ants-osc133.<shell>`, then `/usr/local/share/...` and `/usr/share/...`. None found is `Unavailable`, "the shell-integration scripts are not in this install".
+- **Script.** The first existing of `<appDir>/../share/ants-terminal/shell-integration/ants-osc133.<shell>`, then `/usr/local/share/...` and `/usr/share/...`. None found is `Unavailable`, "the shell-integration scripts are not in this install". Under an AppImage the found script is inside a mount whose path changes each launch, so it is copied to `~/.local/share/ants-terminal/shell-integration/` and the copy is sourced; a reinstall refreshes the copy.
 - **What it writes,** after the user confirms a preview showing both files and their exact lines:
   - To `~/.profile` (bash) or `~/.zshenv` (zsh): `export ANTS_OSC133_KEY="<64 hex digits>"`, the key taken from `QRandomGenerator::system()`.
   - To `~/.bashrc` or `~/.zshrc`: `[ -f <script> ] && source <script>`.
   - Each inside `# >>> ants-terminal shell integration >>>` and `# <<< ants-terminal shell integration <<<` lines. A block already present is replaced, so the key is not regenerated on a reinstall unless the block is missing, and every byte outside the block is kept.
-- **Status.** Both blocks present: `Installed`. One: `Partial`. Neither: `Missing`.
+- **Status.** Both blocks present and the sourced script exists: `Installed`. Any block present otherwise: `Partial`. Neither: `Missing`.
 - Success says the key takes effect at the next login and the source line in a new shell.
 
 ### 2.7 Alternatives
@@ -91,15 +94,15 @@ The dialog is built on every open, so every state it shows is read fresh. Its te
 
 ## 3. Invariants
 
-- **INV-1** — The dialog opens automatically once: with `ui.welcome_shown` false or absent it is shown after the first window show and the key becomes true; with it true it is not shown. Broken by showing it on every launch, or never. *Test:* `WelcomeFirstRun.AutoShowOnceThenLatched` drives `MainWindow::maybeShowWelcome()` against a temporary config: first call shows a `WelcomeDialog` and the key reads true; a second call with the key true shows none.
+- **INV-1** — The dialog opens automatically once: with `ui.welcome_shown` false or absent, `welcome::maybeAutoShow` calls its `show` callback and the key becomes true; with it true it does not. `MainWindow` calls it from its first show. Broken by showing it on every launch, or never. *Test:* `WelcomeFirstRun.AutoShowOnceThenLatched` calls `maybeAutoShow` twice against a temporary config with a counting callback: one call counted, and the key reads true; a source check asserts `MainWindow`'s first-show path calls it.
 - **INV-2** — Help carries `Show &Welcome...` after `About &Qt...`, and it opens the dialog however the key is set. Donate stays the last menu. Broken by a Help block missing the action, or a Donate menu added before Help. *Test:* `WelcomeDialog.HelpMenuActionOpensIt` extends the `help_about_menu` source checks: the action string inside the Help block, after the About Qt one, and `addMenu(tr("&Donate"))` still after `addMenu("&Help")`.
 - **INV-3** — The dialog is built by `DialogChrome::install` with `resizable` true and size key `"WelcomeDialog"`, its body is in a `QScrollArea`, and it is opened without `exec()` or `setModal(true)`. Broken by a fixed-size or modal dialog. *Test:* `WelcomeDialog.ChromeAndNonModal` constructs it offscreen and asserts the `QScrollArea` child and `isModal()` false; a source check asserts the `DialogChrome::install` call with that key and no `exec(` in `welcomedialog.cpp`.
 - **INV-4** — The Claude Code section is shown only when Claude Code is detected. Broken by detection ignored in either direction. *Test:* `WelcomeDialog.ClaudeSectionFollowsDetection` constructs the dialog with detection injected false, then true, and asserts the section's visibility and the hint line's.
-- **INV-5** — The moved hook installers behave as before: under a temporary `HOME`, `installStatusHooks()` writes all seven events and a second run adds no duplicate; a `settings.json` that does not parse is set aside and not written; `installGitContextHook()` adds one `UserPromptSubmit` entry, once. Broken by the move changing what is written. *Test:* `ClaudeSetup.HookInstallersIdempotentAndRefuseCorrupt`.
-- **INV-6** — `registerMcp` runs `claude mcp add --scope user ants -- <command...>` as an argv list, with `<command...>` `$APPIMAGE --mcpd` when `APPIMAGE` is set, else the located `ants-mcpd`; it runs `claude mcp remove --scope user ants` first when a registration exists. Broken by a shell string, a missing `--scope user`, or the wrong command under an AppImage. *Test:* `ClaudeSetup.McpRegistrationArgv` calls the argv builder with each case.
+- **INV-5** — The moved hook installers behave as before: under a temporary `HOME`, `installStatusHooks()` writes all seven events and a second run adds no duplicate; a `settings.json` that does not parse is copied aside by `rotateCorruptFileAside` and left unwritten; `installGitContextHook()` adds one `UserPromptSubmit` entry, once. Broken by the move changing what is written. *Test:* `ClaudeSetup.HookInstallersIdempotentAndRefuseCorrupt`.
+- **INV-6** — `registerMcp` runs `claude mcp add --scope user ants -- <command...>` as an argv list, with `<command...>` `$APPIMAGE --mcpd` when `APPIMAGE` is set, else the located `ants-mcpd`; it runs `claude mcp remove --scope user ants` first when a registration exists. The About dialog's version query of a registration with args runs `<command> <args...> --version`. Broken by a shell string, a missing `--scope user`, the wrong command under an AppImage, or an About query that drops `--mcpd`. *Test:* `ClaudeSetup.McpRegistrationArgv` calls the argv builder with each case, and the version-query argv builder with `$APPIMAGE` plus `--mcpd`.
 - **INV-7** — The CLAUDE.md note lives between its markers: installing twice leaves one block, remove leaves no marker, and bytes outside the block are unchanged in both. Broken by appending a second block or rewriting the user's text. *Test:* `ClaudeSetup.ClaudeMdNoteBlockIsReplacedNotAppended` works on a temporary file holding user text above and below.
-- **INV-8** — Shell integration writes its two blocks idempotently and keeps an existing key: a reinstall leaves one block per file and the same key; bytes outside the blocks are unchanged; an unsupported shell or a missing script yields `Unavailable` and writes nothing. Broken by appending on every click, regenerating the key, or writing when unavailable. *Test:* `ClaudeSetup.ShellIntegrationBlocksAndKey` under a temporary `HOME`, with `SHELL` set to bash, then to `fish`.
-- **INV-9** — Nothing is written by the CLAUDE.md or shell-integration buttons before the user confirms. Broken by writing before the preview is answered. *Test:* a source check in `WelcomeDialog.ConfirmBeforeWriting` asserts each handler calls its confirmation before the module's writer.
+- **INV-8** — Shell integration writes its two blocks idempotently and keeps an existing key: a reinstall leaves one block per file and the same key; bytes outside the blocks are unchanged; an unsupported shell or a missing script yields `Unavailable` and writes nothing. Broken by appending on every click, regenerating the key, or writing when unavailable. *Test:* `ClaudeSetup.ShellIntegrationBlocksAndKey` under a temporary `HOME`, with `SHELL` set to bash, then to `fish`; with `APPIMAGE` set, the sourced path is the per-user copy.
+- **INV-9** — Nothing is written by the CLAUDE.md or shell-integration buttons until the user accepts the preview. Broken by writing on click. *Test:* `WelcomeDialog.ConfirmBeforeWriting` clicks each button under a temporary `HOME`: the target files are unchanged while the preview is open, and written after it is accepted.
 - **INV-10** — The dialog and the Donate menu each offer all three donation links, and the Donate menu keeps `Sponsor on &GitHub...` first. Broken by a missing link. *Test:* `WelcomeDialog.DonationLinks` asserts the three URLs in the dialog's buttons and in `setupDonateMenu()`, with the GitHub action before the other two.
 
 ## 4. RAM / build cost
@@ -127,8 +130,9 @@ The source-scrape tests anchored on the moved `SettingsDialog` bodies are re-poi
 
 ## 6. Cross-doc impact
 
-- `README.md` "Getting started" says the MCP helper is not in a released package, and `packaging/appimage/AppRun` says it is. The README section gains the welcome dialog as the way to connect, and the stale claim is corrected.
+- `README.md` "Getting started" says the MCP helper is not in a released package. The release workflow installs the whole tree into the AppImage (`cmake --install`), so it ships `ants-mcpd` and the shell-integration scripts. The README section gains the welcome dialog as the way to connect, the stale claim is corrected, and its command gains `--scope user`.
 - `tests/features/help_about_menu/spec.md` gains the Help item and the third Donate item.
+- The About dialog's Ants MCP line reads the registration's args as § 2.4 says, which changes how it queries an AppImage registration.
 - `docs/subsystems.md` and `.indie-review/partition.json` list `src/welcomedialog.{h,cpp}` and `src/claudesetup.{h,cpp}`.
 
 ## Cold-eyes loop log
