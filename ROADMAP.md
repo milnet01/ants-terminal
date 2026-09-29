@@ -66425,7 +66425,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: field-pass-testing-md-2026-09-27.
   Lanes: perf.
 
-- 📋 [ANTS-5482] **A host-can't-symlink condition in audit_command_rule_trust reports FAIL while saying skipped.**
+- ✅ [ANTS-5482] **A host-can't-symlink condition in audit_command_rule_trust reports FAIL while saying skipped.**
   testPathCanonicalization spells a host-keyed skip as
   expect(false, "... test skipped ..."); return;. testing.md section 7 wants
   the framework's skip. The single TEST(X, Main) harness makes GTEST_SKIP
@@ -66442,6 +66442,9 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   `if (::testing::Test::IsSkipped()) return;` in
   TEST(AuditCommandRuleTrust, PathCanonicalization). Told claude-config
   (session_message 58).
+  Resolved (2026-09-29, b185da19): GTEST_SKIP() in the helper plus an
+  IsSkipped() return in the TEST. Forced link failure reports Skipped;
+  real run passes 3/3.
   **Layman:** One test fails on computers that can't make file shortcuts, even though its message says it was skipped.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
