@@ -89296,6 +89296,13 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   The hook installers are private SettingsDialog members today and move to
   a shared module. Text lives in a file the dialog re-reads (hot reload).
   Needs a spec: dialog, settings, startup and a new registration action.
+  User decisions (2026-09-29, later): the Claude Code parts (MCP
+  registration, both hooks, the CLAUDE.md note) show only when Claude Code
+  is installed; otherwise one line says to install it and reopen from Help.
+  A fifth, optional button adds an Ants note to ~/.claude/CLAUDE.md:
+  off by default, previews the exact text first, and writes it between
+  start/end markers so it can be updated or removed. The automatic
+  SessionStart orientation hook stays the default route.
   **Layman:** The first time Ants Terminal opens, a friendly window says hello, explains what it can do, sets up the Claude Code extras in one click each, and invites a donation.
   Kind: feature.
   Source: user-request-2026-09-29.
