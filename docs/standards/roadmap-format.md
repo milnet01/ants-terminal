@@ -75,6 +75,11 @@ badge in the Roadmap dialog footer.
 
 The Roadmap dialog treats `##` as a top-level boundary (release
 or phase), `###` as the theme filter, `####` as a fold-out.
+
+Slugs are unique across the whole roadmap, so a theme repeated under a
+second release takes the release as a suffix:
+`### Bot navigation — 0.1.0`. The store refuses a repeated slug
+`slug_collision`.
 Pre-1.0 projects use phase blocks (`## P01 — Bootstrap`) since
 there's no real version to anchor to yet. The designator is `P`
 followed by digits, optionally with a `.<sub>` for a phase inserted

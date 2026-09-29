@@ -1403,8 +1403,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
             env["code"]           = QStringLiteral("slug_collision");
             env["error"]          = QStringLiteral(
                 "roadmap_log: computed slug \"%1\" already exists in "
-                "ROADMAP.md (heading: \"%2\") — pick a different title")
-                .arg(newSlug, s.headingText);
+                "ROADMAP.md (heading: \"%2\") — pick a different title. "
+                "Slugs are roadmap-wide: to repeat a theme under another "
+                "release, suffix the release (\"%3 — 0.1.0\")")
+                .arg(newSlug, s.headingText, title);
             env["computed_slug"]  = newSlug;
             return QJsonDocument(env);
         }
