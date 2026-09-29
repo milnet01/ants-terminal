@@ -20,9 +20,11 @@ start without waiting for me to confirm.
 4. **Roadmap-store requests.** Build the open items in the "Ants MCP feedback
    from CC sessions" sections whose subject is the roadmap store or a
    `roadmap_*` verb.
-5. **Review findings.** Fix the open items whose `Source:` names a review:
-   test, debt, codebase, document or check-code, backlogged ones included.
-   Items marked critical first, then lowest id first.
+5. **Review findings and fixes.** Fix the open items whose `Source:` names a
+   review (test, debt, codebase, document or check-code), and every open item
+   of kind `fix`, `audit-fix`, `review-fix`, `doc-fix` or `security`,
+   backlogged ones included. Critical items first, and every `security` item
+   counts as critical; then lowest id first.
 6. **Colony.** Build the open items in the Colony roadmap section.
 7. **Other session requests.** Build the remaining open items in the
    "Ants MCP feedback from CC sessions" sections, and in any section filed
