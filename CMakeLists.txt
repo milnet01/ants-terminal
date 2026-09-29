@@ -2350,6 +2350,8 @@ if(ANTS_TESTS)
                 tests/features/mcpd_call/test_mcpd_call.cpp
                 # ANTS-5485 — deprecated verbs are marked, answer and are counted.
                 tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
+                # ANTS-5254 — roadmap_log's op enum matches its dispatch.
+                tests/features/roadmap_log_op_enum/test_roadmap_log_op_enum.cpp
                 # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.
                 tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
                 # ANTS-5340 — the About dialog's ants-mcpd version line.
