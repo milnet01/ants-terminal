@@ -29,7 +29,7 @@ Two sources, by type, following § 6's authored/converted split:
 | `splits-from`, `blocked-by`, `duplicate-of`, `supersedes` | the row | `roadmap_log op:"link"` / `op:"unlink"` (§ 2.2); import of their trailer line (§ 2.5) |
 | `relates-to`, `specified-by` | the item's own `Dependencies:` / `Spec:` body line | re-derived from the body at migration and on every body write (§ 2.6) |
 
-Every row goes through `relateItems()` (same project) or `relateCrossProject()` (another project's id). `specified-by` targets a path, so it needs a third store method, `relateDocument(type, srcPk, dstPath, error)`, inserting the `dst_path` form. No other code inserts a row, except `RoadmapExport::rebuildProject()`, which restores rows an export already normalised.
+Every row goes through `relateItems()` (a target the store holds, in any project) or `relateCrossProject()` (another project's id not filed yet). `specified-by` targets a path, so it needs a third store method, `relateDocument(type, srcPk, dstPath, error)`, inserting the `dst_path` form. No other code inserts a row, except `RoadmapExport::rebuildProject()`, which restores rows an export already normalised.
 
 ### 2.2 Writing: `roadmap_log op:"link"` and `op:"unlink"`
 
@@ -43,7 +43,7 @@ targets: ["ANTS-12", "VEST-0040", …]   (required, non-empty)
 dry_run: bool
 ```
 
-- A target with this project's prefix must resolve in the store, else the call refuses `link_target_not_found` naming it. A target with another registered project's prefix is stored cross-project, resolved or not, since that project may not have filed it yet.
+- A target the store holds, in any project, is stored via `relateItems()`. A target with this project's prefix that the store does not hold refuses `link_target_not_found` naming it. One with another registered project's prefix is stored via `relateCrossProject()`, since that project may not have filed it yet.
 - `id` equal to a target refuses `bad_args`.
 - A new `splits-from`, `blocked-by`, `duplicate-of` or `supersedes` edge that would close a cycle among edges of the same type refuses `link_cycle`, with `cycle:[ids…]` in the reply, checked over the full store. The check lives in this handler only: `relateItems()` keeps accepting such a write, as ANTS-3810 INV-2 requires, and import (§ 2.5) restores stored rows without it.
 - `relates-to` and `specified-by` are refused `bad_args` here: they come from the body (§ 2.6).
@@ -62,10 +62,10 @@ A flip to `shipped` of an item that other items name with `splits-from`, where a
 
   ```
   links: { blocked_by:[…], blocks:[…], splits_from:[…], parts:[…],
-           duplicate_of:[…], supersedes:[…], superseded_by:[…],
+           duplicate_of:[…], duplicated_by:[…], supersedes:[…], superseded_by:[…],
            relates_to:[…], specified_by:[paths…] }
   ```
-  Each list holds ids (paths for `specified_by`); empty lists are omitted. A reverse list, and § 2.3's parts guard, match both row shapes naming the item: `dst_pk`, and the cross-project `dst_project` / `dst_id_fold` pair a part filed in another project carries. `blocks`, `parts` and `superseded_by` are the reverse direction, so "what blocks X" and "what X blocks" are one fetch. List and section queries do not carry `links`, to keep them lean.
+  Each list holds ids (paths for `specified_by`); empty lists are omitted. A reverse list, and § 2.3's parts guard, match both row shapes naming the item: `dst_pk`, and the cross-project `dst_project` / `dst_id_fold` pair a part filed in another project carries. `blocks`, `parts`, `duplicated_by` and `superseded_by` are the reverse direction, so "what blocks X" and "what X blocks" are one fetch. List and section queries do not carry `links`, to keep them lean.
 - `feedback_query`: an id in `mapped_ids` that has parts also gets an entry in `mapped_id_parts: {id: [{id, status}]}`. `mapped_id_status` keeps its current meaning, the id's own status.
 
 ### 2.5 Rendering and import of the authored types
@@ -79,7 +79,7 @@ A flip to `shipped` of an item that other items name with `splits-from`, where a
 
 `RoadmapRender::passBlockText()` writes the pass-headings form, `- **Blocked-by**: ANTS-12`, beside its Status line.
 
-On import, `RoadmapParse::trailerValuesIn()` reads these four keys on all three dialects: a line starting `Key:` or `**Key:**` after indentation, and on pass-headings also `- **Key**:` (list marker, colon outside the bold) — the matcher that recognises them, including `lineBeginsTrailerDecl()`, accepts all three shapes. A value is a comma-separated id list. Each id becomes a row of that type, checked as § 2.2 checks a target but with no cycle refusal; an id that cannot be stored goes to `extras["unresolved_links"]`, and the render appends it to that type's line, so the file keeps it. Import removes the four link lines from the stored `body`: the rows are the truth and the render composes the lines. A trailer line is a structured field, not prose, so § 6's rule that migration harvests nothing for `blocked-by` from prose still holds.
+On import these four keys are read on all three dialects (`ants-v1`, `github-task-list`, `pass-headings`): a line starting `Key:` or `**Key:**` after indentation, and on pass-headings `- **Key**:` (list marker, colon outside the bold). Today nothing recognises them, so this work adds them to `RoadmapParse::trailerValuesIn()`, to its trailer-key stop patterns and to `lineBeginsTrailerDecl()`, and adds the `- **Key**:` shape to those last two. `RoadmapParse::parsePassHeadingBullets()` passes only the Status value to `trailerValuesIn()`, so it gains its own read of the block's `- **Key**:` lines; the render writes that line directly after the Status line. A value is a comma-separated id list. Each id becomes a row of that type, checked as § 2.2 checks a target but with no cycle refusal; an id that cannot be stored goes to `extras["unresolved_links"]`, shaped `{"<type>": ["<id>", …]}`, and the render appends it to that type's line, so the file keeps it. Import removes the four link lines from the stored `body`: the rows are the truth and the render composes the lines. A trailer line is a structured field, not prose, so § 6's rule that migration harvests nothing for `blocked-by` from prose still holds.
 
 A body write whose `new_text`, `note` or `body` declares one of them at a line start refuses `body_shadowed`, pointing at `op:"link"`: the rows are the truth, so a hand-written line would be overwritten by the next render.
 
@@ -87,7 +87,7 @@ A body write whose `new_text`, `note` or `body` declares one of them at a line s
 
 At migration and on every body write (the path `rlDeriveTrailerColumns()` already takes), the item's `Dependencies:` and `Spec:` lines are read:
 
-- each comma-separated `Dependencies:` value that resolves to an item id becomes a `relates-to` row: this project's id via `relateItems()`, which normalises the direction per § 6, another registered project's id via `relateCrossProject()`; any other value stays in `extras["unconverted_dependencies"]`;
+- each comma-separated `Dependencies:` value naming an item the store holds, in any project, becomes a `relates-to` row via `relateItems()`, which normalises the direction per § 6, so two bodies declaring each other share one row; a value with a registered project's prefix whose item is not filed yet becomes a row via `relateCrossProject()`, owned by this item's body alone; any other value stays in `extras["unconverted_dependencies"]`;
 - each `Spec:` path becomes a `specified-by` row via `relateDocument()`.
 
 The body keeps both lines as written, and the render composes nothing for these two types, so the file round-trips byte for byte. A `relates-to` row is stored once for both endpoints, so a body write keeps a row touching the item while either endpoint's body declares it, and deletes it once neither does; the item's own `specified-by` rows are replaced by the new derivation. Both in the same transaction.
@@ -133,7 +133,7 @@ The verbs run in `ants-mcpd`: a rebuild of that target plus `/mcp` in a client m
 
 ## 8. Cross-doc impact
 
-- `docs/standards/roadmap-data-model.md` § 6: its statement that `relateItems()` is the sole writer is false today (`RoadmapExport::rebuildProject()` also inserts). Amend it to name both, and to name `relateDocument()`.
+- `docs/standards/roadmap-data-model.md` § 6: its statement that `relateItems()` is the sole writer is false today (`RoadmapExport::rebuildProject()` also inserts). Amend it to name both, and to name `relateDocument()`. Its "a cross-project edge is never normalised" now holds for a `relateCrossProject()` row only; a link to a filed item in another project is a `relateItems()` row.
 - `docs/standards/roadmap-format.md`: document the four link trailer lines and that they are written by `op:"link"`.
 - CHANGELOG, and the `roadmap_log` / `roadmap_query` / `feedback_query` descriptions.
 

@@ -38491,6 +38491,9 @@ against current source before filing.
   Not urgent: nothing reds today and the ceiling is a design target, not
   an assertion. It matters before ANTS-3807 hands thirteen projects a
   brief that tells each session to run this.
+  Held (2026-09-29): measure only on an idle machine. Every push here
+  runs the full suite, so a figure taken during a working session is
+  noise, and the item asks for a quiet-machine number.
   **Layman:** We know how long the roadmap import takes once it's started, but not how long the whole command takes. Measure it properly before promising a number.
   Kind: perf.
   Source: in-session-2026-08-07, ANTS-3855 § 4.
@@ -39662,6 +39665,8 @@ against current source before filing.
   User decision 2026-09-07, having seen the count: version blocks become the DOCUMENTED DEFAULT at every version, including pre-1.0 — the direction this item already chose and the one CFG-0321 took downstream. The parser, the four archive sites and rotate_minor stay TOLERANT of existing phase blocks, so no project is stranded and the nine migrate as ANTS-4922 lands.
 
   CONSEQUENCE FOR THIS ITEM'S REMAINING SCOPE. It reads "widen those four sites, and teach rotate_minor the second heading shape". Under the ruling above that work is still owed, because tolerance is the whole point — it is NOT deletable, which is what a reading of "we have moved on from phases" would wrongly suggest. What changes is only the ORDER: the § 3.2 paragraph can be edited now, and the widening is what lets the nine keep working until they migrate.
+  On ship: message the Pressless session (it verifies on its code).
+  Promised 2026-09-29.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -51422,6 +51427,8 @@ are closed inline in the feedback files rather than filed here.
   `findings_total_scope: "invariants only"` beside it. Dropping
   `surfaces_checked` to false would be the honest value and probably
   breaks callers; decide that separately.
+  On ship: message the Pressless session (it verifies on its code).
+  Promised 2026-09-29.
   **Layman:** A spec checker says everything is fine when it has in fact checked none of the spec's twelve test promises — the only clue is a number buried lower down that nobody is told matters.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Pressless, Games_Hub, independently).
@@ -61629,6 +61636,8 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   refusal (code unchanged) gains `baseline_skipped` and a message naming
   the skips. Test first in tests/features/mutation_probe (bundle
   test_claude), pure judge plus an end-to-end `sh -c` run as ANTS-5360's.
+  On ship: message the Pressless session (it verifies on its code).
+  Promised 2026-09-29.
   **Layman:** A code-mutation check cannot run test suites that need an environment variable, and it cannot tell that such a suite ran nothing.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
@@ -62786,6 +62795,8 @@ rather than refiled.
   that, this project's own specs do name ids there and ANTS-4623 measured
   the check's value on that convention. It is a difference between projects,
   which is what makes it a decision rather than a bug.
+  On ship: message the Pressless session (it verifies on its code).
+  Promised 2026-09-29.
   **Layman:** A spec that names its tests in the two places the format asks for is still told its invariants have no tests.
   Kind: fix.
   Source: Pressless-feedback-2026-09-06.
@@ -64911,6 +64922,8 @@ than re-filed; everything else lands here.
   delimiter this corpus agrees on separates the state word from the
   prose after it, and a heuristic would drop text on the shapes it
   guessed wrong.
+  On ship: message the Pressless session (it verifies on its code).
+  Promised 2026-09-29.
   **Layman:** Adding one sentence to a spec's status line means retyping the whole paragraph or cutting it mid-sentence.
   Kind: enhancement.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
@@ -68509,6 +68522,8 @@ project. Reported causes are claims until checked in source.
   cut-release adds a **Theme:** line under the new version heading on
   every cut. A `theme` argument on op:"release" would write it in the
   same edit.
+  On ship: message the Pressless session (it verifies on its code).
+  Promised 2026-09-29.
   **Layman:** Closing a release in the changelog cannot record the release's theme, so it is typed in by hand each time.
   Kind: enhancement.
   Source: claude-87 relay of Pressless session, 2026-09-28.
