@@ -365,6 +365,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants no longer rewrites ~/.claude/settings.json when its Claude Code hooks are already installed** (ANTS-5569)
+  Its entries stay where they are, and a launch with nothing to add leaves
+  the file byte-for-byte unchanged.
+
 - **roadmap_log create_section places a release lower than every other before the first release block** (ANTS-5563)
   The reply names the anchor as `before_section`. It used to refuse
   `missing_field`, so a phase-to-version conversion needed a move.

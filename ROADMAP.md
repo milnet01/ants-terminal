@@ -68835,6 +68835,20 @@ project. Reported causes are claims until checked in source.
   Source: claude_config feedback 2026-09-28.
   Lanes: mcp, roadmap.
 
+- 🚧 [ANTS-5569] **Ants leaves ~/.claude/settings.json untouched when its hooks are already installed.**
+  Reported by the claude-config session: a launch rewrote settings.json only
+  to reorder hooks, leaving an uncommitted change in the ~/.claude repo each
+  time (their commits 2ab65e9, 6df8369). Two writers: the MCP orientation
+  installer (src/mcporientation.cpp) swept its own entry and re-appended it,
+  moving it behind any hook listed after it; the status-hook installer
+  (installStatusHooks in src/claudesetup.cpp) wrote the file on every run.
+  tools/install-hooks.sh already appends in place and does not touch
+  UserPromptSubmit.
+  **Layman:** Ants stops rewriting your Claude Code settings file when there is nothing to change, so it no longer shows up as an edit you have to check.
+  Kind: fix.
+  Source: claude-config session message 2026-09-29.
+  Lanes: claude-integration.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

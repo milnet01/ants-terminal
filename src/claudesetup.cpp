@@ -276,6 +276,7 @@ Outcome installStatusHooks() {
     Outcome read = readClaudeSettings(settingsPath, root);
     if (!read.ok) return read;
     QJsonObject hooks = root.value(QStringLiteral("hooks")).toObject();
+    bool added = false;
     for (const QString &event : claudeHookEvents()) {
         // Only append where our script is not already referenced, keeping
         // user-added hooks on the same event intact.
@@ -283,10 +284,15 @@ Outcome installStatusHooks() {
         if (eventRuns(existing, scriptPath)) continue;
         existing.append(hookEntry(scriptPath, false));
         hooks[event] = existing;
+        added = true;
     }
-    root[QStringLiteral("hooks")] = hooks;
-    Outcome written = writeClaudeSettings(settingsPath, root);
-    if (!written.ok) return written;
+    // ANTS-5569 — nothing to add, nothing written: a rewrite of an unchanged
+    // file shows up as an edit in a repository that tracks ~/.claude.
+    if (added) {
+        root[QStringLiteral("hooks")] = hooks;
+        Outcome written = writeClaudeSettings(settingsPath, root);
+        if (!written.ok) return written;
+    }
     return {true, QStringLiteral("Installed Ants Terminal status-bar hooks.\n\n"
                                  "Script: %1\nSettings: %2\n\n"
                                  "Real-time Claude status updates will take "

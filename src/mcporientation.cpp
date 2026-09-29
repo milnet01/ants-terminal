@@ -324,14 +324,25 @@ MergeOutcome mergeSettings(const QString &settingsPath,
     // the remove-path simply stops after the sweep. Both operations
     // are idempotent and self-healing against settings.json files
     // that accumulated duplicates from buggy prior versions.
-    const int removed = removeAllAntsEntries(sessionStart);
-
-    if (add) {
-        QJsonObject outer;
+    //
+    // ANTS-5569 — except when the one Ants entry there is already the
+    // canonical one: then it stays where it is. Sweeping and re-appending
+    // moved it behind any hook listed after it, and that move alone
+    // rewrote the file on every launch.
+    QJsonObject canonical;
+    {
         QJsonArray inner;
         inner.append(hookCommandEntry(scriptPath));
-        outer.insert(QStringLiteral("hooks"), inner);
-        sessionStart.append(outer);
+        canonical.insert(QStringLiteral("hooks"), inner);
+    }
+    QJsonArray probe = sessionStart;
+    const bool alreadyCanonical =
+        add && removeAllAntsEntries(probe) == 1 && sessionStart.contains(canonical);
+    int removed = 0;
+    if (!alreadyCanonical) {
+        removed = removeAllAntsEntries(sessionStart);
+        if (add)
+            sessionStart.append(canonical);
     }
 
     hooks.insert(QStringLiteral("SessionStart"), sessionStart);

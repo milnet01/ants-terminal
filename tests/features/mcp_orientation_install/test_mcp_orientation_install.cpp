@@ -206,6 +206,29 @@ TEST(McpOrientation_Inv3, NoOpInstallLeavesSettingsUntouched) {
         << "an install with nothing to change rewrote settings.json";
 }
 
+// Reported by the claude-config session 2026-09-29: a launch rewrote
+// settings.json only to move the Ants entry behind a hook the user listed
+// after it. An entry already present and canonical stays where it is, and the
+// file is not written.
+TEST(McpOrientation_Inv3, CanonicalEntryKeepsItsPlace) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(MO::installAt(tmp.path()).ok);
+    QJsonObject settings = readSettings(tmp.path());
+    QJsonObject hooks = settings.value("hooks").toObject();
+    QJsonArray start = hooks.value("SessionStart").toArray();
+    start.append(QJsonObject{{"hooks", QJsonArray{QJsonObject{
+        {"type", "command"}, {"command", "/x/users-own.sh"}}}}});
+    hooks.insert("SessionStart", start);
+    settings.insert("hooks", hooks);
+    const QString sp = settingsPathIn(tmp.path());
+    const QByteArray before = QJsonDocument(settings).toJson(QJsonDocument::Compact);
+    ASSERT_TRUE(writeFileBytes(sp, before));
+
+    ASSERT_TRUE(MO::installAt(tmp.path()).ok);
+    EXPECT_EQ(readFileBytes(sp), before)
+        << "an install moved an entry that was already right";
+}
+
 // ANTS-1901 — installAt must sweep ALL pre-existing marker-matching
 // entries (not just update the first one), then append a single
 // canonical entry. Mimics a settings.json that accumulated duplicates

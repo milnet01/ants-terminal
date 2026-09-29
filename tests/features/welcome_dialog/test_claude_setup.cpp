@@ -161,6 +161,19 @@ TEST(ClaudeSetup, HookInstallersIdempotentAndRefuseCorrupt) {
         expect(after2 == after1, "INV5g/status-second-run-adds-no-duplicate",
                QStringLiteral("a second run must change nothing; expected %1, "
                               "actual %2").arg(compact(after1), compact(after2)));
+
+        // Reported by the claude-config session 2026-09-29: a run with
+        // nothing to add still rewrote settings.json. Saved compactly here,
+        // a rewrite would re-indent it, so the bytes show whether it wrote.
+        const QByteArray compactBytes =
+            QJsonDocument(after2).toJson(QJsonDocument::Compact);
+        ASSERT_TRUE(writeFile(settings, compactBytes));
+        expect(installStatusHooks().ok, "INV5h/status-third-install-ok",
+               QStringLiteral("third run must succeed"));
+        QFile f(settings);
+        expect(f.open(QIODevice::ReadOnly) && f.readAll() == compactBytes,
+               "INV5i/status-no-op-run-writes-nothing",
+               QStringLiteral("a run with nothing to add rewrote settings.json"));
     }
 
     // --- git-context hook: one UserPromptSubmit entry, once.
