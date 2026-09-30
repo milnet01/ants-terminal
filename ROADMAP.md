@@ -21198,6 +21198,15 @@ clips input text), and the auto-switcher interrupting active work.
 
 - 📋 [ANTS-1978] **cut-rc.sh build gate builds locally (Qt 6.11) and never checks the release CI — it tags releases that fail the AppImage build.**
   The new-rc/promote build_and_test gate runs `cmake --build build` on the dev machine's Qt 6.11, which is far more lenient than the Qt 6.2 release runner. So a release can be tagged green locally yet fail release.yml. Gate cut-rc on the release-artefacts workflow result (or a Qt-baseline container build) before tagging.
+  Note (2026-09-30): still open after ANTS-5577, under a new name. The
+  script is packaging/release.sh now. It pushes main before its staging
+  gate, so GitHub CI (with the Qt 6.2 baseline job) runs on the commit
+  while the gate waits, but nothing reads CI's verdict before the tag.
+  Fix shape: after the staging gate, look up the ci.yml run for that
+  commit with `gh run list --workflow ci.yml --commit <sha>`, wait for
+  it, and refuse to tag on anything but success. The fixture's gh stub
+  answers every `run list` and `run watch` alike, so it must learn to
+  tell the CI run from the release run first.
   **Layman:** Our release tool only checks the build on this PC, not on the build server that actually makes the installer — so it can ship a broken release.
   Kind: fix.
   Source: in-session-2026-06-04.
@@ -41791,7 +41800,7 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-08-25.
   Lanes: ci, build.
 
-- 📋 [ANTS-4751] **A promoted RC runs the release workflow frozen at its cut, so a pipeline fix skips the very next release.**
+- 🚫 [ANTS-4751] **A promoted RC runs the release workflow frozen at its cut, so a pipeline fix skips the very next release.**
   The Release audit went red and is right: the permanent download URL
   /releases/latest/download/Ants_Terminal-x86_64.AppImage returns 404,
   measured today. v0.7.105 carries that alias asset; v0.7.106 does not.
@@ -41830,6 +41839,9 @@ in each bullet, not just the reporter's symptom.
   Separately: v0.7.106's alias can be restored by uploading the existing
   binary under the alias name; that repairs the live link without waiting
   for 0.7.107.
+  Dropped (2026-09-30): there is no release candidate any more
+  (ANTS-5577). The tag is cut on main's HEAD, so the release workflow
+  runs as it stands on main.
   **Layman:** A fix to the release machinery does not reach the next release, because that release was already frozen before the fix existed — and the check meant to catch it was frozen out too.
   Kind: fix.
   Source: release-audit failure on 5dcebaef, diagnosed in-session 2026-08-28.
@@ -76904,7 +76916,7 @@ starts 2026-05-27.
   Kind: enhancement.
   Source: user-request-2026-09-22.
 
-- 📋 [ANTS-5307] **cut-rc.sh hotfix leaves main with two sections claiming the same version.**
+- 🚫 [ANTS-5307] **cut-rc.sh hotfix leaves main with two sections claiming the same version.**
   FOUND while completing the ANTS-5304 hotfix on 2026-09-22.
 
   THE DEFECT. `cmd_hotfix_continue` calls `record_hotfix_on_main`, which
@@ -76943,11 +76955,14 @@ starts 2026-05-27.
   already exists and is the natural home.
 
   Related: ANTS-5306 (the numbering that makes the roll necessary at all).
+  Dropped (2026-09-30): ANTS-5577 removed the hotfix command with the
+  rest of cut-rc.sh. A fix now ships as the next release from main, so
+  there is no second branch to record a section from.
   **Layman:** After an emergency fix, the project's release notes listed the same version twice, and the packaging files described the wrong contents for it.
   Kind: fix.
   Source: in-session-2026-09-22.
 
-- 📋 [ANTS-5424] **cut-rc.sh hotfix --continue refuses an unclean main or uncommitted [H] notes before it tags.**
+- 🚫 [ANTS-5424] **cut-rc.sh hotfix --continue refuses an unclean main or uncommitted [H] notes before it tags.**
   hotfix --continue has no require_clean_main or clean-tree guard. Phase 1
   says to bump and write the [H] notes but never to commit them. If they are
   uncommitted, H=$(base_version), the drift check, the build and the [H]
@@ -76956,12 +76971,15 @@ starts 2026-05-27.
   push and publish, so the [H] record on main is never written. Peer rated it
   MED-HIGH and re-read the code. Needs a guard before tagging, plus a check
   that HEAD's CMakeLists version equals H.
+  Dropped (2026-09-30): the hotfix command no longer exists (ANTS-5577).
+  packaging/release.sh refuses a dirty tree, untracked files included,
+  before it writes anything.
   **Layman:** The emergency-release path can tag the wrong version and then fail halfway, leaving the release record incomplete.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #4; ledger TL-4).
   Lanes: release.
 
-- 📋 [ANTS-5425] **cut-rc.sh promote and new-rc resume after a failure past the tag instead of skipping or double-cutting.**
+- 🚫 [ANTS-5425] **cut-rc.sh promote and new-rc resume after a failure past the tag instead of skipping or double-cutting.**
   promote checks only the LOCAL tag (`git rev-parse -q --verify
   refs/tags/v${base}`), so a failure after `git tag -a "${pub}"` (push, gh
   release create, OBS) makes a re-run exit "no RC in flight to promote",
@@ -76969,6 +76987,10 @@ starts 2026-05-27.
   ANTS-4872, which fixed only hotfix. Sibling: new-rc failing after its tag
   push re-runs as rc(N+1) on the same commit. Needs per-step state (tag local?
   pushed? release exists? OBS submitted?) so a re-run resumes.
+  Dropped (2026-09-30): promote and new-rc no longer exist (ANTS-5577).
+  The case is covered in packaging/release.sh: a tag already at HEAD
+  resumes from the push, and a tag anywhere else refuses
+  (tests/features/release_pipeline/spec.md INV-2, INV-12).
   **Layman:** If a release step fails after tagging, re-running it either does nothing or cuts a duplicate release candidate.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #5; ledger TL-5).
