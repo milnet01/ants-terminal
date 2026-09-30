@@ -66747,6 +66747,13 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   release): read that log, remove every verb with no line (schema,
   dispatch, tests, docs), message claude-config first (message 94 warned
   it), and look into any verb that WAS called before removing it.
+  Progress (2026-09-30): step 2 is due (0.7.112 shipped with the notice).
+  ~/.local/share/ants-terminal/deprecated-calls.jsonl did not exist until
+  a positive-control call to get_git_status that day, so no recording
+  ants-mcpd served any of the twenty since 2026-09-27; that one line is
+  the control. Session message 317 asked claude-config to clear the names
+  from its skills and say if any must stay. Wait for its answer (or start
+  next session), then write a spec: about 165 files name these verbs.
   **Layman:** About twenty old Ants tools cost every Claude session tokens while nothing uses them; mark them, check for a week, then remove them.
   Kind: chore.
   Source: user-request-2026-09-27.
@@ -89425,6 +89432,19 @@ reports are asked for separately, each time.
   **Layman:** Three small statements in the project's instruction file no longer match the code, found while reviewing the release section.
   Kind: doc-fix.
   Source: review-contract-2026-09-30 CLAUDE.md loop 1.
+
+- 📋 [ANTS-5586] **The roadmap backup export timer has failed since 2026-09-21 with "git push to origin/main failed".**
+  Reported in the 2026-09-30 handoff; not investigated. The export is
+  tools/roadmap-export-publish.sh (with tools/roadmap-backup-lib.sh),
+  run by a timer. Start with the timer's journal
+  (`systemctl --user list-timers`, then `journalctl --user -u <unit>`)
+  and the failing push's own error text. Possibly related, unconfirmed:
+  the two-GitHub-accounts 403 recorded in memory ("gh auth switch --user
+  milnet01"). Whether to investigate now was put to the user on
+  2026-09-30; the recommendation was yes.
+  **Layman:** The automatic off-machine copy of the roadmap has not been saved for over a week.
+  Kind: investigate.
+  Source: in-session-2026-09-30 (handoff note).
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
