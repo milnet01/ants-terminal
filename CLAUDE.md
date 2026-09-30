@@ -279,7 +279,8 @@ Global rule 18's `append_finding`-only bullet is for other sessions.
   commit or tag. With `--push` it merges `[Unreleased]`
   into the dated version section, commits, builds and tests, and pushes main.
   It then builds that commit on every distro in the OBS staging project,
-  which publishes nothing, and tags only if all are green. `release.yml`
+  which publishes nothing, and waits for GitHub CI on it. It tags only if
+  both are green. `release.yml`
   creates the GitHub release with its files attached. `release.sh status`
   shows where things stand.
 - Before releasing, put a `**Theme:**` line at the top of `[Unreleased]`: a

@@ -22,11 +22,13 @@
 #               5. build that commit on every distro in the OBS staging
 #                  project, which publishes nothing (ANTS-5305). Red stops
 #                  here: no tag exists yet.
-#               6. tag vX.Y.Z on that commit and push the tag
-#               7. submit to the real OBS project
-#               8. wait for release.yml, which builds and signs the AppImage
+#               6. wait for GitHub's CI on that commit (ANTS-1978). Red stops
+#                  here too.
+#               7. tag vX.Y.Z on that commit and push the tag
+#               8. submit to the real OBS project
+#               9. wait for release.yml, which builds and signs the AppImage
 #                  and creates the GitHub release with its files attached
-#               9. wait for the OBS builds
+#              10. wait for the OBS builds
 #             Safe to re-run after any failure: each step finds what the last
 #             run already did.
 #
@@ -433,6 +435,51 @@ staging_gate() {
     echo "release: staging gate green on every distro."
 }
 
+# ANTS-1978 — GitHub's CI verdict on the commit, read before the tag. The
+# local build uses this machine's Qt, which is far newer than the baseline
+# ci.yml builds against, and the AppImage is built on the release runner: a
+# commit can pass everything here and still fail there. main was pushed before
+# the staging gate, so CI has normally finished by the time this asks.
+#
+# ci.yml skips a push that touches only the changelog or docs, which a release
+# commit can be (a re-run the same day changes CHANGELOG.md alone). When no run
+# exists for the commit, one is started by hand and waited for.
+ci_gate() {
+    local sha=$1 id="" i round
+    local poll=${RELEASE_POLL_SECS:-30} max=${RELEASE_POLL_MAX:-20}
+    if [ "$DO_PUSH" != 1 ]; then
+        echo "  [rehearsal] would wait for GitHub CI (ci.yml) on ${sha} and tag only if it passed"
+        return 0
+    fi
+    for round in 1 2; do
+        i=0
+        while [ "$i" -lt "$max" ]; do
+            i=$((i + 1))
+            id=$(gh run list --workflow ci.yml --commit "$sha" --limit 1 \
+                    --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null) || id=""
+            [ -n "$id" ] && break 2
+            sleep "$poll"
+        done
+        if [ "$round" = 1 ]; then
+            echo "release: no CI run exists for ${sha} — starting one (gh workflow run ci.yml)…"
+            gh workflow run ci.yml --ref main >/dev/null 2>&1 || true
+        fi
+    done
+    if [ -z "$id" ]; then
+        echo "release: ✗ no GitHub CI run appeared for ${sha} — no tag was created." >&2
+        echo "         Start one with 'gh workflow run ci.yml --ref main', then re-run." >&2
+        exit 1
+    fi
+    echo "release: waiting for GitHub CI run ${id} on ${sha}…"
+    if ! gh run watch "$id" --exit-status >/dev/null 2>&1; then
+        echo "release: ✗ GitHub CI FAILED on ${sha} (run ${id}) — no tag was created." >&2
+        echo "         Read it with 'gh run view ${id} --log-failed', fix it, commit," >&2
+        echo "         and re-run 'release.sh release --push'." >&2
+        exit 1
+    fi
+    echo "release: GitHub CI green on ${sha}."
+}
+
 # ---- After the tag ---------------------------------------------------
 
 # ANTS-4716 — publish the pinned revision to OBS. The release commit updates
@@ -609,8 +656,9 @@ cmd_release() {
 
     if [ "$resuming" = 0 ]; then
         staging_gate "$sha" "$base"
+        ci_gate "$sha"
         if [ "$DO_PUSH" = 1 ]; then
-            # The gate takes the better part of an hour; tag what it tested.
+            # The gates take the better part of an hour; tag what they tested.
             if [ "$(git rev-parse HEAD)" != "$sha" ] || ! git diff --quiet || ! git diff --cached --quiet; then
                 echo "release: the tree changed while the staging gate ran — no tag was created." >&2
                 echo "         Re-run so the gate tests what will be tagged." >&2

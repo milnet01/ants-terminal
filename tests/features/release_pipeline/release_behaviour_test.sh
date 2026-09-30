@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Behavioural conformance for tests/features/release_pipeline/spec.md
-# (INV-1 to INV-16, INV-19, INV-20): drives the real packaging/release.sh and
+# (INV-1 to INV-16, INV-19 to INV-21): drives the real packaging/release.sh and
 # packaging/release-notes.sh against throwaway git repos.
 #
 # Why this exists: ANTS-5577 retired the RC cadence for one `release` command.
@@ -14,7 +14,13 @@
 # outside the repo) and packaging/obs/obs-submit.sh, obs-status.sh and
 # check-version-drift.sh (inside the repo, as the script finds them by relative
 # path). The stubs log every call to ${dir}-log and take their exit codes from
-# STUB_* environment variables. --skip-build always: a fixture has no cmake.
+# STUB_* environment variables. The gh stub tells the ci.yml run (STUB_CI_ID,
+# STUB_CI_RC, STUB_CI_NONE, STUB_CI_EMPTY_FIRST) from the release.yml run
+# (id 12345, STUB_RUN_RC, STUB_RUN_NONE, STUB_RUN_EMPTY_FIRST).
+# STUB_CI_AFTER_DISPATCH: the ci.yml lookup returns an id only once the stub has
+# seen `gh workflow run ci.yml`. Every gh call, ci.yml lookups and dispatches
+# included, is in gh.log; the ci-* lines in obs.log carry the tags on origin at
+# that moment, so order against the gate and the tag is readable. --skip-build always: a fixture has no cmake.
 #
 # Exit 0 = every assertion held. Non-zero = a guard regressed.
 
@@ -64,12 +70,42 @@ seed_repo() {                       # $1 = repo dir
 echo "gh $*" >> "$STUB_LOG_DIR/gh.log"
 case "${1-} ${2-}" in
   "run list")
-      n=$(cat "$STUB_LOG_DIR/runlist.n" 2>/dev/null || echo 0); n=$((n + 1))
-      echo "$n" > "$STUB_LOG_DIR/runlist.n"
+      # Two workflows, told apart by the --workflow value. ci.yml is GitHub's
+      # CI run for the commit (id STUB_CI_ID); anything else is the release.yml
+      # run (id 12345). Each has its own look counter. A CI lookup also writes
+      # one line to obs.log so the order against the OBS calls and the tag on
+      # origin can be read from one file.
+      wf=release
+      [[ "$*" == *"--workflow ci.yml"* ]] && wf=ci
+      n=$(cat "$STUB_LOG_DIR/$wf.list.n" 2>/dev/null || echo 0); n=$((n + 1))
+      echo "$n" > "$STUB_LOG_DIR/$wf.list.n"
+      if [ "$wf" = ci ]; then
+          printf 'ci-lookup look=%s origin_tags=[%s]\n' "$n" \
+              "$(git -C "$STUB_ORIGIN" tag -l | tr '\n' ' ')" >> "$STUB_LOG_DIR/obs.log"
+          [ -n "${STUB_CI_NONE:-}" ] && exit 0
+          [ "$n" -le "${STUB_CI_EMPTY_FIRST:-0}" ] && exit 0
+          # STUB_CI_AFTER_DISPATCH: no run exists until `workflow run ci.yml`
+          # was called (ci.yml skips a push that touches only docs).
+          if [ -n "${STUB_CI_AFTER_DISPATCH:-}" ] && [ ! -e "$STUB_LOG_DIR/ci.dispatched" ]; then exit 0; fi
+          echo "${STUB_CI_ID:-777}"; exit 0
+      fi
       [ -n "${STUB_RUN_NONE:-}" ] && exit 0
       [ "$n" -le "${STUB_RUN_EMPTY_FIRST:-0}" ] && exit 0
       echo 12345; exit 0;;
-  "run watch") exit "${STUB_RUN_RC:-0}";;
+  "workflow run")
+      printf 'ci-dispatch origin_tags=[%s]\n' \
+          "$(git -C "$STUB_ORIGIN" tag -l | tr '\n' ' ')" >> "$STUB_LOG_DIR/obs.log"
+      [[ "$*" == *ci.yml* ]] && touch "$STUB_LOG_DIR/ci.dispatched"
+      exit "${STUB_DISPATCH_RC:-0}";;
+  "run watch")
+      # The exit code follows the run id: the CI run's id gets STUB_CI_RC,
+      # every other id (the release.yml run) gets STUB_RUN_RC.
+      if [ "${3-}" = "${STUB_CI_ID:-777}" ]; then
+          printf 'ci-watch origin_tags=[%s]\n' \
+              "$(git -C "$STUB_ORIGIN" tag -l | tr '\n' ' ')" >> "$STUB_LOG_DIR/obs.log"
+          exit "${STUB_CI_RC:-0}"
+      fi
+      exit "${STUB_RUN_RC:-0}";;
   "release view")
       if [[ "$*" == *isDraft* ]]; then echo false; exit 0; fi
       if [[ "$*" == *assets* ]]; then
@@ -399,6 +435,7 @@ STUB_STAGING_STATUS_RC=1 run "$D" "${FULL[@]}"
 { [ "$RC" -ne 0 ] && ! has_tag "$D" v0.7.98 && ! has_otag "$D" v0.7.98 && grep -qi 'staging' <<<"$OUT"; } \
     && ok "INV-8 red staging status: non-zero, no tag, names staging" || bad "INV-8 red status (rc=$RC): $OUT"
 { ! obs_log "$D" | grep -q 'args=\[\] '; } && ok "INV-8 real OBS never touched after a red gate" || bad "INV-8 real OBS called: $(obs_log "$D")"
+{ ! gh_log "$D" | grep -qF -- 'ci.yml'; } && ok "INV-21 no CI lookup after a red staging gate" || bad "INV-21 CI looked up after a red gate: $(gh_log "$D")"
 D=$TMPROOT/inv8b; std_repo "$D"
 STUB_STAGING_SUBMIT_RC=1 run "$D" "${FULL[@]}"
 { [ "$RC" -ne 0 ] && ! has_tag "$D" v0.7.98 && ! has_otag "$D" v0.7.98 && grep -qi 'staging' <<<"$OUT"; } \
@@ -570,6 +607,116 @@ printf '#!/usr/bin/env bash\necho "drift: carriers disagree" >&2\nexit 1\n' > "$
 commit_all "$D" "drift stub fails"; S0=$(snap "$D")
 run "$D" "${NOSTAGE[@]}"
 { [ "$RC" -ne 0 ] && [ "$(snap "$D")" = "$S0" ]; } && ok "INV-20 version drift refuses, nothing changed" || bad "INV-20 (rc=$RC): $OUT"
+
+# ── INV-21 — CI gate: read GitHub's verdict on the tested commit before tagging
+ci_lists()   { gh_log "$1" | grep -cF -- 'run list --workflow ci.yml' || true; }
+ci_watches() { gh_log "$1" | grep -cF -- 'run watch 777 ' || true; }
+ci_disp()    { gh_log "$1" | grep -cF -- 'workflow run' || true; }
+oline()      { grep -n -m1 -- "$2" "${1}-log/obs.log" 2>/dev/null | cut -d: -f1; }
+names_ci()   { grep -qiE '\bci\b|ci\.yml' <<<"$1"; }
+# refused_by_ci <label> <dir> <rc> <out>: the shape point 4 of INV-21 requires.
+refused_by_ci() {
+    local l=$1 d=$2 rc=$3 out=$4
+    { [ "$rc" -ne 0 ] && ! has_tag "$d" v0.7.98 && ! has_otag "$d" v0.7.98 && names_ci "$out"; } \
+        && ok "$l: non-zero, no tag locally or on origin, names CI" || bad "$l (rc=$rc, tag local=$(has_tag "$d" v0.7.98 && echo y || echo n) origin=$(has_otag "$d" v0.7.98 && echo y || echo n)): $out"
+    { ! obs_log "$d" | grep -q 'args=\[\] '; } && ok "$l: real OBS never touched" || bad "$l: real OBS called: $(obs_log "$d")"
+    { ! gh_log "$d" | grep -qF -- '--workflow release.yml'; } && ok "$l: release.yml never looked up" || bad "$l: release.yml looked up: $(gh_log "$d")"
+    expect "$l: main keeps the pushed release commit" "$(git -C "$d" rev-parse HEAD)" "$(git -C "${d}-origin.git" rev-parse main)"
+}
+
+# Green CI on the first look: the release carries on; lookup is for the tested
+# commit, after the gate, before the tag; no CI run is started.
+D=$TMPROOT/inv21ok; std_repo "$D"; BASE=$(git -C "$D" rev-parse HEAD)
+run "$D" "${FULL[@]}"
+if [ "$RC" -eq 0 ]; then
+    HEAD1=$(git -C "$D" rev-parse HEAD); gl=$(gh_log "$D")
+    [ "$HEAD1" != "$BASE" ] || bad "INV-21 setup: no release commit was made"
+    grep -qF -- "run list --workflow ci.yml --commit $HEAD1 --limit 1" <<<"$gl" \
+        && ok "INV-21 looks up the ci.yml run for the full sha of the tested commit" || bad "INV-21 lookup args (want --commit $HEAD1): $gl"
+    grep -qF -- 'run watch 777 --exit-status' <<<"$gl" && ok "INV-21 waits on the CI run with --exit-status" || bad "INV-21 no CI watch: $gl"
+    expect "INV-21 no CI run started when one existed at the first look" 0 "$(ci_disp "$D")"
+    expect "INV-21 one CI lookup when the run exists at once" 1 "$(ci_lists "$D")"
+    st=$(oline "$D" 'status args=\[--require-tests\]'); cl=$(oline "$D" 'ci-lookup'); cw=$(oline "$D" 'ci-watch'); rs=$(oline "$D" 'submit args=\[\] ')
+    { [ -n "$st" ] && [ -n "$cl" ] && [ -n "$cw" ] && [ -n "$rs" ] && [ "$st" -lt "$cl" ] && [ "$cl" -lt "$cw" ] && [ "$cw" -lt "$rs" ]; } \
+        && ok "INV-21 order: staging gate, CI lookup, CI watch, real OBS submit" || bad "INV-21 order (status=$st lookup=$cl watch=$cw real-submit=$rs): $(obs_log "$D")"
+    { [ -n "$cl" ] && ! grep -E '^ci-' "${D}-log/obs.log" | grep -q 'origin_tags=\[[^]]*v0\.7\.98'; } \
+        && ok "INV-21 no tag on origin during the CI lookup and watch" || bad "INV-21 tag existed during the CI check: $(obs_log "$D")"
+    { has_tag "$D" v0.7.98 && has_otag "$D" v0.7.98 && grep -qF -- 'run watch 12345 --exit-status' <<<"$gl"; } \
+        && ok "INV-21 green CI: tag pushed and the release.yml wait still runs" || bad "INV-21 green CI did not carry on: $gl"
+else bad "INV-21 green run (rc=$RC): $OUT"; fi
+
+# Red CI run: no tag, real OBS untouched, output names CI.
+D=$TMPROOT/inv21red; std_repo "$D"
+STUB_CI_RC=1 run "$D" "${FULL[@]}"
+refused_by_ci "INV-21 red CI run" "$D" "$RC" "$OUT"
+expect "INV-21 red CI run: watched the CI run" 1 "$(ci_watches "$D")"
+
+# Only the release.yml run is red: CI is green, so the tag goes out and is kept (INV-14).
+D=$TMPROOT/inv21rel; std_repo "$D"
+STUB_RUN_RC=1 run "$D" "${FULL[@]}"
+{ [ "$RC" -ne 0 ] && has_tag "$D" v0.7.98 && has_otag "$D" v0.7.98 && [ "$(ci_watches "$D")" = 1 ]; } \
+    && ok "INV-21 a red release.yml run is not read as a red CI run" || bad "INV-21 release.yml red (rc=$RC): $OUT"
+
+# No CI run ever appears, even after one is started: looks twice MAX times,
+# starts one run, gives up with no tag.
+D=$TMPROOT/inv21none; std_repo "$D"
+STUB_CI_NONE=1 RELEASE_POLL_MAX=2 run "$D" "${FULL[@]}"
+refused_by_ci "INV-21 no CI run ever appears" "$D" "$RC" "$OUT"
+expect "INV-21 no CI run: looked RELEASE_POLL_MAX times, dispatched, looked RELEASE_POLL_MAX times" 4 "$(ci_lists "$D")"
+expect "INV-21 no CI run: exactly one 'gh workflow run ci.yml --ref main'" 1 "$(gh_log "$D" | grep -cFx -- 'gh workflow run ci.yml --ref main' || true)"
+expect "INV-21 no CI run: nothing to watch" 0 "$(ci_watches "$D")"
+dl=$(oline "$D" 'ci-dispatch')
+{ [ -n "$dl" ] && ! grep -E '^ci-' "${D}-log/obs.log" | grep -q 'origin_tags=\[[^]]*v0\.7\.98'; } \
+    && ok "INV-21 no CI run: dispatch happened before any tag existed" || bad "INV-21 dispatch order: $(obs_log "$D")"
+
+# The commit had no CI run (docs-only push): the script starts one, accepts it, tags.
+D=$TMPROOT/inv21disp; std_repo "$D"
+STUB_CI_AFTER_DISPATCH=1 RELEASE_POLL_MAX=2 run "$D" "${FULL[@]}"
+{ [ "$RC" -eq 0 ] && has_tag "$D" v0.7.98 && has_otag "$D" v0.7.98; } \
+    && ok "INV-21 run appears only after 'workflow run ci.yml': accepted, release goes on" || bad "INV-21 dispatch path (rc=$RC): $OUT"
+expect "INV-21 dispatch path: exactly one 'gh workflow run ci.yml --ref main'" 1 "$(gh_log "$D" | grep -cFx -- 'gh workflow run ci.yml --ref main' || true)"
+expect "INV-21 dispatch path: the started run is watched" 1 "$(ci_watches "$D")"
+# ...and if that started run is red, no tag.
+D=$TMPROOT/inv21dispred; std_repo "$D"
+STUB_CI_AFTER_DISPATCH=1 STUB_CI_RC=1 RELEASE_POLL_MAX=2 run "$D" "${FULL[@]}"
+refused_by_ci "INV-21 started CI run is red" "$D" "$RC" "$OUT"
+
+# A run that shows up on a later look (no dispatch needed) is waited for.
+D=$TMPROOT/inv21late; std_repo "$D"
+STUB_CI_EMPTY_FIRST=2 RELEASE_POLL_MAX=5 run "$D" "${FULL[@]}"
+{ [ "$RC" -eq 0 ] && has_otag "$D" v0.7.98 && [ "$(ci_watches "$D")" = 1 ] && [ "$(ci_disp "$D")" = 0 ]; } \
+    && ok "INV-21 CI run found on a later look: watched, none started" || bad "INV-21 late CI run (rc=$RC): $OUT | $(gh_log "$D")"
+
+# --skip-staging does not skip the CI check.
+D=$TMPROOT/inv21skipred; std_repo "$D"
+STUB_CI_RC=1 run "$D" "${NOSTAGE[@]}"
+refused_by_ci "INV-21 --skip-staging with red CI" "$D" "$RC" "$OUT"
+{ ! obs_log "$D" | grep -qE -- '--staging|--require-tests'; } && ok "INV-21 --skip-staging: gate scripts still not called" || bad "INV-21 gate called under --skip-staging: $(obs_log "$D")"
+D=$TMPROOT/inv21skipok; std_repo "$D"
+run "$D" "${NOSTAGE[@]}"
+{ [ "$RC" -eq 0 ] && [ "$(ci_watches "$D")" = 1 ] && has_otag "$D" v0.7.98; } \
+    && ok "INV-21 --skip-staging with green CI: CI still watched, release goes on" || bad "INV-21 skip-staging green (rc=$RC): $OUT | $(gh_log "$D")"
+
+# Rehearsal: gh not called at all, a [rehearsal] line names the CI check.
+D=$TMPROOT/inv21reh; std_repo "$D"
+for reh in "release --skip-build --skip-staging" "release --skip-build"; do
+    rm -f "${D}-log/gh.log"; run "$D" $reh
+    { [ "$RC" -eq 0 ] && [ -z "$(gh_log "$D")" ] && grep -E '\[rehearsal\]' <<<"$OUT" | grep -qiE '\bci\b|ci\.yml'; } \
+        && ok "INV-21 rehearsal '$reh': gh never called, [rehearsal] line names CI" || bad "INV-21 rehearsal '$reh' (rc=$RC, gh log=[$(gh_log "$D")]): $OUT"
+done
+
+# Resume (tag at HEAD, not on origin): CI is not asked about, even if it is red.
+D=$TMPROOT/inv21res; seed_repo "$D"; write_cmake "$D" 0.7.98
+write_changelog "$D" "" "## [0.7.98] - $TODAY" "$THEME
+
+### Added
+- Shiny new thing."
+write_metainfo "$D" 0.7.98 "$TODAY"; write_debian "$D" 0.7.98 "$TODAY_RFC"
+sed -i 's/v0.7.97/v0.7.98/' "$D/packaging/obs/_service"
+commit_all "$D" "release 0.7.98"; git -C "$D" tag -a v0.7.98 -m "0.7.98"
+STUB_CI_RC=1 STUB_CI_NONE=1 run "$D" "${FULL[@]}"
+{ [ "$RC" -eq 0 ] && has_otag "$D" v0.7.98 && ! gh_log "$D" | grep -qE 'ci\.yml|workflow run'; } \
+    && ok "INV-21 resumed run does not ask about CI" || bad "INV-21 resume (rc=$RC): $OUT | $(gh_log "$D")"
 
 echo
 echo "release_pipeline behavioural: PASS=$PASS FAIL=$FAIL"

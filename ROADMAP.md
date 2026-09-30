@@ -21196,7 +21196,7 @@ clips input text), and the auto-switcher interrupting active work.
   Source: in-session-2026-06-04.
   Lanes: ci, packaging.
 
-- 📋 [ANTS-1978] **cut-rc.sh build gate builds locally (Qt 6.11) and never checks the release CI — it tags releases that fail the AppImage build.**
+- ✅ [ANTS-1978] **cut-rc.sh build gate builds locally (Qt 6.11) and never checks the release CI — it tags releases that fail the AppImage build.**
   The new-rc/promote build_and_test gate runs `cmake --build build` on the dev machine's Qt 6.11, which is far more lenient than the Qt 6.2 release runner. So a release can be tagged green locally yet fail release.yml. Gate cut-rc on the release-artefacts workflow result (or a Qt-baseline container build) before tagging.
   Note (2026-09-30): still open after ANTS-5577, under a new name. The
   script is packaging/release.sh now. It pushes main before its staging
@@ -21207,6 +21207,14 @@ clips input text), and the auto-switcher interrupting active work.
   it, and refuse to tag on anything but success. The fixture's gh stub
   answers every `run list` and `run watch` alike, so it must learn to
   tell the CI run from the release run first.
+  Resolved (2026-09-30): packaging/release.sh has a ci_gate between the
+  staging gate and the tag. It looks up the ci.yml run for the commit,
+  waits for it, and refuses to tag unless it passed. ci.yml skips a
+  changelog-only push, so when no run exists it starts one with
+  `gh workflow run ci.yml --ref main` and looks again. --skip-staging does
+  not skip it; a resumed run does not repeat it. The tests were red
+  first and four mutations were caught. The lookup command was run
+  against real commits; `gh workflow run` was not run for real.
   **Layman:** Our release tool only checks the build on this PC, not on the build server that actually makes the installer — so it can ship a broken release.
   Kind: fix.
   Source: in-session-2026-06-04.

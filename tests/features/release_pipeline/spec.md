@@ -13,7 +13,7 @@ Test surfaces:
 - `release_behaviour_test.sh`, ctest `release_behaviour`: drives the real
   `release.sh` and `release-notes.sh` against throwaway git repos with a
   bare origin and stubbed `gh`, `obs-submit.sh`, `obs-status.sh` and
-  drift check. Covers INV-1 to INV-16, INV-19 and INV-20.
+  drift check. Covers INV-1 to INV-16 and INV-19 to INV-21.
 - `obs_status_behaviour_test.sh`, ctest `obs_status_behaviour`: drives the
   real `packaging/obs/obs-status.sh` against an `osc` shim serving canned
   XML. Covers INV-18.
@@ -116,6 +116,33 @@ Test surfaces:
   usage on stderr.
 - **INV-20** A non-zero `packaging/check-version-drift.sh` refuses the
   release. Nothing changes.
+- **INV-21** CI gate (ANTS-1978). On a `--push` run that is not resuming,
+  between the staging gate and the tag, `release` reads GitHub's verdict on
+  the commit the gate tested:
+  1. It looks up the `ci.yml` run for that commit
+     (`gh run list --workflow ci.yml --commit <full-sha> --limit 1`), up to
+     `RELEASE_POLL_MAX` looks, `RELEASE_POLL_SECS` apart. A run that exists
+     at the first look is never started again: `gh workflow run` is not
+     called.
+  2. If every look is empty (`ci.yml` skips a push that touches only
+     documentation, so the commit may have no run), it starts one with
+     `gh workflow run ci.yml --ref main`, called once, and looks again up to
+     `RELEASE_POLL_MAX` times. A run that appears only after that call is
+     accepted.
+  3. It waits on the run with `gh run watch <id> --exit-status`. Exit 0
+     lets the release carry on as INV-9 and INV-10 describe.
+  4. A run that never appears, or a watch that exits non-zero: the script
+     exits non-zero, creates no `vX.Y.Z` tag locally or on origin, never
+     runs the real-project `obs-submit.sh` or `obs-status.sh`, and names CI
+     in its output. `main` keeps the release commit, already pushed (INV-7).
+  5. The lookup happens after both staging-gate calls and before any tag is
+     on origin. A red staging gate (INV-8) never reaches it.
+  6. `--skip-staging` does not skip this check. A rehearsal calls `gh` not
+     at all and prints a `[rehearsal]` line naming the CI check.
+  7. A resumed run (INV-12) does not ask about CI.
+  The `ci.yml` run and the `release.yml` run (INV-10, INV-14) are different
+  runs: a red `release.yml` run after the tag is INV-14's case and keeps
+  the tag.
 
 ## Rationale
 
@@ -132,6 +159,10 @@ Test surfaces:
 - Two `osc results` status-word watchers misfired on 2026-09-30, one never
   ending and one ending while Fedora still built: job history per
   repository is the reliable signal (INV-18).
+- The retired `cut-rc.sh` gated on a local build (Qt 6.11) and tagged
+  releases that GitHub's CI, with its Qt 6.2 baseline job, then failed.
+  `release.sh` pushes `main` before the staging gate so CI runs while the
+  gate waits, and INV-21 makes the tag wait for that verdict.
 
 ## Scope
 
@@ -148,3 +179,5 @@ Out of scope: the real `gh`, `osc` and OBS; the build and test gate
 The RC pipeline (ANTS-1318, ANTS-2164, ANTS-2165, ANTS-4865, ANTS-4869,
 ANTS-4871, ANTS-4872) is replaced by this contract under ANTS-5577.
 ANTS-4865's requirement (a refused commit aborts by name) is INV-13.
+ANTS-1978 (a release tagged without reading CI's verdict) is INV-21; it
+stayed open through the move from `cut-rc.sh` to `release.sh`.

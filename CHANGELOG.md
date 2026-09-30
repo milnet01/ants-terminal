@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The release command waits for GitHub's CI on the commit and tags only if it passed** (ANTS-1978)
+  The local build uses a newer Qt than the release runner, so a commit
+  could pass here and fail there after it was tagged. Where CI skipped
+  the commit as changelog-only, the command starts a run itself.
+
 - **Releases are cut by one command, `packaging/release.sh release`, and every release is a full public release; the release-candidate flow (`cut-rc.sh`) is retired** (ANTS-5577)
   It merges `[Unreleased]` into the dated version section, builds the
   commit on every distro in an OBS staging project before it tags
