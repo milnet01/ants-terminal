@@ -89440,7 +89440,7 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: review-contract-2026-09-30 CLAUDE.md loop 1.
 
-- 📋 [ANTS-5586] **The roadmap backup export timer has failed since 2026-09-21 with "git push to origin/main failed".**
+- ✅ [ANTS-5586] **The roadmap backup export timer has failed since 2026-09-21 with "git push to origin/main failed".**
   Reported in the 2026-09-30 handoff; not investigated. The export is
   tools/roadmap-export-publish.sh (with tools/roadmap-backup-lib.sh),
   run by a timer. Start with the timer's journal
@@ -89449,6 +89449,14 @@ reports are asked for separately, each time.
   the two-GitHub-accounts 403 recorded in memory ("gh auth switch --user
   milnet01"). Whether to investigate now was put to the user on
   2026-09-30; the recommendation was yes.
+  Resolved (2026-10-01): investigated, no code change. Only one run
+  failed: 2026-09-21 succeeded (255f093), and the 2026-09-28 run's push was
+  refused by the ~/.claude pre-push secret scan, which matched a
+  private-key rule in roadmap-export/finbreak.jsonl. The claude-config
+  session fingerprinted it in ~/.claude/.gitleaksignore the same day
+  (69c0b05), and 16e41f0 is on origin/main. A gitleaks run over that range
+  now reports nothing. The script's failure path already raises a desktop
+  notification. The next run is 2026-10-05.
   **Layman:** The automatic off-machine copy of the roadmap has not been saved for over a week.
   Kind: investigate.
   Source: in-session-2026-09-30 (handoff note).
