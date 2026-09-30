@@ -25,6 +25,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A pinned review partition (`.indie-review/partition.json`) may name files anywhere in the project, not only under `src/`** (ANTS-5583)
+  A project with its code in other folders got every lane back empty.
+  Absolute paths, paths that leave the project and paths under `.git/`
+  are still dropped.
+
+- **roadmap_migrate tells a session to publish the roadmap file only when the file lacks its generated-file header** (ANTS-5584)
+
+- **changelog_query mode:"lint" always returns `findings`, empty when the file is clean** (ANTS-5585)
+  The default trimming of empty fields removed the list, so a clean check
+  looked like a reply with the field missing.
+
 - **Pasting a copied image with the right-click menu or the middle mouse button inserts the image's path, as Ctrl+Shift+V already did** (ANTS-5580)
   The two mouse routes pasted the clipboard's text, which for a copied
   file is its `file://` address, so Claude Code could not attach the

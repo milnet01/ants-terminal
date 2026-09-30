@@ -66421,6 +66421,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   half-migrated machine degrades to today's behaviour. This item removes
   it after that release: delete the script, its README setup line, and
   any packaging carrier that installs it. Blocked by ANTS-4932.
+  Note (2026-09-30): ants-mcpd first shipped in 0.7.112 today, so the
+  spec's "one release as a fallback" is met. But 0.7.112's README says of
+  the bridge "still works for one more release", which a reader of that
+  release takes to cover the next one too. Recommendation: keep the
+  bridge through the release after 0.7.112 and remove it after that, so
+  the public sentence stays true. The user's call; not removed.
   **Layman:** After the new standalone MCP program has been out for a release, remove the old Python bridge it replaced.
   Kind: chore.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).
@@ -66476,7 +66482,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: fix.
   Source: in-session-2026-09-24.
 
-- 📋 [ANTS-5321] **Make ants-mcpd reachable from the AppImage and the Flatpak.**
+- ✅ [ANTS-5321] **Make ants-mcpd reachable from the AppImage and the Flatpak.**
   Both install ants-mcpd but launch only ants-terminal, so a client has no
   path to register. Needed before ANTS-5308 retires the Python bridge. The
   README states the gap.
@@ -66505,6 +66511,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   run. At the 2026-09-30 release, README Getting started step 2 must
   change: packages then ship ants-mcpd, and AppImage users register
   `... Ants.AppImage --mcpd`. Flatpak half split to its own item.
+  Resolved (2026-09-30): the AppImage half is proven. The 0.7.112 release
+  run (GitHub run 36701053275) passed its smoke step, which runs
+  `--mcpd --version` on the built AppImage, and README Getting started
+  gives AppImage users `claude mcp add --scope user ants --
+  /path/to/Ants.AppImage --mcpd`. The Flatpak half is ANTS-5527.
   **Layman:** People who use the single-file or Flatpak version cannot connect Claude Code the new way yet.
   Kind: package.
   Source: in-session-2026-09-24.
@@ -69055,6 +69066,80 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: session-message-281 finbreak 2026-09-29.
   Lanes: mcp.
+
+### Ants MCP feedback from CC sessions — 2026-09-30 triage
+
+- ✅ [ANTS-5583] **indie_review_partition empties a pinned lane's sourcePaths when its files are not under src/.**
+  Reported by Slipcase (SLIP-0086 waits on it). A
+  .indie-review/partition.json lane naming files outside a literal src/
+  directory loads by name with sourcePaths [] and file_count 0, and the
+  files are reported unassigned. The reporter's minimal repro, three
+  throwaway repos each with one lane:
+  - src/base.py on disk, lane path src/base.py, no .ants/project.json:
+    file_count 1. Correct.
+  - api/base.py on disk, lane path api/base.py: file_count 0,
+    unassigned_count 1. Same with source_roots ["api"] declared.
+  - source_roots ["."] and a root main.py in the lane: the override is
+    not used at all (partition_source computed). Possibly a second
+    defect: check it separately.
+  Slipcase itself (source_roots ["."]) loads all its lanes by name with
+  every sourcePaths empty.
+  The reporter's cause is a guess (paths filtered against walked roots).
+  Reproduce from the three cases first, then read the matcher.
+  Related, not the same: ANTS-5409 (report tracked source no root walks).
+  Resolved (2026-09-30): the cause was in source, not the reporter's
+  guess. parsePartitionOverride (src/indiereviewengine.cpp) kept a
+  sourcePaths entry only when it began "src/". It now keeps any
+  project-relative path that canonicalises inside the project and is not
+  under .git/. The test reproduced the empty lane before the fix.
+  The source_roots ["."] case is not a second defect in the override: the
+  verb replaces a partition of one lane or none with the computed one
+  when that has more lanes (remotecontrol_review.cpp, ANTS-3709), and the
+  repro's override had one lane. Slipcase's own file has twelve.
+  Live after an ants-mcpd rebuild and /mcp.
+  **Layman:** A project whose code is not in a folder called src cannot tell the review planner how to split its files.
+  Kind: fix.
+  Source: Slipcase_Ants_MCP_Feedback.md 2026-09-29 and 2026-09-30 (two findings, one defect).
+  Lanes: mcp-review-verbs.
+
+- ✅ [ANTS-5584] **roadmap_migrate's next_call_hint says the file lacks the generated header when it already has it.**
+  On an already store-backed project a real roadmap_migrate
+  (items_unchanged 95, markdown_rewritten false) returned the hint
+  "roadmap_log op:render publishes the canonical file now; until then
+  the roadmap file carries no generated-file header and looks
+  hand-editable". The file already began with the header, check_sync
+  said file_in_sync:true and a render dry run said would_change:false.
+  Fix: emit the hint only when the file lacks the header or a render
+  would change bytes; otherwise say nothing needs publishing.
+  Resolved (2026-09-30): roadmap_migrate emits the render hint only when
+  the live roadmap file's opening lines lack the generated-file notice
+  (RoadmapRender::hasGeneratedNotice). The test reproduced the reported
+  hint on a file that already carried it. Not done: a hint for a file
+  that has the notice but differs from a fresh render; check_sync
+  answers that.
+  **Layman:** After a routine re-import, the tool tells the session to republish a file that is already up to date.
+  Kind: fix.
+  Source: Slipcase_Ants_MCP_Feedback.md 2026-09-29.
+  Lanes: mcp, roadmap.
+
+- ✅ [ANTS-5585] **changelog_query mode:"lint" omits findings[] on a clean file, where its schema says the key is always present.**
+  changelog_query {mode:"lint"} on a clean CHANGELOG.md returned only
+  etag, mode, next_call_hint, ok and path. The schema (ANTS-5543) says
+  findings[] is always present and empty when clean. A caller reading
+  findings.length gets undefined. Emit findings: [] on a clean file.
+  Check whether a compacting step drops the empty array, since that
+  would affect other always-present arrays too.
+  Resolved (2026-09-30): the verb always set findings; default
+  compaction (claude.mcp_terse_responses) dropped the empty list and the
+  empty counts. A lint call is now exempt from the default
+  (mcp::isDefaultCompactExemptCall); an explicit compact:true is still
+  honoured, and other verbs' empty findings still fold, which an
+  existing test pins (Ants4673KeepsDidNotRunFlags). Reproduced live
+  before the fix. Live after an ants-mcpd rebuild and /mcp.
+  **Layman:** A clean change log check answers with nothing at all, so a caller cannot tell clean from broken.
+  Kind: fix.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-29.
+  Lanes: mcp, changelog.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

@@ -145,6 +145,16 @@ short-circuits when state is unchanged.
   `sections_checked:false` that says a check never ran (ANTS-4673). The
   coupling was named in ANTS-4524 before it was hit.
 
+- **INV-12 — one call is exempt from the default although its verb is not**
+  (ANTS-5585). `mcp::isDefaultCompactExemptCall(tool, args)` is true for
+  `changelog_query` with `mode:"lint"` and for nothing else, and the
+  dispatcher consults it beside `isDefaultCompactTool`. That mode's schema
+  says `findings` is always present and empty when clean; default compaction
+  dropped the empty list, so a clean check read as a reply with the field
+  missing. An explicit `compact:true` is still honoured, the verb's other
+  modes keep the default, and an empty `findings` from any other verb still
+  folds.
+
 ## ANTS-2090 — tabular (columnar) encoding (`encoding:"tabular"`)
 
 Same bundle, separate transform: `mcp::tabularize` packs each eligible

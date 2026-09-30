@@ -252,6 +252,12 @@ QString laymanRendered(const QString &stored);
 // by hand.
 QString emojiFor(const QString &status);
 
+// ANTS-4555 — the one comment line a rendered roadmap carries under its
+// format marker, and whether a file's opening lines already hold it
+// (ANTS-5584: roadmap_migrate asks before telling a caller to render).
+QString generatedNotice();
+bool hasGeneratedNotice(const QString &text);
+
 // roadmap-data-model.md § 3.4's open set — planned, in-progress AND considered.
 // Exported for ANTS-4070's `minor_not_closed` guard, which must decide "is any
 // item in this move set still open" using the codebase's own notion of open: a

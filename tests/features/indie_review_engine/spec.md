@@ -73,3 +73,12 @@ reports it as `map_rejected:[{path, reason}]`, and its `path` names the
 override only when the override was used. *Tests:*
 `IndieReviewEngine.Ants4846OverrideRejectionIsNamed`,
 `indie_review_partition_sparse_hint.Ants4846RejectedOverrideIsReported`.
+
+## ANTS-5583 — an override lane may name any path inside the project
+
+A `sourcePaths` entry in `.indie-review/partition.json` is kept when it is a
+project-relative path that canonicalises inside the project and is not under
+`.git/`. An absolute path, an escaping path (ANTS-1832) and a `.git/` path
+are dropped. It used to be kept only when it began `src/`, so a project with
+its code elsewhere pinned a partition and got every lane back empty.
+*Test:* `IndieReviewEngine.Ants5583OverrideAcceptsPathsOutsideSrc`.

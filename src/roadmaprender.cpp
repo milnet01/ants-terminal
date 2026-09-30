@@ -273,6 +273,29 @@ TrailerLines trailerLines(const RoadmapStore::ItemWrite &it) {
     return out;
 }
 
+// ANTS-4555 — a store-backed roadmap file is generated, but nothing in it
+// said so, and it is a normal tracked file whose name invites editing; a hand
+// edit is discarded by the next write. One comment line under the format
+// marker says so in the file itself, where a person or a session reads it. It
+// renders as nothing, and a re-import that carries it into the root intro is
+// not given a second copy.
+QString generatedNotice() {
+    return QStringLiteral(
+        "<!-- Generated from the Ants Terminal roadmap store. Edit it with "
+        "roadmap_log; hand edits are discarded by the next write. -->");
+}
+
+// The same window withGeneratedNotice() searches: the notice sits directly
+// under the format marker, or opens a pass-headings file.
+bool hasGeneratedNotice(const QString &text) {
+    const QStringList lines = text.left(4096).split(QLatin1Char('\n'));
+    const int n = std::min(6, int(lines.size()));
+    for (int i = 0; i < n; ++i)
+        if (lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+            return true;
+    return false;
+}
+
 namespace {
 
 // The status legend is stored STRUCTURED (roadmap-data-model.md § 5.1 — status
@@ -310,18 +333,6 @@ QString renderLegend(const QJsonObject &legend) {
 // per-file assembly below).
 QString formatMarker() {
     return QStringLiteral("<!-- ants-roadmap-format: 1 -->");
-}
-
-// ANTS-4555 — a store-backed roadmap file is generated, but nothing in it
-// said so, and it is a normal tracked file whose name invites editing; a hand
-// edit is discarded by the next write. One comment line under the format
-// marker says so in the file itself, where a person or a session reads it. It
-// renders as nothing, and a re-import that carries it into the root intro is
-// not given a second copy.
-QString generatedNotice() {
-    return QStringLiteral(
-        "<!-- Generated from the Ants Terminal roadmap store. Edit it with "
-        "roadmap_log; hand edits are discarded by the next write. -->");
 }
 
 // ANTS-5501 — `atTop` is the pass-headings case: that dialect carries no

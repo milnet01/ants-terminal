@@ -129,9 +129,16 @@ QList<Lane> parsePartitionOverride(const QString &json,
         if (l.name.isEmpty()) continue;  // schema: name required
         for (const auto &sp : o.value(QStringLiteral("sourcePaths")).toArray()) {
             const QString s = sp.toString();
-            if (s.isEmpty() || !s.startsWith(QStringLiteral("src/"))) continue;
-            // ANTS-1832 — the src/ prefix alone is not an anchor:
-            // "src/../../etc/passwd" satisfies startsWith yet escapes the
+            // ANTS-5583 — any project-relative path. This kept only entries
+            // starting "src/", so a project with its code in api/, core/ or
+            // at the root pinned a partition and got every lane back empty.
+            // An absolute path is dropped, and so is anything under .git/,
+            // which is never review material.
+            if (s.isEmpty() || s.startsWith(QChar('/'))
+                || s == QLatin1String(".git")
+                || s.startsWith(QLatin1String(".git/"))) continue;
+            // ANTS-1832 — a prefix is not an anchor:
+            // "src/../../etc/passwd" reads as relative yet escapes the
             // tree, and the entry would reach the brief header before any
             // canonicalisation guard. Require each path to canonicalise
             // inside the project (parity with cold-eyes lane-5 CR-1).

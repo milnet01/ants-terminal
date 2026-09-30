@@ -200,6 +200,34 @@ TEST(IndieReviewEngine, Ants1832OverrideSourcePathsRejectsTraversal) {
     }
 }
 
+// ANTS-5583 — a project whose code is not under a directory called src/
+// (Slipcase: api/, core/, ui/, main.py) pinned a partition and every lane
+// came back with no files: the override parser kept only entries starting
+// "src/". A lane path is any project-relative path that stays inside the
+// tree. What is still dropped: an absolute path, one that escapes, and
+// anything under .git/.
+TEST(IndieReviewEngine, Ants5583OverrideAcceptsPathsOutsideSrc) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "api/base.py", "x = 1\n");
+    writeFile(tmp.path(), "main.py", "x = 1\n");
+    writeFile(tmp.path(), ".github/workflows/ci.yml", "on: push\n");
+    writeFile(tmp.path(), ".git/config", "[core]\n");
+
+    writeFile(tmp.path(), ".indie-review/partition.json",
+              "{\"version\":1,\"lanes\":[{"
+              "\"name\":\"api\",\"summary\":\"s\","
+              "\"sourcePaths\":[\"api/base.py\",\"main.py\","
+              "\".github/workflows/ci.yml\",\"/etc/passwd\","
+              "\"../outside.py\",\".git/config\"]}]}");
+
+    const auto lanes = IndieReviewEngine::derivePartition(tmp.path());
+    ASSERT_EQ(lanes.size(), 1);
+    EXPECT_EQ(lanes[0].sourcePaths,
+              (QStringList{"api/base.py", "main.py", ".github/workflows/ci.yml"}))
+        << "got: " << lanes[0].sourcePaths.join(", ").toStdString();
+}
+
 // ANTS-2187 — Inv3AssembleBriefShape removed with the unfenced v1
 // assembleBrief() it exercised. The live brief assemblers are covered
 // elsewhere: assembleBriefForDispatch by brief_dispatch_fence +

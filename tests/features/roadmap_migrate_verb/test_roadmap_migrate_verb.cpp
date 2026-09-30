@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapmigrateverb.h"
+#include "roadmaprender.h"
 #include "roadmapparse.h"
 #include "roadmapsource.h"
 #include "roadmapstore.h"
@@ -1324,6 +1325,53 @@ TEST(RoadmapMigrateVerb, Ants5354ServedMigrationPointsAtRender) {
     ASSERT_TRUE(inert.value(QStringLiteral("ok")).toBool());
     ASSERT_FALSE(inert.value(QStringLiteral("store_backed")).toBool());
     EXPECT_FALSE(inert.contains(QStringLiteral("next_call_hint")));
+}
+
+// ANTS-5584 — the hint says the file "carries no generated-file header". On a
+// project whose file was already rendered from the store that is false, and a
+// session following it runs a pointless render. A re-migration of a file that
+// carries the notice gets no hint; one that lacks it still does.
+TEST(RoadmapMigrateVerb, Ants5584NoRenderHintWhenFileAlreadyCarriesTheNotice) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("ants"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const auto migrate = [&]() {
+        return RoadmapMigrateVerb::run(
+            storePath, request(root, QStringLiteral("ants"), QStringLiteral("Ants")));
+    };
+
+    const QJsonObject first = migrate();
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(first.value(QStringLiteral("store_backed")).toBool());
+    ASSERT_TRUE(first.contains(QStringLiteral("next_call_hint")))
+        << "control: a file with no notice is told to render";
+
+    // Publish it the way a session would, then re-import the rendered file.
+    const QString roadmapPath = QDir(root).filePath(QStringLiteral("ROADMAP.md"));
+    QFile f(roadmapPath);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    QString text = QString::fromUtf8(f.readAll());
+    f.close();
+    const QString notice = RoadmapRender::generatedNotice();
+    ASSERT_FALSE(notice.isEmpty());
+    const int markerEnd = text.indexOf(QLatin1Char('\n'));
+    ASSERT_GT(markerEnd, 0);
+    ASSERT_TRUE(text.left(markerEnd).contains(QStringLiteral("ants-roadmap-format")))
+        << "fixture: the format marker opens the file";
+    text.insert(markerEnd + 1, notice + QLatin1Char('\n'));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(text.toUtf8());
+    f.close();
+
+    const QJsonObject again = migrate();
+    ASSERT_TRUE(again.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(again).toJson().toStdString();
+    ASSERT_TRUE(again.value(QStringLiteral("store_backed")).toBool());
+    EXPECT_FALSE(again.contains(QStringLiteral("next_call_hint")))
+        << "the file already carries the generated-file notice: "
+        << again.value(QStringLiteral("next_call_hint")).toString().toStdString();
 }
 
 // ANTS-5355 — the title/preamble section is reported apart from the headed

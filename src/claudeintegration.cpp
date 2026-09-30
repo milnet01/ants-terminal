@@ -2075,6 +2075,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         const bool wantCompact = compactArg.isBool()
             ? compactArg.toBool()
             : (mcp::isDefaultCompactTool(toolName)
+               && !mcp::isDefaultCompactExemptCall(toolName, argsObj)
                && mcp::terseDefault());
         if (wantCompact)
             responseText = mcp::compactEnvelope(responseText);

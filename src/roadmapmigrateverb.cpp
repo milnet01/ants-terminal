@@ -24,6 +24,7 @@
 #include "roadmapsource.h"
 #include "roadmapstore.h"
 
+#include <QFile>
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
@@ -755,7 +756,15 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // ANTS-5354 — and say what does write it. Until the first render the file
     // lacks the "generated from the store" header, so it looks hand-editable,
     // and a hand edit made in that window is discarded by the next write.
-    if (storeBacked && !req.dryRun)
+    // ANTS-5584 — only where that is true. A file already rendered from the
+    // store carries the header, and telling its session to render sent it
+    // looking for a problem that was not there.
+    const auto liveFileHasNotice = [&plan]() {
+        QFile live(plan.sources.first().path);
+        return live.open(QIODevice::ReadOnly)
+            && RoadmapRender::hasGeneratedNotice(QString::fromUtf8(live.read(4096)));
+    };
+    if (storeBacked && !req.dryRun && !liveFileHasNotice())
         env[QStringLiteral("next_call_hint")] = QStringLiteral(
             "roadmap_log op:\"render\" publishes the canonical file now; until "
             "then the roadmap file carries no generated-file header and looks "

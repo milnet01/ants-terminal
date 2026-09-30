@@ -26,6 +26,13 @@ namespace mcp {
 // mcp::terseDefault() applies to an ABSENT `compact` arg.
 bool isDefaultCompactTool(const QString &toolName);
 
+// ANTS-5585 — a CALL that is not compacted by default although its verb is.
+// changelog_query mode:"lint" answers with `findings`, and its schema says
+// the list is always present: an empty one is the answer "clean". Default
+// compaction folded it away, so a clean check could not be told from a reply
+// that lost the field. An explicit compact:true is still honoured.
+bool isDefaultCompactExemptCall(const QString &toolName, const QJsonObject &args);
+
 // The verbs that declare `compact` and therefore honour an EXPLICIT
 // compact:true / compact:false. Membership and the default above are two
 // columns of one table in the .cpp, because they were one predicate until

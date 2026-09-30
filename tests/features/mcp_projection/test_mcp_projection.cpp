@@ -334,6 +334,41 @@ TEST(McpProjection, Ants4524DispatchGatesTheDefaultSeparately) {
            "not on the `fields=` allowlist it used to share";
 }
 
+// ANTS-5585 — INV-12. changelog_query is compacted by default, and its lint
+// mode promises `findings` "always present, empty when clean". Compaction
+// dropped the empty list (and the empty `counts`), so an MCP caller saw a clean
+// check as a reply with no findings key at all. The exemption is per CALL: the
+// verb's other modes keep the default, and an empty `findings` from any other
+// verb is still dead weight (Ants4673KeepsDidNotRunFlags).
+TEST(McpProjection, Ants5585LintCallIsNotCompactedByDefault) {
+    const QString cq = QStringLiteral("changelog_query");
+    QJsonObject lint;
+    lint[QStringLiteral("mode")] = QStringLiteral("lint");
+    QJsonObject entries;
+    entries[QStringLiteral("mode")] = QStringLiteral("entries");
+
+    EXPECT_TRUE(mcp::isDefaultCompactExemptCall(cq, lint))
+        << "a lint call's empty findings list is its answer and must survive "
+           "for a caller who never asked for compaction";
+    EXPECT_FALSE(mcp::isDefaultCompactExemptCall(cq, entries))
+        << "the other modes keep the default";
+    EXPECT_FALSE(mcp::isDefaultCompactExemptCall(cq, QJsonObject{}))
+        << "an absent mode is `entries`";
+    EXPECT_FALSE(mcp::isDefaultCompactExemptCall(QStringLiteral("roadmap_query"), lint))
+        << "the exemption names the verb, not the argument";
+    EXPECT_TRUE(mcp::isDefaultCompactTool(cq))
+        << "the verb itself stays on the default";
+}
+
+// ...and the dispatcher must consult it, beside the per-verb answer.
+TEST(McpProjection, Ants5585DispatchConsultsTheCallExemption) {
+    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray s = f.readAll();
+    EXPECT_TRUE(s.contains("!mcp::isDefaultCompactExemptCall(toolName, argsObj)"))
+        << "the terseDefault fallback must skip a call the exemption names";
+}
+
 // INV-9 — dispatch ordering: projectFields is called after
 // applyEtagPattern and before wrapMcpData, and skipped on the etag
 // short-circuit. Source-scrape (the dispatch path is GUI-coupled).
