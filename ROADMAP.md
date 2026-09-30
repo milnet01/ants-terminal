@@ -76896,6 +76896,10 @@ starts 2026-05-27.
   - The GitHub release body is what the Projects Hub website shows as its changelog, so the body should lead with plain-language notes. release_notes() only emits a Theme paragraph and a link; 0.7.112's body was set by hand with `gh release edit`.
   - Files that name cut-rc.sh and need the same change: tests/features/release_rc_pipeline/, docs/specs/ANTS-1318.md, ANTS-2164.md, ANTS-2165.md, .obs/workflows.yml, packaging/obs/README.md, CONTRIBUTING.md, .claude/bump.json, docs/standards/ci-build.md and commits.md.
   - OBS can copy tested binaries from staging instead of rebuilding them (its release mechanism); weigh it here (see ANTS-5578 item 6).
+  Progress (2026-09-30, after 0.7.112 shipped): more for the new command.
+  - The old promote creates the public GitHub release as soon as the tag is pushed, about 25 minutes before release.yml attaches the AppImage. In that window releases/latest/download/Ants_Terminal-x86_64.AppImage has nothing to serve, the website's download button falls back to a source zip, and a self-updating AppImage would find a release with no file. The Projects Hub session reported it. Publish only once the files are attached (a draft, or let release.yml create the release).
+  - Do not wait on OBS by polling `osc results` for a status word: two such watchers misfired on 2026-09-30, one never ending (`succeeded*`) and one ending while Fedora was still building. Waiting for a new `osc jobhistory` row per repository was reliable.
+  - The v0.7.112-rc1 pre-release and tag were deleted after the public release was verified, at the user's word that RCs are no longer wanted. Older rc tags remain.
   **Layman:** The weekly preview-then-release routine kept causing mistakes and serves nobody yet, so releases become simple: one public release whenever it is worth making.
   Kind: refactor.
   Source: user-request-2026-09-30.
@@ -89863,6 +89867,13 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Also found ANTS-5575. Not rehearsed: FUSE mount (extract-and-run
   was used), the real GitHub CDN, Restart later. Scripts and
   screenshots: /mnt/Emulators/ants-update-rehearsal/.
+  Shipped publicly (2026-09-30) in v0.7.112, the first signed release.
+  release.yml's "Sign the update manifest" step passed for the tag.
+  Checked from a fresh download: the .manifest.sig (64 bytes) verifies
+  over the .manifest with packaging/update-signing/ants-update.pub.pem
+  (openssl pkeyutl -verify -rawin), the manifest's sha256 and size match
+  the AppImage, and the AppImage reports 0.7.112. Not yet exercised: a
+  real self-update, which needs a release newer than 0.7.112.
   **Layman:** When a new version is out, Ants Terminal can download and install it for you instead of you fetching it by hand.
   Kind: feature.
   Source: user-request-2026-09-29.
