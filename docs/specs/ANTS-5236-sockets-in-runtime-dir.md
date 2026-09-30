@@ -63,7 +63,7 @@ Both sockets live directly in it:
 
 | Socket | New path | Legacy path (read only) |
 |---|---|---|
-| Claude hooks | `<antsRuntimeDir>/claude-hooks-<pid>` | `/tmp/ants-claude-hooks-<pid>` |
+| Claude hooks | `<antsRuntimeDir>/claude-hooks-<pid>` | `<tempPath>/ants-claude-hooks-<pid>` |
 | MCP | `<antsRuntimeDir>/mcp-<pid>` | `<tempPath>/ants-terminal-mcp-<pid>` |
 
 Both socket paths come from `privateSocketPath`. `ensureSocketDir`
@@ -76,7 +76,9 @@ this item removes.
 Qt's own fallback is kept. Where `XDG_RUNTIME_DIR` is unset, or names a
 directory that is not the user's at 0700, `RuntimeLocation` is
 `<tempPath>/runtime-<user>`, which Qt creates at 0700. That directory is
-private, so it is an acceptable home; it is not one of the shared names.
+private, so it is an acceptable home. Its name is guessable, though: where
+another user holds it, both servers stay off, as a squat stops them today.
+Sessions with a working `XDG_RUNTIME_DIR` do not reach that case.
 
 The terminal never binds a legacy path again. Legacy paths are only READ, by
 the clients in § 2.3 and § 2.4, so a terminal started before this change stays
@@ -106,20 +108,21 @@ The script text moves into one function that both writers use:
 
 ```cpp
 // src/claudesetup.h
-QString statusHookScript(const QString &runtimeDir);
+QString statusHookScript(const QString &runtimeDir, const QString &legacyDir);
 Outcome refreshStatusHookScript();   // rewrite an installed forwarder when stale
 ```
 
 - The script walks up to the nearest `ants-terminal` as today. For that pid it
   tries `<runtimeDir>/claude-hooks-$pid`, then the legacy
-  `/tmp/ants-claude-hooks-$pid`, and sends to the first that is a socket.
-  `runtimeDir` is the value of `antsRuntimeDir()` when the script is written.
+  `<legacyDir>/ants-claude-hooks-$pid`, and sends to the first that is a
+  socket. The terminal writes it with `antsRuntimeDir()` and `QDir::tempPath()`,
+  the directory a pre-change terminal bound in.
 - The `SO_PEERCRED` uid check stays, for both candidates.
 - The socket path reaches Python as `argv[1]`, not spliced into the Python
   source, so a path containing a quote cannot change the program.
 - `refreshStatusHookScript()` runs at start-up, before `startHookServer()`. It
   writes the script only where the forwarder file already exists and its bytes
-  differ from `statusHookScript(antsRuntimeDir())`. It never creates the file
+  differ from `statusHookScript(antsRuntimeDir(), QDir::tempPath())`. It never creates the file
   and never touches `~/.claude/settings.json`, so a user who never installed
   the hooks is not opted in.
 
@@ -132,8 +135,9 @@ Outcome refreshStatusHookScript();   // rewrite an installed forwarder when stal
   pid first, then newest mtime. The `whyNot` text names both directories.
 - `tools/mcp-bridge.py::pick_socket` does the same, with
   `$XDG_RUNTIME_DIR/ants-terminal/mcp-*` checked when `XDG_RUNTIME_DIR` is set.
-  The bridge is kept through the next release only (ANTS-5308), so it gets no
-  equivalent of Qt's fallback when `XDG_RUNTIME_DIR` is unset.
+  That pattern is a module variable beside `SOCK_GLOB`, so a test can point it
+  elsewhere. The bridge is kept through the next release only (ANTS-5308), so
+  it gets no equivalent of Qt's fallback, and misses a terminal that took it.
 
 ### 2.5 How it reaches a running terminal
 
@@ -150,12 +154,13 @@ its next launch. Until then:
 ## 3. Invariants
 
 - **INV-1** — `defaultHookSocketPath()` and the MCP socket path are
-  `antsRuntimeDir()` + `/claude-hooks-<pid>` and `/mcp-<pid>`. Neither is under
-  `QDir::tempPath()` when `XDG_RUNTIME_DIR` is set. Broken by leaving either
-  path built from `tempPath()`. *Test:*
+  `antsRuntimeDir()` + `/claude-hooks-<pid>` and `/mcp-<pid>`. Broken by leaving
+  either path built from `tempPath()`. *Test:*
   `tests/features/claude_socket_runtime_dir/` case `Inv1PathsUseRuntimeDir`:
   it calls `defaultHookSocketPath()`, and reads `mainwindow.cpp` to check that
-  `mcpSocket` is built with `privateSocketPath`.
+  `mcpSocket` is built with `privateSocketPath`. The case's `XDG_RUNTIME_DIR`
+  is a 0700 directory outside its `TMPDIR`, so a path left in `tempPath()`
+  cannot pass.
 - **INV-2** — When `<RuntimeLocation>/ants-terminal` exists at a mode other
   than 0700, `privateSocketPath` returns "", `startHookServer` and
   `startMcpServer` return false for it, and nothing is created under
@@ -171,10 +176,10 @@ its next launch. Until then:
   `$XDG_RUNTIME_DIR/ants-terminal/` and in the legacy glob. Broken by keeping
   the single `SOCK_GLOB`. *Test:*
   `tests/features/mcp_bridge_client/test_mcp_bridge_client.py`.
-- **INV-5** — The script from `statusHookScript(dir)` delivers stdin to
-  `<dir>/claude-hooks-<pid>` when that socket exists, and to the legacy path
-  when only that exists. It sends nothing to a socket whose peer uid is not the
-  user's. Broken by dropping either candidate or the peer check. *Test:*
+- **INV-5** — The script from `statusHookScript(dir, legacy)` delivers stdin to
+  `<dir>/claude-hooks-<pid>` when that socket exists, and to
+  `<legacy>/ants-claude-hooks-<pid>` when only that exists. It sends nothing
+  to a socket whose peer uid is not the user's. Broken by dropping either candidate or the peer check. *Test:*
   `tests/features/claude_socket_runtime_dir/` case `Inv5ScriptTriesBothPaths`,
   which runs the script against listening sockets with a fake process tree.
 - **INV-6** — `refreshStatusHookScript()` rewrites an existing forwarder whose
@@ -213,7 +218,9 @@ Feature test: `tests/features/claude_socket_runtime_dir/`, with a `spec.md`
 mapping each case to its invariant. Covers INV-1, INV-2, INV-3, INV-5, INV-6
 and INV-7. Each case points `XDG_RUNTIME_DIR` and `TMPDIR` at scratch
 directories, so nothing touches the real ones. INV-4 is a case added to
-`tests/features/mcp_bridge_client/test_mcp_bridge_client.py`. INV-8 is the
+`tests/features/mcp_bridge_client/test_mcp_bridge_client.py`, and every case in
+that file points both of the bridge's patterns at scratch directories, so a
+socket of a real running terminal cannot change a result. INV-8 is the
 existing tests, unmodified.
 
 Red run: INV-1, INV-3 and INV-4 fail against pre-change source. INV-2,
@@ -222,8 +229,11 @@ their assertions rather than on the build.
 
 ## 7. Cross-doc impact
 
-- ANTS-4932 § 2.2 (the picker) and § 2.6 (the terminal keeps the `/tmp`
+- ANTS-4932 § 2.1 (the picker) and § 2.6 (the terminal keeps the `/tmp`
   path) are amended to name the runtime directory and point here.
+- ANTS-5144 INV-8 says the MCP start-up call site is "unchanged". It changes
+  here, so its text is amended to what its tests check: one guarded
+  `startMcpServer` and one `qputenv`.
 - Comments naming the old paths: `src/mcpdsocket.h`, `src/claudesetup.cpp`,
   `src/secureio.h`, and `src/remotecontrolgate.h`, whose `control.sock` path
   was never right.
