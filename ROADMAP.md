@@ -66447,6 +66447,9 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   release takes to cover the next one too. Recommendation: keep the
   bridge through the release after 0.7.112 and remove it after that, so
   the public sentence stays true. The user's call; not removed.
+  User decision 2026-10-01: keep tools/mcp-bridge.py through the next
+  release, so 0.7.112's README promise stays true. Remove it in the
+  release after that.
   **Layman:** After the new standalone MCP program has been out for a release, remove the old Python bridge it replaced.
   Kind: chore.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).
@@ -89429,6 +89432,10 @@ reports are asked for separately, each time.
      the priority loop. The user's decision.
   Also unsettled: tools/install-hooks.sh exists beside
   tools/setup-git-hooks.sh, and CLAUDE.md names only the second.
+  User decisions 2026-10-01. Item 4: a session may NOT set any
+  ANTS_PREPUSH_NO_* switch unasked; each needs the user, like
+  SKIP_LOCAL_CI. Item 6: a pending spec.md sign-off does NOT stop the
+  priority loop; the session moves to the next item while it waits.
   **Layman:** Three small statements in the project's instruction file no longer match the code, found while reviewing the release section.
   Kind: doc-fix.
   Source: review-contract-2026-09-30 CLAUDE.md loop 1.

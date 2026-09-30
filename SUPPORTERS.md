@@ -26,9 +26,8 @@ feedback channel.*
 ## 🛠 Patrons
 
 *Claude Code power-users + Linux developers who run Ants Terminal
-as their daily driver. 7-day early access to release candidates
-(each release ships publicly on Wednesday; Patrons see it as an RC
-the previous Wednesday), vote on deferred ROADMAP item prioritisation.*
+as their daily driver. Patrons vote on deferred ROADMAP item
+prioritisation.*
 
 *— No patrons yet.*
 
