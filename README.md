@@ -110,6 +110,11 @@ a running total of what the tools have saved you this session.
 - **Paste a screenshot** (Ctrl+Shift+V) — it's saved automatically and the
   file path is dropped into the prompt, so you can paste-and-send an image
   to Claude in one move.
+- **Follow the plan** — when a project keeps a roadmap, a **Roadmap** button
+  in the bottom bar opens it in a searchable window, with filters by status
+  and kind of work.
+- **See what Claude left running** — a **Background Tasks** button in the
+  bottom bar lists the commands Claude started in the background.
 
 > Power users: the tools are [Model Context Protocol](https://modelcontextprotocol.io)
 > tools in the `mcp__ants__*` namespace. An optional extra set of Claude Code
@@ -130,6 +135,17 @@ Even with Claude out of the picture, it's a fast, capable terminal:
   palette to run any action (Ctrl+Shift+P), and a "hint mode" that lets you
   open any link or file path on screen with a keypress (Ctrl+Shift+G).
 - **Click links and file paths** to open them.
+- **Split a tab into panes** (Split menu), and type into every pane of that
+  tab at once with Broadcast Input (Ctrl+Shift+I).
+- **Work with past commands** — jump between prompts (Ctrl+Shift+Up and
+  Down), copy the last command's output (Ctrl+Alt+O), or run it again
+  (Ctrl+Alt+R). This needs shell integration, which the welcome window sets
+  up for bash or zsh.
+- **Tell tabs apart** — View → Give Each Tab a Different Colour, or
+  right-click a tab to rename it or pick its colour.
+- **Save your SSH connections** — File → SSH Manager.
+- **Keep a record** — record a session (Ctrl+Shift+R), log each tab to its
+  own file, or export the scrollback as text or HTML (Settings menu).
 - **Handy editors** — a pop-out box for writing long multi-line commands,
   and a saved-snippets library for ones you reuse.
 - **Remembers your session** — your tabs and what was in them come back
@@ -138,7 +154,9 @@ Even with Claude out of the picture, it's a fast, capable terminal:
   see-through background, and optional automatic dark/light switching.
 - **Plugins** — extend it with small Lua scripts ([PLUGINS.md](PLUGINS.md)).
 - **Built-in code checker** — Tools → Project Audit runs popular code-quality
-  tools and shows the results in one place.
+  tools and shows the results in one place. Tools → Review adds a
+  documentation review, a test-suite audit and an independent code review,
+  run through the AI service you connect in Settings.
 
 (Full keyboard shortcuts are in the command palette, Ctrl+Shift+P. The
 list of supported terminal codes is in
@@ -230,7 +248,10 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Getting started
 
-1. **Open Ants Terminal.** It works like any terminal straight away.
+1. **Open Ants Terminal.** It works like any terminal straight away. The
+   first time, a welcome window explains the features and offers one-click
+   setup. Anything that would edit your own files shows the exact change
+   first.
 2. **Connect Claude Code to it — once per computer.** Claude Code talks to
    Ants through a small helper program, `ants-mcpd`. The welcome window that
    opens on first launch has a button that connects it; reopen that window

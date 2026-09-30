@@ -2288,6 +2288,11 @@ if(ANTS_TESTS)
         SIGN_SCRIPT_PATH="${CMAKE_SOURCE_DIR}/tools/sign-update-manifest.sh"
         PUBKEY_PEM_PATH="${CMAKE_SOURCE_DIR}/packaging/update-signing/ants-update.pub.pem"
         RELEASE_YML_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml")
+    # A no-libsodium build compiles the verifier out; the test must know.
+    if(SODIUM_FOUND)
+        set_property(SOURCE tests/features/self_update/test_self_update.cpp
+            APPEND PROPERTY COMPILE_DEFINITIONS ANTS_HAVE_LIBSODIUM=1)
+    endif()
     set_property(SOURCE tests/features/ui_state_persistence/test_ui_state_persistence.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ROADMAPDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"

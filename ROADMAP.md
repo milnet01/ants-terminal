@@ -1047,6 +1047,58 @@ SSH key registered there.
   Kind: test.
   Source: user-request-2026-09-22.
 
+- 📋 [ANTS-5578] **Speed up the OBS package builds, which take 24 to 30 minutes per distro.**
+  User asked 2026-09-30 whether the OBS builds can be faster.
+  Measured on the Mageia_10 staging build of 05b3b318 (4-CPU worker,
+  29m51s): setup 74 s, the build step 1554 s, install and debuginfo
+  36 s, the test run 83 s. Compiling is about 87% of the job. The real
+  project's Tumbleweed builds took 23 to 25 minutes (osc jobhistory).
+  Candidates, none tried yet; measure each in the staging project
+  (home:milnet:ants-terminal-staging), which publishes nothing:
+  1. -DANTS_UNITY_BUILD=ON in the spec. An OBS build is always cold,
+     which is the case that option exists for.
+  2. The compile pool. The configure log prints "Build job pools:
+     compile=2 link=1 (host nproc=4)", so under Ninja half the worker's
+     CPUs idle (same cause as ANTS-4653). Mageia's macro builds with
+     make -j4, where the pool does not apply.
+  3. A _constraints file asking for workers with more cores. May
+     lengthen the queue wait.
+  4. Build fewer test binaries in the package build. Weigh against what
+     the distro test run has caught: ANTS-5304, and the self-update
+     tests on 2026-09-30.
+  5. OBS's server-side ccache build flag. Not verified to exist on
+     build.opensuse.org; check the OBS user guide first.
+  6. Copy the tested binaries from staging to the real project with
+     OBS's release mechanism instead of rebuilding (belongs with
+     ANTS-5577's release command).
+  **Layman:** Each distro package takes about half an hour to build on openSUSE's servers, almost all of it compiling; a few settings could cut that.
+  Kind: perf.
+  Source: user-request-2026-09-30.
+  Lanes: packaging.
+
+- ✅ [ANTS-5579] **The self-update tests pass in a build without libsodium, which is how every distro package is built.**
+  Found 2026-09-30 by the first OBS staging build (ANTS-5305's idea,
+  project home:milnet:ants-terminal-staging, main at 05b3b318): Mageia_10
+  failed 5 of 5391 tests, all SelfUpdate (ManifestVerification,
+  DownloadMismatchLeavesOriginal, SwapInPlace, InstallKind,
+  PipelineSignatureRoundTrip). The spec has no libsodium BuildRequires, by
+  design (CMakeLists.txt: a distro package needs no self-update), so the
+  verifier is compiled out and installKind() reports NotAppImage. The
+  tests did not know. CI never saw it: CI sets ANTS_REQUIRE_SELF_UPDATE.
+  All four targets share the spec, so all four would have failed.
+  Fix: CMake passes ANTS_HAVE_LIBSODIUM to the test source when libsodium
+  is found. Without it the three tests needing a verified manifest skip,
+  InstallKind asserts NotAppImage for both AppImage paths, and the
+  round-trip test runs its embedded-key arm only.
+  Proof: a tree configured with -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON
+  ("libsodium not found") ran 9 SelfUpdate tests green with 3 skipped; the
+  normal tree ran all 9 green with none skipped.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a test-only change.
+  **Layman:** Five new tests assumed a library the Linux packages are deliberately built without, so every package build would have failed at release.
+  Kind: fix.
+  Source: in-session-2026-09-30.
+  Lanes: tests, packaging.
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,

@@ -15,6 +15,10 @@
 // (libsodium is not linked into the tests); an arm skips with a message
 // when openssl is absent or lacks -rawin. Nothing here reads HOME: every
 // file lives under a QTemporaryDir.
+//
+// A build without libsodium (a distro package) compiles the verifier out:
+// nothing verifies and installKind() reports NotAppImage. The tests that
+// need a verified manifest skip there, and InstallKind asserts that answer.
 
 #include "selfupdate.h"
 
@@ -37,6 +41,12 @@
 #include <cstdio>
 
 ANTS_TEST_SCOPE();
+
+#ifdef ANTS_HAVE_LIBSODIUM
+#define REQUIRE_VERIFIER() (void)0
+#else
+#define REQUIRE_VERIFIER() GTEST_SKIP() << "built without libsodium: nothing can verify a manifest"
+#endif
 
 namespace {
 
@@ -426,6 +436,7 @@ bool listsBothManifestFiles(const QString &body) {
 // ---------------------------------------------------------------------------
 
 TEST(SelfUpdate, ManifestVerification) {
+    REQUIRE_VERIFIER();
     expect_reset();
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -436,6 +447,7 @@ TEST(SelfUpdate, ManifestVerification) {
 }
 
 TEST(SelfUpdate, DownloadMismatchLeavesOriginal) {
+    REQUIRE_VERIFIER();
     expect_reset();
     // Flipped byte: right size, wrong hash.
     {
@@ -458,6 +470,7 @@ TEST(SelfUpdate, DownloadMismatchLeavesOriginal) {
 }
 
 TEST(SelfUpdate, SwapInPlace) {
+    REQUIRE_VERIFIER();
     expect_reset();
     Fixture f;
     std::string skip;
@@ -523,12 +536,17 @@ TEST(SelfUpdate, InstallKind) {
     expectKind("INV-4 APPIMAGE unset -> NotAppImage", kindOf(nullptr), InstallKind::NotAppImage);
     expectKind("INV-4 APPIMAGE names a missing file -> NotAppImage", kindOf(&missing), InstallKind::NotAppImage);
     expectKind("INV-4 APPIMAGE names a directory -> NotAppImage", kindOf(&rw), InstallKind::NotAppImage);
+#ifndef ANTS_HAVE_LIBSODIUM
+    expectKind("INV-4 no libsodium, writable directory -> NotAppImage", kindOf(&rwFile), InstallKind::NotAppImage);
+    expectKind("INV-4 no libsodium, read-only directory -> NotAppImage", kindOf(&roFile), InstallKind::NotAppImage);
+#else
     expectKind("INV-4 file in a writable directory -> Updatable", kindOf(&rwFile), InstallKind::Updatable);
     if (::geteuid() == 0 || QFileInfo(ro).isWritable()) {
         std::fprintf(stderr, "[SKIP-ARM] INV-4 ReadOnlyDir: this user can write a 0555 directory (root?)\n");
     } else {
         expectKind("INV-4 file in a read-only directory -> ReadOnlyDir", kindOf(&roFile), InstallKind::ReadOnlyDir);
     }
+#endif
     ASSERT_EQ(0, expect_finish());
 }
 
@@ -662,6 +680,9 @@ TEST(SelfUpdate, PipelineSignatureRoundTrip) {
         expect(embedded == committed, "INV-8 embedded key equals the committed file",
                QStringLiteral("committed %1 bytes, embedded %2 bytes").arg(committed.size()).arg(embedded.size()));
     }
+#ifndef ANTS_HAVE_LIBSODIUM
+    std::fprintf(stderr, "[SKIP-ARM] INV-8 script round trip: built without libsodium\n");
+#else
     // Arm 1: the script's output verifies under the C++ verifier.
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -714,6 +735,7 @@ TEST(SelfUpdate, PipelineSignatureRoundTrip) {
     expect(!QFileInfo::exists(image2 + QStringLiteral(".manifest")) &&
                !QFileInfo::exists(image2 + QStringLiteral(".manifest.sig")),
            "INV-8 no secret -> no manifest or signature written", QStringLiteral("files exist"));
+#endif
     ASSERT_EQ(0, expect_finish());
 }
 
