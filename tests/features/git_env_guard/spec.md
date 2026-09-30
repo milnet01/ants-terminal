@@ -59,7 +59,7 @@ passes through, beside the existing `XDG_DATA_HOME` (ANTS-3856) and
 same posture the rest of the suite takes.
 
 Shell tests are not covered by a bundle main and scrub their own environment;
-`cut_rc_behaviour`, `claude_git_context_script` and `prepush_asan_gate` each
+`release_behaviour`, `claude_git_context_script` and `prepush_asan_gate` each
 run git.
 
 Label: `features;fast`.

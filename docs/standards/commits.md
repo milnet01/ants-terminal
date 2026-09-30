@@ -95,14 +95,14 @@ ANTS-4108.
 `build-asan` simultaneously and produce `mold: unknown file type`, which
 looks like corruption and is not.
 
-### Releases are `packaging/cut-rc.sh`, not `cut-release`'s release phases
+### Releases are `packaging/release.sh`, not `cut-release`'s release phases
 
-The weekly Wednesday cadence cuts a public release plus a Patron-preview RC.
-The `-rcN` suffix lives **only** at the git tag, GitHub-release title and
-AppImage filename — never in `CMakeLists.txt` or `bump.json`. Orchestration
-is `packaging/cut-rc.sh` (`new-rc` / `respin` / `promote` / `status` /
-`cycle` / `hotfix`); the version bump between phases is
-`cut-release --bump-only`, which the script never does itself.
+Every release is a full public release, made when there is something
+meaningful to ship. There are no release candidates: the tag is `vX.Y.Z`.
+Orchestration is `packaging/release.sh` (`release` / `status`); the version
+bump before it is `cut-release --bump-only`, which the script never does
+itself. `release` tags only after every distro has built the commit in the
+OBS staging project, which publishes nothing.
 
 ### Version bumps
 
@@ -119,7 +119,7 @@ shipped since the last public tag are cited by no CHANGELOG bullet
 headline byte-for-byte (ANTS-4759). That gate checks only that ids the
 CHANGELOG *claims* are really shipped, so work that shipped and was never
 written down is invisible to it. The script exits non-zero on either finding;
-`cut-rc.sh` prints and continues.
+`release.sh` prints and continues.
 
 ## What checks this
 

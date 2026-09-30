@@ -98,8 +98,7 @@ pn = "pn"                     # "CSI Pn I" -- VT100 parameter notation
 # ANTS-4800 — identifiers and domain notation, each read at the line that
 # produces it. None is prose.
 ba = "ba"                     # QByteArray ba(...) helper, C1-filter tests
-ue = "ue"                     # awk/shell local in packaging/cut-rc.sh
-nver = "nver"                 # awk -v nver=, packaging/cut-rc.sh
+ue = "ue"                     # awk/shell local in packaging/release.sh
 nam = "nam"                   # m_updateNam -- QNetworkAccessManager
 invokable = "invokable"       # Qt's Q_INVOKABLE macro
 parm = "parm"                 # VT "Parm" notation, fileoutline scanner test

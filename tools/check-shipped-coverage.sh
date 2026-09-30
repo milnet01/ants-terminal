@@ -94,8 +94,8 @@ fi
 
 # --- Second question (ANTS-4759): does any [Unreleased] bullet's bold summary
 #     merely repeat its roadmap headline? Scoped to [Unreleased] because that
-#     is the text still open to correction — after `new-rc` rolls it, a wrong
-#     summary is in a closed section.
+#     is the text still open to correction — after `release` merges it, a
+#     wrong summary is in a dated section.
 check_copied_headlines() {
     local line id summary headline
     local -a copied=()
@@ -104,8 +104,8 @@ check_copied_headlines() {
     unrel="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$CHANGELOG")"
     if [[ -z "${unrel//[[:space:]]/}" ]]; then
         echo "copied-headline:  ⊘ SKIPPED — [Unreleased] is empty, so there is no"
-        echo "                  open section to check. Run this before new-rc"
-        echo "                  rolls it."
+        echo "                  open section to check. Run this before release"
+        echo "                  merges it."
         return 0
     fi
 

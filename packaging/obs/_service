@@ -16,9 +16,9 @@
 
        There was a third buildtime service here, set_version (removed by
        ANTS-3731). The job it did is still load-bearing: ants-terminal.spec's
-       Version: field tracks CMakeLists.txt, which under the RC cadence always
-       names the NEXT (unreleased) version, so between /bump and the next
-       promote the spec names a tag that does not exist and Source0 would 404.
+       Version: field tracks CMakeLists.txt, which between a version bump and
+       its release names a version with no tag yet, so the spec names a tag
+       that does not exist and Source0 would 404.
        obs-submit.sh now stamps Version: from the <revision> below when it
        copies the spec — same single source of truth (the tag), computed at
        submit time instead of in the VM.
@@ -32,8 +32,9 @@
        check the same thing when adding a distro, because the symptom is an
        unresolvable job rather than an obviously service-related error.
 
-       To release a new version: bump <revision> to the new tag, commit, and run
-       packaging/obs/obs-submit.sh (or click Trigger Services). -->
+       To release a new version: packaging/release.sh release sets <revision>
+       to the new tag in the release commit, and runs
+       packaging/obs/obs-submit.sh once the tag is pushed. -->
   <service name="obs_scm">
     <param name="scm">git</param>
     <param name="url">https://github.com/milnet01/ants-terminal.git</param>

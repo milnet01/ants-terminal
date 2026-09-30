@@ -142,8 +142,8 @@ Key files the bump touches:
 3. Packaging manifests (`packaging/opensuse/*.spec`, `packaging/archlinux/PKGBUILD`,
    etc.) — covered by the recipe.
 
-`CHANGELOG.md`'s **version heading** is not the bump's: `packaging/cut-rc.sh
-new-rc` rolls it and `promote` dates it. Bullets under the open
+`CHANGELOG.md`'s **version heading** is not the bump's:
+`packaging/release.sh release` writes and dates it. Bullets under the open
 `[Unreleased]` section are authored as work lands.
 
 When you ship a ROADMAP item, move it from `ROADMAP.md` (status `📋`) into

@@ -12,6 +12,17 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases are cut by one command, `packaging/release.sh release`, and every release is a full public release; the release-candidate flow (`cut-rc.sh`) is retired** (ANTS-5577)
+  It merges `[Unreleased]` into the dated version section, builds the
+  commit on every distro in an OBS staging project before it tags
+  (ANTS-5305), and re-runs safely after a failure. `release.yml` now
+  creates the GitHub release with its files already attached, so a new
+  release is never public with nothing to download, and refuses a tag
+  that is not `vX.Y.Z`. `obs-status.sh` waits on each repository's job
+  history, so it no longer ends early or hangs on a status word.
+
 ## [0.7.112] — 2026-09-30
 ### Added
 

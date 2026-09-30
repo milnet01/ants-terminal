@@ -22,8 +22,8 @@ You never upload a tarball. `_service` tells OBS to do it:
    that clone into the tarball `Source0` expects.
 
 The version is the fiddly part. The spec's `Version:` field tracks
-`CMakeLists.txt`, which — because of the RC cadence — always names the *next*,
-unreleased version. Left alone it would point at a tag that doesn't exist yet.
+`CMakeLists.txt`, which between a version bump and its release names a version
+that has no tag yet. Left alone it would point at a tag that doesn't exist.
 `obs-submit.sh` overwrites it from the pinned tag as it copies the spec, so the
 version is never typed by hand and can't drift.
 
@@ -39,8 +39,8 @@ the only source of truth; the script just applies it earlier.
 | Script | When | What it does |
 |---|---|---|
 | `obs-setup.sh` | Once, or when changing distros | Creates/updates the project + package. **This is where the distro list lives.** |
-| `obs-submit.sh` | Every release | Copies the recipe + spec into an `osc` checkout and commits, which triggers a rebuild. |
-| `obs-status.sh` | After submitting | Polls until every build finishes, then prints the tail of any failing log. |
+| `obs-submit.sh` | Every release | Copies the recipe + spec into an `osc` checkout and commits, which triggers a rebuild. With `--staging <sha> <version>` it sends a commit to the staging project instead. |
+| `obs-status.sh` | After submitting | Waits until every distro has built the revision just submitted, then prints how each ended and the tail of any failing log. |
 
 Each takes overrides via environment variables (`OBS_PROJECT`, `OBS_PACKAGE`, …)
 and needs `osc` installed and logged in — run any `osc` command once and enter
@@ -53,13 +53,36 @@ OBS-only copy quietly drifting from the repo's.
 
 ## Releasing a new version
 
-1. Land the release and its tag as usual (`packaging/cut-rc.sh promote`).
-2. Point `_service`'s `<revision>` at the new tag.
-3. Run `packaging/obs/obs-submit.sh`, then `obs-status.sh`.
+`packaging/release.sh release --push` does all of it. The release commit
+points `_service`'s `<revision>` at the new tag. After the tag is pushed the
+script runs `obs-submit.sh`, then `obs-status.sh`.
+
+If that submit fails, the release still stands. Run `obs-submit.sh` and then
+`obs-status.sh` by hand.
 
 `obs-submit.sh` refuses to run if the tag it's pinned to doesn't exist yet —
 otherwise the build fails at source fetch, which is an unpleasant thing to
 diagnose from a build log.
+
+## Testing the builds before a release
+
+`home:milnet:ants-terminal-staging` is a second project with the same distro
+list and publishing switched off, so nothing it builds is offered to anyone.
+`release.sh` builds the commit it is about to tag there first, and creates the
+tag only when every distro is green and ran the test suite:
+
+```
+packaging/obs/obs-submit.sh --staging <commit-sha> <version>
+OBS_PROJECT=home:milnet:ants-terminal-staging packaging/obs/obs-status.sh --require-tests
+```
+
+The commit must be on GitHub first, because OBS clones it from there. No tag
+is needed: the staging recipe names the commit, and the version is given as
+written. How the project was created is recorded on roadmap item ANTS-5305.
+
+`obs-status.sh` reads each repository's job history, not its status word. A
+status word says what state a repository is in, not which revision that state
+is about, so right after a submit every repository still reads "succeeded".
 
 ## Adding a distribution
 
@@ -145,10 +168,10 @@ it needs `debian.control` and `debian.rules` alongside it, which OBS's
 tree already, but wiring it up is real work, not a checkbox — finbreak does this
 with a committed `debian.obscpio`.
 
-## Fully hands-off rebuilds (not set up)
+## Rebuilds on a tag push
 
-OBS can rebuild automatically when you push a tag, via an `.obs/workflows.yml`
-file. OneUp is set up this way. It is **not** wired up here, because it needs
+OBS re-runs the package's services when a tag is pushed, via
+`.obs/workflows.yml`. That file records it as live since 2026-07-29. It needs
 credentials only you can create. The exact flow, from the OBS
 [SCM/CI integration guide](https://openbuildservice.org/help/manuals/obs-user-guide/cha.obs.scm_ci_workflow_integration.html):
 
@@ -170,6 +193,10 @@ One trap worth knowing before enabling it: `trigger_services` re-runs the
 tag push only rebuilds the right version if `_service` was updated to that tag
 in the same push. Pushing a tag by hand without bumping `<revision>` silently
 rebuilds the previous release.
+
+The re-run also adds a package revision of its own. When that lands while
+`obs-submit.sh` is committing, the commit is refused as out of date, so the
+script updates its checkout and tries again.
 
 ## Once it's green
 

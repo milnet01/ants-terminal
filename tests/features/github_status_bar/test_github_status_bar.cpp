@@ -285,18 +285,14 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         fail("INV-13",
             "release.yml must set UPDATE_INFORMATION env var on the "
             "linuxdeploy step");
-    // ANTS-1318 INV-8: the channel field is now computed
-    // (`update_channel`) so RC builds can track their own rc tag.
-    // Stable builds still resolve to `latest`, set in the Resolve step.
-    if (yml.find("gh-releases-zsync|milnet01|ants-terminal|") ==
+    // ANTS-5577: no RC channel any more; the zsync channel is the literal
+    // `latest`.
+    if (yml.find("gh-releases-zsync|milnet01|ants-terminal|latest|") ==
             std::string::npos)
         fail("INV-13",
-            "UPDATE_INFORMATION must use the `gh-releases-zsync` schema "
-            "anchored on milnet01/ants-terminal");
-    if (yml.find("UPDATE_CHANNEL=\"latest\"") == std::string::npos)
-        fail("INV-13",
-            "stable AppImage builds must keep the `latest` update "
-            "channel (ANTS-1318 INV-8)");
+            "UPDATE_INFORMATION must be the literal "
+            "`gh-releases-zsync|milnet01|ants-terminal|latest|...` "
+            "(ANTS-5577: every release is on the latest channel)");
     if (yml.find("Ants_Terminal-*-x86_64.AppImage.zsync") == std::string::npos)
         fail("INV-13",
             "UPDATE_INFORMATION wildcard must point at the "

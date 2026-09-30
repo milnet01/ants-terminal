@@ -1568,12 +1568,18 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 60)
 
-    # ANTS-2164/2165 — cut-rc.sh cadence-hardening + hotfix behavioural
-    # conformance (shell harness drives the real script against throwaway git
-    # repos; the C++ release_rc_pipeline test keeps the source-scrape layer).
-    add_test(NAME cut_rc_behaviour
-             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/release_rc_pipeline/cut_rc_behaviour_test.sh")
-    set_tests_properties(cut_rc_behaviour PROPERTIES
+    # ANTS-5577 — release.sh, release-notes.sh and obs-status.sh behavioural
+    # conformance (shell harnesses drive the real scripts against throwaway git
+    # repos and an osc shim; the C++ release_pipeline test keeps the
+    # source-scrape layer).
+    add_test(NAME release_behaviour
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/release_pipeline/release_behaviour_test.sh")
+    set_tests_properties(release_behaviour PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 300)
+    add_test(NAME obs_status_behaviour
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/release_pipeline/obs_status_behaviour_test.sh")
+    set_tests_properties(obs_status_behaviour PROPERTIES
         LABELS "features;fast"
         TIMEOUT 120)
 
@@ -2160,8 +2166,8 @@ if(ANTS_TESTS)
                 tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp
                 tests/features/shift_enter_bracketed_paste/test_shift_enter.cpp
                 tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp
-                # ANTS-1318 frozen-RC pipeline (release.yml + cut-rc.sh).
-                tests/features/release_rc_pipeline/test_release_rc_pipeline.cpp
+                # ANTS-5577 release pipeline (release.yml + release.sh).
+                tests/features/release_pipeline/test_release_pipeline.cpp
                 # ANTS-4529 the bump recipe must not edit a rendered file.
                 tests/features/bump_recipe_no_generated_files/test_bump_recipe_no_generated_files.cpp
                 # ANTS-4273 ants.notify() must reach the host, not stop at PluginManager.
@@ -2297,9 +2303,9 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ROADMAPDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
         SRC_AUDITDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h")
-    set_property(SOURCE tests/features/release_rc_pipeline/test_release_rc_pipeline.cpp
+    set_property(SOURCE tests/features/release_pipeline/test_release_pipeline.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        CUT_RC_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/cut-rc.sh")
+        RELEASE_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/release.sh")
     set_property(SOURCE tests/features/bump_recipe_no_generated_files/test_bump_recipe_no_generated_files.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         BUMP_JSON_PATH="${CMAKE_SOURCE_DIR}/.claude/bump.json"

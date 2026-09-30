@@ -14,11 +14,36 @@
 # also used for plain rpmbuild — copying it here at submit time is what stops an
 # OBS-local fork of the spec silently drifting from the repo's.
 #
+# `--staging <sha> <version>` (ANTS-5305) sends a COMMIT, not a tag, to the
+# staging project, so every distro can build it before the tag exists. The
+# staging project has publishing disabled: nothing it builds is offered to
+# anyone. The recipe it commits is packaging/obs/_service with the revision
+# replaced by the commit and the version given literally, since there is no
+# tag yet for obs_scm to derive one from.
+#
 # Override via env: OBS_API, OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG.
 set -eu
 
+STAGING_SHA=""
+STAGING_VERSION=""
+if [ "${1:-}" = "--staging" ]; then
+    STAGING_SHA="${2:-}"
+    STAGING_VERSION="${3:-}"
+    if [ -z "$STAGING_SHA" ] || [ -z "$STAGING_VERSION" ] || [ $# -ne 3 ]; then
+        echo "obs-submit: usage: obs-submit.sh [--staging <sha> <version>]" >&2
+        exit 2
+    fi
+elif [ $# -ne 0 ]; then
+    echo "obs-submit: usage: obs-submit.sh [--staging <sha> <version>]" >&2
+    exit 2
+fi
+
 API="${OBS_API:-https://api.opensuse.org}"
-PROJ="${OBS_PROJECT:-home:milnet:ants-terminal}"
+if [ -n "$STAGING_SHA" ]; then
+    PROJ="${OBS_PROJECT:-home:milnet:ants-terminal-staging}"
+else
+    PROJ="${OBS_PROJECT:-home:milnet:ants-terminal}"
+fi
 PKG="${OBS_PACKAGE:-ants-terminal}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"      # packaging/obs
@@ -43,7 +68,15 @@ command -v osc >/dev/null 2>&1 || { echo "obs-submit: osc not installed" >&2; ex
 # debug from the build log alone. Check it here where the message can be clear.
 REV="$(sed -n 's/.*<param name="revision">\(.*\)<\/param>.*/\1/p' "$HERE/_service")"
 URL="$(sed -n 's/.*<param name="url">\(.*\)<\/param>.*/\1/p' "$HERE/_service")"
-if [ -n "$REV" ] && command -v git >/dev/null 2>&1; then
+if [ -n "$STAGING_SHA" ]; then
+    # obs_scm clones from GitHub, so the commit has to be there. origin/main
+    # is this checkout's record of the last push or fetch.
+    if ! git -C "$ROOT" merge-base --is-ancestor "$STAGING_SHA" origin/main 2>/dev/null; then
+        echo "obs-submit: commit '$STAGING_SHA' is not on origin/main." >&2
+        echo "            Push it first: OBS clones from $URL" >&2
+        exit 1
+    fi
+elif [ -n "$REV" ] && command -v git >/dev/null 2>&1; then
     if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$REV" >/dev/null 2>&1; then
         echo "obs-submit: _service pins tag '$REV', which does not exist locally." >&2
         echo "            Cut/fetch that tag first, or update _service's <revision>." >&2
@@ -125,7 +158,23 @@ else
 fi
 
 echo ">>> copying recipe files"
-cp "$HERE/_service" "$CO/_service"
+if [ -n "$STAGING_SHA" ]; then
+    # The same recipe, aimed at a commit: no tag to match and no tag-derived
+    # version to rewrite, so those three parameters go and the version is
+    # given as written.
+    sed -e "s|<param name=\"revision\">[^<]*</param>|<param name=\"revision\">$STAGING_SHA</param>|" \
+        -e "s|<param name=\"versionformat\">[^<]*</param>|<param name=\"versionformat\">$STAGING_VERSION</param>|" \
+        -e '/<param name="match-tag">/d' \
+        -e '/<param name="versionrewrite-/d' \
+        "$HERE/_service" > "$CO/_service"
+    if ! grep -q "<param name=\"revision\">$STAGING_SHA</param>" "$CO/_service" \
+            || ! grep -q "<param name=\"versionformat\">$STAGING_VERSION</param>" "$CO/_service"; then
+        echo "obs-submit: could not aim $HERE/_service at commit $STAGING_SHA." >&2
+        exit 1
+    fi
+else
+    cp "$HERE/_service" "$CO/_service"
+fi
 cp "$SPEC" "$CO/ants-terminal.spec"
 cp "$LINTRC" "$CO/ants-terminal-rpmlintrc"
 [ -f "$HERE/ants-terminal.changes" ] && cp "$HERE/ants-terminal.changes" "$CO/"
@@ -164,12 +213,17 @@ done
     echo "obs-submit: _service has no <revision>, so Version: cannot be stamped." >&2
     exit 1
 }
-VERSION="${REV#v}"
+if [ -n "$STAGING_SHA" ]; then
+    VERSION="$STAGING_VERSION"
+    REV="$STAGING_SHA as $STAGING_VERSION"
+else
+    VERSION="${REV#v}"
+fi
 case "$VERSION" in
     *-*)
         echo "obs-submit: tag '$REV' gives RPM Version '$VERSION', which contains a" >&2
-        echo "            '-' and is not a legal rpm version. OBS tracks promoted" >&2
-        echo "            release tags only — pin one of those, not an RC tag." >&2
+        echo "            '-' and is not a legal rpm version. OBS tracks release" >&2
+        echo "            tags only (vX.Y.Z)." >&2
         exit 1 ;;
 esac
 sed -i "s/^Version:[[:space:]].*/Version:        $VERSION/" "$CO/ants-terminal.spec"
@@ -180,11 +234,27 @@ grep -qx "Version:        $VERSION" "$CO/ants-terminal.spec" || {
     echo "            Does $SPEC still have a 'Version:' line?" >&2
     exit 1
 }
-echo ">>> stamped Version: $VERSION (from tag $REV)"
+echo ">>> stamped Version: $VERSION (from $REV)"
 
 cd "$CO"
 osc -A "$API" add _service ants-terminal.spec ants-terminal-rpmlintrc ants-terminal.changes 2>/dev/null || true
 osc -A "$API" addremove 2>/dev/null || true
-osc -A "$API" commit -m "${OBS_MSG:-ants-terminal $REV}"
 
-echo "OK — committed. Watch it with: packaging/obs/obs-status.sh"
+# Pushing a release tag fires .obs/workflows.yml's trigger_services, which adds
+# a package revision of its own. When that lands between the update above and
+# this commit, osc refuses the commit as out of date (it cost the 0.7.112
+# submit, 2026-09-30). Updating and trying again is the whole fix: the trigger
+# does not touch the files committed here.
+tries=0
+until osc -A "$API" commit -m "${OBS_MSG:-ants-terminal $REV}"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 3 ]; then
+        echo "obs-submit: commit refused $tries times — giving up." >&2
+        exit 1
+    fi
+    echo ">>> commit refused; updating the checkout and trying again ($tries)" >&2
+    sleep 5
+    osc -A "$API" update || true
+done
+
+echo "OK — committed. Wait for the builds with: packaging/obs/obs-status.sh"

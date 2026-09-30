@@ -65,7 +65,7 @@ BuildRequires:  ninja
 %endif
 # The test suite shells out to real git: verify_changes_build_cache builds a
 # throwaway repo via initGitProject() (init/config/add/commit) and
-# cut_rc_behaviour exercises packaging/cut-rc.sh against one. A build VM has no
+# release_behaviour exercises packaging/release.sh against one. A build VM has no
 # git unless it is asked for, so those 13 tests fail rather than skip — they
 # carry no 'no git in PATH' guard, unlike their siblings in
 # mcp_roadmap_branch_drift. Declaring it makes them RUN (real coverage) instead

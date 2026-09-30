@@ -267,19 +267,29 @@ Global rule 18's `append_finding`-only bullet is for other sessions.
   it only where a user-visible claim has drifted.
   `tools/check-readme-claims.sh` runs pre-push.
 - CHANGELOG bullets under `[Unreleased]` are written as work lands. The
-  version heading is rolled by `new-rc` and dated by `promote`, never by the
-  bump.
+  version heading is written and dated by `packaging/release.sh release`,
+  never by the bump.
 - Update `PLUGINS.md` in the same commit as any `ants.*` Lua surface change.
-- Weekly Wednesday release plus a Patron RC. `-rcN` appears only in the git
-  tag, the release title and the AppImage name. Orchestration is
-  `packaging/cut-rc.sh` (`new-rc`, `respin`, `promote`, `status`, `cycle`,
-  `hotfix`). Flow: `cut-release --bump-only`, then `cut-rc.sh new-rc --push`.
-  Wednesday: `cut-rc.sh cycle`. Urgent fix to a published release:
-  `cut-rc.sh hotfix <fix-sha>…`.
-- `new-rc` builds and tests before it tags: run it backgrounded, never under
-  a short timeout. After a killed ninja, run `ninja -C build -n` and
-  `-t recompact` first.
-- Before `new-rc`, run `bash tools/check-shipped-coverage.sh`. It lists shipped
+- **Every release is a full public release, made when there is something
+  meaningful to ship.** No release candidates and no cadence. The tag is
+  `vX.Y.Z`; "rc" appears in no tag, title or file name.
+- Flow: `cut-release --bump-only`, then `packaging/release.sh release --push`.
+  Without `--push` it rehearses: it still builds and runs the feature tests
+  (unless `--skip-build`), prints what the rest would do, and writes no file,
+  commit or tag. With `--push` it merges `[Unreleased]`
+  into the dated version section, commits, builds and tests, and pushes main.
+  It then builds that commit on every distro in the OBS staging project,
+  which publishes nothing, and tags only if all are green. `release.yml`
+  creates the GitHub release with its files attached. `release.sh status`
+  shows where things stand.
+- Before releasing, put a `**Theme:**` line at the top of `[Unreleased]`: a
+  plain-language summary of what is new. `release` refuses without one. It
+  becomes the GitHub release text, which the project website shows.
+- `release` builds, and with `--push` also waits on OBS and GitHub: run it
+  through `cc-job`, never under a short timeout, with or without `--push`. It
+  is safe to re-run after a failure. After a killed ninja, run
+  `ninja -C build -n` and `-t recompact` first.
+- Before `release`, run `bash tools/check-shipped-coverage.sh`. It lists shipped
   items no CHANGELOG bullet cites and bullets that copy a headline, and exits
   non-zero on either, so keep it out of a `set -e` chain. Review each hit.
 - **A CHANGELOG entry states what shipped, never the defect.** Do not copy a

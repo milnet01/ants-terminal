@@ -894,8 +894,8 @@ TEST(DebtSweepEngine, Ants3743VersionPinExtraction) {
         "  ruff==0.6.9  # trailing\n"         // 4
         "if (target==0 && depth == 1) x;\n"); // 5 — awk/C integer comparison
     ASSERT_EQ(pins.size(), 2)
-        << "a dotless integer comparison is not a pin — measured against this "
-           "repo's own packaging/cut-rc.sh, which has three";
+        << "a dotless integer comparison is not a pin — the shape this "
+           "repo's own release script is written in";
     EXPECT_EQ(pins[0].package, QString("pyinstaller"));
     EXPECT_EQ(pins[0].version, QString("6.21.0"));
     EXPECT_EQ(pins[0].line, 1);

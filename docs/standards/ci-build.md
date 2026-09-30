@@ -47,7 +47,7 @@ compiles, so a baseline-only error fails the push, not the release tag.
 
 ## Corollary — the release tooling gates on CI, not just a local build
 
-`cut-rc.sh`'s `build_and_test` runs on the developer machine's Qt
+`release.sh`'s `build_and_test` runs on the developer machine's Qt
 (a far newer Qt than the baseline), so a local
 green is not evidence
 the release runner will build. Tag-cutting SHOULD confirm the

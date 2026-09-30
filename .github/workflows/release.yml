@@ -1,7 +1,7 @@
-# Release artefacts — builds an x86_64 AppImage on every `v*` tag push
-# and uploads it to the matching GitHub release. Also exposes a manual
-# `workflow_dispatch` so an existing tag (e.g. one published before this
-# workflow existed) can be backfilled with a binary on demand.
+# Release artefacts — builds an x86_64 AppImage on every `vX.Y.Z` tag push
+# and creates the GitHub release with it attached. Also exposes a manual
+# `workflow_dispatch` so an existing release can be given its binary again
+# on demand.
 #
 # Why AppImage: single-file portable executable, runs on any glibc-2.35+
 # distro, no install dance, no Qt-version conflicts. Ubuntu 22.04 was
@@ -77,30 +77,19 @@ jobs:
           # Strip leading `v` for the version string used in the
           # AppImage filename ("v0.7.42" → "0.7.42").
           VERSION="${REF#v}"
-          # ANTS-1318: detect RC tags (vX.Y.Z-rcN). The RC suffix lives
-          # only at the tag level (INV-3), so this regex is the single
-          # gate that drives both the AppImage update channel (INV-8)
-          # and the GitHub-release prerelease flag (INV-5).
-          if printf '%s' "$REF" | grep -qE -- '-rc[0-9]+$'; then
-            IS_RC=1
-            # INV-8: an RC build's zsync UPDATE_INFORMATION tracks its
-            # OWN rc tag, never `latest`. `latest` resolves to the most
-            # recent non-prerelease release, so stable users can't be
-            # auto-updated onto an RC, and RC testers aren't dragged onto
-            # stable. (rc→rc rolling auto-update is deferred — Patron
-            # count is 0 today; see ANTS-1318 §2.5 / OQ.)
-            UPDATE_CHANNEL="${REF}"
-          else
-            IS_RC=0
-            UPDATE_CHANNEL="latest"
+          # ANTS-5577: every release is a full public release, tagged
+          # vX.Y.Z and nothing else. Anything this workflow builds becomes
+          # the public "latest" download and the target of every self-update,
+          # so a tag of any other shape is refused here rather than shipped.
+          if ! printf '%s' "$REF" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'${REF}' is not a release tag (vX.Y.Z); nothing is built."
+            exit 1
           fi
           {
             echo "ref=${REF}"
             echo "version=${VERSION}"
-            echo "is_rc=${IS_RC}"
-            echo "update_channel=${UPDATE_CHANNEL}"
           } >> "$GITHUB_OUTPUT"
-          echo "Resolved tag: ${REF} (version ${VERSION}, is_rc=${IS_RC}, channel=${UPDATE_CHANNEL})"
+          echo "Resolved tag: ${REF} (version ${VERSION})"
 
       - name: Check out source at tag
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -210,11 +199,9 @@ jobs:
           # docs.appimage.org/packaging-guide/optional/updates.html)
           # tells AppImageUpdate to resolve the wildcard against the
           # owner/repo's GitHub release tagged by the channel field.
-          # Stable builds pin `latest` (the most recent non-prerelease
-          # release) so the metadata is version-stable. ANTS-1318 INV-8:
-          # RC builds substitute their own rc tag here (computed in the
-          # Resolve step) so the two update streams never cross.
-          UPDATE_INFORMATION: "gh-releases-zsync|milnet01|ants-terminal|${{ steps.tag.outputs.update_channel }}|Ants_Terminal-*-x86_64.AppImage.zsync"
+          # `latest` is the most recent release, so the metadata is
+          # version-stable.
+          UPDATE_INFORMATION: "gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync"
         run: |
           # ANTS-5321 — our own AppRun: `--mcpd` starts the bundled
           # ants-mcpd, anything else starts ants-terminal.
@@ -246,73 +233,58 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
         run: tools/sign-update-manifest.sh "${OUTPUT}" "${VERSION}"
 
+      # ANTS-5577 — this step CREATES the public release, with its files
+      # already attached. Given files, the create command makes a draft,
+      # uploads them, and only then publishes, so there is never a public
+      # release with nothing to download. Until this change the release script
+      # created the release at the tag push, about 25 minutes before this job
+      # finished: in that window /releases/latest/download/ had nothing to
+      # serve and a self-updating AppImage found a release with no file.
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
-          # ANTS-4792 — `ref` and `is_rc` reach the shell through env:, not by
-          # ${{ }} interpolation. ANTS-4772 stopped `inputs.tag` being
+          # ANTS-4792 — `ref` and `version` reach the shell through env:, not
+          # by ${{ }} interpolation. ANTS-4772 stopped `inputs.tag` being
           # interpolated directly, but the value it guards is written to
           # $GITHUB_OUTPUT and read back as steps.tag.outputs.ref, so every
           # `${{ ... }}` of it below was the SAME injection one hop further
           # along -- expanded into the script body before any shell sees it,
           # in a job holding contents: write.
           REF: ${{ steps.tag.outputs.ref }}
-          IS_RC: ${{ steps.tag.outputs.is_rc }}
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          # Pushing a tag does NOT auto-create a GitHub Release object
-          # — `gh release upload` 404s if the Release isn't there yet.
-          # `gh release view` returns non-zero on absence; create the
-          # Release on demand with the tag as title and an empty body
-          # (the user can flesh out the description after; CHANGELOG.md
-          # has the full notes already).
-          if ! gh release view "$REF" >/dev/null 2>&1; then
-            # ANTS-1318 INV-5 (defense-in-depth, OQ-4): an RC tag that
-            # reaches this auto-create path (e.g. a manual
-            # workflow_dispatch that didn't pre-create the release) must
-            # still be marked prerelease so it never surfaces as
-            # `latest`. cut-rc.sh normally pre-creates the RC release
-            # with --prerelease, so this branch is the backstop.
-            PRERELEASE_FLAG=""
-            if [ "$IS_RC" = "1" ]; then
-              PRERELEASE_FLAG="--prerelease"
-            fi
-            gh release create "$REF" \
-              $PRERELEASE_FLAG \
-              --title "$REF" \
-              --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${REF}/CHANGELOG.md) for release notes."
-            echo "Created GitHub Release ${REF} (prerelease=${IS_RC})"
-          fi
-          # Upload both the AppImage AND its `.zsync` sidecar.
-          # AppImageUpdate fetches the .zsync to compute partial
-          # downloads, so without it embedded clients fall back to
-          # whole-file fetch (still works, just slower). With it,
-          # only changed blocks transfer.
-          # ANTS-4586 — a SECOND copy under a version-less name, so a
-          # permanent direct-download URL exists:
+          # The AppImage, its `.zsync` sidecar (AppImageUpdate fetches it to
+          # download only the changed blocks), and the signed manifest the
+          # in-app updater verifies (ANTS-5560).
+          #
+          # ANTS-4586 — plus a SECOND copy of the AppImage under a
+          # version-less name, so a permanent direct-download URL exists:
           #   /releases/latest/download/Ants_Terminal-x86_64.AppImage
           # GitHub's direct form needs an exact filename, and ours embeds the
-          # version, so before this every link the site or README could offer
-          # was a PAGE the user still had to navigate. That is why an empty
-          # release (ANTS-4583) read to the user as "it points at GitHub
-          # instead of a download". The versioned name is unchanged for people
-          # who want a specific build, and zsync still keys on it.
-          #
-          # RC builds are skipped: `latest` never resolves to a prerelease, so
-          # an alias there would be a file nothing can reach by the stable URL,
-          # and publishing an unversioned RC binary invites the exact mix-up
-          # the separate RC channel exists to prevent.
+          # version. The versioned name is unchanged for people who want a
+          # specific build, and zsync still keys on it.
           ALIAS="Ants_Terminal-x86_64.AppImage"
-          # ANTS-5560 — the signed manifest the in-app updater verifies.
-          UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" )
-          if [ "$IS_RC" != "1" ]; then
-            cp "${OUTPUT}" "${ALIAS}"
-            UPLOADS+=( "${ALIAS}" )
+          cp "${OUTPUT}" "${ALIAS}"
+          UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" "${ALIAS}" )
+          if gh release view "$REF" >/dev/null 2>&1; then
+            # A manual re-run against a release that already exists: replace
+            # its files and leave its text alone.
+            gh release upload "$REF" "${UPLOADS[@]}" --clobber
+            echo "Uploaded ${UPLOADS[*]} to the existing release ${REF}"
+          else
+            # The release text is the plain-language lead of this version's
+            # CHANGELOG section. The project website shows it as its changelog.
+            if ! packaging/release-notes.sh "$VERSION" > release-notes.md; then
+              echo "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${REF}/CHANGELOG.md) for release notes." > release-notes.md
+            fi
+            gh release create "$REF" \
+              --verify-tag \
+              --title "$VERSION" \
+              --notes-file release-notes.md \
+              "${UPLOADS[@]}"
+            echo "Created release ${REF} with ${UPLOADS[*]}"
           fi
-          gh release upload "$REF" \
-            "${UPLOADS[@]}" \
-            --clobber
-          echo "Uploaded ${UPLOADS[*]} to release ${REF}"
 
       # ANTS-4583 — assert the release really carries both artefacts.
       # Uploading and *having uploaded* are different claims, and until
@@ -324,29 +296,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
-          # ANTS-4792 — `ref` and `is_rc` reach the shell through env:, not by
-          # ${{ }} interpolation. ANTS-4772 stopped `inputs.tag` being
-          # interpolated directly, but the value it guards is written to
-          # $GITHUB_OUTPUT and read back as steps.tag.outputs.ref, so every
-          # `${{ ... }}` of it below was the SAME injection one hop further
-          # along -- expanded into the script body before any shell sees it,
-          # in a job holding contents: write.
+          # ANTS-4792 — `ref` reaches the shell through env:, as above.
           REF: ${{ steps.tag.outputs.ref }}
-          IS_RC: ${{ steps.tag.outputs.is_rc }}
         run: |
           set -euo pipefail
           NAMES=$(gh release view "$REF" \
                     --json assets --jq '.assets[].name')
           echo "Assets now on ${REF}:"
           echo "${NAMES}"
-          # ANTS-4586 — the alias is checked on a stable release for the same
-          # reason the other two are: an artefact nothing verifies is one that
-          # can go missing quietly, and this is the one a published link
-          # depends on.
-          WANT=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" )
-          if [ "$IS_RC" != "1" ]; then
-            WANT+=( "Ants_Terminal-x86_64.AppImage" )
-          fi
+          # ANTS-4586 — the alias is checked for the same reason the others
+          # are: an artefact nothing verifies is one that can go missing
+          # quietly, and this is the one a published link depends on.
+          WANT=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" "Ants_Terminal-x86_64.AppImage" )
           MISSING=0
           for want in "${WANT[@]}"; do
             if ! printf '%s\n' "${NAMES}" | grep -Fxq "${want}"; then
@@ -358,4 +319,8 @@ jobs:
             echo "::error::release is missing artefacts"
             exit 1
           fi
-          echo "Verified: both artefacts are attached."
+          if [ "$(gh release view "$REF" --json isDraft --jq .isDraft)" != "false" ]; then
+            echo "::error::release ${REF} is still a draft"
+            exit 1
+          fi
+          echo "Verified: the release is public and every artefact is attached."

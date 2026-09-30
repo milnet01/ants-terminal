@@ -109,3 +109,23 @@ between passages in the same section or between sections that never cite
 each other. The first run recommended considering a split and it was not
 acted on; the document has grown 96 lines since. Recording it again
 rather than re-arguing it.
+
+## Third run — 2026-09-30 (ANTS-5577)
+
+Genre: **standard** (pinned). Subject unchanged. Cap 3.
+
+Trigger: global `CLAUDE.md` rule 14 — ANTS-5577 rewrote the release bullets
+of § Versioning & release: the release-candidate cadence is retired and
+`packaging/release.sh release` replaces `packaging/cut-rc.sh`. That changes
+how a conformer ships, so the gate is owed. The armed span is that section's
+release bullets.
+
+Lanes ran through `~/.claude/tools/neutral-lane`, outside the project, so
+none arrived holding the subject; each disclosed holding only the global
+`CLAUDE.md`. Two lanes per loop, every lane holding every question. The 1d
+mechanical pass was a path-existence script over the subject's backticked
+and linked paths, not `check-doc-facts`: it covers paths only.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
+| 7 | 2026-09-30 | 2, cold — packet 75 KB carrying `release.sh` and `release-notes.sh` whole, the `release.yml` resolve and upload steps, `bump.json`, and the project half of `commits.md` | 2 | 0 | 0 | n/a | **Two verified, one fixed, one filed; none dismissed.** Fixed, inside the span: the rehearsal was said to change nothing, and it still builds and tests. Filed as ANTS-5581, outside the span: the perf label is in a preset and in CI, found by both lanes. Two open questions became ANTS-5581 items 2 and 3; three resolved clean. None landed on text this run wrote. Loop 8 dispatched. |

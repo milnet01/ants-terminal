@@ -9,17 +9,21 @@
 #   <revision> that stored recipe pins — not whatever tag you just pushed.
 #
 # WHY THAT IS SAFE HERE
-#   packaging/cut-rc.sh promote bumps packaging/obs/_service's <revision> to the
-#   tag being published, in the same commit that date-stamps the CHANGELOG,
-#   metainfo and debian carriers (ANTS-3728, asserted by the INV-3 block of
-#   tests/features/release_rc_pipeline/cut_rc_behaviour_test.sh). The recipe in
+#   packaging/release.sh release bumps packaging/obs/_service's <revision> to
+#   the tag being published, in the same commit that date-stamps the CHANGELOG,
+#   metainfo and debian carriers (ANTS-3728, asserted by the INV-6 block of
+#   tests/features/release_pipeline/release_behaviour_test.sh). The recipe in
 #   git therefore always names the tag it shipped alongside.
 #
-#   The recipe still has to REACH OBS: run packaging/obs/obs-submit.sh after a
-#   release. That is what copies the bumped _service across, and committing it
-#   already triggers a rebuild — which makes this workflow a belt-and-braces
-#   re-trigger rather than the mechanism. Pushing a tag by hand, without either
-#   promote or obs-submit.sh, rebuilds the previous release: green, and wrong.
+#   The recipe still has to REACH OBS: release.sh runs
+#   packaging/obs/obs-submit.sh after it pushes the tag. That is what copies the
+#   bumped _service across, and committing it already triggers a rebuild — which
+#   makes this workflow a belt-and-braces re-trigger rather than the mechanism.
+#   Pushing a tag by hand, without release.sh or obs-submit.sh, rebuilds the
+#   previous release: green, and wrong.
+#
+#   This trigger adds a package revision of its own, which can land while
+#   obs-submit.sh is committing. obs-submit.sh updates and retries.
 #
 # THE FULLY HANDS-OFF ALTERNATIVE
 #   OBS's scmsync / SCM-bridge model has OBS watch the git repository directly

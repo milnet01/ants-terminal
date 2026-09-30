@@ -89199,6 +89199,29 @@ reports are asked for separately, each time.
   Source: user-report-2026-09-30.
   Lanes: terminal.
 
+- 📋 [ANTS-5581] **CLAUDE.md says the perf tests are in no preset and not in CI; both are false, and two neighbouring claims need checking.**
+  Found by the rule 14 gate on CLAUDE.md for ANTS-5577, outside that
+  change, so filed rather than fixed in the run.
+  1. Test harnesses, the Perf bullet: "not in the presets or CI".
+     CMakePresets.json has a `perf` test preset (include label perf), and
+     the `debug` test preset excludes only e2e, so `ctest --preset=debug`
+     runs the perf-labelled tests under ASan. ci.yml runs them in its own
+     step ("Run perf tests (serial)", ANTS-5375). Both lanes found it.
+     Fix: say perf is excluded from default, workstation and fast, runs
+     under debug, has its own `perf` preset, and runs serially in CI. Or
+     decide debug should exclude it and change the preset.
+  2. tools/local-ci.sh's header comment says "The build-test job always"
+     and calls the container legs compile guards. Its body, and CLAUDE.md,
+     say build-test runs in CI's image through
+     `tools/qt62-guard.sh --job build-test --run-job` when that image is
+     warm. The header is the stale side.
+  3. The roadmap-store bullet lists ten tables to delete in order;
+     the comment above the delete routine in src/roadmapstore.h says "all
+     nine tables". Not settled which is right: read the routine.
+  **Layman:** Three small statements in the project's instruction file no longer match the code, found while reviewing the release section.
+  Kind: doc-fix.
+  Source: review-contract-2026-09-30 CLAUDE.md loop 1.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
