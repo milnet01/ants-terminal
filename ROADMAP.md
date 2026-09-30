@@ -19334,6 +19334,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   per-plugin total-bytes quota at the store layer, a refusal the plugin can
   see, and PLUGINS.md stating the limits. Queued, not fixed inline: the
   limits are a design choice and change the documented plugin surface.
+  User decision 2026-10-01: key length at most 256 bytes, each value at
+  most 64 KiB, at most 1 MiB total per plugin. Over a limit, the setter
+  refuses with an error the plugin can see. PLUGINS.md states the limits.
   **Layman:** A plugin can save settings forever with no limit, slowly bloating the config file; add sensible size limits.
   Kind: security.
   Source: code-audit-2026-09-26 (review-code RC-47).
@@ -37296,6 +37299,10 @@ against current source before filing.
   roadmap_store_schema are legitimate and stay), and that constness buys nothing
   here because `QSqlQuery` takes a non-const `QSqlDatabase` and two sites already
   take a copy sharing the connection.
+  User decision 2026-10-01: the export/import pair keeps the raw handle as
+  the store's one privileged rebuild caller. Make db() private, befriend
+  the export, and say why beside the accessor. The typed-surface route
+  (after ANTS-3816) is not wanted.
 
 - ✅ [ANTS-3820] **A dropped item has no markdown form, and nothing asserts that the render never tries.**
   Verified 2026-08-04, and the round trip is worse than "no glyph":
