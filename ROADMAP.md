@@ -651,7 +651,7 @@ SSH key registered there.
   ANTS-1452.md, and the value in tests/features/mcp_workspace_search/
   spec.md row 9. Build clean; suite 3068/3068.
 
-- 📋 [ANTS-3733] **Source-level portability breaks are only caught AFTER the release tag.**
+- ✅ [ANTS-3733] **Source-level portability breaks are only caught AFTER the release tag.**
   OBS builds the tag _service pins, never main. So a source change that
   breaks a non-openSUSE distro is invisible until the NEXT release, and
   then it fails in public.
@@ -702,6 +702,9 @@ SSH key registered there.
   ANTS-5304 -- Fedora and openSUSE both ship a default SQLite and only
   Mageia enables ICU, so a container lane must reproduce the DISTRO, not
   just an older Qt.
+  Resolved (2026-09-30): ANTS-5305's staging gate, run by
+  packaging/release.sh before every tag (ANTS-5577), builds the commit on
+  every distro target before it is tagged.
 
 - ✅ [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
@@ -984,7 +987,7 @@ SSH key registered there.
   Kind: fix.
   Source: obs-build-failure-2026-09-22.
 
-- 📋 [ANTS-5305] **Validate every distro build BEFORE the release tag, on a weekly schedule, so a break is fixed in the same week it is made.**
+- ✅ [ANTS-5305] **Validate every distro build BEFORE the release tag, on a weekly schedule, so a break is fixed in the same week it is made.**
   USER REQUEST (2026-09-22): "come up with a way to troubleshoot the OBS
   builds every week to resolve any issues found, if possible before we
   build even if we create a test branch to test builds with first."
@@ -1050,6 +1053,15 @@ SSH key registered there.
   - Wait for all four, then read each log for the ctest summary line.
   Traps met: an unpublished success prints as `succeeded*` in plain `osc results`, so a watcher matching `succeeded` alone never ends (it cost 45 minutes); the log of a job still building does not end, so a curl of it hangs without a time limit; a second round needs the commit pushed first, since obs_scm clones from GitHub.
   Decisions 1 and 2 above are answered by this: a second project, pinned to a SHA before the tag. Decision 3 (does red block the release) and 4 (the poller) belong to ANTS-5577's release command.
+  Resolved (2026-09-30): built into packaging/release.sh by ANTS-5577.
+  Decision 3: a red staging build blocks the tag (override:
+  --skip-staging, which warns). Decision 4: obs-status.sh waits on job
+  history for the submitted revision and, with --require-tests, fails a
+  distro whose log has no ctest summary. `obs-submit.sh --staging <sha>
+  <version>` sends a commit to the staging project. First real run:
+  3207f012 built green on Tumbleweed, Leap 16.0, Mageia 10 and Fedora 44.
+  The "cheap half" above, a note of each target's material differences,
+  was not written; filed separately.
   **Layman:** Right now a packaging break is only discovered after we publish, so the fix waits for the next week's release and the problem is live the whole time. This would test the builds before we publish.
   Kind: test.
   Source: user-request-2026-09-22.
@@ -1109,6 +1121,19 @@ SSH key registered there.
   Kind: fix.
   Source: in-session-2026-09-30.
   Lanes: tests, packaging.
+
+- 📋 [ANTS-5582] **Write down how the four OBS targets differ, so "why only this distro?" is a lookup.**
+  ANTS-5305's "cheap half", not written when its staging gate shipped.
+  Per target (Tumbleweed, Leap 16.0, Fedora 44, Mageia 10): the SQLite
+  build (Mageia's enables ICU, the cause of ANTS-5304), the Qt version,
+  the default locale (ANTS-3792), the build driver (Mageia's macro uses
+  make, the others Ninja: ANTS-5578) and the CMake version (Tumbleweed's
+  ctest prints its summary line differently). Home:
+  packaging/obs/README.md. Read each value from a staging build log,
+  not from memory.
+  **Layman:** When a package build fails on one Linux distribution only, a short table of how the distributions differ would save the investigation.
+  Kind: doc.
+  Source: in-session-2026-09-30 (left over from ANTS-5305).
 
 ### P4 — Fedora COPR
 
@@ -76864,7 +76889,7 @@ starts 2026-05-27.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #5; ledger TL-5).
   Lanes: release.
 
-- 📋 [ANTS-5577] **Retire the weekly RC cadence: every release is a full public release, cut when there is something meaningful to ship.**
+- ✅ [ANTS-5577] **Retire the weekly RC cadence: every release is a full public release, cut when there is something meaningful to ship.**
   User decision (2026-09-30): "I am scrapping the whole release cadence
   and we just release as and when there is something meaningful to
   release. So, all releases now will be full releases." Reasons given: the
@@ -76900,6 +76925,32 @@ starts 2026-05-27.
   - The old promote creates the public GitHub release as soon as the tag is pushed, about 25 minutes before release.yml attaches the AppImage. In that window releases/latest/download/Ants_Terminal-x86_64.AppImage has nothing to serve, the website's download button falls back to a source zip, and a self-updating AppImage would find a release with no file. The Projects Hub session reported it. Publish only once the files are attached (a draft, or let release.yml create the release).
   - Do not wait on OBS by polling `osc results` for a status word: two such watchers misfired on 2026-09-30, one never ending (`succeeded*`) and one ending while Fedora was still building. Waiting for a new `osc jobhistory` row per repository was reliable.
   - The v0.7.112-rc1 pre-release and tag were deleted after the public release was verified, at the user's word that RCs are no longer wanted. Older rc tags remain.
+  Resolved (2026-09-30): packaging/release.sh {release|status} replaces
+  cut-rc.sh (3207f012, c12107ee). What the body listed, and where each went:
+  - One release command, the merge that also merges into a section with
+    entries, the staging gate before the tag, the OBS commit retry: built.
+  - release.yml: RC branches removed, a tag that is not vX.Y.Z refused, and
+    the workflow now creates the GitHub release with its files attached.
+    release.sh creates no release; it waits for the run and checks it.
+  - Release text: packaging/release-notes.sh prints the version section's
+    lead. release refuses a version with no **Theme:** line.
+  - Waiting on OBS: obs-status.sh reads job history for the submitted
+    revision.
+  - CLAUDE.md, commits.md, versioning-overrides.md (a new no-pre-releases
+    override), bump.json, the OBS README and recipe comments, CONTRIBUTING:
+    updated. ANTS-1318, 2164 and 2165 marked superseded. The rule 14 gate
+    on CLAUDE.md ran three loops; its out-of-scope findings are ANTS-5581.
+  - The hotfix command is gone with the rest: a fix now ships as the next
+    release from main.
+  Verified: fixture tests (tests/features/release_pipeline/), and one real
+  staging run of 3207f012 that went green on all four distros with the
+  suite run on each. NOT yet run for real: `release --push` itself; the
+  next release is its first run.
+  Not done, and left open: SUPPORTERS.md still promises Patrons early
+  access to release candidates (the user's call); copying staging's
+  binaries instead of rebuilding (ANTS-5578 item 6); a transient OBS
+  outage when obs-status.sh first reads the revision ends the gate with
+  exit 3, and a re-run recovers.
   **Layman:** The weekly preview-then-release routine kept causing mistakes and serves nobody yet, so releases become simple: one public release whenever it is worth making.
   Kind: refactor.
   Source: user-request-2026-09-30.
@@ -89174,6 +89225,9 @@ reports are asked for separately, each time.
   bundle's main) clears the variable itself; list them from a full
   `ctest` run with the key set. Workaround until then: push with
   `env -u ANTS_OSC133_KEY git push`.
+  Note (2026-09-30): packaging/release.sh unsets the variable at its top
+  so a release run from an Ants tab can build, test and push. Remove that
+  line when this ships.
   **Layman:** Some tests fail when started from inside Ants Terminal itself, because they pick up the terminal's own secret key.
   Kind: fix.
   Source: in-session-2026-09-29.
