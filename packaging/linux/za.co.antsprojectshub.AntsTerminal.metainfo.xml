@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.112" date="2026-09-22">
+    <release version="0.7.112" date="2026-09-30">
       <description>
         <p>The AppImage can now update itself, a welcome window helps new users set up, and Claude Code picks up tool changes without restarting the terminal, alongside smarter roadmap management and broad reliability fixes.</p>
         <ul>

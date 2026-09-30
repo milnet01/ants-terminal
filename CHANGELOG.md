@@ -12,7 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
-## [0.7.112] — unreleased (Patron RC preview)
+## [0.7.112] — 2026-09-30
 ### Added
 
 - **quotation_check verifies up to 500 quotations in one call, each against the file it names, and says found, not found (with the nearest line) or could not check** (ANTS-5502)
