@@ -105,7 +105,7 @@
   <releases>
     <release version="0.7.112" date="2026-09-22">
       <description>
-        <p>Roadmap management gets smarter — migration, backup, new query modes, and dropped items — plus broad improvements to MCP tool reliability and status tracking.</p>
+        <p>The AppImage can now update itself, a welcome window helps new users set up, and Claude Code picks up tool changes without restarting the terminal, alongside smarter roadmap management and broad reliability fixes.</p>
         <ul>
           <li><em>Added:</em> Roadmap queries return latest entries of long items, convert checklist formats to standard, preview status changes, report discarded text, return only requested fields, snapshot the store safely, report which items fail Layman gate, and back up weekly to local and remote storage. (ANTS-4769, ANTS-4491, ANTS-4844, ANTS-4839, ANTS-4837, ANTS-4499, ANTS-4483, ANTS-3794)</li>
           <li><em>Added:</em> Roadmap items can be marked dropped, files generate a notice saying they are generated, and items in one batch can refer to each other by number. (ANTS-4977, ANTS-4555, ANTS-4580)</li>
@@ -123,6 +123,25 @@
           <li><em>Fixed:</em> Terminal output can no longer flood trigger actions or plugin events, and progress reports only repaint the tab icon when state changes. Scrollback exports and command-block shares no longer freeze the window. Autocomplete matches the command you type, not the prompt. (ANTS-5079, ANTS-5078)</li>
           <li><em>Fixed:</em> Broadcast Input sends each pane its own keyboard encoding, reaches only panes in the current tab, starts off on launch, and shows a red Broadcast chip on the status bar. (ANTS-5224, ANTS-5223)</li>
           <li><em>Security:</em> Claude hook and MCP sockets accept at most 64 connections at once, each holding up to 256 KiB for five seconds. Audit window's Semgrep check no longer sends usage metrics to Semgrep. (ANTS-5089, ANTS-5083)</li>
+          <li><em>Added:</em> The AppImage updates itself: when a new version is out the menu bar says so, and one click downloads it, checks its signature and swaps it in. Restart now, or get it at the next launch. Package-manager installs keep updating through their package manager. (ANTS-5560)</li>
+          <li><em>Added:</em> A welcome window greets new users, explains the features, sets things up in one click each and invites a donation. (ANTS-5558)</li>
+          <li><em>Added:</em> <code>ants-mcpd</code>, a standalone MCP server: changes to the project tools reach Claude Code without restarting the terminal. The AppImage bundles it, and <code>ants-mcpd --call</code> runs a tool from a shell script. (ANTS-4932, ANTS-5321, ANTS-5506)</li>
+          <li><em>Added:</em> Help → About names the Ants MCP build Claude Code runs and any tabs still on an older one. The tokens-saved chip counts the calls ants-mcpd serves. (ANTS-5340, ANTS-5341, ANTS-5311)</li>
+          <li><em>Added:</em> Roadmap items can be linked as blocked by, split from, duplicate of or supersedes. An item split into parts cannot be marked shipped while a part is still open. (ANTS-4079, ANTS-3748, ANTS-3827)</li>
+          <li><em>Added:</em> <code>roadmap_log</code> gains batch edits (amend_batch, amend_field_batch, a status and a section per item), retitle_section, amend_preamble, amend_intro, and edits to a section's narration. (ANTS-4669, ANTS-5385, ANTS-5358, ANTS-5344, ANTS-5557, ANTS-5523, ANTS-5373, ANTS-5379)</li>
+          <li><em>Added:</em> <code>roadmap_query</code> returns a release's items by version, takes several statuses at once, and can return only the body lines that match. (ANTS-5315, ANTS-5376, ANTS-5468)</li>
+          <li><em>Added:</em> New document checks: <code>quotation_check</code> verifies up to 500 quotations in one call, <code>spec_lint</code> reports only the findings an edit caused, <code>changelog_query</code> checks a changelog's layout, and <code>doc_lint</code> gains a doc_facts checker. (ANTS-5502, ANTS-5537, ANTS-5543, ANTS-5506)</li>
+          <li><em>Changed:</em> Roadmap window: sub-section headings indent under their parent, each tab keeps its own Status and Kind filters for each project, and the title says where its contents come from. (ANTS-5572, ANTS-5368)</li>
+          <li><em>Changed:</em> <code>roadmap_log</code> refuses an item whose headline exactly matches one already filed unless forced, its convert refuses to drop text unless told to, and flip and annotate reply with a compact summary by default. (ANTS-4487, ANTS-5286, ANTS-5263)</li>
+          <li><em>Deprecated:</em> Twenty obsolete Ants MCP tools are marked deprecated and will be removed after the next release. (ANTS-5485)</li>
+          <li><em>Fixed:</em> The AppImage connects over HTTPS on systems whose default libssl is not OpenSSL 3, so update checks and self-update work there. Scrolling dialogs keep the theme's background on desktops without a dark theme. (ANTS-5574, ANTS-5575)</li>
+          <li><em>Fixed:</em> Ants no longer rewrites ~/.claude/settings.json when its Claude Code hooks are already installed. The status bar shows the model for a session in a folder whose path has a dot or a space. (ANTS-5569, ANTS-5317)</li>
+          <li><em>Fixed:</em> Terminal: a trigger's inject action types into the terminal whose output matched, clearing the scrollback also forgets its command blocks, narrowing the window no longer lets the scrollback grow past its limit, and a right-to-left selection copies as rich text.</li>
+          <li><em>Fixed:</em> The About dialog opens large enough to show all its text, themed dialogs show their current title, a long status-bar message no longer stretches the window, and Session Logging gives each open tab its own log file. (ANTS-5390, ANTS-5391, ANTS-5237)</li>
+          <li><em>Fixed:</em> An MCP tool that fails with an exception answers with an error instead of closing the terminal. Trusting a project in the terminal takes effect in running Claude sessions without reconnecting. (ANTS-5411)</li>
+          <li><em>Fixed:</em> Pass-style roadmaps: publishing keeps each item's own status line, edits update the database, and closing an item records today's date. (ANTS-5230, ANTS-5334, ANTS-5395)</li>
+          <li><em>Fixed:</em> The audit reports trivy's vulnerabilities, secrets and misconfigurations. The shell integration loads in shells running with set -u. A user theme named like a built-in theme replaces it.</li>
+          <li><em>Security:</em> A roadmap backup pointed at the wrong path no longer deletes the file there. The debug log redacts secret-shaped values. Path checks follow symlinks, so a write cannot land outside the project. ants-mcpd applies the verify trust gate, and the MCP bridge and hook script refuse a terminal socket owned by another user. (ANTS-5466)</li>
         </ul>
       </description>
     </release>

@@ -212,6 +212,8 @@ the Flathub repo name.
   assets/ants-terminal-logo.svg as the landing-page card logo, pushed; it
   goes live on https://antsprojectshub.co.za/ with the site's next
   deploy. The 2.86:1 shape fits the card with no change.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  website logo, not part of the app.
   **Layman:** The project now has a proper logo with its name written out, for the website's list of projects.
   Kind: marketing.
   Source: user-request-2026-09-25 (via ants-projects-hub-website).
@@ -11410,6 +11412,8 @@ extends an existing item, that item carries it instead.
   Landed with ANTS-5230 in 749f2b1b. Flip both once GitHub CI for
   9c84b694 or later is green.
   Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — landed
+  with ANTS-5230 in one commit, and the CHANGELOG cites that item.
   **Layman:** Every time a pass-style roadmap is written out, each item's status line is duplicated again, so the file grows a little more each time.
   Kind: fix.
   Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
@@ -20298,6 +20302,8 @@ indie-review finding.
   Resolved (found already done, 2026-09-23): test_terminal_a11y.cpp
   checks textInterface() against nullptr with ASSERT_NE before every
   use.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** A test file has a spot where the compiler warns it doesn't check a pointer before use; harmless in a test but it dirties the build log. Add the missing null-check.
   Kind: test.
   Source: in-session-2026-07-14 (found building test_chrome for ANTS-2119 terminalwidget bundle).
@@ -35024,6 +35030,8 @@ against current source before filing.
   migration of a clone into a throwaway store succeeded (240 items; the
   241st heading, "Pass 2 —", has no N.M designator and stays prose). The
   fixes were made in those projects' own files, as this item asked.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — fixed in
+  the other projects' own files; nothing changed in Ants.
   **Layman:** Two other projects have duplicate IDs in their roadmap files, which stops them being imported until fixed.
   Kind: fix.
   Source: in-session-2026-08-01.
@@ -39455,6 +39463,8 @@ against current source before filing.
   § 7.2 already states the disposition ("On the pass-headings shape only
   the headings are items, and every other line in a pass block is that
   pass's body"), naming parsePassHeadingBullets(). Nothing left to write.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — an
+  investigation that found nothing left to write.
 
 - 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
@@ -41686,6 +41696,8 @@ in each bullet, not just the reporter's symptom.
   Resolved (2026-09-29): the nightly run 36533991646 on 4aa3df5b, the
   first ASan job at pool 4, passed with no OOM kill. Its Build step took
   14 m 17 s against 21 m 14 s on the 2026-09-27 nightly (run 36300698573).
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a CI
+  investigation; users see no change.
   **Layman:** The build machine has four processors but only uses two, because the limit was set for a different computer.
   Kind: investigate.
   Source: in-session-2026-08-25.
@@ -42006,6 +42018,8 @@ in each bullet, not just the reporter's symptom.
   four mirrors on their own.
   Resolved (2026-09-28): tools/check-standard-mirrors.sh reports 13 in
   sync after the --write in d512733c.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  refresh of mirrored internal standards.
   **Layman:** Four shared rule documents copied into this project are out of date, so the commit check refuses commits until they are re-synced.
   Kind: chore.
   Source: in-session-2026-09-24.
@@ -42058,6 +42072,8 @@ in each bullet, not just the reporter's symptom.
   machine-wide hook gates in place only when every pushed tip is HEAD
   and the tree is clean; .ants/gate.conf sets dirtyTree=refuse, so
   anything else is refused, not tested.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — the
+  developer pre-push hook; users see no change.
   **Layman:** The safety check before a push can pass on edits that were never committed, so it can approve a push whose real content it never tested.
   Kind: fix.
   Source: in-session-2026-09-25.
@@ -42074,6 +42090,8 @@ in each bullet, not just the reporter's symptom.
   Resolved (2026-09-28) by ANTS-5542: see ANTS-5342. docsCommand also
   reads ci.yml from the working tree, which refuse makes the pushed
   commit.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — the
+  developer pre-push hook; users see no change.
   **Layman:** The safety check before an upload tests your current files, which may differ from what you are actually uploading.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #1; ledger TL-1).
@@ -42098,6 +42116,8 @@ in each bullet, not just the reporter's symptom.
   as this user, with Qt's SQLite driver the runner has. The hook uses it
   when warm and this machine otherwise; ci-parity.sh --ubuntu24 too.
   Verified: 5251/5251 and every lint green in the image.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — the
+  developer pre-push gate; users see no change.
   **Layman:** Tests now run before a push on the same system GitHub uses, so a failure shows up locally instead of in an email.
   Kind: chore.
   Source: user-request-2026-09-27 (CI failure emails).
@@ -42109,6 +42129,8 @@ in each bullet, not just the reporter's symptom.
   dir, where a concurrent test's ROADMAP.md resolved the ids. The corpus
   now sits one level down. Red before: a planted /tmp ROADMAP.md failed
   the old test; green after with it planted.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** One test failed at random on CI when another test ran beside it.
   Kind: test.
   Source: CI run 36331920136.
@@ -42142,6 +42164,8 @@ in each bullet, not just the reporter's symptom.
   machine-wide hook; tools/local-ci.sh is the gate (full or --docs);
   tools/setup-git-hooks.sh sets docsCommand, inPlace and
   dirtyTree=refuse. The first push through it gated in place and passed.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — the
+  developer pre-push hook; users see no change.
   **Layman:** Use the same push checker every other project uses, so Ants also gets its leaked-password scan and one place to fix the checker.
   Kind: refactor.
   Source: user-request-2026-09-28.
@@ -49925,6 +49949,8 @@ are closed inline in the feedback files rather than filed here.
   (append_batch refreshes the counter before any later call reads it), so
   the gap was not intentional. Checked: this session's appends and one
   7-item batch left ANTS-5558 through ANTS-5568 contiguous, no hole.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — same
+  cause as ANTS-4579, fixed by ANTS-4635, which the CHANGELOG cites.
   **Layman:** Filing one to-do item silently used up two ID numbers, leaving a gap that looks like a lost item.
   Kind: fix.
   Source: in-session-2026-08-19, hit while filing ANTS-4536.
@@ -50146,6 +50172,8 @@ are closed inline in the feedback files rather than filed here.
   evidence this needs before a shape is chosen.
   Resolved (2026-09-25): shipped with ANTS-5263 in 55344889; GitHub CI
   green.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — shipped
+  as ANTS-5263, which the CHANGELOG cites.
   **Layman:** After updating a roadmap item, the reply repeats the item's full text back — on a long item that is most of what the reply costs.
   Kind: perf.
   Source: in-session-2026-09-20, measured.
@@ -50177,6 +50205,8 @@ are closed inline in the feedback files rather than filed here.
   only a migration that allocates nothing writes no id_prefix row, and
   names Loader::allocateId()'s raiseIdHighWater() as the path that does
   write one.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a source
+  comment correction.
   **Layman:** A note in the code says migration never records a project's id counter. It does record it whenever it invents an id, so the note misleads anyone reasoning from it.
   Kind: doc-fix.
   Source: in-session-2026-09-20, found while gating ANTS-4500.
@@ -50325,6 +50355,8 @@ are closed inline in the feedback files rather than filed here.
   not a fixed offset.
   Resolved (2026-09-29): RoadmapLogOpEnum checks dispatch vs the live
   tools/list enum both ways; proved red on the pre-ANTS-5557 state.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** Add a check that compares the list of commands the code accepts against the list it advertises, so a missing one fails the build rather than shipping.
   Kind: test.
   Source: in-session-2026-09-21, generalising ANTS-5253.
@@ -50734,6 +50766,8 @@ are closed inline in the feedback files rather than filed here.
   `text_lost` with `discarded_text_lines` and `discarded_text` naming
   each line, unless accept_text_loss:true. Contract: roadmap_convert
   spec INV-16, test textLossRefusesUnlessAccepted.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately —
+  delivered by ANTS-5286, which the CHANGELOG cites.
   **Layman:** Before a bulk conversion you can now check that no entry's number changes, but nothing tells you whether the explanatory text around them survives the rewrite.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
@@ -51606,6 +51640,8 @@ are closed inline in the feedback files rather than filed here.
   1 KB on 3203 items), and ANTS-5285 shipped the one-section survey; the
   fix left is finbreak's resumption flow, which it owns. Sent it the
   cheaper calls by session_message.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — answered
+  by ANTS-5285, which the CHANGELOG cites.
   **Layman:** A shortcut meant to give a quick overview at session start returns too much on big projects, so it hands back a file reference instead of the list — exactly where the quick overview was the point.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
@@ -51644,6 +51680,8 @@ are closed inline in the feedback files rather than filed here.
   ANTS-1113 (§ 8) now name the `Pty` class in src/ptyhandler.cpp. The
   two ANTS-1897 occurrences inside its cold-eyes loop log stay as
   written, because landed loop-log rows are never edited.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  correction inside two internal specs.
   **Layman:** Some design documents refer to a part of the code by a name it does not have, so anyone searching for it finds nothing.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md loop 1, in-session-2026-09-21.
@@ -51713,6 +51751,8 @@ are closed inline in the feedback files rather than filed here.
   must check, and the reply always states how many rows matched. The
   default stays `all` capped at 200; a caller who wants the decision
   rows alone asks for them.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately —
+  delivered by ANTS-5328, which the CHANGELOG cites.
   **Layman:** A preview meant to be checked before a one-way change returns so much text in one go that it cannot be displayed at all on a large project.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
@@ -51920,6 +51960,8 @@ are closed inline in the feedback files rather than filed here.
   text), while read_region's `returned` is the size of the slice it
   returned. Different quantities, so an alias would mislead; neither
   live field is renamed.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — closed
+  with no field renamed; the names already differ for a reason.
   **Layman:** Different tools use different words for the same thing, so a name learned from one tool is wrong in the next.
   Kind: doc.
   Source: peer-sessions finbreak-65 and doom-ants-3b, in-session-2026-09-21.
@@ -56461,6 +56503,8 @@ filed below.
   declarations apply; ANTS-4426's was column-only, set by amend_field to
   its provenance from git (5b678331). A source-prefix ":" query over all
   3183 items now matches none.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a data
+  repair of three items in this project's own store.
   **Layman:** A few roadmap entries have a nonsense value saved where their origin should be, left over from a parsing bug.
   Kind: fix.
   Source: in-session-2026-08-25 (measured while fixing ANTS-4608).
@@ -63869,6 +63913,8 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   item named). The store and the migrate tests meet in the sandbox. Each
   file keeps its own seedMigrated(); not merged, as that is churn with
   no defect behind it.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** Our roadmap-writing tests all run against a plain folder, which takes a different code path from the one real projects use — so the code that actually runs is the code nobody tests.
   Kind: test.
   Source: in-session-2026-09-07, found while fixing ANTS-4848.
@@ -66319,6 +66365,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   (3,888), markers k/19, inserted after TU 3. Follow-ons:
   RoadmapReadSeam.Ants4431 path, partition.json lane,
   docs/subsystems.md. Full suite green; GitHub CI green.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a source
+  file split with no behaviour change.
   **Layman:** One of the MCP code files is nearly at its size limit, so the next addition to it would fail a build check.
   Kind: refactor.
   Source: in-session-2026-09-24.
@@ -66392,6 +66440,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   (slow vs blocked) was not measured. Test
   StandaloneMcpServer.HarnessReportsATimeoutAsSuch, proven red. GitHub
   CI green.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** One of the new tests for the standalone MCP server failed once while the machine was busy, though it passes on its own.
   Kind: test.
   Source: in-session-2026-09-25.
@@ -66496,6 +66546,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Resolved (2026-09-29): VerifyTrustPrompt (test_chrome) checks the
   built box; the click-result check stays a scrape of showPrompt only.
   Proved red by unticking the checkbox and dropping the Gates label.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** Two checks on the trust dialog read its code as text, so moving code around breaks them even when the dialog is fine.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
@@ -66513,6 +66565,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   included, against tests/perf/baseline.tsv and exits 1 past a 5%
   drop. Checked: a baseline with ascii_print x10 reported -89.9%
   REGRESSION, exit 1. No second gate added to the benchmark itself.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** The speed test never flags a slowdown unless someone types in a number by hand.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
@@ -66538,6 +66592,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Resolved (2026-09-29, b185da19): GTEST_SKIP() in the helper plus an
   IsSkipped() return in the TEST. Forced link failure reports Skipped;
   real run passes 3/3.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  test-only change.
   **Layman:** One test fails on computers that can't make file shortcuts, even though its message says it was skipped.
   Kind: test.
   Source: field-pass-testing-md-2026-09-27.
@@ -68418,6 +68474,8 @@ project. Reported causes are claims until checked in source.
   Both lanes: § 2.1 places the handler in src/remotecontrol.{h,cpp} (it is src/remotecontrol_roadmap_log_batch.cpp), § 2.1 places cmdRoadmapLog in src/remotecontrol_roadmap_query.cpp (it is src/remotecontrol_roadmap_query_verb.cpp), and § 6 item 3 and § 7 put the dispatch in src/remotecontrol.cpp :2754-2780. Pre-existing text outside the ANTS-5315 amendment, so filed rather than fixed in that gate. Fold in directly; do not re-review.
   Resolved (2026-09-27, 76ecb942): § 2.1, § 4, § 6 and § 7 name the real
   files; stale line pins dropped.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  correction inside an internal spec.
   **Layman:** Points the create_section spec at the files that actually hold the code.
   Kind: doc-fix.
   Source: review-contract ANTS-1878 loop 5, 2026-09-27 (filed out of radius).
@@ -68434,6 +68492,8 @@ project. Reported causes are claims until checked in source.
   unresolved_path, archive_unrecognised, archive_slug_collision;
   unrecognised_checkbox row states the position rule; § 6 fixture
   wording fixed.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  correction inside an internal spec.
   **Layman:** Corrects three small inaccuracies in the roadmap-import spec that a test writer could follow.
   Kind: doc-fix.
   Source: review-contract ANTS-3757, 2026-09-27 (filed out of radius).
@@ -68765,6 +68825,8 @@ project. Reported causes are claims until checked in source.
   release title on a roadmap that has no closed version block yet).
   Duplicate of ANTS-5563 (same claude-config report, also filed from
   its feedback file), shipped 2026-09-29.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  duplicate of ANTS-5563, which the CHANGELOG cites.
   **Layman:** A tool that adds a new release heading to a roadmap refuses to add the first one.
   Kind: fix.
   Source: claude-config session report 2026-09-28.
@@ -68776,6 +68838,8 @@ project. Reported causes are claims until checked in source.
   keys on, so its loss can change how every later read parses the file.
   Duplicate of ANTS-5564 (same claude-config report), closed
   2026-09-29: no marker loss occurs; the render re-adds it.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  duplicate of ANTS-5564; no marker was ever lost.
   **Layman:** Rewriting a roadmap's opening text loses a hidden marker the tools need to read the file.
   Kind: fix.
   Source: claude-config session report 2026-09-28.
@@ -68809,6 +68873,8 @@ project. Reported causes are claims until checked in source.
   RoadmapLogSetPreamble.ReplacesTheTitle proves the published file opens
   on it. The dry run's previous_intro misled; the op description now says
   the render adds the marker and notice.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — no
+  marker was lost; only the op description was clarified.
   **Layman:** Rewriting a roadmap's opening text silently deletes the hidden tag that tells tools which format the file uses.
   Kind: fix.
   Source: claude_config feedback 2026-09-28.
@@ -76735,6 +76801,36 @@ starts 2026-05-27.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #5; ledger TL-5).
   Lanes: release.
 
+- 📋 [ANTS-5577] **Retire the weekly RC cadence: every release is a full public release, cut when there is something meaningful to ship.**
+  User decision (2026-09-30): "I am scrapping the whole release cadence
+  and we just release as and when there is something meaningful to
+  release. So, all releases now will be full releases." Reasons given: the
+  RC flow keeps going wrong (the 0.7.111 hotfix was cut as its own release
+  instead of joining the in-flight RC, leaving 0.7.112 with no RC), and
+  there are no donations yet.
+  What still describes the old model, each to change or remove:
+  - packaging/cut-rc.sh (new-rc, respin, promote, cycle, hotfix) and its
+    tests; replace with one direct release command.
+  - The Wednesday guard and the 14-day stale-RC window.
+  - release.yml's RC branches (is_rc, rc channel, prerelease flag).
+  - CLAUDE.md "Versioning & release", docs/standards/releases.md,
+    versioning*.md, docs/specs/ANTS-1318.md and ANTS-2164/2165.
+  - SUPPORTERS.md promises Patrons "early access to release candidates";
+    needs the user's replacement perk or removal.
+  - The CHANGELOG heading form "unreleased (Patron RC preview)".
+  Found the same day, and removed by this work rather than fixed:
+  roll_unreleased is a no-op when the target version section already has
+  entries, so new-rc would have cut 0.7.112 with a week of entries left
+  in the Unreleased section. Merged by hand for 0.7.112.
+  Build into the new command: the OBS staging test before the tag
+  (ANTS-5305), which the user asked for again on 2026-09-30.
+  Changing CLAUDE.md and releases.md changes what ships and how, so that
+  edit owes the contract gate.
+  **Layman:** The weekly preview-then-release routine kept causing mistakes and serves nobody yet, so releases become simple: one public release whenever it is worth making.
+  Kind: refactor.
+  Source: user-request-2026-09-30.
+  Lanes: packaging, docs.
+
 ### 🔌 MCP — general Claude Code workflows (2026-05-13)
 
 The MCP work shipped so far targets three power-user workflows
@@ -77798,6 +77894,8 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Resolved (2026-09-25, b2a0513c): approved by the user. Section 1
   point 2 now names the grep commands without their results. The
   loop-log rows keep theirs, as landed rows are never edited.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a
+  correction inside an internal spec.
   **Layman:** The design document for the separate MCP helper still quotes some numbers that go stale; swap them for the names or searches they stand for.
   Kind: doc-fix.
   Source: in-session-2026-09-24.
@@ -80526,6 +80624,8 @@ acting on it.
   run 36392962717's ASan stats: Cache size 0.3 / 4.0 GB (6.62%), 387
   misses, no eviction during the build. The earlier 2.0/2.0 reading came
   before the cap raise. Re-read the stats step if ASan flags change.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — CI build
+  speed; users see no change.
   **Layman:** The memory-checking build's cache is too small, so it keeps throwing away work it will need again.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80553,6 +80653,8 @@ acting on it.
   headers and every compile gated on them. With CCACHE_SLOPPINESS set
   (ANTS-5531) all 975 calls are cacheable and a warm Release Build step
   dropped from 366 s to 31 s (runs 36400078893, 36402588083).
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a CI
+  investigation; users see no change.
   **Layman:** Even when almost everything is cached, the GitHub build is still slow, and nobody knows why yet.
   Kind: investigate.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80582,6 +80684,8 @@ acting on it.
   Resolved (2026-09-25, cda932ec): .ccache-guard/<job> is mounted into
   the guard container and holds entries after a run; both guards
   compiled green in about 40 s each on a warm tree.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — local
+  developer build speed; users see no change.
   **Layman:** The pre-push Qt 6.2 check sometimes rebuilds everything from nothing; a cache would make those runs quick.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80595,6 +80699,8 @@ acting on it.
   Closed by ANTS-5322 (d9622fb1): host jobs build in build/ and
   build-asan/; build-ci-parity* trees deleted. Flip with ANTS-5322.
   Resolved (2026-09-25): GitHub CI green on 2e63db9f (run 36111437270).
+  Release note (2026-09-30): no CHANGELOG entry, deliberately —
+  developer tooling; users see no change.
   **Layman:** The full local CI check keeps duplicate copies of the build that waste disk space and go stale.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80623,6 +80729,8 @@ acting on it.
   whole sanitized suite passes. On GitHub (run 36124635817) the ASan job
   is green; its test step took about 12 min against 18m17s before, one
   sample only.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — CI build
+  speed; users see no change.
   **Layman:** Smaller debugging data would make the memory-checking build faster to link and cache.
   Kind: optimize.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -80658,6 +80766,8 @@ acting on it.
   Resolved (2026-09-25, cda932ec): Qt 6.2 floor build green on run
   36124535707 with the cached apt step (6m23s). tools/qt62-guard.sh
   parses the new form; its image tag is unchanged.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — CI build
+  speed; users see no change.
   **Layman:** One GitHub job downloads its build tools fresh every time while the others reuse a cache.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -81377,6 +81487,8 @@ protocol.
   now ends where it should. The text after `fresh Claude Code…` was cut
   off when the item was written and cannot be recovered. Prevention is
   ANTS-5393.
+  Release note (2026-09-30): no CHANGELOG entry, deliberately — a data
+  repair of two items in this project's own store.
   **Layman:** Cleans a roadmap entry whose summary contains stray machine text.
   Kind: fix.
   Source: user-screenshot-2026-09-26.

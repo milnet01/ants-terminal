@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.112] — unreleased (Patron RC preview)
 ### Added
 
 - **quotation_check verifies up to 500 quotations in one call, each against the file it names, and says found, not found (with the nearest line) or could not check** (ANTS-5502)
@@ -223,7 +224,108 @@ for security-relevant changes.
   transcript the caller names. Each message is counted once, where
   summing the log's lines counted it two to four times.
 
+- **Reading a long roadmap item can now return just its latest entries** (ANTS-4769)
+  An item used as a running progress log is mostly history, and asking for its text returned the oldest part first — so the paragraph saying where the work stands was the one you could not see. `roadmap_query` can now return the end of an item's text instead of the beginning.
+
+- **`roadmap_log op:"convert"` moves a checklist-style roadmap to the standard format** (ANTS-4491)
+  A project still using the older `- [ ]` checklist roadmap can now adopt the
+  standard format in one command, instead of rewriting every line by hand.
+  The file and the store change together, so the project is never left in a
+  state where the two disagree and reads stop working.
+
+  Safe to run on a roadmap that is already part-converted: a bullet that
+  already has an id keeps it, and running it twice changes nothing the first
+  run did not. Pass `dry_run: true` first — it reports exactly which ids it
+  would hand out before anything is written.
+
+- **Previewing a roadmap status change now shows the bullet it will produce** (ANTS-4844)
+  Adding an item already previewed its text; changing one showed nothing, even
+  though changing edits something that is already correct. The preview shows
+  the item as it will read afterwards, and matches what the real write
+  produces. Adding a note previews the same way.
+
+- **A roadmap write now says whose text it discarded when the file was behind** (ANTS-4839)
+  On a branch whose roadmap is out of date, a one-item write reports a large
+  number of discarded lines. It now says those lines are an older version of
+  the same roadmap rather than work you wrote -- while being explicit that a
+  hand-edited item body would look the same, and pointing at the backup.
+
+- **roadmap_query can return just the fields you ask for on each item** (ANTS-4837)
+  `bullet_fields:["id","status","kind"]` gives a lean triage list. The cheap
+  listing mode could not carry an item's kind at all, and the fuller one sent
+  the headline twice.
+
+- **roadmap_migrate takes a consistent snapshot of the store before it migrates** (ANTS-4499)
+  One rolling snapshot, or your own path via `backup_to`. It uses SQLite's
+  VACUUM INTO, so it is safe while Ants is running -- copying the database
+  file by hand is not, because the store runs in WAL. A snapshot that fails
+  refuses the migration rather than proceeding unprotected.
+
+- **roadmap_migrate reports which items the roadmap render's Layman gate will refuse** (ANTS-4483)
+  The check runs inside the migration transaction, so a dry run answers
+  about the roadmap it is previewing rather than the one it would replace.
+  Nothing is blocked by a reported item; the hint says so.
+
+- **The roadmap store is backed up weekly, locally and to the private claude-config repo, and session_orient reports a backup that stopped** (ANTS-3794)
+  `ants-terminal --export-roadmaps <dir>` writes one JSONL export per
+  project without a display. `tools/roadmap-export-publish.sh` commits
+  only those files and pushes, and refuses rather than merges when the
+  upstream has diverged. `tools/roadmap-store-backup.sh` keeps verified
+  local snapshots. Both write a backup record, and `session_orient`
+  carries a `roadmap_backup` block when a job has never run, is failing,
+  or is more than eight days stale.
+
+- **Roadmap items can be marked dropped, shown as 🚫 in ROADMAP.md.** (ANTS-4977)
+  `roadmap_log` accepts `dropped` (or 🚫) on append, append_batch, flip
+  and flip_batch. A dropped item is closed but never counted as shipped
+  or given a ship date. `roadmap_query status:"dropped"` lists them, and
+  the Roadmap dialog gains a 🚫 Dropped filter; History shows Done and
+  Dropped. A feedback finding whose id is dropped now collapses under
+  `compact_resolved`.
+
+- **Generated roadmap files now say so at the top** (ANTS-4555)
+  A hidden line under the format marker says the file is generated from
+  the roadmap store and that hand edits are discarded, so nobody edits it
+  by hand expecting the change to last.
+
+- **Roadmap items filed together can refer to each other by number** (ANTS-4580)
+  In roadmap_log op:"append_batch", writing `{{id:1}}` in an item's text
+  is replaced by the number the second item in the same call receives.
+  Callers no longer have to guess numbers that do not exist yet.
+
+- **View → Give Each Tab a Different Colour** (ANTS-5238)
+  Colours every open tab in one click, so tabs side by side are always
+  in different colour families (red, green, blue, yellow, purple, grey
+  in turn) and no colour repeats until all 25 are used. The colours are
+  saved like a colour picked from the tab's own menu.
+
+- **roadmap_log can delete an emptied section and move a section** (ANTS-4958)
+  op:"delete_section" removes a section once nothing is filed in it,
+  and returns its intro text. op:"move_section" moves a section, with its
+  subsections and items, before or after another one. Together with
+  moving items (ANTS-4948), a roadmap can now be reorganised without
+  hand edits. Also closes ANTS-4922.
+
+- **roadmap_log can rewrite a section's intro and the roadmap's title and preamble** (ANTS-4949)
+  op:"set_intro" replaces one section's intro text; op:"set_preamble"
+  replaces the title and preamble at the top of the file. Both keep the
+  text exactly as written. Before this, a wrong intro or title on a
+  store-backed roadmap could not be fixed, because a hand edit was
+  undone by the next write. Also closes ANTS-4539, ANTS-4766, ANTS-4832
+  and ANTS-4968, which reported the same gap.
+
+- **roadmap_log can move an existing item to another section** (ANTS-4948)
+  op:"amend_field" takes field:"section" with the destination slug as
+  `value`. `locators[]` of {id} moves several items in one write. The
+  items keep their ids, bodies and history.
+
 ### Changed
+
+- **When a roadmap heading's name is already taken, the refusal now suggests adding the release to the name** (ANTS-5568)
+  The same theme heading cannot appear under two releases, because
+  heading names are unique across the whole roadmap. The `slug_collision`
+  refusal now suggests the fix, such as "Bot navigation — 0.1.0", and the
+  roadmap format standard describes it.
 
 - **Roadmap dialog: sub-section headings indent under their parent, and the parent heading always shows when a sub-section does.** (ANTS-5572)
 
@@ -355,6 +457,59 @@ for security-relevant changes.
 - **roadmap-data-model.md names cut-release where it named the deleted /bump skill.** (ANTS-4990)
 
 - **CI's main build and sanitizer jobs link with mold.** (ANTS-5186)
+
+- **The roadmap-conversion preview now lists each bullet it will touch, not just totals** (ANTS-5252)
+  Converting a roadmap is a one-way rewrite, so the preview is the only chance to check it. It reported how many ids it would hand out; it now names them bullet by bullet, with where each id came from, so the preview can be read against the file.
+
+- **An id invented by migration now reads `ANTS-S0001` and draws from its own counter** (ANTS-4500)
+  Migrating a roadmap invents an id for any bullet that carries none. Those
+  ids now carry an `-S` infix, so you can tell an invented id from one you
+  chose at a glance, and they no longer spend the numbers real items are
+  waiting for. Invented ids stay fully usable — you can fetch, flip and
+  annotate them exactly as before. Ids already invented keep their existing
+  names. Where you later write a real id onto such a bullet by hand, the next
+  migration adopts yours instead of overwriting it.
+
+- **An oversized result now suggests asking for less, not just re-reading it** (ANTS-4850)
+  When a reply is too big it is stored and handed back as a handle. The
+  message explaining how to read it now also points out the usually cheaper
+  move -- ask the same tool for a smaller page -- and names which tool to
+  re-ask.
+
+- **Ants MCP refusals now carry isError:true, as the MCP spec asks** (ANTS-5090)
+  Every tool reply with ok:false is now marked as an error, so an MCP
+  client can tell a refusal from a success without reading the body. The
+  reply body is unchanged. A refusal of any size is caught. A large reply
+  is read a second time only if its text contains ok:false. Rule:
+  docs/standards/mcp-error-codes.md.
+
+- **A roadmap write says why it would overwrite the file** (ANTS-4957)
+  A new `discard_reason` says whether text would be lost or the file is
+  just an older render that is safe to replace, so fixing a stale file no
+  longer reads as throwing away edits.
+
+- **roadmap_query's unknown-mode message points at searching by subject** (ANTS-4976)
+  It now names `query` beside the id lookup, so a caller looking for an
+  item by what it is about finds the search that already exists.
+
+- **The MCP socket reads one request per line** (ANTS-5089)
+  A request is complete when its line ends. The server no longer re-reads
+  everything received so far each time more arrives. The bundled bridge
+  already ends every request with a newline, so Claude Code sees no
+  change. A program talking to the socket directly must now end each
+  request with a newline.
+
+- **Importing a roadmap into the roadmap store no longer holds up other sessions' MCP calls** (ANTS-5086)
+  roadmap_migrate runs on its own worker thread, so other sessions'
+  calls no longer queue behind a whole migration. While a project is
+  being migrated, roadmap writes to that project are refused with
+  roadmap_busy until it ends, and a write to any project can still wait
+  up to 5 s for the store while the migration's load runs.
+
+- **Importing a roadmap uses less memory and refuses roadmaps over 32 MiB** (ANTS-5086)
+  The import no longer keeps a second copy of every roadmap line while
+  parsing, and a project whose roadmap and archives together exceed
+  32 MiB is refused with too_large before any file is read.
 
 ### Deprecated
 
@@ -671,188 +826,6 @@ for security-relevant changes.
 
 - **The OBS build watcher reports a build still running at its time limit instead of hanging on its log and calling it a failure.** (ANTS-5222)
 
-### Security
-
-- **A roadmap backup pointed at the wrong path no longer deletes the file there** (ANTS-5466)
-  `roadmap_migrate`'s `backup_to` replaces an existing file only when it
-  is a SQLite database. Anything else refuses `backup_failed`, names the
-  file, and leaves it as it was.
-
-- **The debug log redacts secret-shaped values and escapes every message before writing a line**
-
-- **Path checks follow a symlinked directory or a dangling link before a file exists, so a write cannot land outside the project**
-
-- **ants-mcpd honours the verify_changes trust gate, and the MCP bridge checks the connecting user's id**
-
-- **ants-mcpd applies the verify trust gate, so an untrusted repository's .ants/verify.json no longer runs under verify_changes.**
-
-- **Trusting a commit or repository is undone when the trust file cannot be saved, rather than lasting until restart.**
-
-- **find_sources no longer follows a symlink out of the project, and ants-mcpd never follows a symlink when choosing a terminal socket.**
-
-- **The MCP bridge and the Claude Code hook script refuse a terminal socket owned by another user; the bridge also rejects a non-object request and a bad timeout value.**
-
-- **Every debug-log message is escaped where it is written, so no caller's text can forge a log line.**
-
-- **A roadmap ID pattern declared in .ants/project.json runs under a match limit, so a backtracking pattern cannot stall roadmap parsing.**
-
-- **The token-usage snapshot directory is created private from the start, with no moment at wider permissions.**
-
-## [0.7.112] — unreleased (Patron RC preview)
-### Added
-
-- **Reading a long roadmap item can now return just its latest entries** (ANTS-4769)
-  An item used as a running progress log is mostly history, and asking for its text returned the oldest part first — so the paragraph saying where the work stands was the one you could not see. `roadmap_query` can now return the end of an item's text instead of the beginning.
-
-- **`roadmap_log op:"convert"` moves a checklist-style roadmap to the standard format** (ANTS-4491)
-  A project still using the older `- [ ]` checklist roadmap can now adopt the
-  standard format in one command, instead of rewriting every line by hand.
-  The file and the store change together, so the project is never left in a
-  state where the two disagree and reads stop working.
-
-  Safe to run on a roadmap that is already part-converted: a bullet that
-  already has an id keeps it, and running it twice changes nothing the first
-  run did not. Pass `dry_run: true` first — it reports exactly which ids it
-  would hand out before anything is written.
-
-- **Previewing a roadmap status change now shows the bullet it will produce** (ANTS-4844)
-  Adding an item already previewed its text; changing one showed nothing, even
-  though changing edits something that is already correct. The preview shows
-  the item as it will read afterwards, and matches what the real write
-  produces. Adding a note previews the same way.
-
-- **A roadmap write now says whose text it discarded when the file was behind** (ANTS-4839)
-  On a branch whose roadmap is out of date, a one-item write reports a large
-  number of discarded lines. It now says those lines are an older version of
-  the same roadmap rather than work you wrote -- while being explicit that a
-  hand-edited item body would look the same, and pointing at the backup.
-
-- **roadmap_query can return just the fields you ask for on each item** (ANTS-4837)
-  `bullet_fields:["id","status","kind"]` gives a lean triage list. The cheap
-  listing mode could not carry an item's kind at all, and the fuller one sent
-  the headline twice.
-
-- **roadmap_migrate takes a consistent snapshot of the store before it migrates** (ANTS-4499)
-  One rolling snapshot, or your own path via `backup_to`. It uses SQLite's
-  VACUUM INTO, so it is safe while Ants is running -- copying the database
-  file by hand is not, because the store runs in WAL. A snapshot that fails
-  refuses the migration rather than proceeding unprotected.
-
-- **roadmap_migrate reports which items the roadmap render's Layman gate will refuse** (ANTS-4483)
-  The check runs inside the migration transaction, so a dry run answers
-  about the roadmap it is previewing rather than the one it would replace.
-  Nothing is blocked by a reported item; the hint says so.
-
-- **The roadmap store is backed up weekly, locally and to the private claude-config repo, and session_orient reports a backup that stopped** (ANTS-3794)
-  `ants-terminal --export-roadmaps <dir>` writes one JSONL export per
-  project without a display. `tools/roadmap-export-publish.sh` commits
-  only those files and pushes, and refuses rather than merges when the
-  upstream has diverged. `tools/roadmap-store-backup.sh` keeps verified
-  local snapshots. Both write a backup record, and `session_orient`
-  carries a `roadmap_backup` block when a job has never run, is failing,
-  or is more than eight days stale.
-
-- **Roadmap items can be marked dropped, shown as 🚫 in ROADMAP.md.** (ANTS-4977)
-  `roadmap_log` accepts `dropped` (or 🚫) on append, append_batch, flip
-  and flip_batch. A dropped item is closed but never counted as shipped
-  or given a ship date. `roadmap_query status:"dropped"` lists them, and
-  the Roadmap dialog gains a 🚫 Dropped filter; History shows Done and
-  Dropped. A feedback finding whose id is dropped now collapses under
-  `compact_resolved`.
-
-- **Generated roadmap files now say so at the top** (ANTS-4555)
-  A hidden line under the format marker says the file is generated from
-  the roadmap store and that hand edits are discarded, so nobody edits it
-  by hand expecting the change to last.
-
-- **Roadmap items filed together can refer to each other by number** (ANTS-4580)
-  In roadmap_log op:"append_batch", writing `{{id:1}}` in an item's text
-  is replaced by the number the second item in the same call receives.
-  Callers no longer have to guess numbers that do not exist yet.
-
-- **View → Give Each Tab a Different Colour** (ANTS-5238)
-  Colours every open tab in one click, so tabs side by side are always
-  in different colour families (red, green, blue, yellow, purple, grey
-  in turn) and no colour repeats until all 25 are used. The colours are
-  saved like a colour picked from the tab's own menu.
-
-- **roadmap_log can delete an emptied section and move a section** (ANTS-4958)
-  op:"delete_section" removes a section once nothing is filed in it,
-  and returns its intro text. op:"move_section" moves a section, with its
-  subsections and items, before or after another one. Together with
-  moving items (ANTS-4948), a roadmap can now be reorganised without
-  hand edits. Also closes ANTS-4922.
-
-- **roadmap_log can rewrite a section's intro and the roadmap's title and preamble** (ANTS-4949)
-  op:"set_intro" replaces one section's intro text; op:"set_preamble"
-  replaces the title and preamble at the top of the file. Both keep the
-  text exactly as written. Before this, a wrong intro or title on a
-  store-backed roadmap could not be fixed, because a hand edit was
-  undone by the next write. Also closes ANTS-4539, ANTS-4766, ANTS-4832
-  and ANTS-4968, which reported the same gap.
-
-- **roadmap_log can move an existing item to another section** (ANTS-4948)
-  op:"amend_field" takes field:"section" with the destination slug as
-  `value`. `locators[]` of {id} moves several items in one write. The
-  items keep their ids, bodies and history.
-
-### Changed
-
-- **The roadmap-conversion preview now lists each bullet it will touch, not just totals** (ANTS-5252)
-  Converting a roadmap is a one-way rewrite, so the preview is the only chance to check it. It reported how many ids it would hand out; it now names them bullet by bullet, with where each id came from, so the preview can be read against the file.
-
-- **An id invented by migration now reads `ANTS-S0001` and draws from its own counter** (ANTS-4500)
-  Migrating a roadmap invents an id for any bullet that carries none. Those
-  ids now carry an `-S` infix, so you can tell an invented id from one you
-  chose at a glance, and they no longer spend the numbers real items are
-  waiting for. Invented ids stay fully usable — you can fetch, flip and
-  annotate them exactly as before. Ids already invented keep their existing
-  names. Where you later write a real id onto such a bullet by hand, the next
-  migration adopts yours instead of overwriting it.
-
-- **An oversized result now suggests asking for less, not just re-reading it** (ANTS-4850)
-  When a reply is too big it is stored and handed back as a handle. The
-  message explaining how to read it now also points out the usually cheaper
-  move -- ask the same tool for a smaller page -- and names which tool to
-  re-ask.
-
-- **Ants MCP refusals now carry isError:true, as the MCP spec asks** (ANTS-5090)
-  Every tool reply with ok:false is now marked as an error, so an MCP
-  client can tell a refusal from a success without reading the body. The
-  reply body is unchanged. A refusal of any size is caught. A large reply
-  is read a second time only if its text contains ok:false. Rule:
-  docs/standards/mcp-error-codes.md.
-
-- **A roadmap write says why it would overwrite the file** (ANTS-4957)
-  A new `discard_reason` says whether text would be lost or the file is
-  just an older render that is safe to replace, so fixing a stale file no
-  longer reads as throwing away edits.
-
-- **roadmap_query's unknown-mode message points at searching by subject** (ANTS-4976)
-  It now names `query` beside the id lookup, so a caller looking for an
-  item by what it is about finds the search that already exists.
-
-- **The MCP socket reads one request per line** (ANTS-5089)
-  A request is complete when its line ends. The server no longer re-reads
-  everything received so far each time more arrives. The bundled bridge
-  already ends every request with a newline, so Claude Code sees no
-  change. A program talking to the socket directly must now end each
-  request with a newline.
-
-- **Importing a roadmap into the roadmap store no longer holds up other sessions' MCP calls** (ANTS-5086)
-  roadmap_migrate runs on its own worker thread, so other sessions'
-  calls no longer queue behind a whole migration. While a project is
-  being migrated, roadmap writes to that project are refused with
-  roadmap_busy until it ends, and a write to any project can still wait
-  up to 5 s for the store while the migration's load runs.
-
-- **Importing a roadmap uses less memory and refuses roadmaps over 32 MiB** (ANTS-5086)
-  The import no longer keeps a second copy of every roadmap line while
-  parsing, and a project whose roadmap and archives together exceed
-  32 MiB is refused with too_large before any file is read.
-
-### Fixed
-
 - **Roadmap conversion can now be called by clients that check the tool's options** (ANTS-5253)
   The convert operation shipped without being listed among the operations the tool advertises, so any client that validates a request against that list refused to send it.
 
@@ -987,6 +960,31 @@ for security-relevant changes.
   them. The menu item is now Broadcast Input to Panes in This Tab.
 
 ### Security
+
+- **A roadmap backup pointed at the wrong path no longer deletes the file there** (ANTS-5466)
+  `roadmap_migrate`'s `backup_to` replaces an existing file only when it
+  is a SQLite database. Anything else refuses `backup_failed`, names the
+  file, and leaves it as it was.
+
+- **The debug log redacts secret-shaped values and escapes every message before writing a line**
+
+- **Path checks follow a symlinked directory or a dangling link before a file exists, so a write cannot land outside the project**
+
+- **ants-mcpd honours the verify_changes trust gate, and the MCP bridge checks the connecting user's id**
+
+- **ants-mcpd applies the verify trust gate, so an untrusted repository's .ants/verify.json no longer runs under verify_changes.**
+
+- **Trusting a commit or repository is undone when the trust file cannot be saved, rather than lasting until restart.**
+
+- **find_sources no longer follows a symlink out of the project, and ants-mcpd never follows a symlink when choosing a terminal socket.**
+
+- **The MCP bridge and the Claude Code hook script refuse a terminal socket owned by another user; the bridge also rejects a non-object request and a bad timeout value.**
+
+- **Every debug-log message is escaped where it is written, so no caller's text can forge a log line.**
+
+- **A roadmap ID pattern declared in .ants/project.json runs under a match limit, so a backtracking pattern cannot stall roadmap parsing.**
+
+- **The token-usage snapshot directory is created private from the start, with no moment at wider permissions.**
 
 - **The Claude hook and MCP sockets accept at most 64 connections at once** (ANTS-5089)
   Each open connection can hold up to 256 KiB for five seconds, and there
