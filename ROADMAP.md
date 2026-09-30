@@ -89179,7 +89179,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-29.
   Lanes: tests.
 
-- 📋 [ANTS-5580] **Pasting a copied image from the right-click menu inserts a file:// address instead of the image's path.**
+- ✅ [ANTS-5580] **Pasting a copied image from the right-click menu inserts a file:// address instead of the image's path.**
   User report 2026-09-30: "When I paste an image, it pastes this path
   instead", with file:///home/ants/Pictures/Screenshots/Screenshot_20260930_094154.png
   arriving in a Claude Code prompt as plain text.
@@ -89194,6 +89194,14 @@ reports are asked for separately, each time.
   Fix shape: one paste function that all three routes call, so the image
   and file-address handling cannot differ by route. Test: the menu Paste
   with a text/uri-list clipboard naming a local .png writes the bare path.
+  Resolved (2026-09-30): all three paste routes now call
+  TerminalWidget::pasteFromClipboard, and the text for a payload with no
+  raster comes from the new static pasteTextForMime. The test reproduced
+  the report exactly before the fix (the file:// address came back for a
+  copied .png) and three mutations of the fix were each caught. Which
+  route the user used was not asked; both mouse routes had the defect
+  and both are fixed. Not run in the live app: the change takes effect at
+  the next terminal launch.
   **Layman:** Pasting a picture sometimes types a long file:// address that Claude cannot open, instead of attaching the picture.
   Kind: fix.
   Source: user-report-2026-09-30.

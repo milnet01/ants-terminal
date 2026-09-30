@@ -23,6 +23,14 @@ for security-relevant changes.
   that is not `vX.Y.Z`. `obs-status.sh` waits on each repository's job
   history, so it no longer ends early or hangs on a status word.
 
+### Fixed
+
+- **Pasting a copied image with the right-click menu or the middle mouse button inserts the image's path, as Ctrl+Shift+V already did** (ANTS-5580)
+  The two mouse routes pasted the clipboard's text, which for a copied
+  file is its `file://` address, so Claude Code could not attach the
+  image. All three paste routes now go through one function, so a
+  clipboard screenshot is also saved and pasted by path from the menu.
+
 ## [0.7.112] — 2026-09-30
 ### Added
 

@@ -1935,143 +1935,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 
     // Ctrl+Shift+V -- paste
     if (key == Qt::Key_V && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
-        const QClipboard *clipboard = QApplication::clipboard();
-        const QMimeData *mime = clipboard->mimeData();
-        // ANTS-3831 — QClipboard::mimeData() is documented nullable ("can be
-        // nullptr if the given mode is not supported by the platform"), and
-        // every branch below dereferences it. Verified against the Qt 6 docs
-        // before adding this, because the bullet recorded a suspicion rather
-        // than a reproduction: the documented trigger is an unsupported MODE,
-        // and this call uses the default Clipboard mode, so no crash is
-        // demonstrated here. The guard is for the documented contract, not an
-        // observed failure — a null paste becomes a no-op instead of UB.
-        if (!mime)
-            return;
-        if (mime->hasImage()) {
-            QImage img = clipboard->image();
-            if (!img.isNull()) {
-                // Auto-save image and insert filepath into terminal.
-                //
-                // 0.7.53 (2026-04-27 indie-review HIGH) — path
-                // validation. m_imagePasteDir is user-configurable
-                // via the settings dialog, but the *filename* is
-                // pasted verbatim to the PTY for the shell to
-                // consume. A configured directory like
-                // `~; rm -rf .` would generate a filename starting
-                // with `~; rm -rf ./paste_…` and a careless shell
-                // command (e.g. `cat <paste>`) would tokenise it
-                // dangerously. Canonicalise the configured directory
-                // and require it to live under $HOME — anything
-                // outside falls back to the safe default. Also use
-                // a UUID4 suffix so a fast paste burst within the
-                // same millisecond can't clobber an earlier paste.
-                const QString defaultDir =
-                    QDir::homePath() + "/Pictures/ClaudePaste";
-                QString dir = m_imagePasteDir.isEmpty()
-                    ? defaultDir
-                    : m_imagePasteDir;
-
-                // Canonicalise BEFORE mkpath. Two prior bugs flagged by
-                // indie-review-2026-05-19 terminalwidget H2:
-                //   (a) `startsWith(canonHome)` is a textual prefix
-                //       check — `/home/alice-evil` would pass when the
-                //       home was `/home/alice`. Fix: require either
-                //       exact match OR canonHome + '/' as the prefix.
-                //   (b) `mkpath(dir)` ran BEFORE the prefix check. A
-                //       bad `m_imagePasteDir` value created a real
-                //       directory outside $HOME as a side effect, then
-                //       got rejected and re-targeted to the safe
-                //       default — the bad directory persisted on disk.
-                //       Fix: canonicalise first; only mkpath an
-                //       accepted path.
-                const QString canonHome =
-                    QDir(QDir::homePath()).canonicalPath();
-                auto isInsideHome = [&](const QString &candidate) {
-                    const QString c = QDir(candidate).canonicalPath();
-                    if (c.isEmpty()) {
-                        // Path doesn't exist yet; fall back to the
-                        // parent's canonical form (mkdir won't create
-                        // beyond the configured root, so it suffices
-                        // to validate the leaf's parent).
-                        const QString parent =
-                            QDir(QFileInfo(candidate).absolutePath())
-                                .canonicalPath();
-                        if (parent.isEmpty()) return false;
-                        return parent == canonHome
-                            || parent.startsWith(
-                                   canonHome + QLatin1Char('/'));
-                    }
-                    return c == canonHome
-                        || c.startsWith(canonHome + QLatin1Char('/'));
-                };
-                if (!isInsideHome(dir)) {
-                    dir = defaultDir;
-                }
-                QDir().mkpath(dir);
-
-                // UUID4 suffix — short form (8 chars) is unique enough
-                // for paste-collision purposes and keeps filenames
-                // tractable.
-                const QString uid = QUuid::createUuid()
-                    .toString(QUuid::WithoutBraces).left(8);
-                const QString filename = dir + "/paste_"
-                    + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
-                    + "_" + uid + ".png";
-                // ANTS-5077 — encoding a screenshot to PNG can take long
-                // enough to freeze the window, so the save runs on a worker.
-                // The file is made owner-only like the session log and removed
-                // if that fails; the path is pasted quoted like the uri-list
-                // path (a configured directory may hold a space or `$(`), and
-                // announced only once the file exists. `this` as the delivery
-                // context drops it if the tab closes first.
-                auto saved = std::make_shared<bool>(false);
-                QThread *worker = QThread::create([img, filename, saved]() {
-                    if (!img.save(filename)) return;
-                    if (setOwnerOnlyPerms(filename)) *saved = true;
-                    else QFile::remove(filename);
-                });
-                connect(worker, &QThread::finished, worker, &QObject::deleteLater);
-                connect(worker, &QThread::finished, this,
-                        [this, img, filename, saved]() {
-                            if (*saved) {
-                                pasteToTerminal(shellQuote(filename).toUtf8());
-                                emit imagePasted(img);
-                            }
-                        }, Qt::QueuedConnection);
-                worker->start();
-                return;
-            }
-        }
-
-        // ANTS-3828 (user-report 2026-08-04) — a copied image *file* puts
-        // `text/uri-list` on the clipboard and NO raster, so hasImage()
-        // above is false and the paste fell through to the plain-text
-        // branch, writing `file:///home/…/shot.png` verbatim to the PTY.
-        // Claude Code can't resolve a file:// URI as a path, so the
-        // attachment never formed. Insert the bare local path instead.
-        //
-        // The file already exists on disk, so this branch deliberately
-        // does NOT save anything — the paste-dir canonicalisation above
-        // guards a directory *we* write into and has nothing to do with a
-        // path the user already chose.
-        //
-        // Scope: image files only. A copied .txt / .pdf keeps the existing
-        // text-paste behaviour; widening it is a separate decision, not a
-        // side effect of this fix.
-        if (mime->hasUrls()) {
-            const QString paths = imagePathsFromUrls(mime->urls());
-            if (!paths.isEmpty()) {
-                pasteToTerminal(paths.toUtf8());
-                return;
-            }
-            // No local image URL among them — fall through to the text
-            // paste, which is still the right answer for an http:// URL
-            // or a non-image file.
-        }
-
-        if (mime->hasText() && hasPty()) {
-            pasteToTerminal(clipboard->text().toUtf8());
-        }
+        pasteFromClipboard(QClipboard::Clipboard);
         return;
     }
 
@@ -2736,6 +2600,145 @@ QString TerminalWidget::imagePathsFromUrls(const QList<QUrl> &urls) {
         paths << shellQuote(path);
     }
     return paths.join(QLatin1Char(' '));
+}
+
+QString TerminalWidget::pasteTextForMime(const QMimeData *mime) {
+    if (!mime) return {};
+    // ANTS-3828 (user-report 2026-08-04) — a copied image *file* puts
+    // `text/uri-list` on the clipboard and no raster, and its plain text is
+    // the `file://` address. Claude Code can't resolve a file:// URI as a
+    // path, so paste the bare local path instead. Nothing is saved: the file
+    // already exists on disk.
+    //
+    // Scope: image files only. A copied .txt / .pdf keeps the text paste;
+    // widening it is a separate decision, not a side effect of this fix.
+    if (mime->hasUrls()) {
+        const QString paths = imagePathsFromUrls(mime->urls());
+        if (!paths.isEmpty()) return paths;
+        // No local image URL among them — fall through to the text, which
+        // is still the right answer for an http:// URL or a non-image file.
+    }
+    return mime->hasText() ? mime->text() : QString();
+}
+
+// ANTS-5580 — the one paste entry point. Ctrl+Shift+V, the context menu's
+// Paste and middle-click all call it, so a clipboard image and a copied image
+// file are handled the same whichever way the user pastes. Until this existed
+// only the keyboard route handled them; the two mouse routes pasted the
+// clipboard's text, which for a copied file is its file:// address.
+void TerminalWidget::pasteFromClipboard(QClipboard::Mode mode) {
+    const QClipboard *clipboard = QApplication::clipboard();
+    const QMimeData *mime = clipboard->mimeData(mode);
+    // ANTS-3831 — QClipboard::mimeData() is documented nullable ("can be
+    // nullptr if the given mode is not supported by the platform"), and
+    // every branch below dereferences it. Verified against the Qt 6 docs
+    // before adding this, because the bullet recorded a suspicion rather
+    // than a reproduction: the documented trigger is an unsupported MODE,
+    // and the keyboard and menu routes use the default Clipboard mode, so no
+    // crash is demonstrated there. The middle-click route passes Selection,
+    // which a platform may not support (ANTS-5580). A null paste becomes a
+    // no-op instead of UB.
+    if (!mime)
+        return;
+    if (mime->hasImage()) {
+        QImage img = clipboard->image(mode);
+        if (!img.isNull()) {
+            // Auto-save image and insert filepath into terminal.
+            //
+            // 0.7.53 (2026-04-27 indie-review HIGH) — path
+            // validation. m_imagePasteDir is user-configurable
+            // via the settings dialog, but the *filename* is
+            // pasted verbatim to the PTY for the shell to
+            // consume. A configured directory like
+            // `~; rm -rf .` would generate a filename starting
+            // with `~; rm -rf ./paste_…` and a careless shell
+            // command (e.g. `cat <paste>`) would tokenise it
+            // dangerously. Canonicalise the configured directory
+            // and require it to live under $HOME — anything
+            // outside falls back to the safe default. Also use
+            // a UUID4 suffix so a fast paste burst within the
+            // same millisecond can't clobber an earlier paste.
+            const QString defaultDir =
+                QDir::homePath() + "/Pictures/ClaudePaste";
+            QString dir = m_imagePasteDir.isEmpty()
+                ? defaultDir
+                : m_imagePasteDir;
+
+            // Canonicalise BEFORE mkpath. Two prior bugs flagged by
+            // indie-review-2026-05-19 terminalwidget H2:
+            //   (a) `startsWith(canonHome)` is a textual prefix
+            //       check — `/home/alice-evil` would pass when the
+            //       home was `/home/alice`. Fix: require either
+            //       exact match OR canonHome + '/' as the prefix.
+            //   (b) `mkpath(dir)` ran BEFORE the prefix check. A
+            //       bad `m_imagePasteDir` value created a real
+            //       directory outside $HOME as a side effect, then
+            //       got rejected and re-targeted to the safe
+            //       default — the bad directory persisted on disk.
+            //       Fix: canonicalise first; only mkpath an
+            //       accepted path.
+            const QString canonHome =
+                QDir(QDir::homePath()).canonicalPath();
+            auto isInsideHome = [&](const QString &candidate) {
+                const QString c = QDir(candidate).canonicalPath();
+                if (c.isEmpty()) {
+                    // Path doesn't exist yet; fall back to the
+                    // parent's canonical form (mkdir won't create
+                    // beyond the configured root, so it suffices
+                    // to validate the leaf's parent).
+                    const QString parent =
+                        QDir(QFileInfo(candidate).absolutePath())
+                            .canonicalPath();
+                    if (parent.isEmpty()) return false;
+                    return parent == canonHome
+                        || parent.startsWith(
+                               canonHome + QLatin1Char('/'));
+                }
+                return c == canonHome
+                    || c.startsWith(canonHome + QLatin1Char('/'));
+            };
+            if (!isInsideHome(dir)) {
+                dir = defaultDir;
+            }
+            QDir().mkpath(dir);
+
+            // UUID4 suffix — short form (8 chars) is unique enough
+            // for paste-collision purposes and keeps filenames
+            // tractable.
+            const QString uid = QUuid::createUuid()
+                .toString(QUuid::WithoutBraces).left(8);
+            const QString filename = dir + "/paste_"
+                + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
+                + "_" + uid + ".png";
+            // ANTS-5077 — encoding a screenshot to PNG can take long
+            // enough to freeze the window, so the save runs on a worker.
+            // The file is made owner-only like the session log and removed
+            // if that fails; the path is pasted quoted like the uri-list
+            // path (a configured directory may hold a space or `$(`), and
+            // announced only once the file exists. `this` as the delivery
+            // context drops it if the tab closes first.
+            auto saved = std::make_shared<bool>(false);
+            QThread *worker = QThread::create([img, filename, saved]() {
+                if (!img.save(filename)) return;
+                if (setOwnerOnlyPerms(filename)) *saved = true;
+                else QFile::remove(filename);
+            });
+            connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+            connect(worker, &QThread::finished, this,
+                    [this, img, filename, saved]() {
+                        if (*saved) {
+                            pasteToTerminal(shellQuote(filename).toUtf8());
+                            emit imagePasted(img);
+                        }
+                    }, Qt::QueuedConnection);
+            worker->start();
+            return;
+        }
+    }
+
+    const QString text = pasteTextForMime(mime);
+    if (!text.isEmpty())
+        pasteToTerminal(text.toUtf8());
 }
 
 void TerminalWidget::pasteToTerminal(const QByteArray &data,
@@ -3742,11 +3745,8 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         m_selEnd = m_selStart;
         update();
     }
-    if (event->button() == Qt::MiddleButton && hasPty()) {
-        QString text = QApplication::clipboard()->text(QClipboard::Selection);
-        if (!text.isEmpty())
-            pasteToTerminal(text.toUtf8());
-    }
+    if (event->button() == Qt::MiddleButton)
+        pasteFromClipboard(QClipboard::Selection);
 }
 
 void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
@@ -5524,11 +5524,8 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
     QAction *pasteAction = menu.addAction("Paste");
     pasteAction->setShortcut(QKeySequence("Ctrl+Shift+V"));
-    connect(pasteAction, &QAction::triggered, this, [this]() {
-        QString text = QApplication::clipboard()->text();
-        if (!text.isEmpty() && hasPty())
-            pasteToTerminal(text.toUtf8());
-    });
+    connect(pasteAction, &QAction::triggered, this,
+            [this]() { pasteFromClipboard(QClipboard::Clipboard); });
 
     QAction *selectAllAction = menu.addAction("Select All");
     connect(selectAllAction, &QAction::triggered, this, [this]() {

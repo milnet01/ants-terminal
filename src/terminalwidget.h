@@ -6,6 +6,7 @@
 #include "shapedruncache.h"
 
 #include <QWidget>
+#include <QClipboard>
 #include <QFont>
 #include <QFontMetrics>
 #include <QTimer>
@@ -28,6 +29,7 @@ class QHBoxLayout;
 class QPushButton;
 class QPlainTextEdit;
 class QThread;
+class QMimeData;
 class QUrl;
 
 class TerminalWidget : public QWidget {
@@ -306,6 +308,12 @@ public:
     // in a live PTY.
     static QString imagePathsFromUrls(const QList<QUrl> &urls);
 
+    // ANTS-5580 — the text a clipboard payload with no raster pastes: the
+    // image paths above when it names local image files, else its plain
+    // text. Empty for a null payload. Static and public for the same
+    // reason as imagePathsFromUrls.
+    static QString pasteTextForMime(const QMimeData *mime);
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);
@@ -483,6 +491,10 @@ private:
     // `submitAfter` sends the trailing Enter WITH the paste rather than
     // after this call returns — the risky-payload arm is async, so a
     // caller cannot sequence the Enter itself (ANTS-4456).
+    // ANTS-5580 — every paste route (keyboard, context menu, middle-click)
+    // goes through this: a clipboard image is saved and its path pasted, a
+    // copied image file pastes its path, anything else pastes its text.
+    void pasteFromClipboard(QClipboard::Mode mode);
     void pasteToTerminal(const QByteArray &data, bool submitAfter = false);
 private:
     // Unconditional paste — pasteToTerminal() funnels into this after the
