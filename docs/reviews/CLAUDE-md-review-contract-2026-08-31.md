@@ -129,3 +129,13 @@ and linked paths, not `check-doc-facts`: it covers paths only.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | 7 | 2026-09-30 | 2, cold — packet 75 KB carrying `release.sh` and `release-notes.sh` whole, the `release.yml` resolve and upload steps, `bump.json`, and the project half of `commits.md` | 2 | 0 | 0 | n/a | **Two verified, one fixed, one filed; none dismissed.** Fixed, inside the span: the rehearsal was said to change nothing, and it still builds and tests. Filed as ANTS-5581, outside the span: the perf label is in a preset and in CI, found by both lanes. Two open questions became ANTS-5581 items 2 and 3; three resolved clean. None landed on text this run wrote. Loop 8 dispatched. |
+| 8 | 2026-09-30 | 2, cold — identical brief, packet rebuilt from disk after loop 7's fix, with loop 7's filed items listed as already surfaced | 0 | 1 | 1 | n/a | **Two verified, one fixed in a neighbouring document, one filed; none dismissed.** Inside the span: the roster makes the mirrored `versioning.md` § 5 bind, and § 5 gives a release candidate its route, against "No release candidates". Fixed at the rule's home, `docs/standards/versioning-overrides.md`, which now overrides § 5; the subject is unchanged. Filed on ANTS-5581, outside the span: the escape-hatch bullet does not say who may set the `ANTS_PREPUSH_NO_*` switches. Four open questions resolved clean. None landed on text this run wrote. Loop 9 dispatched. |
+| 9 | 2026-09-30 | 2, cold — identical brief, packet rebuilt from disk with the new override windowed | 0 | 2 | 0 | n/a | **Two verified, both filed on ANTS-5581, none fixed; none dismissed. CAP REACHED (3 for a standard), CALM.** Both are outside the span: the mirrored `spec-format.md` against `specs.md` owning a spec's shape (both lanes), and the go-ahead paragraph against the `spec.md` sign-off. Nothing was found inside the span. Final-loop share on text this run wrote: 0 of 2. Whole-run share inside the armed span: 2 of 6. The sweep before exit found nothing: the only text this run wrote is loop 7's two sentences, and no loop 8 or 9 finding cites them. |
+
+## Outcome — third run: cap reached, CALM
+
+The release bullets were read cold three times and the last read found
+nothing in them. Every finding outside them is filed on ANTS-5581 at the
+detail a lane gave, not fixed and not lost. The subject's size remains what
+the earlier outcomes record: each loop found one or two contradictions
+between sections that do not cite each other.

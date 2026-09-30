@@ -89218,6 +89218,33 @@ reports are asked for separately, each time.
   3. The roadmap-store bullet lists ten tables to delete in order;
      the comment above the delete routine in src/roadmapstore.h says "all
      nine tables". Not settled which is right: read the routine.
+  Added 2026-09-30, from loop 2 of the same gate:
+  4. The "Escape hatches" bullet says `SKIP_LOCAL_CI=1` and
+     `git push --no-verify` need the user, then lists
+     `ANTS_PREPUSH_NO_ASAN=1`, `ANTS_PREPUSH_NO_QT62=1` and
+     `ANTS_PREPUSH_NO_UBUNTU24=1` with no word on who may set them.
+     docs/standards/commits.md's own escape-hatch bullet has the same gap.
+     Each removes a leg of the push gate, so say whether a session may set
+     one unasked, and on what condition. The user's decision.
+  Checked clean in the same loop: the temp-dir guard is called from the
+  handler (remotecontrol_roadmap_migrate.cpp), as CLAUDE.md says;
+  docs/standards/spec-format.md is a marked mirror.
+  Added 2026-09-30, from loop 3 of the same gate (its last):
+  5. Project standards: "`docs/standards/` is the roster: every file there
+     binds unless it marks itself superseded" against "`specs.md`: a full
+     standard owning a spec's shape". docs/standards/spec-format.md is a
+     marked mirror of the global spec standard and carries no superseded
+     marker, so both bind and the text does not say which shapes a spec.
+     Both lanes found it. The same section says security.md is the one
+     pure mirror; a marker search also finds local-gate.md, versioning.md,
+     releases.md, changelog-format.md, spec-format.md and three files
+     under languages/, and dependencies.md marked OWNED-HERE.
+  6. "This list is your go-ahead ... start without waiting for me to
+     confirm" against Test harnesses' "write `spec.md` first and surface
+     it for sign-off". The text does not say whether that sign-off stops
+     the priority loop. The user's decision.
+  Also unsettled: tools/install-hooks.sh exists beside
+  tools/setup-git-hooks.sh, and CLAUDE.md names only the second.
   **Layman:** Three small statements in the project's instruction file no longer match the code, found while reviewing the release section.
   Kind: doc-fix.
   Source: review-contract-2026-09-30 CLAUDE.md loop 1.

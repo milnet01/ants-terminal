@@ -21,7 +21,8 @@
 # replaced by the commit and the version given literally, since there is no
 # tag yet for obs_scm to derive one from.
 #
-# Override via env: OBS_API, OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG.
+# Override via env: OBS_API, OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG,
+# OBS_RETRY_SECS (the pause before a commit is tried again, default 30).
 set -eu
 
 STAGING_SHA=""
@@ -240,20 +241,27 @@ cd "$CO"
 osc -A "$API" add _service ants-terminal.spec ants-terminal-rpmlintrc ants-terminal.changes 2>/dev/null || true
 osc -A "$API" addremove 2>/dev/null || true
 
+# osc exits non-zero here for two reasons that both clear on a second try.
+#
 # Pushing a release tag fires .obs/workflows.yml's trigger_services, which adds
 # a package revision of its own. When that lands between the update above and
 # this commit, osc refuses the commit as out of date (it cost the 0.7.112
-# submit, 2026-09-30). Updating and trying again is the whole fix: the trigger
-# does not touch the files committed here.
+# submit, 2026-09-30). The trigger does not touch the files committed here.
+#
+# And after a commit lands, osc waits for the server-side service run; a
+# server error in that wait (HTTP 503, seen the same day) fails the command
+# with the revision already committed. The next try then finds nothing to
+# commit and exits 0.
 tries=0
 until osc -A "$API" commit -m "${OBS_MSG:-ants-terminal $REV}"; do
     tries=$((tries + 1))
-    if [ "$tries" -ge 3 ]; then
-        echo "obs-submit: commit refused $tries times — giving up." >&2
+    if [ "$tries" -ge 5 ]; then
+        echo "obs-submit: the commit did not complete in $tries tries — giving up." >&2
+        echo "            Run this script again once OBS answers; it is safe to repeat." >&2
         exit 1
     fi
-    echo ">>> commit refused; updating the checkout and trying again ($tries)" >&2
-    sleep 5
+    echo ">>> the commit did not complete; updating the checkout and trying again ($tries)" >&2
+    sleep "${OBS_RETRY_SECS:-30}"
     osc -A "$API" update || true
 done
 

@@ -4,8 +4,8 @@ Deltas only. Everything not named here follows
 `~/.claude/standards/versioning.md` unmodified. It holds the two answers
 that standard requires — § 3's breaking surfaces, asked of every
 project, and § 4's `1.0` exit condition, asked of a `0.x` one — which
-the global standards index pins to this path, **and one override of
-§ 4's level rule**, below.
+the global standards index pins to this path, **and two overrides: of
+§ 4's level rule, and of § 5's pre-releases**, below.
 
 ## The `1.0` exit condition
 
@@ -64,6 +64,15 @@ first clause, what stops working. `releases.md` § 2 makes that section
 the single description of what shipped, and asks the same of a security
 fix for the same reason — someone on the previous version cannot decide
 whether to upgrade if nobody tells them.
+
+## Override — no pre-releases
+
+**Global rule.** `versioning.md` § 5 gives a pre-release its spelling,
+`-rc.N`, and its route, `cut-release --pre rc.N`.
+
+**This project.** It cuts no pre-releases. Every release is a full public
+release tagged `vX.Y.Z`, cut with `packaging/release.sh release`. § 5's
+route is not used here. Decided by the user 2026-09-30 (ANTS-5577).
 
 ## Breaking surfaces
 
@@ -129,6 +138,7 @@ cases cheap and may not bound the promise.
 | The milestone table matches `ROADMAP.md`'s sections | Nothing. Both have to be changed together. |
 | A breaking change reached the CHANGELOG | Nothing automated. The override above makes this the only carrier, so it rests on review. |
 | The store schema is a one-way door | `RoadmapStore::open()` enforces the refusal itself. |
+| No pre-release is published | `.github/workflows/release.yml` refuses to build a tag that is not exactly `vX.Y.Z`. Nothing stops the tag itself being pushed. |
 
 ## Cold-eyes loop log
 
