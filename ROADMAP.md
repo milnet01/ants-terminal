@@ -1043,6 +1043,13 @@ SSH key registered there.
 
   Blocked-by nothing. Pairs with ANTS-3733 (problem), ANTS-5304 (today's
   instance), ANTS-5222 (the status poller), ANTS-3792 (locale).
+  Progress (2026-09-30): done by hand for 0.7.112, and it caught a break before the tag (ANTS-5579: all four targets would have failed). What worked:
+  - Project home:milnet:ants-terminal-staging, made by OBS_PROJECT=... packaging/obs/obs-setup.sh, then a publish-disable block added to its meta so nothing it builds is offered.
+  - Its _service pins the commit SHA to be tagged, with a literal versionformat (the version from CMakeLists.txt) in place of @PARENT_TAG@ and no match-tag; the spec is copied with that same version. No tag is needed, so it runs BEFORE the tag.
+  - Checkout at build-obs/home:milnet:ants-terminal-staging/ants-terminal (gitignored).
+  - Wait for all four, then read each log for the ctest summary line.
+  Traps met: an unpublished success prints as `succeeded*` in plain `osc results`, so a watcher matching `succeeded` alone never ends (it cost 45 minutes); the log of a job still building does not end, so a curl of it hangs without a time limit; a second round needs the commit pushed first, since obs_scm clones from GitHub.
+  Decisions 1 and 2 above are answered by this: a second project, pinned to a SHA before the tag. Decision 3 (does red block the release) and 4 (the poller) belong to ANTS-5577's release command.
   **Layman:** Right now a packaging break is only discovered after we publish, so the fix waits for the next week's release and the problem is live the whole time. This would test the builds before we publish.
   Kind: test.
   Source: user-request-2026-09-22.
@@ -1071,6 +1078,10 @@ SSH key registered there.
   6. Copy the tested binaries from staging to the real project with
      OBS's release mechanism instead of rebuilding (belongs with
      ANTS-5577's release command).
+  Measured (2026-09-30), same commit: the Tumbleweed staging build spent
+  2531 s in the build step under Ninja with the compile pool at 2,
+  against Mageia's 1554 s under make -j4 on a 4-CPU worker. That gap is
+  candidate 2's likely size.
   **Layman:** Each distro package takes about half an hour to build on openSUSE's servers, almost all of it compiling; a few settings could cut that.
   Kind: perf.
   Source: user-request-2026-09-30.
@@ -76878,6 +76889,13 @@ starts 2026-05-27.
   (ANTS-5305), which the user asked for again on 2026-09-30.
   Changing CLAUDE.md and releases.md changes what ships and how, so that
   edit owes the contract gate.
+  Progress (2026-09-30): 0.7.112 went out through the old script as new-rc then promote the same day; the rc1 tag served as a dress rehearsal of the first signing. The user then asked for the script itself to skip the RC ("Please update the release script to skip the RC release", "no need to add it to the filename anymore").
+  Design for the replacement, agreed in chat: one `release` command that checks the tree, merges the Unreleased entries into the version section and dates it, stamps metainfo and debian, commits, builds and tests, runs the OBS staging gate (ANTS-5305's note has the procedure), tags vX.Y.Z on that commit, publishes the GitHub release, then submits to OBS. So the tag carries the dated notes, which promote's tag never did.
+  Also found on 2026-09-30, to fix in the same work:
+  - The OBS submit inside promote failed: pushing the tag fires .obs/workflows.yml's trigger_services, which adds a package revision between the script's `osc update` and its commit ("out of date, rev 43 vs rev 44"). Re-running packaging/obs/obs-submit.sh worked. The new command must update again before it commits, or retry.
+  - The GitHub release body is what the Projects Hub website shows as its changelog, so the body should lead with plain-language notes. release_notes() only emits a Theme paragraph and a link; 0.7.112's body was set by hand with `gh release edit`.
+  - Files that name cut-rc.sh and need the same change: tests/features/release_rc_pipeline/, docs/specs/ANTS-1318.md, ANTS-2164.md, ANTS-2165.md, .obs/workflows.yml, packaging/obs/README.md, CONTRIBUTING.md, .claude/bump.json, docs/standards/ci-build.md and commits.md.
+  - OBS can copy tested binaries from staging instead of rebuilding them (its release mechanism); weigh it here (see ANTS-5578 item 6).
   **Layman:** The weekly preview-then-release routine kept causing mistakes and serves nobody yet, so releases become simple: one public release whenever it is worth making.
   Kind: refactor.
   Source: user-request-2026-09-30.
@@ -89156,6 +89174,26 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-09-29.
   Lanes: tests.
+
+- 📋 [ANTS-5580] **Pasting a copied image from the right-click menu inserts a file:// address instead of the image's path.**
+  User report 2026-09-30: "When I paste an image, it pastes this path
+  instead", with file:///home/ants/Pictures/Screenshots/Screenshot_20260930_094154.png
+  arriving in a Claude Code prompt as plain text.
+  Read in source, not yet reproduced: only the Ctrl+Shift+V branch of
+  TerminalWidget::keyPressEvent handles a clipboard image (saves it and
+  pastes the path) and a copied image file (ANTS-3828: pastes the bare
+  local path via imagePathsFromUrls). The right-click menu's Paste
+  (TerminalWidget::contextMenuEvent) and middle-click paste
+  (TerminalWidget::mousePressEvent) both paste the clipboard's text, which
+  for a copied file is the file:// address. Which route the user used is
+  not confirmed; ask, or reproduce both.
+  Fix shape: one paste function that all three routes call, so the image
+  and file-address handling cannot differ by route. Test: the menu Paste
+  with a text/uri-list clipboard naming a local .png writes the bare path.
+  **Layman:** Pasting a picture sometimes types a long file:// address that Claude cannot open, instead of attaching the picture.
+  Kind: fix.
+  Source: user-report-2026-09-30.
+  Lanes: terminal.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
