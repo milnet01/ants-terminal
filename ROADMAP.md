@@ -11581,6 +11581,19 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-19 (ANTS-5215 follow-up).
   Lanes: terminal.
 
+- 📋 [ANTS-5587] **Remove the legacy /tmp socket readers one release after ANTS-5236 ships.**
+  ANTS-5236 moves the hook and MCP sockets into the private runtime
+  directory and keeps three readers of the old /tmp names so a terminal
+  started before the change stays reachable: mcpd::pickTerminalSocket,
+  tools/mcp-bridge.py's pick_socket, and the forwarder script's legacy
+  route. Once one release has shipped with the move, drop them and the
+  legacy half of mcpd::reapStaleTerminalSockets. Contract:
+  docs/specs/ANTS-5236-sockets-in-runtime-dir.md § 5.
+  **Layman:** After everyone has restarted on the new version, stop looking for Claude connection points in the old shared folder.
+  Kind: security.
+  Source: ANTS-5236 spec § 5 deferral (2026-10-01).
+  Lanes: claude, mcp.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to

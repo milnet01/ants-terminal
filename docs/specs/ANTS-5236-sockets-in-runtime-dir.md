@@ -1,6 +1,6 @@
 # ANTS-5236 — Bind the Claude hook and MCP sockets in the private runtime directory
 
-**Status:** spec draft (2026-10-01).
+**Status:** accepted (2026-10-01).
 **Kind:** security.
 **Source:** ROADMAP.md ANTS-5236 (code-quality-review-2026-09-11 perf pass,
 lane claude-integration-a, via ANTS-5089).
@@ -90,6 +90,11 @@ reachable until it is relaunched.
   `privateSocketPath("claude-hooks-<pid>")`.
 - `startHookServer` and `startMcpServer` return false for an empty path,
   before touching `LocalSocketHub`.
+- Where `startHookServer()` succeeds, the terminal exports the path it bound as
+  `ANTS_CLAUDE_HOOK_SOCKET`, with `qputenv`, before the first tab spawns a PTY.
+  This is `ANTS_MCP_SOCKET`'s pattern (ANTS-1897 INV-14). It lets each
+  terminal's own tabs name its own socket, whatever its environment made of
+  the runtime directory.
 - In `MainWindow::setupClaudeMcpProviders`, `mcpSocket` becomes
   `privateSocketPath("mcp-<pid>")`, and the `startMcpServer(mcpSocket)` call and
   the `qputenv("ANTS_MCP_SOCKET", …)` are skipped when it is empty. Each stays
@@ -108,22 +113,23 @@ The script text moves into one function that both writers use:
 
 ```cpp
 // src/claudesetup.h
-QString statusHookScript(const QString &runtimeDir, const QString &legacyDir);
+QString statusHookScript(const QString &legacyDir);
 Outcome refreshStatusHookScript();   // rewrite an installed forwarder when stale
 ```
 
-- The script walks up to the nearest `ants-terminal` as today. For that pid it
-  tries `<runtimeDir>/claude-hooks-$pid`, then the legacy
-  `<legacyDir>/ants-claude-hooks-$pid`, and sends to the first that is a
-  socket. The terminal writes it with `antsRuntimeDir()` and `QDir::tempPath()`,
-  the directory a pre-change terminal bound in.
+- The script sends to `$ANTS_CLAUDE_HOOK_SOCKET` when that names a socket.
+  Otherwise it walks up to the nearest `ants-terminal` as today and tries the
+  legacy `<legacyDir>/ants-claude-hooks-$pid`, which is how a pre-change
+  terminal is reached. The terminal writes it with `QDir::tempPath()`, the
+  directory a pre-change terminal bound in. No runtime directory is baked in,
+  so terminals with different environments write the same bytes.
 - The `SO_PEERCRED` uid check stays, for both candidates.
 - The socket path reaches Python as `argv[1]`, not spliced into the Python
   source, so a path containing a quote cannot change the program.
 - `refreshStatusHookScript()` runs at start-up, before `startHookServer()`. It
   writes the script only where the forwarder file already exists and its bytes
-  differ from `statusHookScript(antsRuntimeDir(), QDir::tempPath())`. It never creates the file
-  and never touches `~/.claude/settings.json`, so a user who never installed
+  differ from `statusHookScript(QDir::tempPath())`. It never creates the
+  file and never touches `~/.claude/settings.json`, so a user who never installed
   the hooks is not opted in.
 
 ### 2.4 The MCP clients
@@ -136,8 +142,10 @@ Outcome refreshStatusHookScript();   // rewrite an installed forwarder when stal
 - `tools/mcp-bridge.py::pick_socket` does the same, with
   `$XDG_RUNTIME_DIR/ants-terminal/mcp-*` checked when `XDG_RUNTIME_DIR` is set.
   That pattern is a module variable beside `SOCK_GLOB`, so a test can point it
-  elsewhere. The bridge is kept through the next release only (ANTS-5308), so
-  it gets no equivalent of Qt's fallback, and misses a terminal that took it.
+  elsewhere. The bridge is kept through the next release only (ANTS-5308), so  it gets no equivalent of Qt's fallback, and misses a terminal that took it.
+- Outside an Ants tab, both pickers resolve the runtime directory from their
+  own environment. A picker whose environment resolves it differently from the
+  terminal's finds only a pre-change terminal. That case is accepted.
 
 ### 2.5 How it reaches a running terminal
 
@@ -176,12 +184,14 @@ its next launch. Until then:
   `$XDG_RUNTIME_DIR/ants-terminal/` and in the legacy glob. Broken by keeping
   the single `SOCK_GLOB`. *Test:*
   `tests/features/mcp_bridge_client/test_mcp_bridge_client.py`.
-- **INV-5** — The script from `statusHookScript(dir, legacy)` delivers stdin to
-  `<dir>/claude-hooks-<pid>` when that socket exists, and to
-  `<legacy>/ants-claude-hooks-<pid>` when only that exists. It sends nothing
-  to a socket whose peer uid is not the user's. Broken by dropping either candidate or the peer check. *Test:*
-  `tests/features/claude_socket_runtime_dir/` case `Inv5ScriptTriesBothPaths`,
-  which runs the script against listening sockets with a fake process tree.
+- **INV-5** — The script from `statusHookScript(legacy)` delivers stdin to
+  `$ANTS_CLAUDE_HOOK_SOCKET` when that socket exists, and to
+  `<legacy>/ants-claude-hooks-<pid>` when the variable is unset. Broken by
+  dropping either route. *Test:* `tests/features/claude_socket_runtime_dir/`
+  case `Inv5ScriptTriesBothPaths`, which runs the script against listening
+  sockets with a fake process tree. The peer-uid check cannot be exercised by
+  a single-user test, so the case also checks the script text: the uid compare
+  guards the one send both routes share.
 - **INV-6** — `refreshStatusHookScript()` rewrites an existing forwarder whose
   bytes differ, leaves an up-to-date one untouched, and creates nothing when
   the file is absent. Broken by creating the file, or by rewriting unchanged
@@ -191,6 +201,11 @@ its next launch. Until then:
   each directory and keeps a live one and `self`'s. Broken by sweeping one directory only.
   *Test:* `tests/features/claude_socket_runtime_dir/` case
   `Inv7SweepCoversBothDirs`.
+- **INV-9** — `mainwindow.cpp` exports `ANTS_CLAUDE_HOOK_SOCKET` exactly once,
+  after a successful `startHookServer()` and before the first `newTab()`.
+  Broken by exporting before the bind, or not at all. *Test:*
+  `tests/features/claude_socket_runtime_dir/` case `Inv9HookSocketExported`,
+  a source check in the style of `McpOrientation_Inv14`.
 - **INV-8** — ANTS-5144 INV-8, ANTS-1901 INV-2 and ANTS-1897 INV-14 hold.
   *Test:* `McpMasterToggle.INV2_StartupGate` and
   `McpOrientation_Inv14.MainWindowExportsSocket` pass unmodified.
@@ -205,7 +220,7 @@ feature test joins an existing bundle.
 
 - Removing the legacy `/tmp` readers from the picker, the bridge and the
   script. They exist for terminals started before this change, so they can go
-  one release after it ships. Needs a roadmap item (not yet filed).
+  one release after it ships (ANTS-5587).
 - Flatpak. Inside the sandbox the runtime directory is the app's own, and
   whether host-side clients can reach it is ANTS-5527's question.
 - The remote-control socket. It is already in the runtime directory
@@ -215,15 +230,16 @@ feature test joins an existing bundle.
 ## 6. Tests
 
 Feature test: `tests/features/claude_socket_runtime_dir/`, with a `spec.md`
-mapping each case to its invariant. Covers INV-1, INV-2, INV-3, INV-5, INV-6
-and INV-7. Each case points `XDG_RUNTIME_DIR` and `TMPDIR` at scratch
+mapping each case to its invariant. Covers INV-1, INV-2, INV-3, INV-5, INV-6,
+INV-7 and INV-9. Each case points `XDG_RUNTIME_DIR` and `TMPDIR` at scratch
 directories, so nothing touches the real ones. INV-4 is a case added to
 `tests/features/mcp_bridge_client/test_mcp_bridge_client.py`, and every case in
-that file points both of the bridge's patterns at scratch directories, so a
-socket of a real running terminal cannot change a result. INV-8 is the
-existing tests, unmodified.
+that file clears `ANTS_MCP_SOCKET` and points both of the bridge's patterns at
+scratch directories. The new cases clear `ANTS_MCP_SOCKET` and
+`ANTS_CLAUDE_HOOK_SOCKET` too, since a test run inside an Ants tab inherits
+both. INV-8 is the existing tests, unmodified.
 
-Red run: INV-1, INV-3 and INV-4 fail against pre-change source. INV-2,
+Red run: INV-1, INV-3, INV-4 and INV-9 fail against pre-change source. INV-2,
 INV-5, INV-6 and INV-7 call API this item adds; stub it first, so they fail on
 their assertions rather than on the build.
 
@@ -250,6 +266,7 @@ their assertions rather than on the build.
 | INV-5 | `tests/features/claude_socket_runtime_dir/` |
 | INV-6 | `tests/features/claude_socket_runtime_dir/` |
 | INV-7 | `tests/features/claude_socket_runtime_dir/` |
+| INV-9 | `tests/features/claude_socket_runtime_dir/` |
 | INV-8 | `tests/features/mcp_master_toggle/`, `tests/features/mcp_orientation_install/` |
 
 ## Cold-eyes loop log
