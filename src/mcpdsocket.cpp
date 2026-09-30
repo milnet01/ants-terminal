@@ -1,14 +1,46 @@
 #include "mcpdsocket.h"
 
+#include "configpaths.h"
+#include "secureio.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 
+#include <cerrno>
 #include <csignal>
 #include <sys/socket.h>
 #include <sys/stat.h>
 
 namespace mcpd {
+
+namespace {
+
+// ANTS-5236 § 2.4 — every terminal MCP socket name, in the private runtime
+// directory (mcp-<pid>) and under the legacy /tmp name a terminal started
+// before ANTS-5236 still binds (ants-terminal-mcp-<pid>).
+QStringList terminalSocketCandidates() {
+    QStringList paths;
+    const auto add = [&paths](const QString &dirPath, const QString &glob) {
+        if (dirPath.isEmpty()) return;
+        const QDir dir(dirPath);
+        for (const QString &name : dir.entryList(QStringList{glob},
+                 QDir::System | QDir::Files | QDir::Hidden))
+            paths << dir.filePath(name);
+    };
+    add(ConfigPaths::antsRuntimeDir(), QStringLiteral("mcp-*"));
+    add(QDir::tempPath(), QStringLiteral("ants-terminal-mcp-*"));
+    return paths;
+}
+
+// The pid a socket name ends in, or -1.
+long socketPid(const QString &path) {
+    bool ok = false;
+    const long pid = QFileInfo(path).fileName().section(QLatin1Char('-'), -1).toLong(&ok);
+    return ok ? pid : -1;
+}
+
+}  // namespace
 
 // lstat, never stat: /tmp is world-writable, so another uid can plant a
 // symlink at an ants-terminal-mcp-<pid> name pointing at a socket this
@@ -47,19 +79,13 @@ QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {
     int bestLive = -1;
     qint64 bestMtime = 0;
     int foreign = 0;
-    const QDir tmp(QDir::tempPath());
-    const QStringList entries = tmp.entryList(
-        QStringList{QStringLiteral("ants-terminal-mcp-*")},
-        QDir::System | QDir::Files | QDir::Hidden);
-    for (const QString &name : entries) {
-        const QString path = tmp.filePath(name);
+    for (const QString &path : terminalSocketCandidates()) {
         struct stat st{};
         if (::lstat(QFile::encodeName(path).constData(), &st) != 0) continue;
         if (!S_ISSOCK(st.st_mode)) continue;
         if (st.st_uid != expectedUid) { ++foreign; continue; }
-        bool ok = false;
-        const long pid = name.section(QLatin1Char('-'), -1).toLong(&ok);
-        const int live = (ok && pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0) ? 1 : 0;
+        const long pid = socketPid(path);
+        const int live = (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0) ? 1 : 0;
         const qint64 mtime = static_cast<qint64>(st.st_mtime);
         if (live > bestLive || (live == bestLive && mtime > bestMtime)) {
             best = path;
@@ -70,9 +96,25 @@ QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {
     if (best.isEmpty() && whyNot) {
         *whyNot = foreign > 0
             ? QStringLiteral("no terminal socket owned by uid %1; %2 owned by another uid skipped (uid check)").arg(expectedUid).arg(foreign)
-            : QStringLiteral("no /tmp/ants-terminal-mcp-* socket found");
+            : QStringLiteral("no mcp-* socket in %1 and no ants-terminal-mcp-* socket in %2")
+                  .arg(ConfigPaths::antsRuntimeDir(), QDir::tempPath());
     }
     return best;
+}
+
+int reapStaleTerminalSockets(pid_t self) {
+    int removed = 0;
+    for (const QString &path : terminalSocketCandidates()) {
+        const long pid = socketPid(path);
+        if (pid <= 0 || pid == self) continue;
+        // kill(pid, 0) succeeds for a live pid; EPERM is someone else's
+        // live process. Only ESRCH says the owner is gone.
+        if (::kill(static_cast<pid_t>(pid), 0) == 0 || errno != ESRCH) continue;
+        if (QFileInfo::exists(path) && safeToUnlinkLocalSocket(path) &&
+            QFile(path).remove())
+            ++removed;
+    }
+    return removed;
 }
 
 }  // namespace mcpd

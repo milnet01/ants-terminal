@@ -47,6 +47,15 @@ for security-relevant changes.
   image. All three paste routes now go through one function, so a
   clipboard screenshot is also saved and pasted by path from the menu.
 
+### Security
+
+- **The Claude hook and MCP sockets now live in your private runtime folder, not the shared /tmp.** (ANTS-5236)
+  Other local users can no longer squat the socket names to switch off
+  the status feed or the MCP. Each terminal exports its hook socket as
+  ANTS_CLAUDE_HOOK_SOCKET, and an installed hook forwarder is refreshed
+  at start-up. ants-mcpd, the Python bridge and the forwarder still find
+  a terminal started before this release.
+
 ## [0.7.112] — 2026-09-30
 ### Added
 

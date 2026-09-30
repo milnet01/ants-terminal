@@ -273,8 +273,10 @@ connection without a reply.
   no-owner close path. Breaks if connections are pulled and read in the hub, or
   through a `serve` other than those handlers: the checks are then skipped while
   the handler bodies still scrape clean.
-- **INV-8** — The MCP start-up call site and export in `mainwindow.cpp` are
-  unchanged. *Test:* `McpMasterToggle.INV2_StartupGate` and
+- **INV-8** — The MCP start-up call site and export in `mainwindow.cpp` stay
+  one `startMcpServer` call and one `qputenv("ANTS_MCP_SOCKET", …)`, inside the
+  master gate. (Amended by ANTS-5236, which changed the path and guards both on
+  it; the text said "unchanged".) *Test:* `McpMasterToggle.INV2_StartupGate` and
   `McpOrientation_Inv14.MainWindowExportsSocket` pass unmodified.
 
 ## 4. RAM / build cost

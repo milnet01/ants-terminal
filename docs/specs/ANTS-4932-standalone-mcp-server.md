@@ -88,7 +88,8 @@ designed:
 - **It is the single front door.** The client connects to nothing else.
 - **No discovery problem.** `ants-mcpd` finds the terminal the same way the
   bridge does — `$ANTS_MCP_SOCKET` if set, else the newest live-PID
-  `/tmp/ants-terminal-mcp-*` owned by the same uid (the picker in
+  terminal socket owned by the same uid, in the private runtime directory or
+  under the legacy `/tmp` name (ANTS-5236 § 2.4; the picker in
   `tools/mcp-bridge.py::pick_socket()`, reimplemented in C++, including its
   ANTS-1322 liveness check and its uid check).
 
@@ -364,9 +365,10 @@ which `ants-mcpd` sends to have the terminal prompt for trust in a project's
 ANTS-5144 INV-3 means a live path is never taken over: whichever process binds
 second gets nothing. So the two servers must not contend for one path.
 
-- The terminal keeps `/tmp/ants-terminal-mcp-<pid>` and keeps exporting
-  `ANTS_MCP_SOCKET`. Its call site in `mainwindow.cpp` is **unchanged**, which
-  keeps ANTS-5144 INV-8, ANTS-1901 INV-2 and ANTS-1897 INV-14 intact.
+- The terminal keeps its MCP socket and keeps exporting `ANTS_MCP_SOCKET`.
+  ANTS-5236 moved the socket into the private runtime directory and guards the
+  bind and the export on a usable path; ANTS-5144 INV-8, ANTS-1901 INV-2 and
+  ANTS-1897 INV-14 still hold.
 - `ants-mcpd` binds **no listening socket at all**. It speaks stdio to the
   client and is a *client* of the terminal's socket.
 

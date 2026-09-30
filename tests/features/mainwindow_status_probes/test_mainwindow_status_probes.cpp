@@ -44,18 +44,7 @@ TEST(MainwindowStatusProbes, ResumeQuotesSessionId) {
     EXPECT_TRUE(w.contains(QStringLiteral("shellQuote(sessionId)")));
 }
 
-// INV-2
-TEST(MainwindowStatusProbes, ReaperChecksForASocket) {
-    const QString w = window(source(),
-        QStringLiteral("Reaped stale MCP socket:"), 1);
-    ASSERT_FALSE(w.isEmpty()) << "socket reaper not found";
-    const QString src = source();
-    const int log = src.indexOf(QStringLiteral("Reaped stale MCP socket:"));
-    const QString before = src.mid(qMax(0, log - 600), 600);
-    EXPECT_TRUE(before.contains(QStringLiteral("safeToUnlinkLocalSocket(full)")))
-        << "the reaper removes the path without the S_ISSOCK check its "
-           "comment promises";
-}
+// INV-2 is withdrawn: see spec.md.
 
 // INV-3 and INV-4
 TEST(MainwindowStatusProbes, ReviewProbeIsKeyedAndBounded) {

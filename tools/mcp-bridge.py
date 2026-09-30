@@ -3,7 +3,7 @@
 # ANTS-1255 — unblocks the entire MCP pack (ANTS-1244 / 1247 / 1248+).
 #
 # Reads line-delimited JSON-RPC from stdin, forwards each request to the
-# Ants MCP socket at /tmp/ants-terminal-mcp-<PID>, writes the response
+# Ants MCP socket (see pick_socket), writes the response
 # back to stdout. One fresh socket connection per request (the Ants
 # server is one-shot by design — see claudeintegration.cpp:1150-1397).
 #
@@ -11,7 +11,8 @@
 #   claude mcp add ants -- /mnt/Games/Scripts/Linux/Ants_Terminal/tools/mcp-bridge.py
 #
 # Socket selection: $ANTS_MCP_SOCKET overrides; otherwise the newest
-# /tmp/ants-terminal-mcp-* file by mtime wins. Multi-instance users
+# $XDG_RUNTIME_DIR/ants-terminal/mcp-* socket, or legacy
+# /tmp/ants-terminal-mcp-* one (ANTS-5236), by mtime wins. Multi-instance users
 # wanting to pin a specific tab can `export ANTS_MCP_SOCKET=...`
 # before launching Claude Code.
 
@@ -24,6 +25,11 @@ import struct
 import sys
 
 SOCK_GLOB = "/tmp/ants-terminal-mcp-*"
+# ANTS-5236 — where a terminal binds since the move. Qt's own fallback, used
+# when XDG_RUNTIME_DIR is unset or unusable, is not followed: this bridge is
+# kept for one release only (ANTS-5308).
+RUNTIME_SOCK_GLOB = (os.path.join(os.environ["XDG_RUNTIME_DIR"], "ants-terminal", "mcp-*")
+                     if os.environ.get("XDG_RUNTIME_DIR") else "")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -61,7 +67,10 @@ def pick_socket() -> str:
     # connect" the user sees in `claude mcp list`.
     from stat import S_ISSOCK
     candidates = []
-    for p in glob.glob(SOCK_GLOB):
+    paths = glob.glob(SOCK_GLOB)
+    if RUNTIME_SOCK_GLOB:
+        paths += glob.glob(RUNTIME_SOCK_GLOB)
+    for p in paths:
         # lstat, not stat: a co-tenant can plant a symlink at a live-PID
         # name pointing at any socket we own, and stat would follow it.
         try:
@@ -76,7 +85,7 @@ def pick_socket() -> str:
         # peer UID via SO_PEERCRED; the client must mirror it. indie-review-2026-05-21.
         if st.st_uid != os.getuid():
             continue
-        # Path shape: /tmp/ants-terminal-mcp-<PID>
+        # Path shape: .../ants-terminal-mcp-<PID> or .../mcp-<PID>
         pid_str = p.rsplit("-", 1)[-1]
         live = False
         try:

@@ -94,7 +94,8 @@ reachable until it is relaunched.
   `ANTS_CLAUDE_HOOK_SOCKET`, with `qputenv`, before the first tab spawns a PTY.
   This is `ANTS_MCP_SOCKET`'s pattern (ANTS-1897 INV-14). It lets each
   terminal's own tabs name its own socket, whatever its environment made of
-  the runtime directory.
+  the runtime directory. Where it fails, the terminal clears the variable, so
+  a terminal started from an Ants tab never inherits its parent's socket.
 - In `MainWindow::setupClaudeMcpProviders`, `mcpSocket` becomes
   `privateSocketPath("mcp-<pid>")`, and the `startMcpServer(mcpSocket)` call and
   the `qputenv("ANTS_MCP_SOCKET", …)` are skipped when it is empty. Each stays

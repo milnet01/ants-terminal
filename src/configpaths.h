@@ -13,6 +13,7 @@
 // ensuring the directory exists (QDir::mkpath) before writing.
 
 #include <QDir>
+#include <QStandardPaths>
 #include <QString>
 
 namespace ConfigPaths {
@@ -68,6 +69,17 @@ inline QString antsClaudeForwardScript() {
 // tests/features/claude_git_context_hook/spec.md.
 inline QString antsClaudeGitContextScript() {
     return antsHooksDir() + QStringLiteral("/claude-git-context.sh");
+}
+
+// ANTS-5236 — <RuntimeLocation>/ants-terminal, the private directory the
+// Claude hook and MCP sockets bind in. Empty when Qt has no runtime location.
+// RuntimeLocation is $XDG_RUNTIME_DIR, or Qt's own 0700 fallback under
+// tempPath() when that is unset or not the user's at 0700.
+inline QString antsRuntimeDir() {
+    const QString runtime =
+        QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (runtime.isEmpty()) return {};
+    return runtime + QStringLiteral("/ants-terminal");
 }
 
 }  // namespace ConfigPaths

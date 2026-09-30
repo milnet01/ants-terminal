@@ -11549,7 +11549,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-18 (ANTS-5088).
   Lanes: roadmap.
 
-- 📋 [ANTS-5236] **Move the Claude hook and MCP sockets from /tmp to XDG_RUNTIME_DIR.**
+- ✅ [ANTS-5236] **Move the Claude hook and MCP sockets from /tmp to XDG_RUNTIME_DIR.**
   Split from ANTS-5089, where it was recorded as not a quick fix. The hook
   socket uses a guessable /tmp name another user can squat. Since
   ANTS-5144 a squatter can stop the socket binding but cannot intercept
@@ -11558,6 +11558,13 @@ extends an existing item, that item carries it instead.
   ANTS_MCP_SOCKET export, the stale-socket sweep and ANTS-1897 INV-14. So
   the move needs a spec and a migration for hook scripts already
   installed in users' ~/.claude.
+  Shipped (2026-10-01) to docs/specs/ANTS-5236-sockets-in-runtime-dir.md
+  (accepted at its review cap). Both sockets bind in
+  <RuntimeLocation>/ants-terminal/ via privateSocketPath; each terminal
+  exports ANTS_CLAUDE_HOOK_SOCKET; the installed forwarder is refreshed at
+  start-up. Readers of the legacy /tmp names stay one release (ANTS-5587).
+  Tests: tests/features/claude_socket_runtime_dir/ (7 cases, red before,
+  6 mutations killed) and the bridge's INV-4 case. Flatpak stays ANTS-5527.
   **Layman:** Keep the Claude connection points in a private folder instead of the shared temporary folder.
   Kind: security.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a), via ANTS-5089.

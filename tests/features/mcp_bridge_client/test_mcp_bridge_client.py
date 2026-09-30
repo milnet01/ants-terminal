@@ -25,9 +25,39 @@ with tempfile.TemporaryDirectory() as d:
     link = os.path.join(d, f"ants-terminal-mcp-{os.getpid()}")
     os.symlink(real, link)
     bridge.SOCK_GLOB = os.path.join(d, "ants-terminal-mcp-*")
+    bridge.RUNTIME_SOCK_GLOB = os.path.join(d, "rt-none", "mcp-*")
     os.environ.pop("ANTS_MCP_SOCKET", None)
     picked = bridge.pick_socket()
     check(picked == "", "INV-1 picker skips a symlink named like an Ants socket", repr(picked))
+    srv.close()
+
+# ANTS-5236 INV-4 — pick_socket finds a socket in the runtime directory and in
+# the legacy glob. The implementer must name the runtime pattern
+# RUNTIME_SOCK_GLOB (a module variable beside SOCK_GLOB).
+def listening(path):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.bind(path); s.listen(1)
+    return s
+
+with tempfile.TemporaryDirectory() as d:
+    rt = os.path.join(d, "rt"); legacy = os.path.join(d, "legacy")
+    os.makedirs(rt); os.makedirs(legacy)
+    os.environ.pop("ANTS_MCP_SOCKET", None)
+    # (a) only in the runtime directory
+    want = os.path.join(rt, f"mcp-{os.getpid()}")
+    srv = listening(want)
+    bridge.RUNTIME_SOCK_GLOB = os.path.join(rt, "mcp-*")
+    bridge.SOCK_GLOB = os.path.join(legacy, "ants-terminal-mcp-*")
+    picked = bridge.pick_socket()
+    check(picked == want, "INV-4 picker finds a socket in the runtime directory",
+          f"expected {want!r}, got {picked!r}")
+    srv.close(); os.unlink(want)
+    # (b) only in the legacy glob
+    want = os.path.join(legacy, f"ants-terminal-mcp-{os.getpid()}")
+    srv = listening(want)
+    picked = bridge.pick_socket()
+    check(picked == want, "INV-4 picker still finds a legacy socket",
+          f"expected {want!r}, got {picked!r}")
     srv.close()
 
 # INV-2

@@ -1114,13 +1114,16 @@ void ClaudeIntegration::updateChangedFiles(const QString &toolName,
 
 // --- Hook Server ---
 
+// ANTS-5236 — in the private runtime directory, never a guessable /tmp name.
+// Empty when that directory is unusable, and then no hook server starts.
 QString ClaudeIntegration::defaultHookSocketPath() {
-    return QDir::tempPath() + "/ants-claude-hooks-" +
-           QString::number(QCoreApplication::applicationPid());
+    return privateSocketPath(QStringLiteral("claude-hooks-") +
+                             QString::number(QCoreApplication::applicationPid()));
 }
 
 bool ClaudeIntegration::startHookServer(const QString &socketPath) {
     if (m_hookServer) return true;
+    if (socketPath.isEmpty()) return false;
 
     // ANTS-5144 § 2.2 — every window shares one server per path, so a second
     // window attaches instead of taking the path from the first. The hub
@@ -1369,6 +1372,7 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
 
 bool ClaudeIntegration::startMcpServer(const QString &socketPath) {
     if (m_mcpServer) return true;
+    if (socketPath.isEmpty()) return false;
 
     // ANTS-5144 § 2.2 — shared per path, as startHookServer.
     m_mcpServer = ants::LocalSocketHub::instance().acquire(socketPath);

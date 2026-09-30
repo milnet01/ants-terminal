@@ -1,6 +1,6 @@
 // ANTS-1372 — Caller-cwd gate for mutating MCP fold-in verbs.
 //
-// The MCP socket at $XDG_RUNTIME_DIR/ants-terminal/control.sock is
+// The MCP socket at $XDG_RUNTIME_DIR/ants-terminal/mcp-<pid> is
 // shared by every Claude Code session on the machine. Verbs that
 // mutate project-scoped state (.roadmap-counter, ROADMAP.md, source
 // files, session-memory store, build artifacts) MUST verify that the

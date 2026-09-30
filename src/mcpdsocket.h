@@ -2,7 +2,8 @@
 // terminal-scoped verbs to, and the two uid checks it makes before sending.
 //
 // The picker is tools/mcp-bridge.py's pick_socket() in C++: $ANTS_MCP_SOCKET
-// when set, else the newest /tmp/ants-terminal-mcp-* socket, preferring one
+// when set, else the newest mcp-* socket in ConfigPaths::antsRuntimeDir() or
+// legacy ants-terminal-mcp-* socket in tempPath() (ANTS-5236), preferring one
 // whose pid is alive (ANTS-1322). Every candidate must be a socket owned by
 // the expected uid; a foreign-owned one is skipped, as the bridge skips it.
 
@@ -24,5 +25,11 @@ bool socketOwnedBy(const QString &path, uid_t expectedUid);
 // INV-11 — the peer on the connected socket `fd` runs as `expectedUid`
 // (SO_PEERCRED). False when the credential cannot be read: fail closed.
 bool peerUidIs(int fd, uid_t expectedUid);
+
+// ANTS-5236 § 2.2 — remove terminal MCP sockets left by dead processes, in
+// the runtime directory and under the legacy /tmp name. Skips `self`, a live
+// pid, and anything safeToUnlinkLocalSocket refuses. Returns how many it
+// removed.
+int reapStaleTerminalSockets(pid_t self);
 
 }  // namespace mcpd

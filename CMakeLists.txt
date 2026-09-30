@@ -2377,6 +2377,9 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_op_enum/test_roadmap_log_op_enum.cpp
                 # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.
                 tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
+                # ANTS-5236 — the Claude hook and MCP sockets bind in the private
+                # runtime directory.
+                tests/features/claude_socket_runtime_dir/test_claude_socket_runtime_dir.cpp
                 # ANTS-5340 — the About dialog's ants-mcpd version line.
                 tests/features/mcpd_about_version/test_mcpd_about_version.cpp
                 # MC-5 — ants-mcpd never wires a VerifyTrust client into its

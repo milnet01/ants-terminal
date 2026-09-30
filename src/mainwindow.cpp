@@ -23,6 +23,7 @@
 #include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
 #include "rootprovider.h"      // ANTS-4932 § 2.4
 #include "mcptoolregistry.h"   // ANTS-4932 § 2.3
+#include "mcpdsocket.h"         // ANTS-5236 — reapStaleTerminalSockets
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "gitwrap.h"           // ANTS-4999 — readOnlyEnvironment for git probes
@@ -39,6 +40,7 @@
 #include "claudetasklistdialog.h"
 #include "roadmapdialog.h"
 #include "claudeintegration.h"
+#include "claudesetup.h"        // ANTS-5236 — refreshStatusHookScript
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
@@ -146,13 +148,6 @@ void sweepKwinScriptOrphansOnce();
 #include <QScopeGuard>
 #include <QSystemTrayIcon>
 #include <QWindow>
-
-// POSIX kill(2) used by ANTS-1322 stale-MCP-socket sweep at startup.
-// ANTS-1325: <signal.h> directly — clangd's unused-includes lint reads the
-// standard literally and doesn't recognise that ::kill is reachable via
-// <csignal> on glibc.
-#include <signal.h>
-#include <cerrno>
 
 // ANTS-1323: configure-time build-date / build-time macros for the
 // window-title build-badge.
@@ -4496,44 +4491,15 @@ void MainWindow::setupClaudeMcpProviders() {
                           m_config.claudeMcpOffloadHeadBytes());
     mcp::spillSweep();
     // ANTS-1322: reap stale MCP sockets from previously-crashed
-    // ants-terminal instances. Without this they accumulate in
-    // /tmp/ants-terminal-mcp-<PID> indefinitely; the mcp-bridge
-    // picker would happily pick a stale one (newest by mtime) and
-    // fail to connect, breaking the user-scoped MCP for every
-    // non-Ants project. Sweep is cheap — one stat + one kill(0)
-    // probe per file, dozens at most.
-    {
-        const QString tmp = QDir::tempPath();
-        QDir tmpDir(tmp);
-        const QStringList entries = tmpDir.entryList(
-            QStringList{QStringLiteral("ants-terminal-mcp-*")},
-            QDir::System | QDir::Files | QDir::Hidden);
-        for (const QString &name : entries) {
-            // Path-shape: ants-terminal-mcp-<PID>
-            const QString pidStr = name.section(QChar('-'), -1);
-            bool ok = false;
-            const pid_t pid = pidStr.toLong(&ok);
-            if (!ok) continue;  // doesn't look like our format
-            if (pid == QApplication::applicationPid()) continue;
-            // kill(pid, 0) returns 0 if the PID is live, -1 with
-            // errno=ESRCH if it's gone. EPERM means someone else's
-            // PID — leave that socket alone (not ours to clean).
-            if (::kill(static_cast<pid_t>(pid), 0) == 0) continue;
-            if (errno != ESRCH) continue;
-            const QString full = tmp + QChar('/') + name;
-            // ANTS-5080 — safeToUnlinkLocalSocket is the S_ISSOCK + owner
-            // check: a regular file or another user's socket that happens
-            // to share the name is left alone.
-            if (QFileInfo::exists(full) && safeToUnlinkLocalSocket(full) &&
-                QFile(full).remove()) {
-                qDebug() << "Reaped stale MCP socket:" << full;
-            }
-        }
-    }
+    // ants-terminal instances; the picker would otherwise pick a stale one
+    // and fail to connect. ANTS-5236 — both the private runtime directory
+    // and the legacy /tmp names, with ANTS-5080's owner check.
+    mcpd::reapStaleTerminalSockets(
+        static_cast<pid_t>(QApplication::applicationPid()));
 
     // ANTS-1901 — master MCP gate. Seed the dispatcher's live bit, then
     // bind the socket + export ANTS_MCP_SOCKET only when enabled. When
-    // off: no socket binds, no /tmp/ants-terminal-mcp-* file, no env
+    // off: no socket binds, no mcp-<pid> socket file, no env
     // export (the orientation script self-silences on the missing var),
     // and any stale hook is removed below. Turning the switch ON takes
     // effect on the next launch (the socket binds here); turning it OFF
@@ -4541,19 +4507,23 @@ void MainWindow::setupClaudeMcpProviders() {
     const bool mcpOn = m_config.claudeMcpEnabled();
     m_claudeIntegration->setMcpEnabled(mcpOn);
     if (mcpOn) {
-        QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
-                            QString::number(QApplication::applicationPid());
-        m_claudeIntegration->startMcpServer(mcpSocket);
+        // ANTS-5236 — the private runtime directory; empty when it is not
+        // usable, and then nothing binds and nothing is exported.
+        const QString mcpSocket = privateSocketPath(
+            QStringLiteral("mcp-") + QString::number(QApplication::applicationPid()));
+        if (!mcpSocket.isEmpty()) {
+            m_claudeIntegration->startMcpServer(mcpSocket);
 
-        // ANTS-1897 INV-14 — export the MCP socket path into the parent
-        // process env so every PTY spawned after this point (via the
-        // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
-        // inherits ANTS_MCP_SOCKET. The orientation prelude script
-        // gates on this var being set + the socket file existing. The
-        // ordering is correct because setupStatusBarChrome() (which
-        // calls this) runs at L609 of the MainWindow ctor, BEFORE the
-        // first newTab() at L612 spawns a PTY. Verified via grep.
-        qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit());
+            // ANTS-1897 INV-14 — export the MCP socket path into the parent
+            // process env so every PTY spawned after this point (via the
+            // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
+            // inherits ANTS_MCP_SOCKET. The orientation prelude script
+            // gates on this var being set + the socket file existing. The
+            // ordering is correct because setupStatusBarChrome() (which
+            // calls this) runs at L609 of the MainWindow ctor, BEFORE the
+            // first newTab() at L612 spawns a PTY. Verified via grep.
+            qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit());
+        }
     }
 
     // ANTS-1897 / ANTS-1901 — install the SessionStart hook only when the
@@ -4888,8 +4858,19 @@ void MainWindow::setupClaudeMcpProviders() {
     };
     mcp::registerProjectScopedVerbs(*m_claudeIntegration, rcGetter, host);
 
-    // Start hook server
-    m_claudeIntegration->startHookServer();
+    // ANTS-5236 § 2.3 — an installed forwarder from before the move only
+    // knows the /tmp name; bring it up to date before any hook can fire.
+    ants::claude_setup::refreshStatusHookScript();
+
+    // Start hook server. ANTS-5236 — export the path it bound, as
+    // ANTS_MCP_SOCKET is exported, so each terminal's tabs name its socket.
+    // Cleared on failure: a terminal started from an Ants tab inherits its
+    // parent's value, which would send this terminal's hooks to the parent.
+    if (m_claudeIntegration->startHookServer())
+        qputenv("ANTS_CLAUDE_HOOK_SOCKET",
+                ClaudeIntegration::defaultHookSocketPath().toLocal8Bit());
+    else
+        qunsetenv("ANTS_CLAUDE_HOOK_SOCKET");
 }
 
 void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {

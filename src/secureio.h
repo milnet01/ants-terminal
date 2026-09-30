@@ -1,5 +1,7 @@
 #pragma once
 
+#include "configpaths.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileDevice>
@@ -79,7 +81,8 @@ inline bool fsyncParentDir(const QString &filePath) {
 // ANTS-1132 — defence-in-depth before unlinking a Unix-domain socket
 // path. Refuse to remove anything that isn't a lstat()'d socket owned
 // by the running user. XDG_RUNTIME_DIR is 0700 and already safe; /tmp
-// fallback paths and per-pid /tmp paths (Claude hook + MCP) live in
+// fallback paths and the legacy per-pid Claude hook + MCP names (the
+// sweep still reaps those; ANTS-5236 moved the binds) live in
 // shared /tmp where a prior-session symlink — or a same-uid
 // confusion between two apps sharing a UID-suffixed name — could
 // otherwise cause us to unlink an unrelated file. lstat (not stat)
@@ -138,6 +141,15 @@ inline bool ensureSocketDir(const QString &dir) {
     if (st.st_uid != ::getuid()) return false;
     if ((st.st_mode & 0777) != 0700) return false;
     return true;
+}
+
+// ANTS-5236 § 2.1 — antsRuntimeDir() + "/" + name, once ensureSocketDir has
+// accepted or created that directory; "" when it does not, or there is no
+// runtime directory. The caller then binds nothing: there is no /tmp fallback.
+inline QString privateSocketPath(const QString &name) {
+    const QString dir = ConfigPaths::antsRuntimeDir();
+    if (dir.isEmpty() || !ensureSocketDir(dir)) return {};
+    return dir + QLatin1Char('/') + name;
 }
 
 // ANTS-1821 — create `dir` (and any missing parents) at mode 0700 with no
