@@ -90480,7 +90480,7 @@ reports are asked for separately, each time.
   Progress (2026-07-02): specs cold-eyes-clean (5 loops) + committed. Implementing renderCardsHtml table/column layout next.
   Shipped 2026-07-03. renderCardsHtml now emits each bullet as a `<tr class="rm-card">` of four `<td class="rm-col-*">` cells inside a per-section `<table class="rm-cards">` (state / kind / summary / right-aligned meta), so items line up in aligned columns; expanded body is a `colspan="4"` row. Section-heading count-chip / title fusing fixed via a hard `&#160;&#160;` (Qt ignores inline `padding-right`). Shipped renderer uses a bare `td` selector (cards path emits no other table). Specs ANTS-1154 + ANTS-1238 reconciled to as-shipped code (the earlier "target — NOT yet in code" caveats were stale; code had caught up). Tests RoadmapDialogCards + RoadmapDensity green at HEAD.
 
-- 🚧 [ANTS-5213] **Roadmap dialog optimisation pass, starting with section headers that do not render on this project's roadmap.**
+- ✅ [ANTS-5213] **Roadmap dialog optimisation pass, starting with section headers that do not render on this project's roadmap.**
   Reported by the user 2026-09-14 on Ants Terminal's own roadmap: some section headers do not render in the Roadmap dialog. Which headers, and why, is unverified; reproduce it first. Related planned findings: ANTS-5087 (roadmap parsing, rendering, writing and export) and ANTS-5088 (the roadmap dialog). ANTS-1695 is a different case, the zero-bullet fallback.
   Progress (2026-10-01): the missing-headers half is found and fixed
   (commit 19c32047). On the History tab, renderCardsHtml numbered
@@ -90492,6 +90492,14 @@ reports are asked for separately, each time.
   heading (one item ID appears in two sections; the window already warns
   about it). The optimisation half is still open: measure a rebuild on
   this roadmap before changing anything.
+  Resolved (2026-10-01, commit 4bc525c3): the optimisation half.
+  Measured on this roadmap (6.7 MB, 3232 items), offscreen: a collapsed
+  rebuild is ~33 ms and was left alone. The cost was opening a section:
+  an item's paragraphs after a blank line leaked out as section text, so
+  the largest section was 1.64 MB of HTML (setHtml 780 ms) and all
+  sections 16.6 MB (8.4 s). After the fix: 106 KB / 27 ms and 2.6 MB /
+  0.8 s. Locked by roadmap_dialog_cards INV-31. Sibling defect in the
+  last-touch walk filed as ANTS-5607.
   **Layman:** The roadmap window gets faster, and every section heading shows up.
   Kind: perf.
   Source: user-request-2026-09-14.
@@ -90576,6 +90584,19 @@ reports are asked for separately, each time.
   Kind: feature.
   Source: user-request-2026-10-01.
   Lanes: roadmap-store, roadmap-dialog.
+
+- 📋 [ANTS-5607] **"Updated N days ago" on a 🚧 card ignores edits in the item's paragraphs after a blank line.**
+  Found 2026-10-01 while fixing ANTS-5213. RoadmapDialog's last-touch
+  walk (the rxInProgress loop in src/roadmapdialog.cpp that takes the
+  max git-blame time over a 🚧 bullet's block) stops at the first blank
+  line. RoadmapParse::collectBulletBody, and since ANTS-5213 the card
+  renderer's skipBulletBlockAt, continue past a blank line when the next
+  non-blank line is indented. Fix: use the same rule; test with a
+  two-paragraph 🚧 fixture whose second paragraph is the newest commit.
+  **Layman:** An in-progress item can say it was updated longer ago than it really was, if the change was in a later paragraph.
+  Kind: fix.
+  Source: in-session-2026-10-01.
+  Lanes: roadmap-dialog.
 
 ## Welcome dialog (user request 2026-09-29)
 

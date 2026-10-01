@@ -59,6 +59,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **In the Roadmap window, a closed item no longer spills its later paragraphs into the section, and opening a big section is up to 30 times faster.** (ANTS-5213)
+
 - **On the Roadmap window's History tab, items stay under their own section heading when several sections share a name, and every heading shows.** (ANTS-5213)
 
 - **Clicking a heading in the Roadmap window's Contents list scrolls to that heading, even when filters or collapsed sections hide others.** (ANTS-5597)
