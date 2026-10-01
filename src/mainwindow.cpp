@@ -2093,6 +2093,9 @@ void MainWindow::setupSettingsMenu() {
             connect(m_settingsDialog, &SettingsDialog::settingsChanged, this, [this]() {
                 // Apply all changed settings
                 applyTheme(m_config.theme());
+                if (m_claudeIntegration)
+                    m_claudeIntegration->setContextWindowTokens(
+                        m_config.claudeContextWindowTokens());
                 applyFontSizeToAll(m_config.fontSize());
 
                 QList<TerminalWidget *> terminals = liveTerminals();
@@ -4316,6 +4319,7 @@ void MainWindow::showEvent(QShowEvent *event) {
 // setupClaudeMcpProviders below.
 void MainWindow::setupStatusBarChrome() {
     m_claudeIntegration = new ClaudeIntegration(this);
+    m_claudeIntegration->setContextWindowTokens(m_config.claudeContextWindowTokens());
     m_claudeTabTracker  = new ClaudeTabTracker(this);
     // ANTS-5144 — the MCP and hook listeners are shared by every window. They
     // prefer a visible window, and a hook event goes to the window whose tabs
@@ -6825,6 +6829,10 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
                           m_config.claudeMcpOffloadThresholdBytes(),
                           m_config.claudeMcpOffloadHeadBytes());
+    // The context meter's window, after a hand edit of config.json.
+    if (m_claudeIntegration)
+        m_claudeIntegration->setContextWindowTokens(
+            m_config.claudeContextWindowTokens());
 
     // The cached Settings dialog was constructed with `&m_config` and
     // populated its widgets from the then-current values. `m_config`'s

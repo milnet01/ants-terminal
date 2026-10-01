@@ -155,6 +155,7 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         m_state = ClaudeState::NotRunning;
         m_currentTool.clear();
         m_contextPercent = 0;
+        m_contextTokens = 0;
         m_claudePid = 0;            // force pollClaudeProcess to re-detect
         m_activeSessionId.clear();
 
@@ -871,15 +872,20 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         QStringLiteral("meta"),
     };
 
-    // Update context% from the most recent event carrying usage info. Walk
-    // backward — `assistant` events have a `message.usage.input_tokens` field.
+    // Context size from the most recent event carrying usage info. Walk
+    // backward. With prompt caching, input_tokens is only the uncached tail,
+    // so the context is the sum of all three input fields.
     for (int i = events.size() - 1; i >= 0; --i) {
-        QJsonObject usage = events[i].value("message").toObject()
-                                     .value("usage").toObject();
-        int inputTokens = usage.value("input_tokens").toInt();
-        if (inputTokens > 0) {
-            // Rough estimate: 200K context window
-            snap.contextPercent = std::min(100, inputTokens * 100 / 200000);
+        const QJsonObject usage = events[i].value("message").toObject()
+                                           .value("usage").toObject();
+        const qint64 tokens =
+            usage.value("input_tokens").toInteger()
+            + usage.value("cache_creation_input_tokens").toInteger()
+            + usage.value("cache_read_input_tokens").toInteger();
+        if (tokens > 0) {
+            snap.contextTokens = tokens;
+            snap.contextPercent = static_cast<int>(std::min<qint64>(
+                100, tokens * 100 / kDefaultContextWindowTokens));
             break;
         }
     }
@@ -1051,6 +1057,15 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     return snap;
 }
 
+void ClaudeIntegration::setContextWindowTokens(qint64 tokens) {
+    if (tokens <= 0 || tokens == m_contextWindowTokens) return;
+    m_contextWindowTokens = tokens;
+    if (m_contextTokens <= 0) return;
+    m_contextPercent = static_cast<int>(std::min<qint64>(
+        100, m_contextTokens * 100 / m_contextWindowTokens));
+    emit contextUpdated(m_contextPercent);
+}
+
 void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     // Re-add the watch — QFileSystemWatcher can drop it after atomic saves
     if (!m_transcriptWatcher.files().contains(path))
@@ -1059,8 +1074,10 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     const ClaudeTranscriptSnapshot snap = parseTranscriptTail(path, m_planMode);
     if (!snap.hasEvents) return;
 
-    if (snap.contextPercent >= 0) {
-        m_contextPercent = snap.contextPercent;
+    if (snap.contextTokens > 0) {
+        m_contextTokens = snap.contextTokens;
+        m_contextPercent = static_cast<int>(std::min<qint64>(
+            100, m_contextTokens * 100 / m_contextWindowTokens));
         emit contextUpdated(m_contextPercent);
     }
 

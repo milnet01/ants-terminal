@@ -2393,6 +2393,8 @@ if(ANTS_TESTS)
                 tests/features/mcpd_call/test_mcpd_call.cpp
                 # ANTS-5485 — removed verbs say what replaced them.
                 tests/features/mcp_removed_verbs/test_mcp_removed_verbs.cpp
+                # The status bar's context meter: tokens, window, readability.
+                tests/features/claude_context_meter/test_claude_context_meter.cpp
                 # ANTS-5254 — roadmap_log's op enum matches its dispatch.
                 tests/features/roadmap_log_op_enum/test_roadmap_log_op_enum.cpp
                 # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.

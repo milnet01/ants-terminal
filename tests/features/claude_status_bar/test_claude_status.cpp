@@ -2,7 +2,7 @@
 // status-bar contract:
 //   (A) transcript → ClaudeState mapping (every documented last-event type)
 //   (B) tab-switch via setShellPid clears stale state immediately
-//   (C) context% derived from usage.input_tokens
+//   (C) context% derived from the usage token fields
 //
 // Links against src/claudeintegration.cpp. Does not spawn a real Claude
 // Code process — we synthesise JSONL transcripts on disk and feed them
@@ -191,8 +191,9 @@ int runTabSwitchStateReset() {
 }
 
 int runContextPercent() {
-    // assistant event with usage.input_tokens > 0 → contextUpdated fires
-    // with percent = min(100, input_tokens * 100 / 200000).
+    // assistant event with usage tokens > 0 → contextUpdated fires with
+    // percent = min(100, tokens * 100 / window); the window defaults to
+    // 1,000,000 (tests/features/claude_context_meter).
     QTemporaryDir tmp;
     if (!tmp.isValid()) return 1;
     const QString path = tmp.path() + "/ctx.jsonl";
@@ -207,7 +208,7 @@ int runContextPercent() {
     ci.parseTranscriptForState(path);
 
     const int got = ci.contextPercent();
-    const int want = 25;   // 50000 * 100 / 200000
+    const int want = 5;    // 50000 * 100 / 1,000,000
 
     const bool ok = (got == want) && (spy.count() >= 1);
     std::fprintf(stderr,

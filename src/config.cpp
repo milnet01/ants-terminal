@@ -733,6 +733,17 @@ void Config::setClaudeMcpOffloadLargeResults(bool enabled) {
     save();
 }
 
+int Config::claudeContextWindowTokens() const {
+    return std::clamp(m_data.value("claude.context_window_tokens").toInt(1'000'000),
+                      kMinContextWindowTokens, kMaxContextWindowTokens);
+}
+
+void Config::setClaudeContextWindowTokens(int tokens) {
+    tokens = std::clamp(tokens, kMinContextWindowTokens, kMaxContextWindowTokens);
+    if (!storeIfChanged("claude.context_window_tokens", tokens)) return;
+    save();
+}
+
 int Config::claudeMcpOffloadThresholdBytes() const {
     return m_data.value("claude.mcp_offload_threshold_bytes").toInt(16384);
 }

@@ -45,6 +45,10 @@ class TerminalWidget;
 // complete type, which a forward declaration cannot provide.
 #include "modelautoswitch.h"
 
+// The context meter's hover text: tokens used, the window, the percentage,
+// and what to do as it fills. Pure, so a test can pin it.
+QString contextMeterTooltip(qint64 tokens, qint64 window, int percent);
+
 class ClaudeStatusBarController : public QObject {
     Q_OBJECT
 public:

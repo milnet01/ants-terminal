@@ -77,7 +77,10 @@ struct ClaudeTranscriptSnapshot {
     ClaudeState state = ClaudeState::NotRunning;
     QString tool;                  // non-empty iff state == ToolUse
     QString detail;                // short human-readable label ("thinking", "Bash", …)
-    int contextPercent = -1;       // -1 if no usage.input_tokens observed in window
+    int contextPercent = -1;       // -1 if no usage observed in window
+    // Tokens in the context: input + cache_creation_input + cache_read_input
+    // of the newest event carrying usage; -1 when none was observed.
+    qint64 contextTokens = -1;
     bool planMode = false;         // result of the latch + most-recent permission-mode
     bool auditing = false;         // /audit turn in flight
     QJsonObject toolUseBlock;      // raw tool_use block for updateChangedFiles; empty if N/A
@@ -125,6 +128,13 @@ public:
     ClaudeState currentState() const { return m_state; }
     const QString &currentTool() const { return m_currentTool; }
     int contextPercent() const { return m_contextPercent; }
+    // Tokens the focused session's context holds; 0 when none is known.
+    qint64 contextTokens() const { return m_contextTokens; }
+    // The window contextPercent is measured against (Settings, Claude tab).
+    // Setting it recomputes the percentage and re-emits contextUpdated.
+    static constexpr qint64 kDefaultContextWindowTokens = 1'000'000;
+    qint64 contextWindowTokens() const { return m_contextWindowTokens; }
+    void setContextWindowTokens(qint64 tokens);
     bool planMode() const { return m_planMode; }
 
     // session_id from the most recent hook event. Updated before any
@@ -738,6 +748,8 @@ private:
     ClaudeState m_state = ClaudeState::NotRunning;
     QString m_currentTool;
     int m_contextPercent = 0;
+    qint64 m_contextTokens = 0;
+    qint64 m_contextWindowTokens = kDefaultContextWindowTokens;
     QStringList m_changedFiles;
     bool m_planMode = false;
     bool m_auditing = false;

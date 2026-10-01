@@ -44,6 +44,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status bar shows how full Claude Code's context is again, in large outlined text with the exact numbers on hover.** (ANTS-5592)
+  It counts cached tokens too, so it no longer reads 0% and hides. The
+  window it measures against is a new Settings → General field ("Claude
+  context window", default 1,000,000 tokens).
+
 - **A pinned review partition (`.indie-review/partition.json`) may name files anywhere in the project, not only under `src/`** (ANTS-5583)
   A project with its code in other folders got every lane back empty.
   Absolute paths, paths that leave the project and paths under `.git/`

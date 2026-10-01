@@ -488,7 +488,10 @@ The hook then lets the push through, prints the skipped legs, and writes no
 record. A gate that skips a leg and exits 0 silently has passed a tree it
 did not check, and § 7.1 would then skip that tree for good. **Prefer
 declaring for a leg that depends on an outside service**: exiting non-zero
-blocks every push for the length of someone else's outage.
+blocks every push for the length of someone else's outage. **Detect the
+failure where the service is called**, not by looking for a warning: a failed
+request can return an empty answer that the check reads as "nothing to
+report", and print nothing.
 
 ### 7.2 A push that adds no commit
 

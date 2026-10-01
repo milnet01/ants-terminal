@@ -11,7 +11,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QLocale>
 #include <QObject>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
@@ -50,6 +53,44 @@
 // re-pointing contract.
 
 namespace {
+
+// The context meter. The user is partially sighted, so the label is bold,
+// 13 px and drawn with a dark outline: it stays readable over the green,
+// amber and red fills and over the empty track alike, which a plain
+// stylesheet text colour cannot do.
+class ContextMeter final : public QProgressBar {
+public:
+    explicit ContextMeter(QWidget *parent) : QProgressBar(parent) {
+        setTextVisible(false);   // painted below instead
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override {
+        QProgressBar::paintEvent(event);
+        QFont f = font();
+        f.setBold(true);
+        f.setPixelSize(13);
+        const QString text = QStringLiteral("Context %1%").arg(value());
+        const QFontMetricsF fm(f);
+        const QPointF origin((width() - fm.horizontalAdvance(text)) / 2.0,
+                             (height() + fm.ascent() - fm.descent()) / 2.0);
+        QPainterPath path;
+        path.addText(origin, f, text);
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.strokePath(path, QPen(QColor(0, 0, 0, 230), 3.0, Qt::SolidLine,
+                                Qt::RoundCap, Qt::RoundJoin));
+        p.fillPath(path, Qt::white);
+    }
+};
+
+QString contextMeterStyle(const Theme &th, const QString &chunkColor) {
+    return QStringLiteral(
+               "QProgressBar { border: 1px solid %1; border-radius: 4px; background: %2; }"
+               "QProgressBar::chunk { background: %3; border-radius: 3px; }")
+        .arg(th.border.name(), th.bgSecondary.name(), chunkColor);
+}
+
 // ANTS-1976 — forward decl; the definition lives in the later anonymous
 // namespace block (it sits beside the near-miss telemetry it was written
 // for), but refreshAutoModelSwitch's debug trace needs it earlier.
@@ -116,15 +157,13 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_statusLabel->hide();
     m_statusBar->addPermanentWidget(m_statusLabel);
 
-    // Context window pressure indicator (progress bar)
-    m_contextBar = new QProgressBar(m_statusBar);
+    // Context window pressure indicator. Styled by applyTheme(); the
+    // tooltip is rebuilt on every update with the actual numbers.
+    m_contextBar = new ContextMeter(m_statusBar);
     m_contextBar->setRange(0, 100);
     m_contextBar->setValue(0);
-    m_contextBar->setFixedWidth(80);
-    m_contextBar->setFixedHeight(14);
-    m_contextBar->setFormat("%p%");
-    // Styled dynamically by applyTheme()
-    m_contextBar->setToolTip("Claude Code context window usage");
+    m_contextBar->setFixedSize(160, 22);
+    m_contextBar->setToolTip(tr("How full Claude Code's context is"));
     m_contextBar->setAccessibleName(tr("Claude Code context window usage"));
     m_contextBar->hide();
     m_statusBar->addPermanentWidget(m_contextBar);
@@ -458,10 +497,9 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         // unconditionally, which re-exposed the bar at 0% immediately after
         // the NotRunning handler had hidden it — so a fresh tab (or a tab
         // where Claude was never started) still painted a "0%" widget in
-        // the status bar. Treat 0 as "no session / nothing to show" and
-        // hide. The bar only re-appears once Claude emits a real,
-        // non-zero context percentage (claudeintegration.cpp:333-334).
-        if (percent <= 0) {
+        // the status bar. Hide when no tokens are known; a real session
+        // with a small context still shows, at 0%.
+        if (m_integration->contextTokens() <= 0) {
             m_contextBar->hide();
             return;
         }
@@ -472,14 +510,12 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         QString chunkColor = th.ansi[2].name();  // green
         if (percent > 80) chunkColor = th.ansi[1].name();  // red
         else if (percent > 60) chunkColor = th.ansi[3].name();  // yellow
-        m_contextBar->setStyleSheet(
-            QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
-                    "QProgressBar::chunk { background: %4; border-radius: 2px; }")
-                .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), chunkColor));
-        if (percent >= 80) {
-            m_contextBar->setToolTip(
-                QString("Context %1% — consider using /compact").arg(percent));
-        }
+        m_contextBar->setStyleSheet(contextMeterStyle(th, chunkColor));
+        const QString tip = contextMeterTooltip(
+            m_integration->contextTokens(),
+            m_integration->contextWindowTokens(), percent);
+        m_contextBar->setToolTip(tip);
+        m_contextBar->setAccessibleDescription(tip);
     });
 
     // ANTS-3572 — tokens-saved pill. Face = live session (humanized); tooltip
@@ -860,10 +896,7 @@ void ClaudeStatusBarController::applyTheme(const QString &themeName) {
     if (m_statusLabel)
         m_statusLabel->setStyleSheet(QStringLiteral("color: %1; %2").arg(th.textSecondary.name(), statusStyle));
     if (m_contextBar)
-        m_contextBar->setStyleSheet(
-            QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
-                    "QProgressBar::chunk { background: %4; border-radius: 2px; }")
-                .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), th.ansi[2].name()));
+        m_contextBar->setStyleSheet(contextMeterStyle(th, th.ansi[2].name()));
     if (m_reviewBtn) {
         // 0.6.26 — side-by-side with the "Add to allowlist" button in the
         // status bar, the custom-styled Review Changes button looked wildly
@@ -2791,4 +2824,18 @@ qint64 ClaudeStatusBarController::lastOverrideMsForProject(
     const QString &project) const
 {
     return m_lastOverrideMsByProject.value(project, -1);
+}
+
+QString contextMeterTooltip(qint64 tokens, qint64 window, int percent) {
+    QLocale c = QLocale::c();   // "456,789" whatever the system locale
+    c.setNumberOptions(QLocale::DefaultNumberOptions);   // C omits separators
+    QString tip = QObject::tr(
+        "Claude Code's context is %1% full.\n"
+        "%2 of %3 tokens used.\n"
+        "Change the size in Settings → General if your model differs.")
+        .arg(percent)
+        .arg(c.toString(tokens), c.toString(window));
+    if (percent >= 80)
+        tip += QObject::tr("\nNearly full: run /compact or start a new session.");
+    return tip;
 }

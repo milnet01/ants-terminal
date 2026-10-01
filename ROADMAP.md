@@ -69011,6 +69011,9 @@ project. Reported causes are claims until checked in source.
   hook line naming the unread count; a tab badge in the terminal.
   Measured cost claimed by the reporter: about 5 tokens, only when mail
   is waiting. Serves SIGN-5 (seeing what Claude sessions are doing).
+  User report (2026-10-01): sessions are not notified when their inbox
+  has mail. Raised by the user directly; take it next after the context
+  meter.
   **Layman:** A Claude session should notice when another session has sent it a request, instead of the request sitting unread for hours.
   Kind: feature.
   Source: contact-list session request 2026-09-28 (session_message 194).
@@ -79851,6 +79854,18 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   **Layman:** People who install Ants from a package or the AppImage have no way to hook Claude Code up to its money-saving tools.
   Kind: fix.
   Source: in-session-2026-09-15 (README getting-started check).
+
+- ✅ [ANTS-5592] **Bring back a readable context-fill meter in the status bar.**
+  The meter had gone blank: it measured usage.input_tokens alone, which with
+  prompt caching is a few tokens, so it read 0% and hid. It now sums the
+  three input fields, measures against a window set in Settings → General
+  (default 1,000,000, user decision 2026-10-01), and draws bold 13 px
+  "Context N%" text with a dark outline on a 160×22 bar. Contract:
+  tests/features/claude_context_meter/spec.md.
+  **Layman:** The status bar again shows how full Claude's memory is, in large outlined text with the exact numbers on hover.
+  Kind: fix.
+  Source: user-request-2026-10-01.
+  Lanes: claude-integration.
 
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 

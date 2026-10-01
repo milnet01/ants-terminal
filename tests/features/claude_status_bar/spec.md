@@ -35,9 +35,10 @@ The status-bar label showing Claude Code's current state MUST:
    symptom.)
 
 3. **Update context percent from usage data.** When any `assistant`
-   event in the transcript window carries `message.usage.input_tokens
-   > 0`, emit `contextUpdated(percent)` where `percent = min(100,
-   input_tokens * 100 / 200_000)`.
+   event in the transcript window carries `message.usage` tokens > 0,
+   emit `contextUpdated(percent)` where `percent = min(100, tokens * 100
+   / window)`. `tests/features/claude_context_meter/spec.md` owns how
+   tokens are summed and where the window comes from.
 
 ## D. Whole-status-bar event-driven contract
 
@@ -99,7 +100,7 @@ tab's state.
   event type.
 - Metadata event filtering.
 - Tab-switch state invalidation via `setShellPid`.
-- Context-percent derivation from `usage.input_tokens`.
+- Context-percent derivation from the usage token fields.
 
 ### Out of scope
 - The UI label itself (`QLabel` render + colour themes) — that's

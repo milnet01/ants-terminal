@@ -106,6 +106,7 @@ private:
     QCheckBox *m_claudeMcpTerse = nullptr;
     // ANTS-2094 — offload large MCP read bodies to a head+pointer (default on).
     QCheckBox *m_claudeMcpOffload = nullptr;
+    QSpinBox  *m_claudeContextWindow = nullptr;   // context meter's window, tokens
     void installClaudeHooks();
     void refreshClaudeHooksStatus();
     void installClaudeGitContextHook();

@@ -410,6 +410,22 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "is sent as normal.");
     layout->addRow(m_claudeMcpOffload);
 
+    // The status bar's context meter measures against this. Claude Code does
+    // not record the window size anywhere Ants can read, so it is a setting.
+    // Not gated by the MCP master toggle: the meter reads the transcript.
+    m_claudeContextWindow = new QSpinBox(tab);
+    m_claudeContextWindow->setRange(Config::kMinContextWindowTokens,
+                                    Config::kMaxContextWindowTokens);
+    m_claudeContextWindow->setSingleStep(100'000);
+    m_claudeContextWindow->setGroupSeparatorShown(true);
+    m_claudeContextWindow->setSuffix(tr(" tokens"));
+    m_claudeContextWindow->setToolTip(tr(
+        "How much Claude Code can hold in its context. The status bar's "
+        "\"Context\" meter shows how full it is against this number. "
+        "1,000,000 suits the large-context models; use 200,000 for a "
+        "standard one."));
+    layout->addRow(tr("Claude context window:"), m_claudeContextWindow);
+
     // ANTS-1901 — the MCP master toggle gates the whole Claude group.
     // Defined here (after every child widget exists) so it can reference
     // them. When off, the auto-switch checkbox, orientation hook, and
@@ -472,6 +488,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeMcpOrientation) m_claudeMcpOrientation->setChecked(true);
         if (m_claudeMcpTerse) m_claudeMcpTerse->setChecked(true);
         if (m_claudeMcpOffload) m_claudeMcpOffload->setChecked(true);  // ANTS-2094 default on
+        if (m_claudeContextWindow) m_claudeContextWindow->setValue(1'000'000);
     });
     layout->addRow(QString(), generalDefaultsBtn);
 }
@@ -1117,6 +1134,8 @@ void SettingsDialog::loadSettings() {
         m_claudeMcpTerse->setChecked(m_config->claudeMcpTerseResponses());
     if (m_claudeMcpOffload)
         m_claudeMcpOffload->setChecked(m_config->claudeMcpOffloadLargeResults());
+    if (m_claudeContextWindow)
+        m_claudeContextWindow->setValue(m_config->claudeContextWindowTokens());
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -1277,6 +1296,9 @@ void SettingsDialog::applySettings() {
                               m_config->claudeMcpOffloadThresholdBytes(),
                               m_config->claudeMcpOffloadHeadBytes());
     }
+
+    if (m_claudeContextWindow)
+        m_config->setClaudeContextWindowTokens(m_claudeContextWindow->value());
 
     // Appearance
     m_config->setFontFamily(m_fontFamily->currentFont().family());

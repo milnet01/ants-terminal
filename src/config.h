@@ -204,6 +204,13 @@ public:
     // config-file-only tuning keys. Threshold clamps to [4096, 1048576],
     // head to [256, 16384] in mcp::setOffloadConfig. See docs/specs/ANTS-2094.md.
     bool claudeMcpOffloadLargeResults() const;
+    // The Claude context window the status-bar meter measures against, in
+    // tokens. claude.context_window_tokens, default 1,000,000, clamped to
+    // [kMinContextWindowTokens, kMaxContextWindowTokens].
+    static constexpr int kMinContextWindowTokens = 10'000;
+    static constexpr int kMaxContextWindowTokens = 10'000'000;
+    int  claudeContextWindowTokens() const;
+    void setClaudeContextWindowTokens(int tokens);
     void setClaudeMcpOffloadLargeResults(bool enabled);
     int  claudeMcpOffloadThresholdBytes() const;
     int  claudeMcpOffloadHeadBytes() const;
