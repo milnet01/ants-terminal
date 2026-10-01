@@ -111,8 +111,9 @@ a running total of what the tools have saved you this session.
   file path is dropped into the prompt, so you can paste-and-send an image
   to Claude in one move.
 - **Follow the plan** — when a project keeps a roadmap, a **Roadmap** button
-  in the bottom bar opens it in a searchable window, with filters by status
-  and kind of work.
+  in the bottom bar opens it in a searchable window. Items line up in tidy
+  columns, you can filter by status and kind of work, and it remembers which
+  sections you had open in each project.
 - **See what Claude left running** — a **Background Tasks** button in the
   bottom bar lists the commands Claude started in the background.
 
@@ -267,7 +268,8 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
    When `ants-mcpd` is rebuilt, reconnect Claude Code (`/mcp`) to pick it
    up. Ants itself keeps running, and so do your other sessions. The older
-   connector, `tools/mcp-bridge.py`, still works for one more release.
+   connector, `tools/mcp-bridge.py`, still works for now and will be removed
+   in a later release.
 3. **Start Claude Code in an Ants tab** by typing `claude`. At the top of
    the session you should see a note that starts "Ants MCP is connected."
 4. **Watch the savings.** Once Claude has used a few of the tools, a
