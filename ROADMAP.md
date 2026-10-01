@@ -19375,6 +19375,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-26 (close-findings audit pass).
   Lanes: mcp.
 
+- 📋 [ANTS-5602] **A verb that names the tests which read a given source file.**
+  Measured 2026-10-01: ANTS-5527's tests were picked by a name regex;
+  the push gate then failed on two source-scrape tests that read the
+  edited files (cited_by INV-9 via slurpRemoteControl, and the partition
+  coverage test), costing a ~10 min gate run and a fix commit.
+  focused_test maps changed files to ctest names, but a scrape test
+  reaches a file through a SRC_*_PATH or ANTS_SOURCE_DIR compile
+  definition or an ants_test::slurp* helper, which a name map cannot
+  see. A verb (or a focused_test mode) could read those definitions from
+  CMakeLists.txt and the slurp helpers, and return the tests that read a
+  given path.
+  **Layman:** After changing a file, a session could run just the tests that check it, instead of the whole suite or a guess.
+  Kind: feature.
+  Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
+  Lanes: mcp, tests.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -69413,6 +69429,19 @@ project. Reported causes are claims until checked in source.
   **Layman:** Asking for all waiting messages returns just one of them.
   Kind: fix.
   Source: claude-config feedback 2026-10-01; reproduced here 2026-10-01.
+  Lanes: mcp.
+
+- 📋 [ANTS-5601] **session_message cannot read one message by its id.**
+  op:"inbox" pages newest first by limit/offset only. Reported by
+  claude-config: rereading acked message 295 took three calls and about
+  12 kB of unrelated bodies. Roadmap notes cite messages by number
+  ("mailbox 295"), so each such citation costs a paged scan. Suggested:
+  accept message_id (or message_ids[]) on op:"inbox", or add op:"get",
+  returning the message whether acked or not. Store-backed; the message
+  table is keyed by id, so this is one SELECT.
+  **Layman:** A session that knows a message's number has to page through its mailbox to read it again.
+  Kind: feature.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-10-01.
   Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-10-01 triage
