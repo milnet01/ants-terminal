@@ -169,7 +169,8 @@ tagging to this section.
   candidates included; never after. **A standing instruction from the
   user to publish this project's releases is that confirmation**, where
   it is written down rather than inferred and the release report quotes
-  it.
+  it. **That holds for a todo that publishes too**, such as a script that
+  turns a draft into a release.
 
 ## 6. Order
 

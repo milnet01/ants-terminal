@@ -214,7 +214,9 @@ dated section and opens a fresh empty one above it, so it performs steps 1 and
 2.** It authors no `**Theme:**` line, so step 1's second half stays the
 author's on every route. **One route copies it instead**: where the
 roadmap's section for the release is titled with the version and a theme
-(*0.10.0 — Faster startup*), `cut-release` writes that theme as the line.
+(*0.10.0 — Faster startup*), `cut-release` writes that theme as the line. A
+patch release with no section of its own takes the theme of the release it
+patches.
 The author wrote it there, so nothing new is authored. `cut-release` carves out the same split at Phase 0e —
 *"Unless the recipe performs the cut itself — then 0e passes."*
 
