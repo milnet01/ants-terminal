@@ -90479,6 +90479,35 @@ reports are asked for separately, each time.
   Source: user-request-2026-09-29.
   Lanes: ui.
 
+- 📋 [ANTS-5604] **Roadmap dialog: headings and items share one aligned column grid, with dates in their own columns.**
+  User decisions 2026-10-01 (asked with mockups):
+  - One column per status (✅ 🚧 📋 💭 🚫): emoji header row once at
+    the top, cells hold just the number, blank when zero.
+  - A heading's date MOVES out of the title. Two columns: the kind of
+    date ("target", "review", "shipped", "research", ...) in its own
+    column, then the date alone. The user added the separate kind column.
+    Item rows use the same Date column for their shipped date.
+  Cause today: renderCardsHtml (src/roadmapdialog.cpp) draws each
+  section heading as <h2>/<h3> OUTSIDE its section's
+  <table class="rm-cards"> (4 cols: state, kind, summary, meta with
+  #id + date), so nothing aligns. Plan: render the whole view as ONE
+  table so Qt sizes each column once. Heading row: chevron, five count
+  cells, title (h3 indented), date-kind, date, empty. Card row: state,
+  kind (colspan 5), summary, date-kind empty, date, #id + toggle. Body
+  rows' colspan widens to the full width. Keep <a name> anchors (the
+  Contents pane jumps to them) and the toggle hrefs. A pure, tested
+  splitter takes the date out of a heading: "(target: 2026-05-21)" ->
+  kind target, date 2026-05-21; "— shipped 2026-05-10 → 2026-05-11" ->
+  shipped, the range; a bare mid-title date ("— 2026-08-18 second
+  triage") moves alone with an empty kind. The Contents pane keeps full
+  heading text. Needs a terminal relaunch to see (GUI render code).
+  Check: the 13 roadmap dialog tests stay green, new tests for the
+  splitter and the one-table layout, and a screenshot via record-demo.
+  **Layman:** Every row of the roadmap window lines up in columns, and dates sit in their own column instead of inside titles.
+  Kind: ux.
+  Source: user-request-2026-10-01 (screenshot of Custom tab).
+  Lanes: roadmap-dialog.
+
 ## Welcome dialog (user request 2026-09-29)
 
 A first-run welcome dialog, and the one-click setup actions it offers.

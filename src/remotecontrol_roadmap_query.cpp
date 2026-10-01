@@ -772,6 +772,18 @@ void RemoteControl::setRoadmapHistoryCapForTest(qint64 bytes) {
     m_roadmapStore.reset();
 }
 
+bool RemoteControl::flushHistoryForTest(RoadmapStore &store,
+                                        const QString &changedAt,
+                                        qint64 itemPk, const QString &field,
+                                        const QString &oldValue,
+                                        const QString &newValue,
+                                        QString *error) {
+    rcdetail::HistoryContext hist;
+    hist.changedAt = changedAt;
+    hist.record(itemPk, field, oldValue, newValue);
+    return rcdetail::rlFlushHistory(store, hist, error);
+}
+
 // ANTS-3793 § 2.2 — the dispatch on its own. See remotecontrol.h for the one
 // site that needs it and why it cannot ask by reading.
 bool RemoteControl::roadmapStoreServes(const QString &projectRoot,

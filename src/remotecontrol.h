@@ -1226,6 +1226,14 @@ public:
     // cached store, and ~unique_ptr<RoadmapStore> needs the complete type, which
     // this header does not have (see m_roadmapStore's comment).
     void setRoadmapHistoryCapForTest(qint64 bytes);
+    // ANTS-4416 — record ONE history row and flush it through the real
+    // rcdetail::rlFlushHistory(), so a test can drive § 2.3's abort branch
+    // without including remotecontrol_internal.h (rc_tu_split INV-5 keeps that
+    // header to the RemoteControl sources).
+    static bool flushHistoryForTest(RoadmapStore &store, const QString &changedAt,
+                                    qint64 itemPk, const QString &field,
+                                    const QString &oldValue,
+                                    const QString &newValue, QString *error);
 
     // ANTS-5093 — once a reply is written, abort the connection if the peer
     // stops draining it for `idleMs`. Every bytesWritten restarts the timer,

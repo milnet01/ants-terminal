@@ -18,7 +18,6 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
-#include "remotecontrol_internal.h"   // ANTS-4416 — rcdetail::rlFlushHistory
 #include "roadmaprender.h"
 #include "roadmapwrite.h"
 #include "../../_support/roadmapstoreaccess.h"
@@ -561,7 +560,8 @@ TEST(RoadmapWriteHistory, Inv6AppendWritesNoHistory) {
 
 // ------------------------------------------------------------------ INV-8 ---
 // A non-cap appendHistory() failure aborts the op (ANTS-4416). Driven through
-// the REAL helper, rcdetail::rlFlushHistory(), inside a commitAndRender() whose
+// the REAL helper, rcdetail::rlFlushHistory() via RemoteControl::
+// flushHistoryForTest(), inside a commitAndRender() whose
 // mutate the test supplies — never a mutate returning false on its own, which
 // would only re-prove that commitAndRender() aborts on a false. The failure is
 // history.item_pk's foreign key refusing an item no row has.
@@ -597,14 +597,13 @@ TEST(RoadmapWriteHistory, Inv8NonCapHistoryFailureAbortsTheWrite) {
                      const QString &stamp) {
         auto store = openStore(RoadmapStore::Access::Interactive);
         if (!store) return RoadmapWrite::Result::StoreFailed;
-        rcdetail::HistoryContext hist;
-        hist.changedAt = stamp;
         auto mutate = [&](QString *err) {
             if (!store->setItemField(bodyPk, QStringLiteral("body"), body,
                                      QStringLiteral("asserted"), err))
                 return false;
-            hist.record(historyPk, QStringLiteral("body"), QString(), body);
-            return rcdetail::rlFlushHistory(*store, hist, err);
+            return RemoteControl::flushHistoryForTest(
+                *store, stamp, historyPk, QStringLiteral("body"), QString(),
+                body, err);
         };
         RoadmapRender::Outcome outcome;
         QString err;
