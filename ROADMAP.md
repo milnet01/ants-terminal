@@ -69536,7 +69536,7 @@ project. Reported causes are claims until checked in source.
   Source: user-request-2026-10-01.
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-5597] **Roadmap dialog Contents pane jumps to the wrong heading when sections are hidden.**
+- ✅ [ANTS-5597] **Roadmap dialog Contents pane jumps to the wrong heading when sections are hidden.**
   extractToc numbers every heading in the file (tocAnchorAt(idx++)),
   but renderCardsHtml advances headingIdx only for headings it emits. A
   section suppressed on a non-Full tab, the skipped "Table of Contents"
@@ -69544,6 +69544,10 @@ project. Reported causes are claims until checked in source.
   a collapsed h2 all shift every later anchor. Fix: advance headingIdx
   for every heading the TOC lists, emitted or not, or list only emitted
   headings. Found while fixing ANTS-5596; not yet reproduced in the UI.
+  Resolved (2026-10-01): renderCardsHtml now advances its heading
+  counter for every heading, shown or hidden. Locked by
+  roadmap_dialog_cards INV-27 (red before, green after). Commit
+  a9d4498d.
   **Layman:** Clicking a heading in the Roadmap window's Contents list can scroll to a different heading when a filter is hiding some sections.
   Kind: fix.
   Source: in-session-2026-10-01.

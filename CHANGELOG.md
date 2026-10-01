@@ -51,6 +51,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Clicking a heading in the Roadmap window's Contents list scrolls to that heading, even when filters or collapsed sections hide others.** (ANTS-5597)
+
 - **In the Flatpak, the diff viewer and the roadmap and audit windows run git on your computer** (ANTS-5598)
   They ran git inside the sandbox, which has none. The repository's
   public/private label (from gh) is looked up on your computer too.
