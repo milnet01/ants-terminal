@@ -80668,6 +80668,12 @@ command ledger is the foundation several others read from.
   User decision 2026-10-01: redaction ON by default, with a config
   switch to turn it off. Reuse the existing AI-request scrubber. Keep
   the status-bar flash when Claude reads a .env*, *.pem or id_* file.
+  Code map (2026-10-01), re-check line numbers before editing. Scrubber: SecretRedact::scrub(QString) returns {text, redactedCount} and replaces each match with [REDACTED:kind] (src/secretredact.h; contract tests/features/ai_context_redaction/spec.md). Where the text leaves:
+  - get_scrollback is an inline lambda in mainwindow.cpp, registerToolProvider("get_scrollback"). It returns trim.text as plain text, or env["content"] with since_cursor.
+  - get_text is RemoteControl::cmdGetText (remotecontrol_terminal.cpp), out["text"]; lines and bytes are computed from it.
+  - recent_errors is cmdRecentErrors, per entry o["message"] and o["text"].
+  - last_selection is cmdLastSelection, out["text"], plus length and bytes.
+  get_scrollback and get_text share RemoteControl::trimScrollbackForGetText. Config: bool keys follow claude.mcp_orientation_enabled (config.h/.cpp, toBool(true) getter, storeIfChanged setter). config.json hot-reloads through MainWindow::onConfigFileChanged (m_config = Config()); a Config() temporary re-reads the file. Hook: processHookEvent in claudeintegration.cpp; its PreToolUse branch does not read file_path. updateChangedFiles takes Read/Edit/Write file_path and emits fileChanged. claudestatuswidgets.cpp turns that into statusMessageRequested("Claude edited: %1"), and MainWindow::showStatusMessage shows it. No flash helper exists.
   **Layman:** Passwords or keys shown in the terminal can be copied into Claude's context; Ants should hide them first.
   Kind: security.
   Source: user-request-2026-09-14 (coder-helper research).
