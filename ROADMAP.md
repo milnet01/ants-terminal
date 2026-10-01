@@ -67064,11 +67064,12 @@ names the sign it claims (SIGN-1 to SIGN-5).
   Claude Code with no Ants MCP server and no Ants hooks; both arms use
   the README's model with the model auto-switcher off. Record the
   result, dated, in tools/token-bench/.
-  Blocked-by: ANTS-5545
+
   **Layman:** Run the practice job both ways and check Ants costs at least 20% less.
   Kind: test.
   Source: docs/design.md SIGN-1 (2026-09-28).
   Lanes: mcp.
+  Blocked-by: ANTS-5545.
 
 - 📋 [ANTS-5547] **Measure SIGN-2 output speed: time to print one fixed large log file in Ants and in Konsole on the same machine.**
   Claims SIGN-2 (output half). Pass: Ants is no slower than Konsole.
@@ -69290,7 +69291,7 @@ project. Reported causes are claims until checked in source.
   Source: session-message-281 finbreak 2026-09-29.
   Lanes: mcp.
 
-- 📋 [ANTS-5593] **Two stored items hold a Blocked-by declaration as body text, with no relationship row.**
+- ✅ [ANTS-5593] **Two stored items hold a Blocked-by declaration as body text, with no relationship row.**
   ANTS-5546's body holds `Blocked-by: ANTS-5545` and ANTS-4405's holds
   `Blocked-by: ANTS-4507.` Both are declarations by
   RoadmapParse::linkLine, yet roadmap_query returns no `links` for either,
@@ -69298,6 +69299,13 @@ project. Reported causes are claims until checked in source.
   where the body puts it, not as a composed link line. Find how they
   entered the body past the body_shadowed guard, move them to rows with
   op:"link", and add a check that no stored body declares a link.
+  Resolved (2026-10-01): both lines predate the guard. ANTS-4405's was
+  written 2026-09-09 and ANTS-5546 was created 2026-09-28; the
+  declaresLinkLine guard on every body write landed 2026-09-29
+  (36c1bc58, ANTS-4079), and roadmap_item_links INV-9 locks it, so no
+  path leaks today. Both lines are now relationship rows (op:link) and
+  gone from the stored bodies; a store-wide search finds no other body
+  declaring one. No new check: INV-9 is that check.
   **Layman:** Two roadmap items say they are waiting on another item, but the database does not know, so nothing treats them as blocked.
   Kind: fix.
   Source: in-session-2026-10-01 (roadmap-format field pass for claude-config).
@@ -85445,7 +85453,8 @@ here.)
   The CODE cause this item names was fixed elsewhere: `trailerValuesIn` masks quoted regions (ANTS-4504) and prefers a line-initial match (ANTS-4497). What was left was damaged stored data, which no code fix repairs retroactively.
 
   The plan's exception is NOT deleted, and should not be until ANTS-4507 lands. `docs/plans/ANTS-4065-import-mapping-contract.md` D3 says the exception goes "when that ships", but its criterion counts items that MOVE, and a dry-run migrate today reports 1548 moved — nearly all `body`. That is ANTS-4507's subject: the counter has no zero point, so this item's movement cannot be observed against it either way. Deleting the exception now would rest on a measurement that cannot currently distinguish a fixed item from a moving one.
-
+  Note (2026-10-01): its blocker ANTS-4507 has shipped, so the plan half
+  above is no longer blocked.
   Blocked-by: ANTS-4507.
 
 - ✅ [ANTS-4406] **The store-divergence witness compares two different quantities, so it warns forever and both its numbers are wrong.**
