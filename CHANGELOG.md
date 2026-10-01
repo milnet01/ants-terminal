@@ -49,6 +49,8 @@ for security-relevant changes.
 
 ### Security
 
+- **The indie-review dispatch brief reads at most 1 MiB of each source and standards file, so a huge file in a review lane is clipped with a marker instead of being loaded whole into memory** (ANTS-1648)
+
 - **The Claude hook and MCP sockets now live in your private runtime folder, not the shared /tmp.** (ANTS-5236)
   Other local users can no longer squat the socket names to switch off
   the status feed or the MCP. Each terminal exports its hook socket as

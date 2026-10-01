@@ -23524,8 +23524,15 @@ gets one CHANGELOG section + one drift cycle + one push.
   Kind: perf.
   Lanes: auditdialog, testauditengine, remotecontrol, audithygiene, claudeallowlist.
 
-- 📋 [ANTS-1648] **Body-size caps missing on JSON/text ingress paths — 4 distinct sites.**
+- ✅ [ANTS-1648] **Body-size caps missing on JSON/text ingress paths — 4 distinct sites.**
   Hook server's 10 MiB JSON parse cap (claudeintegration H2), MCP socket 10 MiB cap (same), transcript-parse 4 MiB per-debounce (claudeintegration M4), `indiereviewdispatcher` upstream reply `readAll()` with no cap (mcp-review-engines H2), `assembleBriefForDispatch` per-source unbounded slurp (mcp-review-engines H3). All same shape: drop to ≤256 KiB for the hook/MCP paths (real events are <8 KiB), cap dispatcher response at `max_tokens × 6 bytes`, cap each source body at 1 MiB. Kind: security. Lanes: claudeintegration, mcp-engines.
+  Resolved (2026-10-01): re-measured all sites. Hook and MCP sockets
+  were already capped at 256 KiB (ANTS-1659). The dispatcher reply is
+  capped at LlmClient::kMaxBytes, 10 MiB (ANTS-5101). The transcript
+  tail cap is a deliberate 16 MiB per record (ANTS-5089), and the file
+  is the user's own. The one live gap, assembleBriefForDispatch reading
+  each source whole, now reads at most kMaxSourceBodyBytes (1 MiB) per
+  file. Test: BriefDispatchFence.Ants1648SourceBodyCapped.
   **Layman:** Four places accept incoming data with no size limit, so a huge payload could exhaust memory.
   Kind: security.
   Lanes: claudeintegration, mcp-engines.

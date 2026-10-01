@@ -150,6 +150,29 @@ TEST(BriefDispatchFence, INV11_IndieReviewDispatchParity) {
     EXPECT_EQ(countSubstr(brief, k4), 2) << brief.toStdString();
 }
 
+// ANTS-1648 — assembleBriefForDispatch reads at most kMaxSourceBodyBytes of
+// each source file, so an oversized file in a lane is clipped with a marker
+// instead of being loaded whole. The fence still closes.
+TEST(BriefDispatchFence, Ants1648SourceBodyCapped) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("src")));
+    const qint64 cap = IndieReviewEngine::kMaxSourceBodyBytes;
+    const QString big(static_cast<qsizetype>(cap * 2), QLatin1Char('a'));
+    ASSERT_TRUE(writeFile(dir.path() + QStringLiteral("/src/big.cpp"), big));
+
+    IndieReviewEngine::Lane lane;
+    lane.name = QStringLiteral("big");
+    lane.sourcePaths = QStringList{ QStringLiteral("src/big.cpp") };
+
+    const QString brief =
+        IndieReviewEngine::assembleBriefForDispatch(dir.path(), lane);
+    EXPECT_LT(brief.toUtf8().size(), cap + 4096) << "source body not capped";
+    EXPECT_TRUE(brief.contains(
+        QStringLiteral("[truncated at %1 bytes]").arg(cap)));
+    EXPECT_EQ(countSubstr(brief, k4), 2);
+}
+
 // INV-17 — only the keyword-matching section is emitted.
 TEST(BriefDispatchFence, INV17_SectionSlicingMatchesKeyword) {
     QTemporaryDir dir;

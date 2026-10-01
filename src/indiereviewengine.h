@@ -350,6 +350,11 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
 //
 // Path-traversal guard: project-relative source paths only; never
 // substitutes projectPath into the prompt (INV-23).
+//
+// ANTS-1648 — each inlined body is read up to kMaxSourceBodyBytes and
+// clipped past it with a "[truncated at N bytes]" marker, so one huge
+// file in a lane is never loaded whole.
+inline constexpr qint64 kMaxSourceBodyBytes = qint64{1024} * 1024;
 QString assembleBriefForDispatch(const QString &projectPath,
                                  const Lane &lane);
 

@@ -37,6 +37,18 @@ QString slurpUtf8(const QString &absPath) {
     return FileContentCache::slurpUtf8(absPath);
 }
 
+// ANTS-1648 — read at most kMaxSourceBodyBytes, so an oversized file is
+// never loaded whole. Files under the cap still go through the shared cache.
+QString slurpCappedUtf8(const QString &absPath) {
+    if (QFileInfo(absPath).size() <= kMaxSourceBodyBytes)
+        return slurpUtf8(absPath);
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    // A clip mid-character becomes U+FFFD, harmless inside the data fence.
+    return QString::fromUtf8(f.read(kMaxSourceBodyBytes))
+           + QStringLiteral("\n[truncated at %1 bytes]").arg(kMaxSourceBodyBytes);
+}
+
 // Walk src/ to find files matching `<name>.{h,cpp}` + `<name>*.{h,cpp}`.
 // Skip generated files.
 QStringList sourcePathsForLane(const QString &projectPath,
@@ -918,7 +930,7 @@ QString assembleBriefForDispatch(const QString &projectPath,
         }
         // ANTS-1727 — fence-hardening extracted to BriefDispatch::fenceBody
         // (the shared kernel; byte-identical to the prior inline form).
-        out += BriefDispatch::fenceBody(sp, slurpUtf8(canon));
+        out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon));
     }
 
     // ROADMAP slice — same logic as assembleBriefManifest.
@@ -973,7 +985,7 @@ QString assembleBriefForDispatch(const QString &projectPath,
         }
         // ANTS-1727 — shared fence kernel; "standard" label keeps the
         // dispatch brief byte-identical to the prior inline form.
-        out += BriefDispatch::fenceBody(sp, slurpUtf8(canon),
+        out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon),
                                         QStringLiteral("standard"));
     }
     return out;
