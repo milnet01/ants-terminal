@@ -426,10 +426,9 @@ Listed only where behavior isn't obvious from the name.
   full breakdown via `mode:"near_misses"`. Reuses
   `ModelSwitchLedger::nowIso8601` / `parseIso8601Ms` for timestamps.
   ANTS-1894.
-- `roadmapdialog` — ROADMAP.md viewer. `renderCardsHtml` (v2 card
-  renderer, in use); `renderHtml` is **test-only** (no prod callers since
-  ANTS-1747; its suite locks shared filter/sort/anchor/TOC semantics).
-  `roadmap-query` IPC uses `parseBullets` + `RoadmapIndex`, not the
+- `roadmapdialog` — ROADMAP.md viewer. `renderCardsHtml` is its one
+  renderer: a single table whose heading and card rows share columns
+  (ANTS-5604). `roadmap-query` IPC uses `parseBullets` + `RoadmapIndex`, not the
   renderer. Section collapse via `ants://expand-section/<slug>`; state
   persists in nine `Config::roadmap*` keys. Spec ANTS-1154.
 - `roadmapparse` (`ants_roadmapparse_lib`) — the roadmap markdown reader

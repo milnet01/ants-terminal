@@ -10,9 +10,11 @@ model lives there; this file is the test contract.
 
 ## Invariants
 
-Source-grep + behavioural drive of `RoadmapDialog::renderHtml`.
+Source-grep + behavioural drive of `RoadmapDialog::renderCardsHtml`,
+every section expanded (`tests/_support/roadmap_cards.h`; ANTS-1263 moved
+this suite off the deleted v1 `renderHtml`).
 
-- **INV-1** `renderHtml` accepts a defaulted 7th parameter
+- **INV-1** `renderCardsHtml` accepts a 7th parameter
   `const QSet<QString> &kindFilter`. Asserted by source-grep on
   the header.
 - **INV-2** Empty filter passes through unchanged. A 3-bullet
@@ -36,7 +38,7 @@ Source-grep + behavioural drive of `RoadmapDialog::renderHtml`.
 ## CMake wiring
 
 `add_executable` with `tests/features/roadmap_kind_facets/test_*.cpp`
-plus `src/roadmapdialog.cpp` (renderHtml is a static method —
+plus `src/roadmapdialog.cpp` (renderCardsHtml is a static method —
 linking the cpp is sufficient). Link `Qt6::Core Qt6::Gui
 Qt6::Widgets`. `target_compile_definitions` for
 `ROADMAPDIALOG_H` / `ROADMAPDIALOG_CPP` so the source-grep INVs
@@ -49,5 +51,5 @@ have file paths.
 git checkout <impl-sha>~1 -- src/roadmapdialog.cpp src/roadmapdialog.h
 cmake --build build --target test_roadmap_kind_facets
 ctest --test-dir build -R roadmap_kind_facets
-# Expect every INV to fail: renderHtml has 6 args, no Kind row.
+# Expect every INV to fail: the renderer has 6 args, no Kind row.
 ```

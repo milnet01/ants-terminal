@@ -48,9 +48,10 @@ existing parser / renderer (no parser change — pure presentation layer):
 - **INV-8** *Withdrawn 2026-09-29.* `presetMatching()` moved a user who
   changed a filter onto Custom. Each tab now keeps its own filters
   (`roadmap_filter_bar`), and the function was removed.
-- **INV-9** `renderHtml(..., DescendingChronological, ...)` against a
+- **INV-9** `renderCardsHtml(..., DescendingChronological, ...)`, every
+  section expanded, against a
   multi-section markdown emits the sections in reverse document order.
-- **INV-9b** `renderHtml(..., Document, ...)` against the same input
+- **INV-9b** `renderCardsHtml(..., Document, ...)` against the same input
   preserves the authored section order — the renderer never
   re-orders sections when sort is `Document` (negative case
   guarding INV-9 against false positives).
@@ -71,5 +72,6 @@ existing parser / renderer (no parser change — pure presentation layer):
   never re-sorts the list on its own.
 
 Test harness: source-grep for the structural invariants; behavioural
-invariants drive `RoadmapDialog::renderHtml` / `filterFor` / `sortFor` /
+invariants drive `RoadmapDialog::renderCardsHtml` (every section expanded,
+`tests/_support/roadmap_cards.h`) / `filterFor` / `sortFor` /
 directly (the same pattern as roadmap_viewer).

@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/roadmap_cards.h"
 namespace {
 
 
@@ -117,7 +118,7 @@ static int runMain() {
             "\n"
             "## 0.7.0 — recent\n"
             "- ✅ **New item.** body.\n");
-        const QString rendered = RoadmapDialog::renderHtml(
+        const QString rendered = ants_test::cardsAllOpen(
             doc,
             RoadmapDialog::filterFor(Preset::History),
             {},
@@ -135,7 +136,7 @@ static int runMain() {
         // INV-9b (negative case per debt-sweep finding 2.1):
         // Document order against the same input must keep the
         // sections in their authored order (no implicit reverse).
-        const QString docOrdered = RoadmapDialog::renderHtml(
+        const QString docOrdered = ants_test::cardsAllOpen(
             doc,
             RoadmapDialog::filterFor(Preset::History),
             {},
@@ -159,7 +160,7 @@ static int runMain() {
             "- 📋 **Hyperlink (OSC 8) support.** body.\n"
             "- 📋 **Quake mode.** body.\n");
         const unsigned all = RoadmapDialog::filterFor(Preset::Full);
-        const QString hit = RoadmapDialog::renderHtml(
+        const QString hit = ants_test::cardsAllOpen(
             doc, all, {}, QStringLiteral("default"),
             SortOrder::Document, QStringLiteral("OSC 8"));
         if (!qcontains(hit, "Hyperlink"))
@@ -176,12 +177,14 @@ static int runMain() {
             "- 📋 [ANTS-1042] **Tabbed roadmap dialog.** body.\n"
             "- 📋 [ANTS-9999] **Other thing.** body.\n");
         const unsigned all = RoadmapDialog::filterFor(Preset::Full);
-        const QString hit = RoadmapDialog::renderHtml(
+        const QString hit = ants_test::cardsAllOpen(
             doc, all, {}, QStringLiteral("default"),
             SortOrder::Document, QStringLiteral("id:1042"));
-        if (!qcontains(hit, "Tabbed roadmap"))
+        if (!qcontains(hit, "Tabbed roadmap")
+            || !qcontains(hit, "id=\"rm-ANTS-1042\""))
             fail("INV-11", "id:1042 should keep [ANTS-1042] bullet");
-        if (qcontains(hit, "Other thing"))
+        if (qcontains(hit, "Other thing")
+            || qcontains(hit, "id=\"rm-ANTS-9999\""))
             fail("INV-11", "id:1042 should drop the [ANTS-9999] bullet");
     }
 

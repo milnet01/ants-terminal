@@ -1,7 +1,7 @@
 // Feature-conformance test for tests/features/roadmap_kind_facets/spec.md.
 //
 // Locks ANTS-1106 — Kind-faceted filter in the RoadmapDialog viewer.
-// Drives RoadmapDialog::renderHtml with synthetic 3-bullet markdown
+// Drives RoadmapDialog::renderCardsHtml (every section expanded) with synthetic 3-bullet markdown
 // across the four filter shapes (empty, single, multi, missing-Kind),
 // plus source-greps roadmapdialog.{h,cpp} for the new parameter, the
 // Kind-filter UI row, and the per-checkbox objectNames.
@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/roadmap_cards.h"
 namespace {
 
 
@@ -63,21 +64,24 @@ constexpr unsigned kAllOn = 0x1F;  // ShowDone | Planned | InProgress | Consider
 static int runMain() {
     // QApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
-    // INV-1: renderHtml signature gained the kindFilter parameter.
+    // INV-1: renderCardsHtml takes the kindFilter parameter, as a
+    // QSet<QString>. ANTS-1263 — anchored on the renderer's own
+    // declaration; a bare "kindFilter" also matches m_kindFilter.
     {
         const std::string hdr = ants_test::slurpFile(ROADMAPDIALOG_H);
         if (hdr.empty()) fail("INV-1", "roadmapdialog.h not readable");
-        if (!contains(hdr, "kindFilter"))
+        const auto decl = hdr.find("static QString renderCardsHtml(");
+        const auto end = hdr.find(");", decl);
+        if (decl == std::string::npos || end == std::string::npos
+            || !contains(hdr.substr(decl, end - decl),
+                         "const QSet<QString> &kindFilter"))
             fail("INV-1",
-                "renderHtml signature missing kindFilter parameter");
-        if (!contains(hdr, "QSet<QString>"))
-            fail("INV-1",
-                "kindFilter parameter type should be QSet<QString>");
+                "renderCardsHtml must take const QSet<QString> &kindFilter");
     }
 
     // INV-2: empty filter — all three bullets pass.
     {
-        const QString html = RoadmapDialog::renderHtml(
+        const QString html = ants_test::cardsAllOpen(
             sampleMarkdown(), kAllOn, {},
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), {});
@@ -92,7 +96,7 @@ static int runMain() {
     // INV-3: filter = {"implement"} — only the implement bullet survives.
     {
         const QSet<QString> kindFilter = {QStringLiteral("implement")};
-        const QString html = RoadmapDialog::renderHtml(
+        const QString html = ants_test::cardsAllOpen(
             sampleMarkdown(), kAllOn, {},
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), kindFilter);
@@ -108,7 +112,7 @@ static int runMain() {
     {
         const QSet<QString> kindFilter = {
             QStringLiteral("fix"), QStringLiteral("doc")};
-        const QString html = RoadmapDialog::renderHtml(
+        const QString html = ants_test::cardsAllOpen(
             sampleMarkdown(), kAllOn, {},
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), kindFilter);
@@ -136,13 +140,15 @@ static int runMain() {
             "  Source: test.\n"
         );
         const QSet<QString> kindFilter = {QStringLiteral("implement")};
-        const QString html = RoadmapDialog::renderHtml(
+        const QString html = ants_test::cardsAllOpen(
             markdownWithUnclassified, kAllOn, {},
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), kindFilter);
-        if (!html.contains(QStringLiteral("Classified")))
+        // ANTS-1263 — match the card rows: "Classified" is a substring
+        // of "Unclassified".
+        if (!html.contains(QStringLiteral("id=\"rm-ANTS-9001\"")))
             fail("INV-5", "classified bullet should survive");
-        if (html.contains(QStringLiteral("Unclassified")))
+        if (html.contains(QStringLiteral("id=\"rm-ANTS-9002\"")))
             fail("INV-5",
                 "unclassified bullet should be excluded under non-empty filter");
     }

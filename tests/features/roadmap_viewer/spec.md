@@ -87,39 +87,14 @@ nothing.
 
 ### Parsing & rendering
 
-- Pure helper `RoadmapDialog::renderHtml(const QString &markdownText,
-  Filter f, const QSet<QString> &currentBullets) → QString`. Pure +
-  static so tests can drive it without spinning a Qt widget.
+- Pure helper `RoadmapDialog::renderCardsHtml(...)` renders the view;
+  its HTML shape is `tests/features/roadmap_dialog_cards/spec.md`'s
+  contract. ANTS-1263 deleted the v1 `renderHtml` this section once
+  described. Pure + static so tests drive it without a Qt widget.
 - Pure helper `RoadmapDialog::extractToc(const QString &markdownText)
-  → QVector<TocEntry>`. Walk shape mirrors renderHtml's heading
-  detection, so the N-th entry's `anchor` always equals the anchor
+  → QVector<TocEntry>`. The N-th entry's `anchor` equals the anchor
   emitted before the N-th heading in the rendered HTML
-  (`roadmap-toc-N`). Both helpers are pure, static, and independent
-  of any QWidget — tests drive them without an event loop.
-- Walk the file line-by-line:
-  - `^# ` → `<a name="roadmap-toc-N"></a><h1>`. `^## ` → likewise
-    `<h2>`. `^### ` → `<h3>`. `^#### ` → `<h4>`. Always emitted
-    regardless of filters so document structure stays intact, and
-    the anchor is always present so the TOC sidebar can scroll.
-  - `^\| ` (table rows) — pass through verbatim, wrapped in
-    `<pre style="font-family:monospace">` since pixel-aligned ASCII
-    tables don't reflow well inside the QTextBrowser viewer.
-  - `^- ` bullet → leaf bullet. Inspect the first non-whitespace token
-    after `- ` for a status emoji. Map:
-      - `✅` → Done. Filtered out when `Done` checkbox is unchecked.
-      - `📋` / `🚧` / `💭` → Planned/In-progress/Considered. Filtered
-        out when `Planned` is unchecked.
-      - any other (no emoji, or a non-status emoji like `🔥`) → always
-        kept; treated as document narration.
-    Sub-content (continuation lines starting with two spaces or a
-    blank-then-`  `) attaches to the parent bullet — filter-out drops
-    the whole block.
-  - Blank line → `<br>` (paragraph break).
-  - Other lines → wrap as `<p>`.
-- Backtick `code` segments: convert with monospace style (no full
-  CommonMark parser — backticks are the only inline markdown the
-  ROADMAP uses outside list bullets, and they pass-through cleanly
-  via a regex `\`(.+?)\`` → `<code>\1</code>`).
+  (`roadmap-toc-N`), shown or hidden (ANTS-5597).
 
 ### Current-work highlight
 
@@ -196,14 +171,14 @@ rationale as the dot palette.
 `tests/features/roadmap_viewer/test_roadmap_viewer.cpp` —
 source-grep + pure-helper harness, no full Qt widget tree.
 
-- INV-1 `RoadmapDialog::renderHtml` exists as a static method on
+- INV-1 `RoadmapDialog::renderCardsHtml` exists as a static method on
   `RoadmapDialog` (header source-grep).
-- INV-2 Filter behaviour: feeding `renderHtml` a multi-bullet input
-  with one of each emoji (`✅ shipped`, `📋 planned`, `🚧 in flight`,
-  `💭 considered`) plus a plain narrative bullet — toggling each
-  category checkbox off drops only that category's line and keeps
-  the rest; toggling all category bits off keeps only the plain
-  narrative bullet (Other category is always rendered).
+- INV-2 Filter behaviour: feeding `renderCardsHtml` a multi-bullet
+  input with one of each emoji (`✅ shipped`, `📋 planned`, `🚧 in
+  flight`, `💭 considered`), every section expanded — toggling each
+  category bit off drops only that category's card and keeps the
+  rest; all bits off keeps none. (A bullet with no status emoji is
+  not a card; ANTS-1263 dropped the v1 "always rendered" clause.)
 - INV-3 Status emojis + filter bits recognised: source-grep on the
   renderer for the four ROADMAP-legend emojis (`✅`, `📋`, `🚧`, `💭`)
   so a future emoji change doesn't silently misclassify lines, plus
@@ -212,13 +187,9 @@ source-grep + pure-helper harness, no full Qt widget tree.
   and the fifth is the CHANGELOG-derived "currently being tackled"
   signal.
 - INV-4 Current-work highlight: rendering with a `currentBullets` set
-  containing the substring "state-dot palette" against an input
-  containing a bullet `- ✅ **State-dot palette**…` produces output
-  containing the highlight CSS marker (e.g. `border-left: 4px solid
-  #E5C24A`).
-- INV-5 Empty signal set means no highlight: same input with empty
-  `currentBullets` produces output that does NOT contain
-  `border-left: 4px solid`.
+  whose phrase matches a bullet puts `rm-current` on that card's row.
+- INV-5 Empty signal set means no highlight: the same input with empty
+  `currentBullets` produces no `rm-current` row.
 - INV-6 Button hide-when-no-roadmap: `MainWindow::refreshRoadmapButton`
   source-grep — must contain a path-probe before any
   `m_roadmapBtn->show()` call, must `hide()` on the absence branch.
@@ -236,9 +207,9 @@ source-grep + pure-helper harness, no full Qt widget tree.
 - INV-11 `extractToc` returns the headings in document order with
   matching levels, raw text, and anchor names of the form
   `roadmap-toc-N` — verified against a known multi-level input.
-- INV-12 `renderHtml` emits an `<a name="roadmap-toc-N">` anchor
-  *before* each heading element, so `QTextBrowser::scrollToAnchor`
-  can position the viewer at any TOC entry.
+- INV-12 moved to `roadmap_dialog_cards` INV-27, which checks every
+  heading's `<a name="roadmap-toc-N">` anchor against its TOC entry
+  (ANTS-1263).
 - INV-13 The dialog wires a TOC list widget (`m_toc` + objectName
   `roadmap-toc`) into a `QSplitter` next to the viewer, and connects
   list-item activation to `scrollToAnchor` (source-grep on

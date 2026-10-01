@@ -2,14 +2,14 @@
 //
 // Asserts the contract for the status-bar Roadmap viewer:
 //
-//   INV-1 RoadmapDialog::renderHtml exists as a static method.
+//   INV-1 RoadmapDialog::renderCardsHtml exists as a static method.
 //   INV-2 Filter behaviour — toggling each emoji filter flips the
-//         expected category and the Other category always renders.
+//         expected category (cards, every section open; ANTS-1263).
 //   INV-3 All four legend emojis (✅ 📋 🚧 💭) are recognised in the
 //         renderer; all five filter bits are referenced.
-//   INV-4 Current-work highlight produces the expected CSS marker
+//   INV-4 Current-work highlight puts rm-current on the card row
 //         when a signal phrase matches a bullet.
-//   INV-5 Empty signal set means no `border-left: 4px solid` marker.
+//   INV-5 Empty signal set means no rm-current row.
 //   INV-6 MainWindow::refreshRoadmapButton hides the button when no
 //         ROADMAP.md is present.
 //   INV-7 RoadmapDialog::rebuild reuses the scroll-preservation
@@ -20,14 +20,13 @@
 //   INV-10 refreshStatusBarForActiveTab calls refreshRoadmapButton.
 //   INV-11 extractToc returns headings in document order with
 //          matching level, text, and `roadmap-toc-N` anchor.
-//   INV-12 renderHtml emits an `<a name="roadmap-toc-N">` anchor
-//          before each heading element.
+//   INV-12 moved to roadmap_dialog_cards INV-27 (ANTS-1263).
 //   INV-13 Dialog wires a TOC list (m_toc / objectName "roadmap-toc")
 //          into a QSplitter and connects activation to scrollToAnchor.
 //   INV-14 Close button connected directly via
 //          QAbstractButton::clicked (not only via rejected()).
 //
-// INV-1 / INV-2 / INV-4 / INV-5 / INV-11 / INV-12 also drive the
+// INV-1 / INV-2 / INV-4 / INV-5 / INV-11 also drive the
 // renderer behaviourally (link the source file directly, call the
 // helper, assert HTML / TOC entries).
 //
@@ -42,6 +41,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/roadmap_cards.h"
 namespace {
 
 
@@ -74,8 +74,8 @@ static int runMain() {
     if (mwSource.empty()) fail("INV-1", "mainwindow.cpp not readable");
 
     // INV-1: helper signature
-    if (!contains(header, "static QString renderHtml"))
-        fail("INV-1", "RoadmapDialog::renderHtml static method missing");
+    if (!contains(header, "static QString renderCardsHtml"))
+        fail("INV-1", "RoadmapDialog::renderCardsHtml static method missing");
 
     // INV-3: all four legend emojis present in the source
     const char *emojis[] = {"✅", "\U0001F4CB", "\U0001F6A7", "\U0001F4AD"};
@@ -102,11 +102,10 @@ static int runMain() {
         "- ✅ **Done thing.** Body.\n"
         "- 📋 **Planned thing.** Body.\n"
         "- 🚧 **In-progress thing.** Body.\n"
-        "- 💭 **Considered thing.** Body.\n"
-        "- Plain narrative bullet.\n");
+        "- 💭 **Considered thing.** Body.\n");
 
     auto haveBullet = [&](unsigned filterBits, const char *needle) {
-        QString out = RoadmapDialog::renderHtml(sample, filterBits, {}, QStringLiteral("default"));
+        QString out = ants_test::cardsAllOpen(sample, filterBits);
         return qcontains(out, needle);
     };
 
@@ -119,13 +118,11 @@ static int runMain() {
     if (!haveBullet(allOn, "Planned thing.")) fail("INV-2", "all-on missing Planned");
     if (!haveBullet(allOn, "In-progress thing.")) fail("INV-2", "all-on missing InProgress");
     if (!haveBullet(allOn, "Considered thing.")) fail("INV-2", "all-on missing Considered");
-    if (!haveBullet(allOn, "Plain narrative")) fail("INV-2", "all-on missing Other");
 
     // Done off only — Done dropped, others kept.
     const unsigned noDone = allOn & ~RoadmapDialog::ShowDone;
     if (haveBullet(noDone, "Done thing.")) fail("INV-2", "ShowDone off didn't drop Done");
     if (!haveBullet(noDone, "Planned thing.")) fail("INV-2", "ShowDone off dropped Planned");
-    if (!haveBullet(noDone, "Plain narrative")) fail("INV-2", "ShowDone off dropped Other");
 
     // Planned off only.
     const unsigned noPlanned = allOn & ~RoadmapDialog::ShowPlanned;
@@ -142,27 +139,22 @@ static int runMain() {
     if (haveBullet(noConsidered, "Considered thing.")) fail("INV-2", "ShowConsidered off didn't drop Considered");
     if (!haveBullet(noConsidered, "Done thing.")) fail("INV-2", "ShowConsidered off dropped Done");
 
-    // Everything off — Other category bullet still renders.
-    if (!haveBullet(0u, "Plain narrative")) fail("INV-2", "all-off dropped Other");
+    // Everything off — nothing renders.
     if (haveBullet(0u, "Done thing.")) fail("INV-2", "all-off kept Done");
 
     // INV-4: current-work highlight. With an explicit signal phrase
-    // matching the Done bullet, the rendered output contains the
-    // border-left CSS marker.
+    // matching the Done bullet, its card row carries rm-current.
     QStringList sigs;
     sigs << QStringLiteral("done thing");
-    QString hl = RoadmapDialog::renderHtml(sample, allOn, sigs, QStringLiteral("default"));
-    if (!qcontains(hl, "border-left:4px solid"))
-        fail("INV-4", "border-left CSS marker missing for matched signal");
+    QString hl = ants_test::cardsAllOpen(sample, allOn, sigs);
+    if (!qcontains(hl, "rm-current"))
+        fail("INV-4", "rm-current missing for a matched signal");
 
-    // INV-5: empty signal set produces no border-left marker.
-    QString plain = RoadmapDialog::renderHtml(sample, allOn, {}, QStringLiteral("default"));
-    // The .cur class definition is in <style>; the *applied* class
-    // shows up only when a <li> uses class="cur". Search for the
-    // class-applied form to keep the assertion specific to the
-    // applied case.
-    if (qcontains(plain, "class=\"cur\""))
-        fail("INV-5", "class=\"cur\" applied with no signal phrases");
+    // INV-5: no signal phrases, no rm-current row. The stylesheet names
+    // only .rm-cur and .rm-col-cur, so this matches applied rows alone.
+    QString plain = ants_test::cardsAllOpen(sample, allOn);
+    if (qcontains(plain, "rm-current"))
+        fail("INV-5", "rm-current applied with no signal phrases");
 
     // INV-6: refreshRoadmapButton hides the button on absence.
     if (!contains(mwSource, "void MainWindow::refreshRoadmapButton"))
@@ -239,15 +231,8 @@ static int runMain() {
         }
     }
 
-    // INV-12: renderHtml emits anchors before headings. The sample
-    // has a single `## Section`, which renders as
-    // `<a name="roadmap-toc-0"></a><h2>Section</h2>`.
-    {
-        QString h = RoadmapDialog::renderHtml(
-            sample, allOn, {}, QStringLiteral("default"));
-        if (!qcontains(h, "<a name=\"roadmap-toc-0\"></a><h2>"))
-            fail("INV-12", "anchor before heading missing");
-    }
+    // INV-12 moved (ANTS-1263): each heading's anchor matching its TOC
+    // entry is roadmap_dialog_cards INV-27.
 
     // INV-13: TOC list widget wired into the dialog with scrollToAnchor.
     if (!contains(source, "roadmap-toc"))

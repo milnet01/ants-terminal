@@ -28,13 +28,8 @@ even though their status is ✅.
   like before. Same fixture, `filter = ShowDone | ShowPlanned |
   ShowInProgress | ShowConsidered | ShowCurrent`, asserts the ✅
   bullet IS in the output.
-- **INV-3 / Parallel fix in the v1 `renderHtml` path.** The
-  pre-cards `renderHtml` renderer (test-only since ANTS-1747 — no
-  production callers; the `roadmap-query` IPC verb uses parseBullets +
-  RoadmapIndex) has the same OR'd current-signal bug; both
-  paths get the same gate so consumers downstream of either renderer
-  see consistent filter semantics. Anchor: `ANTS-1423` in
-  `src/roadmapdialog.cpp::renderHtml`'s `keepStatus` block.
+- **INV-3** withdrawn by ANTS-1263 with the v1 `renderHtml` it
+  tested; INV-1 locks the same gate in `renderCardsHtml`.
 - **INV-4 / Current-signal still surfaces non-✅ bullets in
   Current preset.** A 📋 bullet whose body matches the
   current-signal MUST still pass under Current preset — the fix
@@ -44,7 +39,7 @@ even though their status is ✅.
 
 ## Test scope
 
-Pure-function tests against `RoadmapDialog::renderCardsHtml` and
-`RoadmapDialog::renderHtml` with a synthetic markdown fixture and a
+Pure-function tests against `RoadmapDialog::renderCardsHtml` with a
+synthetic markdown fixture and a
 hand-crafted `currentBullets` list. No GUI instantiation required.
 Mirrors the `roadmap_dialog_cards` test pattern.

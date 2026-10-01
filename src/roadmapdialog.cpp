@@ -63,8 +63,8 @@ namespace {
 // the legend block at the top of ROADMAP.md and with INV-3 of the
 // roadmap_viewer feature test.
 // ANTS-3764 — the status-emoji vocabulary moved to roadmapparse.h with the
-// parser that reads it. Pulled back into scope here so kStatusLabels and the
-// renderHtml bullet classifier below read exactly as before.
+// parser that reads it. Pulled back into scope here for kStatusLabels and
+// bulletPayload below.
 using RoadmapParse::kEmojiDone;
 using RoadmapParse::kEmojiPlanned;
 using RoadmapParse::kEmojiInProgress;
@@ -403,7 +403,8 @@ QStringList recentCommitSubjectsFrom(const QByteArray &gitLogOut) {
 // Reorder a markdown document so its top-level (`## `) sections appear
 // in reverse order. Preamble (everything above the first `## `) and
 // per-section content stay intact; only the section sequence flips.
-// Used by renderHtml when SortOrder is DescendingChronological.
+// Used by renderCardsHtml and the TOC when SortOrder is
+// DescendingChronological.
 //
 // ANTS-1140 — function-local cache keyed on the input string's
 // (size, hash-of-prefix). reverseTopLevelSections is on the hot
@@ -810,355 +811,8 @@ RoadmapDialog::splitHeadingDate(const QString &heading) {
     return withLabel(out);
 }
 
-// Pure renderer. See spec for the parsing rules. Returns a self-
-// contained HTML fragment ready for QTextBrowser::setHtml.
-QString RoadmapDialog::renderHtml(const QString &markdownText,
-                                  unsigned filter,
-                                  const QStringList &currentBullets,
-                                  const QString &themeName,
-                                  SortOrder sortOrder,
-                                  const QString &searchPredicate,
-                                  const QSet<QString> &kindFilter) {
-    const QString sourceText =
-        (sortOrder == SortOrder::DescendingChronological)
-            ? reverseTopLevelSections(markdownText)
-            : markdownText;
-    const int idShorthand = parseIdShorthand(searchPredicate);
-    const QString idMarker =
-        idShorthand >= 0
-            // ANTS-1660 — match `[<prefix>-NNNN]` for any prefix via the
-            // `-NNNN]` suffix (the leading '-' + close bracket anchor it so
-            // `-42]` won't match `-142]`/`-420]`). ANTS-NNNN still matches.
-            ? QStringLiteral("-%1]").arg(idShorthand)
-            : QString();
-    const QString plainSearch =
-        (idShorthand >= 0) ? QString() : searchPredicate.trimmed();
-
-    const Theme &th = Themes::byName(themeName);
-    const QString currentColor =
-        ClaudeTabIndicator::color(ClaudeTabIndicator::Glyph::ToolUse).name();
-    const bool wantDone = (filter & ShowDone) != 0;
-    const bool wantPlanned = (filter & ShowPlanned) != 0;
-    const bool wantInProgress = (filter & ShowInProgress) != 0;
-    const bool wantConsidered = (filter & ShowConsidered) != 0;
-    const bool wantDropped = (filter & ShowDropped) != 0;   // ANTS-4977
-    const bool wantCurrent = (filter & ShowCurrent) != 0;
-
-    // Pre-fuzzied signal phrases for substring matching.
-    QStringList signalsFuzzy;
-    signalsFuzzy.reserve(currentBullets.size());
-    for (const QString &s : currentBullets) {
-        const QString f = fuzzy(s);
-        if (f.size() >= 6) signalsFuzzy.append(f);
-    }
-
-    auto isCurrent = [&](const QString &bulletBody) {
-        if (signalsFuzzy.isEmpty()) return false;
-        const QString fHay = fuzzy(bulletPayload(bulletBody));
-        if (fHay.size() < 6) return false;
-        for (const QString &s : signalsFuzzy) {
-            if (fHay.contains(s) || s.contains(fHay)) return true;
-        }
-        return false;
-    };
-
-    QString html;
-    html.reserve(markdownText.size() * 2);
-    html += QStringLiteral(
-        "<html><head><style>"
-        "body{font-family:sans-serif;color:%1;}"
-        "h1,h2,h3,h4{color:%2;font-weight:bold;}"
-        "h1{font-size:18px;} h2{font-size:16px;}"
-        "h3{font-size:14px;} h4{font-size:13px;}"
-        "code{background:%3;padding:0 4px;border-radius:3px;}"
-        "ul{margin-top:2px;margin-bottom:2px;}"
-        "li{margin-bottom:4px;}"
-        ".cur{border-left:4px solid %4;padding-left:8px;background:%6;}"
-        "table{border-collapse:collapse;}"
-        "td,th{border:1px solid %5;padding:2px 6px;}"
-        "</style></head><body>")
-        .arg(th.textPrimary.name(),
-             th.textPrimary.name(),
-             th.bgSecondary.name(),
-             currentColor,
-             th.border.name(),
-             currentWorkTint());
-
-    enum class BulletKind { Other, Done, Planned, InProgress, Considered, Dropped };
-    auto classify = [](const QString &body) {
-        if (body.startsWith(QString::fromUtf8(kEmojiDone))) return BulletKind::Done;
-        if (body.startsWith(QString::fromUtf8(kEmojiPlanned))) return BulletKind::Planned;
-        if (body.startsWith(QString::fromUtf8(kEmojiInProgress))) return BulletKind::InProgress;
-        if (body.startsWith(QString::fromUtf8(kEmojiConsidered))) return BulletKind::Considered;
-        if (body.startsWith(QString::fromUtf8(kEmojiDropped))) return BulletKind::Dropped;
-        return BulletKind::Other;
-    };
-
-    const QStringList lines = sourceText.split('\n');
-
-    // ANTS-1140 — pre-walk Kind extraction (one pass; cached
-    // across consecutive renderHtml calls on the same input).
-    // Pre-fix code did a per-bullet peek-ahead inside the main
-    // walk: O(bullets × continuation_lines) per render with a
-    // regex match per bullet. With 270 bullets × ~3 cont lines
-    // and 8-10 renders/sec while the user types into the
-    // search box with a Kind filter active, this was the
-    // dominant render cost. The cache + pre-walk pattern
-    // mirrors `reverseTopLevelSections` (0.7.70).
-    QHash<int, QString> kindByLine;
-    if (!kindFilter.isEmpty()) {
-        static thread_local QString s_lastInput;
-        static thread_local QHash<int, QString> s_lastKindMap;
-        if (sourceText.size() == s_lastInput.size() &&
-                sourceText == s_lastInput) {
-            kindByLine = s_lastKindMap;
-        } else {
-            // ANTS-3808 INV-2 — this used to construct its own `Kind:` regex,
-            // the second bullet grammar under src/. It now asks
-            // RoadmapParse::trailerValuesIn(), which is the one grammar.
-            // NOT behaviour-preserving, and deliberately so: the local pattern
-            // omitted CaseInsensitiveOption, so a hand-edited `kind:`/`KIND:`
-            // bullet was silently skipped by the kind filter and now matches it
-            // — the widening ANTS-3407 case-folded the anchored labels for.
-            int j = 0;
-            while (j < lines.size()) {
-                const QString &row = lines[j];
-                const bool isBullet =
-                    row.startsWith(QStringLiteral("- ")) ||
-                    row.startsWith(QStringLiteral("* "));
-                if (!isBullet) { ++j; continue; }
-                // Assemble bullet body: head + indented
-                // continuation lines until blank or next
-                // top-level bullet.
-                QString bodyFull = row.mid(2);
-                int k = j + 1;
-                while (k < lines.size()) {
-                    const QString &cont = lines[k];
-                    if (cont.trimmed().isEmpty()) break;
-                    if (cont.startsWith(QStringLiteral("- ")) ||
-                        cont.startsWith(QStringLiteral("* "))) break;
-                    if (cont.startsWith(QStringLiteral("  "))) {
-                        bodyFull.append('\n');
-                        bodyFull.append(cont.trimmed());
-                        ++k;
-                        continue;
-                    }
-                    break;
-                }
-                const QString kind =
-                    RoadmapParse::trailerValuesIn(bodyFull).kind.value;
-                if (!kind.isEmpty())
-                    kindByLine.insert(j, kind);
-                j = k;  // skip past the continuation lines
-            }
-            s_lastInput = sourceText;
-            s_lastKindMap = kindByLine;
-        }
-    }
-
-    bool inList = false;
-    bool skipBlock = false;       // dropping a filtered-out bullet's continuation
-    int headingIdx = 0;           // increments per emitted heading; matches extractToc
-
-    auto closeListIfOpen = [&]() {
-        if (inList) {
-            html += QStringLiteral("</ul>");
-            inList = false;
-        }
-    };
-
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString &raw = lines[i];
-
-        // Headings — always rendered, regardless of filters. Each
-        // gets a `<a name="roadmap-toc-N">` anchor so the TOC sidebar
-        // can scroll to it via QTextBrowser::scrollToAnchor.
-        QString hText;
-        if (const int level = headingLevel(raw, &hText); level > 0) {
-            closeListIfOpen();
-            skipBlock = false;
-            const QString anchor = tocAnchorAt(headingIdx++);
-            html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
-            html += QStringLiteral("<h%1>").arg(level)
-                  + applyInline(hText)
-                  + QStringLiteral("</h%1>").arg(level);
-            continue;
-        }
-
-        // Markdown table rows — render as a <pre> block so the columns
-        // line up. Coalesce consecutive `|` lines into one block.
-        if (raw.startsWith(QStringLiteral("|"))) {
-            // ANTS-1139 — render markdown tables as `<table>` not
-            // `<pre>` (indie-review L7 H-5). Pre-fix code wrapped
-            // the raw row text in `<pre>` so the user saw a
-            // monospace block of `|` characters instead of a
-            // proper table — which the QTextBrowser HTML
-            // renderer + the existing `table {…}` CSS in the
-            // header would otherwise render correctly.
-            //
-            // Walk row 1: emit as <th>. Detect separator row
-            // (cells are mostly dashes) and skip. Remaining rows
-            // emit as <tr><td>. applyInline runs per cell so
-            // backticks + bold work inside cells.
-            closeListIfOpen();
-            skipBlock = false;
-            QStringList rows;
-            rows.append(raw);
-            while (i + 1 < lines.size() && lines[i + 1].startsWith(QStringLiteral("|"))) {
-                ++i;
-                rows.append(lines[i]);
-            }
-            const auto splitRow = [](const QString &row) {
-                // `| a | b |` → `["a", "b"]`. Strip leading/
-                // trailing empties from the leading/trailing
-                // pipe.
-                QStringList parts = row.split(QLatin1Char('|'));
-                if (!parts.isEmpty() && parts.first().trimmed().isEmpty())
-                    parts.removeFirst();
-                if (!parts.isEmpty() && parts.last().trimmed().isEmpty())
-                    parts.removeLast();
-                for (QString &p : parts) p = p.trimmed();
-                return parts;
-            };
-            const auto isSeparator = [](const QStringList &cells) {
-                // Row is a separator if every cell is something
-                // like `---` / `:---:` / `---:`.
-                if (cells.isEmpty()) return false;
-                for (const QString &c : cells) {
-                    QString s = c;
-                    s.remove(QLatin1Char(':')).remove(QLatin1Char(' '));
-                    if (s.isEmpty()) return false;
-                    for (QChar ch : s)
-                        if (ch != QLatin1Char('-')) return false;
-                }
-                return true;
-            };
-            html += QStringLiteral("<table>");
-            bool sawHeader = false;
-            for (const QString &row : rows) {
-                const QStringList cells = splitRow(row);
-                if (cells.isEmpty()) continue;
-                if (isSeparator(cells)) continue;
-                const QString tag =
-                    sawHeader ? QStringLiteral("td") : QStringLiteral("th");
-                html += QStringLiteral("<tr>");
-                for (const QString &cell : cells) {
-                    html += '<' + tag + '>' + applyInline(cell)
-                          + QStringLiteral("</") + tag + '>';
-                }
-                html += QStringLiteral("</tr>");
-                sawHeader = true;
-            }
-            html += QStringLiteral("</table>");
-            continue;
-        }
-
-        // Top-level bullet.
-        if (raw.startsWith(QStringLiteral("- ")) ||
-            raw.startsWith(QStringLiteral("* "))) {
-            const QString body = raw.mid(2);
-            const BulletKind kind = classify(body);
-            const bool current = isCurrent(body);
-            // Inclusive-OR over enabled categories. Plain narration
-            // bullets (Other) always render — they carry document
-            // context, not status.
-            // ANTS-1423 — current-signal rescue gated on
-            // (wantDone || !isDone). The signal is fuzzy-matched
-            // against CHANGELOG [Unreleased] + recent commits, which
-            // includes just-shipped items; without the gate, a ✅
-            // bullet whose ID appears in [Unreleased] slips through
-            // the Current preset even though that preset explicitly
-            // excludes ShowDone.
-            const bool currentRescue = current && wantCurrent &&
-                (wantDone || kind != BulletKind::Done) &&
-                (wantDropped || kind != BulletKind::Dropped);   // ANTS-4977
-            const bool keepStatus =
-                (kind == BulletKind::Other) ||
-                (kind == BulletKind::Done && wantDone) ||
-                (kind == BulletKind::Planned && wantPlanned) ||
-                (kind == BulletKind::InProgress && wantInProgress) ||
-                (kind == BulletKind::Considered && wantConsidered) ||
-                (kind == BulletKind::Dropped && wantDropped) ||
-                currentRescue;
-            // Search predicate: case-insensitive substring against the
-            // bullet body, OR the `id:NNNN` shorthand against an
-            // `[ANTS-NNNN]` token in the body. Empty predicate keeps
-            // every bullet that survived the status filter.
-            bool keepSearch = true;
-            if (!idMarker.isEmpty()) {
-                keepSearch = body.contains(idMarker);
-            } else if (!plainSearch.isEmpty()) {
-                keepSearch = body.contains(plainSearch, Qt::CaseInsensitive);
-            }
-            // ANTS-1106 + ANTS-1140 — Kind filter. Empty
-            // filter = no narrowing. Non-empty filter requires
-            // the bullet's Kind: line value to be a member of
-            // the set; bullets without a Kind: line are
-            // excluded under non-empty filters. ANTS-1140
-            // (0.7.72) folds the per-bullet peek-ahead into a
-            // single pre-walk + cache (above) — `kindByLine[i]`
-            // is now O(1) lookup keyed by the bullet's line
-            // index instead of an O(continuation_lines) regex
-            // walk per render.
-            bool keepKind = true;
-            if (!kindFilter.isEmpty() && kind != BulletKind::Other) {
-                const auto it = kindByLine.constFind(i);
-                const QString thisKind =
-                    (it != kindByLine.constEnd()) ? it.value() : QString();
-                keepKind = !thisKind.isEmpty() &&
-                           kindFilter.contains(thisKind);
-            }
-            const bool keep = keepStatus && keepSearch && keepKind;
-            if (!keep) {
-                skipBlock = true;
-                continue;
-            }
-            skipBlock = false;
-            if (!inList) {
-                html += QStringLiteral("<ul>");
-                inList = true;
-            }
-            const QString cls = current
-                ? QStringLiteral(" class=\"cur\"") : QString();
-            html += QStringLiteral("<li") + cls + QStringLiteral(">")
-                  + applyInline(body);
-            // The </li> is closed when we leave the bullet (next non-
-            // continuation line). A continuation appends inline.
-            continue;
-        }
-
-        // Continuation of a bullet (two-space indent or blank line).
-        if (raw.startsWith(QStringLiteral("  ")) && inList) {
-            if (skipBlock) continue;
-            html += '\n' + applyInline(raw.trimmed());
-            continue;
-        }
-
-        // Blank line — terminate the current bullet item / list.
-        if (raw.trimmed().isEmpty()) {
-            if (inList) html += QStringLiteral("</li>");
-            closeListIfOpen();
-            skipBlock = false;
-            continue;
-        }
-
-        // Other prose — rendered as a paragraph.
-        closeListIfOpen();
-        skipBlock = false;
-        html += QStringLiteral("<p>") + applyInline(raw) + QStringLiteral("</p>");
-    }
-    closeListIfOpen();
-
-    html += QStringLiteral("</body></html>");
-    return html;
-}
-
-// ANTS-1154 v2 — card-style renderer. Built alongside renderHtml
-// (not as a replacement) so existing call sites and the
-// `tests/features/roadmap_viewer*` test suites keep passing. The
-// dialog's `rebuild()` switches to this renderer; everything else
-// (tests, future IPC consumers) keeps the original markdown-to-HTML
-// path.
+// ANTS-1154 v2 — card-style renderer, the dialog's only renderer
+// since ANTS-1263 deleted the v1 renderHtml.
 //
 // Implementation shape:
 //   1. Reorder sections if SortOrder::DescendingChronological.
@@ -1791,7 +1445,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
     // ANTS-1662 — bullets that appear before the first ##/### heading have an
     // empty section slug, so the heading-driven walk below never emits them and
-    // they vanish from the cards view (v1 renderHtml shows them). Emit the
+    // they would vanish from the cards view. Emit the
     // unsectioned bucket here at the top of the body, preserving the INV-16
     // superset contract. No section header — these bullets have none.
     {
@@ -2412,7 +2066,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // QSplitter so the user can resize the sidebar. QTextBrowser
     // (vs plain QTextEdit) for `scrollToAnchor` support — the TOC
     // entries jump to `<a name="roadmap-toc-N">` anchors emitted by
-    // renderHtml.
+    // renderCardsHtml.
     auto *splitter = new QSplitter(Qt::Horizontal, this);
     splitter->setObjectName(QStringLiteral("roadmap-splitter"));
 
@@ -3773,7 +3427,7 @@ void RoadmapDialog::rebuild() {
     }
 
     // Refresh the TOC sidebar from the same markdown so the
-    // anchor indices line up with what renderHtml just emitted.
+    // anchor indices line up with what renderCardsHtml just emitted.
     // When the active sort reorders sections, the TOC must walk the
     // post-reorder markdown so anchor indices match.
     // ANTS-4415 — skip the whole walk while the pane is hidden. This runs on

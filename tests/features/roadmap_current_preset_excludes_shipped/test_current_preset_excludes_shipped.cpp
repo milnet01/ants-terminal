@@ -3,7 +3,7 @@
 //
 // Locks the ANTS-1423 fix: the Current preset must not let ✅
 // shipped bullets through via the current-signal rescue. Drives the
-// pure-static `renderCardsHtml` + `renderHtml` helpers against a
+// pure-static `renderCardsHtml` helper against a
 // synthetic markdown fixture and a hand-crafted currentBullets list
 // that targets specific bullet bodies.
 //
@@ -106,24 +106,6 @@ TEST(roadmap_current_preset_excludes_shipped,
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-3 — renderHtml (v1 path used by roadmap-query IPC): same fix.
-TEST(roadmap_current_preset_excludes_shipped,
-     Inv3RenderHtmlCurrentPresetDropsShipped) {
-    expect_reset();
-    QStringList currentBullets;
-    currentBullets << QStringLiteral(
-        "ANTS-1100 — newly shipped widget, Bundle C closeout.");
-
-    const unsigned filter = RD::filterFor(RD::Preset::Current);
-    const QString html = RD::renderHtml(
-        fixtureMarkdown(), filter, currentBullets,
-        QStringLiteral("light"));
-
-    expect(!contains(html, "ANTS-1100"),
-           "INV-3: ✅ ANTS-1100 must NOT appear under Current preset "
-           "in renderHtml either");
-    EXPECT_EQ(0, expect_failures());
-}
 
 // INV-4 — Current preset still lets 📋 through via the
 // current-signal rescue (the fix narrows the gate, doesn't disable

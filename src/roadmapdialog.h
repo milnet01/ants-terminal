@@ -31,13 +31,10 @@
 //
 // Renderer: the dialog's rebuild() chain uses `renderCardsHtml` (the
 // v2 card renderer) to compose signal-set discovery + parsing + HTML
-// emission into the QTextBrowser. `RoadmapDialog::renderHtml` is the
-// v1 markdown→HTML helper; it has NO production callers (ANTS-1747 —
-// the `roadmap-query` IPC verb uses parseBullets + RoadmapIndex, not
-// this renderer). It is retained as a static pure helper because its
-// test suite locks the shared filter/sort/anchor/TOC semantics that
-// renderCardsHtml also depends on; tests drive it without a widget
-// tree.
+// emission into the QTextBrowser. It is a static pure helper, so tests
+// drive it without a widget tree. (The v1 `renderHtml` it replaced was
+// deleted under ANTS-1263; the `roadmap-query` IPC verb uses
+// parseBullets + RoadmapIndex, not a renderer.)
 
 #include "roadmapparse.h"   // ANTS-3764 — BulletRecord + the reader
 #include <QDialog>
@@ -129,7 +126,7 @@ public:
     // [Unreleased] + recent commit subjects. Checked alone (with
     // everything else off), the dialog shows just in-flight items.
     // Highlighting on matched bullets is independent of the
-    // filter — see renderHtml.
+    // filter — see renderCardsHtml.
     enum Filter : unsigned {
         ShowDone        = 1u << 0,  // ✅
         ShowPlanned     = 1u << 1,  // 📋
@@ -185,35 +182,6 @@ public:
                   QWidget *parent = nullptr,
                   Config *cfg = nullptr);
     ~RoadmapDialog() override;
-
-    // Pure helper: render `markdownText` to HTML respecting the
-    // filter mask and current-work signal phrases. `currentBullets`
-    // is a set of substrings; any bullet whose first 80 characters
-    // (post-emoji-strip, normalised) contains one of them is treated
-    // as current work. Each emitted heading is preceded by an HTML
-    // anchor of the form `<a name="roadmap-toc-N"></a>` where N
-    // matches the corresponding entry in `extractToc(markdownText)`
-    // — that lets the TOC sidebar use `QTextBrowser::scrollToAnchor`
-    // to jump to a heading without re-parsing the rendered document.
-    //
-    // `sortOrder` controls section ordering before render — only
-    // `DescendingChronological` reorders, otherwise pass-through.
-    // `searchPredicate` is a case-insensitive substring filter
-    // applied to each top-level bullet's body; empty disables
-    // filtering. The `id:NNNN` shorthand matches a bullet whose
-    // body contains `[ANTS-NNNN]` regardless of headline content.
-    // `kindFilter` (ANTS-1106) narrows by `Kind:` line value.
-    // Empty set = no filter (current behaviour). Non-empty set =
-    // only bullets whose Kind: matches one of the entries render;
-    // bullets with no Kind: line are excluded under a non-empty
-    // filter.
-    static QString renderHtml(const QString &markdownText,
-                              unsigned filter,
-                              const QStringList &currentBullets,
-                              const QString &themeName,
-                              SortOrder sortOrder = SortOrder::Document,
-                              const QString &searchPredicate = QString(),
-                              const QSet<QString> &kindFilter = {});
 
     // ANTS-1154 v2 card-renderer state, packed into one struct so the
     // new `renderCardsHtml` signature stays manageable. Default-
@@ -287,9 +255,17 @@ public:
     // dropped (INV-11); section headers with zero visible bullets
     // under the active filter are suppressed (INV-12).
     //
-    // Defaults preserve the parser's existing filter/search/Kind
-    // semantics — pass identical arguments to renderCardsHtml as
-    // renderHtml plus a CardRenderOptions value.
+    // `currentBullets` is a set of substrings; a bullet whose first 80
+    // characters (post-emoji-strip, normalised) contain one is current
+    // work. `sortOrder` DescendingChronological reverses the top-level
+    // sections. `searchPredicate` is a case-insensitive substring
+    // filter over each bullet's id, headline, layman and body; the
+    // `id:NNNN` shorthand keeps the bullet whose body holds `[…-NNNN]`.
+    // `kindFilter` (ANTS-1106): empty keeps every Kind; non-empty keeps
+    // only bullets whose `Kind:` is in it, dropping bullets with none.
+    // Each heading is preceded by `<a name="roadmap-toc-N"></a>`, N being
+    // its entry in `extractToc(markdownText)`, so the TOC sidebar can
+    // `scrollToAnchor` to it (ANTS-5597).
     static QString renderCardsHtml(const QString &markdownText,
                                    unsigned filter,
                                    const QStringList &currentBullets,
@@ -399,7 +375,7 @@ public:
 
     // Heading entry surfaced in the TOC sidebar. `level` is 1..4,
     // `text` is the raw heading text post-`#` strip (no inline
-    // expansion), `anchor` is the same name renderHtml emits.
+    // expansion), `anchor` is the same name renderCardsHtml emits.
     struct TocEntry {
         int level = 0;
         QString text;
@@ -407,8 +383,8 @@ public:
     };
 
     // Pure helper: walk `markdownText` and return its `# `..`#### `
-    // headings in document order. Walk shape mirrors renderHtml's
-    // heading detection so the indices line up.
+    // headings in document order. renderCardsHtml numbers every heading
+    // the same way, shown or hidden, so the indices line up.
     static QVector<TocEntry> extractToc(const QString &markdownText);
 
     // ANTS-3764 — the record and the parser moved to RoadmapParse
@@ -420,8 +396,8 @@ public:
     using BulletRecord = RoadmapParse::BulletRecord;
 
     // Pure helper: parse `markdownText` into top-level status-emoji
-    // bullets. Mirrors the renderHtml top-level-bullet detection so the
-    // two stay in lock-step. Result is read-only; used by the
+    // bullets. renderCardsHtml groups these by section. Result is
+    // read-only; used by the
     // `roadmap-query` IPC verb to feed Claude a structured snapshot
     // without re-burning the file content as tokens.
     static QVector<BulletRecord> parseBullets(const QString &markdownText);
@@ -661,7 +637,7 @@ private:
     QPointer<QCheckBox> m_filterCurrent;
     // ANTS-1106 — Kind-faceted secondary filter. Empty set = no
     // narrowing (current behaviour). Populated from the Kind row's
-    // checkboxes; passed through to renderHtml on every refresh().
+    // checkboxes; passed through to renderCardsHtml on every refresh().
     QSet<QString> m_kindFilter;
     QHash<int, TabFilters> m_tabFilters;   // keyed by int(Preset)
     // ANTS-1150 — keyed by KindEntry value (matches m_kindFilter

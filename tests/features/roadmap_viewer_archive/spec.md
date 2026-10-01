@@ -56,7 +56,7 @@ The dialog's existing two-stage pipeline (read markdown → render HTML)
 gains one helper between the read and the render:
 
 ```
-m_roadmapPath ──→ loadRoadmapMarkdown(includeArchive) ──→ renderHtml(...)
+m_roadmapPath ──→ loadRoadmapMarkdown(includeArchive) ──→ renderCardsHtml(...)
                           │
                           └─ if includeArchive && historyArchiveDir():
                                for each archive (numeric desc by version):

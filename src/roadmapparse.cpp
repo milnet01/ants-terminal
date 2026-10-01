@@ -2235,7 +2235,7 @@ parseBulletLines(const QStringList &lines, const IdFormat &fmt) {
             continue;
         }
         // Top-level bullet: `^- ` or `^* ` (two-space indent is a
-        // continuation, not a bullet — same rule as renderHtml).
+        // continuation, not a bullet).
         const bool isBullet = raw.startsWith(QStringLiteral("- ")) ||
                               raw.startsWith(QStringLiteral("* "));
         if (!isBullet) { ++i; continue; }
