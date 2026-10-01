@@ -155,6 +155,21 @@ hook blocks too, just wrongly); matching the reason on `diff` rather than
 on the verb name (the wrong string contains the word); dropping G4 after
 the split looks settled.
 
+## ANTS-5553 — unread session_message mail is announced
+
+`ants-inbox-notice.sh` runs on SessionStart and UserPromptSubmit. A stub
+`ants-mcpd` (via `ANTS_MCPD`) stands in for the server.
+
+- With an unread count of 2 it prints one line beginning
+  `[ants:inbox] 2 unread messages from other sessions`; with 1, the
+  singular `1 unread message from`.
+- It prints nothing with a count of 0, on a refusal, when `ants-mcpd`
+  fails, or when no `ants-mcpd` is found — and exits 0 each time.
+- It asks about the `cwd` from the hook payload, and from a subdirectory
+  of a git repository it asks about the repository root, because the
+  store refuses a subdirectory.
+- `install-hooks.sh` registers it on SessionStart and UserPromptSubmit.
+
 ## Why shell, not C++
 
 The hooks are bash scripts; the install path is bash + jq; no

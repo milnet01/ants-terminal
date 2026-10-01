@@ -631,6 +631,80 @@ else
     skip "TL-11 precompact (jq not available)"
 fi
 
+# ---------- ANTS-5553: unread session_message mail is announced ----------
+# ants-inbox-notice.sh asks ants-mcpd for the caller's unread count and prints
+# one [ants:inbox] line only when mail waits. A stub stands in for ants-mcpd:
+# it records its argv and prints the reply in $STUB_REPLY.
+INBOX="$HOOKS_DIR/ants-inbox-notice.sh"
+if [ ! -f "$INBOX" ]; then
+    fail "ANTS-5553 missing: $INBOX"
+else
+    ib_tmp="$(mktemp -d -t ants-inbox.XXXXXX)"
+    stub="$ib_tmp/ants-mcpd"
+    cat > "$stub" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$(dirname "$0")/argv"
+[ -n "${STUB_FAIL:-}" ] && exit 1
+printf '%s\n' "$STUB_REPLY"
+STUB
+    chmod +x "$stub"
+    run_inbox() {  # $1 = stub reply, $2 = stdin
+        (cd "$ib_tmp" && printf '%s\n' "$2" \
+            | ANTS_MCPD="$stub" STUB_REPLY="$1" HOME="$ib_tmp" timeout 5 bash "$INBOX")
+    }
+    out="$(run_inbox '{"ok":true,"op":"inbox","unacked_count":2,"messages":[]}' '{}')"
+    case "$out" in
+        "[ants:inbox] 2 unread messages from other sessions"*) pass "ANTS-5553 announces 2 unread" ;;
+        *) fail "ANTS-5553 expected an [ants:inbox] line for 2 unread, got: $out" ;;
+    esac
+    out="$(run_inbox '{"ok":true,"op":"inbox","unacked_count":1,"messages":[]}' '{}')"
+    case "$out" in
+        "[ants:inbox] 1 unread message from"*) pass "ANTS-5553 singular for 1 unread" ;;
+        *) fail "ANTS-5553 expected the singular line, got: $out" ;;
+    esac
+    out="$(run_inbox '{"ok":true,"op":"inbox","unacked_count":0,"messages":[]}' '{}')"
+    if [ -z "$out" ]; then pass "ANTS-5553 silent with no mail"; else fail "ANTS-5553 spoke with no mail: $out"; fi
+    out="$(run_inbox '{"ok":false,"code":"no_project"}' '{}')"
+    if [ -z "$out" ]; then pass "ANTS-5553 silent on a refusal"; else fail "ANTS-5553 spoke on a refusal: $out"; fi
+    out="$(cd "$ib_tmp" && printf '{}\n' | ANTS_MCPD="$stub" STUB_FAIL=1 STUB_REPLY=x HOME="$ib_tmp" timeout 5 bash "$INBOX"; echo "rc=$?")"
+    if [ "$out" = "rc=0" ]; then pass "ANTS-5553 silent + exit 0 when ants-mcpd fails"; else fail "ANTS-5553 on ants-mcpd failure: $out"; fi
+    out="$(cd "$ib_tmp" && printf '{}\n' | ANTS_MCPD=/nonexistent/ants-mcpd PATH=/usr/bin:/bin HOME="$ib_tmp" timeout 5 bash "$INBOX"; echo "rc=$?")"
+    if [ "$out" = "rc=0" ]; then pass "ANTS-5553 silent + exit 0 with no ants-mcpd"; else fail "ANTS-5553 with no ants-mcpd: $out"; fi
+    if [ "$have_jq" -eq 1 ]; then
+        mkdir -p "$ib_tmp/proj"
+        run_inbox '{"ok":true,"unacked_count":0}' "{\"cwd\":\"$ib_tmp/proj\"}" >/dev/null
+        if grep -q "\"caller_cwd\":\"$ib_tmp/proj\"" "$ib_tmp/argv"; then
+            pass "ANTS-5553 asks about the session's cwd from stdin"
+        else
+            fail "ANTS-5553 did not pass the stdin cwd: $(cat "$ib_tmp/argv")"
+        fi
+        # From a subdirectory of a repository it asks about the repository
+        # root: the store refuses a subdirectory (found end-to-end 2026-10-01).
+        if command -v git >/dev/null 2>&1; then
+            git init -q "$ib_tmp/repo" && mkdir -p "$ib_tmp/repo/src"
+            run_inbox '{"ok":true,"unacked_count":0}' "{\"cwd\":\"$ib_tmp/repo/src\"}" >/dev/null
+            if grep -q "\"caller_cwd\":\"$(cd "$ib_tmp/repo" && pwd -P)\"" "$ib_tmp/argv"; then
+                pass "ANTS-5553 asks about the repository root from a subdirectory"
+            else
+                fail "ANTS-5553 from a subdirectory sent: $(cat "$ib_tmp/argv")"
+            fi
+        fi
+        dry="$(bash "$INSTALLER" --dry-run --target "$ib_tmp/settings.json" --hooks-dir "$ib_tmp/hooks" 2>/dev/null \
+               | awk '/^\{/{j=1} j{print}' | sed -n '1,/^}/p')"
+        for ev in SessionStart UserPromptSubmit; do
+            if printf '%s\n' "$dry" | jq -e --arg ev "$ev" \
+                '[.hooks[$ev][]?.hooks[]?.command] | any(endswith("/ants-inbox-notice.sh"))' >/dev/null 2>&1; then
+                pass "ANTS-5553 installer registers the notice on $ev"
+            else
+                fail "ANTS-5553 installer does not register the notice on $ev"
+            fi
+        done
+    else
+        skip "ANTS-5553 stdin cwd + installer (jq not available)"
+    fi
+    rm -rf "$ib_tmp"
+fi
+
 # ---------- INV-9: silent outside project ----------
 outside="$(mktemp -d -t ants-hook-pack-out.XXXXXX)"
 for f in "$HOOKS_DIR"/ants-*.sh; do

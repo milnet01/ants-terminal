@@ -12,6 +12,13 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **A Claude Code session is told when another session has left it a message, at session start and on each prompt.** (ANTS-5553)
+  A new hook prints one line, "[ants:inbox] N unread messages from other
+  sessions", only while mail waits, in any project the roadmap store knows.
+  Run tools/install-hooks.sh to install it.
+
 ### Changed
 
 - **The release command waits for GitHub's CI on the commit and tags only if it passed** (ANTS-1978)

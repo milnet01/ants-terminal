@@ -68,7 +68,11 @@ hook_entries() {
   "ants_hooks_pack_v1": true,
   "hooks": {
     "SessionStart": [
-      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-session-preamble.sh"}]}
+      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-session-preamble.sh"}]},
+      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-inbox-notice.sh"}]}
+    ],
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "$hooks_dir/ants-inbox-notice.sh", "timeout": 5}]}
     ],
     "PreToolUse": [
       {"matcher": "Bash", "hooks": [{"type": "command", "command": "$hooks_dir/ants-bash-veto.sh"}]},
@@ -114,7 +118,7 @@ splice_install() {
 # The scripts this pack ships. Uninstall removes these and nothing else:
 # a pattern such as ants-*.sh also matches scripts other tools put in
 # the same hooks dir.
-pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot)\.sh$'
+pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot|inbox-notice)\.sh$'
 
 splice_uninstall() {
     local current
@@ -183,8 +187,17 @@ if [ "$uninstall" -eq 1 ]; then
     for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
         rm -f "$hooks_dir/${f##*/}" 2>/dev/null || true
     done
+    rm -f "$hooks_dir/ants-mcpd.path" 2>/dev/null || true
     echo "uninstalled ants_hooks_pack_v1 from $target"
     exit 0
+fi
+
+# ANTS-5553 — ants-inbox-notice.sh finds ants-mcpd through this file when it
+# is not on PATH (a build-tree install). Refreshed on every run, since the
+# rest of the install can be a no-op.
+mcpd_bin="$(cd "$src_dir/.." && pwd)/build/ants-mcpd"
+if [ "$dry_run" -eq 0 ] && [ -x "$mcpd_bin" ]; then
+    printf '%s\n' "$mcpd_bin" > "$hooks_dir/ants-mcpd.path"
 fi
 
 if already_installed; then

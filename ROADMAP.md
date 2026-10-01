@@ -69000,7 +69000,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5553] **Tell a session when it has unread session_message mail.**
+- ✅ [ANTS-5553] **Tell a session when it has unread session_message mail.**
   Two claude-config requests sat in Contact List's mailbox from 11:25 and
   11:45 on 2026-09-28 for about two hours, because nothing prompts a
   session to call op:"inbox". The user's priority list puts other
@@ -69014,6 +69014,12 @@ project. Reported causes are claims until checked in source.
   User report (2026-10-01): sessions are not notified when their inbox
   has mail. Raised by the user directly; take it next after the context
   meter.
+  Resolved (2026-10-01): hooks/ants-inbox-notice.sh on SessionStart and
+  UserPromptSubmit asks ants-mcpd --call session_message for the unread
+  count (about 30 ms) and prints one [ants:inbox] line only when mail
+  waits. Verified end to end with a self-addressed message, acked after.
+  Found on the way: session_message refuses a subdirectory of a
+  registered root, so the hook asks about the git top level.
   **Layman:** A Claude session should notice when another session has sent it a request, instead of the request sitting unread for hours.
   Kind: feature.
   Source: contact-list session request 2026-09-28 (session_message 194).
