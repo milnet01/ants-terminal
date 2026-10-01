@@ -33393,11 +33393,15 @@ against current source before filing.
   Candidates under the current rule: the 8 zero-open blocks. Do it as
   its own commit per minor so each move is reviewable as a pure move, and
   verify no id is lost by diffing the id set before and after.
+  2026-10-02: ANTS-3751 is dropped in favour of the global § 3.9 rule
+  (ANTS-5609: rotate on every minor bump after re-filing open work), so
+  this item now waits on ANTS-5609 and on rotation being callable
+  (ANTS-4081), not on a new spec.
   **Layman:** Our to-do file has grown to 30,000 lines because finished work never gets moved out, even though our own rule says to move it.
   Kind: chore.
   Source: user-question-2026-07-30.
 
-- 📋 [ANTS-3751] **roadmap-format.md § 3.9 should rotate by BULLET STATUS, not by block closure — the current trigger cannot fire on the blocks holding 79% of the file.**
+- 🚫 [ANTS-3751] **roadmap-format.md § 3.9 should rotate by BULLET STATUS, not by block closure — the current trigger cannot fire on the blocks holding 79% of the file.**
   The prerequisite for ANTS-3749. § 3.9 rotates a `## <major>.<minor>.0`
   release block once that block is CLOSED. Measured 2026-07-30, that
   trigger cannot reach the problem: the 8 blocks with zero open items
@@ -33437,6 +33441,11 @@ against current source before filing.
   redesign of the roadmap format — parse cost is 35 ms for 1,329 bullets,
   so nothing about the on-disk shape needs rethinking. Only the rotation
   trigger is wrong.
+  User decision 2026-10-02: adopt the global § 3.9 rule instead (rotate on
+  every minor or major bump, re-filing open work into the new minor first),
+  carried here by ANTS-5609. That rule solves the same problem (a block
+  kept open by stragglers never rotates), so per-bullet rotation is not
+  built and needs no spec.
   **Layman:** Finished items only get filed away when their whole release section is finished, so two never-quite-finished sections have swallowed most of the file.
   Kind: doc.
   Source: user-question-2026-07-30 (why is ROADMAP.md 30k lines).
@@ -40605,6 +40614,22 @@ against current source before filing.
   The other six remain exactly as filed, including both items marked "Needs a decision". The priority vocabulary split named here (a 1-5 band globally, a severity word in this copy) is now also referenced from ANTS-4440, which cannot be settled without it.
 
   Nothing else in that return leg overlapped this item.
+  User decisions 2026-10-02, both "Needs a decision" items settled.
+  (1) Priority is the band 1-5, as in the global copy. Measured: every
+  roadmap under /mnt/Games/Scripts/Linux uses numbers (96 lines, no
+  severity word). This copy's word form and roadmap-data-model.md § 7.5's
+  quote of it change to the band; no data moves.
+  (2) An absent id_high_water row on a reachable store floors the next id
+  to the highest id the store already holds for that (project, prefix),
+  as well as to the committed corpus. Not read as 0, not a refusal, and no
+  schema change: the value is derived from the item rows.
+  Checked 2026-10-02: decision (2) is already what the code does, so only
+  the standard's text is behind. rlStoreIdHighWater
+  (src/remotecontrol_roadmap_query.cpp) returns
+  RoadmapStore::allocationFloor(), which takes both idHighWater() and
+  maxAllocatedId() (the ids the items actually hold; roadmapstore.h). The
+  work left here is doc-only: § 3.5.1's two contradictory passages, and the
+  Priority band.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -90682,6 +90707,9 @@ reports are asked for separately, each time.
   docs/standards/roadmap-format.md § 3.9 still opens with the size
   trigger. It carries no mirror marker, so aligning it is this project's
   job. Keep its rotate_minor contract (global points to § 3.12 for it).
+  2026-10-02: user chose this rule over ANTS-3751's per-bullet rotation,
+  which is dropped. ANTS-3749 (shrink this project's ROADMAP.md) now
+  rides on it.
   **Layman:** The rule for archiving old roadmap sections is now worded differently in two copies; this makes them agree.
   Kind: doc-fix.
   Source: claude-config-request-2026-10-01 (CFG-0708).
