@@ -99,6 +99,25 @@ public:
     // arbitrary strings into the user's config.
     static bool isValidAnchorTarget(const QString &target);
 
+    // ANTS-5604 — a section heading's date moves out of its title into the
+    // card grid's own two columns. `splitHeadingDate` takes the first date
+    // (or date range) out of `heading` and names its kind where the heading
+    // gives one: "Foo (target: 2026-05-21)" → {"Foo", "target",
+    // "2026-05-21"}; "Foo — shipped 2026-05-10 → 2026-05-11" → {"Foo",
+    // "shipped", "2026-05-10 → 2026-05-11"}; "Foo — 2026-08-18 triage" →
+    // {"Foo — triage", "", "2026-08-18"}. A heading with no date comes back
+    // unchanged with empty kind and date.
+    // `label` is a leading version or single word before " — " ("0.7.0 —
+    // he can see who is reading" → label "0.7.0", title "he can see who
+    // is reading"), else empty; it is split after the date comes out.
+    struct HeadingDate {
+        QString label;
+        QString title;
+        QString kind;
+        QString date;
+    };
+    static HeadingDate splitHeadingDate(const QString &heading);
+
     // Filter mask. Each bit is a *peer* category checkbox in the
     // dialog header. A bullet renders iff at least one of its
     // category memberships is enabled (inclusive OR). Plain
@@ -253,11 +272,12 @@ public:
 
     // ANTS-1154 — new card-style renderer. Walks `markdownText` and
     // emits an HTML document where each top-level status-emoji bullet
-    // becomes a `<tr class="rm-card" id="rm-ANTS-NNNN">` row of a
-    // section's `table.rm-cards`, with state icon, kind chip,
-    // layman/headline summary, and meta cell (ID + shipped date for ✅
-    // items). Section headings (`##`/`###`) emit collapsible headers
-    // with `<span class="rm-section-counts">` chips. Click-to-toggle
+    // becomes a `<tr class="rm-card" id="rm-ANTS-NNNN">` row of the
+    // view's one `table.rm-cards`, with state icon, kind chip,
+    // layman/headline summary, date, and meta cell (ID + toggle).
+    // ANTS-5604 — section headings (`##`/`###`) are rows of the same
+    // table: a collapse chevron, one count per status, the title, and
+    // the title's date split into its kind and itself. Click-to-toggle
     // anchors use the `ants://expand/` / `ants://collapse/` /
     // `ants://expand-section/` / `ants://collapse-section/` URL
     // schemes, handled by the dialog's anchorClicked slot.

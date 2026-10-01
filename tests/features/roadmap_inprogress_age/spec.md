@@ -15,14 +15,14 @@ These mirror `docs/specs/ANTS-1237.md` § 4. IDs are qualified
 
 - **ANTS-1237-INV-1.** When `opts.lastTouchDates.contains(rec.id)`
   AND `rec.status == "🚧"`, the rendered card includes
-  `<span class="rm-date">· Updated <X></span>` in the meta row,
+  `<span class="rm-date">Updated <X></span>` in the grid's date cell (ANTS-5604),
   where `<X>` is the output of `humanAge(now − lastTouchDates[
   rec.id])`.
 - **ANTS-1237-INV-2.** When `rec.status != "🚧"` (i.e. ✅ / 📋 /
-  💭), no `· Updated` span is emitted regardless of
+  💭), no `Updated` span is emitted regardless of
   `lastTouchDates` content.
 - **ANTS-1237-INV-3.** When `opts.lastTouchDates` is empty OR
-  doesn't contain `rec.id` OR `rec.id` is empty, no `· Updated`
+  doesn't contain `rec.id` OR `rec.id` is empty, no `Updated`
   span is emitted on that card.
 - **ANTS-1237-INV-4.** The `humanAge(seconds)` ladder lower-side
   labels are: `today` (<86400), `yesterday` (<2·86400), `Nd ago`

@@ -108,7 +108,7 @@ static int runMain() {
     // -----------------------------------------------------------------
 
     // ANTS-1237-INV-1: 🚧 card with lastTouchDates entry renders
-    // `<span class="rm-date">· Updated 3d ago</span>`.
+    // `<span class="rm-date">Updated 3d ago</span>`.
     {
         RoadmapDialog::CardRenderOptions opts = makeOptsWithSectionOpen();
         const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
@@ -119,16 +119,16 @@ static int runMain() {
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
         if (!html.contains(QStringLiteral(
-                "<span class=\"rm-date\">· Updated 3d ago</span>")))
+                "<span class=\"rm-date\">Updated 3d ago</span>")))
             fail("INV-1",
                 "🚧 card with lastTouchDates entry did NOT emit "
-                "the `· Updated 3d ago` span — the new emitCard "
+                "the `Updated 3d ago` span — the new emitCard "
                 "branch isn't firing.");
     }
 
-    // ANTS-1237-INV-2: ✅ card does NOT emit `· Updated` (the
+    // ANTS-1237-INV-2: ✅ card does NOT emit `Updated` (the
     // ✅-branch still emits its shipped-date span via shippedDates
-    // lookup; assertion is on the absence of `· Updated ` only).
+    // lookup; assertion is on the absence of `>Updated ` only).
     {
         RoadmapDialog::CardRenderOptions opts = makeOptsWithSectionOpen();
         const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
@@ -141,14 +141,14 @@ static int runMain() {
             markdown, filter, currentBullets, theme,
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
-        if (html.contains(QStringLiteral("· Updated ")))
+        if (html.contains(QStringLiteral(">Updated ")))
             fail("INV-2",
-                "✅ card emitted a `· Updated` span — the status "
+                "✅ card emitted an `Updated` span — the status "
                 "gate (`rec.status == \"🚧\"`) is broken or the "
                 "branch is firing on the wrong status.");
     }
 
-    // ANTS-1237-INV-3: empty lastTouchDates → no `· Updated` span on
+    // ANTS-1237-INV-3: empty lastTouchDates → no `Updated` span on
     // any card, including 🚧.
     {
         RoadmapDialog::CardRenderOptions opts = makeOptsWithSectionOpen();
@@ -157,9 +157,9 @@ static int runMain() {
             markdown, filter, currentBullets, theme,
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
-        if (html.contains(QStringLiteral("· Updated ")))
+        if (html.contains(QStringLiteral(">Updated ")))
             fail("INV-3",
-                "🚧 card emitted a `· Updated` span despite empty "
+                "🚧 card emitted an `Updated` span despite empty "
                 "lastTouchDates — graceful-degradation path is "
                 "broken (likely a constFind / constEnd misuse).");
     }

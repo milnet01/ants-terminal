@@ -265,7 +265,7 @@ static int runMain(int argc, char **argv) {
                 RD::SortOrder::Document, QString(), {}, opts).toStdString();
         };
         const std::string collapsed = render();
-        if (!contains(collapsed, "0.8.0 — feature delivery"))
+        if (!contains(collapsed, ">feature delivery<"))
             fail("INV-26", "collapsed ## heading itself not rendered");
         if (contains(collapsed, "ants://collapse-section/features\"")
             || contains(collapsed, "rm-ANTS-9001"))
@@ -295,16 +295,19 @@ static int runMain(int argc, char **argv) {
                 "<a name=\"" + e.anchor.toStdString() + "\"></a>";
             const size_t at = h.find(tag);
             if (at == std::string::npos) continue;
-            const size_t end = h.find("</h", at);
+            // ANTS-5604 — a heading row splits its title into label and
+            // text cells, so look for the text anywhere in the row.
+            const size_t end = h.find("</tr>", at);
+            const std::string want =
+                RD::splitHeadingDate(e.text).title.toStdString();
             if (end == std::string::npos
-                || h.substr(at, end - at).find(e.text.toStdString())
-                       == std::string::npos)
+                || h.substr(at, end - at).find(want) == std::string::npos)
                 fail("INV-27", ("anchor " + e.anchor.toStdString()
                                 + " does not head \"" + e.text.toStdString()
                                 + "\"").c_str());
             ++checked;
         }
-        if (!contains(h, "0.9.0 — far-future") || checked < 3)
+        if (!contains(h, ">far-future<") || checked < 3)
             fail("INV-27", "fixture no longer renders the headings it checks");
     }
 
@@ -327,16 +330,16 @@ static int runMain(int argc, char **argv) {
                 "empty section header rendered under History");
         // 0.9.0 has only 💭, no ✅ — its header MUST also be
         // suppressed when filter is ShowDone only.
-        if (contains(h, "0.9.0 — far-future"))
+        if (contains(h, ">far-future<"))
             fail("INV-12",
                 "0.9.0 section header rendered when no ✅ inside");
         // ANTS-5572 — 0.8.0 has no direct bullets, but its ### Features
         // holds a ✅: the parent MUST head its visible sub-section, and
         // the h3 carries no "· parent" breadcrumb.
-        if (!contains(h, "0.8.0 — feature delivery"))
+        if (!contains(h, ">feature delivery<"))
             fail("INV-12",
                 "parent h2 hidden above its visible sub-section");
-        else if (h.find("0.8.0 — feature delivery") > h.find("Features"))
+        else if (h.find(">feature delivery<") > h.find("Features"))
             fail("INV-12", "parent h2 rendered after its sub-section");
         if (contains(h, "rm-parent"))
             fail("INV-12", "h3 still carries the parent breadcrumb");
@@ -385,7 +388,7 @@ static int runMain(int argc, char **argv) {
         // pair) because the renderer uses `QStringLiteral("<tr
         // class=\"rm-card%1...\"")` (ANTS-3392; was a `<div>`).
         const auto anchorPos = src.find("// ANTS-1154-INV-1");
-        const auto literalPos = src.find("class=\\\"rm-card");
+        const auto literalPos = src.find("<tr class=\\\"rm-card%1");
         if (anchorPos == std::string::npos ||
                 literalPos == std::string::npos)
             fail("INV-1", "could not locate both literals");
@@ -566,13 +569,17 @@ static int runMain(int argc, char **argv) {
             fail("BodyFrame",
                 "first body <p> missing rm-body-first class");
         // ANTS-3392 — the expanded body is a full-width row beneath the
-        // summary row: <tr class="rm-card-body"><td colspan="4"> … </td>.
+        // summary row, its text in the summary column of ANTS-5604's grid
+        // (not a spanning cell, which would widen the count columns).
         if (!contains(h, "<tr class=\"rm-card-body\">"))
             fail("BodyFrame",
                 "expanded body missing rm-card-body row (ANTS-3392)");
-        if (!contains(h, "colspan=\"4\""))
+        if (!contains(h, "<td colspan=\"6\" class=\"rm-col-kind\"></td>"
+                         "<td class=\"rm-col-body\">"))
             fail("BodyFrame",
-                "expanded body cell missing colspan=\"4\" (ANTS-3392)");
+                "expanded body text not in the summary column (ANTS-5604)");
+        if (contains(h, "colspan=\"11\""))
+            fail("BodyFrame", "a full-width cell widens the count columns");
     }
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
@@ -636,11 +643,12 @@ static int runMain(int argc, char **argv) {
             idPos >= togglePos)
             fail("IdInline",
                 "rm-id span MUST precede the rm-toggle anchor for ANTS-9001");
-        // Shipped date renders inline as well (ANTS-9001 is ✅ and
-        // shippedDates was populated above).
-        if (!contains(h, "<span class=\"rm-date\">· 2026-05-11</span>"))
+        // ANTS-5604 — the shipped date sits in the grid's date column
+        // (ANTS-9001 is ✅ and shippedDates was populated above).
+        if (!contains(h, "<td class=\"rm-col-date\"><span class=\"rm-date\">"
+                         "2026-05-11</span></td>"))
             fail("IdInline",
-                "expected inline <span class=\"rm-date\"> for shipped card");
+                "expected the shipped date in the rm-col-date cell");
     }
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
@@ -722,26 +730,34 @@ static int runMain(int argc, char **argv) {
                 (std::string("expected 4 rm-state-label spans (one per card), got ")
                  + std::to_string(labelCount)).c_str());
 
-        // INV-20: section count chips emit trailing text words. The
-        // fixture's "Features" section has 1 ✅, 1 🚧, 1 📋 — chips
-        // text must contain all three labels (and NOT a trailing
-        // ` · `).
-        if (!contains(h, "✅ 1 shipped"))
-            fail("ChipText",
-                "section counts must include `✅ 1 shipped`");
-        if (!contains(h, "🚧 1 in progress"))
-            fail("ChipText",
-                "section counts must include `🚧 1 in progress`");
-        if (!contains(h, "📋 1 planned"))
-            fail("ChipText",
-                "section counts must include `📋 1 planned`");
-        // Trailing separator must be stripped — the LAST chip in
-        // any given count span must not end with ` · `. The chip
-        // span is closed by </span>, so search for `· </span>`.
-        if (contains(h, " · </span>"))
-            fail("ChipText",
-                "section count span ends with ` · </span>` — "
-                "chips.chop(3) didn't strip the trailing separator");
+        // INV-20 (ANTS-5604): one count column per status, headed once by
+        // its emoji; a cell holds the number alone, blank when zero. The
+        // fixture's "Features" section has 1 ✅, 1 🚧, 1 📋, 0 💭, 0 🚫.
+        {
+            const std::string cell = "<td class=\"rm-hd rm-count\">";
+            const std::string head = "<tr class=\"rm-colhead\">";
+            const auto first = h.find(head);
+            if (first == std::string::npos
+                || h.find(head, first + 1) != std::string::npos)
+                fail("ChipText", "the emoji column-head row must appear once");
+            else if (!contains(h.substr(first, h.find("</tr>", first) - first),
+                               cell + "✅</td>" + cell + "🚧</td>" + cell
+                                   + "📋</td>" + cell + "💭</td>" + cell
+                                   + "🚫</td>"))
+                fail("ChipText", "column-head row not ✅ 🚧 📋 💭 🚫 in order");
+            const auto feat = h.find("ants://collapse-section/features\"");
+            const auto row = h.rfind("<tr class=\"rm-section\">", feat);
+            const auto rowEnd = h.find("</tr>", feat);
+            if (feat == std::string::npos || row == std::string::npos
+                || rowEnd == std::string::npos
+                || !contains(h.substr(row, rowEnd - row),
+                             cell + "1</td>" + cell + "1</td>" + cell
+                                 + "1</td>" + cell + "</td>" + cell + "</td>"))
+                fail("ChipText",
+                     "Features row must read 1, 1, 1, blank, blank");
+            if (contains(h, "1 shipped"))
+                fail("ChipText", "old labelled chip text still rendered");
+        }
 
         // INV-24: plain-text projection of the rendered HTML
         // contains the four label words in document order.
@@ -813,10 +829,9 @@ static int runMain(int argc, char **argv) {
                 ".rm-state-label CSS rule missing or wrong "
                 "(must declare font-size:%20px [labelPx tier slot — "
                 "cozy 10px lives in kDensityTable]; color:%6;)");
-        if (!contains(src, "white-space:nowrap"))
+        if (!contains(src, ".rm-count{text-align:center;white-space:nowrap;"))
             fail("CssRule",
-                ".rm-section-counts must include white-space:nowrap "
-                "to prevent the labelled chip line from wrapping");
+                ".rm-count must be centred and nowrap (ANTS-5604)");
     }
 
     // ANTS-1276 — anchor-target validation. handleAnchorClicked
@@ -859,31 +874,81 @@ TEST(RoadmapDialogCards, Main) {
     ASSERT_EQ(0, runMain(0, nullptr));
 }
 
-// ANTS-3762 — every section's card table obeys ONE column grid.
+// INV-28 (ANTS-5604) — a heading's first date moves out of its title, with
+// its kind where the heading names one.
+TEST(RoadmapDialogCards, Ants5604SplitHeadingDate) {
+    struct Case { const char *in, *label, *title, *kind, *date; };
+    const Case cases[] = {
+        // The three date shapes the roadmap item names.
+        {"Release 0.8 (target: 2026-05-21)", "", "Release 0.8", "target",
+         "2026-05-21"},
+        {"Card dialog — shipped 2026-05-10 → 2026-05-11", "", "Card dialog",
+         "shipped", "2026-05-10 → 2026-05-11"},
+        {"Ants MCP feedback — 2026-08-18 second triage", "",
+         "Ants MCP feedback — second triage", "", "2026-08-18"},
+        // This project's common shapes.
+        {"🎨 UI polish (user request 2026-04-20)", "", "🎨 UI polish",
+         "user request", "2026-04-20"},
+        {"🔍 Static-analysis fold-in (2026-05-02)", "",
+         "🔍 Static-analysis fold-in", "", "2026-05-02"},
+        {"🐛 Regressions (user, 2026-04-25)", "", "🐛 Regressions", "user",
+         "2026-04-25"},
+        {"🐛 Paint pipeline (user reports 2026-04-07/08)", "",
+         "🐛 Paint pipeline", "user reports", "2026-04-07/08"},
+        {"Ants MCP feedback (2026-09-01 triage)", "",
+         "Ants MCP feedback (triage)", "", "2026-09-01"},
+        {"🔍 Indie-review fold-in (2026-05-13) — follow-up sweep", "",
+         "🔍 Indie-review fold-in — follow-up sweep", "", "2026-05-13"},
+        {"🧪 Test Audit 2026-06-01", "", "🧪 Test Audit", "", "2026-06-01"},
+        {"🐛 Resize (user report 2026-04-30, ANTS-1187 root cause)", "",
+         "🐛 Resize (ANTS-1187 root cause)", "user report", "2026-04-30"},
+        // Not a short word kind: the date moves alone, the words stay.
+        {"🧪 Lanes (carry from the 2026-05-14 review)", "",
+         "🧪 Lanes (carry from the review)", "", "2026-05-14"},
+        {"🧰 Prep (ADR-0002 fold-out, 2026-05-20)", "",
+         "🧰 Prep (ADR-0002 fold-out)", "", "2026-05-20"},
+        // A month, and an open-ended date; both carry a version label.
+        {"0.8.0 — multiplexing (target: 2026-08)", "0.8.0", "multiplexing",
+         "target", "2026-08"},
+        {"0.7.50–0.7.59 — sweep — shipped 2026-04-28+ (in flight at 0.7.59)",
+         "0.7.50–0.7.59", "sweep (in flight at 0.7.59)", "shipped",
+         "2026-04-28+"},
+        // Labels with no date: a version, a patch stream, one word.
+        {"0.7.0 — he can see who is reading", "0.7.0",
+         "he can see who is reading", "", ""},
+        {"0.4.x — patch stream", "0.4.x", "patch stream", "", ""},
+        {"Backlog — no version yet", "Backlog", "no version yet", "", ""},
+        // No label, no date: unchanged.
+        {"Planned Features", "", "Planned Features", "", ""},
+    };
+    for (const Case &c : cases) {
+        const auto got = RoadmapDialog::splitHeadingDate(QString::fromUtf8(c.in));
+        EXPECT_EQ(got.label.toStdString(), std::string(c.label)) << c.in;
+        EXPECT_EQ(got.title.toStdString(), std::string(c.title)) << c.in;
+        EXPECT_EQ(got.kind.toStdString(), std::string(c.kind)) << c.in;
+        EXPECT_EQ(got.date.toStdString(), std::string(c.date)) << c.in;
+    }
+}
+
+// ANTS-3762 / ANTS-5604 — headings and cards share ONE column grid.
 //
-// The defect: each section renders its own `table.rm-cards`, so Qt's
-// auto-layout sizes each table from that section's content. The state, kind
-// and id columns land somewhere different in every group, and reading down
-// the list means re-finding each field on every row. Worst case is a row with
-// no kind: the cell collapses to nothing and the headline slides left, which
-// is how one group shows three different text left-edges.
-//
-// This drives the SAME static the dialog calls, not a copy of its logic. The
-// control half matters as much as the assertion: it proves the grid is doing
-// the work, because Qt silently ignores `table-layout:fixed` and a CSS `width`
-// on a `td` (measured 2026-08-15) — so a stylesheet "fix" would leave this
-// test green-looking while changing nothing on screen.
+// ANTS-3762's defect was that each section rendered its own table, so Qt
+// sized each from its own content and the columns landed somewhere different
+// in every group. ANTS-5604 makes the whole view one table, and puts section
+// headings in it too: a heading's title sits in the cards' summary column and
+// its date in the date columns. This drives the SAME static the dialog calls.
 namespace {
 
 using RD = RoadmapDialog;
+constexpr int kGrid = 11;
 
-QList<QTextTable *> cardTablesOf(QTextDocument &doc) {
+QList<QTextTable *> gridTablesOf(QTextDocument &doc) {
     QList<QTextTable *> out;
     std::function<void(QTextFrame *)> walk = [&](QTextFrame *f) {
         for (auto it = f->begin(); !it.atEnd(); ++it)
             if (QTextFrame *cf = it.currentFrame()) {
                 if (auto *tt = qobject_cast<QTextTable *>(cf))
-                    if (tt->columns() == 4) out << tt;
+                    if (tt->columns() == kGrid) out << tt;
                 walk(cf);
             }
     };
@@ -891,88 +956,112 @@ QList<QTextTable *> cardTablesOf(QTextDocument &doc) {
     return out;
 }
 
-// The x of each column's first cell, for one table.
-QVector<double> columnXs(QTextDocument &doc, QTextTable *t) {
-    QVector<double> xs;
-    for (int c = 0; c < t->columns(); ++c) {
-        QTextCursor cur = t->cellAt(0, c).firstCursorPosition();
-        xs << doc.documentLayout()->blockBoundingRect(cur.block()).x();
-    }
-    return xs;
+double cellX(QTextDocument &doc, QTextTable *t, int row, int col) {
+    const QTextCursor cur = t->cellAt(row, col).firstCursorPosition();
+    return doc.documentLayout()->blockBoundingRect(cur.block()).x();
 }
 
-// Two sections chosen to size very differently under auto-layout: the first
-// has long status labels and a kind on every row, the second has short ones
-// and no kind at all.
+QString cellText(QTextTable *t, int row, int col) {
+    const QTextTableCell cell = t->cellAt(row, col);
+    QTextCursor cur = cell.firstCursorPosition();
+    cur.setPosition(cell.lastCursorPosition().position(),
+                    QTextCursor::KeepAnchor);
+    return cur.selectedText();
+}
+
+// The first row whose summary/title cell contains `needle`, or -1.
+int rowWith(QTextTable *t, const QString &needle) {
+    for (int r = 0; r < t->rows(); ++r)
+        if (cellText(t, r, 7).contains(needle)) return r;
+    return -1;
+}
+
+// Two sections that size very differently (long status labels and a kind on
+// every row, against short ones and no kind), plus a collapsed dated one.
 QString gridFixtureMarkdown() {
     return QStringLiteral(
         "# Fixture\n\n"
-        "## Wide section\n\n"
+        "## 0.7.0 — Wide section\n\n"
         "- 📋 [ANTS-9101] **A considerably longer headline for the wide "
         "section so the summary column has real content.**\n"
         "  Layman: wide one.\n"
         "  Kind: review-fix.\n"
         "  Source: fixture.\n"
-        "- 📋 [ANTS-9102] **Second wide row.**\n"
+        "- 🚧 [ANTS-9102] **Second wide row.**\n"
         "  Layman: wide two.\n"
         "  Kind: implement.\n"
         "  Source: fixture.\n\n"
         "## Narrow section\n\n"
         "- 📋 [ANTS-9103] **Short.**\n"
         "  Layman: narrow one.\n"
-        "  Source: fixture.\n"
+        "  Source: fixture.\n\n"
+        "## Dated section (target: 2026-05-21)\n\n"
         "- 📋 [ANTS-9104] **Tiny.**\n"
-        "  Layman: narrow two.\n"
+        "  Layman: dated one.\n"
         "  Source: fixture.\n");
 }
 
 }  // namespace
 
-TEST(RoadmapDialogCards, Ants3762ColumnGridIsSharedAcrossSections) {
+TEST(RoadmapDialogCards, Ants5604HeadingsAndCardsShareOneGrid) {
     RD::CardRenderOptions opts;
     opts.activePreset = RD::Preset::Full;
-    // Sections render collapsed by default; both must be open for their card
-    // tables to exist at all.
-    opts.expandedSections.insert(QStringLiteral("wide-section"));
+    opts.expandedSections.insert(QStringLiteral("0-7-0-wide-section"));
     opts.expandedSections.insert(QStringLiteral("narrow-section"));
     const QString html = RD::renderCardsHtml(
         gridFixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
         RD::SortOrder::Document, QString(), {}, opts);
 
     QTextDocument doc;
-    doc.setTextWidth(1400);
+    constexpr int kWidth = 1400;
+    doc.setTextWidth(kWidth);
     doc.setHtml(html);
-
-    const QList<QTextTable *> tables = cardTablesOf(doc);
-    ASSERT_GE(tables.size(), 2)
-        << "fixture must render at least two per-section card tables — "
-           "the whole defect is that they are separate tables";
-
-    // Control — without the grid the two sections DISAGREE. If this ever stops
-    // being true the assertion below proves nothing, so it is checked, not
-    // assumed.
-    const QVector<double> rawFirst  = columnXs(doc, tables.first());
-    const QVector<double> rawSecond = columnXs(doc, tables.last());
-    EXPECT_NE(rawFirst, rawSecond)
-        << "control: Qt's auto-layout is expected to size each section's "
-           "table independently; if it no longer does, this test can no "
-           "longer detect the regression it exists for";
-
     RoadmapDialog::applyCardColumnGrid(&doc, RD::Density::Cozy);
 
-    const QVector<double> gridFirst = columnXs(doc, tables.first());
-    for (int i = 1; i < tables.size(); ++i) {
-        EXPECT_EQ(gridFirst, columnXs(doc, tables.at(i)))
-            << "ANTS-3762: section " << i << " must sit on the same column "
-               "grid as the first — state, kind and id at identical x";
-    }
+    const QList<QTextTable *> tables = gridTablesOf(doc);
+    ASSERT_EQ(tables.size(), 1)
+        << "the whole view must be one table of " << kGrid << " columns";
+    QTextTable *t = tables.first();
 
-    // The kind column must RESERVE its width on the narrow section, whose rows
-    // carry no kind at all. That is the half that fixes the differing text
-    // left-edges, and equal-x above would also hold if every column collapsed.
-    EXPECT_GT(gridFirst.at(2), gridFirst.at(1))
-        << "ANTS-3762: the summary column starts after a kind column that "
-           "still occupies space when the row has no kind";
-    EXPECT_GT(gridFirst.at(3), gridFirst.at(2))
-        << "ANTS-3762: the id column sits to the right of the summary";
+    const int wideHead = rowWith(t, QStringLiteral("Wide section"));
+    const int wideCard = rowWith(t, QStringLiteral("wide one"));
+    const int narrowCard = rowWith(t, QStringLiteral("narrow one"));
+    const int datedHead = rowWith(t, QStringLiteral("Dated section"));
+    ASSERT_GE(wideHead, 0);
+    ASSERT_GE(wideCard, 0);
+    ASSERT_GE(narrowCard, 0);
+    ASSERT_GE(datedHead, 0);
+
+    // A heading's title starts where every card's summary starts, and a card
+    // with no kind starts its summary where one with a kind does.
+    EXPECT_EQ(cellX(doc, t, wideHead, 7), cellX(doc, t, wideCard, 7));
+    EXPECT_EQ(cellX(doc, t, wideCard, 7), cellX(doc, t, narrowCard, 7));
+    EXPECT_GT(cellX(doc, t, wideCard, 7), cellX(doc, t, wideCard, 1))
+        << "the summary column starts after the kind cells";
+
+    // The version label has a column of its own, left of the heading text.
+    EXPECT_EQ(cellText(t, wideHead, 6), QStringLiteral("0.7.0"));
+    EXPECT_EQ(cellText(t, wideHead, 7), QStringLiteral("Wide section"));
+    EXPECT_EQ(cellText(t, datedHead, 6), QString());
+
+    // The heading's date left its title for the two date columns.
+    EXPECT_EQ(cellText(t, datedHead, 7), QStringLiteral("Dated section"));
+    EXPECT_EQ(cellText(t, datedHead, 8), QStringLiteral("target"));
+    EXPECT_EQ(cellText(t, datedHead, 9), QStringLiteral("2026-05-21"));
+
+    // The counts read one number per status column: 1 📋 and 1 🚧.
+    EXPECT_EQ(cellText(t, wideHead, 1), QString());
+    EXPECT_EQ(cellText(t, wideHead, 2), QStringLiteral("1"));
+    EXPECT_EQ(cellText(t, wideHead, 3), QStringLiteral("1"));
+
+    // The summary column takes the spare width; a count column does not.
+    const double summaryW =
+        cellX(doc, t, wideCard, 8) - cellX(doc, t, wideCard, 7);
+    const double countW =
+        cellX(doc, t, wideHead, 3) - cellX(doc, t, wideHead, 2);
+    EXPECT_GT(summaryW, kWidth / 3.0) << "summary column did not take the "
+                                         "spare width";
+    EXPECT_LT(countW, 80.0) << "a count column grew past its content";
+    EXPECT_LT(cellX(doc, t, wideCard, 10), double(kWidth))
+        << "the id column was pushed past the right edge";
 }

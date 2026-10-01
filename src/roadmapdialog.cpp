@@ -179,7 +179,7 @@ constexpr KindEntry kKinds[] = {
 // `.rm-body-first`, `.rm-body-line` (all at the same value per
 // tier). h1Px..h4Px cover the four heading levels. codePx
 // covers `code`, `.rm-toggle`, `.rm-id`, `td`, `th`. metaPx
-// covers `.rm-kind`, `.rm-section-counts`, `.rm-date`.
+// covers `.rm-kind`, `.rm-count`, `.rm-col-datekind`, `.rm-date`.
 // labelPx is `.rm-state-label`; at Compact it shares the 11 px
 // floor with metaPx (ANTS-2211). Vertical padding scales: pMargin is `p` `margin:Npx 0`; hMarginTop /
 // hMarginBottom are h1-h4 `margin:Tpx 0 Bpx 0`; cardPaddingY /
@@ -198,17 +198,18 @@ struct DensityTier {
     int cardMargin;
     int bodyFirstPaddingTop;
     int bodyFirstMarginTop;
-    // ANTS-3762 — fixed widths for the three non-flexible card columns
-    // (`.rm-col-state` / `.rm-col-kind` / `.rm-col-meta`); the summary column
-    // takes the remainder. Every section renders its OWN `table.rm-cards`, so
-    // without these Qt's auto-layout sizes each table from its own content and
-    // the columns land somewhere different in every group — which is the
-    // misalignment the item was filed for. They scale with the tier because
-    // the text in them does; they live here (and reach the document only via
-    // the <style> block) so ANTS-1238 INV-6 — non-<style> HTML byte-identical
-    // across tiers — still holds.
-    int colStatePx, colKindPx, colMetaPx;
+    // ANTS-3762 — the floor width of the card grid's meta column (#id +
+    // toggle); see applyCardColumnGrid. It scales with the tier because the
+    // text in it does.
+    int colMetaPx;
 };
+// ANTS-5604 — the card view is ONE table of this many columns: state or
+// chevron, five status counts, a heading's label ("0.7.0", "Backlog"; a
+// card's kind spans the counts and this), summary or heading text, date
+// kind, date, and #id + toggle.
+constexpr int kColLabel = 6;
+constexpr int kColSummary = 7;
+constexpr int kGridColumns = 11;
 constexpr DensityTier kDensityTable[3] = {
     // Compact: -2 px tier; label + meta groups floored at 11 px (ANTS-2211,
     // raised from 9 px for readability).
@@ -217,7 +218,7 @@ constexpr DensityTier kDensityTable[3] = {
      /*pMargin*/1, /*hMarginTop*/2, /*hMarginBottom*/1,
      /*cardPaddingY*/2, /*cardPaddingX*/6, /*cardMargin*/1,
      /*bodyFirstPaddingTop*/2, /*bodyFirstMarginTop*/1,
-     /*colStatePx*/258, /*colKindPx*/94, /*colMetaPx*/68},
+     /*colMetaPx*/68},
     // Cozy: current default. (ANTS-2211 raised the meta + label tier to
     // 12 px for readability, so Cozy is no longer byte-equal to the
     // pre-1238 renderer for those two classes; INV-1 default==Cozy holds.)
@@ -226,14 +227,14 @@ constexpr DensityTier kDensityTable[3] = {
      /*pMargin*/3, /*hMarginTop*/4, /*hMarginBottom*/2,
      /*cardPaddingY*/4, /*cardPaddingX*/8, /*cardMargin*/2,
      /*bodyFirstPaddingTop*/4, /*bodyFirstMarginTop*/2,
-     /*colStatePx*/290, /*colKindPx*/106, /*colMetaPx*/76},
+     /*colMetaPx*/76},
     // Comfortable: +2 px tier, more vertical headroom.
     {/*bodyPx*/15, /*h1Px*/18, /*h2Px*/15, /*h3Px*/14, /*h4Px*/13,
      /*codePx*/14, /*metaPx*/13, /*labelPx*/12,
      /*pMargin*/5, /*hMarginTop*/6, /*hMarginBottom*/4,
      /*cardPaddingY*/6, /*cardPaddingX*/12, /*cardMargin*/4,
      /*bodyFirstPaddingTop*/6, /*bodyFirstMarginTop*/3,
-     /*colStatePx*/322, /*colKindPx*/118, /*colMetaPx*/86},
+     /*colMetaPx*/86},
 };
 static_assert(std::size(kDensityTable) == 3,
               "kDensityTable must keep one row per Density enum value.");
@@ -719,6 +720,94 @@ RoadmapDialog::extractToc(const QString &markdownText) {
         out.push_back(e);
     }
     return out;
+}
+
+RoadmapDialog::HeadingDate
+RoadmapDialog::splitHeadingDate(const QString &heading) {
+    // A date or a month ("2026-08"), optionally a range ("2026-05-10 →
+    // 2026-05-11", "2026-04-07/08") or open-ended ("2026-04-28+").
+    static const QRegularExpression rxDate(QStringLiteral(
+        "(?<![\\d.])\\d{4}-\\d{2}(?:-\\d{2})?(?!\\d)"
+        "(?:\\s*(?:→|–|/)\\s*(?:\\d{4}-\\d{2}-\\d{2}|\\d{2}))?\\+?"));
+    // A kind is one or two plain words ("target", "user request").
+    static const QRegularExpression rxKind(QStringLiteral(
+        "^[A-Za-z][A-Za-z-]*(?: [A-Za-z][A-Za-z-]*)?$"));
+    // Words between a dash and the date: "— shipped 2026-…".
+    static const QRegularExpression rxDashKind(QStringLiteral(
+        "—\\s*([A-Za-z][A-Za-z-]*(?: [A-Za-z][A-Za-z-]*)?):?\\s*$"));
+    static const QRegularExpression rxSpaces(QStringLiteral("\\s{2,}"));
+    static const QRegularExpression rxTrailing(QStringLiteral("[\\s—–:,-]+$"));
+
+    // A heading's label is a version ("0.7.0", "0.7.50–0.7.59", "0.4.x")
+    // or one word ("Backlog") before the first " — ".
+    static const QRegularExpression rxLabel(QStringLiteral(
+        "^(v?\\d+\\.\\d+(?:\\.(?:\\d+|x))?(?:\\s*[–-]\\s*\\d+\\.\\d+(?:\\.\\d+)?)?"
+        "|[A-Za-z][A-Za-z-]*) — (.+)$"));
+    const auto withLabel = [&](HeadingDate hd) {
+        const QRegularExpressionMatch lm = rxLabel.match(hd.title);
+        if (lm.hasMatch()) {
+            hd.label = lm.captured(1);
+            hd.title = lm.captured(2);
+        }
+        return hd;
+    };
+
+    HeadingDate out;
+    out.title = heading;
+    const QRegularExpressionMatch m = rxDate.match(heading);
+    if (!m.hasMatch()) return withLabel(out);
+    out.date = m.captured(0);
+    const int ds = m.capturedStart(0);
+    const int de = m.capturedEnd(0);
+
+    const auto tidy = [&](QString s) {
+        s.replace(rxSpaces, QStringLiteral(" "));
+        s.replace(QStringLiteral(" )"), QStringLiteral(")"));
+        s.replace(QStringLiteral("( "), QStringLiteral("("));
+        s.replace(QStringLiteral(" — ("), QStringLiteral(" ("));
+        s.remove(rxTrailing);
+        return s.trimmed();
+    };
+    const auto strip = [](QString s) {
+        while (!s.isEmpty() && (s.back().isSpace() || s.back() == u':'
+                                || s.back() == u','))
+            s.chop(1);
+        while (!s.isEmpty() && (s.front().isSpace() || s.front() == u':'
+                                || s.front() == u','))
+            s.remove(0, 1);
+        return s;
+    };
+
+    const int open = heading.lastIndexOf(QLatin1Char('('), ds);
+    const int closedBefore = heading.lastIndexOf(QLatin1Char(')'), ds);
+    const int close = heading.indexOf(QLatin1Char(')'), de);
+    if (open >= 0 && open > closedBefore && close >= 0) {
+        // Inside "( … )": a short word run before the date is its kind;
+        // anything else stays in the parenthetical.
+        const QString before = strip(heading.mid(open + 1, ds - open - 1));
+        const QString after = strip(heading.mid(de, close - de));
+        QString keep;
+        if (rxKind.match(before).hasMatch()) {
+            out.kind = before;
+            keep = after;
+        } else {
+            keep = (before + QLatin1Char(' ') + after).trimmed();
+        }
+        QString rest = heading.left(open);
+        if (!keep.isEmpty()) rest += QLatin1Char('(') + keep + QLatin1Char(')');
+        rest += heading.mid(close + 1);
+        out.title = tidy(rest);
+        return withLabel(out);
+    }
+
+    QString before = heading.left(ds);
+    const QRegularExpressionMatch km = rxDashKind.match(before);
+    if (km.hasMatch()) {
+        out.kind = km.captured(1);
+        before = before.left(km.capturedStart(1));
+    }
+    out.title = tidy(before + QLatin1Char(' ') + heading.mid(de));
+    return withLabel(out);
 }
 
 // Pure renderer. See spec for the parsing rules. Returns a self-
@@ -1292,11 +1381,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-section-toggle{color:%2;font-weight:normal;font-size:%7px;padding-right:12px;padding-left:4px;}"
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
-        ".rm-section-counts{font-weight:normal;font-size:%16px;color:%6;padding-right:10px;white-space:nowrap;}"
-        // ANTS-3392 — each section's cards are one `<table class="rm-cards">`
-        // (one `<tr class="rm-card">` per bullet, four `<td class="rm-col-*">`
-        // cells) so state / kind / summary / meta line up in aligned columns
-        // instead of fusing inline. Qt's rich-text engine paints cell — not
+        // ANTS-3392 / ANTS-5604 — the whole view is one
+        // `<table class="rm-cards">`: a `<tr class="rm-section">` per heading
+        // and a `<tr class="rm-card">` per bullet, on one column grid, so
+        // headings and cards line up instead of fusing inline. Qt's rich-text engine paints cell — not
         // row — backgrounds/borders reliably, so the card background lives on
         // the bare `td` rule (the cards path emits no other table, so a bare
         // `td` selector == card cell) and the left accent lives on the first
@@ -1322,6 +1410,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // Expanded body row's colspan cell: the <p>s carry their own
         // rm-body-first/line spacing, so drop the cell's top padding.
         ".rm-col-body{padding-top:0;}"
+        // ANTS-5604 — heading, prose and column-head rows sit on the page
+        // background, not the card background the bare `td` rule paints.
+        ".rm-hd{background:%24;}"
+        ".rm-count{text-align:center;white-space:nowrap;font-size:%16px;color:%6;}"
+        ".rm-col-datekind{white-space:nowrap;font-size:%16px;color:%6;}"
+        ".rm-col-date{white-space:nowrap;}"
         // rm-current: tint every cell of the row (class beats the bare `td`
         // background by specificity) + swap the first cell's accent to the
         // current-work colour. rm-card-synthetic: dashed first-cell border
@@ -1381,7 +1475,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
              QString::number(t.labelPx),             // %20
              QString::number(t.bodyFirstPaddingTop), // %21
              QString::number(t.bodyFirstMarginTop))  // %22
-        .arg(currentWorkTint());                     // %23
+        .arg(currentWorkTint(),                      // %23
+             th.bgPrimary.name());                   // %24
 
     const QStringList lines = sourceText.split('\n');
     QString currentSlug;
@@ -1400,57 +1495,77 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // both walks.
     QSet<QString> seenSlugs;
 
+    // ANTS-5604 — the status emoji head the five count columns once, above
+    // the first heading row.
+    bool colHeadEmitted = false;
+    // ANTS-5604 — the view's one table opens at its first row, so the
+    // document's title and preamble prose stay above it, on the full width.
+    bool tableOpen = false;
+    auto openTable = [&]() {
+        if (tableOpen) return;
+        tableOpen = true;
+        html += QStringLiteral("<table class=\"rm-cards\">");
+    };
     auto emitSectionHeader = [&](int level, const QString &text,
                                  const QString &slug,
                                  const SectionCounts &c,
                                  const QString &anchor) {
-        html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
+        openTable();
+        if (!colHeadEmitted) {
+            colHeadEmitted = true;
+            html += QStringLiteral("<tr class=\"rm-colhead\"><td class=\"rm-hd\"></td>");
+            for (const char *e : {"✅", "🚧", "📋", "💭", kEmojiDropped})
+                html += QStringLiteral("<td class=\"rm-hd rm-count\">%1</td>")
+                            .arg(QString::fromUtf8(e));
+            for (int col = kColLabel; col < kGridColumns; ++col)
+                html += QStringLiteral("<td class=\"rm-hd\"></td>");
+            html += QStringLiteral("</tr>");
+        }
         const QString chevron = sectionExpanded
             ? QStringLiteral("▾") : QStringLiteral("▸");
         const QString verb = sectionExpanded
             ? QStringLiteral("collapse-section")
             : QStringLiteral("expand-section");
-        html += QStringLiteral("<h%1>").arg(level);
+        // ANTS-5604 — one row of the view's table: chevron, a count per
+        // status (blank when zero), the title in the card summary column,
+        // then the date the title carried, split into its kind and itself.
+        // The slug and the Contents pane keep the full heading text.
+        const HeadingDate hd = splitHeadingDate(text);
         html += QStringLiteral(
-            "<a class=\"rm-section-toggle\" href=\"ants://%1/%2\">%3</a>")
-            .arg(verb, slug, chevron);
-        // ANTS-1154 — section status counts lead the title so a partially-
-        // sighted scan reads "4 done / 1 in-progress" before parsing the
-        // section name.
-        // ANTS-1235 — every chip carries a trailing text label
-        // (`47 shipped`, `2 in progress`, …) so a screen reader
-        // doesn't announce "white heavy check mark 47 construction
-        // sign 2 …". `.trimmed()` only strips ASCII whitespace, so
-        // an explicit chop strips the trailing " · " separator.
-        QString chips;
-        if (c.done > 0)       chips += QStringLiteral("✅ %1 shipped · ").arg(c.done);
-        if (c.inProgress > 0) chips += QStringLiteral("🚧 %1 in progress · ").arg(c.inProgress);
-        if (c.planned > 0)    chips += QStringLiteral("📋 %1 planned · ").arg(c.planned);
-        if (c.considered > 0) chips += QStringLiteral("💭 %1 considered · ").arg(c.considered);
-        if (c.dropped > 0)    chips += QStringLiteral("🚫 %1 dropped · ").arg(c.dropped);
-        if (chips.endsWith(QStringLiteral(" · "))) chips.chop(3);
-        if (!chips.isEmpty()) {
-            html += QStringLiteral(
-                "<span class=\"rm-section-counts\">%1</span>")
-                .arg(chips);
-            // ANTS-3392 — Qt's rich-text engine is unreliable about
-            // `padding-right` on an inline <span>, so the count chip
-            // fused into the section title ("7 plannedPlanned Features").
-            // A hard non-breaking-space pair renders regardless of CSS
-            // padding support; the `.rm-section-counts` padding stays as
-            // a belt-and-braces on Qt versions that do honour it.
-            html += QStringLiteral("&#160;&#160;");
-        }
+            "<tr class=\"rm-section\"><td class=\"rm-hd rm-col-chev\">"
+            "<a name=\"%1\"></a>"
+            "<a class=\"rm-section-toggle\" href=\"ants://%2/%3\">%4</a>"
+            "</td>").arg(anchor, verb, slug, chevron);
+        for (const int n : {c.done, c.inProgress, c.planned, c.considered,
+                            c.dropped})
+            html += QStringLiteral("<td class=\"rm-hd rm-count\">%1</td>")
+                        .arg(n > 0 ? QString::number(n) : QString());
         // Title is also a toggle target — clicking the heading text
-        // toggles expand/collapse, not just the chevron. Same href as
-        // the chevron above. A11y win for low-precision pointing.
+        // toggles expand/collapse, not just the chevron. A11y win for
+        // low-precision pointing.
+        // The label ("0.7.0", "Backlog") and the rest of the title sit in
+        // columns of their own, so every heading's text starts at one x.
+        // The label must not wrap: its column sizes to it (measured
+        // 2026-10-01, "0.7.0" otherwise broke one character per line), and
+        // Qt applies white-space to the heading block, not through the cell.
+        const QString titleCell = QStringLiteral(
+            "<td class=\"rm-hd %1\"><h%2%6>"
+            "<a class=\"rm-section-title\" href=\"ants://%3/%4\">%5</a>"
+            "</h%2></td>");
+        html += hd.label.isEmpty()
+            ? QStringLiteral("<td class=\"rm-hd rm-col-label\"></td>")
+            : titleCell.arg(QStringLiteral("rm-col-label"),
+                            QString::number(level), verb, slug,
+                            applyInline(hd.label),
+                            QStringLiteral(" style=\"white-space:nowrap;\""));
+        html += titleCell.arg(QStringLiteral("rm-col-summary"),
+                              QString::number(level), verb, slug,
+                              applyInline(hd.title), QString());
         html += QStringLiteral(
-            "<a class=\"rm-section-title\" href=\"ants://%1/%2\">%3</a>")
-            .arg(verb, slug, applyInline(text));
-        // ANTS-5572 — no parent breadcrumb on h3 headers: a parent h2
-        // now always renders above its visible sub-sections, and the
-        // h3 is indented under it.
-        html += QStringLiteral("</h%1>").arg(level);
+            "<td class=\"rm-hd rm-col-datekind\">%1</td>"
+            "<td class=\"rm-hd rm-col-date\">%2</td>"
+            "<td class=\"rm-hd\"></td></tr>")
+            .arg(htmlEscape(hd.kind), htmlEscape(hd.date));
     };
 
     auto emitCard = [&](const BulletRecord &rec) {
@@ -1477,8 +1592,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             : QStringLiteral("expand");
         const QString chevron = expanded
             ? QStringLiteral("▴") : QStringLiteral("▾");
-        // ANTS-3392 — each card is a `<tr class="rm-card">` of four
-        // `<td class="rm-col-*">` cells inside the section's
+        // ANTS-3392 / ANTS-5604 — each card is a `<tr class="rm-card">` of
+        // `<td class="rm-col-*">` cells (state, kind spanning the five count
+        // columns, summary, date kind, date, meta) in the view's one
         // `<table class="rm-cards">`. rm-current / rm-card-synthetic
         // (ANTS-1428 INV-10 — GFM bullets with a content-hash ID) go on
         // the <tr> for semantics + the INV-1 grep, AND on the cells for
@@ -1492,6 +1608,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         QString stateAccent;
         if (current)       stateAccent += QStringLiteral(" rm-col-cur");
         if (rec.synthetic) stateAccent += QStringLiteral(" rm-col-syn");
+        openTable();
         // ANTS-1154-INV-1
         html += QStringLiteral("<tr class=\"rm-card%1\" id=\"rm-%2\">")
                     .arg(rowClasses, htmlEscape(rec.id));
@@ -1521,7 +1638,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         html += QStringLiteral("</td>");
 
         // Col 2 (kind) — Kind chip; empty cell when there's no Kind: line.
-        html += QStringLiteral("<td class=\"rm-col-kind%1\">").arg(curCell);
+        html += QStringLiteral("<td colspan=\"6\" class=\"rm-col-kind%1\">")
+                    .arg(curCell);
         if (!rec.kind.isEmpty()) {
             const QString glyph = kindGlyph(rec.kind);
             // CWE-79: rec.kind is user-supplied ROADMAP.md text (rxKind
@@ -1547,7 +1665,33 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                                "<span class=\"rm-summary\">%2</span></td>")
                     .arg(curCell, htmlEscape(summary));
 
-        // Col 4 (meta, right-aligned) — #id + optional date + toggle.
+        // ANTS-5604 — the date sits in the grid's date column, shared with
+        // the heading rows; the date-kind column stays empty on a card.
+        html += QStringLiteral("<td class=\"rm-col-datekind%1\"></td>"
+                               "<td class=\"rm-col-date%1\">").arg(curCell);
+        if (rec.status == QStringLiteral("✅")) {
+            const QString date = opts.shippedDates.value(rec.id);
+            if (!date.isEmpty()) {
+                // ANTS-2119 (roadmapdialog L-2) — escape for consistency
+                // (date is a \d{4}-\d{2}-\d{2} capture today, but the sibling
+                // emits all escape defensively).
+                html += QStringLiteral(
+                    "<span class=\"rm-date\">%1</span>").arg(htmlEscape(date));
+            }
+        } else if (rec.status == QStringLiteral("🚧")) {
+            // ANTS-1237 — "Updated Nd ago" on 🚧 cards; only when git
+            // last-touch data is present (graceful on non-git checkouts).
+            const auto it = opts.lastTouchDates.constFind(rec.id);
+            if (it != opts.lastTouchDates.constEnd()) {
+                const qint64 age =
+                    QDateTime::currentSecsSinceEpoch() - *it;
+                html += QStringLiteral("<span class=\"rm-date\">%1</span>")
+                    .arg(tr("Updated %1").arg(humanAge(age)));
+            }
+        }
+        html += QStringLiteral("</td>");
+
+        // Last column (meta, right-aligned) — #id + toggle.
         // ANTS-1241 — inline spans, NOT a `<div class="rm-meta">` wrapper
         // (which painted a QPalette::Base band on dark themes). ANTS
         // abbreviates to #NNNN; foreign prefixes show in full (#VEST-0042).
@@ -1557,40 +1701,25 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             : QStringLiteral("#") + rec.id;
         html += QStringLiteral("<span class=\"rm-id\">%1</span>")
                     .arg(htmlEscape(hashedId));
-        if (rec.status == QStringLiteral("✅")) {
-            const QString date = opts.shippedDates.value(rec.id);
-            if (!date.isEmpty()) {
-                // ANTS-2119 (roadmapdialog L-2) — escape for consistency
-                // (date is a \d{4}-\d{2}-\d{2} capture today, but the sibling
-                // emits all escape defensively).
-                html += QStringLiteral(
-                    "<span class=\"rm-date\">· %1</span>").arg(htmlEscape(date));
-            }
-        } else if (rec.status == QStringLiteral("🚧")) {
-            // ANTS-1237 — "Updated Nd ago" on 🚧 cards; only when git
-            // last-touch data is present (graceful on non-git checkouts).
-            const auto it = opts.lastTouchDates.constFind(rec.id);
-            if (it != opts.lastTouchDates.constEnd()) {
-                const qint64 age =
-                    QDateTime::currentSecsSinceEpoch() - *it;
-                html += QStringLiteral("<span class=\"rm-date\">· %1</span>")
-                    .arg(tr("Updated %1").arg(humanAge(age)));
-            }
-        }
         html += QStringLiteral(
             "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
             .arg(verb, htmlEscape(rec.id), chevron);
         html += QStringLiteral("</td></tr>");
 
-        // Expanded body — a full-width row beneath the summary row.
-        // ANTS-1240 — body <p>s are direct children of the colspan cell
-        // (no `<div class="rm-body">` wrapper, which painted a nested
+        // Expanded body — a row beneath the summary row, its text in the
+        // summary column. ANTS-5604 — not a full-width cell: Qt spreads a
+        // spanning cell's width over the auto-sized columns it covers, which
+        // widened every count column (measured 2026-10-01). The state cell
+        // keeps the card's left accent; the other cells carry its background.
+        // ANTS-1240 — body <p>s are direct children of the cell (no
+        // `<div class="rm-body">` wrapper, which painted a nested
         // QPalette::Base frame over the card bg). rm-body-first carries the
         // dotted divider + top padding; rm-body-line is indent only.
         if (expanded) {
             html += QStringLiteral(
-                "<tr class=\"rm-card-body\"><td colspan=\"4\" "
-                "class=\"rm-col-body%1\">").arg(curCell);
+                "<tr class=\"rm-card-body\"><td class=\"rm-col-state%1%2\"></td>"
+                "<td colspan=\"6\" class=\"rm-col-kind%1\"></td>"
+                "<td class=\"rm-col-body%1\">").arg(curCell, stateAccent);
             const QStringList bodyLines = rec.body.split('\n');
             bool firstP = true;
             for (int bi = 0; bi < bodyLines.size(); ++bi) {
@@ -1602,7 +1731,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                             .arg(cls, applyInline(bodyLines[bi]));
                 firstP = false;
             }
-            html += QStringLiteral("</td></tr>");
+            html += QStringLiteral("</td><td class=\"rm-col-datekind%1\"></td>"
+                                   "<td class=\"rm-col-date%1\"></td>"
+                                   "<td class=\"rm-col-meta%1\"></td></tr>")
+                        .arg(curCell);
         }
     };
 
@@ -1638,6 +1770,25 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                  htmlEscape(duplicateIds.join(QStringLiteral(", "))));
     }
 
+    // ANTS-5604 — every heading and card below is a row of one table, so Qt
+    // sizes each column once for the whole view. An h1, h4 or prose line
+    // before the table opens is plain text above it; one inside it is a row
+    // whose text sits in the title column — a full-width cell would spread
+    // its width over the auto-sized columns (see the card body row).
+    auto emitFullRow = [&](const QString &content) {
+        if (!tableOpen) {
+            html += content;
+            return;
+        }
+        html += QStringLiteral("<tr>");
+        for (int col = 0; col < kColSummary; ++col)
+            html += QStringLiteral("<td class=\"rm-hd\"></td>");
+        html += QStringLiteral("<td class=\"rm-hd\">%1</td>").arg(content);
+        for (int col = kColSummary + 1; col < kGridColumns; ++col)
+            html += QStringLiteral("<td class=\"rm-hd\"></td>");
+        html += QStringLiteral("</tr>");
+    };
+
     // ANTS-1662 — bullets that appear before the first ##/### heading have an
     // empty section slug, so the heading-driven walk below never emits them and
     // they vanish from the cards view (v1 renderHtml shows them). Emit the
@@ -1646,12 +1797,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     {
         const QVector<const BulletRecord *> &unsectioned =
             bySection.value(QString());
-        if (!unsectioned.isEmpty()) {
-            html += QStringLiteral("<table class=\"rm-cards\">");
-            for (const BulletRecord *rec : unsectioned)
-                emitCard(*rec);
-            html += QStringLiteral("</table>");
-        }
+        for (const BulletRecord *rec : unsectioned)
+            emitCard(*rec);
     }
 
     for (int i = 0; i < lines.size(); ++i) {
@@ -1664,9 +1811,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
         if (level == 1) {
             // File title — emit only on Full (large heading).
-            html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
-            html += QStringLiteral("<h1>") + applyInline(hText)
-                  + QStringLiteral("</h1>");
+            emitFullRow(QStringLiteral("<a name=\"%1\"></a>").arg(anchor)
+                        + QStringLiteral("<h1>") + applyInline(hText)
+                        + QStringLiteral("</h1>"));
             continue;
         }
         if (level == 2 || level == 3) {
@@ -1704,14 +1851,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                 emitSectionHeader(level, hText, slug, rolled, anchor);
                 // If expanded, emit its bullets as cards.
                 if (sectionExpanded) {
-                    const QVector<const BulletRecord *> &bullets = bySection.value(slug);
-                    if (!bullets.isEmpty()) {
-                        html += QStringLiteral("<table class=\"rm-cards\">");
-                        for (const BulletRecord *rec : bullets) {
-                            emitCard(*rec);
-                        }
-                        html += QStringLiteral("</table>");
-                    }
+                    for (const BulletRecord *rec : bySection.value(slug))
+                        emitCard(*rec);
                 }
             }
             continue;
@@ -1719,9 +1860,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (level == 4) {
             if (opts.activePreset == Preset::Full && sectionVisible
                 && sectionExpanded) {
-                html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
-                html += QStringLiteral("<h4>") + applyInline(hText)
-                      + QStringLiteral("</h4>");
+                emitFullRow(QStringLiteral("<a name=\"%1\"></a>").arg(anchor)
+                            + QStringLiteral("<h4>") + applyInline(hText)
+                            + QStringLiteral("</h4>"));
             }
             continue;
         }
@@ -1747,10 +1888,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (!currentSlug.isEmpty() && (!sectionVisible || !sectionExpanded))
             continue;
         if (raw.trimmed().isEmpty()) continue;
-        html += QStringLiteral("<p>") + applyInline(raw)
-              + QStringLiteral("</p>");
+        emitFullRow(QStringLiteral("<p>") + applyInline(raw)
+                    + QStringLiteral("</p>"));
     }
 
+    if (tableOpen) html += QStringLiteral("</table>");
     html += QStringLiteral("</body></html>");
     return html;
 }
@@ -3481,98 +3623,58 @@ QString RoadmapDialog::sourceStamp(bool includeArchive) const {
     return s;
 }
 
-// ANTS-3762 — pin the card table columns to one grid the whole view obeys.
-//
-// Every section renders its OWN `table.rm-cards`, so Qt's auto-layout sizes
-// each table from that section's content: the state, kind and id columns land
-// somewhere different in every group, and reading down the list means
-// re-finding each field on every row. An absent kind chip is the worst of it —
-// the cell collapses to nothing and the headline slides left, which is how a
-// single group ends up showing three different text left-edges.
-//
-// This runs AFTER setHtml on purpose. Measured 2026-08-15 against Qt's
-// rich-text engine: it honours neither `table-layout:fixed` nor a CSS `width`
-// on a `td`, so the obvious stylesheet fix parses cleanly and changes nothing
-// on screen. Column width CONSTRAINTS on the parsed QTextTable are honoured —
-// two tables with wildly different content then put every column at an
-// identical x. Doing it here also keeps ANTS-1238 INV-6 (non-<style> HTML
-// byte-identical across density tiers) safe by construction: the per-tier
-// widths never reach the HTML at all.
-//
-// The summary column is the flexible one; the other three are fixed, so the
-// kind column reserves its space whether or not the row has a kind.
+// ANTS-3762 — set the card table's column widths after setHtml, because
+// Qt's rich-text engine honours neither `table-layout:fixed` nor a CSS
+// `width` on a `td` (measured 2026-08-15); width CONSTRAINTS on the parsed
+// QTextTable are honoured. Doing it here also keeps ANTS-1238 INV-6
+// (non-<style> HTML byte-identical across density tiers) safe by
+// construction: the per-tier widths never reach the HTML.
 void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
     if (!doc) return;
 
     const DensityTier &t = kDensityTable[densityToIndex(density)];
-    constexpr int kCardColumns = 4;
 
-    // Depth-first over the frame tree; a card table can nest inside the body
-    // row of another (`rm-card-body` uses colspan, but a future body could
-    // carry its own table, and recursing costs nothing). Only the four-column
-    // card tables: a markdown table in an expanded body has its own column
-    // count and must keep its own natural layout.
-    QVector<QTextTable *> cards;
+    // ANTS-5604 — the view is one table, so Qt already gives every row the
+    // same columns; what is left to set is who takes the spare width. The
+    // summary/title column takes all of it, every other column sizes to its
+    // content (each is nowrap), and the meta column keeps its floor so the
+    // toggle does not crowd the id. A markdown table inside an expanded body
+    // has its own column count and keeps its natural layout.
+    //
+    // So every other column is FIXED at a floor and the summary column is the
+    // only auto-sized one, with the table itself set to full width below.
+    // A fixed width is a minimum to Qt, so each fixed column still grows to
+    // its nowrap content. Measured 2026-10-01 against this project's
+    // roadmap: a PERCENTAGE summary column loses to the other columns'
+    // minimum widths and the spare width is shared out evenly, leaving five
+    // count columns several times wider than their numbers.
+    QVector<QTextLength> cols(kGridColumns,
+                              QTextLength(QTextLength::FixedLength, 0));
+    for (int col = 1; col <= 5; ++col)
+        cols[col] = QTextLength(QTextLength::FixedLength, t.metaPx * 3);
+    cols[kColSummary] = QTextLength(QTextLength::VariableLength, 0);
+    cols[kGridColumns - 1] = QTextLength(QTextLength::FixedLength, t.colMetaPx);
+
     std::function<void(QTextFrame *)> walk = [&](QTextFrame *frame) {
         for (auto it = frame->begin(); !it.atEnd(); ++it) {
             QTextFrame *child = it.currentFrame();
             if (!child) continue;
-            if (auto *table = qobject_cast<QTextTable *>(child))
-                if (table->columns() == kCardColumns) cards.append(table);
+            if (auto *table = qobject_cast<QTextTable *>(child)) {
+                if (table->columns() == kGridColumns) {
+                    QTextTableFormat fmt = table->format();
+                    // The stylesheet's `width:100%` does not reach the parsed
+                    // table, so it would shrink to its content (measured
+                    // 2026-10-01: 955 px of 1300) and the summary column's
+                    // percentage would have no spare width to take.
+                    fmt.setWidth(QTextLength(QTextLength::PercentageLength, 100));
+                    fmt.setColumnWidthConstraints(cols);
+                    table->setFormat(fmt);
+                }
+            }
             walk(child);
         }
     };
     walk(doc->rootFrame());
-    if (cards.isEmpty()) return;
-
-    const auto applyWidths = [&](qreal statePx, qreal kindPx) {
-        const QVector<QTextLength> cols{
-            QTextLength(QTextLength::FixedLength,      statePx),
-            QTextLength(QTextLength::FixedLength,      kindPx),
-            QTextLength(QTextLength::PercentageLength, 100),
-            QTextLength(QTextLength::FixedLength,      t.colMetaPx),
-        };
-        for (QTextTable *table : std::as_const(cards)) {
-            QTextTableFormat fmt = table->format();
-            fmt.setColumnWidthConstraints(cols);
-            table->setFormat(fmt);
-        }
-    };
-
-    // ANTS-4718 — two passes, because a FixedLength column constraint is a
-    // MINIMUM to Qt, not a maximum: a cell whose content will not fit grows the
-    // column past it. Kind values are single unbreakable words from
-    // roadmap-format.md § 3.5.3's enum (`accessibility` is 13 characters), so
-    // under a narrow tier or a wide fallback font the section that HAS kinds
-    // widens its column while a section with none keeps the nominal width — and
-    // the "shared" grid silently stops being shared. Measured with a fontconfig
-    // serving no fonts: the kind column came out 160 px against a nominal 106,
-    // and only on the section carrying kind text.
-    //
-    // So: apply the nominal widths, ask Qt what it actually laid out, and
-    // re-apply the per-column MAXIMUM to every card. Qt does the measuring —
-    // computing text extents here would re-derive the layout's own arithmetic
-    // (padding, borders, the cell's own font) and be wrong in a different way.
-    // The widest card already fits at its own measurement, so the second pass
-    // grows nothing and every card lands on one grid. Nothing is elided.
-    applyWidths(t.colStatePx, t.colKindPx);
-
-    const auto contentX = [&](QTextTable *table, int column) {
-        const QTextCursor cur = table->cellAt(0, column).firstCursorPosition();
-        return doc->documentLayout()->blockBoundingRect(cur.block()).x();
-    };
-
-    qreal stateWidth = t.colStatePx;
-    qreal kindWidth  = t.colKindPx;
-    for (QTextTable *table : std::as_const(cards)) {
-        if (table->rows() < 1) continue;
-        const qreal x0 = contentX(table, 0);
-        const qreal x1 = contentX(table, 1);
-        const qreal x2 = contentX(table, 2);
-        stateWidth = std::max(stateWidth, x1 - x0);
-        kindWidth  = std::max(kindWidth,  x2 - x1);
-    }
-    applyWidths(stateWidth, kindWidth);
 }
 
 void RoadmapDialog::rebuild() {
