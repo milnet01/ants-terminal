@@ -56129,7 +56129,7 @@ filed below.
   Source: ANTS-4585 phase 2 measurement, 2026-08-20.
   Lanes: roadmap-store, roadmapmigrate.
 
-- 📋 [ANTS-4601] **A store-only repair op is gated on the ROADMAP.md's format, so it cannot reach the largest migrated project.**
+- ✅ [ANTS-4601] **A store-only repair op is gated on the ROADMAP.md's format, so it cannot reach the largest migrated project.**
   Found running ANTS-4585 phase 2 across all 16 projects. 14 ran. Vestige
   refused `project_not_registered`, and it is the biggest project in the
   store at 1026 items.
@@ -56260,6 +56260,13 @@ filed below.
 
   Vestige has already sanctioned the deletion from their side, so if the
   answer changes later, no further ask is owed to them -- only the backup.
+  Resolved (2026-10-01), by ANTS-4491's convert rather than by a change
+  here. Re-measured today with dry runs from caller_cwd
+  /mnt/Games/Scripts/Linux/Vestige: op:"repair_trailers" answers ok with
+  items 1150, repaired 0 (no refusal); op:"backfill_dates" answers ok
+  with 381 revisions walked. Vestige was converted to ants-v1, so
+  migratedProject() now resolves it and the shared prologue no longer
+  refuses. No code change was needed.
   **Layman:** The roadmap repair tool refuses to run on Vestige even though Vestige's data is in the database.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
