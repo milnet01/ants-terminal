@@ -17,7 +17,12 @@
 # This hook does nothing (preserves vanilla shell behaviour) when:
 #   - ANTS_OSC133_KEY is unset, OR
 #   - the parent terminal isn't Ants (TERM_PROGRAM != "ants-terminal"), OR
-#   - openssl isn't on PATH (silently degrades)
+#   - neither ants-osc133-sign nor openssl is on PATH (silently degrades)
+#
+# Signing goes through ants-osc133-sign, which reads the key from stdin, so
+# the key never appears in a process's argv (ANTS-5428). Where the helper is
+# not installed (Flatpak, AppImage) it falls back to openssl, whose -hmac
+# argument shows the key to `ps` while each prompt is drawn.
 #
 # zsh has both preexec and precmd, so we get the cleanest separation of
 # A (precmd, before PS1), B (preexec, after Enter), C (preexec, just
@@ -25,7 +30,13 @@
 
 [ -z "${ANTS_OSC133_KEY:-}" ] && return 0
 [ "${TERM_PROGRAM:-}" != "ants-terminal" ] && return 0
-command -v openssl >/dev/null 2>&1 || return 0
+if command -v ants-osc133-sign >/dev/null 2>&1; then
+    __ants_osc133_signer=helper
+elif command -v openssl >/dev/null 2>&1; then
+    __ants_osc133_signer=openssl
+else
+    return 0
+fi
 
 # Audit TL-28 — kept across a re-source, or the open block's D is skipped.
 typeset -g __ants_osc133_promptid="${__ants_osc133_promptid:-}"
@@ -38,6 +49,11 @@ __ants_osc133_hmac() {
         msg="${marker}|${__ants_osc133_promptid}|${extra}"
     else
         msg="${marker}|${__ants_osc133_promptid}"
+    fi
+    if [ "$__ants_osc133_signer" = helper ]; then
+        # printf is a builtin: the key reaches no argv.
+        printf '%s' "$ANTS_OSC133_KEY" | ants-osc133-sign "$msg" 2>/dev/null
+        return
     fi
     print -nr -- "$msg" \
         | openssl dgst -sha256 -hmac "$ANTS_OSC133_KEY" -hex 2>/dev/null \

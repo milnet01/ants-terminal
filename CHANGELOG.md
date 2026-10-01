@@ -49,6 +49,13 @@ for security-relevant changes.
 
 ### Security
 
+- **The prompt-marker signing key no longer appears on a command line** (ANTS-5428)
+  The bash and zsh shell integration now signs OSC 133 markers with a new
+  helper, ants-osc133-sign, which reads the key from a pipe. Before, the
+  key was an argument to openssl, so other local users could see it with
+  ps. The Flatpak and AppImage, which do not put the helper on PATH, still
+  fall back to openssl.
+
 - **Secrets shown in the terminal are hidden before Claude reads them** (ANTS-5169)
   get_scrollback, get_text, recent_errors and last_selection now replace
   keys, tokens and passwords with [REDACTED:<kind>] and say how many they

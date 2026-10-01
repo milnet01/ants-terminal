@@ -354,6 +354,8 @@ cd ..
 %{_bindir}/%{name}
 # ANTS-4932 — the standalone MCP server Claude Code launches.
 %{_bindir}/ants-mcpd
+# ANTS-5428 — signs OSC 133 markers with the key read from a pipe.
+%{_bindir}/ants-osc133-sign
 %{_datadir}/applications/za.co.antsprojectshub.AntsTerminal.desktop
 %{_datadir}/metainfo/za.co.antsprojectshub.AntsTerminal.metainfo.xml
 %{_datadir}/icons/hicolor/16x16/apps/%{name}.png

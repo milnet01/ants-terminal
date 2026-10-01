@@ -1268,9 +1268,21 @@ if(LUA_FOUND)
     target_compile_definitions(ants-mcpd PRIVATE ANTS_LUA_PLUGINS=1)
 endif()
 
+# ANTS-5428 — signs an OSC 133 marker with the key read from stdin, so the
+# shell integration never puts the key on a command line.
+add_executable(ants-osc133-sign src/osc133signmain.cpp)
+target_link_libraries(ants-osc133-sign PRIVATE Qt6::Core ants_warnings)
+target_link_options(ants-osc133-sign PRIVATE
+    -Wl,-z,relro
+    -Wl,-z,now
+    -Wl,-z,noexecstack
+)
+set_target_properties(ants-osc133-sign PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 include(GNUInstallDirs)
 
-install(TARGETS ants-terminal ants-mcpd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS ants-terminal ants-mcpd ants-osc133-sign
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ---------------------------------------------------------------------------
 # Desktop integration — freedesktop.org spec + AppStream metainfo
@@ -1549,6 +1561,15 @@ if(ANTS_TESTS)
     add_test(NAME osc133_nounset
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/osc133_nounset/test_osc133_nounset.sh")
     set_tests_properties(osc133_nounset PROPERTIES
+        LABELS "features;fast"
+        SKIP_RETURN_CODE 77
+        TIMEOUT 60)
+
+    # ANTS-5428 — the scripts sign through ants-osc133-sign, key on stdin.
+    add_test(NAME osc133_sign_helper
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/osc133_sign_helper/test_osc133_sign.sh"
+                     $<TARGET_FILE:ants-osc133-sign>)
+    set_tests_properties(osc133_sign_helper PROPERTIES
         LABELS "features;fast"
         SKIP_RETURN_CODE 77
         TIMEOUT 60)

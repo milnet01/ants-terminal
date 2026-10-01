@@ -17,7 +17,12 @@
 # This hook does nothing (preserves vanilla shell behaviour) when:
 #   - ANTS_OSC133_KEY is unset, OR
 #   - the parent terminal isn't Ants (TERM_PROGRAM != "ants-terminal"), OR
-#   - openssl isn't on PATH (silently degrades)
+#   - neither ants-osc133-sign nor openssl is on PATH (silently degrades)
+#
+# Signing goes through ants-osc133-sign, which reads the key from stdin, so
+# the key never appears in a process's argv (ANTS-5428). Where the helper is
+# not installed (Flatpak, AppImage) it falls back to openssl, whose -hmac
+# argument shows the key to `ps` while each prompt is drawn.
 #
 # Without this hook installed, Ants's command-block UI still works — but
 # any process inside the terminal can spoof OSC 133 markers and pollute it.
@@ -27,7 +32,13 @@
 # Bail early if the verifier wouldn't run anyway.
 [ -z "${ANTS_OSC133_KEY:-}" ] && return 0
 [ "${TERM_PROGRAM:-}" != "ants-terminal" ] && return 0
-command -v openssl >/dev/null 2>&1 || return 0
+if command -v ants-osc133-sign >/dev/null 2>&1; then
+    __ants_osc133_signer=helper
+elif command -v openssl >/dev/null 2>&1; then
+    __ants_osc133_signer=openssl
+else
+    return 0
+fi
 
 # Per-prompt id. Bumped at each PS1 firing so a captured HMAC for prompt N
 # can't be replayed against prompt N+1 (different message → different HMAC).
@@ -45,10 +56,14 @@ __ants_osc133_hmac() {
     else
         msg="${marker}|${__ants_osc133_promptid}"
     fi
-    # `openssl dgst -sha256 -hmac` accepts the key as a CLI arg. The key is
-    # already in the env; we never echo it. -binary | xxd would also work
-    # but xxd isn't always installed; openssl can hex-encode itself with
-    # the default text output ("(stdin)= <hex>").
+    if [ "$__ants_osc133_signer" = helper ]; then
+        # printf is a builtin: the key reaches no argv.
+        printf '%s' "$ANTS_OSC133_KEY" | ants-osc133-sign "$msg" 2>/dev/null
+        return
+    fi
+    # Fallback: openssl takes the key as a CLI arg, visible to `ps` while it
+    # runs. -binary | xxd would also work but xxd isn't always installed;
+    # openssl hex-encodes itself ("(stdin)= <hex>").
     printf '%s' "$msg" \
         | openssl dgst -sha256 -hmac "$ANTS_OSC133_KEY" -hex 2>/dev/null \
         | awk '{print $NF}'

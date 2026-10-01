@@ -89044,7 +89044,7 @@ reports are asked for separately, each time.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #1; ledger TL-14).
   Lanes: roadmap.
 
-- 📋 [ANTS-5428] **OSC 133 shell integration computes its HMAC without putting the key on a command line.**
+- ✅ [ANTS-5428] **OSC 133 shell integration computes its HMAC without putting the key on a command line.**
   ants-osc133.bash runs `openssl dgst -sha256 -hmac "$ANTS_OSC133_KEY"`,
   which puts the key in /proc/<pid>/cmdline, readable via ps by other local
   users for the life of the process. The required `export` also hands the key
@@ -89073,6 +89073,12 @@ reports are asked for separately, each time.
   openssl on PATH that records being called, then asserts the stub was
   never called and that the signature equals real openssl's for the same
   key and message, in bash and in zsh where zsh is installed.
+  Resolved 2026-10-01: ants-osc133-sign (src/osc133signmain.cpp, QtCore
+  only) reads the key from stdin, caps it at 4 KiB, and prints the hex
+  HMAC-SHA256. Both scripts prefer it and fall back to openssl. Installed
+  by cmake --install; the openSUSE spec lists it. Contract and test:
+  tests/features/osc133_sign_helper. Still open: the Flatpak and AppImage
+  keep the openssl fallback, and the key is still exported.
   **Layman:** The secret that signs prompt markers is briefly visible to other programs on the machine while each prompt is drawn.
   Kind: security.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #13; ledger TL-26).

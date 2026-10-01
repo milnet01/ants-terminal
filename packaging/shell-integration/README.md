@@ -96,10 +96,13 @@ with `echo $ANTS_OSC133_KEY` inside an Ants tab.
   replayed against prompt N+1. Within the same prompt, A/B/C/D each have
   distinct HMACs because the marker letter is part of the message.
 
-- **openssl dependency**: the hook uses `openssl dgst -sha256 -hmac` for
-  HMAC computation. If openssl isn't on PATH, the hook silently degrades
-  to a no-op. Install via `zypper in openssl` / `apt install openssl` /
-  `brew install openssl`.
+- **Signing helper**: the hook signs through `ants-osc133-sign`, installed
+  beside `ants-terminal`. It reads the key from a pipe, so the key never
+  appears on a command line. Where the helper is not on PATH (the Flatpak
+  and the AppImage), the hook falls back to `openssl dgst -sha256 -hmac`,
+  which puts the key in openssl's command line: other local users can see
+  it with `ps` while a prompt is drawn. With neither on PATH the hook
+  silently does nothing.
 
 - **TERM_PROGRAM gate**: the hook only activates when `TERM_PROGRAM` is
   `ants-terminal`. Inside tmux / screen / a different terminal, the hook
