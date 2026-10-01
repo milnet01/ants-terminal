@@ -101,7 +101,8 @@ signals:
     void clipboardWriteRequested(const QString &text);
     // Forwarded from engines — MainWindow wires these to the Config store
     void settingsGetRequested(const QString &pluginName, const QString &key, QString &out);
-    void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value);
+    void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value,
+                              QString &error);
     void pluginsReloaded();
     // 0.6.9 — ants.palette.register() forward. MainWindow rebuilds the
     // Ctrl+Shift+P palette + (when hotkey is non-empty) wires a QShortcut

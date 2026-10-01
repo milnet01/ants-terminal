@@ -19326,7 +19326,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code RC-11).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-5419] **Plugin settings store caps key length, value length and per-plugin total, so ants.settings.set cannot grow config.json without bound.**
+- ✅ [ANTS-5419] **Plugin settings store caps key length, value length and per-plugin total, so ants.settings.set cannot grow config.json without bound.**
   lua_ants_settings_set (luaengine.cpp) takes any key and value, and the
   plugin_settings store in config.json has no quota. Each value is bounded by
   the 10 MiB Lua heap, but a plugin can accumulate unboundedly many keys
@@ -19337,6 +19337,14 @@ fixes don't address. Roadmapped here as their own design tasks.
   User decision 2026-10-01: key length at most 256 bytes, each value at
   most 64 KiB, at most 1 MiB total per plugin. Over a limit, the setter
   refuses with an error the plugin can see. PLUGINS.md states the limits.
+  Resolved (2026-10-01), with the user's limits.
+  Config::setPluginSetting enforces all three and returns the refusal.
+  The Lua setter checks key and value before crossing threads, and
+  raises the store's refusal. The set edge is now
+  BlockingQueuedConnection like get's; the worker waits, the GUI never
+  does (ANTS-1750 § 2.3 updated to the built code). PLUGINS.md states
+  the limits. Tests: tests/features/plugin_settings_limits, both proved
+  red first. Full suite 5400/5400.
   **Layman:** A plugin can save settings forever with no limit, slowly bloating the config file; add sensible size limits.
   Kind: security.
   Source: code-audit-2026-09-26 (review-code RC-47).

@@ -399,7 +399,13 @@ public:
     void setPluginGrants(const QString &pluginName, const QStringList &grants);
     // Plugin-owned key/value settings (backing store for ants.settings.get/set)
     QString pluginSetting(const QString &pluginName, const QString &key) const;
-    void setPluginSetting(const QString &pluginName, const QString &key, const QString &value);
+    // ANTS-5419 — limits in UTF-8 bytes. The total is every key and value one
+    // plugin stores. Returns an empty string on success, else why the write
+    // was refused; a refused write changes nothing.
+    static constexpr qsizetype kPluginSettingKeyMaxBytes = 256;
+    static constexpr qsizetype kPluginSettingValueMaxBytes = qsizetype{64} * 1024;
+    static constexpr qsizetype kPluginSettingsTotalMaxBytes = qsizetype{1024} * 1024;
+    QString setPluginSetting(const QString &pluginName, const QString &key, const QString &value);
 
     // Claude Code project directories (where to look for / create projects)
     QStringList claudeProjectDirs() const;

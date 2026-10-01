@@ -1199,15 +1199,34 @@ QString Config::pluginSetting(const QString &pluginName, const QString &key) con
     return v.toString();
 }
 
-void Config::setPluginSetting(const QString &pluginName, const QString &key, const QString &value) {
-    if (m_loadFailed) return;  // ANTS-1141 — see setKeybinding
+QString Config::setPluginSetting(const QString &pluginName, const QString &key, const QString &value) {
+    if (m_loadFailed) return {};  // ANTS-1141 — see setKeybinding
+    // ANTS-5419 — a plugin may not grow config.json without bound.
+    const qsizetype keyBytes = key.toUtf8().size();
+    if (keyBytes > kPluginSettingKeyMaxBytes)
+        return QStringLiteral("key is %1 bytes; the limit is %2")
+            .arg(keyBytes).arg(kPluginSettingKeyMaxBytes);
+    const qsizetype valueBytes = value.toUtf8().size();
+    if (valueBytes > kPluginSettingValueMaxBytes)
+        return QStringLiteral("value is %1 bytes; the limit is %2")
+            .arg(valueBytes).arg(kPluginSettingValueMaxBytes);
     QJsonObject all = m_data.value("plugin_settings").toObject();
     QJsonObject plugin = all.value(pluginName).toObject();
-    if (plugin.value(key).toString() == value) return;
+    if (plugin.value(key).toString() == value) return {};
+    // The new value replaces the old one, so the old one is not counted.
+    qsizetype total = keyBytes + valueBytes;
+    for (auto it = plugin.constBegin(); it != plugin.constEnd(); ++it) {
+        if (it.key() != key)
+            total += it.key().toUtf8().size() + it.value().toString().toUtf8().size();
+    }
+    if (total > kPluginSettingsTotalMaxBytes)
+        return QStringLiteral("this plugin's settings would total %1 bytes; the limit is %2")
+            .arg(total).arg(kPluginSettingsTotalMaxBytes);
     plugin[key] = value;
     all[pluginName] = plugin;
     m_data["plugin_settings"] = all;
     save();
+    return {};
 }
 
 // Claude Code project directories

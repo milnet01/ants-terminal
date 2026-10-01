@@ -3755,7 +3755,9 @@ if(ANTS_TESTS)
                     tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
                     tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp
                     tests/features/lua_threading/test_lua_threading.cpp
-                    tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp)
+                    tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp
+                    # ANTS-5419 — plugin settings size limits.
+                    tests/features/plugin_settings_limits/test_plugin_settings_limits.cpp)
         target_compile_definitions(test_lua PRIVATE
             ANTS_LUA_PLUGINS=1
             SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"

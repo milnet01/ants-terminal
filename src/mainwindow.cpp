@@ -602,8 +602,9 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
                 out = m_config.pluginSetting(pluginName, key);
             });
     connect(m_pluginManager, &PluginManager::settingsSetRequested, this,
-            [this](const QString &pluginName, const QString &key, const QString &value) {
-                m_config.setPluginSetting(pluginName, key, value);
+            [this](const QString &pluginName, const QString &key, const QString &value,
+                   QString &error) {
+                error = m_config.setPluginSetting(pluginName, key, value);
             });
     // 0.6.9 — palette entries from ants.palette.register({...}). Each call
     // appends one entry and rebuilds the Ctrl+Shift+P list. Hot reload

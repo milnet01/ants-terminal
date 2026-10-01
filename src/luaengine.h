@@ -171,7 +171,8 @@ signals:
     // Plugin settings — per-plugin key/value with JSON-Schema backed UI.
     // Handlers (PluginManager / MainWindow) forward to the Config layer.
     void settingsGetRequested(const QString &pluginName, const QString &key, QString &outValue);
-    void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value);
+    void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value,
+                              QString &error);
     // ants.palette.register({title, action, hotkey}) — appends a Ctrl+Shift+P
     // entry. PluginManager forwards to MainWindow which rebuilds the palette
     // and (when hotkey is non-empty) wires a global QShortcut. action is the

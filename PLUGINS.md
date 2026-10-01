@@ -347,6 +347,11 @@ Requires manifest permission `"settings"`. Per-plugin key/value store,
 persisted in the main `config.json`. Values are strings; encode structured
 data with `string.format` / manual JSON. Returns `nil` for unset keys.
 
+Limits, in UTF-8 bytes: a key is at most 256, a value at most 64 KiB,
+and all of one plugin's keys and values together at most 1 MiB. Over a
+limit, `set` raises an error and stores nothing; wrap it in `pcall` to
+handle the refusal.
+
 ```lua
 -- ANTS-1143 — example uses a sandbox-safe value to write. Earlier
 -- drafts called `os.date()`, which crashes in the sandbox (the

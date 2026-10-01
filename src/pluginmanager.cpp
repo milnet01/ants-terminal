@@ -190,9 +190,12 @@ void PluginManager::wireEngine(LuaEngine *engine) {
     connect(engine, &LuaEngine::settingsGetRequested,
             this, &PluginManager::settingsGetRequested,
             Qt::BlockingQueuedConnection);
-    // settings.set returns nothing into Lua — plain queued cross-thread.
+    // ANTS-5419 — settings.set now waits for the store's answer, so a
+    // refused write raises in the plugin. Same direction as settings.get:
+    // only the worker blocks, never the GUI.
     connect(engine, &LuaEngine::settingsSetRequested,
-            this, &PluginManager::settingsSetRequested);
+            this, &PluginManager::settingsSetRequested,
+            Qt::BlockingQueuedConnection);
     connect(engine, &LuaEngine::paletteEntryRegistered,
             this, &PluginManager::paletteEntryRegistered);
     // ANTS-1750 — execution-time bracketing for healthTick(). These slots

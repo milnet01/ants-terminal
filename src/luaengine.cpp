@@ -1,5 +1,6 @@
 #include "luaengine.h"
 
+#include "config.h"          // ANTS-5419 — plugin settings limits
 #include "pathvalidation.h"
 
 // Unqualified on purpose (ANTS-3727): the directory comes from
@@ -820,13 +821,35 @@ int LuaEngine::lua_ants_settings_get(lua_State *L) {
 
 int LuaEngine::lua_ants_settings_set(lua_State *L) {
     LuaEngine *engine = getEngine(L);
-    const char *key = luaL_checkstring(L, 1);
-    const char *value = luaL_checkstring(L, 2);
-    if (engine && engine->hasPermission("settings")) {
-        emit engine->settingsSetRequested(engine->pluginName(),
-                                           QString::fromUtf8(key),
-                                           QString::fromUtf8(value));
+    size_t keyLen = 0;
+    size_t valueLen = 0;
+    const char *key = luaL_checklstring(L, 1, &keyLen);
+    const char *value = luaL_checklstring(L, 2, &valueLen);
+    if (!engine || !engine->hasPermission("settings")) return 0;
+    // ANTS-5419 — refuse an oversized key or value here, before it is
+    // copied to the GUI thread. The store checks again, with the total.
+    if (keyLen > static_cast<size_t>(Config::kPluginSettingKeyMaxBytes))
+        return luaL_error(L, "ants.settings.set: key is %d bytes; the limit is %d",
+                          static_cast<int>(keyLen),
+                          static_cast<int>(Config::kPluginSettingKeyMaxBytes));
+    if (valueLen > static_cast<size_t>(Config::kPluginSettingValueMaxBytes))
+        return luaL_error(L, "ants.settings.set: value is %d bytes; the limit is %d",
+                          static_cast<int>(valueLen),
+                          static_cast<int>(Config::kPluginSettingValueMaxBytes));
+    // luaL_error longjmps past C++ destructors, so the refusal is copied
+    // into a plain buffer and every QString is gone before it is raised.
+    char refusal[256] = {};
+    {
+        QString error;
+        emit engine->settingsSetRequested(
+            engine->pluginName(),
+            QString::fromUtf8(key, static_cast<qsizetype>(keyLen)),
+            QString::fromUtf8(value, static_cast<qsizetype>(valueLen)), error);
+        if (!error.isEmpty())
+            qstrncpy(refusal, error.toUtf8().constData(), sizeof refusal);
     }
+    if (refusal[0] != '\0')
+        return luaL_error(L, "ants.settings.set: %s", refusal);
     return 0;
 }
 

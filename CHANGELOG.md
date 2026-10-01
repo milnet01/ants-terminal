@@ -49,6 +49,8 @@ for security-relevant changes.
 
 ### Security
 
+- **Plugin settings have size limits: a key is at most 256 bytes, a value at most 64 KiB, and one plugin's settings at most 1 MiB in total; over a limit, ants.settings.set raises an error the plugin can catch** (ANTS-5419)
+
 - **The roadmap store's raw database handle is private: only the export/import rebuild path and schema tests can reach it, so no other code can write around the store's safety checks** (ANTS-3819)
 
 - **The indie-review dispatch brief reads at most 1 MiB of each source and standards file, so a huge file in a review lane is clipped with a marker instead of being loaded whole into memory** (ANTS-1648)
