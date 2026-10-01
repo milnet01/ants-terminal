@@ -104,9 +104,10 @@ TEST(McpGitState, WiringContract) {
            "INV-3d",
            "gitwrap.cpp contains 'popen(' — shell-less argv violated");
 
-    // INV-4 — gitwrap.cpp invokes QProcess::start("git", argv).
+    // INV-4 — gitwrap.cpp invokes QProcess::start("git", argv), directly or
+    // through the ANTS-5527 host-aware HostExec::start(proc, "git", argv).
     std::regex gitStart(
-        R"(\.start\s*\(\s*(QStringLiteral\s*\(\s*)?"git")");
+        R"((\.start\s*\(|HostExec::start\s*\(\s*\w+\s*,)\s*(QStringLiteral\s*\(\s*)?"git")");
     expect(std::regex_search(gwCpp, gitStart),
            "INV-4",
            "gitwrap.cpp does not call QProcess::start(\"git\", ...) "

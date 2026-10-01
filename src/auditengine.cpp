@@ -3,6 +3,7 @@
 #include "auditfpledger.h"
 #include "regexharden.h"  // ANTS-1665 — isCatastrophicRegex / hardenUserRegex
 #include "secretredact.h"  // ANTS-4448 — strip credentials from the remote URL
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -1555,7 +1556,7 @@ QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical) {
         QStringList full;
         full << QStringLiteral("-C") << rootCanonical;
         full.append(argv);
-        p.start(QStringLiteral("git"), full);
+        HostExec::start(p, QStringLiteral("git"), full);
         if (!p.waitForStarted(1000)) return {};
         if (!p.waitForFinished(2000)) {
             p.kill();

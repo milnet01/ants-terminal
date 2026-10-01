@@ -3,6 +3,7 @@
 #include "auditscope.h"
 
 #include "gitwrap.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QFileInfo>
 #include <QProcess>
@@ -25,7 +26,7 @@ QString runGit(const QString &root, const QStringList &args,
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
     p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
-    p.start(QStringLiteral("git"), args);
+    HostExec::start(p, QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return {};
     if (!p.waitForFinished(kGitTimeoutMs)) {
         p.kill();
@@ -47,7 +48,7 @@ QString runGitRaw(const QString &root, const QStringList &args,
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
     p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
-    p.start(QStringLiteral("git"), args);
+    HostExec::start(p, QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return {};
     if (!p.waitForFinished(kGitTimeoutMs)) {
         p.kill();
@@ -66,7 +67,7 @@ bool runGitSucceeds(const QString &root, const QStringList &args) {
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
     p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
-    p.start(QStringLiteral("git"), args);
+    HostExec::start(p, QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return false;
     if (!p.waitForFinished(kGitTimeoutMs)) {
         p.kill();

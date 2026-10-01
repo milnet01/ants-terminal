@@ -4,6 +4,7 @@
 
 #include "secureio.h"
 #include "configbackup.h"  // ConfigWriteLock — ANTS-2189
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QDateTime>
 #include <QDebug>
@@ -44,7 +45,7 @@ QString runGit(const QString &canonProject, const QStringList &args) {
     QProcess p;
     p.setWorkingDirectory(canonProject);
     p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.start(QStringLiteral("git"), args);
+    HostExec::start(p, QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return {};
     if (!p.waitForFinished(kGitTimeoutMs)) {
         p.kill();

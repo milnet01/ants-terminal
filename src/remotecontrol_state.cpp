@@ -29,6 +29,7 @@
 #include <QThread>
 #include <sys/socket.h>
 #include "build_info.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 #include <unistd.h>
 
 using namespace rcdetail;  // ANTS-3833
@@ -3534,7 +3535,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
         QProcess p;
         p.setWorkingDirectory(root);
         p.setProcessChannelMode(QProcess::MergedChannels);
-        p.start(QStringLiteral("ctest"), argv);
+        HostExec::start(p, QStringLiteral("ctest"), argv);
         RunOut o{true, false, false, QString()};
         if (!p.waitForStarted(5000)) { o.started = false; return o; }
         if (!p.waitForFinished(timeoutSec * 1000)) {

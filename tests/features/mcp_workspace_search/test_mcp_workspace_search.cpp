@@ -109,9 +109,10 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "remotecontrol.cpp contains 'popen(' — shell-less argv "
            "violated");
     // Positive shape: the body uses QProcess::start with an argv list.
-    // Either `start("rg", ...)` or `start(QStringLiteral("rg"), ...)`.
+    // Either `start("rg", ...)` or `start(QStringLiteral("rg"), ...)`, or
+    // the ANTS-5527 host-aware `HostExec::start(proc, QStringLiteral("rg"), ...)`.
     std::regex rgStart(
-        R"(\.start\s*\(\s*(QStringLiteral\s*\(\s*)?"rg")");
+        R"((\.start\s*\(|HostExec::start\s*\(\s*\w+\s*,)\s*(QStringLiteral\s*\(\s*)?"rg")");
     expect(std::regex_search(rcCpp, rgStart),
            "INV-3e",
            "remotecontrol.cpp does not call QProcess::start(\"rg\", ...) "

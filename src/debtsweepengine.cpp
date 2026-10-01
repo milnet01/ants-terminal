@@ -9,6 +9,7 @@
 #include "featurecoverage.h"
 #include "filecontentcache.h"  // ANTS-5056 — shared, locked file cache
 #include "roadmapfoldin.h"  // ANTS-3497 — shared renderId() for padded, project-prefixed IDs
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QByteArray>
 #include <QChar>
@@ -53,7 +54,7 @@ QString runGit(const QString &projectPath,
     QProcess p;
     p.setWorkingDirectory(projectPath);
     p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.start(QStringLiteral("git"), args);
+    HostExec::start(p, QStringLiteral("git"), args);
     if (!p.waitForStarted(2000)) return {};
     if (!p.waitForFinished(kGitTimeoutMs)) {
         p.kill();
@@ -1304,7 +1305,7 @@ QList<Finding> runPackagingDrift(
     QProcess p;
     p.setWorkingDirectory(projectPath);
     p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.start(QStringLiteral("bash"), {QStringLiteral("packaging/check-version-drift.sh")});
+    HostExec::start(p, QStringLiteral("bash"), {QStringLiteral("packaging/check-version-drift.sh")});
     if (!p.waitForStarted(2000)) return {};
     if (!p.waitForFinished(kPackagingScriptTimeoutMs)) {
         p.kill();

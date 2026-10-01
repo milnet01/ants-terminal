@@ -23,6 +23,7 @@
 #include <QProcess>
 #include <QCryptographicHash>
 #include "resolvedroot.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -926,7 +927,7 @@ static QByteArray runGitChecked(const QString &root, const QStringList &argv,
     QStringList full;
     full << QStringLiteral("-C") << root;
     full.append(argv);
-    p.start(QStringLiteral("git"), full);
+    HostExec::start(p, QStringLiteral("git"), full);
     if (!p.waitForStarted(1000)) return {};
     if (!p.waitForFinished(2000)) {
         p.kill();

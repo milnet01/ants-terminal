@@ -6,6 +6,7 @@
 #include "codebaseindex.h"
 #include "pathvalidation.h"
 #include "roadmapfoldin.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QDir>
 #include <QDirIterator>
@@ -222,8 +223,8 @@ QSet<QString> gitIgnoredPaths(const QString &rootCanonical,
     if (names.isEmpty()) return out;
     QProcess git;
     git.setWorkingDirectory(rootCanonical);
-    git.start(QStringLiteral("git"),
-              {QStringLiteral("check-ignore"), QStringLiteral("--stdin")});
+    HostExec::start(git, QStringLiteral("git"),
+                    {QStringLiteral("check-ignore"), QStringLiteral("--stdin")});
     if (!git.waitForStarted(2000)) return out;
     git.write(names.join(QChar('\n')).toUtf8() + '\n');
     git.closeWriteChannel();

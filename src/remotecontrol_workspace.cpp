@@ -22,6 +22,7 @@
 #include "resolvedroot.h"
 #include "debuglog.h"
 #include "secureio.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 #include <QDir>
 #include <QStandardPaths>
 #include <QElapsedTimer>
@@ -85,7 +86,7 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
     rg.setProcessChannelMode(QProcess::SeparateChannels);
     // ANTS-1248-INV-3: QProcess::start(QString, QStringList) — argv
     // form. No shell, no single-string overload.
-    rg.start(QStringLiteral("rg"), argv);
+    HostExec::start(rg, QStringLiteral("rg"), argv);
     if (!rg.waitForStarted(kRgStartWaitMs)) {
         // ANTS-4650 — gather the evidence HERE, where it still exists. The
         // caller only sees a bool, and a bool cannot tell a missing package
@@ -1956,7 +1957,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         QProcess p;
         p.setWorkingDirectory(rootCanonical);
         p.setProcessChannelMode(QProcess::MergedChannels);
-        p.start(argv.first(), argv.mid(1));
+        HostExec::start(p, argv.first(), argv.mid(1));
         RunOut o{true, false, -1, QString()};
         if (!p.waitForStarted(5000)) {
             o.started = false;

@@ -12,6 +12,7 @@
 #include "projectsettings.h"   // ANTS-3771
 #include "gitwrap.h"
 #include "roadmapparse.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -176,7 +177,7 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.start(QStringLiteral("git"), argv);
+    HostExec::start(p, QStringLiteral("git"), argv);
     if (!p.waitForStarted(2000)) {
         w.failed = true;
         w.error  = QStringLiteral("git failed to start");

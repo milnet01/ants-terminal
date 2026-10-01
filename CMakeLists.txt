@@ -2600,6 +2600,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 # ANTS-1839 — GitWrap per-caller stdout budget.
                 tests/features/gitwrap_stdout_cap/test_gitwrap_stdout_cap.cpp
+                # ANTS-5527 — inside a Flatpak, tools run on the host.
+                tests/features/flatpak_host_tools/test_flatpak_host_tools.cpp
                 # ANTS-4999 — read-only git calls skip optional index locks.
                 tests/features/git_optional_locks/test_git_optional_locks.cpp
                 # ANTS-3377 — git_state op:diff hunk-header parser.

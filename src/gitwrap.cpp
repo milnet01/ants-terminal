@@ -1,6 +1,7 @@
 // ANTS-1250 — gitwrap implementation. See gitwrap.h.
 
 #include "gitwrap.h"
+#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
 #include <QProcess>
 #include <QRegularExpression>
@@ -17,7 +18,7 @@ Result run(const QString &workingDir, const QStringList &argv,
     // ANTS-1250-INV-6: argv form of QProcess::start. Never the
     // shell-interpolated single-string form. Mirrors the
     // cmdWorkspaceSearch invocation from ANTS-1248.
-    p.start(QStringLiteral("git"), argv);
+    HostExec::start(p, QStringLiteral("git"), argv);
     if (!p.waitForStarted(500)) {
         r.started = false;
         return r;

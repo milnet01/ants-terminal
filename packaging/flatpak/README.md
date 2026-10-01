@@ -52,6 +52,26 @@ The wire-through requires `--talk-name=org.freedesktop.Flatpak` in
 finish-args (already set) so the sandbox can reach the host-side
 `org.freedesktop.Flatpak` helper daemon.
 
+## Claude Code (ants-mcpd)
+
+Claude Code starts the MCP server from the Flatpak:
+
+```bash
+claude mcp add ants -- flatpak run --command=ants-mcpd za.co.antsprojectshub.AntsTerminal
+```
+
+It finds the running terminal by itself. The runtime has no `rg`,
+`git` or `ctest`, so ants-mcpd runs them on the host through
+`flatpak-spawn --host` (`src/hostexec.h`). Install `ripgrep` and `git`
+on the host.
+
+The sandbox sees only your home folder. To use the tools on a project
+elsewhere, allow its folder once:
+
+```bash
+flatpak override --user --filesystem=/path/to/projects za.co.antsprojectshub.AntsTerminal
+```
+
 ## Lua plugins
 
 The manifest builds Lua 5.4 as an in-manifest `archive` module before
