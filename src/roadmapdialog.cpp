@@ -1461,6 +1461,27 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                  htmlEscape(duplicateIds.join(QStringLiteral(", "))));
     }
 
+    // ANTS-1695 — headings but no item the parser can read (a table-style
+    // roadmap, say) rendered as bare sections with no explanation. Say so,
+    // with the heading count, as the roadmap_query verb's header inventory
+    // does. A filter hiding every item is not this case: allBullets is the
+    // unfiltered set.
+    if (allBullets.isEmpty() && !sectionIndex.isEmpty()) {
+        html += QStringLiteral(
+            "<div class=\"rm-unrecognised\" style=\"margin:8px 0;"
+            "padding:6px 10px;border-left:3px solid %1;background:%2;"
+            "color:%3;\">%4</div>")
+            .arg(th.border.name(), th.bgSecondary.name(),
+                 th.textPrimary.name(),
+                 sectionIndex.size() == 1
+                     ? tr("No roadmap items found. This roadmap's layout is "
+                          "not one the window can turn into items; it has 1 "
+                          "section heading.")
+                     : tr("No roadmap items found. This roadmap's layout is "
+                          "not one the window can turn into items; it has %1 "
+                          "section headings.").arg(sectionIndex.size()));
+    }
+
     // ANTS-5604 — every heading and card below is a row of one table, so Qt
     // sizes each column once for the whole view. An h1, h4 or prose line
     // before the table opens is plain text above it; one inside it is a row

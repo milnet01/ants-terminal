@@ -923,6 +923,39 @@ TEST(RoadmapDialogCards, Ants5213RepeatedHeadingsKeepTheirSlugWhenReversed) {
         << "opening performance opened Beyond 1.0's section";
 }
 
+// INV-30 (ANTS-1695) — a roadmap with headings but no item the parser can
+// read says so, with its heading count, instead of showing bare sections.
+TEST(RoadmapDialogCards, Ants1695UnrecognisedFormatSaysSo) {
+    RoadmapDialog::CardRenderOptions opts;
+    const QString tableRoadmap = QStringLiteral(
+        "# Plans\n\n"
+        "## Soon\n\n"
+        "| Item | State |\n|---|---|\n| Faster startup | planned |\n\n"
+        "## Later\n\n"
+        "### Ideas\n\n"
+        "Some prose.\n");
+    const QString html = RoadmapDialog::renderCardsHtml(
+        tableRoadmap, 0xFF, {}, QStringLiteral("light"),
+        RoadmapDialog::SortOrder::Document, QString(), {}, opts);
+    EXPECT_TRUE(html.contains(QStringLiteral("class=\"rm-unrecognised\"")))
+        << "no notice for a roadmap with no readable items";
+    EXPECT_TRUE(html.contains(QStringLiteral("3 section headings")))
+        << "the notice does not give the heading count";
+
+    const QString normal = RoadmapDialog::renderCardsHtml(
+        fixtureMarkdown(), 0xFF, {}, QStringLiteral("light"),
+        RoadmapDialog::SortOrder::Document, QString(), {}, opts);
+    EXPECT_FALSE(normal.contains(QStringLiteral("rm-unrecognised")))
+        << "the notice shows on a roadmap whose items were read";
+
+    // A filter that hides every item is not an unrecognised format.
+    const QString filtered = RoadmapDialog::renderCardsHtml(
+        fixtureMarkdown(), 0u, {}, QStringLiteral("light"),
+        RoadmapDialog::SortOrder::Document, QString(), {}, opts);
+    EXPECT_FALSE(filtered.contains(QStringLiteral("rm-unrecognised")))
+        << "the notice shows when a filter hides every item";
+}
+
 // INV-28 (ANTS-5604) — a heading's first date moves out of its title, with
 // its kind where the heading names one.
 TEST(RoadmapDialogCards, Ants5604SplitHeadingDate) {
