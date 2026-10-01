@@ -2242,16 +2242,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
         }
         // Lazy-fill the index — same shape as the section-mode branch.
+        // ANTS-4433 — through the shared provider, so a call that already
+        // read the body takes the memo instead of a second whole-file read.
         if (m_roadmapIndex.isEmpty()) {
-            QFile f(path);
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString &markdown = text.full();
+            if (markdown.isEmpty() && text.openFailed()) {
                 out["ok"] = false;
                 out["error"] = QStringLiteral(
                     "could not open %1 for reading").arg(path);
                 out["code"] = QStringLiteral("read_failed");
                 return QJsonDocument(out);
             }
-            const QString markdown = QString::fromUtf8(f.readAll());
             m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
         }
 
@@ -2415,11 +2416,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 QString etag = m_roadmapSectionEtags.value(sec.slug);
                 if (etag.isEmpty()) {
                     if (!sectionEtagsMarkdownLoaded) {
-                        QFile f(path);
-                        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                            sectionEtagsMarkdown =
-                                QString::fromUtf8(f.readAll());
-                        }
+                        sectionEtagsMarkdown = text.full();   // ANTS-4433
                         sectionEtagsMarkdownLoaded = true;
                     }
                     if (!sectionEtagsMarkdown.isEmpty()) {
@@ -2639,15 +2636,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // INV-9: ensure we have an index even on a cache HIT taken
         // earlier in section-less mode (and vice versa).
         if (m_roadmapIndex.isEmpty()) {
-            QFile f(path);
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString &markdown = text.full();   // ANTS-4433
+            if (markdown.isEmpty() && text.openFailed()) {
                 out["ok"] = false;
                 out["error"] = QStringLiteral(
                     "could not open %1 for reading").arg(path);
                 out["code"] = QStringLiteral("read_failed");
                 return QJsonDocument(out);
             }
-            const QString markdown = QString::fromUtf8(f.readAll());
             m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
         }
         const auto *sec = versionArg.isEmpty()
@@ -3270,11 +3266,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // one extra read is bounded and acceptable. Cache m_roadmapIndex
         // for any subsequent section_index query against the same file.
         if (m_roadmapIndex.isEmpty()) {
-            QFile fb(path);
-            if (fb.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString md = QString::fromUtf8(fb.readAll());
+            const QString &md = text.full();   // ANTS-4433
+            if (!md.isEmpty())
                 m_roadmapIndex = RoadmapIndex::buildIndex(md);
-            }
         }
         if (!m_roadmapIndex.isEmpty()) {
             return QJsonDocument(buildHeaderInventoryEnvelope(

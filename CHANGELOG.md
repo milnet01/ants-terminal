@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query's section list, section view and per-section etags reuse the call's own read of ROADMAP.md instead of opening the file a second time** (ANTS-4433)
+
 - **roadmap_log's write reply reports `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview), which says only what was measured; `discarded_external_edits` stays one more release as a deprecated alias** (ANTS-4984)
 
 ### Fixed

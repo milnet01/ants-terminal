@@ -41002,7 +41002,7 @@ against current source before filing.
   Release note (2026-09-15): no CHANGELOG entry, deliberately —
   delivered by ANTS-4608, whose entry covers it.
 
-- 📋 [ANTS-4433] **cmdRoadmapQuery's two heading-index lazy fills read ROADMAP.md with a raw QFile, outside the read seam.**
+- ✅ [ANTS-4433] **cmdRoadmapQuery's two heading-index lazy fills read ROADMAP.md with a raw QFile, outside the read seam.**
   Two sites in `cmdRoadmapQuery` build the heading index from a raw
   `QFile` + `readAll()` rather than from the call's shared text provider:
 
@@ -41040,6 +41040,16 @@ against current source before filing.
   design question, not a hoist.
 
   Not measured. No perf-labelled case produces a number for either site.
+  Resolved (2026-10-01): four raw QFile + readAll() reads in
+  cmdRoadmapQuery (now in remotecontrol_roadmap_query_verb.cpp) take the
+  call's shared provider instead: the section_index lazy fill, the
+  section/version branch's INV-9 fill, the section-etag slice, and the
+  bullets-mode refusal fallback. Each keeps its old failure behaviour
+  (read_failed only when nothing was read). The two reads named here had
+  grown to four since filing. Ants4431RoadmapQueryConstructsOneProvider now
+  also counts readAll( in the function and requires zero; red at 4 before.
+  The store-backend question (derive the section list from the store's
+  own records) is not touched by this and stays with ANTS-4426.
   **Layman:** Two more places in the roadmap query code still open and read the whole 3.8 MB roadmap file directly, skipping the machinery built to avoid exactly that.
   Kind: perf.
   Source: in-session-2026-08-18 (found closing ANTS-4431).

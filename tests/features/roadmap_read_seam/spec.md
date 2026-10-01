@@ -33,6 +33,7 @@ changing what a record contains.
 | `Ants3863Inv6ReadsEveryByteAtMostOnce` | 3863 INV-6 | `bytesRead()` equals the file size in both accessor orders |
 | `Ants3863Inv7NoQStringMarkdownOverloadSurvives` | 3863 INV-7 | multiline source scrape: no `const QString &markdown` seam overload remains |
 | `Ants4426AppendAdvisoryReadsNoBody` | ANTS-4426 | source scrape: `roadmap_log`'s store path no longer reads `ROADMAP.md` in full |
+| `Ants4431RoadmapQueryConstructsOneProvider` | ANTS-4431, ANTS-4433 | source scrape of `cmdRoadmapQuery`, comments stripped: exactly one `RoadmapText::fromFile`, and no `readAll(`, so every branch needing the whole text shares that provider's `full()` |
 
 ANTS-3863's INV-3 has no case of its own by design: it asserts that ANTS-3815
 INV-6 still holds through the new signature, and
@@ -184,3 +185,4 @@ when* mutation before the implementation is restored.
 | `Inv2Membership` | return `dropped` items; filter `internal` ones; drop unfiled items, or emit them before the filed ones |
 | `Inv3Ceiling` | test `>=` instead of `>`; test the ceiling after the item bodies are already resident |
 | `Ants4426AppendAdvisoryReadsNoBody` | re-introduce a `storeText.full()` read in `roadmap_log`'s store block — verified red 2026-08-18 |
+| `Ants4431RoadmapQueryConstructsOneProvider` | construct a second `RoadmapText` in a branch; read `ROADMAP.md` with a raw `QFile` + `readAll()` — the second verified red 2026-10-01 against the four such reads it replaced |

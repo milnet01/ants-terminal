@@ -1487,13 +1487,25 @@ TEST(RoadmapReadSeam, Ants4431RoadmapQueryConstructsOneProvider) {
     // Comments are stripped before counting so the prose explaining the hoist
     // cannot satisfy the scrape it is explaining.
     int providers = 0;
+    int rawReads  = 0;
     for (int i = begin; i < end; ++i) {
         const QString &line = lines.at(i);
         const int slashes   = line.indexOf(QStringLiteral("//"));
         const QString code  = (slashes >= 0 ? line.left(slashes) : line);
         providers += static_cast<int>(
             code.count(QStringLiteral("RoadmapText::fromFile")));
+        rawReads += static_cast<int>(code.count(QStringLiteral("readAll(")));
     }
+
+    // ANTS-4433 — a raw QFile read of ROADMAP.md is a second whole-file read
+    // the provider count above cannot see, since it constructs no provider.
+    // Four of them built the heading index and the section etags; every one
+    // now takes the shared provider's full(), a memo hit wherever it already
+    // read.
+    EXPECT_EQ(rawReads, 0)
+        << "cmdRoadmapQuery calls readAll() " << rawReads << " time(s). Read "
+           "ROADMAP.md through the shared provider's text.full() instead, so "
+           "a branch that needs the whole text reuses the read (ANTS-4433).";
 
     EXPECT_EQ(providers, 1)
         << "cmdRoadmapQuery constructs " << providers << " RoadmapText "
