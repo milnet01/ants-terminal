@@ -705,6 +705,9 @@ SSH key registered there.
   Resolved (2026-09-30): ANTS-5305's staging gate, run by
   packaging/release.sh before every tag (ANTS-5577), builds the commit on
   every distro target before it is tagged.
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — the
+  user-visible change is ANTS-5577's release-command bullet, which this
+  item's fix is part of.
 
 - ✅ [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
@@ -1062,6 +1065,9 @@ SSH key registered there.
   3207f012 built green on Tumbleweed, Leap 16.0, Mageia 10 and Fedora 44.
   The "cheap half" above, a note of each target's material differences,
   was not written; filed separately.
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — shipped
+  inside packaging/release.sh, which ANTS-5577's bullet already
+  describes.
   **Layman:** Right now a packaging break is only discovered after we publish, so the fix waits for the next week's release and the problem is live the whole time. This would test the builds before we publish.
   Kind: test.
   Source: user-request-2026-09-22.
@@ -39415,6 +39421,8 @@ against current source before filing.
   quarantined-id exception. The one defect left, § 7.1 saying "the third
   is preferred" then "the first is preferred" about the same route, now
   reads "the first".
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — an edit
+  to an internal design standard; nothing a user runs changed.
 
 - ✅ [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
   Raised by the CC session bringing the shared `/start-app` roadmap standard up
@@ -40167,6 +40175,8 @@ against current source before filing.
   empty slug and title, one per source file, sorted first within it, and
   counted apart from headed sections (ANTS-5355). Recorded from
   src/roadmapmigrateload.cpp.
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — an edit
+  to an internal design standard; nothing a user runs changed.
   **Layman:** The data-model document is missing one kind of row the importer always creates, so anyone reasoning from it gets section counts wrong.
   Kind: doc.
   Source: in-session-2026-08-10 (ANTS-4070 implementation).
@@ -40529,6 +40539,8 @@ against current source before filing.
   selects. Part 1, the size figure, is the global copy's to change: this
   copy governs (CLAUDE.md § Project standards). Sent to claude-config
   with its divergence row for part 2, now resolved.
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — an edit
+  to an internal standard; nothing a user runs changed.
   **Layman:** The rule for trimming old roadmap sections is written two different ways in two copies of the same standard, so a tool built from one behaves differently from a tool built from the other.
   Kind: doc-fix.
   Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 1, lane 1).
@@ -69354,6 +69366,8 @@ project. Reported causes are claims until checked in source.
   path leaks today. Both lines are now relationship rows (op:link) and
   gone from the stored bodies; a store-wide search finds no other body
   declaring one. No new check: INV-9 is that check.
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — a data
+  repair in this project's own roadmap store; no code changed.
   **Layman:** Two roadmap items say they are waiting on another item, but the database does not know, so nothing treats them as blocked.
   Kind: fix.
   Source: in-session-2026-10-01 (roadmap-format field pass for claude-config).
@@ -89919,6 +89933,8 @@ reports are asked for separately, each time.
   (69c0b05), and 16e41f0 is on origin/main. A gitleaks run over that range
   now reports nothing. The script's failure path already raises a desktop
   notification. The next run is 2026-10-05.
+  Release note (2026-10-01): no CHANGELOG entry, deliberately — an
+  investigation with no code change.
   **Layman:** The automatic off-machine copy of the roadmap has not been saved for over a week.
   Kind: investigate.
   Source: in-session-2026-09-30 (handoff note).
