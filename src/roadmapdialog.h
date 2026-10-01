@@ -621,6 +621,8 @@ private:
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_searchDebounce;
+    // ANTS-5610 — re-applies the column grid once a viewer resize settles.
+    QTimer m_gridDebounce;
     QPointer<QTextBrowser> m_viewer;
     QPointer<QListWidget> m_toc;
     QPointer<QTabBar> m_tabs;

@@ -39,6 +39,7 @@
 #include <QThread>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStringBuilder>
@@ -209,6 +210,8 @@ struct DensityTier {
 // kind, date, and #id + toggle.
 constexpr int kColLabel = 6;
 constexpr int kColSummary = 7;
+constexpr int kColDateKind = 8;
+constexpr int kColDate = 9;
 constexpr int kGridColumns = 11;
 constexpr DensityTier kDensityTable[3] = {
     // Compact: -2 px tier; label + meta groups floored at 11 px (ANTS-2211,
@@ -1104,8 +1107,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // background, not the card background the bare `td` rule paints.
         ".rm-hd{background:%24;}"
         ".rm-count{text-align:center;white-space:nowrap;font-size:%16px;color:%6;}"
-        ".rm-col-datekind{white-space:nowrap;font-size:%16px;color:%6;}"
-        ".rm-col-date{white-space:nowrap;}"
+        // ANTS-5610 — no `nowrap` on the two date columns: Qt's import turns
+        // a nowrap cell's spaces into no-break spaces, so it could never wrap
+        // again. applyCardColumnGrid() keeps them on one line instead, and
+        // lets them wrap in a narrow view.
+        ".rm-col-datekind{font-size:%16px;color:%6;}"
         // rm-current: tint every cell of the row (class beats the bare `td`
         // background by specificity) + swap the first cell's accent to the
         // current-work colour. rm-card-synthetic: dashed first-cell border
@@ -2396,6 +2402,14 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(&m_searchDebounce, &QTimer::timeout, this, &RoadmapDialog::rebuild);
     connect(m_searchBox, &QLineEdit::textChanged, this,
             [this]() { m_searchDebounce.start(); });
+    // ANTS-5610 — whether the date columns wrap depends on the viewer's
+    // width, so a resize re-applies the grid once the drag settles.
+    m_gridDebounce.setSingleShot(true);
+    m_gridDebounce.setInterval(80);
+    connect(&m_gridDebounce, &QTimer::timeout, this, [this]() {
+        if (m_viewer) applyCardColumnGrid(m_viewer->document(), m_density);
+    });
+    m_viewer->viewport()->installEventFilter(this);
     // ANTS-4412 — the reset button reflects search too, and NOT through the
     // debounce: the button says whether the list is narrowed, and lagging
     // that by 120 ms would make it briefly lie about the state on screen.
@@ -2803,6 +2817,11 @@ bool RoadmapDialog::eventFilter(QObject *obj, QEvent *event) {
             m_searchBox->clearFocus();
             return true;
         }
+    }
+    if (m_viewer && obj == m_viewer->viewport()
+        && event->type() == QEvent::Resize) {
+        auto *re = static_cast<QResizeEvent *>(event);
+        if (re->size().width() != re->oldSize().width()) m_gridDebounce.start();
     }
     return QDialog::eventFilter(obj, event);
 }
@@ -3393,6 +3412,61 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
     cols[kColSummary] = QTextLength(QTextLength::VariableLength, 0);
     cols[kGridColumns - 1] = QTextLength(QTextLength::FixedLength, t.colMetaPx);
 
+    // ANTS-5610 — in a narrow view those one-line columns took nearly all the
+    // width: at the first-run size (a ~900 px viewer) the summary got 178 px
+    // and a heading broke mid-word. So lay the grid out one line per column,
+    // and where the summary then falls below this share of the width, let
+    // the date kind and date wrap at their spaces instead. A wrapping column
+    // is fixed at its widest word: Qt holds a wrapping cell to its column's
+    // fixed width, and at zero it broke "shipped" one letter per line. That
+    // width includes the cell's side padding.
+    constexpr qreal kSummaryFloor = 0.4;
+    const int cellPaddingX = 2 * t.cardPaddingX;
+    const auto setDateWrap = [&cols, cellPaddingX](QTextTable *table, bool wrap) {
+        QTextTableFormat fmt = table->format();
+        QVector<QTextLength> widths = cols;
+        QTextCursor edit(table->document());
+        edit.beginEditBlock();
+        for (const int col : {kColDateKind, kColDate}) {
+            qreal widestWord = 0;
+            for (int row = 0; row < table->rows(); ++row) {
+                const QTextTableCell cell = table->cellAt(row, col);
+                if (!cell.isValid() || cell.column() != col) continue;
+                const int end = cell.lastCursorPosition().position();
+                for (QTextBlock b = cell.firstCursorPosition().block();
+                     b.isValid() && b.position() <= end; b = b.next()) {
+                    for (auto f = b.begin(); wrap && !f.atEnd(); ++f) {
+                        const QTextFragment frag = f.fragment();
+                        const QFontMetricsF fm(frag.charFormat().font().resolve(
+                            table->document()->defaultFont()));
+                        for (const QString &word :
+                             frag.text().split(QLatin1Char(' ')))
+                            widestWord = qMax(widestWord,
+                                              fm.horizontalAdvance(word));
+                    }
+                    QTextBlockFormat bf = b.blockFormat();
+                    if (bf.nonBreakableLines() == !wrap) continue;
+                    bf.setNonBreakableLines(!wrap);
+                    edit.setPosition(b.position());
+                    edit.setBlockFormat(bf);
+                }
+            }
+            if (wrap)
+                widths[col] = QTextLength(QTextLength::FixedLength,
+                                          std::ceil(widestWord) + cellPaddingX);
+        }
+        fmt.setColumnWidthConstraints(widths);
+        if (fmt != table->format()) table->setFormat(fmt);
+        edit.endEditBlock();
+    };
+    const auto summaryWidth = [doc](QTextTable *table) {
+        const auto x = [&](int col) {
+            const QTextBlock b = table->cellAt(0, col).firstCursorPosition().block();
+            return doc->documentLayout()->blockBoundingRect(b).x();
+        };
+        return x(kColDateKind) - x(kColSummary);
+    };
+
     std::function<void(QTextFrame *)> walk = [&](QTextFrame *frame) {
         for (auto it = frame->begin(); !it.atEnd(); ++it) {
             QTextFrame *child = it.currentFrame();
@@ -3406,7 +3480,11 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
                     // percentage would have no spare width to take.
                     fmt.setWidth(QTextLength(QTextLength::PercentageLength, 100));
                     fmt.setColumnWidthConstraints(cols);
-                    table->setFormat(fmt);
+                    if (fmt != table->format()) table->setFormat(fmt);
+                    setDateWrap(table, false);
+                    if (doc->textWidth() > 0
+                        && summaryWidth(table) < doc->textWidth() * kSummaryFloor)
+                        setDateWrap(table, true);
                 }
             }
             walk(child);

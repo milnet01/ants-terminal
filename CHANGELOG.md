@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A narrow Roadmap window keeps section titles readable: the date columns wrap between words instead of squeezing titles into a word-wide strip** (ANTS-5610)
+
 ## [0.7.113] - 2026-10-01
 
 **Theme:** A tidier, faster Roadmap window. Everything lines up in

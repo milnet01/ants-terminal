@@ -11,6 +11,8 @@
 #include <QTextFrame>
 #include <QTextCursor>
 #include <QAbstractTextDocumentLayout>
+#include <QTextBlock>
+#include <QTextLayout>
 #include <QList>
 #include <functional>
 #include "roadmapdialog.h"
@@ -1169,5 +1171,88 @@ TEST(RoadmapDialogCards, Ants5604HeadingsAndCardsShareOneGrid) {
                                          "spare width";
     EXPECT_LT(countW, 80.0) << "a count column grew past its content";
     EXPECT_LT(cellX(doc, t, wideCard, 10), double(kWidth))
+        << "the id column was pushed past the right edge";
+}
+
+// ANTS-5610 — at the first-run dialog size the viewer is about 900 px wide.
+// Every column but the summary sized to its one-line content, so the widest
+// date kind and date took the summary's width and a title broke mid-word.
+TEST(RoadmapDialogCards, Ants5610NarrowViewKeepsTheSummaryReadable) {
+    const QString md = QStringLiteral(
+        "# Fixture\n\n"
+        "## Distribution-adoption overview\n\n"
+        "- 🚧 [ANTS-9201] **Distribution-adoption overview card.**\n"
+        "  Layman: a card whose summary must stay readable.\n"
+        "  Kind: review-fix.\n"
+        "  Source: fixture.\n\n"
+        "## 0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — "
+        "shipped 2026-05-10 → 2026-05-11\n\n"
+        "- ✅ [ANTS-9202] **Shipped.**\n"
+        "  Layman: shipped one.\n"
+        "  Source: fixture.\n\n"
+        "## Ants-MCP feedback from CC sessions (cross-session reports "
+        "2026-06-10)\n\n"
+        "- 📋 [ANTS-9203] **Planned.**\n"
+        "  Layman: planned one.\n"
+        "  Source: fixture.\n");
+    RD::CardRenderOptions opts;
+    opts.activePreset = RD::Preset::Full;
+    opts.expandedSections.insert(
+        QStringLiteral("distribution-adoption-overview"));
+    const QString html = RD::renderCardsHtml(
+        md, kAllOn, {}, QStringLiteral("light"), RD::SortOrder::Document,
+        QString(), {}, opts);
+
+    QTextDocument doc;
+    constexpr int kWidth = 900;
+    doc.setTextWidth(kWidth);
+    doc.setHtml(html);
+    RoadmapDialog::applyCardColumnGrid(&doc, RD::Density::Cozy);
+
+    const QList<QTextTable *> tables = gridTablesOf(doc);
+    ASSERT_EQ(tables.size(), 1);
+    QTextTable *t = tables.first();
+    const int head = rowWith(t, QStringLiteral("Distribution-adoption"));
+    const int card = rowWith(t, QStringLiteral("must stay readable"));
+    ASSERT_GE(head, 0);
+    ASSERT_GE(card, 0);
+
+    const double summaryW = cellX(doc, t, head, 8) - cellX(doc, t, head, 7);
+    EXPECT_GE(summaryW, kWidth * 0.25)
+        << "the summary column was crushed to " << summaryW << " px";
+
+    // A cell's lines may end only at a space or a hyphen, never mid-word —
+    // "Distribu / tion- / adoption / overview" was the report.
+    const auto breaksMidWord = [&](int row, int col) {
+        const QTextBlock b = t->cellAt(row, col).firstCursorPosition().block();
+        const QTextLayout *l = b.layout();
+        for (int i = 0; i + 1 < l->lineCount(); ++i) {
+            const QTextLine line = l->lineAt(i);
+            const QChar last =
+                b.text().at(line.textStart() + line.textLength() - 1);
+            if (last != QLatin1Char(' ') && last != QLatin1Char('-'))
+                return true;
+        }
+        return false;
+    };
+    EXPECT_FALSE(breaksMidWord(head, 7))
+        << "\"Distribution-adoption overview\" broke inside a word";
+
+    // A date column that wraps breaks at its spaces, never inside a word.
+    const auto lines = [&](int row, int col) {
+        return t->cellAt(row, col).firstCursorPosition().block()
+            .layout()->lineCount();
+    };
+    const int shipped = rowWith(t, QStringLiteral("rolling sweep"));
+    const int reports = rowWith(t, QStringLiteral("Ants-MCP feedback"));
+    ASSERT_GE(shipped, 0);
+    ASSERT_GE(reports, 0);
+    EXPECT_EQ(cellText(t, shipped, 8), QStringLiteral("shipped"));
+    EXPECT_EQ(lines(shipped, 8), 1) << "\"shipped\" broke inside the word";
+    EXPECT_FALSE(breaksMidWord(shipped, 9)) << "a date broke inside itself";
+    EXPECT_LE(lines(shipped, 9), 3);
+    EXPECT_FALSE(breaksMidWord(reports, 8))
+        << "\"cross-session reports\" broke inside a word";
+    EXPECT_LT(cellX(doc, t, card, 10), double(kWidth))
         << "the id column was pushed past the right edge";
 }
