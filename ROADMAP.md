@@ -40471,7 +40471,7 @@ against current source before filing.
   all-unchanged. Suite 3408.
   Source: /Layman: fields)` |.
 
-- 📋 [ANTS-4139] **Two roadmap-format § 3.9 rotation rules disagree between this copy and the global one.**
+- ✅ [ANTS-4139] **Two roadmap-format § 3.9 rotation rules disagree between this copy and the global one.**
   Found cold while gating ANTS-4073's edit. Both are Q2 across the
   governing pair, neither is that edit's collateral, and both were
   surfaced rather than picked because each is a design call.
@@ -40499,6 +40499,12 @@ against current source before filing.
   Both are recorded as rows in global's header divergence table so a
   maintainer applying "corrected to match" does not revert either
   blind. Fixing item 2 is the smaller job and this copy owns it.
+  Resolved (2026-10-01): part 2 fixed here. § 3.9's versioned bullet now
+  says every `## <closed>.<patch>` block of the minor moves, as
+  rotate_minor's titleRx (src/remotecontrol_roadmap_log_batch.cpp)
+  selects. Part 1, the size figure, is the global copy's to change: this
+  copy governs (CLAUDE.md § Project standards). Sent to claude-config
+  with its divergence row for part 2, now resolved.
   **Layman:** The rule for trimming old roadmap sections is written two different ways in two copies of the same standard, so a tool built from one behaves differently from a tool built from the other.
   Kind: doc-fix.
   Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 1, lane 1).

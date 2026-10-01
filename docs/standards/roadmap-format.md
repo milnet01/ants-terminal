@@ -923,10 +923,11 @@ The convention:
 - **On a versioned roadmap** rotation happens at bump time on a
   minor or major bump only. Patch bumps don't rotate. The bump recipe (`.claude/bump.json`
   on each project) owns the snip-and-create step. Rotation is
-  content-preserving: every bullet under the closed minor's
-  `## <closed>.0 — …` heading and its sub-headings moves to
-  `docs/roadmap/<closed>.md` byte-identical, then the heading and
-  bullets are removed from `ROADMAP.md`.
+  content-preserving: every `## <closed>.<patch>` block of the closed
+  minor (`0.7.0`, `0.7.1`, …), with its sub-headings and bullets, moves
+  to `docs/roadmap/<closed>.md` byte-identical, then those blocks are
+  removed from `ROADMAP.md`. Moving `<closed>.0` alone would leave the
+  patch releases behind; `rotate_minor` (below) selects them all.
 - The viewer (Ants Terminal's `RoadmapDialog`) reads archives only
   on demand — when the user picks the History preset or types in
   the search box. Default render stays cheap.
