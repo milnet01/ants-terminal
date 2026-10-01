@@ -1431,11 +1431,22 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
     auto skipBulletBlockAt = [&](int i) -> int {
         // Skip the bullet's continuation lines so the outer walk
-        // doesn't re-emit them as prose.
+        // doesn't re-emit them as prose. A blank line followed by an
+        // indented line is still the body (RoadmapParse's rule, INV-31).
         int j = i + 1;
         while (j < lines.size()) {
             const QString &cont = lines[j];
-            if (cont.trimmed().isEmpty()) break;
+            if (cont.trimmed().isEmpty()) {
+                int peek = j + 1;
+                while (peek < lines.size() && lines[peek].trimmed().isEmpty())
+                    ++peek;
+                if (peek < lines.size()
+                    && lines[peek].startsWith(QStringLiteral("  "))) {
+                    j = peek;
+                    continue;
+                }
+                break;
+            }
             if (cont.startsWith(QStringLiteral("- ")) ||
                 cont.startsWith(QStringLiteral("* "))) break;
             if (cont.startsWith(QStringLiteral("  "))) { ++j; continue; }

@@ -956,6 +956,30 @@ TEST(RoadmapDialogCards, Ants1695UnrecognisedFormatSaysSo) {
         << "the notice shows when a filter hides every item";
 }
 
+// INV-31 (ANTS-5213) — an item's paragraph after a blank line is still the
+// item's, so it never renders as the section's own text.
+TEST(RoadmapDialogCards, Ants5213LaterBodyParagraphStaysInItsItem) {
+    RoadmapDialog::CardRenderOptions opts;
+    opts.expandedSections = {QStringLiteral("now")};
+    const QString md = QStringLiteral(
+        "# Roadmap\n\n"
+        "## Now\n\n"
+        "- 📋 [ANTS-0001] **First item.**\n"
+        "  First paragraph.\n"
+        "\n"
+        "  Second paragraph of the item.\n"
+        "  Kind: fix.\n"
+        "\n"
+        "Section narration after the item.\n");
+    const QString html = RoadmapDialog::renderCardsHtml(
+        md, 0xFF, {}, QStringLiteral("light"),
+        RoadmapDialog::SortOrder::Document, QString(), {}, opts);
+    EXPECT_FALSE(html.contains(QStringLiteral("Second paragraph of the item")))
+        << "a collapsed item's second paragraph rendered as section text";
+    EXPECT_TRUE(html.contains(QStringLiteral("Section narration after the item")))
+        << "the section's own text after the item was dropped";
+}
+
 // INV-28 (ANTS-5604) — a heading's first date moves out of its title, with
 // its kind where the heading names one.
 TEST(RoadmapDialogCards, Ants5604SplitHeadingDate) {
