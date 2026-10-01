@@ -31,6 +31,12 @@ None of the files listed in the test calls `QProcess::start` with a bare
 `"rg"`, `"git"`, `"ctest"` or `"bash"` program name; each goes through
 `HostExec::start`.
 
+**INV-5 — The terminal's own windows run git and gh on the host too**
+(ANTS-5598). The diff viewer, roadmap dialog, audit dialog and main
+window start no bare `"git"` or `"gh"`. A process built with
+`setProgram("git")` or `setProgram("gh")` is started with
+`HostExec::start(*p)`.
+
 ## Reload
 
 ants-mcpd is a separate binary: a rebuild plus `/mcp` reaches a running

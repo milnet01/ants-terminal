@@ -49,6 +49,7 @@
 #include <QRegularExpression>
 #include <QThread>
 #include "secretredact.h"   // ANTS-4448 — scrub the AI-triage prompt
+#include "hostexec.h"   // ANTS-5598 — git and gh run on the host inside a Flatpak
 
 #include <algorithm>
 #include <memory>
@@ -851,7 +852,7 @@ void AuditDialog::startQueuedBlame() {
                     if (e == QProcess::FailedToStart) done(false);
                 });
         QTimer::singleShot(kBlameTimeoutMs, git, [git] { git->kill(); });
-        git->start(QStringLiteral("git"), args);
+        HostExec::start(*git, QStringLiteral("git"), args);
     }
 }
 
@@ -2471,7 +2472,7 @@ AuditDialog::RecentChangeSets AuditDialog::readRecentChangeSets(
         const std::unique_ptr<QProcess, void (*)(QProcess *)> p(
             new QProcess, auditdialogdetail::releaseProcess);   // ANTS-5083
         p->setWorkingDirectory(projectPath);
-        p->start(QStringLiteral("git"), args);
+        HostExec::start(*p, QStringLiteral("git"), args);
         if (!p->waitForFinished(timeoutMs)) {
             if (p->error() == QProcess::FailedToStart)
                 return QStringLiteral("git could not start");

@@ -13,6 +13,7 @@
 #include "roadmapshortcutsdialog.h"  // ANTS-1236 — `?` cheatsheet overlay
 #include "themes.h"
 #include "titlebar.h"
+#include "hostexec.h"   // ANTS-5598 — git and gh run on the host inside a Flatpak
 
 #include <QAbstractTextDocumentLayout>
 #include <QByteArray>
@@ -580,9 +581,9 @@ void RoadmapDialog::refreshRecentCommitsIfStale() {
         // A process that never started emits no finished(); release it here.
         if (e == QProcess::FailedToStart) git->deleteLater();
     });
-    git->start(QStringLiteral("git"),
-               {QStringLiteral("log"), QStringLiteral("-n"), QStringLiteral("5"),
-                QStringLiteral("--format=%s")});
+    HostExec::start(*git, QStringLiteral("git"),
+                    {QStringLiteral("log"), QStringLiteral("-n"), QStringLiteral("5"),
+                     QStringLiteral("--format=%s")});
 }
 
 // ANTS-1154-INV-5: slugify a heading string for section-tracking.
@@ -1957,7 +1958,7 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
 
     QProcess git;
     git.setWorkingDirectory(fi.absolutePath());
-    git.start(QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
+    HostExec::start(git, QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
     if (!git.waitForStarted(2000)) return out;
     // ANTS-1661 capped this at 5 s (was 30 s) because it ran on the GUI thread.
     // ANTS-4414 moved the DIALOG off this path entirely — startLastTouchRefresh()
@@ -3128,7 +3129,7 @@ void RoadmapDialog::refreshLastTouchDatesIfStale() {
         m_lastTouchRan = true;
         git->deleteLater();
     });
-    git->start(QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
+    HostExec::start(*git, QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
 }
 
 // ANTS-4412 — the honesty half of the collapse. Sixteen visible checkboxes

@@ -93,3 +93,25 @@ TEST(FlatpakHostTools, McpSitesUseTheHelper) {
         EXPECT_TRUE(text.contains(QStringLiteral("HostExec::start("))) << rel;
     }
 }
+
+// INV-5 (ANTS-5598)
+TEST(FlatpakHostTools, TerminalWindowsUseTheHelper) {
+    const char *files[] = {
+        "src/diffviewer.cpp", "src/roadmapdialog.cpp",
+        "src/auditdialog.cpp", "src/mainwindow.cpp",
+    };
+    static const QRegularExpression bare(
+        QString::fromUtf8(R"re((\.|->)start\(\s*(QStringLiteral\()?"(git|gh)")re"));
+    static const QRegularExpression setProg(
+        QString::fromUtf8(R"re(setProgram\(\s*(QStringLiteral\()?"(git|gh)")re"));
+    for (const char *rel : files) {
+        QFile f(QStringLiteral(ANTS_SOURCE_DIR "/") + QString::fromUtf8(rel));
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << rel;
+        const QString text = QString::fromUtf8(f.readAll());
+        EXPECT_FALSE(bare.match(text).hasMatch()) << rel << " starts a bare git/gh";
+        int programs = 0;
+        for (auto it = setProg.globalMatch(text); it.hasNext(); it.next()) ++programs;
+        EXPECT_GE(int(text.count(QStringLiteral("HostExec::start(*"))), programs)
+            << rel << ": a setProgram(\"git\"|\"gh\") process starts without HostExec";
+    }
+}

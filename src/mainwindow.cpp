@@ -27,6 +27,7 @@
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "gitwrap.h"           // ANTS-4999 — readOnlyEnvironment for git probes
+#include "hostexec.h"          // ANTS-5598 — git and gh run on the host inside a Flatpak
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "verifytrustprompt.h" // ANTS-5464
 #include "branchchip.h"           // ANTS-1109 helper
@@ -6276,7 +6277,7 @@ void MainWindow::refreshReviewButton() {
         if (auto *p = self.data()) p->m_reviewProbeInFlight = false;
         if (guard) guard->deleteLater();
     });
-    proc->start();
+    HostExec::start(*proc);
     // ANTS-5080 — a git status that never exits must not hold the flag for
     // the rest of the session. kill() delivers finished, which clears it.
     QTimer::singleShot(10000, proc, [guard]() {
@@ -6572,7 +6573,7 @@ void MainWindow::refreshRepoVisibility() {
         self->m_repoVisibilityProbeInFlight[repoRoot] = false;
     });
     m_repoVisibilityProbeInFlight[repoRoot] = true;
-    proc->start();
+    HostExec::start(*proc);
     // ANTS-5080 — a gh that never exits (no network, a prompt) is killed;
     // kill() delivers finished, which caches the failure and clears the flag.
     QTimer::singleShot(15000, proc, [proc]() {

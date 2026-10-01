@@ -51,6 +51,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **In the Flatpak, the diff viewer and the roadmap and audit windows run git on your computer** (ANTS-5598)
+  They ran git inside the sandbox, which has none. The repository's
+  public/private label (from gh) is looked up on your computer too.
+
 - **In the Flatpak, Claude Code's search, git and test tools run on your computer through flatpak-spawn --host** (ANTS-5527)
   The Flatpak runtime has no ripgrep, git or ctest, so those tools failed
   inside it. The Flatpak notes also say how to register the tools with

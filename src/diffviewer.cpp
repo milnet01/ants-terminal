@@ -4,6 +4,7 @@
 #include "dialogchrome.h"
 #include "themes.h"
 #include "treewatcher.h"
+#include "hostexec.h"   // ANTS-5598 — git and gh run on the host inside a Flatpak
 
 #include <QDialog>
 #include <QFile>
@@ -802,7 +803,7 @@ QDialog *show(QWidget *parent,
                 if (pg) pg->deleteLater();
                 finalize();
             });
-        p->start();
+        HostExec::start(*p);
     };
 
     runAsync({"status", "-b", "--short"},                       &ProbeState::status,   state.get());
@@ -872,7 +873,7 @@ QDialog *show(QWidget *parent,
                 }
                 if (lsg) lsg->deleteLater();
             });
-        ls->start();
+        HostExec::start(*ls);
     };
 
     // Re-seed: resolve the git paths once (then cache), watch the .git
@@ -914,7 +915,7 @@ QDialog *show(QWidget *parent,
                 }
                 enumerate(gp->topLevel);
             });
-        rp->start();
+        HostExec::start(*rp);
     };
 
     // Any watched change → re-probe (and re-seed to pick up new dirs). No

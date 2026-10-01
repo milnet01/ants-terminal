@@ -66877,7 +66877,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: split from ANTS-5321, 2026-09-28.
   Lanes: packaging, mcp.
 
-- 📋 [ANTS-5598] **Run git on the host for the Flatpak terminal's own windows.**
+- ✅ [ANTS-5598] **Run git on the host for the Flatpak terminal's own windows.**
   ANTS-5527 routed every ants-mcpd tool launch through
   HostExec::start (src/hostexec.h). The terminal's own windows still
   start bare `git` inside the sandbox: src/diffviewer.cpp (three
@@ -66886,6 +66886,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   form of the helper, or a switch to HostExec::start. Audit tools
   (cppcheck and kin, src/auditrunner.cpp resolveToolAbsolute) resolve
   an absolute path inside the sandbox and are not covered either.
+  Resolved (2026-10-01): the diff viewer, roadmap dialog, audit dialog
+  and main window start git (and the main window's gh) through
+  HostExec::start; a setProgram-built process uses the new
+  HostExec::start(QProcess&). Locked by flatpak_host_tools INV-5. Full
+  fast suite green. The editor, notifications and audit tools are split
+  to their own item.
   **Layman:** In the Flatpak, the diff viewer and the roadmap and audit windows cannot run git, because the sandbox has none.
   Kind: package.
   Source: split from ANTS-5527, 2026-10-01.
@@ -66914,6 +66920,20 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: fix.
   Source: ANTS-5527 sandbox test, 2026-10-01.
   Lanes: mcp, packaging.
+
+- 📋 [ANTS-5600] **In the Flatpak, run the editor, notify-send, dbus-send and the audit tools on the host.**
+  Not covered by HostExec yet (src/hostexec.h): QProcess::startDetached
+  of the editor (src/terminalwidget.cpp openFileAtPath, which also picks
+  code or kate by QStandardPaths::findExecutable inside the sandbox),
+  notify-send (checkIdleNotification), dbus-send
+  (src/kwinpositiontracker.cpp), and the audit tools that
+  src/auditrunner.cpp resolveToolAbsolute finds with findExecutable.
+  startDetached and a findExecutable lookup both need a host form, such
+  as `flatpak-spawn --host which <tool>`. Not measured in a sandbox.
+  **Layman:** In the Flatpak, opening a file in your editor, desktop notifications and the code audit's tools still look inside the sandbox, where they are missing.
+  Kind: package.
+  Source: split from ANTS-5598, 2026-10-01.
+  Lanes: packaging.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 

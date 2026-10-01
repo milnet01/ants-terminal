@@ -64,6 +64,12 @@ inline void start(QProcess &p, const QString &program,
     p.start(l.program, l.args);
 }
 
+// The same for a process whose program and arguments are already set
+// (setProgram / setArguments), started later than it was built.
+inline void start(QProcess &p) {
+    start(p, p.program(), p.arguments());
+}
+
 }  // namespace HostExec
 
 #endif
