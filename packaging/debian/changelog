@@ -23,7 +23,7 @@ ants-terminal (0.7.113-1) unstable; urgency=medium
     review-brief cap, Claude sockets in the private runtime folder.
     (ANTS-5428, 5169, 5419, 3819, 1648, 5236)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 01 Oct 2026 12:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 01 Oct 2026 00:00:00 +0200
 
 ants-terminal (0.7.112-1) unstable; urgency=medium
 

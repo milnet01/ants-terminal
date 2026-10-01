@@ -12,6 +12,8 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.113] - 2026-10-01
+
 **Theme:** A tidier, faster Roadmap window. Everything lines up in
 columns, it remembers what you had open, and big sections open much
 faster. Also: the Flatpak build can now run git and search tools on your
