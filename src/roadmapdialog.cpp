@@ -1390,6 +1390,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // ANTS-5596 — a ### shows only while its ## is open, so collapsing
     // a ## folds away everything under it. True before the first ##.
     bool parentExpanded = true;
+    // ANTS-5597 — advances for EVERY heading, shown or hidden, so the
+    // N-th heading carries extractToc's N-th anchor.
     int headingIdx = 0;
     // ANTS-1239 — must run in lockstep with parseBullets above so that
     // bySection[slug] keys match the slugs computed here. uniqueSlug
@@ -1400,8 +1402,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
     auto emitSectionHeader = [&](int level, const QString &text,
                                  const QString &slug,
-                                 const SectionCounts &c) {
-        const QString anchor = tocAnchorAt(headingIdx++);
+                                 const SectionCounts &c,
+                                 const QString &anchor) {
         html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
         const QString chevron = sectionExpanded
             ? QStringLiteral("▾") : QStringLiteral("▸");
@@ -1657,10 +1659,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
         QString hText;
         const int level = headingLevel(raw, &hText);
+        const QString anchor =
+            level > 0 ? tocAnchorAt(headingIdx++) : QString();
 
         if (level == 1) {
             // File title — emit only on Full (large heading).
-            const QString anchor = tocAnchorAt(headingIdx++);
             html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
             html += QStringLiteral("<h1>") + applyInline(hText)
                   + QStringLiteral("</h1>");
@@ -1698,7 +1701,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             // parent h2 always heads its visible sub-sections.
             sectionVisible = (opts.activePreset == Preset::Full) || rolled.visible > 0;
             if (sectionVisible) {
-                emitSectionHeader(level, hText, slug, rolled);
+                emitSectionHeader(level, hText, slug, rolled, anchor);
                 // If expanded, emit its bullets as cards.
                 if (sectionExpanded) {
                     const QVector<const BulletRecord *> &bullets = bySection.value(slug);
@@ -1716,7 +1719,6 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (level == 4) {
             if (opts.activePreset == Preset::Full && sectionVisible
                 && sectionExpanded) {
-                const QString anchor = tocAnchorAt(headingIdx++);
                 html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
                 html += QStringLiteral("<h4>") + applyInline(hText)
                       + QStringLiteral("</h4>");

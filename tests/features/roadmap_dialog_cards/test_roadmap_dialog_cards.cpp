@@ -277,6 +277,37 @@ static int runMain(int argc, char **argv) {
             fail("INV-26", "### hidden under an expanded ##");
     }
 
+    // INV-27 (ANTS-5597) — a heading's anchor is the one extractToc gives
+    // it, even when headings before it are hidden. With nothing expanded,
+    // "### Features" is hidden, so "## 0.9.0" must still carry entry 3's
+    // anchor, not entry 2's.
+    {
+        RD::CardRenderOptions opts;
+        opts.activePreset = RD::Preset::Full;
+        const std::string h = RD::renderCardsHtml(
+            fixtureMarkdown(), /*filter=*/0xFF,
+            {}, QStringLiteral("light"),
+            RD::SortOrder::Document, QString(), {}, opts).toStdString();
+        const auto toc = RD::extractToc(fixtureMarkdown());
+        int checked = 0;
+        for (const auto &e : toc) {
+            const std::string tag =
+                "<a name=\"" + e.anchor.toStdString() + "\"></a>";
+            const size_t at = h.find(tag);
+            if (at == std::string::npos) continue;
+            const size_t end = h.find("</h", at);
+            if (end == std::string::npos
+                || h.substr(at, end - at).find(e.text.toStdString())
+                       == std::string::npos)
+                fail("INV-27", ("anchor " + e.anchor.toStdString()
+                                + " does not head \"" + e.text.toStdString()
+                                + "\"").c_str());
+            ++checked;
+        }
+        if (!contains(h, "0.9.0 — far-future") || checked < 3)
+            fail("INV-27", "fixture no longer renders the headings it checks");
+    }
+
     // INV-12 / renderer: empty sections suppressed on non-Full.
     {
         RD::CardRenderOptions opts;
