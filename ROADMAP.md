@@ -69591,6 +69591,19 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-10-01.
   Lanes: roadmap-dialog.
 
+- 📋 [ANTS-5612] **read_region symbol: returns a JavaScript function's whole body, not just its signature line.**
+  read_region {path:"lib/ga.mjs", symbol:"collectAnalytics"} in Ants_Projects_Hub_Website
+  returned start_line 169 = end_line 169, the `export async function
+  collectAnalytics(propertyId, { days = 28 } = {}) {` line alone, with no
+  truncated flag, though the body runs about fifty lines. Extend a JS
+  function's extent to its matching closing brace; where the extent cannot
+  be found, set body_truncated rather than returning one line as a whole
+  body.
+  **Layman:** Asking for a JavaScript function's code returns only its first line, so the reader thinks that is all of it.
+  Kind: fix.
+  Source: Pressless feedback 2026-10-01.
+  Lanes: readregion, mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -90637,7 +90650,7 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: claude-config-request-2026-10-01 (CFG-0708).
 
-- 📋 [ANTS-5610] **In a Roadmap window narrower than about 1500 px, the column grid crushes section titles into a strip a word wide.**
+- ✅ [ANTS-5610] **In a Roadmap window narrower than about 1500 px, the column grid crushes section titles into a strip a word wide.**
   Seen 2026-10-01 on 0.7.113 with demoreel at the first-run dialog size
   (about 1200 px wide, 1600x1000 display), on both the store and the
   markdown read paths: "Distribution-adoption overview" drew as
@@ -90651,6 +90664,13 @@ reports are asked for separately, each time.
   needs a floor (or the narrow columns may wrap) so it never drops below
   readable width. Lock with an offscreen QTextDocument test at a narrow
   textWidth.
+  Resolved (2026-10-01): the date-kind and date columns lose their CSS
+  nowrap (Qt's import turned their spaces into no-break spaces) and
+  applyCardColumnGrid holds them to one line until the summary drops below
+  40% of the width; then they wrap at spaces, each fixed at its widest word.
+  A viewer resize re-applies it. At a 900 px viewer the summary keeps about
+  a quarter of the width and no cell breaks inside a word; long titles take
+  two lines. Locked by Ants5610NarrowViewKeepsTheSummaryReadable (INV-32).
   **Layman:** In a smaller Roadmap window, section titles get squashed into a thin column you can barely read.
   Kind: fix.
   Source: in-session-2026-10-01 (website screenshot).
