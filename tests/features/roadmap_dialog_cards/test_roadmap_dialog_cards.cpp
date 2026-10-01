@@ -14,6 +14,7 @@
 #include <QList>
 #include <functional>
 #include "roadmapdialog.h"
+#include "roadmapindex.h"
 
 #include <QSet>
 #include <QString>
@@ -872,6 +873,54 @@ static int runMain(int argc, char **argv) {
 
 TEST(RoadmapDialogCards, Main) {
     ASSERT_EQ(0, runMain(0, nullptr));
+}
+
+// INV-29 (ANTS-5213) — a repeated heading keeps its document-order slug
+// under the History sort. The dialog hands renderCardsHtml bullets parsed
+// in document order (opts.bullets); the sort reverses the sections. Each
+// card must sit under its own heading, and opening "performance" must open
+// the first Performance section in every sort.
+TEST(RoadmapDialogCards, Ants5213RepeatedHeadingsKeepTheirSlugWhenReversed) {
+    RoadmapDialog::CardRenderOptions opts;
+    opts.activePreset = RoadmapDialog::Preset::History;
+    const auto bullets = RoadmapDialog::parseBullets(fixtureDuplicateHeadings());
+    opts.bullets = bullets;
+    for (const auto &s : RoadmapIndex::buildIndex(fixtureDuplicateHeadings()))
+        opts.expandedSections.insert(s.slug);
+    const std::string h = RoadmapDialog::renderCardsHtml(
+        fixtureDuplicateHeadings(), 0xFF, {}, QStringLiteral("light"),
+        RoadmapDialog::SortOrder::DescendingChronological, QString(), {},
+        opts).toStdString();
+    // History order: Beyond 1.0, 0.8.0, 0.7.0. Each Performance card must
+    // sit under its own release, not under whichever Performance heading
+    // the reversed walk happened to give its slug.
+    const auto at = [&](const std::string &needle) { return h.find(needle); };
+    const auto beyond = at(">Beyond 1.0<"), v08 = at(">0.8.0<"), v07 = at(">0.7.0<");
+    const auto c7001 = at("id=\"rm-ANTS-7001\""), c7002 = at("id=\"rm-ANTS-7002\""),
+               c7003 = at("id=\"rm-ANTS-7003\"");
+    ASSERT_NE(beyond, std::string::npos);
+    ASSERT_NE(v08, std::string::npos);
+    ASSERT_NE(v07, std::string::npos);
+    ASSERT_TRUE(beyond < v08 && v08 < v07) << "fixture not reversed";
+    EXPECT_TRUE(beyond < c7003 && c7003 < v08) << "ANTS-7003 not under Beyond 1.0";
+    EXPECT_TRUE(v08 < c7002 && c7002 < v07) << "ANTS-7002 not under 0.8.0";
+    EXPECT_TRUE(v07 < c7001 && c7001 != std::string::npos)
+        << "ANTS-7001 not under 0.7.0";
+
+    // Opening only "performance" (the first, 0.7.0's) opens that section
+    // and no other Performance section.
+    opts.expandedSections = {QStringLiteral("0-7-0-release"),
+                             QStringLiteral("0-8-0-release"),
+                             QStringLiteral("beyond-1-0"),
+                             QStringLiteral("performance")};
+    const std::string one = RoadmapDialog::renderCardsHtml(
+        fixtureDuplicateHeadings(), 0xFF, {}, QStringLiteral("light"),
+        RoadmapDialog::SortOrder::DescendingChronological, QString(), {},
+        opts).toStdString();
+    EXPECT_NE(one.find("id=\"rm-ANTS-7001\""), std::string::npos)
+        << "opening performance did not open 0.7.0's section";
+    EXPECT_EQ(one.find("id=\"rm-ANTS-7003\""), std::string::npos)
+        << "opening performance opened Beyond 1.0's section";
 }
 
 // INV-28 (ANTS-5604) — a heading's first date moves out of its title, with

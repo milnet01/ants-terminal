@@ -602,6 +602,40 @@ void RoadmapDialog::refreshRecentCommitsIfStale() {
 using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
 
+namespace {
+// ANTS-5213 — the slug of every `##`/`###` heading, in the order the card
+// renderer's walk meets them. Slugs are given in DOCUMENT order, the order
+// parseBullets and the store use, and then follow their sections when
+// `reversed` flips the top-level sections the way reverseTopLevelSections
+// does. Numbering the reversed text instead gave a repeated heading
+// ("### Performance" under three releases) another section's slug on the
+// History tab, so its cards sat under the wrong release and opening it
+// opened a different section than on every other tab.
+QStringList headingSlugsInWalkOrder(const QString &markdownText,
+                                    bool reversed) {
+    QSet<QString> seen;
+    QStringList preamble;
+    QVector<QStringList> sections;
+    for (const QString &line : markdownText.split('\n')) {
+        QString text;
+        const int level = headingLevel(line, &text);
+        if (line.startsWith(QStringLiteral("## "))) sections.push_back({});
+        if (level != 2 && level != 3) continue;
+        (sections.isEmpty() ? preamble : sections.last())
+            .append(uniqueSlug(seen, text));
+    }
+    QStringList out = preamble;
+    if (reversed) {
+        for (auto it = sections.crbegin(); it != sections.crend(); ++it)
+            out += *it;
+    } else {
+        for (const QStringList &section : std::as_const(sections))
+            out += section;
+    }
+    return out;
+}
+}  // namespace
+
 // ANTS-3764 — the parser moved to RoadmapParse (ants_core_lib). This
 // forwarder is what keeps every existing RoadmapDialog::parseBullets() call
 // site — the roadmap-query IPC verb, renderCardsHtml, the feature tests —
@@ -892,8 +926,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // ANTS-3793 — unless the dialog already resolved them through its owner
     // wrapper (store or markdown) and put them in `opts`. This helper stays a
     // pure markdown→HTML function for every caller that does not.
+    // ANTS-5213 — parsed in document order, as the dialog's own bullets
+    // are, so slugs do not depend on the sort.
     const QVector<BulletRecord> allBullets =
-        opts.bullets ? *opts.bullets : parseBullets(sourceText);
+        opts.bullets ? *opts.bullets : parseBullets(markdownText);
 
     auto passesFilter = [&](const BulletRecord &rec) -> bool {
         // Status filter
@@ -978,7 +1014,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // reads the rolled count too, so a parent with visible sub-sections
     // is never hidden above them.
     const QVector<RoadmapIndex::Section> sectionIndex =
-        RoadmapIndex::buildIndex(sourceText);
+        RoadmapIndex::buildIndex(markdownText);   // ANTS-5213, as above
     const QHash<QString, SectionCounts> rolledCounts =
         RoadmapIndex::rollupCounts(sectionIndex, countsBySection);
 
@@ -1142,12 +1178,13 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // ANTS-5597 — advances for EVERY heading, shown or hidden, so the
     // N-th heading carries extractToc's N-th anchor.
     int headingIdx = 0;
-    // ANTS-1239 — must run in lockstep with parseBullets above so that
-    // bySection[slug] keys match the slugs computed here. uniqueSlug
-    // is called for *every* h2/h3 encountered (including the skipped
-    // "Table of Contents" h2) so the counter advances identically in
-    // both walks.
-    QSet<QString> seenSlugs;
+    // ANTS-1239 / ANTS-5213 — every h2/h3 the walk meets takes the next
+    // slug from this list (the skipped "Table of Contents" h2 included),
+    // so bySection[slug] keys match in every sort order.
+    const QStringList walkSlugs = headingSlugsInWalkOrder(
+        markdownText, sortOrder == SortOrder::DescendingChronological);
+    int walkSlugAt = 0;
+    QSet<QString> seenSlugs;   // fallback past the list's end
 
     // ANTS-5604 — the status emoji head the five count columns once, above
     // the first heading row.
@@ -1474,7 +1511,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             // ANTS-1239 — compute the slug *before* the TOC skip so
             // seenSlugs advances in lockstep with parseBullets (which
             // has no TOC skip).
-            const QString slug = uniqueSlug(seenSlugs, hText);
+            const QString slug = walkSlugAt < walkSlugs.size()
+                ? walkSlugs.at(walkSlugAt++)
+                : uniqueSlug(seenSlugs, hText);
             if (level == 2 &&
                 hText.compare(QStringLiteral("Table of Contents"),
                               Qt::CaseInsensitive) == 0) {
