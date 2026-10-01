@@ -42452,6 +42452,23 @@ in each bullet, not just the reporter's symptom.
   Source: user-request-2026-09-28.
   Lanes: ci.
 
+- 📋 [ANTS-5614] **A stale CI image makes the push gate fall back to this machine's Qt without stopping, so a CI-only failure passes locally.**
+  Seen 2026-10-01/02: fd4b73b5, 33e9e5c8 and 98923952 all passed the
+  push gate and failed GitHub CI on RoadmapDialogCards.Ants5610 (a
+  font-dependent width bar). tools/local-ci.sh runs build-test in CI's
+  image only when `qt62-guard.sh --check-warm` says warm; the image tag
+  follows ci.yml's package list, so any change to that list makes it cold
+  and every push silently tests on this box instead ("A cold image never
+  runs inside a push", ANTS-5517). A cold run measured ~19 min tonight.
+  Needs the user's choice (asked 2026-10-02, not yet answered):
+  (a) recommended: rebuild the image inside the push, then test;
+  (b) refuse the push until it is warmed by hand;
+  (c) keep the fallback, perhaps with a louder warning.
+  **Layman:** The check before each upload can quietly test on the wrong system, so a problem only GitHub sees slips through.
+  Kind: fix.
+  Source: in-session-2026-10-02 (CI red on three pushes).
+  Lanes: ci.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus

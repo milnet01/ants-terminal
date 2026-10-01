@@ -11,6 +11,8 @@
 #include <QTextFrame>
 #include <QTextCursor>
 #include <QAbstractTextDocumentLayout>
+#include <QFontMetricsF>
+#include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextLayout>
 #include <QList>
@@ -1217,9 +1219,28 @@ TEST(RoadmapDialogCards, Ants5610NarrowViewKeepsTheSummaryReadable) {
     ASSERT_GE(head, 0);
     ASSERT_GE(card, 0);
 
+    // The summary column holds the heading's widest word, measured in the
+    // heading's own font. Not a fixed share of the width: that depends on the
+    // installed fonts, and CI's (196 px of 900) differ from a desktop's.
     const double summaryW = cellX(doc, t, head, 8) - cellX(doc, t, head, 7);
-    EXPECT_GE(summaryW, kWidth * 0.25)
-        << "the summary column was crushed to " << summaryW << " px";
+    const QTextBlock titleBlock =
+        t->cellAt(head, 7).firstCursorPosition().block();
+    qreal widestWord = 0;
+    for (auto f = titleBlock.begin(); !f.atEnd(); ++f) {
+        const QTextFragment frag = f.fragment();
+        const QFontMetricsF fm(
+            frag.charFormat().font().resolve(doc.defaultFont()));
+        // A line may break after a hyphen (breaksMidWord below allows it),
+        // so "Distribution-" and "adoption" are measured separately.
+        static const QRegularExpression breakAfter(QStringLiteral("(?<=-)| "));
+        for (const QString &w : frag.text().split(breakAfter))
+            widestWord = qMax(widestWord, fm.horizontalAdvance(w));
+    }
+    ASSERT_GT(widestWord, 0.0) << "measured no word in the heading";
+    EXPECT_GE(summaryW, widestWord)
+        << "the summary column was crushed to " << summaryW
+        << " px, narrower than the heading's widest word (" << widestWord
+        << " px)";
 
     // A cell's lines may end only at a space or a hyphen, never mid-word —
     // "Distribu / tion- / adoption / overview" was the report.
