@@ -80665,6 +80665,9 @@ command ledger is the foundation several others read from.
   scrubber exists to reuse. Also flash the status bar when Claude
   reads a file matching `.env*`, `*.pem` or `id_*`.
   Research links — https://www.knostic.ai/blog/claude-cursor-env-file-secret-leakage
+  User decision 2026-10-01: redaction ON by default, with a config
+  switch to turn it off. Reuse the existing AI-request scrubber. Keep
+  the status-bar flash when Claude reads a .env*, *.pem or id_* file.
   **Layman:** Passwords or keys shown in the terminal can be copied into Claude's context; Ants should hide them first.
   Kind: security.
   Source: user-request-2026-09-14 (coder-helper research).
@@ -89019,6 +89022,27 @@ reports are asked for separately, each time.
   openssl takes an HMAC key only as an argument, so the fix is a design
   change: a helper that reads the key from a file descriptor, or a signing
   primitive the terminal itself provides.
+  User decision 2026-10-01: ship a small Ants signing helper that reads
+  the key from a pipe (stdin), and have ants-osc133.bash call it in
+  place of openssl. The environment-variable export stays for now.
+  Plan (2026-10-01), nothing built yet. New QtCore-only executable
+  ants-osc133-sign (src/osc133signmain.cpp). It reads the key from stdin
+  (cap 4 KiB, strip one trailing newline), takes the message as argv[1],
+  and prints the hex HMAC-SHA256 via QMessageAuthenticationCode. The key
+  is the raw bytes, as terminalgrid.cpp's verifier uses them. CMake:
+  add_executable modelled on ants-mcpd (same hardening link options),
+  and add it to install(TARGETS ... RUNTIME). The openSUSE spec %files
+  gets %{_bindir}/ants-osc133-sign; check packaging/archlinux/PKGBUILD
+  and AppRun. The bash and zsh scripts prefer the helper (command -v),
+  signing with: printf '%s' "$ANTS_OSC133_KEY" | ants-osc133-sign
+  "$msg". printf is a builtin, so the key reaches no argv. They fall
+  back to openssl only where the helper is not on PATH (Flatpak,
+  AppImage), and the fallback stays documented in
+  shell-integration/README.md. Test: a bash test registered like
+  osc133_nounset, given $<TARGET_FILE:ants-osc133-sign>. It puts a stub
+  openssl on PATH that records being called, then asserts the stub was
+  never called and that the signature equals real openssl's for the same
+  key and message, in bash and in zsh where zsh is installed.
   **Layman:** The secret that signs prompt markers is briefly visible to other programs on the machine while each prompt is drawn.
   Kind: security.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #13; ledger TL-26).
