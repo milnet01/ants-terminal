@@ -24596,7 +24596,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-27): computeConfidence moved to AuditEngine::computeConfidence (non-GUI lib, single source of truth, no Qt6::Widgets); AuditDialog::computeConfidence now forwards so the 3 call-sites + public static surface are unchanged. auditengine.{h,cpp} + auditdialog.cpp.
 
-- 📋 [ANTS-1263] **Delete dead `renderHtml` v1 + retest (roadmapdialog).**
+- ✅ [ANTS-1263] **Delete dead `renderHtml` v1 + retest (roadmapdialog).**
   `src/roadmapdialog.cpp:684`. CLAUDE.md claims
   `renderHtml` is "kept for tests + the `roadmap-query` IPC verb
   consumers" — but `grep -rn renderHtml src/` returns ZERO non-test
@@ -24632,6 +24632,10 @@ own design + test cycles.
   Recorded rather than acted on, because a future session reading the
   headline would otherwise go hunting for a CLAUDE.md claim that no longer
   exists.
+  Resolved (2026-10-01): renderHtml deleted (commit 0d6bb1df). The four
+  suites drive renderCardsHtml through tests/_support/roadmap_cards.h; a
+  mutation check broke six filters in the card renderer and each turned
+  a suite red.
 
 - ✅ [ANTS-1264] **Implement INV-13 scroll-position persistence (roadmapdialog).**
   `src/roadmapdialog.cpp:2206`. Spec ANTS-1154

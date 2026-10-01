@@ -39,6 +39,8 @@ for security-relevant changes.
 
 ### Removed
 
+- **The Roadmap window's old, unused renderer is gone; its tests now check the renderer the window actually uses.** (ANTS-1263)
+
 - **Twenty unused Ants MCP verbs are gone, so every Claude Code session reads a shorter tool list.** (ANTS-5485)
   Removed: get_git_status, current_state, session_brief, cross_doc_diff,
   cold_eyes_cross_doc_diff, cold_eyes_single_doc, cold_eyes_fold_in, the
