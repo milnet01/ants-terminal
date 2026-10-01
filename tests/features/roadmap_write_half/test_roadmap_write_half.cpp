@@ -1983,6 +1983,55 @@ TEST(RoadmapWriteHalf, Ants4462DryRunUsesTheFutureTense) {
     EXPECT_TRUE(readAll(roadmap).contains("> A line no verb can write."));
 }
 
+// ANTS-4984 — `discarded_external_edits` names a cause (a hand edit) the check
+// cannot know: a stale render or a store that fell behind looks the same. The
+// key that says only what is measured rides beside it, in both tenses, and
+// agrees with it on every arm while the old name stays for one release.
+TEST(RoadmapWriteHalf, Ants4984OverwroteFileTextNamesWhatItMeasured) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    QByteArray hand = readAll(roadmap);
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, "> A line no verb can write.\n");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(root, QStringLiteral("A previewed bullet."));
+    req[QStringLiteral("dry_run")] = true;
+    const QJsonObject dry = rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(dry.value(QStringLiteral("would_overwrite_file_text")).toBool())
+        << "the preview names what it measured";
+    EXPECT_EQ(dry.value(QStringLiteral("would_overwrite_file_text")),
+              dry.value(QStringLiteral("would_discard_external_edits")));
+    EXPECT_FALSE(dry.contains(QStringLiteral("publish_overwrote_file_text")))
+        << "ANTS-4463: a dry run overwrote nothing";
+
+    const QJsonObject first = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A written bullet."))).object();
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(first.value(QStringLiteral("publish_overwrote_file_text")).toBool());
+    EXPECT_EQ(first.value(QStringLiteral("publish_overwrote_file_text")),
+              first.value(QStringLiteral("discarded_external_edits")));
+    EXPECT_FALSE(first.contains(QStringLiteral("would_overwrite_file_text")));
+
+    const QJsonObject clean = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A clean bullet."))).object();
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(clean.contains(QStringLiteral("publish_overwrote_file_text")))
+        << "a checked clean write says false; absence means nobody looked";
+    EXPECT_FALSE(clean.value(QStringLiteral("publish_overwrote_file_text")).toBool());
+    EXPECT_EQ(clean.value(QStringLiteral("publish_overwrote_file_text")),
+              clean.value(QStringLiteral("discarded_external_edits")));
+}
+
 
 // ------------------------------------------------------------- ANTS-4475 ----
 

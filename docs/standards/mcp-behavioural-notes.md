@@ -802,9 +802,11 @@ which heading you expect it under.
     items, not content, so a store that has fallen behind the file passes it
     exactly as a fresh one does (ANTS-4462). So `commitAndRender()` renders
     the store as it stood **before** the mutation and diffs that against the
-    file, reporting `discarded_external_edits` (bool) plus
+    file, reporting `publish_overwrote_file_text` (bool) plus
     `discarded_edit_lines` on the true arm — `would_*` on a dry run, per
-    ANTS-4463's tense rule. Both are **absent** when nothing measured the
+    ANTS-4463's tense rule. `discarded_external_edits` is a deprecated alias
+    of the bool, kept for one release (ANTS-4984): the check measures a
+    divergence and cannot tell a hand edit from a stale render. Both are **absent** when nothing measured the
     file, which is not the same as clean. Three things the shape rules out:
     diffing the *post*-mutation render instead (it differs from the file by
     the change the call was made to write, so every healthy write reports);

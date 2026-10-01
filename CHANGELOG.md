@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **roadmap_log's write reply reports `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview), which says only what was measured; `discarded_external_edits` stays one more release as a deprecated alias** (ANTS-4984)
+
 ### Fixed
 
 - **A narrow Roadmap window keeps section titles readable: the date columns wrap between words instead of squeezing titles into a word-wide strip** (ANTS-5610)

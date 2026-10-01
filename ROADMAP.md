@@ -66234,7 +66234,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-09-08, hit while triaging the feedback corpus.
   Lanes: mcp.
 
-- 📋 [ANTS-4984] **`discarded_external_edits` asserts a cause the check cannot know.**
+- ✅ [ANTS-4984] **`discarded_external_edits` asserts a cause the check cannot know.**
   Split out of ANTS-4947, whose backup half shipped 2026-09-08. The
   flag measures a DIVERGENCE between the file and the store's render.
   It cannot tell which side moved: a hand edit, a store that fell
@@ -66257,6 +66257,12 @@ than re-filed; everything else lands here.
   Note the boolean is already narrower than its name in the other
   direction: ANTS-4729 made it true only when the FILE's own lines were
   classified, so render-only additions no longer fire it.
+  Resolved (2026-10-01): rcRoadmapWriteFields emits
+  `publish_overwrote_file_text` (`would_overwrite_file_text` on a dry run),
+  equal to the old flag on every arm; `discarded_external_edits` stays one
+  release as a deprecated alias, named so in the roadmap_log detail and
+  mcp-behavioural-notes. Removal filed as ANTS-5613. Locked by
+  RoadmapWriteHalf.Ants4984OverwroteFileTextNamesWhatItMeasured.
   **Layman:** A warning about lost text blames a hand edit, even when nobody edited by hand — so readers dismiss it.
   Kind: fix.
   Source: in-session-2026-09-08, split out of ANTS-4947.
@@ -66357,6 +66363,19 @@ than re-filed; everything else lands here.
   **Layman:** A feedback note closed as "won't do" is summarised as if the work was done.
   Kind: fix.
   Source: in-session-2026-09-19 ANTS-4977 build.
+
+- 📋 [ANTS-5613] **Remove the deprecated `discarded_external_edits` / `would_discard_external_edits` keys one release after ANTS-4984 ships.**
+  ANTS-4984 added `publish_overwrote_file_text` (and
+  `would_overwrite_file_text`) beside the old keys and kept the old ones
+  for one release, because other sessions' tooling reads them. In the
+  release after the one that ships ANTS-4984: stop emitting the old pair
+  in rcRoadmapWriteFields, drop the alias sentence from the roadmap_log
+  detail text and docs/standards/mcp-behavioural-notes.md, and move the
+  write-half tests' assertions to the new names.
+  **Layman:** After a release of overlap, drop the old, misleading name for the lost-text warning.
+  Kind: chore.
+  Source: split from ANTS-4984, 2026-10-01.
+  Lanes: roadmap-store, mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

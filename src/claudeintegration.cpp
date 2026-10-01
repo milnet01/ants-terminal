@@ -11735,7 +11735,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // the warning itself is spent here.
                         "MIGRATED: every op re-renders the WHOLE file, so a "
                         "hand-edit outside the store is reverted; the write "
-                        "reports `discarded_external_edits` (ANTS-4462). "
+                        "reports `publish_overwrote_file_text` (ANTS-4462). "
                         "caller_cwd Required.");
                     // ANTS-2079 — full per-op reference in `detail`
                     // (stripped from the tools/list wire; served by
@@ -11879,7 +11879,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "longer does it silently (ANTS-4462): it renders the "
                         "store as it stood BEFORE the mutation, diffs that "
                         "against the file, and reports "
-                        "`discarded_external_edits` (bool) plus "
+                        "`publish_overwrote_file_text` (bool; ANTS-4984 — "
+                        "`discarded_external_edits` is a deprecated alias "
+                        "kept for one release, since the check cannot tell a "
+                        "hand edit from a stale render) plus "
                         "`discarded_edit_lines` on the true arm — "
                         "`would_discard_*` on a dry run, per ANTS-4463's tense "
                         "rule. ABSENT means nothing measured the file, which "
