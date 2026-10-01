@@ -61,6 +61,7 @@ these that names it (inventory, 2026-10-01):
 | Offload allowlist | `isOffloadEligible` (`src/mcpprojection.cpp`) |
 | Token budget | the table in `src/tokenusageengine.cpp` |
 | Handler bodies | `RemoteControl::cmd*` in `remotecontrol_state.cpp`, `remotecontrol_coldeyes.cpp`, `remotecontrol_review.cpp`; the three `test_audit_*` lambdas in `mcptoolregistry.cpp`; `get_git_status`'s lambda in `MainWindow::setupClaudeMcpProviders` |
+| A name inside kept code | `TestAuditEngine::synthesize` uses `test_audit_synthesis_prompt` in its `reports_dir required` error text and its `PathValidation::validatePath` label; both become `test audit synthesis` |
 
 The removal lands in both servers at once, because `registerProjectScopedVerbs`
 serves the terminal and ants-mcpd alike.
@@ -154,10 +155,11 @@ at the next relaunch; until then it still answers, which harms nothing.
   `grep -rnE 'withDeprecationAdvisory|deprecationPrefix|recordDeprecatedCall|deprecated-calls' src`
   → no output.
 - **INV-6** — Outside the removed-verb table, no source file names a
-  removed verb as a quoted string, except `cmdSessionOrient`'s
-  `current_state` reply key. *Test:* `grep -rnE '"(V)"' src` lists only
-  `src/mcpdeprecation.cpp` and the `current_state` key lines in
-  `src/remotecontrol_state.cpp`. Before the change it lists ten files.
+  removed verb as a quoted string, except the two `current_state` lines in
+  `cmdSessionOrient` (its `noteOrFail` label and its reply key). *Test:*
+  `grep -rnE '"(V)"' src` lists only `src/mcpdeprecation.cpp` and those
+  two lines of `src/remotecontrol_state.cpp`. Before the change it lists
+  ten files.
 - **INV-7** — Every kept surface in § 2.3 survives: the kept verbs
   `indie_review_partition`, `indie_review_corroborate`,
   `indie_review_dispatch`, `cold_eyes_partition`, `cold_eyes_brief`,
@@ -166,9 +168,15 @@ at the next relaunch; until then it still answers, which harms nothing.
   returns `current_state`. *Test:* `tests/features/mcp_removed_verbs`
   scrapes the registry for the nine; `tests/features/session_orient_bundle`;
   the dialog suites (`ctest --preset=default`) stay green.
-- **INV-8** — The verb-only code in § 2.3 is deleted. *Test:*
-  `grep -rnE 'PlanTemplateEngine|assembleSingleDocBrief|crossDocDiffFromDir|templateColdEyesFoldInBlockFreeform|IndieReviewEngine::assembleBriefManifest|TestAuditEngine::recheck|cmdSessionBrief|cmdRoadmapBranchDrift' src CMakeLists.txt`
-  → no output.
+- **INV-8** — The verb-only code in § 2.3 is deleted, and no comment
+  in the files that held it still names it. *Test:* each of these prints
+  nothing:
+  `grep -rnE 'assembleSingleDocBrief|crossDocDiffFromDir|templateColdEyesFoldInBlockFreeform|cmdSessionBrief|cmdRoadmapBranchDrift' src`;
+  `grep -n 'assembleBriefManifest' src/indiereviewengine.h src/indiereviewengine.cpp src/verifyengine.cpp`;
+  `grep -nE '\brecheck\(' src/testauditengine.h src/testauditengine.cpp`;
+  `grep -ni 'plantemplate' CMakeLists.txt`; `ls src/plantemplateengine.*`
+  (each prints lines before the change). The qualified spelling is not
+  used because the definitions sit inside their namespace unqualified.
 - **INV-9** — Each spec whose title names a removed verb carries
   `**Superseded by:** ANTS-5485`: ANTS-1279, ANTS-1281, ANTS-1290,
   ANTS-1569, ANTS-1583, ANTS-1635, ANTS-1644. *Test:*
