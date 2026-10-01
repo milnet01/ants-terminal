@@ -21,6 +21,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Roadmap window remembers which sections and items you opened, and where each tab was scrolled to, separately for each project.** (ANTS-5214)
+
 - **The Roadmap window lines everything up in columns: one count column per status, a heading's version in its own column, its title where item text starts, and dates in their own columns instead of inside titles.** (ANTS-5604)
 
 - **The release command waits for GitHub's CI on the commit and tags only if it passed** (ANTS-1978)

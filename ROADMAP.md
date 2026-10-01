@@ -90493,8 +90493,14 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: user-request-2026-09-14.
 
-- 📋 [ANTS-5214] **The Roadmap dialog keeps its view and filter state per project, so a filter set in one project does not carry into another.**
+- ✅ [ANTS-5214] **The Roadmap dialog keeps its view and filter state per project, so a filter set in one project does not carry into another.**
   User request 2026-09-14. Where the dialog stores view and filter state today is unverified; find it before designing. The state is keyed by project root. A project opened for the first time starts from the defaults.
+  Resolved (2026-10-01): filters and the active tab were already per
+  project (2026-09-29); the open cards, open sections and per-tab scroll
+  anchors now join them (commit a0a7231c), seeded once from the old
+  global keys. Also fixed the scroll anchor being keyed by a stale
+  global tab. Density and the Contents-pane toggle stay global as
+  display preferences.
   **Layman:** Each project remembers its own roadmap filters and view.
   Kind: enhancement.
   Source: user-request-2026-09-14.
