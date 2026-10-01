@@ -66853,6 +66853,19 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   needs a real sandbox test first. Do that test before changing the
   manifest. The Flatpak is not yet published (ANTS-1070 is parked), so
   this matters from the first Flathub release onward.
+  Sandbox test (2026-10-01), manifest built from 23cbb22c, terminal run
+  offscreen in the sandbox, ants-mcpd started by a second flatpak run:
+  - Socket: works. ants-mcpd found mcp-2 by discovery and by an
+    explicit ANTS_MCP_SOCKET; tab_list answered.
+  - rg, git, ctest: absent from org.kde.Platform. workspace_search
+    refuses rg_failed, git_state refuses git_missing.
+  - Paths: --filesystem=home hides projects outside $HOME; read_region
+    on /mnt/... refuses bad_path.
+  - Side find: flatpak-builder's git clone fails under the machine-wide
+    pre-push hook unless GIT_CONFIG_KEY_0=core.hooksPath is overridden.
+  Two choices left for the user: run rg/git on the host through
+  flatpak-spawn --host (code change, nothing shipped) or bundle them in
+  the manifest; and whether to widen filesystem access.
   **Layman:** Flatpak users still cannot connect Claude Code to Ants through the new helper program.
   Kind: package.
   Source: split from ANTS-5321, 2026-09-28.
