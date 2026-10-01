@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **If a project's roadmap is laid out in a way the Roadmap window can't turn into items, the window now says so and how many section headings it found, instead of showing empty sections.** (ANTS-1695)
+
 - **A Claude Code session is told when another session has left it a message, at session start and on each prompt.** (ANTS-5553)
   A new hook prints one line, "[ants:inbox] N unread messages from other
   sessions", only while mail waits, in any project the roadmap store knows.

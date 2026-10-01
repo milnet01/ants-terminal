@@ -90405,7 +90405,7 @@ reports are asked for separately, each time.
   Source: parity audit 2026-05-20.
   Lanes: roadmapdialog.
 
-- 📋 [ANTS-1695] **RoadmapDialog has no unrecognised-format / header-inventory fallback for zero-bullet roadmaps.**
+- ✅ [ANTS-1695] **RoadmapDialog has no unrecognised-format / header-inventory fallback for zero-bullet roadmaps.**
   When `parseBullets` yields zero bullets but headings exist (e.g. a
   table-style ROADMAP), the MCP returns a header inventory via
   `buildHeaderInventoryEnvelope` / `unrecognised_format`
@@ -90418,6 +90418,9 @@ reports are asked for separately, each time.
   Kind: enhancement.
   Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
   Source: parity audit.
+  Resolved (2026-10-01): a roadmap with headings but no readable item
+  now leads with a notice giving its heading count. Locked by
+  roadmap_dialog_cards INV-30.
   Lanes: roadmapdialog.
 
 - 💭 [ANTS-2215] **Roadmap dialog layman-usability overhaul (future — user flagged 2026-06-27).**
