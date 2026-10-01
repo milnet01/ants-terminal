@@ -90614,6 +90614,29 @@ reports are asked for separately, each time.
   Source: in-session-2026-10-01.
   Lanes: roadmap-dialog.
 
+- 📋 [ANTS-5608] **The 0.5 and 0.6 roadmap archives say "/bump rotated" them, naming a retired skill and a rotation that was done by hand.**
+  docs/roadmap/0.5.md and 0.6.md carry a `# 0.N.x archive` intro saying
+  "/bump rotated" the sections. /bump is retired (cut-release replaced it)
+  and 812c52b3 rotated them by hand on 2026-04-30. The text is stored
+  intro data (no source match for it), so fix it in the store and
+  re-render; a hand edit to the files is discarded.
+  **Layman:** Two old roadmap archive files describe how they were made incorrectly.
+  Kind: doc-fix.
+  Source: in-session-2026-10-01 (roadmap-format § 3.9 field pass, gap 7).
+
+- 📋 [ANTS-5609] **Bring this project's roadmap-format § 3.9 into line with the global copy's new versioned-rotation text.**
+  claude-config landed this session's § 3.9 draft in ~/.claude 3f3a5da and
+  902d851: every minor or major bump rotates (size is a review trigger only),
+  blocks are chosen by their heading's release designator (range headings
+  included), open work is re-filed into the new minor before rotating, and
+  id stability is § 3.5.1, not § 3.6. This project's
+  docs/standards/roadmap-format.md § 3.9 still opens with the size
+  trigger. It carries no mirror marker, so aligning it is this project's
+  job. Keep its rotate_minor contract (global points to § 3.12 for it).
+  **Layman:** The rule for archiving old roadmap sections is now worded differently in two copies; this makes them agree.
+  Kind: doc-fix.
+  Source: claude-config-request-2026-10-01 (CFG-0708).
+
 ## Welcome dialog (user request 2026-09-29)
 
 A first-run welcome dialog, and the one-click setup actions it offers.
