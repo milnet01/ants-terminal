@@ -69228,6 +69228,23 @@ project. Reported causes are claims until checked in source.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-29.
   Lanes: mcp, changelog.
 
+- 📋 [ANTS-5588] **A workspace_search reply that spills because of context lines keeps the context and loses the rows.**
+  Measured by finbreak: regex search, context:2, max_results:200, whole tree.
+  The reply was offloaded: 63 rows, 33,310 bytes. The preview carried 3 rows
+  plus shape stubs, so the caller lost the answer and fell back to mypy.
+
+  Wanted: when context > 0 is what pushes a reply over the inline budget,
+  drop context_before / context_after first and keep every headline row,
+  then spill only if the rows alone still do not fit. Say so in the
+  envelope (e.g. context_dropped:true), as ANTS-3543's downshift does.
+
+  Related, not the same: ANTS-3543 (downshift at max_bytes), ANTS-4892
+  (file-and-count summary for a spilled search).
+  **Layman:** When a code search returns too much, it should throw away the surrounding lines before it throws away any results.
+  Kind: enhancement.
+  Source: finbreak session message 341, 2026-10-01.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
