@@ -36878,6 +36878,14 @@ against current source before filing.
 
   The oracle still has everything else to prove — this narrows one known
   red, it does not make the round trip clean.
+  Note (2026-10-01): ANTS-3819 made RoadmapStore::db() private. Only
+  RoadmapExport::StoreHandle (src/roadmapexport.cpp) and the test helper
+  RoadmapStoreTestAccess can reach it. The spec's acyclicity section
+  says the checker "reads the database through RoadmapStore::db()". That
+  no longer compiles outside those two. Settle the route when this is
+  built: put the checker in the export TU and use StoreHandle, or add a
+  typed relationship reader. The spec amendment then goes through the
+  rule 14 gate.
 
 - 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
   `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
@@ -37238,7 +37246,7 @@ against current source before filing.
 
   Full suite 3587/3587.
 
-- 📋 [ANTS-3819] **RoadmapStore::db() hands out a mutable QSqlDatabase, past the typed reader surface.**
+- ✅ [ANTS-3819] **RoadmapStore::db() hands out a mutable QSqlDatabase, past the typed reader surface.**
   Verified 2026-08-04. Alongside the typed readers, `RoadmapStore` exposes
   `QSqlDatabase &db()` — non-const, returning a mutable handle. Every invariant
   this store relies on is enforced in C++ around the typed surface, not in the
@@ -37310,6 +37318,13 @@ against current source before filing.
   the store's one privileged rebuild caller. Make db() private, befriend
   the export, and say why beside the accessor. The typed-surface route
   (after ANTS-3816) is not wanted.
+  Resolved (2026-10-01), per the user's decision: db() is private. Two
+  friends reach it. RoadmapExport::StoreHandle serves the export's three
+  call sites. RoadmapStoreTestAccess
+  (tests/_support/roadmapstoreaccess.h) serves the schema, upgrade and
+  concurrency tests, which assert raw tables. A static_assert in
+  roadmap_store_schema proves the accessor is not public; it was red
+  with db() made public. Full suite 5398/5398.
 
 - ✅ [ANTS-3820] **A dropped item has no markdown form, and nothing asserts that the render never tries.**
   Verified 2026-08-04, and the round trip is worse than "no glyph":

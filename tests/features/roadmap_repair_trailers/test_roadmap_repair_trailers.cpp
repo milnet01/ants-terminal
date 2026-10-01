@@ -11,6 +11,7 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <gtest/gtest.h>
 
@@ -256,7 +257,7 @@ TEST(RoadmapRepairTrailers, RepairedColumnIsRecordedInHistory) {
     QString err;
     const auto pk = store->findItem(projectId, QStringLiteral("DEMO-0001"), &err);
     ASSERT_TRUE(pk);
-    QSqlQuery q(store->db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(*store));
     ASSERT_TRUE(q.prepare(QStringLiteral("SELECT old_value, new_value FROM history "
                                          "WHERE item_pk = ? AND field = 'layman'")));
     q.addBindValue(*pk);

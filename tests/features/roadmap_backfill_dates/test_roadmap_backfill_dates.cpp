@@ -23,6 +23,7 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <gtest/gtest.h>
 
@@ -253,7 +254,7 @@ Dates datesOf(qint64 projectId, const QString &id) {
     Dates d;
     auto store = openStore(RoadmapStore::Access::Interactive);
     if (!store) return d;
-    QSqlQuery q(store->db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(*store));
     q.prepare(QStringLiteral(
         "SELECT created, last_modified, shipped FROM item "
         "WHERE project_id = ? AND id = ?"));

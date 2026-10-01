@@ -19,6 +19,7 @@
 #include "roadmapparse.h"
 #include "roadmapsource.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -188,7 +189,7 @@ QList<int> rowCounts(const QString &storePath) {
     if (!store)
         return counts;
     for (const QString &table : rowTables()) {
-        QSqlQuery q(store->db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(*store));
         if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM %1").arg(table)) || !q.next()) {
             ADD_FAILURE() << "count " << table.toStdString() << ": "
                           << q.lastError().text().toStdString();
@@ -632,14 +633,14 @@ TEST(RoadmapMigrateVerb, Inv5OneStampPerCall) {
 
     auto store = openStore(storePath, RoadmapStore::Access::Interactive);
     ASSERT_NE(store, nullptr);
-    QSqlQuery q(store->db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(*store));
     ASSERT_TRUE(q.exec(QStringLiteral(
         "SELECT COUNT(DISTINCT changed_at) FROM history WHERE changed_at = '%1'")
                            .arg(second.changedAt)));
     ASSERT_TRUE(q.next());
     EXPECT_EQ(q.value(0).toInt(), 1);
 
-    QSqlQuery all(store->db());
+    QSqlQuery all(RoadmapStoreTestAccess::db(*store));
     ASSERT_TRUE(all.exec(QStringLiteral("SELECT COUNT(DISTINCT changed_at) FROM history")));
     ASSERT_TRUE(all.next());
     EXPECT_EQ(all.value(0).toInt(), 1)

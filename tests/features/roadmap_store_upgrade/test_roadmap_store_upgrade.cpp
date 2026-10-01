@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QFile>
 #include <QIODevice>
@@ -48,14 +49,14 @@ struct Fixture {
 // on a number that was never the point — the same class of stale constant the
 // invariants themselves are about.
 int userVersion(RoadmapStore &s) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (q.exec(QStringLiteral("PRAGMA user_version")) && q.next())
         return q.value(0).toInt();
     return -1;
 }
 
 bool hasColumn(RoadmapStore &s, const QString &table, const QString &column) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (!q.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table)))
         return false;
     while (q.next())
@@ -65,7 +66,7 @@ bool hasColumn(RoadmapStore &s, const QString &table, const QString &column) {
 }
 
 bool hasIndex(RoadmapStore &s, const QString &name) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     q.prepare(QStringLiteral(
         "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = ?"));
     q.addBindValue(name);
@@ -423,7 +424,7 @@ TEST(RoadmapStoreUpgrade, Inv1ClimbsAscendingAndStampsOnce) {
 
     QString err;
     ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
-    EXPECT_TRUE(RoadmapStore::applyUpgrades(f.store.db(), 1, 3, ladder, &err))
+    EXPECT_TRUE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 1, 3, ladder, &err))
         << err.toStdString();
     EXPECT_TRUE(hasColumn(f.store, QStringLiteral("project"), QStringLiteral("up_marker")));
     EXPECT_TRUE(hasIndex(f.store, QStringLiteral("idx_up_marker")));
@@ -440,7 +441,7 @@ TEST(RoadmapStoreUpgrade, Inv2MissingRungRefusedBeforeAnythingRuns) {
     ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
 
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), 1, 2, {}, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 1, 2, {}, &err));
     EXPECT_TRUE(err.contains(QStringLiteral("version 2"))) << err.toStdString();
     EXPECT_TRUE(namesBothVersions(err, 1, 2));
     EXPECT_EQ(userVersion(f.store), RoadmapStore::kSchemaVersion);
@@ -461,7 +462,7 @@ TEST(RoadmapStoreUpgrade, Inv2DuplicateRungRefusedBeforeAnythingRuns) {
         Upgrade{2, {QStringLiteral("ALTER TABLE project ADD COLUMN up_other TEXT")}},
     };
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), 1, 2, ladder, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 1, 2, ladder, &err));
     EXPECT_TRUE(err.contains(QStringLiteral("version 2"))) << err.toStdString();
     EXPECT_TRUE(namesBothVersions(err, 1, 2));
     EXPECT_FALSE(hasColumn(f.store, QStringLiteral("project"), QStringLiteral("up_marker")));
@@ -484,7 +485,7 @@ TEST(RoadmapStoreUpgrade, Inv2LaterMissingRungStopsTheEarlierOne) {
         Upgrade{2, {QStringLiteral("ALTER TABLE project ADD COLUMN up_marker TEXT")}},
     };
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), 1, 3, ladder, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 1, 3, ladder, &err));
     EXPECT_TRUE(err.contains(QStringLiteral("version 3"))) << err.toStdString();
     EXPECT_TRUE(namesBothVersions(err, 1, 3));
     EXPECT_FALSE(hasColumn(f.store, QStringLiteral("project"), QStringLiteral("up_marker")))
@@ -508,7 +509,7 @@ TEST(RoadmapStoreUpgrade, Inv3RungFailureLeavesNothingBehind) {
                  QStringLiteral("THIS IS NOT SQL")}},
     };
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), 1, 2, ladder, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 1, 2, ladder, &err));
     EXPECT_TRUE(namesBothVersions(err, 1, 2));
 
     ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
@@ -616,14 +617,14 @@ TEST(RoadmapStoreUpgrade, Inv7FromBelowOneRefusesLegibly) {
     ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
 
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), 0, 1, {}, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 0, 1, {}, &err));
     EXPECT_TRUE(namesBothVersions(err, 0, 1));
     EXPECT_EQ(userVersion(f.store), RoadmapStore::kSchemaVersion);
 
     // A corrupt pragma is representable — user_version is signed — and this is
     // the arm createSchema()'s `!= 0` guard routes it to instead of the DDL.
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), -3, 1, {}, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), -3, 1, {}, &err));
     EXPECT_TRUE(namesBothVersions(err, -3, 1));
 
     ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
@@ -645,13 +646,13 @@ TEST(RoadmapStoreUpgrade, Inv7FailedStampRefusesLegibly) {
                  QStringLiteral("PRAGMA query_only = 1")}},
     };
     err.clear();
-    EXPECT_FALSE(RoadmapStore::applyUpgrades(f.store.db(), 1, 2, ladder, &err));
+    EXPECT_FALSE(RoadmapStore::applyUpgrades(RoadmapStoreTestAccess::db(f.store), 1, 2, ladder, &err));
     EXPECT_TRUE(namesBothVersions(err, 1, 2));
     EXPECT_EQ(userVersion(f.store), RoadmapStore::kSchemaVersion);
 
     // Unlatch before the rollback: the latch is connection-scoped and would
     // otherwise outlive this test's transaction.
-    QSqlQuery(f.store.db()).exec(QStringLiteral("PRAGMA query_only = 0"));
+    QSqlQuery(RoadmapStoreTestAccess::db(f.store)).exec(QStringLiteral("PRAGMA query_only = 0"));
     ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
 }
 
@@ -681,8 +682,8 @@ TEST(RoadmapStoreUpgrade, Inv8DdlBuiltAndClimbedStoresMatch) {
         QString err;
         ASSERT_TRUE(fresh.open(&err)) << err.toStdString();
         ASSERT_EQ(userVersion(fresh), RoadmapStore::kSchemaVersion);
-        ddlBuilt     = schemaStatements(fresh.db(), &normaliseDdl);
-        ddlBuiltWeak = schemaStatements(fresh.db(), &collapseWhitespaceOnly);
+        ddlBuilt     = schemaStatements(RoadmapStoreTestAccess::db(fresh), &normaliseDdl);
+        ddlBuiltWeak = schemaStatements(RoadmapStoreTestAccess::db(fresh), &collapseWhitespaceOnly);
     }
 
     // (2) The climbed store — seeded at version 1, then opened by this build,
@@ -695,8 +696,8 @@ TEST(RoadmapStoreUpgrade, Inv8DdlBuiltAndClimbedStoresMatch) {
         QString err;
         ASSERT_TRUE(store.open(&err)) << err.toStdString();
         ASSERT_EQ(userVersion(store), RoadmapStore::kSchemaVersion);
-        climbed     = schemaStatements(store.db(), &normaliseDdl);
-        climbedWeak = schemaStatements(store.db(), &collapseWhitespaceOnly);
+        climbed     = schemaStatements(RoadmapStoreTestAccess::db(store), &normaliseDdl);
+        climbedWeak = schemaStatements(RoadmapStoreTestAccess::db(store), &collapseWhitespaceOnly);
     }
 
     ASSERT_FALSE(ddlBuilt.isEmpty());

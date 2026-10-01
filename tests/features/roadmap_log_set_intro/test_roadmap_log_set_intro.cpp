@@ -11,6 +11,7 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <gtest/gtest.h>
 
@@ -218,7 +219,7 @@ TEST(RoadmapLogSetIntro, Ants5095StoreErrorIsNotReportedAsUnregistered) {
     {
         auto store = openStore(RoadmapStore::Access::Bulk);
         ASSERT_TRUE(store);
-        QSqlQuery q(store->db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(*store));
         ASSERT_TRUE(q.exec(QStringLiteral("ALTER TABLE project RENAME TO project_gone")))
             << q.lastError().text().toStdString();
     }

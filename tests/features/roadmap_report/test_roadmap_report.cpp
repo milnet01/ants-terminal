@@ -17,6 +17,7 @@
 
 #include "roadmapclock.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDate>
 #include <QDir>
@@ -71,7 +72,7 @@ struct Fixture {
     }
 
     int scalar(const QString &sql) {
-        QSqlQuery q(store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(store));
         EXPECT_TRUE(q.exec(sql)) << sql.toStdString();
         EXPECT_TRUE(q.next());
         return q.value(0).toInt();

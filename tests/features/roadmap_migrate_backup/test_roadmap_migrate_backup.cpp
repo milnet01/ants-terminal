@@ -11,6 +11,7 @@
 
 #include "roadmapmigrateverb.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -45,7 +46,7 @@ QString readProbe(const QString &path, const QString &connName) {
 }
 
 void writeProbe(RoadmapStore &store, const QString &value, bool create) {
-    QSqlQuery q(store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(store));
     // Braced: ASSERT_TRUE expands to an if/else, so an unbraced body here is a
     // dangling else.
     if (create) {

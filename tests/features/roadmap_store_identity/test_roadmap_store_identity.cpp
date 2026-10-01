@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
 #include <QSqlError>
@@ -107,7 +108,7 @@ TEST(RoadmapStoreIdentity, Inv3GeneratedFoldRejectsDirectWrite) {
     const qint64 p = f.project(QStringLiteral("alpha"));
     const qint64 s = f.section(p);
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral(
         "INSERT INTO item (project_id, id, id_fold, id_origin, status, headline, "
         " kind, source) VALUES (?, 'Zz-1', 'WRONG', 'parsed', 'planned', 'h', "
@@ -119,7 +120,7 @@ TEST(RoadmapStoreIdentity, Inv3GeneratedFoldRejectsDirectWrite) {
     // And the generated value is the fold of what was actually written.
     ASSERT_TRUE(f.store.putItem(f.item(p, s, QStringLiteral("Sh-1"), 0), &err).has_value())
         << err.toStdString();
-    QSqlQuery r(f.store.db());
+    QSqlQuery r(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(r.exec(QStringLiteral("SELECT id, id_fold FROM item")));
     ASSERT_TRUE(r.next());
     EXPECT_EQ(r.value(0).toString().toStdString(), std::string("Sh-1"));
@@ -140,7 +141,7 @@ TEST(RoadmapStoreIdentity, Inv4OffGrammarIdStoredVerbatim) {
                     .has_value())
         << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral("SELECT id, id_origin FROM item")));
     ASSERT_TRUE(q.next());
     EXPECT_EQ(q.value(0).toString().toStdString(), raw.toStdString())
@@ -167,7 +168,7 @@ TEST(RoadmapStoreIdentity, Inv4SynthesisedIsDistinctFromQuarantined) {
         << err.toStdString();
 
     // And the enum is closed — a fourth value is refused (INV-11's id_origin leg).
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral(
         "INSERT INTO item (project_id, id, id_origin, status, headline, kind, source) "
         "VALUES (?, 'X-1', 'guessed', 'planned', 'h', 'implement', 'test')"));

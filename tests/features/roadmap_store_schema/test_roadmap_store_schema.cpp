@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
 #include <QFile>
@@ -18,6 +19,13 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+
+// ANTS-3819 — the raw handle is private: ordinary code cannot reach it, only
+// the export and RoadmapStoreTestAccess can.
+template <typename T>
+concept HasPublicDb = requires(T &s) { s.db(); };
+static_assert(!HasPublicDb<RoadmapStore>,
+              "RoadmapStore::db() must not be publicly accessible");
 
 namespace {
 
@@ -126,7 +134,7 @@ TEST(RoadmapStoreSchema, Inv8ProjectKeyedOnCanonicalRoot) {
     // (c) a root that cannot be canonicalised is REFUSED, and writes no row.
     // canonicalFilePath() returns "" for a non-existent path; stored unchecked,
     // '' under UNIQUE fuses every missing root into one project.
-    QSqlQuery before(f.store.db());
+    QSqlQuery before(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(before.exec(QStringLiteral("SELECT COUNT(*) FROM project")));
     ASSERT_TRUE(before.next());
     const int rowsBefore = before.value(0).toInt();
@@ -141,7 +149,7 @@ TEST(RoadmapStoreSchema, Inv8ProjectKeyedOnCanonicalRoot) {
                                       QStringLiteral("B"), QStringLiteral("gb"), &err)
                      .has_value());
 
-    QSqlQuery after(f.store.db());
+    QSqlQuery after(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(after.exec(QStringLiteral("SELECT COUNT(*) FROM project")));
     ASSERT_TRUE(after.next());
     EXPECT_EQ(after.value(0).toInt(), rowsBefore)
@@ -159,7 +167,7 @@ TEST(RoadmapStoreSchema, Inv11ClosedEnumsRejectedByTheEngine) {
     const qint64 b = f.item(p, s, QStringLiteral("A-2"), 1);
 
     const auto refuses = [&](const QString &sql) {
-        QSqlQuery q(f.store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
         q.prepare(sql);
         q.addBindValue(p);
         return !q.exec();
@@ -179,13 +187,13 @@ TEST(RoadmapStoreSchema, Inv11ClosedEnumsRejectedByTheEngine) {
     EXPECT_TRUE(refuses(base.arg(QStringLiteral(", priority"), QStringLiteral(
         "'parsed', 'planned', 'h', 'implement', 't', 9")))) << "priority range";
 
-    QSqlQuery e(f.store.db());
+    QSqlQuery e(RoadmapStoreTestAccess::db(f.store));
     e.prepare(QStringLiteral(
         "INSERT INTO element (section_id, position, kind, payload) VALUES (?, 99, 'nonsense', 'x')"));
     e.addBindValue(s);
     EXPECT_FALSE(e.exec()) << "element.kind enum";
 
-    QSqlQuery r(f.store.db());
+    QSqlQuery r(RoadmapStoreTestAccess::db(f.store));
     r.prepare(QStringLiteral(
         "INSERT INTO relationship (type, src_pk, dst_pk) VALUES ('nonsense', ?, ?)"));
     r.addBindValue(a);
@@ -212,7 +220,7 @@ TEST(RoadmapStoreSchema, Inv6RelatesToNormalisedOnStableIdentity) {
     ASSERT_TRUE(f.store.relateItems(QStringLiteral("relates-to"), low, high, &err))
         << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral(
         "SELECT COUNT(*), MIN(src_pk) FROM relationship WHERE type = 'relates-to'")));
     ASSERT_TRUE(q.next());
@@ -239,7 +247,7 @@ TEST(RoadmapStoreSchema, Inv6CrossProjectKeepsLocalAsSrc) {
                                            QStringLiteral("AAA-1"), &err))
         << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral(
         "SELECT src_pk, dst_project, dst_id_fold, dst_pk FROM relationship")));
     ASSERT_TRUE(q.next());
@@ -266,7 +274,7 @@ TEST(RoadmapStoreSchema, Inv10ProvenanceIsPerField) {
                                      QStringLiteral("edited"), &err))
         << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral("SELECT headline, provenance FROM item WHERE item_pk = ?"));
     q.addBindValue(pk);
     ASSERT_TRUE(q.exec());
@@ -319,7 +327,7 @@ TEST(RoadmapStoreSchema, Inv21JsonColumnsAreWritable) {
     const auto pk = f.store.putItem(w, &err);
     ASSERT_TRUE(pk.has_value()) << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral("SELECT lanes, evidence, extras FROM item WHERE item_pk = ?"));
     q.addBindValue(*pk);
     ASSERT_TRUE(q.exec());
@@ -361,7 +369,7 @@ TEST(RoadmapStoreSchema, Inv21JsonColumnsAreEditable) {
                                      QStringLiteral(R"({"b":1,"a":2})"), &err))
         << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral(
         "SELECT lanes, evidence, extras, provenance FROM item WHERE item_pk = ?"));
     q.addBindValue(pk);
@@ -418,7 +426,7 @@ TEST(RoadmapStoreSchema, Inv14LosslessBelowTheCap) {
             << "revision " << i << ": " << err.toStdString();
     }
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM history")));
     ASSERT_TRUE(q.next());
     EXPECT_EQ(q.value(0).toInt(), 60)
@@ -495,7 +503,7 @@ TEST(RoadmapStoreSchema, Inv20ItemFiledExactlyOnce) {
     const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
 
     // (a) exactly one element, in the section written to.
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral(
         "SELECT COUNT(*), MIN(section_id) FROM element WHERE kind = 'item' AND item_pk = ?"));
     q.addBindValue(pk);
@@ -506,7 +514,7 @@ TEST(RoadmapStoreSchema, Inv20ItemFiledExactlyOnce) {
 
     // (b) a SECOND filing is refused by elem_item_uq. A section_id column on
     // item could not express this at all.
-    QSqlQuery dup(f.store.db());
+    QSqlQuery dup(RoadmapStoreTestAccess::db(f.store));
     dup.prepare(QStringLiteral(
         "INSERT INTO element (section_id, position, kind, item_pk) VALUES (?, 77, 'item', ?)"));
     dup.addBindValue(s);
@@ -528,7 +536,7 @@ TEST(RoadmapStoreSchema, Inv20ItemFiledExactlyOnce) {
     err.clear();
     EXPECT_FALSE(f.store.putItem(w, &err).has_value());
 
-    QSqlQuery orphan(f.store.db());
+    QSqlQuery orphan(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(orphan.exec(QStringLiteral("SELECT COUNT(*) FROM item WHERE id = 'A-2'")));
     ASSERT_TRUE(orphan.next());
     EXPECT_EQ(orphan.value(0).toInt(), 0)
@@ -572,7 +580,7 @@ TEST(RoadmapStoreSchema, Inv22BeginRefusesToNest) {
     EXPECT_TRUE(f.store.commit(&err)) << err.toStdString();
     EXPECT_FALSE(f.store.inTransaction());
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral("SELECT COUNT(*) FROM item WHERE item_pk = ?"));
     q.addBindValue(pk);
     ASSERT_TRUE(q.exec());
@@ -611,12 +619,12 @@ TEST(RoadmapStoreSchema, Inv23PutItemNeverRollsBackATransactionItDoesNotOwn) {
     EXPECT_GT(inner, 0);
     ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
 
-    QSqlQuery gone(f.store.db());
+    QSqlQuery gone(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(gone.exec(QStringLiteral("SELECT COUNT(*) FROM item WHERE id = 'A-2'")));
     ASSERT_TRUE(gone.next());
     EXPECT_EQ(gone.value(0).toInt(), 0) << "putItem() must not commit inside a "
                                            "caller's transaction";
-    QSqlQuery goneElem(f.store.db());
+    QSqlQuery goneElem(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(goneElem.exec(QStringLiteral(
         "SELECT COUNT(*) FROM element WHERE position = 1 AND kind = 'item'")));
     ASSERT_TRUE(goneElem.next());
@@ -649,7 +657,7 @@ TEST(RoadmapStoreSchema, Inv23PutItemNeverRollsBackATransactionItDoesNotOwn) {
     EXPECT_GT(after, 0);
     ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
 
-    QSqlQuery survivors(f.store.db());
+    QSqlQuery survivors(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(survivors.exec(QStringLiteral("SELECT COUNT(*) FROM item")));
     ASSERT_TRUE(survivors.next());
     EXPECT_EQ(survivors.value(0).toInt(), 1)
@@ -672,7 +680,7 @@ TEST(RoadmapStoreSchema, Inv24JsonWritersCanonicaliseAndProseWritersDoNot) {
     legend.insert(QStringLiteral("a"), QStringLiteral("planned"));
     ASSERT_TRUE(f.store.setLegend(p, legend, &err)) << err.toStdString();
 
-    QSqlQuery lq(f.store.db());
+    QSqlQuery lq(RoadmapStoreTestAccess::db(f.store));
     lq.prepare(QStringLiteral("SELECT legend FROM project WHERE project_id = ?"));
     lq.addBindValue(p);
     ASSERT_TRUE(lq.exec());
@@ -693,7 +701,7 @@ TEST(RoadmapStoreSchema, Inv24JsonWritersCanonicaliseAndProseWritersDoNot) {
     ASSERT_TRUE(f.store.addElement(s, 1, QStringLiteral("narration"), prose, &err))
         << err.toStdString();
 
-    QSqlQuery eq(f.store.db());
+    QSqlQuery eq(RoadmapStoreTestAccess::db(f.store));
     eq.prepare(QStringLiteral(
         "SELECT kind, payload FROM element WHERE section_id = ? ORDER BY position"));
     eq.addBindValue(s);
@@ -710,7 +718,7 @@ TEST(RoadmapStoreSchema, Inv24JsonWritersCanonicaliseAndProseWritersDoNot) {
     // setSectionIntro() — prose, verbatim, likewise.
     const QString intro = QStringLiteral("  Two  spaces and {\"b\":1,\"a\":2}\n");
     ASSERT_TRUE(f.store.setSectionIntro(s, intro, &err)) << err.toStdString();
-    QSqlQuery iq(f.store.db());
+    QSqlQuery iq(RoadmapStoreTestAccess::db(f.store));
     iq.prepare(QStringLiteral("SELECT intro FROM section WHERE section_id = ?"));
     iq.addBindValue(s);
     ASSERT_TRUE(iq.exec());
@@ -761,7 +769,7 @@ TEST(RoadmapStoreSchema, Inv25FilingPathsAreClosed) {
         << err.toStdString();
     ASSERT_TRUE(f.store.unfileItem(pk, &err)) << err.toStdString();
 
-    QSqlQuery kept(f.store.db());
+    QSqlQuery kept(RoadmapStoreTestAccess::db(f.store));
     kept.prepare(QStringLiteral("SELECT COUNT(*) FROM element WHERE section_id = ?"));
     kept.addBindValue(s);
     ASSERT_TRUE(kept.exec());
@@ -775,7 +783,7 @@ TEST(RoadmapStoreSchema, Inv25FilingPathsAreClosed) {
     err.clear();
     ASSERT_TRUE(f.store.fileItem(pk, s, 3, &err)) << err.toStdString();
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     q.prepare(QStringLiteral(
         "SELECT COUNT(*), MIN(position) FROM element WHERE kind = 'item' AND item_pk = ?"));
     q.addBindValue(pk);
@@ -830,7 +838,7 @@ TEST(RoadmapStoreSchema, Inv26SourcePathReadableThroughSectionRow) {
     EXPECT_EQ(*row->sourcePath, rel);
 
     // The oracle is raw SQL, not the writer.
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral(
         "SELECT source_path FROM section WHERE slug = '0-6-features'")));
     ASSERT_TRUE(q.next());
@@ -896,7 +904,7 @@ TEST(RoadmapStoreSchema, Inv27SchemaVersionStillOne) {
     Fixture f;
     QString err;
     ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral("PRAGMA user_version")));
     ASSERT_TRUE(q.next());
     EXPECT_EQ(q.value(0).toInt(), RoadmapStore::kSchemaVersion)
@@ -921,7 +929,7 @@ TEST(RoadmapStoreSchema, Ants3815Inv1SourceFormatColumn) {
     // unsatisfiable against a correct column.
     bool found = false;
     {
-        QSqlQuery q(f.store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
         ASSERT_TRUE(q.exec(QStringLiteral("PRAGMA table_info(project)")));
         while (q.next()) {
             if (q.value(1).toString() != QStringLiteral("source_format"))

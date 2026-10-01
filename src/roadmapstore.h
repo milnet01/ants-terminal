@@ -18,6 +18,9 @@
 #include <cstdint>
 #include <optional>
 
+namespace RoadmapExport { struct StoreHandle; }
+struct RoadmapStoreTestAccess;
+
 class RoadmapStore {
 public:
     // INV-14 — the history bound is store-wide and INJECTABLE. The production
@@ -168,7 +171,6 @@ public:
     // NOT EXISTS design the invariant forbids passes its own test.
     bool createdSchema() const { return m_createdSchema; }
     QString path() const { return m_path; }
-    QSqlDatabase &db() { return m_db; }
 
     // ANTS-3781 § 2.1 — the upgrade ladder. One rung of it: the statements that
     // take a store from version `to - 1` to version `to`, in the order given.
@@ -1120,6 +1122,16 @@ public:
     static QString canonicalJson(const QJsonValue &o);
 
 private:
+    // ANTS-3819 — the raw handle writes around every invariant the typed
+    // surface enforces (element density, filing index, provenance, canonical
+    // JSON), so it is private. Two callers are trusted with it: the export /
+    // import pair, which is the store's own rebuild path and needs a deferred
+    // read transaction and bulk INSERTs the typed surface does not offer; and
+    // tests that assert the schema itself, which is the job raw SQL is for.
+    friend struct RoadmapExport::StoreHandle;
+    friend struct RoadmapStoreTestAccess;
+    QSqlDatabase &db() { return m_db; }
+
     bool applyPragmas(QString *error);
     bool enableWal(QString *error);
     bool createSchema(QString *error);

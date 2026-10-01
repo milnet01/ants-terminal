@@ -23,6 +23,13 @@
 
 #include <algorithm>
 
+// ANTS-3819 — the export's route to the store's private raw handle. The
+// export / import pair is the store's rebuild path, so it is the one
+// production caller trusted with it (see RoadmapStore::db()).
+struct RoadmapExport::StoreHandle {
+    static QSqlDatabase &db(RoadmapStore &store) { return store.db(); }
+};
+
 namespace {
 
 // § 7.3 of roadmap-data-model.md, in its DECLARED order — which is what § 2.4
@@ -680,7 +687,7 @@ bool writeHistory(QSqlDatabase &db, const QList<ItemRef> &foldOrder, QIODevice *
 // helpers now go through RoadmapStore's readers (INV-11). `db` is still bound
 // here so every other helper's call is unchanged.
 bool writeAll(RoadmapStore &store, const QString &slug, QIODevice *out, QString *error) {
-    QSqlDatabase &db = store.db();
+    QSqlDatabase &db = RoadmapExport::StoreHandle::db(store);
     qint64 projectId = 0;
     QString legendText;
     if (!writeMeta(store, slug, out, &projectId, &legendText, error))
@@ -748,7 +755,7 @@ bool RoadmapExport::writeProject(RoadmapStore &store, const QString &exportSlug,
                                  QString *error) {
     if (!store.isOpen())
         return fail(error, QStringLiteral("store is not open"));
-    QSqlDatabase db = store.db();
+    QSqlDatabase db = RoadmapExport::StoreHandle::db(store);
 
     // § 2.6 — every read inside ONE deferred transaction. Without it a commit
     // landing mid-export tears the file into half pre-change and half
@@ -796,7 +803,7 @@ bool RoadmapExport::exportProject(RoadmapStore &store, const QString &exportSlug
 bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *error) {
     if (!store.isOpen())
         return fail(error, QStringLiteral("store is not open"));
-    QSqlDatabase db = store.db();
+    QSqlDatabase db = RoadmapExport::StoreHandle::db(store);
 
     // BEGIN IMMEDIATE, never plain BEGIN (ANTS-3756 § 2.5): a deferred
     // transaction that reads and then writes must upgrade to a write lock, and

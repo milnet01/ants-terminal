@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapmigrateload.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
 #include <QDirIterator>
@@ -100,14 +101,14 @@ struct Fixture {
     }
 
     int count(const QString &table) {
-        QSqlQuery q(store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(store));
         if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + table) || !q.next())
             return -1;
         return q.value(0).toInt();
     }
 
     QString scalar(const QString &sql) {
-        QSqlQuery q(store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(store));
         if (!q.exec(sql) || !q.next())
             return QStringLiteral("<query failed>");
         return q.value(0).toString();
@@ -558,7 +559,7 @@ TEST(RoadmapMigrateLoad, Inv18ReferencedOrKeptItemIsRetained) {
     QVector<PlannedItem> items = fourItems();
     ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
 
-    QSqlQuery q(f.store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
     ASSERT_TRUE(q.exec(QStringLiteral(
         "INSERT INTO relationship (type, src_pk, dst_pk) SELECT 'relates-to', "
         "(SELECT item_pk FROM item WHERE id = 'A-1'), "
@@ -847,7 +848,7 @@ struct CopiedRoot {
 // A source_path read straight out of SQL, so the assertion's oracle is the
 // column rather than the writer's idea of it.
 QString sqlSourcePath(RoadmapStore &store, const QString &slug) {
-    QSqlQuery q(store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(store));
     q.prepare(QStringLiteral("SELECT source_path FROM section WHERE slug = ?"));
     q.addBindValue(slug);
     if (!q.exec() || !q.next()) return QStringLiteral("<no row>");
@@ -898,7 +899,7 @@ TEST(roadmap_migrate_load, Ants3766Inv9ArchiveItemsSurviveALiveEdit) {
 
     // Every archive item must still be the row the first load wrote.
     for (const QString &id : std::as_const(archiveIds)) {
-        QSqlQuery q(store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(store));
         q.prepare(QStringLiteral("SELECT COUNT(*) FROM item WHERE id_fold = ?"));
         q.addBindValue(id);
         ASSERT_TRUE(q.exec() && q.next());
@@ -941,7 +942,7 @@ TEST(roadmap_migrate_load, Ants3766Inv10CollisionPlanIsRefused) {
            "merge it is meant to catch";
     for (const QString &t : {QStringLiteral("project"), QStringLiteral("section"),
                              QStringLiteral("item")}) {
-        QSqlQuery q(store.db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(store));
         ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + t) && q.next());
         EXPECT_EQ(q.value(0).toInt(), 0) << t.toStdString() << " must be empty";
     }
@@ -1341,7 +1342,7 @@ TEST(roadmap_migrate_load, Ants3782Inv28UnplaceableSourceRefusesTheProject) {
                "inside the fix for it";
         for (const QString &t : {QStringLiteral("project"), QStringLiteral("section"),
                                  QStringLiteral("item")}) {
-            QSqlQuery q(store.db());
+            QSqlQuery q(RoadmapStoreTestAccess::db(store));
             ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + t) && q.next());
             EXPECT_EQ(q.value(0).toInt(), 0)
                 << "INV-28 (" << leg.what << "): " << t.toStdString()
@@ -1426,7 +1427,7 @@ TEST(roadmap_migrate_load, DISABLED_CorpusArchiveRun) {
            r2.elementsWritten);
 
     // What the archives' sections actually stored.
-    QSqlQuery q(store.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(store));
     ASSERT_TRUE(q.exec(QStringLiteral(
         "SELECT slug, source_path FROM section WHERE source_path IS NOT NULL "
         "ORDER BY slug")));

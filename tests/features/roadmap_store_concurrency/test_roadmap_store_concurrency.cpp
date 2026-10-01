@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -33,7 +34,7 @@ constexpr int kOpenFailed = 12;
 
 QString tableList(RoadmapStore &s) {
     QStringList names;
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (q.exec(QStringLiteral(
             "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")))
         while (q.next())
@@ -42,21 +43,21 @@ QString tableList(RoadmapStore &s) {
 }
 
 int userVersion(RoadmapStore &s) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (q.exec(QStringLiteral("PRAGMA user_version")) && q.next())
         return q.value(0).toInt();
     return -1;
 }
 
 int busyTimeout(RoadmapStore &s) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (q.exec(QStringLiteral("PRAGMA busy_timeout")) && q.next())
         return q.value(0).toInt();
     return -1;
 }
 
 qint64 pragmaValue(RoadmapStore &s, const QString &name) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (q.exec(QStringLiteral("PRAGMA ") + name) && q.next())
         return q.value(0).toLongLong();
     return -12345;  // distinguishable from a pragma that legitimately reads -1
@@ -226,10 +227,10 @@ TEST(RoadmapStoreConcurrency, OpenDoesNotContendWithAnActiveWriter) {
         << err.toStdString();
 
     {
-        QSqlQuery b(holder.db());
+        QSqlQuery b(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(b.exec(QStringLiteral("BEGIN IMMEDIATE")))
             << b.lastError().text().toStdString();
-        QSqlQuery w(holder.db());
+        QSqlQuery w(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(w.exec(QStringLiteral("UPDATE project SET name = 'held'")))
             << w.lastError().text().toStdString();
     }
@@ -246,7 +247,7 @@ TEST(RoadmapStoreConcurrency, OpenDoesNotContendWithAnActiveWriter) {
     EXPECT_LT(clock.elapsed(), 1000)
         << "and it must not have got there by waiting out a retry loop";
 
-    QSqlQuery r(holder.db());
+    QSqlQuery r(RoadmapStoreTestAccess::db(holder));
     ASSERT_TRUE(r.exec(QStringLiteral("ROLLBACK")));
 }
 
@@ -261,13 +262,13 @@ TEST(RoadmapStoreConcurrency, NewerStoreRefusedWithoutWaitingOnWriter) {
     RoadmapStore holder(path);
     ASSERT_TRUE(holder.open(&err)) << err.toStdString();
     {
-        QSqlQuery v(holder.db());
+        QSqlQuery v(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(v.exec(QStringLiteral("PRAGMA user_version = %1")
                                .arg(RoadmapStore::kSchemaVersion + 1)));
-        QSqlQuery b(holder.db());
+        QSqlQuery b(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(b.exec(QStringLiteral("BEGIN IMMEDIATE")))
             << b.lastError().text().toStdString();
-        QSqlQuery w(holder.db());
+        QSqlQuery w(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(w.exec(QStringLiteral("PRAGMA user_version = %1")
                                .arg(RoadmapStore::kSchemaVersion + 1)));
     }
@@ -281,7 +282,7 @@ TEST(RoadmapStoreConcurrency, NewerStoreRefusedWithoutWaitingOnWriter) {
     EXPECT_LT(clock.elapsed(), 1000)
         << "the refusal waited for the write lock instead of reading user_version";
 
-    QSqlQuery r(holder.db());
+    QSqlQuery r(RoadmapStoreTestAccess::db(holder));
     ASSERT_TRUE(r.exec(QStringLiteral("ROLLBACK")));
 }
 
@@ -330,16 +331,16 @@ TEST(RoadmapStoreConcurrency, Inv16BlockedWriteFailsAndWritesNothing) {
     // THIS connection exercises the policy — fail, report, write nothing —
     // without making the suite wait five seconds to re-assert the constant.
     {
-        QSqlQuery t(blocked.db());
+        QSqlQuery t(RoadmapStoreTestAccess::db(blocked));
         ASSERT_TRUE(t.exec(QStringLiteral("PRAGMA busy_timeout = 100")));
     }
 
     // A real write, not a bare BEGIN: the lock must be held, not merely reserved.
     {
-        QSqlQuery b(holder.db());
+        QSqlQuery b(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(b.exec(QStringLiteral("BEGIN IMMEDIATE")))
             << b.lastError().text().toStdString();
-        QSqlQuery w(holder.db());
+        QSqlQuery w(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(w.exec(QStringLiteral("UPDATE project SET name = 'held'")))
             << w.lastError().text().toStdString();
     }
@@ -361,11 +362,11 @@ TEST(RoadmapStoreConcurrency, Inv16BlockedWriteFailsAndWritesNothing) {
                                    "indistinguishable from one that never happened";
 
     {
-        QSqlQuery r(holder.db());
+        QSqlQuery r(RoadmapStoreTestAccess::db(holder));
         ASSERT_TRUE(r.exec(QStringLiteral("ROLLBACK")));
     }
 
-    QSqlQuery c(holder.db());
+    QSqlQuery c(RoadmapStoreTestAccess::db(holder));
     ASSERT_TRUE(c.exec(QStringLiteral("SELECT count(*) FROM item")));
     ASSERT_TRUE(c.next());
     EXPECT_EQ(c.value(0).toInt(), 0) << "a refused write may leave no row behind";

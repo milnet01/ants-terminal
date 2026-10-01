@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
 #include <QSqlDatabase>
@@ -62,7 +63,7 @@ constexpr const char *kNew = "2026-06-01T00:00:00Z";  // well after it
 constexpr const char *kCut = "2026-03-01T00:00:00Z";
 
 int rowCount(RoadmapStore &s, const QString &sql) {
-    QSqlQuery q(s.db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(s));
     if (!q.exec(sql) || !q.next())
         return -1;
     return q.value(0).toInt();
@@ -562,7 +563,7 @@ TEST(SessionMessage, Ants5499SendWaitsOutAConcurrentWriter) {
     ASSERT_GT(a, 0);
     ASSERT_GT(f.addProject(QStringLiteral("beta")), 0);
     {
-        QSqlQuery q(f.store->db());
+        QSqlQuery q(RoadmapStoreTestAccess::db(*f.store));
         ASSERT_TRUE(q.exec(QStringLiteral("CREATE TABLE race_probe (v INTEGER)")));
     }
 

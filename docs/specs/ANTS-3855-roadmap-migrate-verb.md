@@ -902,7 +902,9 @@ req)` with `storePath` inside a `QTemporaryDir` (INV-1 and INV-2(b) are
 source-greps). And because `run()` owns its store for the duration of the call
 and hands back only a `QJsonObject`, **a clause that inspects rows opens the
 test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
-`run()` returns**, querying through the public `RoadmapStore::db()`.
+`run()` returns**, querying through `RoadmapStoreTestAccess::db()`
+(`tests/_support/roadmapstoreaccess.h`; the raw handle is private since
+ANTS-3819).
 
 - **INV-1** — A non-test translation unit calls all three migration entry
   points, and only the verb's TU does. *Test:* source-grep in the feature test.

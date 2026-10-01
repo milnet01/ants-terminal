@@ -13,6 +13,7 @@
 #include "jsoncanonical.h"
 #include "roadmapexport.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QBuffer>
 #include <QDir>
@@ -242,7 +243,7 @@ qint64 addItem(RoadmapStore &s, qint64 project, qint64 section, int position, co
 // case — no legend, no id_prefix, every optional item column NULL — which is
 // what walks § 2.4's "omitted" column rather than its "always emitted" one.
 void buildFixture(RoadmapStore &s, const QString &rootDir) {
-    QSqlDatabase db = s.db();
+    QSqlDatabase db = RoadmapStoreTestAccess::db(s);
 
     // ---- alpha ----
     const qint64 alpha = addProject(s, rootDir, QStringLiteral("alpha"), QStringLiteral("Alpha"));
@@ -707,7 +708,7 @@ TEST(RoadmapExportRoundtrip, Inv2EveryRowAndColumnSurvives) {
     }
 
     QString why;
-    EXPECT_TRUE(inv2Diff(fx.store->db(), rebuilt.db(), inv2Substitutions(), &why))
+    EXPECT_TRUE(inv2Diff(RoadmapStoreTestAccess::db(*fx.store), RoadmapStoreTestAccess::db(rebuilt), inv2Substitutions(), &why))
         << why.toStdString();
 }
 
@@ -926,7 +927,7 @@ TEST(RoadmapExportRoundtrip, Ants3796Inv1DocumentOrderSurvivesTheRoundTrip) {
     ASSERT_TRUE(rebuilt.open(&err)) << err.toStdString();
     rebuildInto(rebuilt, jsonl);
 
-    EXPECT_EQ(sectionWalk(rebuilt, projectIdOf(rebuilt.db(), QStringLiteral("ord"))), want)
+    EXPECT_EQ(sectionWalk(rebuilt, projectIdOf(RoadmapStoreTestAccess::db(rebuilt), QStringLiteral("ord"))), want)
         << "INV-1: document order did not survive export → rebuild. A rebuild that reassigns "
            "section_id in (depth, slug) order and recomputes position from it yields "
            << emitted.join(',').toStdString();
@@ -949,7 +950,7 @@ TEST(RoadmapExportRoundtrip, Ants3796Inv2SourcePathSurvivesTheRoundTrip) {
     ASSERT_TRUE(rebuilt.open(&err)) << err.toStdString();
     rebuildInto(rebuilt, exportOf(live, QStringLiteral("ord")));
 
-    const qint64 p = projectIdOf(rebuilt.db(), QStringLiteral("ord"));
+    const qint64 p = projectIdOf(RoadmapStoreTestAccess::db(rebuilt), QStringLiteral("ord"));
     const auto archId = rebuilt.findSection(p, QStringLiteral("alpha"), &err);
     ASSERT_TRUE(archId.has_value()) << err.toStdString();
     const auto arch = rebuilt.readSection(*archId, &err);
@@ -984,7 +985,7 @@ TEST(RoadmapExportRoundtrip, Ants3796Inv3ColumnDiffFailsByDefaultOnAnUncarriedCo
         rebuildInto(rebuilt, exportOf(*fx.store, QLatin1String(slug)));
 
     QString why;
-    ASSERT_TRUE(inv2Diff(fx.store->db(), rebuilt.db(), inv2Substitutions(), &why))
+    ASSERT_TRUE(inv2Diff(RoadmapStoreTestAccess::db(*fx.store), RoadmapStoreTestAccess::db(rebuilt), inv2Substitutions(), &why))
         << "baseline: " << why.toStdString();
 
     // Leg 1 — an unsubstituted foreign-key rowid must FAIL, not be skipped.
@@ -993,7 +994,7 @@ TEST(RoadmapExportRoundtrip, Ants3796Inv3ColumnDiffFailsByDefaultOnAnUncarriedCo
     QHash<QString, QString> incomplete = inv2Substitutions();
     ASSERT_EQ(incomplete.remove(QStringLiteral("section.parent_id")), 1);
     why.clear();
-    EXPECT_FALSE(inv2Diff(fx.store->db(), rebuilt.db(), incomplete, &why))
+    EXPECT_FALSE(inv2Diff(RoadmapStoreTestAccess::db(*fx.store), RoadmapStoreTestAccess::db(rebuilt), incomplete, &why))
         << "a foreign-key rowid with no substitution entry was silently skipped, which is "
            "§ 2.5's own failure mode: the map stops being exhaustive as the schema grows";
     EXPECT_TRUE(why.contains(QStringLiteral("substitution map"))) << why.toStdString();
@@ -1001,9 +1002,9 @@ TEST(RoadmapExportRoundtrip, Ants3796Inv3ColumnDiffFailsByDefaultOnAnUncarriedCo
     // Leg 2 — a column the export does not carry. Added to the LIVE store only,
     // and AFTER the export, so no other rule can reject it first: not the
     // importer's strictness (INV-7), not the golden comparison.
-    sqlExec(fx.store->db(), QStringLiteral("ALTER TABLE section ADD COLUMN scratch TEXT"));
+    sqlExec(RoadmapStoreTestAccess::db(*fx.store), QStringLiteral("ALTER TABLE section ADD COLUMN scratch TEXT"));
     why.clear();
-    EXPECT_FALSE(inv2Diff(fx.store->db(), rebuilt.db(), inv2Substitutions(), &why))
+    EXPECT_FALSE(inv2Diff(RoadmapStoreTestAccess::db(*fx.store), RoadmapStoreTestAccess::db(rebuilt), inv2Substitutions(), &why))
         << "INV-3: breaks when the column list is a literal — the pre-ANTS-3796 diff passed "
            "here, which is how section.source_path went unnoticed for two specs";
     EXPECT_TRUE(why.contains(QStringLiteral("column sets differ")))
@@ -1085,7 +1086,7 @@ TEST(RoadmapExportRoundtrip, Ants3796Inv7ImporterRefusesAnIncompleteSectionRecor
         // IMMEDIATE and ROLLBACKs on failure, so this pins behaviour the code
         // already has and a future refactor could lose.
         for (const char *table : {"section", "project"}) {
-            QSqlQuery q(s.db());
+            QSqlQuery q(RoadmapStoreTestAccess::db(s));
             ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + QLatin1String(table)) &&
                         q.next());
             EXPECT_EQ(q.value(0).toInt(), 0)
@@ -1159,7 +1160,7 @@ TEST(RoadmapExportRoundtrip, Inv12PeakRssDeltaStaysUnderFourMiB) {
         for (int i = 0; i < kItems; ++i) {
             const qint64 pk =
                 addItem(seed, p, sect, i, QStringLiteral("BIG-%1").arg(i + 1, 4, 10, QChar('0')));
-            sqlExec(seed.db(), QStringLiteral("UPDATE item SET body = ? WHERE item_pk = ?"),
+            sqlExec(RoadmapStoreTestAccess::db(seed), QStringLiteral("UPDATE item SET body = ? WHERE item_pk = ?"),
                     {QString(kBodyBytes, QChar('a' + (i % 26))), pk});
         }
     }

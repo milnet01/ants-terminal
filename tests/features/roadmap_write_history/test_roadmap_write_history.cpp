@@ -18,6 +18,7 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <gtest/gtest.h>
 
@@ -185,7 +186,7 @@ QVector<HistRow> historyOf(qint64 itemPk) {
     QVector<HistRow> out;
     auto store = openStore(RoadmapStore::Access::Interactive);
     if (!store) return out;
-    QSqlQuery q(store->db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(*store));
     q.prepare(QStringLiteral(
         "SELECT changed_at, seq, field, old_value, new_value FROM history "
         "WHERE item_pk = ? ORDER BY changed_at, seq"));
@@ -211,7 +212,7 @@ QVector<HistRow> historyOf(qint64 itemPk) {
 int historyRowCount() {
     auto store = openStore(RoadmapStore::Access::Interactive);
     if (!store) return -1;
-    QSqlQuery q(store->db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(*store));
     if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM history")) || !q.next())
         return -1;
     return q.value(0).toInt();
@@ -220,7 +221,7 @@ int historyRowCount() {
 qint64 historySumBytes() {
     auto store = openStore(RoadmapStore::Access::Interactive);
     if (!store) return -1;
-    QSqlQuery q(store->db());
+    QSqlQuery q(RoadmapStoreTestAccess::db(*store));
     if (!q.exec(QStringLiteral(
             "SELECT COALESCE(SUM(length(field) + length(coalesce(old_value,'')) "
             "+ length(coalesce(new_value,''))), 0) FROM history")) || !q.next())
