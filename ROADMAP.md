@@ -38439,6 +38439,11 @@ against current source before filing.
   One defect filed from the render: it writes "Source: planned." onto bullets with
   no recorded provenance (36 such lines before, 399 after), materialising a default
   as though it were data.
+  Progress (2026-10-01): of the 19 items the 2026-08-08 tally listed as
+  open, 13 have shipped. Still open: ANTS-4065 (import mapping contract,
+  in progress), ANTS-3810, ANTS-3824, ANTS-3749, ANTS-3751 and
+  ANTS-3864. This project is migrated and in sync, so priority step 9 is
+  done here; step 8 is these six.
 
 - ✅ [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
   Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and
