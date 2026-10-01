@@ -83,6 +83,25 @@ case "$cmd" in
     *"grep"*"-v"*"ROADMAP.md"*|*"--exclude"*"ROADMAP.md"*) roadmap_read=0 ;;
 esac
 
+# CFG-0656 — roadmap_query answers for ONE project, this one. A grep over
+# other projects' roadmaps (`grep X */ROADMAP.md`, or a case-folding glob
+# like `*/[Rr][Oo][Aa][Dd][Mm][Aa][Pp].md`) has no verb to go to, so
+# blocking it is a refusal, not a redirect. Only a word that names THIS
+# project's file counts: `ROADMAP.md`, `./ROADMAP.md` or its absolute path.
+# `read -ra` splits on whitespace and expands no glob, so a pattern is
+# seen as the text it is; separators become spaces first so
+# `cat ROADMAP.md|grep x` still yields the bare word, and `-d ''` reads
+# past the first line of a multi-line command.
+roadmap_own=0
+read -r -d '' -a _words <<<"$(printf '%s' "$cmd" | tr '|;&()<>' '       ')" || :
+for _w in "${_words[@]}"; do
+    _w=${_w#[\"\']}; _w=${_w%[\"\']}
+    case "$_w" in
+        ROADMAP.md|./ROADMAP.md|"$ANTS_PROJECT_ROOT/ROADMAP.md") roadmap_own=1 ;;
+    esac
+done
+[ "$roadmap_own" -eq 1 ] || roadmap_read=0
+
 # ANTS-4517 — same false-positive shape, on the git branch. The diff pattern
 # below matched the phrase ANYWHERE in the command, so WRITING about a diff —
 # an echo, a heredoc, a sed replacement, this file's own comments — was

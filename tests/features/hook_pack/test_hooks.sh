@@ -213,6 +213,16 @@ if [ "$have_jq" -eq 1 ]; then
     else
         fail "ANTS-2169 real grep-read of ROADMAP.md no longer blocks (regression)"
     fi
+    # CFG-0656: a grep over OTHER projects' roadmaps has no verb to go to.
+    for other in \
+        '{"tool_input":{"command":"grep foo */ROADMAP.md"}}' \
+        '{"tool_input":{"command":"grep foo ../vestige/ROADMAP.md"}}'; do
+        if [ -z "$(printf '%s' "$other" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+            pass "CFG-0656 no block on another project's roadmap"
+        else
+            fail "CFG-0656 blocked a read of another project's roadmap: $other"
+        fi
+    done
 
     # A --stat diff asks for CHANGED LINES. get_git_status has no field for
     # them, so routing there is a dead end that ends in `# ants-bypass` — the
