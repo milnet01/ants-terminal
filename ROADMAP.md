@@ -90477,8 +90477,18 @@ reports are asked for separately, each time.
   Progress (2026-07-02): specs cold-eyes-clean (5 loops) + committed. Implementing renderCardsHtml table/column layout next.
   Shipped 2026-07-03. renderCardsHtml now emits each bullet as a `<tr class="rm-card">` of four `<td class="rm-col-*">` cells inside a per-section `<table class="rm-cards">` (state / kind / summary / right-aligned meta), so items line up in aligned columns; expanded body is a `colspan="4"` row. Section-heading count-chip / title fusing fixed via a hard `&#160;&#160;` (Qt ignores inline `padding-right`). Shipped renderer uses a bare `td` selector (cards path emits no other table). Specs ANTS-1154 + ANTS-1238 reconciled to as-shipped code (the earlier "target — NOT yet in code" caveats were stale; code had caught up). Tests RoadmapDialogCards + RoadmapDensity green at HEAD.
 
-- 📋 [ANTS-5213] **Roadmap dialog optimisation pass, starting with section headers that do not render on this project's roadmap.**
+- 🚧 [ANTS-5213] **Roadmap dialog optimisation pass, starting with section headers that do not render on this project's roadmap.**
   Reported by the user 2026-09-14 on Ants Terminal's own roadmap: some section headers do not render in the Roadmap dialog. Which headers, and why, is unverified; reproduce it first. Related planned findings: ANTS-5087 (roadmap parsing, rendering, writing and export) and ANTS-5088 (the roadmap dialog). ANTS-1695 is a different case, the zero-bullet fallback.
+  Progress (2026-10-01): the missing-headers half is found and fixed
+  (commit 19c32047). On the History tab, renderCardsHtml numbered
+  repeated headings after reversing the sections, while the dialog's
+  items carry document-order numbers, so 5 sections on this roadmap
+  showed items under another release's heading with their own heading
+  missing. Locked by roadmap_dialog_cards INV-29. Every other tab was
+  checked on the real roadmap: no section with visible items lacked its
+  heading (one item ID appears in two sections; the window already warns
+  about it). The optimisation half is still open: measure a rebuild on
+  this roadmap before changing anything.
   **Layman:** The roadmap window gets faster, and every section heading shows up.
   Kind: perf.
   Source: user-request-2026-09-14.

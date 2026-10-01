@@ -55,6 +55,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **On the Roadmap window's History tab, items stay under their own section heading when several sections share a name, and every heading shows.** (ANTS-5213)
+
 - **Clicking a heading in the Roadmap window's Contents list scrolls to that heading, even when filters or collapsed sections hide others.** (ANTS-5597)
 
 - **In the Flatpak, the diff viewer and the roadmap and audit windows run git on your computer** (ANTS-5598)
