@@ -212,7 +212,10 @@ store-backed carve-out below for steps 3 and 4. **Except where the bump recipe
 calls `changelog_log op:"release"`: that verb closes `[Unreleased]` into the
 dated section and opens a fresh empty one above it, so it performs steps 1 and
 2.** It authors no `**Theme:**` line, so step 1's second half stays the
-author's on every route. `cut-release` carves out the same split at Phase 0e —
+author's on every route. **One route copies it instead**: where the
+roadmap's section for the release is titled with the version and a theme
+(*0.10.0 — Faster startup*), `cut-release` writes that theme as the line.
+The author wrote it there, so nothing new is authored. `cut-release` carves out the same split at Phase 0e —
 *"Unless the recipe performs the cut itself — then 0e passes."*
 
 **Absent that recipe step, `cut-release` performs none of them, and checks

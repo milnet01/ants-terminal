@@ -51,6 +51,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **In the Flatpak, Claude Code's search, git and test tools run on your computer through flatpak-spawn --host** (ANTS-5527)
+  The Flatpak runtime has no ripgrep, git or ctest, so those tools failed
+  inside it. The Flatpak notes also say how to register the tools with
+  Claude Code and how to allow a project folder outside home.
+
 - **Closing a top heading in the Roadmap window now hides the sub-sections under it** (ANTS-5596)
   The window opens on the top headings; open one to see what is inside.
 

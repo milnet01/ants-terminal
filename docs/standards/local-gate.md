@@ -493,13 +493,19 @@ failure where the service is called**, not by looking for a warning: a failed
 request can return an empty answer that the check reads as "nothing to
 report", and print nothing.
 
+**A leg is a stage of the gate, not a test inside one.** A test that skips
+itself — a fixture absent on this machine — does not make the run partial
+here. Whether that skip is allowed is `testing.md` § 7's question.
+
 ### 7.2 A push that adds no commit
 
-**A push may skip the gate when every pushed tip is already on a
-remote-tracking branch.** A tag-only push is the usual case. No commit
+**A push may skip the gate when every pushed tip is already on a branch of
+the remote being pushed to.** A tag-only push is the usual case. No commit
 reaches the remote that is not there already, so there is nothing new to
-check. A tip that is not on any remote-tracking branch runs the gate as
-normal.
+check. **Another remote does not count**: a commit can reach a fork or a
+backup with `--no-verify`, so being there proves nothing was gated — item
+1's reasoning for the scan, applied to the gate. A tip not on a branch of
+that remote runs the gate as normal.
 
 ## 8. Anti-patterns
 
@@ -553,7 +559,7 @@ hook, the skeleton or `ci-gate` already supplies or reports it.
 | The same, on GitHub: `paths-ignore` on the `push` trigger | GitHub: project | on `push` only, so a pull request still runs everything; the list is the local one; the project records why what § 6's documentation mode checks for those paths need not run on GitHub, or runs it there |
 | Skip a tree that already passed a full run (§ 7.1) | local: shared | keyed on the tree, so any change misses |
 | Run in place on the warm build (`ants.gate.inPlace`) | local: shared | § 5.2's two guards hold; otherwise a fresh worktree or a refusal |
-| `concurrency` with `cancel-in-progress` | GitHub: skeleton | the group key holds the workflow, the EVENT and the ref, or a push and a nightly cancel or queue behind each other; cancel on non-default branches only, since on the default branch a cancelled run hides which commit broke. **Not for a deploy workflow**: there use one fixed group with no cancel, so two deploys queue and never overlap. A group holds one pending run, so a third run cancels the queued one even without `cancel-in-progress`; for a deploy that keeps the newest commit, which is what a deploy wants |
+| `concurrency` with `cancel-in-progress` | GitHub: skeleton | the group key holds the workflow, the EVENT and the ref, or a push and a nightly cancel or queue behind each other; cancel on non-default branches only, since on the default branch a cancelled run hides which commit broke. **Not for a deploy workflow**: there use one fixed group with no cancel, so two deploys queue and never overlap. A group holds one pending run, so a third run cancels the queued one even without `cancel-in-progress`; for a deploy that keeps the newest commit, which is what a deploy wants. On the default branch it means a burst of three pushes still loses the middle verdict; the local gate, which runs on every push, is what covers each commit there |
 | `timeout-minutes` on every job | GitHub: skeleton | sized for a COLD build, or a cold cache reads as a hang |
 | Dependency and compiler caches | both: project | measured separately: a download cache saves fetching, a compiler cache saves compiling. Keyed on the lockfile or toolchain; restore by prefix, save per commit, and save with `if: always()`, since a job that timed out skips a normal save and every later run starts colder. One key prefix per job, never shared, or two jobs overwrite each other. Prune older entries after a successful save, or per-commit keys fill GitHub's per-repository limit and evict the one you need. The save and prune rules are `actions/cache`'s; a built-in cache such as `setup-node`'s exposes none of them. ccache needs `sloppiness=pch_defines,time_macros` for PCH builds to hit, and `base_dir` for hits across checkout paths |
 | A fast linker (`mold`) | both: project | the toolchain supports it, LTO links included: Ubuntu 24.04's `mold` failed GCC LTO links for Vestige. A compile-bound build gains little, so measure first |

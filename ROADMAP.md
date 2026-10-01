@@ -66847,7 +66847,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-request-2026-09-27.
   Lanes: mcp.
 
-- 📋 [ANTS-5527] **Make ants-mcpd reachable from the Flatpak.**
+- ✅ [ANTS-5527] **Make ants-mcpd reachable from the Flatpak.**
   `flatpak run --command=ants-mcpd <app-id>` starts it, but whether a
   sandboxed ants-mcpd can see the terminal's socket and run rg and git
   needs a real sandbox test first. Do that test before changing the
@@ -66866,10 +66866,46 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Two choices left for the user: run rg/git on the host through
   flatpak-spawn --host (code change, nothing shipped) or bundle them in
   the manifest; and whether to widen filesystem access.
+  Resolved (2026-10-01, f62ae53b): src/hostexec.h routes every ants-mcpd
+  tool launch through flatpak-spawn --host inside a Flatpak; the Flatpak
+  README documents registration and `flatpak override` for folders
+  outside home (user's choice). Sandbox end-to-end: workspace_search and
+  git_state answer ok on a /mnt project. Follow-ups: ANTS-5598 (the
+  terminal's own windows), ANTS-5599 (stale socket choice).
   **Layman:** Flatpak users still cannot connect Claude Code to Ants through the new helper program.
   Kind: package.
   Source: split from ANTS-5321, 2026-09-28.
   Lanes: packaging, mcp.
+
+- 📋 [ANTS-5598] **Run git on the host for the Flatpak terminal's own windows.**
+  ANTS-5527 routed every ants-mcpd tool launch through
+  HostExec::start (src/hostexec.h). The terminal's own windows still
+  start bare `git` inside the sandbox: src/diffviewer.cpp (three
+  setProgram sites), src/roadmapdialog.cpp, src/auditdialog.cpp and
+  src/mainwindow.cpp. setProgram sites need a setProgram/setArguments
+  form of the helper, or a switch to HostExec::start. Audit tools
+  (cppcheck and kin, src/auditrunner.cpp resolveToolAbsolute) resolve
+  an absolute path inside the sandbox and are not covered either.
+  **Layman:** In the Flatpak, the diff viewer and the roadmap and audit windows cannot run git, because the sandbox has none.
+  Kind: package.
+  Source: split from ANTS-5527, 2026-10-01.
+  Lanes: packaging.
+
+- 📋 [ANTS-5599] **In the Flatpak, ants-mcpd picks a dead terminal's socket over a live one.**
+  Measured: the sandbox runtime dir
+  ($XDG_RUNTIME_DIR/.flatpak/<app-id>/xdg-run/ants-terminal) is shared
+  by every run of the app and persists. A killed terminal left mcp-2
+  behind; the next ants-mcpd chose it and got "Connection refused".
+  pickTerminalSocket (src/mcpdsocket.cpp) prefers a socket whose pid
+  passes kill(pid,0), but each sandbox has its own pid namespace, so
+  every terminal is pid 2 and the check always passes. Fix candidates:
+  try-connect each candidate newest first, or unlink a socket that
+  refuses. Also seen, cause unknown: a second offscreen sandboxed
+  terminal run with the same XDG dirs printed nothing and bound no socket.
+  **Layman:** If the Flatpak terminal ever crashes, Claude Code can keep trying to talk to the dead one.
+  Kind: fix.
+  Source: ANTS-5527 sandbox test, 2026-10-01.
+  Lanes: mcp, packaging.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 

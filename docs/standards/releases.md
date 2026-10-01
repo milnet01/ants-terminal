@@ -166,7 +166,10 @@ tagging to this section.
   nothing to name.
 - **Publishing is irreversible in practice.** Deleting a release does
   not un-fetch it. Confirm before **each** publish of a version,
-  candidates included; never after.
+  candidates included; never after. **A standing instruction from the
+  user to publish this project's releases is that confirmation**, where
+  it is written down rather than inferred and the release report quotes
+  it.
 
 ## 6. Order
 
@@ -243,7 +246,7 @@ owed.
 | Tag is annotated (§4) | the repository — `git` reports the tag's type |
 | Checks passed before publish (§4) | the host's own status |
 | Notes match the changelog (§5) | **nothing mechanical** — compared by hand |
-| Publishing is confirmed first (§5, §6 step 9) | `cut-release` Phase 6 asks, and it is the one confirmation that run still makes. **It asked once per version until 2026-08-25** — so a second candidate, and the stable cut after it, published unprompted; corrected there with this row (CFG-0175). Each publish is separately irreversible, which is the whole of §5's reason |
+| Publishing is confirmed first (§5, §6 step 9) | `cut-release` Phase 6 asks, or quotes the standing instruction it acted on, and it is the one confirmation that run still makes. **Nothing checks that a quoted instruction is real**. **It asked once per version until 2026-08-25** — so a second candidate, and the stable cut after it, published unprompted; corrected there with this row (CFG-0175). Each publish is separately irreversible, which is the whole of §5's reason |
 | Checks have passed before the publish (§4, §6 step 8) | `cut-release` Phase 6 waits for whatever run covers the pushed commit, and a red run stops it. **Added there 2026-08-25 (CFG-0175)**: until then the skill went from the push straight to the publish, so the one conformer this table names breached §4 on every release |
 | A stable alias is published beside the versioned artefact (§5) | **`Partial:`** `cut-release` Phase 6 reads the release back and counts its assets, so a release that should carry artefacts and carries none is caught. **A release carrying the versioned file and no alias passes that count** — the alias is checked by name only where the recipe names it, and nothing verifies that it is the same bytes |
 | Release description is honest (§2) | **nothing mechanical** |
