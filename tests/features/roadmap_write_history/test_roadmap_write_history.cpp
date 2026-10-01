@@ -18,6 +18,9 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
+#include "remotecontrol_internal.h"   // ANTS-4416 — rcdetail::rlFlushHistory
+#include "roadmaprender.h"
+#include "roadmapwrite.h"
 #include "../../_support/roadmapstoreaccess.h"
 
 #include <gtest/gtest.h>
@@ -37,6 +40,7 @@
 #include <QTemporaryDir>
 #include <QVariant>
 
+#include <algorithm>
 #include <memory>
 
 ANTS_TEST_SCOPE();
@@ -553,4 +557,81 @@ TEST(RoadmapWriteHistory, Inv6AppendWritesNoHistory) {
         << "a CREATION recorded history. Its old value does not exist — a row "
            "claiming a transition from '' invents a state the item was never in, "
            "and the item's own row is the record that it was created";
+}
+
+// ------------------------------------------------------------------ INV-8 ---
+// A non-cap appendHistory() failure aborts the op (ANTS-4416). Driven through
+// the REAL helper, rcdetail::rlFlushHistory(), inside a commitAndRender() whose
+// mutate the test supplies — never a mutate returning false on its own, which
+// would only re-prove that commitAndRender() aborts on a false. The failure is
+// history.item_pk's foreign key refusing an item no row has.
+//
+// The control leg runs the same mutate with a real item first. Without it, a
+// commitAndRender() failing for any other reason (the render gate, a bad root)
+// would make the abort leg pass for the wrong reason.
+TEST(RoadmapWriteHistory, Inv8NonCapHistoryFailureAbortsTheWrite) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_FIXTURE_HISTORY_VISIBLE();
+
+    const qint64 pk7 = pkOf(QStringLiteral("DEMO-0007"), projectId);
+    const qint64 pk8 = pkOf(QStringLiteral("DEMO-0008"), projectId);
+    ASSERT_GT(pk7, 0);
+    ASSERT_GT(pk8, 0);
+    const qint64 noSuchPk = std::max(pk7, pk8) + 1000000;
+
+    auto bodyOf = [](qint64 pk) {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return QString();
+        QString err;
+        const auto item = store->readItem(pk, &err);
+        return item ? item->body : QString();
+    };
+    // Write `body` to `bodyPk`, record one history row against `historyPk`,
+    // flush through the real helper, all inside one commitAndRender().
+    auto write = [&](qint64 bodyPk, qint64 historyPk, const QString &body,
+                     const QString &stamp) {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return RoadmapWrite::Result::StoreFailed;
+        rcdetail::HistoryContext hist;
+        hist.changedAt = stamp;
+        auto mutate = [&](QString *err) {
+            if (!store->setItemField(bodyPk, QStringLiteral("body"), body,
+                                     QStringLiteral("asserted"), err))
+                return false;
+            hist.record(historyPk, QStringLiteral("body"), QString(), body);
+            return rcdetail::rlFlushHistory(*store, hist, err);
+        };
+        RoadmapRender::Outcome outcome;
+        QString err;
+        return RoadmapWrite::commitAndRender(
+            *store, projectId, root, root + QStringLiteral("/ROADMAP.md"),
+            /*dryRun=*/false, mutate, &outcome, &err);
+    };
+
+    // Control: a real item commits, and its history row lands.
+    const int ctrlBefore = historyOf(pk8).size();
+    ASSERT_EQ(write(pk8, pk8, QStringLiteral("Control body."),
+                    QStringLiteral("2026-10-01T12:00:00Z")),
+              RoadmapWrite::Result::Ok)
+        << "the control write failed, so the harness cannot commit at all and "
+           "the abort leg below would pass for the wrong reason";
+    ASSERT_EQ(bodyOf(pk8), QStringLiteral("Control body."));
+    ASSERT_EQ(historyOf(pk8).size(), ctrlBefore + 1);
+
+    // Abort: the history row names no item, so the whole write must roll back.
+    const QString bodyBefore = bodyOf(pk7);
+    const int rowsBefore = historyRowCount();
+    const auto r = write(pk7, noSuchPk, QStringLiteral("Must not land."),
+                         QStringLiteral("2026-10-01T12:00:01Z"));
+    EXPECT_NE(r, RoadmapWrite::Result::Ok)
+        << "a history row the store refused was swallowed and the write was "
+           "reported as a success — the silently-dropped revision INV-14 forbids";
+    EXPECT_EQ(bodyOf(pk7), bodyBefore)
+        << "the item column changed although its history row was refused";
+    EXPECT_EQ(historyRowCount(), rowsBefore);
 }

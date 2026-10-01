@@ -1,6 +1,6 @@
 # ANTS-3822 — consumer writes append a history row
 
-**Status:** implemented (2026-08-17) — INV-1..6 tested and green; **INV-7 and INV-8 have no test** (see the `impl` loop-log row and ANTS-4416). Gated at review-contract's 2-loop cap, 18 verified findings fixed.
+**Status:** implemented (2026-08-17) — INV-1..6 and INV-8 tested and green (INV-8 since 2026-10-01); **INV-7 has no test** (see the `impl` loop-log row and ANTS-4416). Gated at review-contract's 2-loop cap, 18 verified findings fixed.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3822 (in-session-2026-08-04, ANTS-3809 cold-eyes loop 1 lane A; picked up 2026-08-17 on user request after ANTS-4414 measured what its absence costs).
 **Blocked by:** none — ANTS-3809 shipped, which is the write path this hooks into.
