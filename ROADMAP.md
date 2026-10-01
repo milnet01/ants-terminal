@@ -66826,6 +66826,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   debt_sweep_defer, and claude-config tidies those itself. Our
   hooks/ants-bash-veto.sh now routes git status/log to git_state instead
   of get_git_status. Step 2 is unblocked: the spec is next.
+  Progress 2026-10-01: step 2 spec accepted at its review cap (2 loops,
+  3 verified, 3 fixed): docs/specs/ANTS-5485-retire-deprecated-verbs.md.
+  A removed name gets a -32602 error naming its replacement
+  (data.code verb_removed); the deprecation advisory and call log go;
+  verb-only engine code goes, GUI-shared engine code stays. Next: build it.
   **Layman:** About twenty old Ants tools cost every Claude session tokens while nothing uses them; mark them, check for a week, then remove them.
   Kind: chore.
   Source: user-request-2026-09-27.
