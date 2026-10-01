@@ -82,10 +82,13 @@ public:
     // by the canonical path of the roadmap the dialog shows. Shape:
     //   { "active": "<preset>",
     //     "tabs": { "<preset>": { "status": {<the six keys above>},
-    //                             "kinds": [<kind values>] } } }
+    //                             "kinds": [<kind values>] } },
+    //     "expanded_items": [<ids>], "expanded_sections": [<slugs>],
+    //     "scroll": { "<preset>": {<anchor, as roadmapScrollAnchors>} } }
     // A roadmap tab absent from "tabs" is at its own defaults. An empty
-    // object means the project was never saved. The three global keys above
-    // are read only to seed the first project after upgrade.
+    // object means the project was never saved. The three global keys above,
+    // and the expanded-items, expanded-sections and scroll-anchor keys below
+    // (ANTS-5214), are read only to seed the first project after upgrade.
     QJsonObject roadmapViewState(const QString &roadmapPath) const;
     void setRoadmapViewState(const QString &roadmapPath, const QJsonObject &state);
     bool hasRoadmapViewStates() const;

@@ -36,7 +36,9 @@
 // deleted under ANTS-1263; the `roadmap-query` IPC verb uses
 // parseBullets + RoadmapIndex, not a renderer.)
 
-#include "roadmapparse.h"   // ANTS-3764 — BulletRecord + the reader
+#include "roadmapparse.h"
+
+#include <QJsonObject>   // ANTS-3764 — BulletRecord + the reader
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QFileSystemWatcher>
@@ -684,6 +686,9 @@ private:
     // Config in closeEvent.
     QSet<QString> m_expandedItems;
     QSet<QString> m_expandedSections;
+    // ANTS-5214 — per-tab scroll anchors for THIS project, keyed by preset
+    // name; saved with the rest of the project's view state.
+    QJsonObject m_scrollAnchors;
     QHash<QString, QString> m_shippedDates;
     qint64 m_shippedDatesMtime = -1;
     // ANTS-1237 — last-touch (git author-time) per ANTS-NNNN.

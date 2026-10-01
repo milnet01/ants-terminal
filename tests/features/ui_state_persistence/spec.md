@@ -75,11 +75,14 @@ collision.
 
 - **ANTS-1150-INV-11** `saveViewState` calls `setRoadmapViewState(`, and
   the dialog calls none of `setRoadmapKindFilters(`,
-  `setRoadmapStatusFilters(`, `setRoadmapActivePreset(`: the three global
-  keys are a read-only seed.
+  `setRoadmapStatusFilters(`, `setRoadmapActivePreset(`,
+  `setRoadmapExpandedItems(`, `setRoadmapExpandedSections(`,
+  `setRoadmapScrollAnchors(`: the six global keys are a read-only seed.
+  The project's state also carries its open cards, open sections and
+  per-tab scroll anchors (ANTS-5214).
 
-- **ANTS-1150-INV-12** The ctor reads `roadmapViewState(`. The three
-  global getters are read only after the
+- **ANTS-1150-INV-12** The ctor reads `roadmapViewState(`. The six
+  global getters are each read once, after the
   `!m_config->hasRoadmapViewStates()` test, so they seed the first project
   opened after the change and nothing else.
 

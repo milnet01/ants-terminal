@@ -31,6 +31,7 @@ chrome change rather than a rewrite, and the first row below is what proves it.
 | `EachTabKeepsItsOwnFilters` | Status and Kind filters set on Custom survive a round trip through Far Future, and Far Future shows its own statuses with no Kind carried in. Reported 2026-09-29. |
 | `AFilterChangedOnANamedTabStaysOnThatTab` | Changing a filter on a named tab keeps that tab selected, the change is there on return, and no other tab sees it. Reset returns the current tab to its own defaults and is disabled there. Every tab's filters are saved per project. |
 | `FiltersAreRememberedPerProject` | Reopening the dialog on a roadmap, with a fresh `Config` as after a relaunch, restores that project's last tab and the tab's Kind filter; another project's roadmap opens at its own defaults. |
+| `OpenSectionsAreRememberedPerProject` | A section opened in one project's roadmap is open when that project is reopened with a fresh `Config`, and a same-named section in another project's roadmap stays closed. The open cards and the per-tab scroll anchors are saved with them, per project (ANTS-5214). |
 | `ControlsAreKeyboardReachable` | The three buttons take strong focus and the two filter buttons carry a menu, so the collapse costs no keyboard access. |
 
 ## What is NOT locked

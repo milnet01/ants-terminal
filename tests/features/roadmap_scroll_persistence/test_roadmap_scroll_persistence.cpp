@@ -85,7 +85,8 @@ TEST(RoadmapScrollPersistence, Inv5EmptyAnchorIsTop) {
 }
 
 // INV-6 — capture-on-close + restore-on-show wiring, round-tripping through
-// Config::roadmapScrollAnchors. Source-grep so a future refactor that drops
+// the project's view state (ANTS-5214; Config::roadmapScrollAnchors is only
+// the one-time seed now). Source-grep so a future refactor that drops
 // either half trips the test rather than silently disabling the feature.
 TEST(RoadmapScrollPersistence, Inv6SourceWiring) {
     const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
@@ -99,10 +100,12 @@ TEST(RoadmapScrollPersistence, Inv6SourceWiring) {
         << "showEvent must restore the scroll anchor";
     EXPECT_TRUE(has("void RoadmapDialog::showEvent"))
         << "a showEvent override is required for first-show restore";
-    EXPECT_TRUE(has("setRoadmapScrollAnchors"))
-        << "capture must persist through Config::setRoadmapScrollAnchors";
-    EXPECT_TRUE(has("roadmapScrollAnchors()"))
-        << "restore must read Config::roadmapScrollAnchors";
+    EXPECT_TRUE(has("state[QLatin1String(\"scroll\")]"))
+        << "saveViewState must persist the scroll anchors per project";
+    EXPECT_TRUE(has("state.value(QLatin1String(\"scroll\"))"))
+        << "the ctor must restore the project's scroll anchors";
+    EXPECT_FALSE(has("setRoadmapScrollAnchors"))
+        << "the global anchors are a read-only seed (ANTS-5214)";
 }
 
 }  // namespace

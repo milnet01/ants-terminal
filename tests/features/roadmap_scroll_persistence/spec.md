@@ -4,7 +4,7 @@ Feature contract for the Roadmap dialog's scroll-position persistence
 (implements spec `docs/specs/ANTS-1154.md` §4.5 / INV-13).
 
 The dialog records the topmost visible card per tab on close
-(`Config::roadmapScrollAnchors`, keyed by the active preset) and restores
+(in the project's view state, keyed by the tab showing; ANTS-5214) and restores
 it on the next open. The anchor is ID-keyed — `(sectionSlug, id,
 offsetPx)` — so it survives ROADMAP.md edits between sessions rather than
 pinning a brittle raw pixel offset.
@@ -31,5 +31,7 @@ deterministic contract is the pure resolver
   entry, even if the present set happens to contain an empty string).
 - **INV-6 (source wiring)** — `roadmapdialog.cpp` captures on `closeEvent`
   (`captureScrollAnchor`) and restores on `showEvent`
-  (`restoreScrollAnchor`), and round-trips through
-  `Config::roadmapScrollAnchors` / `setRoadmapScrollAnchors`.
+  (`restoreScrollAnchor`), and round-trips through the project's view
+  state: `saveViewState` writes `state["scroll"]`, the ctor reads it back.
+  The global `Config::roadmapScrollAnchors` is read only to seed the first
+  project after the upgrade, and never written (ANTS-5214).

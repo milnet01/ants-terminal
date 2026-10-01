@@ -21,6 +21,10 @@
 #include <QString>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QTextBrowser>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QUrl>
 #include <QToolButton>
 
 #include <gtest/gtest.h>
@@ -316,5 +320,52 @@ TEST(RoadmapFilterBar, FiltersAreRememberedPerProject) {
             << "another project took this one's tab";
         EXPECT_FALSE(box(dlg, "roadmap-filter-kind-doc")->isChecked())
             << "another project took this one's filters";
+    }
+}
+
+// ANTS-5214 — what is open is remembered per project too. A section opened
+// in one project's roadmap is open when that project is reopened, and stays
+// closed in another project's roadmap that has a section of the same name.
+TEST(RoadmapFilterBar, OpenSectionsAreRememberedPerProject) {
+    Harness h;
+    const QString other = h.dir.filePath(QStringLiteral("other/ROADMAP.md"));
+    QDir().mkpath(QFileInfo(other).path());
+    {
+        QFile f(other);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kFixture);
+    }
+    // A click re-renders after the dialog's debounce, so let it fire.
+    const auto shows = [](RoadmapDialog &dlg) {
+        const auto visible = [&] {
+            return dlg.findChild<QTextBrowser *>()->toPlainText().contains(
+                QStringLiteral("A planned thing"));
+        };
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 1000) QCoreApplication::processEvents();
+        return visible();
+    };
+    {
+        Config cfg;
+        RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+        ASSERT_FALSE(shows(dlg)) << "fixture: the section starts closed";
+        emit dlg.findChild<QTextBrowser *>()->anchorClicked(
+            QUrl(QStringLiteral("ants://expand-section/now")));
+        ASSERT_TRUE(shows(dlg)) << "opening the section did not show its items";
+        dlg.close();
+    }
+    {
+        Config cfg;   // a fresh read of the saved file, as after a relaunch
+        RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+        EXPECT_TRUE(shows(dlg)) << "the project's open section was not restored";
+        dlg.close();
+    }
+    {
+        Config cfg;
+        RoadmapDialog dlg(other, QStringLiteral("light"), nullptr, &cfg);
+        EXPECT_FALSE(shows(dlg))
+            << "another project's same-named section opened with this one's";
+        dlg.close();
     }
 }

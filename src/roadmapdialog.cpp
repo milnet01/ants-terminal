@@ -2459,6 +2459,13 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                     if (m_kindCheckboxes.contains(k.toString())) f.kinds.insert(k.toString());
                 m_tabFilters.insert(static_cast<int>(p), f);
             }
+            // ANTS-5214 — what is open, and where each tab was scrolled to,
+            // belong to the project too.
+            for (const auto &v : state.value(QLatin1String("expanded_items")).toArray())
+                m_expandedItems.insert(v.toString());
+            for (const auto &v : state.value(QLatin1String("expanded_sections")).toArray())
+                m_expandedSections.insert(v.toString());
+            m_scrollAnchors = state.value(QLatin1String("scroll")).toObject();
         } else if (!m_config->hasRoadmapViewStates()) {
             // The first project opened after this change inherits the old
             // global settings once, so an upgrade loses nothing: the tab
@@ -2475,13 +2482,15 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                 f.kinds = QSet<QString>(kinds.begin(), kinds.end());
                 m_tabFilters.insert(static_cast<int>(persisted), f);
             }
+            // ANTS-1154 / ANTS-5214 — the open cards and sections and the
+            // scroll anchors were global before; the first project inherits
+            // them once, like the filters.
+            const QStringList exItems = m_config->roadmapExpandedItems();
+            m_expandedItems = QSet<QString>(exItems.begin(), exItems.end());
+            const QStringList exSecs = m_config->roadmapExpandedSections();
+            m_expandedSections = QSet<QString>(exSecs.begin(), exSecs.end());
+            m_scrollAnchors = m_config->roadmapScrollAnchors();
         }
-
-        // ANTS-1154: restore card / section / table expand state.
-        const QStringList exItems = m_config->roadmapExpandedItems();
-        m_expandedItems = QSet<QString>(exItems.begin(), exItems.end());
-        const QStringList exSecs = m_config->roadmapExpandedSections();
-        m_expandedSections = QSet<QString>(exSecs.begin(), exSecs.end());
     }
     refreshShippedDatesIfStale();
     refreshLastTouchDatesIfStale();  // ANTS-1237
@@ -2520,13 +2529,11 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
     // sizeKey); ANTS-2012 dropped the hand-rolled geometry blob, which
     // also stored window position (D4 violation).
     if (m_config) {
-        // ANTS-1154 — persist card / section / table state on close.
-        m_config->setRoadmapExpandedItems(
-            QStringList(m_expandedItems.begin(), m_expandedItems.end()));
-        m_config->setRoadmapExpandedSections(
-            QStringList(m_expandedSections.begin(), m_expandedSections.end()));
-        // ANTS-1154 §4.5 / INV-13 — remember where the user scrolled to.
+        // ANTS-1154 §4.5 / INV-13 — remember where the user scrolled to,
+        // then save it with the open cards and sections as this project's
+        // view state (ANTS-5214).
         captureScrollAnchor();
+        saveViewState();
     }
     QDialog::closeEvent(event);
 }
@@ -2613,9 +2620,10 @@ void RoadmapDialog::captureScrollAnchor() {
         }
     }
 
-    QJsonObject anchors = m_config->roadmapScrollAnchors();
-    QString key = m_config->roadmapActivePreset();
-    if (key.isEmpty()) key = QStringLiteral("full");
+    // ANTS-5214 — keyed by the tab actually showing. The global active-
+    // preset key this read before is a seed nothing writes any more.
+    QJsonObject &anchors = m_scrollAnchors;
+    const QString key = presetName(m_activePreset);
 
     if (topId.isEmpty()) {
         // Scrolled above the first card (header region) — drop any saved
@@ -2649,14 +2657,11 @@ void RoadmapDialog::captureScrollAnchor() {
         a.insert(QStringLiteral("offset"), scrollY - topCardTop);
         anchors.insert(key, a);
     }
-    m_config->setRoadmapScrollAnchors(anchors);
 }
 
 void RoadmapDialog::restoreScrollAnchor() {
     if (!m_config || !m_viewer) return;
-    QString key = m_config->roadmapActivePreset();
-    if (key.isEmpty()) key = QStringLiteral("full");
-    const QJsonObject a = m_config->roadmapScrollAnchors().value(key).toObject();
+    const QJsonObject a = m_scrollAnchors.value(presetName(m_activePreset)).toObject();
     if (a.isEmpty()) return;
 
     ScrollAnchor saved;
@@ -3127,6 +3132,14 @@ void RoadmapDialog::saveViewState() {
     QJsonObject state;
     state[QLatin1String("active")] = presetName(m_activePreset);
     state[QLatin1String("tabs")]   = tabs;
+    // ANTS-5214 — sorted so the saved file is stable whatever QSet's order.
+    QStringList items(m_expandedItems.begin(), m_expandedItems.end());
+    items.sort();
+    QStringList sections(m_expandedSections.begin(), m_expandedSections.end());
+    sections.sort();
+    state[QLatin1String("expanded_items")]    = QJsonArray::fromStringList(items);
+    state[QLatin1String("expanded_sections")] = QJsonArray::fromStringList(sections);
+    state[QLatin1String("scroll")]            = m_scrollAnchors;
     m_config->setRoadmapViewState(QFileInfo(m_roadmapPath).canonicalFilePath(), state);
 }
 

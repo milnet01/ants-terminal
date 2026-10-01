@@ -434,8 +434,11 @@ TEST(UiStatePersistence, Inv11_roadmapDialogKindStatusWiring) {
     const std::string body = extractBody(rd, "void RoadmapDialog::saveViewState");
     expect(contains(body, "setRoadmapViewState("),
            "INV-11: saveViewState writes the per-project state");
+    // ANTS-5214 — the open cards and sections and the scroll anchors joined
+    // the per-project state, so their global setters went the same way.
     for (const char *legacy : {"setRoadmapKindFilters(", "setRoadmapStatusFilters(",
-                               "setRoadmapActivePreset("})
+                               "setRoadmapActivePreset(", "setRoadmapExpandedItems(",
+                               "setRoadmapExpandedSections(", "setRoadmapScrollAnchors("})
         expect(!contains(rd, legacy),
                (std::string("INV-11: the global key is a read-only seed now: ") + legacy).c_str());
     EXPECT_EQ(0, expect_failures()) << "Inv11_roadmapDialogKindStatusWiring failed";
@@ -452,10 +455,15 @@ TEST(UiStatePersistence, Inv12_roadmapDialogCtorRestore) {
     const auto seed = rd.find("!m_config->hasRoadmapViewStates()");
     expect(seed != std::string::npos, "INV-12: the seed branch is gated");
     for (const char *getter : {"roadmapKindFilters()", "roadmapStatusFilters()",
-                               "roadmapActivePreset()"}) {
+                               "roadmapActivePreset()", "roadmapExpandedItems()",
+                               "roadmapExpandedSections()", "roadmapScrollAnchors()"}) {
         const auto at = rd.find(getter);
         expect(at != std::string::npos && seed != std::string::npos && at > seed,
                (std::string("INV-12: read only in the seed branch: ") + getter).c_str());
+        // ANTS-5214 — and only ONCE: a second read elsewhere (the scroll
+        // anchor's old key lookup) is a global read after all.
+        expect(at == std::string::npos || rd.find(getter, at + 1) == std::string::npos,
+               (std::string("INV-12: read exactly once: ") + getter).c_str());
     }
     EXPECT_EQ(0, expect_failures()) << "Inv12_roadmapDialogCtorRestore failed";
 }
