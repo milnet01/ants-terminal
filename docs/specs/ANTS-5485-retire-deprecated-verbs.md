@@ -1,6 +1,6 @@
 # ANTS-5485 — Remove the twenty deprecated Ants MCP verbs
 
-**Status:** spec draft (2026-10-01).
+**Status:** accepted (2026-10-01).
 **Kind:** chore.
 **Source:** ROADMAP.md ANTS-5485 (user-request-2026-09-27: mark, measure,
 remove). Step 1, the deprecation notice, shipped in 0.7.112.
@@ -103,7 +103,7 @@ Kept because a GUI dialog or a kept verb uses it:
 
 - `DebtSweepEngine::scanAll`, `applyMechanicalFix`, `triagePrompt`,
   `evaluateTriageGate`, `templateDebtSweepFoldInBlock` (AuditDialog's
-  debt-sweep tab), and `detectorsByCategory` (the engine's detector roster).
+  debt-sweep tab).
 - `IndieReviewEngine::synthesisPrompt`, `assembleThreatModelExtras`,
   `templateIndieReviewFoldInBlock` (IndieReviewDialog);
   `derivePartition`, `corroboratedFindings*` (`indie_review_partition`,
@@ -120,7 +120,7 @@ Deleted because only a removed verb calls it: `PlanTemplateEngine`
 `ColdEyesEngine::crossDocDiffFromDir`,
 `ColdEyesEngine::templateColdEyesFoldInBlockFreeform`,
 `IndieReviewEngine::assembleBriefManifest`, `TestAuditEngine::recheck`,
-and the handler bodies of the twenty other than `cmdCurrentState`.
+`DebtSweepEngine::detectorsByCategory`, and the handler bodies of the twenty other than `cmdCurrentState`.
 
 ### 2.4 Reaching a running terminal
 
@@ -174,6 +174,7 @@ at the next relaunch; until then it still answers, which harms nothing.
   `grep -rnE 'assembleSingleDocBrief|crossDocDiffFromDir|templateColdEyesFoldInBlockFreeform|cmdSessionBrief|cmdRoadmapBranchDrift' src`;
   `grep -n 'assembleBriefManifest' src/indiereviewengine.h src/indiereviewengine.cpp src/verifyengine.cpp`;
   `grep -nE '\brecheck\(' src/testauditengine.h src/testauditengine.cpp`;
+  `grep -n 'detectorsByCategory' src/debtsweepengine.h src/debtsweepengine.cpp`;
   `grep -ni 'plantemplate' CMakeLists.txt`; `ls src/plantemplateengine.*`
   (each prints lines before the change). The qualified spelling is not
   used because the definitions sit inside their namespace unqualified.
