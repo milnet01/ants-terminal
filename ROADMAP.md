@@ -23386,6 +23386,26 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Source: claude-config adoption-day standards check 2026-09-26.
   Lanes: tests, vt.
 
+- 📋 [ANTS-5605] **OSC 133 tests fail when the suite runs inside an Ants tab, because they inherit the tab's ANTS_OSC133_KEY.**
+  Measured 2026-10-01: 8 tests fail locally and pass on CI (83a79d0e green):
+  Osc133RerunSafety Inv1, Inv2, Inv4, Inv6; Osc133HmacVerification.VerifierOffPermissive;
+  RisPreservesCallbacks.Main; ScrollbackExportStreaming.Inv3CastMatchesExportBlockAsCast;
+  TriggerEventRateLimit.Inv4CommandFinishedFloodIsCapped.
+  Cause: TerminalGrid reads ANTS_OSC133_KEY from the environment
+  (src/terminalgrid.cpp, std::getenv), and every Ants tab exports it, so the
+  HMAC verifier is ON and unsigned OSC 133 marks are refused. The HMAC test
+  says so: "verifier should be OFF when no key set (test precondition)".
+  Refute: `env -u ANTS_OSC133_KEY ctest --test-dir build -R
+  'Osc133RerunSafety|RisPreservesCallbacks|TriggerEventRateLimit|ScrollbackExportStreaming|Osc133HmacVerification'`
+  gives 28/28 passed; without `env -u` the 8 fail. They fail with and without
+  the ANTS-5604 work in the tree.
+  Fix: unset ANTS_OSC133_KEY for the test run (ctest ENVIRONMENT_MODIFICATION
+  on the bundles, or in the test fixtures), so a run inside an Ants tab matches CI.
+  **Layman:** Some terminal tests fail when run from inside Ants Terminal itself, because they pick up a security key the terminal sets for its own tabs.
+  Kind: fix.
+  Source: in-session-2026-10-01.
+  Lanes: tests, terminalgrid.
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
@@ -90483,7 +90503,7 @@ reports are asked for separately, each time.
   Source: user-request-2026-09-29.
   Lanes: ui.
 
-- 📋 [ANTS-5604] **Roadmap dialog: headings and items share one aligned column grid, with dates in their own columns.**
+- ✅ [ANTS-5604] **Roadmap dialog: headings and items share one aligned column grid, with dates in their own columns.**
   User decisions 2026-10-01 (asked with mockups):
   - One column per status (✅ 🚧 📋 💭 🚫): emoji header row once at
     the top, cells hold just the number, blank when zero.
@@ -90507,10 +90527,32 @@ reports are asked for separately, each time.
   heading text. Needs a terminal relaunch to see (GUI render code).
   Check: the 13 roadmap dialog tests stay green, new tests for the
   splitter and the one-table layout, and a screenshot via record-demo.
+  Resolved (2026-10-01): one table for the whole view (commit 3d3350f7).
+  User additions while building: a label column for a heading's version
+  or one word ("0.7.0", "Backlog"), and the 🚧 "Updated" age in the date
+  column. Locked by roadmap_dialog_cards INV-28 and the one-grid layout
+  test. Needs a terminal relaunch to see. Store fields to replace the
+  parser: ANTS-5606.
   **Layman:** Every row of the roadmap window lines up in columns, and dates sit in their own column instead of inside titles.
   Kind: ux.
   Source: user-request-2026-10-01 (screenshot of Custom tab).
   Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5606] **Roadmap store holds a section's label, heading text, date kind and date as fields, so the dialog stops parsing them out of the title.**
+  User decision 2026-10-01: ship ANTS-5604's grid on the parser
+  (RoadmapDialog::splitHeadingDate), then move to fields. Add section
+  columns (label, title text, date kind, date); split existing headings once
+  with splitHeadingDate; teach create_section / retitle_section and the
+  markdown render to write and recombine them; the dialog reads the fields
+  when present and keeps the parser for markdown-served projects.
+  Needs a design first: CLAUDE.md warns a kSchemaVersion bump locks every
+  older build out of every project, so the design must say how the columns
+  arrive (additive migration, or derived) and what an older build sees.
+  Hot reload: a store read, no relaunch beyond the dialog's own rebuild.
+  **Layman:** The roadmap database stores each section's version, title and date separately, so the roadmap window shows them without guessing.
+  Kind: feature.
+  Source: user-request-2026-10-01.
+  Lanes: roadmap-store, roadmap-dialog.
 
 ## Welcome dialog (user request 2026-09-29)
 

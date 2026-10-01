@@ -21,6 +21,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Roadmap window lines everything up in columns: one count column per status, a heading's version in its own column, its title where item text starts, and dates in their own columns instead of inside titles.** (ANTS-5604)
+
 - **The release command waits for GitHub's CI on the commit and tags only if it passed** (ANTS-1978)
   The local build uses a newer Qt than the release runner, so a commit
   could pass here and fail there after it was tagged. Where CI skipped
