@@ -1,3 +1,30 @@
+ants-terminal (0.7.113-1) unstable; urgency=medium
+
+  * Roadmap window says so when a roadmap's layout cannot be read as items.
+    Sessions are told when another session left them a message.
+    (ANTS-1695, 5553)
+  * Roadmap window lines everything up in columns and remembers open
+    sections, items and scroll per project. (ANTS-5604, 5214)
+  * Releases are cut by one command that waits for GitHub CI and every
+    distro build before tagging; every release is public. (ANTS-1978, 5577)
+  * Removed the old unused roadmap renderer and twenty unused MCP tools.
+    (ANTS-1263, 5485)
+  * Roadmap window: closed items keep their paragraphs, big sections open
+    much faster, History keeps items under their own heading, Contents
+    clicks land right, closing a heading hides its sub-sections.
+    (ANTS-5213, 5597, 5596)
+  * Flatpak: diff viewer, roadmap and audit windows, and Claude Code's
+    search, git and test tools run on the host. (ANTS-5598, 5527)
+  * Status bar shows Claude Code's context use again. Image paste from the
+    menu or middle button inserts its path. MCP tools report more
+    accurately. (ANTS-5592, 5580, 5595, 5583, 5584, 5585)
+  * Security: signing key off the command line, terminal secrets hidden
+    from Claude, plugin settings size limits, private store handle, 1 MiB
+    review-brief cap, Claude sockets in the private runtime folder.
+    (ANTS-5428, 5169, 5419, 3819, 1648, 5236)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 01 Oct 2026 12:00:00 +0200
+
 ants-terminal (0.7.112-1) unstable; urgency=medium
 
   * Roadmap queries return latest entries of long items, convert checklist

@@ -12,6 +12,12 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+**Theme:** A tidier, faster Roadmap window. Everything lines up in
+columns, it remembers what you had open, and big sections open much
+faster. Also: the Flatpak build can now run git and search tools on your
+computer, the status bar shows Claude Code's context use again, and
+several security hardening fixes.
+
 ### Added
 
 - **If a project's roadmap is laid out in a way the Roadmap window can't turn into items, the window now says so and how many section headings it found, instead of showing empty sections.** (ANTS-1695)

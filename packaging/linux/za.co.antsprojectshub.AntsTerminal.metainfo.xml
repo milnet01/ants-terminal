@@ -103,6 +103,21 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.113" date="2026-10-01">
+      <description>
+        <p>A tidier, faster Roadmap window. Everything lines up in columns, it remembers what you had open, and big sections open much faster. Also: the Flatpak build can now run git and search tools on your computer, the status bar shows Claude Code's context use again, and several security hardening fixes.</p>
+        <ul>
+          <li><em>Added:</em> The Roadmap window says so when a roadmap's layout cannot be read as items, with how many section headings it found. A Claude Code session is told when another session has left it a message. (ANTS-1695, ANTS-5553)</li>
+          <li><em>Changed:</em> The Roadmap window lines everything up in columns and remembers, per project, which sections and items you opened and where each tab was scrolled. (ANTS-5604, ANTS-5214)</li>
+          <li><em>Changed:</em> Releases are cut by one command that waits for GitHub's CI and every distro build before tagging; every release is a full public release. (ANTS-1978, ANTS-5577)</li>
+          <li><em>Removed:</em> The Roadmap window's old unused renderer, and twenty unused Ants MCP tools, so Claude Code reads a shorter tool list. (ANTS-1263, ANTS-5485)</li>
+          <li><em>Fixed:</em> Roadmap window: closed items no longer spill later paragraphs into the section and big sections open much faster, History keeps items under their own heading, Contents clicks land on the right heading, and closing a heading hides its sub-sections. (ANTS-5213, ANTS-5597, ANTS-5596)</li>
+          <li><em>Fixed:</em> In the Flatpak, the diff viewer, the roadmap and audit windows, and Claude Code's search, git and test tools run on your computer. (ANTS-5598, ANTS-5527)</li>
+          <li><em>Fixed:</em> The status bar shows Claude Code's context use again. Pasting an image from the right-click menu or middle mouse button inserts its path. Several MCP tools report more accurately. (ANTS-5592, ANTS-5580, ANTS-5595, ANTS-5583, ANTS-5584, ANTS-5585)</li>
+          <li><em>Security:</em> The prompt-marker signing key no longer appears on a command line; secrets shown in the terminal are hidden before Claude reads them; plugin settings have size limits; the roadmap store's database handle is private; review briefs read at most 1 MiB per file; Claude sockets live in your private runtime folder. (ANTS-5428, ANTS-5169, ANTS-5419, ANTS-3819, ANTS-1648, ANTS-5236)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.112" date="2026-09-30">
       <description>
         <p>The AppImage can now update itself, a welcome window helps new users set up, and Claude Code picks up tool changes without restarting the terminal, alongside smarter roadmap management and broad reliability fixes.</p>
