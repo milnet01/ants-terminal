@@ -90637,6 +90637,38 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: claude-config-request-2026-10-01 (CFG-0708).
 
+- 📋 [ANTS-5610] **In a Roadmap window narrower than about 1500 px, the column grid crushes section titles into a strip a word wide.**
+  Seen 2026-10-01 on 0.7.113 with demoreel at the first-run dialog size
+  (about 1200 px wide, 1600x1000 display), on both the store and the
+  markdown read paths: "Distribution-adoption overview" drew as
+  "Distribu / tion- / adoption / overview". At 2000 px wide it lays out
+  as designed. Cause, from applyCardColumnGrid: every column except the
+  summary is FixedLength and nowrap, so the five count columns, label,
+  date kind (up to "cross-session reports"), date (up to "2026-05-10 ->
+  2026-05-11"), state and meta take their full content width and the
+  summary gets what is left. The user's own saved size is 1928 px, so a
+  new user meets this first. Fix keeps the approved grid; the summary
+  needs a floor (or the narrow columns may wrap) so it never drops below
+  readable width. Lock with an offscreen QTextDocument test at a narrow
+  textWidth.
+  **Layman:** In a smaller Roadmap window, section titles get squashed into a thin column you can barely read.
+  Kind: fix.
+  Source: in-session-2026-10-01 (website screenshot).
+  Lanes: roadmap-dialog.
+  Evidence: tests/features/roadmap_dialog_cards/spec.md
+
+- 📋 [ANTS-5611] **The Full roadmap tab shows the roadmap's intro as raw markup: HTML comments, > quote markers and [text](link).**
+  Seen 2026-10-01 on 0.7.113 (store read path): the preamble renders
+  `<!-- ants-roadmap-format: 1 -->`, the generated-file comment, `> `
+  blockquote markers and literal `[CHANGELOG.md](CHANGELOG.md)` links,
+  then bare "Legend" / "Themes" / "---" lines. Not yet checked whether
+  this predates ANTS-5604; check that first with git history before
+  fixing. Comments should be dropped, quotes and links rendered.
+  **Layman:** The top of the Roadmap window shows formatting symbols instead of tidy text.
+  Kind: fix.
+  Source: in-session-2026-10-01 (website screenshot).
+  Lanes: roadmap-dialog.
+
 ## Welcome dialog (user request 2026-09-29)
 
 A first-run welcome dialog, and the one-click setup actions it offers.
