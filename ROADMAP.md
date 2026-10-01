@@ -62170,6 +62170,10 @@ two projects).
 
 - 📋 [ANTS-4835] **mutation_probe's require_green_baseline is unreachable for a suite whose only signal is the exit code.**
   Reported by a project whose verify_*.py scripts are the suite by design. baseline_unreadable fires when the baseline exits 0 with no parseable summary, and the documented workaround is to turn the gate off. ANTS-4401's reasoning holds as a DEFAULT; an explicit opt-in (require_green_baseline:"exit_code", or a caller-supplied summary regex) says which signal that runner gives without weakening it for anyone else.
+  Reported again 2026-10-01 by doom-ants and oneup (session messages 318,
+  324, 336, relayed by claude-config): mutation_probe cannot read a plain
+  binary's or a bash script's output, so those projects cannot use it.
+  Same root: the exit code is their only signal.
   **Layman:** The safety check that keeps a mutation result honest is refused on projects that do not use a recognised test runner.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
@@ -66814,6 +66818,14 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   the control. Session message 317 asked claude-config to clear the names
   from its skills and say if any must stay. Wait for its answer (or start
   next session), then write a spec: about 165 files name these verbs.
+  Progress 2026-10-01: claude-config answered message 317: remove all 20,
+  ~/.claude keeps none. It removed every use under skills/, agents/,
+  commands/, standards/, rules/, skeleton/ and CLAUDE.md (claude-config
+  e10268a); settings.json's global-config-lock matcher and that hook's
+  comments still name debt_sweep_apply_fix, plan_template and
+  debt_sweep_defer, and claude-config tidies those itself. Our
+  hooks/ants-bash-veto.sh now routes git status/log to git_state instead
+  of get_git_status. Step 2 is unblocked: the spec is next.
   **Layman:** About twenty old Ants tools cost every Claude session tokens while nothing uses them; mark them, check for a week, then remove them.
   Kind: chore.
   Source: user-request-2026-09-27.
@@ -69243,6 +69255,38 @@ project. Reported causes are claims until checked in source.
   **Layman:** When a code search returns too much, it should throw away the surrounding lines before it throws away any results.
   Kind: enhancement.
   Source: finbreak session message 341, 2026-10-01.
+  Lanes: mcp.
+
+- 📋 [ANTS-5589] **The Layman render gate refuses a pure section move.**
+  Reported by vestige: moving an item to another section (no text change)
+  was refused by the render gate's missing-Layman check, and working round
+  it cost about 8k tokens. A move adds no item without a Layman line, so
+  the gate should not fire on it, or should name the items it blocks on
+  and how to fill them. Reproduce with amend_field field:"section" on an
+  item whose section holds an item with no layman.
+  **Layman:** Moving a roadmap item to another section is blocked by a check that should only care about new text.
+  Kind: fix.
+  Source: vestige session message 266, relayed by claude-config 2026-10-01.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5590] **changelog_query with `fields` drops an empty `findings` key instead of returning it empty.**
+  Reported by demoreel: changelog_query with fields:["findings"] returned
+  no `findings` key when there were none, rather than findings:[]. A
+  caller cannot tell "no findings" from "field not carried". Check whether
+  the projection drops empty arrays (compact-style) on this verb only.
+  **Layman:** Asking the changelog checker for one result field returns nothing at all when that result is empty, which reads like an error.
+  Kind: fix.
+  Source: demoreel session message 326, relayed by claude-config 2026-10-01.
+  Lanes: mcp.
+
+- 📋 [ANTS-5591] **session_message inbox with limit:0 returns one row, not every row.**
+  The schema says limit 0 or less returns every row. Reported: 1 row with
+  53 unacked. Reproduced here: op inbox, include_acked:true, limit:0
+  returned 1 message where at least 2 were acked (341, 342). Likely a
+  0 passed straight to SQL LIMIT or a clamp to 1.
+  **Layman:** Asking for all waiting messages returns just one of them.
+  Kind: fix.
+  Source: claude-config feedback 2026-10-01; reproduced here 2026-10-01.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

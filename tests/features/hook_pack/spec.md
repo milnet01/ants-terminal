@@ -130,9 +130,9 @@ Four assertions, appended; everything above is unchanged.
 | # | Asserts |
 |---|---------|
 | G1 | A `--stat` diff still blocks, and its reason names `git_state`. |
-| G2 | That reason does NOT prescribe `get_git_status`. |
+| G2 | That reason does NOT name `get_git_status`. |
 | G3 | The reason obeys INV-4 (1..200 B) on the new branch too. |
-| G4 | The status/log branch still routes to `get_git_status`. |
+| G4 | The status/log branch routes to `git_state` and does not name `get_git_status`, which ANTS-5485 retires. |
 
 G2 is the one with teeth. G1 alone passes if a future edit adds
 `git_state` to the old shared string while leaving the wrong verb in
@@ -141,10 +141,9 @@ note for ANTS-2169 Part 2 correctly identified `git_state op:diff` and
 the message still sent people to `get_git_status`. Naming the right verb
 somewhere is not the same as routing to it.
 
-G4 exists because the fix SPLIT one case branch into two. The obvious
-way to get that wrong is to take `get_git_status` with the diff, leaving
-a plain `git status` routed to a diff verb — a regression the diff-side
-assertions cannot see.
+G4 exists because the fix SPLIT one case branch into two, and a plain
+`git status` must still block with a verb that answers it — a regression
+the diff-side assertions cannot see.
 
 **Run red before trusting these.** Verified 2026-08-19 against the
 pre-fix hook: G1 and G2 failed with the wrong reason quoted, while G4

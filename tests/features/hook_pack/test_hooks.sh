@@ -236,8 +236,8 @@ if [ "$have_jq" -eq 1 ]; then
     esac
     # ...and must NOT prescribe get_git_status, which cannot answer a diff.
     case "$diff_reason" in
-        *"use mcp__ants__get_git_status"*)
-            fail "diff veto still prescribes get_git_status: $diff_reason" ;;
+        *get_git_status*)
+            fail "diff veto names the retired get_git_status: $diff_reason" ;;
         *)  pass "diff veto does not prescribe a status-only verb" ;;
     esac
     check_reason_size git-diff-stat '{"tool_input":{"command":"git diff --stat"}}'
@@ -278,14 +278,16 @@ if [ "$have_jq" -eq 1 ]; then
         fi
     done
 
-    # The status/log branch keeps its own verb — splitting the diff case out
-    # must not have taken get_git_status with it.
+    # The status/log branch routes to git_state too. ANTS-5485 retires
+    # get_git_status, so no reason may name it.
     status_reason="$(printf '%s' '{"tool_input":{"command":"git status"}}' \
         | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.reason // empty')"
     case "$status_reason" in
-        *get_git_status*) pass "status veto still routes to get_git_status" ;;
+        *get_git_status*) fail "status veto names the retired get_git_status: $status_reason" ;;
+        *git_state*) pass "status veto routes to git_state" ;;
         *) fail "status veto lost its verb: $status_reason" ;;
     esac
+    check_reason_size git-status '{"tool_input":{"command":"git status"}}'
 
     # Bypass: trailing `# ants-bypass` suppresses the veto.
     bypass_out="$(printf '%s' '{"tool_input":{"command":"grep -r foo src/ # ants-bypass"}}' | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)"

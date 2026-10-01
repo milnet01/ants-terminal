@@ -5,9 +5,9 @@
 #  - SOFT-WARN (ANTS-2141): a raw source search (grep -r / rg / project find)
 #    → non-blocking PreToolUse `additionalContext` nudge toward the MCP index
 #    verbs; the command still runs. Throttled per session, tallied always.
-#  - BLOCK: git status / log → get_git_status; a --stat diff → git_state
-#    op:diff (a diff needs CHANGED LINES, which get_git_status has no field
-#    for); ROADMAP|grep → roadmap_query. Emit
+#  - BLOCK: git status / log → git_state (op:status / op:log); a --stat diff
+#    → git_state op:diff (a diff needs CHANGED LINES); ROADMAP|grep →
+#    roadmap_query. Emit
 #    `{"decision":"block","reason":"..."}`.
 # INV-4: block reason ≤ 200 B. INV-7: jq -r only. INV-12: bypass token
 # never appears in the reason string.
@@ -125,7 +125,7 @@ SCAN
 # Block branches — precise, low false-positive routing kept as hard vetoes.
 reason=""
 case "$cmd" in
-    # A diff asks for CHANGED LINES. get_git_status cannot answer that at all
+    # A diff asks for CHANGED LINES. A status-only verb cannot answer that
     # and roadmap_query is not a git verb, so the old shared reason sent the
     # caller to a dead end and then to `# ants-bypass` — the raw command the
     # veto exists to prevent. git_state op:diff is the verb that answers it
@@ -133,10 +133,10 @@ case "$cmd" in
     # but the message kept naming the wrong two.
     *"git diff --stat"*)
         [ "$git_diff_stat" -eq 1 ] && \
-            reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers); get_git_status is status-only and cannot answer a diff'
+            reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers)'
         ;;
     "git status"|"git status "*|"git log --oneline"*|"git log -n"*"--oneline"*)
-        reason='use mcp__ants__get_git_status (status+branch+ahead/behind) or mcp__ants__git_state op:"log" — paginated git facts cost ~30 tokens vs raw stdout'
+        reason='use mcp__ants__git_state (op:"status": branch, ahead/behind, files; op:"log") — paginated git facts cost ~30 tokens vs raw stdout'
         ;;
     *"cat ROADMAP.md"*"grep"*|*"grep "*"ROADMAP.md"*)
         [ "$roadmap_read" -eq 1 ] && \
