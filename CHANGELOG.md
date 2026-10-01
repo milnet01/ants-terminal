@@ -51,6 +51,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **audit_falsepos_log now names the review tools that actually read its ledger** (ANTS-5595)
+
 - **The status bar shows how full Claude Code's context is again, in large outlined text with the exact numbers on hover.** (ANTS-5592)
   It counts cached tokens too, so it no longer reads 0% and hides. The
   window it measures against is a new Settings → General field ("Claude

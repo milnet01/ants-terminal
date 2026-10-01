@@ -69338,6 +69338,30 @@ project. Reported causes are claims until checked in source.
   Source: claude-config feedback 2026-10-01; reproduced here 2026-10-01.
   Lanes: mcp.
 
+### Ants MCP feedback from CC sessions — 2026-10-01 triage
+
+- ✅ [ANTS-5595] **audit_falsepos_log's detail text and consumed_by name review skills that no longer read the ledger.**
+  The `detail` text names /cold-eyes, /test-audit, /debt-sweep and /audit as
+  readers; `consumed_by` names cold_eyes_brief / indie_review_brief.
+  Checked 2026-10-01: review-code reads the ledger (all kinds) and
+  check-code reads it at its step 7. review-tests and review-contract do
+  not: review-tests calls test_audit_brief only for pre-pass findings, and
+  review-contract does not call cold_eyes_brief. debt-sweep has no reader.
+  The in-app engines (coldeyesengine.cpp, testauditengine.cpp) still read
+  the cold-eyes and test-audit kinds, so those enum values are not dead
+  for the in-app dialogs.
+  Fix: name the live readers (review-code, check-code, and the in-app
+  Cold-eyes / Test-audit dialogs) in detail and consumed_by; keep the enum.
+  The reporter's "only review-code" missed check-code.
+  Resolved 2026-10-01: detail text and consumed_by now name review-code,
+  check-code and the three *_brief verbs, and say review-tests and
+  review-contract do not read the ledger. Enum kept. AuditFalseposLog
+  11/11 green.
+  **Layman:** The help text for the false-positive log tells sessions that several review tools read it, but today only two do, so sessions write notes nobody reads.
+  Kind: doc-fix.
+  Source: AI_Prompts feedback 2026-10-01.
+  Lanes: mcp-feedback.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

@@ -2885,7 +2885,8 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
     // their keys differ (a prose claim vs a file+rule+message hash), so
     // matching one against the other would be fuzzy by construction.
     out["consumed_by"] = QStringLiteral(
-        "AI-review briefs (cold_eyes_brief / indie_review_brief)");
+        "review-code and check-code, plus the cold_eyes_brief / "
+        "test_audit_brief / indie_review_brief verbs (ANTS-5595)");
     out["hint"] = QStringLiteral(
         "this ledger does NOT suppress audit_run findings — to dismiss a "
         "static-analysis TOOL finding so later sweeps drop it, call "
