@@ -78,8 +78,10 @@ or phase), `###` as the theme filter, `####` as a fold-out.
 
 Slugs are unique across the whole roadmap, so a theme repeated under a
 second release takes the release as a suffix:
-`### Bot navigation — 0.1.0`. The store refuses a repeated slug
-`slug_collision`.
+`### Bot navigation — 0.1.0`. `roadmap_log op:"create_section"` refuses
+a repeated slug (`slug_collision`). A repeated heading written by hand
+imports with a numeric suffix instead (`performance-2`), so the release
+suffix is the convention to follow.
 Pre-1.0 projects use phase blocks (`## P01 — Bootstrap`) since
 there's no real version to anchor to yet. The designator is `P`
 followed by digits, optionally with a `.<sub>` for a phase inserted
@@ -287,18 +289,24 @@ Optional pieces:
 - **Link lines: `Splits-from:`, `Blocked-by:`, `Duplicate-of:`,
   `Supersedes:`** — the ids this item has that relationship to.
   `roadmap-data-model.md` § 6 defines the four types. Each line is a
-  comma-separated id list ending in a period. On a store-backed project
+  comma-separated id list; the render ends it with a period, and the
+  parser reads it with or without one. **Each id holds a hyphen**
+  (`ANTS-12`, `Ts20-SP6`): a line naming an id without one, such as `Sh4`,
+  is read as prose, with no warning. On a store-backed project
   the relationship rows are the truth: `roadmap_log op:"link"` /
   `op:"unlink"` writes them, and the render composes one line per type,
   after every other trailer, in the order above. An id the store cannot
   hold stays on its line. The pass-headings form is
-  `- **Blocked-by**: ANTS-12`, with no period, directly after the
-  block's Status line. Import also reads `**Blocked-by:**`.
+  `- **Blocked-by**: PASS-47-3`, with no period, directly after the
+  block's Status line. A pass's id comes from its heading:
+  `#### Pass 47.3` is `PASS-47-3`, and `47.3` alone is prose. Import also
+  reads `**Blocked-by:**`.
   Case-sensitive labels.
   **A line is a declaration only when its whole value is an id list,
   with at most one closing period.** Any other line starting with one of
   these keys is prose and stays in the body: `Blocked-by: nothing.`, for
-  one. A body write holding a declaration refuses `body_shadowed` and
+  one. A body write, or a flip or annotate note, holding a declaration
+  refuses `body_shadowed` and
   points at `op:"link"`, since the next render would overwrite a
   hand-written line. (ANTS-4079; `RoadmapParse::extractLinkLines()` in
   `src/roadmapparse.cpp`.)
