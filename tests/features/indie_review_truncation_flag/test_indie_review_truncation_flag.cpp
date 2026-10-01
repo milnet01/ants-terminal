@@ -58,35 +58,20 @@ TEST(IndieReviewTruncationFlag, Inv2CorroborateEnvelope) {
               std::string::npos);
 }
 
-// INV-3 — cmdCrossDocDiff parity.
-TEST(IndieReviewTruncationFlag, Inv3CrossDocDiffEnvelope) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    const std::string body =
-        fnWindow(rc, "RemoteControl::cmdCrossDocDiff", 8192);
-    ASSERT_FALSE(body.empty())
-        << "cmdCrossDocDiff definition not found";
-
-    EXPECT_NE(body.find("truncatedLanes"), std::string::npos);
-    EXPECT_NE(body.find("\"truncated\""), std::string::npos);
-    EXPECT_NE(body.find("\"truncated_lanes\""), std::string::npos);
-    EXPECT_NE(body.find("\"truncated_at_bytes\""), std::string::npos);
-}
 
 // INV-4 — envelope emission is gated on !truncatedLanes.isEmpty(), so
 // the v1 happy-path shape is preserved.
 TEST(IndieReviewTruncationFlag, Inv4GatedEmission) {
     const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
-    // Two distinct gates — one per command. Both must hold.
     size_t hits = 0;
     size_t pos = 0;
     while ((pos = rc.find("!truncatedLanes.isEmpty()", pos)) != std::string::npos) {
         ++hits;
         ++pos;
     }
-    EXPECT_GE(hits, 2u)
-        << "Expected ≥2 `!truncatedLanes.isEmpty()` gates (one each in "
-           "cmdIndieReviewCorroborate + cmdCrossDocDiff); found "
+    EXPECT_GE(hits, 1u)
+        << "Expected the `!truncatedLanes.isEmpty()` gate in "
+           "cmdIndieReviewCorroborate; found "
         << hits;
 }

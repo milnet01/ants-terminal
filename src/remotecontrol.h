@@ -508,11 +508,6 @@ public:
     // ANTS-5096 — test-only override for spec_query gate_drift's walk budget
     // in ms (-1 = the default). 0 spends it before the first spec.
     void setGateDriftBudgetOverride(int ms) { m_gateDriftBudgetOverride = ms; }
-    // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
-    // cited commit SHAs against HEAD's reachable history. Reuses
-    // findRoadmapUnder + collectGitSnapshot + runGit. See
-    // docs/specs/ANTS-1583.md.
-    QJsonDocument cmdRoadmapBranchDrift(const QJsonObject &req);
     QJsonDocument cmdTabList();
     QJsonDocument cmdGetText(const QJsonObject &req);
 
@@ -907,20 +902,18 @@ public:
     // AuditEngine::summariseSarif. See docs/specs/ANTS-1254.md.
     QJsonDocument cmdLastAuditSummary(const QJsonObject &req);
 
-    // ANTS-1569: current_state — one-call session-start state recovery.
+    // ANTS-1569: one-call session-start state recovery.
     // Aggregates cmdRoadmapQuery (active filter) + cmdGitState(status)
     // + cmdLastAuditSummary + .claude/workflow.md best-effort parse +
     // docs/specs/<active-id>.md probe into a single envelope. Pure
     // composer — no new file reads or cache layer beyond what the
-    // upstream verbs already do. MCP-only (mirrors last_audit_summary;
-    // no IPC dispatch branch). See docs/specs/ANTS-1569.md.
+    // upstream verbs already do. ANTS-5485 — no longer a verb of its
+    // own; cmdSessionOrient builds its `current_state` block from it.
     QJsonDocument cmdCurrentState(const QJsonObject &req);
     // ANTS-1735: model_switch_stats — read-only aggregation of the model-switch
     // effectiveness ledger, scoped to the caller's project. MCP-only (mirrors
     // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735.md §2.5.
     QJsonDocument cmdModelSwitchStats(const QJsonObject &req);
-    // ANTS-1724: compact session-state envelope for fresh-session orientation.
-    QJsonDocument cmdSessionBrief(const QJsonObject &req);
     // ANTS-1883: bundle of current_state + project_layout +
     // roadmap_query mode:section_index status:active in one
     // envelope under a single ETag — for fresh-session orientation.
@@ -974,13 +967,11 @@ public:
     // failing test's full excerpt. MCP-only.
     QJsonDocument cmdTestResults(const QJsonObject &req);
 
-    // ANTS-1112 — five `indie_review_*` MCP tools. All resolve the
+    // ANTS-1112 — the `indie_review_*` MCP tools. All resolve the
     // active project via the focused TerminalWidget's shellCwd
     // (matches git_state / subsystem / last_audit_summary). Pure
-    // delegation to IndieReviewEngine + (for cmdIndieReviewFoldIn)
-    // RoadmapFoldIn helpers. See docs/specs/ANTS-1112.md.
+    // delegation to IndieReviewEngine. See docs/specs/ANTS-1112.md.
     QJsonDocument cmdIndieReviewPartition(const QJsonObject &req);
-    QJsonDocument cmdIndieReviewBrief(const QJsonObject &req);
     QJsonDocument cmdIndieReviewCorroborate(const QJsonObject &req);
     // ANTS-4814 — drive corroboration against a synthetic caller_cwd without
     // a MainWindow. m_main only supplies the focused-tab fallback, so the
@@ -989,8 +980,6 @@ public:
     QJsonDocument cmdIndieReviewCorroborateForTest(const QJsonObject &req);
     QJsonDocument corroborateWithRoot(const QJsonObject &req,
                                       const QString &root);
-    QJsonDocument cmdIndieReviewSynthesisPrompt(const QJsonObject &req);
-    QJsonDocument cmdIndieReviewFoldIn(const QJsonObject &req);
 
     // ANTS-1352 — server-side dispatch orchestrator. Fires N parallel
     // HTTP POSTs to Config::aiEndpoint, saves each response under
@@ -1000,33 +989,10 @@ public:
     QJsonDocument cmdIndieReviewDispatch(const QJsonObject &req,
                                          const QString &root);
 
-    // ANTS-1279 — single-call dispatch manifest for a Claude-Code-driven
-    // /indie-review sweep: derivePartition + per-lane brief manifest +
-    // suggested_merges + per-lane report paths + next-steps, so the parent
-    // fires one Agent per lane without first calling partition + N briefs.
-    // Collection reuses indie_review_corroborate + indie_review_fold_in.
-    // See docs/specs/ANTS-1279.md.
-    QJsonDocument cmdIndieReviewOrchestrate(const QJsonObject &req);
-
-    // ANTS-1113 — four `debt_sweep_*` MCP tools. Same project-path
-    // resolution as `indie_review_*`. Pure delegation to
-    // DebtSweepEngine + (for cmdDebtSweepDefer) RoadmapFoldIn helpers.
-    // See docs/specs/ANTS-1113.md.
-    QJsonDocument cmdDebtSweepScan(const QJsonObject &req);
-    QJsonDocument cmdDebtSweepApplyFix(const QJsonObject &req);
-    QJsonDocument cmdDebtSweepDefer(const QJsonObject &req);
-    QJsonDocument cmdDebtSweepTriagePrompt(const QJsonObject &req);
-
     // ANTS-1289 — verify_changes. Drives the project's build → tests →
     // lint gates and returns structured pass/fail. Pure delegation to
     // VerifyEngine. See docs/specs/ANTS-1289.md.
     QJsonDocument cmdVerifyChanges(const QJsonObject &req);
-
-    // ANTS-1290 — plan_template. Emits an Ants-conventional
-    // implementation-plan skeleton with project conventions
-    // pre-baked. Pure delegation to PlanTemplateEngine. See
-    // docs/specs/ANTS-1290.md.
-    QJsonDocument cmdPlanTemplate(const QJsonObject &req);
 
     // ANTS-1284 — token_usage. Reads ClaudeIntegration's
     // TokenUsageEngine::Tracker and returns the per-tool dispatch
@@ -1042,18 +1008,10 @@ public:
     QJsonDocument cmdTokenUsage(const QJsonObject &req,
                                 ClaudeIntegration *ci);
 
-    // ANTS-1319 — four `cold_eyes_*` MCP tools. Mirror to indie_review
-    // / debt_sweep fold-in pattern. Pure delegation to ColdEyesEngine
-    // + (for cmdColdEyesFoldIn) RoadmapFoldIn helpers. See
-    // docs/specs/ANTS-1319.md.
+    // ANTS-1319 — the `cold_eyes_*` MCP tools. Pure delegation to
+    // ColdEyesEngine. See docs/specs/ANTS-1319.md.
     QJsonDocument cmdColdEyesPartition(const QJsonObject &req);
     QJsonDocument cmdColdEyesBrief(const QJsonObject &req);
-    QJsonDocument cmdColdEyesCrossDocDiff(const QJsonObject &req);
-    QJsonDocument cmdColdEyesFoldIn(const QJsonObject &req);
-    // ANTS-1413 — single-doc cross-consistency brief (no partition).
-    QJsonDocument cmdColdEyesSingleDoc(const QJsonObject &req);
-    // ANTS-1414 — lane-source-agnostic cross-doc-diff alias.
-    QJsonDocument cmdCrossDocDiff(const QJsonObject &req);
 
     // ANTS-1283 — session_memory KV. Per-cwd key-value persistence to
     // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Pure

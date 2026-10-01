@@ -81,18 +81,6 @@ TEST(McpCallerCwdSuffixHelper, LastCommandUsesHelper) {
            "callerCwdSuffix() instead of spelling out the suffix";
 }
 
-// INV-3b — get_git_status descriptor calls the helper.
-TEST(McpCallerCwdSuffixHelper, GitStatusUsesHelper) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    ASSERT_FALSE(cc.empty());
-    const std::string block = descriptorBlock(cc, "get_git_status");
-    ASSERT_FALSE(block.empty())
-        << "ANTS-1409 INV-3b: get_git_status descriptor block "
-           "not locatable";
-    EXPECT_NE(block.find("callerCwdSuffix()"), std::string::npos)
-        << "ANTS-1409 INV-3b: get_git_status must call "
-           "callerCwdSuffix() instead of spelling out the suffix";
-}
 
 // INV-3c — get_environment descriptor calls the helper.
 TEST(McpCallerCwdSuffixHelper, EnvironmentUsesHelper) {

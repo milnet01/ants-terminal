@@ -347,20 +347,6 @@ TEST(ColdEyesEngine, ExtractCitedCodePathsResolvesRealPaths) {
         << "non-existent paths must be filtered";
 }
 
-// ENG-7
-TEST(ColdEyesEngine, CrossDocDiffFromDirEmptyDirReturnsEmpty) {
-    Workspace ws;
-    ASSERT_TRUE(ws.valid());
-    ASSERT_TRUE(QDir().mkpath(ws.root()
-                              + QStringLiteral("/.cold-eyes/reports")));
-    int reportsRead = -1;
-    const auto found = ColdEyesEngine::crossDocDiffFromDir(
-        ws.root(),
-        QStringLiteral(".cold-eyes/reports"),
-        2, &reportsRead);
-    EXPECT_TRUE(found.isEmpty());
-    EXPECT_EQ(reportsRead, 0);
-}
 
 // ENG-7b (ANTS-1626) — inline `reports` path corroborates findings
 // across two distinct lanes without touching disk. The /cold-eyes
@@ -698,37 +684,6 @@ TEST(ColdEyesEngine, SpecLanePairsWithExpandsCrossRefs) {
     EXPECT_TRUE(m.crossReferenceDocs.contains(QStringLiteral("CLAUDE.md")));
 }
 
-// ANTS-1413 INV-A — single-doc brief enumerates same-dir siblings,
-// standards lane, and root contracts.
-TEST(ColdEyesEngine, SingleDocBriefAssemblesNeighbourhood) {
-    Workspace ws;
-    ASSERT_TRUE(ws.valid());
-    ASSERT_TRUE(ws.writeRel("CLAUDE.md",  "x"));
-    ASSERT_TRUE(ws.writeRel("README.md",  "x"));
-    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
-    ASSERT_TRUE(ws.writeRel("docs/standards/coding.md", "x"));
-    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9000.md",
-        QStringLiteral("# ANTS-9000 — primary\nbody\n")));
-    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9001.md", "# 9001\n"));
-    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9002.md", "# 9002\n"));
-
-    const auto b = ColdEyesEngine::assembleSingleDocBrief(
-        ws.root(), QStringLiteral("docs/specs/ANTS-9000.md"));
-    EXPECT_EQ(b.docPath, QStringLiteral("docs/specs/ANTS-9000.md"));
-    EXPECT_TRUE(b.summary.contains(QStringLiteral("ANTS-9000")));
-    EXPECT_TRUE(b.sameDirSiblings.contains(
-        QStringLiteral("docs/specs/ANTS-9001.md")));
-    EXPECT_TRUE(b.sameDirSiblings.contains(
-        QStringLiteral("docs/specs/ANTS-9002.md")));
-    EXPECT_FALSE(b.sameDirSiblings.contains(
-        QStringLiteral("docs/specs/ANTS-9000.md")))
-        << "primary doc must not appear in its own siblings";
-    EXPECT_TRUE(b.standards.contains(
-        QStringLiteral("docs/standards/coding.md")));
-    EXPECT_TRUE(b.rootContracts.contains(QStringLiteral("CLAUDE.md")));
-    EXPECT_FALSE(b.recommendedReviewers.isEmpty())
-        << "default reviewer list must be non-empty";
-}
 
 // ANTS-1571 INV-E — when docs/standards/ exists, the name-glob fallback
 // is NOT applied (the canonical dir is the source of truth).

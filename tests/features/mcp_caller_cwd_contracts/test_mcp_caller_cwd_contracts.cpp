@@ -32,7 +32,6 @@ TEST(McpCallerCwdContracts, RequiredToolsClassified) {
     const std::string body = cc.substr(pos, end - pos);
 
     for (const auto *tool : {
-            "\"get_git_status\"",
             "\"last_audit_summary\"",
             "\"git_state\"",
             "\"verify_changes\"",

@@ -282,8 +282,7 @@ Listed only where behavior isn't obvious from the name.
   advisory verbs (`invariant_check`, `task_priors`, `project_conventions`,
   `focused_test`).
 - `remotecontrol_review` — the AI-reviewer pipeline (partition, brief,
-  dispatch, corroborate, fold in), plus debt-sweep, `verify_changes`,
-  `plan_template` and `token_usage`.
+  dispatch, corroborate), plus `verify_changes` and `token_usage`.
 - `remotecontrol_coldeyes` — the cold-eyes document-review verbs, alongside
   session memory, workflow / layout state, and build and test reporting.
 - `remotecontrol_roadmap_backfill` — one-off git walk that dates roadmap rows

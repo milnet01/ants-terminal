@@ -9,8 +9,7 @@ exited.
 ## Why this exists
 
 `test_audit_partition` returns a `partition_token` that
-`test_audit_brief`, `test_audit_synthesis_prompt`, and
-`test_audit_fold_in` accept as a handle to the same audit run. The
+`test_audit_brief` accepts as a handle to the same audit run. The
 token is generated from canonical-cwd + scope + dimensions + the
 max mtime in the scoped tree (per `testauditengine.cpp:983`).
 

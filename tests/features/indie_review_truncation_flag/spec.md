@@ -9,7 +9,7 @@ See [`docs/specs/ANTS-1344.md`](../../../docs/specs/ANTS-1344.md).
 - **INV-2** `cmdIndieReviewCorroborate` populates `truncated_lanes` /
   `truncated` / `truncated_at_bytes` on the envelope when a report
   exceeds `kMaxScanBytes`. Source-grep against `remotecontrol.cpp`.
-- **INV-3** `cmdCrossDocDiff` carries the same envelope keys (parity).
+- **INV-3** Retired with `cross_doc_diff` (ANTS-5485).
 - **INV-4** The implementation gates envelope emission on
   `!truncatedLanes.isEmpty()` so the v1 envelope shape is preserved
   when no truncation occurred.

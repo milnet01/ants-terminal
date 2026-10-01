@@ -286,8 +286,8 @@ TEST(FalseposLedger, G14IndieReviewAssembleBriefIncludesBlock) {
 }
 
 TEST(FalseposLedger, G15IndieReviewDispatchIncludesBlock) {
-    // Same file holds both call-sites; presence of two filter calls
-    // proves both wirings exist.
+    // ANTS-5485 removed assembleBriefManifest, so the dispatch brief is
+    // the one remaining call-site.
     const std::string src = ants_test::slurpFile(SRC_INDIE_REVIEW_ENGINE_CPP_PATH);
     ASSERT_FALSE(src.empty());
     size_t pos = 0, count = 0;
@@ -295,7 +295,7 @@ TEST(FalseposLedger, G15IndieReviewDispatchIncludesBlock) {
            != std::string::npos) {
         ++count; ++pos;
     }
-    EXPECT_GE(count, 2u);  // assembleBriefForDispatch + assembleBriefManifest
+    EXPECT_GE(count, 1u);  // assembleBriefForDispatch
 }
 
 TEST(FalseposLedger, G16ColdEyesManifestBriefIncludesBlock) {

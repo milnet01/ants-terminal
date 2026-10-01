@@ -80,12 +80,6 @@ TEST(GitOptionalLocks, Inv3EveryOtherReadOnlyRunnerUsesIt) {
     ASSERT_FALSE(probe.empty());
     EXPECT_TRUE(usesHelper(probe)) << "the Review button's git status probe";
 
-    const std::string provider = ants_test::stripComments(
-        ants_test::regionBetween(mw, "registerToolProvider(\"get_git_status\"",
-                                 "registerToolProvider(\"get_environment\""));
-    ASSERT_FALSE(provider.empty());
-    EXPECT_TRUE(usesHelper(provider)) << "the get_git_status provider";
-
     const std::string rcRunGit = codeOf(ants_test::slurpRemoteControl(),
         "QByteArray runGit(const QString &root, const QStringList &argv) {");
     ASSERT_FALSE(rcRunGit.empty());

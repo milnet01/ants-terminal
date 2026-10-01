@@ -1,5 +1,9 @@
 # Feature spec: ANTS-1397 v1 — `test_audit_*` MCP trio
 
+ANTS-5485 removed `test_audit_synthesis_prompt`, `test_audit_fold_in` and
+`test_audit_recheck`. `TestAuditEngine::synthesize` and `foldIn` stay, because
+TestAuditDialog drives them.
+
 v1 ships the four-verb engine + MCP wiring. Hardcoded pre-pass
 patterns + shallow mtime recheck + missing drift-guard test land
 in v2 (ANTS-1450 follow-up).

@@ -103,7 +103,7 @@ TEST(McpDryRunParity, HandlerGatesWired) {
 
     // apply_edits — reads dry_run and has a would-write branch before QSaveFile.
     EXPECT_TRUE(has(rc, "const bool dryRun = req.value(QStringLiteral(\"dry_run\")).toBool();"));
-    EXPECT_TRUE(has(rc, "if (dryRun) env[\"dry_run\"] = true;"))
+    EXPECT_TRUE(has(rc, "env[\"dry_run\"] = true;"))
         << "apply_edits envelope must carry dry_run:true";
     // project_settings — writeOut dry_run early-return.
     EXPECT_TRUE(has(rc, "o[QStringLiteral(\"would_write\")] = true;"))
@@ -113,23 +113,12 @@ TEST(McpDryRunParity, HandlerGatesWired) {
     // audit_falsepos_log — passes the flag to appendEntry.
     EXPECT_TRUE(has(rc, "ants::falsepos::appendEntry(root, e, dryRun)"))
         << "audit_falsepos_log must thread dry_run into appendEntry";
-    // Part 2 fold-in family — peekIds instead of allocateIds + gated insert.
-    EXPECT_TRUE(has(rc, "RoadmapFoldIn::peekIds(root, actionable.size())"))
-        << "indie_review/cold_eyes fold_in must peek IDs under dry_run";
-    EXPECT_TRUE(has(rc, "RoadmapFoldIn::peekIds(root, deferred.size())"))
-        << "debt_sweep_defer must peek IDs under dry_run";
-    EXPECT_TRUE(has(rc, "? false : RoadmapFoldIn::insertBlock(root, heading, block)"))
-        << "fold-in inserts must be skipped under dry_run";
-    // Part 3 — debt_sweep_apply_fix threads dry_run into the engine.
-    EXPECT_TRUE(has(rc, "DebtSweepEngine::applyMechanicalFix(root, f, dryRun)"))
-        << "debt_sweep_apply_fix must thread dry_run into applyMechanicalFix";
-    EXPECT_TRUE(has(rc, "env[\"would_apply\"] = v.wouldApply;"))
-        << "debt_sweep_apply_fix must surface would_apply under dry_run";
+    // ANTS-5485 — the Part 2 and Part 3 verbs were removed with their
+    // handlers; their engine primitives are scraped below.
 }
 
-// INV-8 (part 3) — test_audit_fold_in is engine + lambda, not a cmd* handler;
-// debt_sweep_apply_fix's no-write seam lives in the engine. Source-scrape the
-// three files (the engine + lambda + verdict need a full app to run).
+// INV-8 (part 3) — the no-write seams live in the engines, which the GUI
+// dialogs still drive. Source-scrape both engines.
 TEST(McpDryRunParity, EngineAndLambdaGatesWired) {
     const std::string te = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     ASSERT_FALSE(te.empty());
@@ -138,14 +127,6 @@ TEST(McpDryRunParity, EngineAndLambdaGatesWired) {
         << "test_audit foldIn must peek IDs under req.dryRun";
     EXPECT_TRUE(has(te, "req.dryRun"))
         << "test_audit foldIn must branch on req.dryRun";
-
-    const std::string mw = ants_test::slurpMainWindow();
-    ASSERT_FALSE(mw.empty());
-    // The provider lambda reads dry_run into req and echoes it on success.
-    EXPECT_TRUE(has(mw, "req.dryRun        = args.value(QStringLiteral(\"dry_run\")).toBool();"))
-        << "test_audit_fold_in lambda must read dry_run into req.dryRun";
-    EXPECT_TRUE(has(mw, "if (req.dryRun) env[\"dry_run\"] = true;"))
-        << "test_audit_fold_in lambda must echo dry_run:true";
 
     const std::string ds = ants_test::slurpFile(SRC_DEBTSWEEPENGINE_CPP_PATH);
     ASSERT_FALSE(ds.empty());
@@ -189,17 +170,16 @@ TEST(McpDryRunParity, ApplyMechanicalFixDryRunNoWriteThenRealMutates) {
         << "real apply must delete the marker line";
 }
 
-// INV-5 — uniform schema prop factory, declared on all seven new descriptors.
+// INV-5 — uniform schema prop factory, declared on the part-1 descriptors.
 TEST(McpDryRunParity, SchemaPropWired) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     EXPECT_TRUE(has(ci, "auto makeDryRunProp = []"))
         << "makeDryRunProp factory missing";
-    // 4 part-1 (apply_edits/project_settings/feedback_log/audit_falsepos_log)
-    // + 3 part-2 (indie_review/cold_eyes fold_in + debt_sweep_defer)
-    // + 2 part-3 (test_audit_fold_in + debt_sweep_apply_fix).
-    EXPECT_GE(countOf(ci, "= makeDryRunProp();"), 9u)
-        << "dry_run prop must be declared on all nine new write descriptors";
+    // 4 part-1 (apply_edits/project_settings/feedback_log/audit_falsepos_log).
+    // ANTS-5485 removed the part-2 and part-3 verbs.
+    EXPECT_GE(countOf(ci, "= makeDryRunProp();"), 4u)
+        << "dry_run prop must be declared on the part-1 write descriptors";
 }
 
 // INV-6 (part 2) — peekIds returns the same IDs allocateIds would, WITHOUT

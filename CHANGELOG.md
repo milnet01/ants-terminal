@@ -28,6 +28,20 @@ for security-relevant changes.
   that is not `vX.Y.Z`. `obs-status.sh` waits on each repository's job
   history, so it no longer ends early or hangs on a status word.
 
+### Removed
+
+- **Twenty unused Ants MCP verbs are gone, so every Claude Code session reads a shorter tool list.** (ANTS-5485)
+  Removed: get_git_status, current_state, session_brief, cross_doc_diff,
+  cold_eyes_cross_doc_diff, cold_eyes_single_doc, cold_eyes_fold_in, the
+  indie_review brief / synthesis_prompt / fold_in / orchestrate verbs,
+  test_audit_synthesis_prompt / fold_in / recheck, the four debt_sweep_*
+  verbs, plan_template and roadmap_branch_drift. No session called any of
+  them in the release after they were marked. A call to one now returns
+  an error naming its replacement (data.code "verb_removed"), and
+  tool_info adds a `replacement` field. The GUI dialogs that shared their
+  engines are unchanged. ants-mcpd drops them after a rebuild and /mcp;
+  the terminal drops get_git_status at its next relaunch.
+
 ### Fixed
 
 - **A pinned review partition (`.indie-review/partition.json`) may name files anywhere in the project, not only under `src/`** (ANTS-5583)

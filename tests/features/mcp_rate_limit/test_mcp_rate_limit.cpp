@@ -303,18 +303,16 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
     }
 
     // Expensive list spot-check.
-    // ANTS-1629 + ANTS-1643 — the three brief-assembly verbs
-    // (cold_eyes_brief, indie_review_brief, test_audit_brief) moved
-    // out of Expensive into BriefAssembly (30/min). Sibling
-    // partition / corroborate / fold_in / dispatch verbs stay
-    // Expensive.
+    // ANTS-1629 + ANTS-1643 — the brief-assembly verbs
+    // (cold_eyes_brief, test_audit_brief) moved out of Expensive into
+    // BriefAssembly (30/min). Sibling partition / corroborate /
+    // dispatch verbs stay Expensive.
     const std::string exp[] = {
         "\"audit_run\")",
         "\"workspace_search\")",
         "\"verify_changes\")",
         "\"indie_review_partition\")",
-        "\"test_audit_partition\")",
-        "\"debt_sweep_scan\")"};
+        "\"test_audit_partition\")"};
     for (const auto &needle : exp) {
         const auto pos = classBody.find(needle);
         ASSERT_NE(pos, std::string::npos)
@@ -326,12 +324,11 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
             << " must map to R::Expensive; found line: " << line;
     }
 
-    // ANTS-1629 + ANTS-1643 — BriefAssembly tier (30/min). Three
-    // tenants: cold_eyes_brief (1629), indie_review_brief (1643),
-    // test_audit_brief (1643). Each must map to R::BriefAssembly.
+    // ANTS-1629 + ANTS-1643 — BriefAssembly tier (30/min). Two
+    // tenants: cold_eyes_brief (1629), test_audit_brief (1643).
+    // Each must map to R::BriefAssembly.
     const std::string briefAssembly[] = {
         "\"cold_eyes_brief\")",
-        "\"indie_review_brief\")",
         "\"test_audit_brief\")"};
     for (const auto &needle : briefAssembly) {
         const auto pos = classBody.find(needle);
@@ -437,14 +434,13 @@ TEST_F(RateLimitTestFixture, Inv17BriefAssemblyCapAt30) {
     EXPECT_LE(retry, qint64{60'000});
 }
 
-// ANTS-1643 INV-17b — indie_review_brief + test_audit_brief siblings
-// land in the same 30-cap BriefAssembly tier as cold_eyes_brief.
+// ANTS-1643 INV-17b — test_audit_brief lands in the same 30-cap
+// BriefAssembly tier as cold_eyes_brief.
 // Functional proof that the sibling-fan-out pattern works at 30
 // before the orchestration report lands.
 TEST_F(RateLimitTestFixture, Inv17bBriefAssemblyCoversSiblings) {
     ClaudeIntegration ci;
     const QString siblings[] = {
-        QStringLiteral("indie_review_brief"),
         QStringLiteral("test_audit_brief"),
     };
     qint64 base = 10'000;

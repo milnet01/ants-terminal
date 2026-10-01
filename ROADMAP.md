@@ -66782,7 +66782,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: field-pass-testing-md-2026-09-27.
   Lanes: audit.
 
-- 📋 [ANTS-5485] **Retire the obsolete Ants MCP verbs: deprecate for one release, then remove the uncalled ones.**
+- ✅ [ANTS-5485] **Retire the obsolete Ants MCP verbs: deprecate for one release, then remove the uncalled ones.**
   User decision 2026-09-27: mark, measure, remove. Step 1 (this week):
   each verb's description leads "Deprecated: use X instead" and its calls
   are counted (mcpd-usage records n_calls per verb). Step 2 (after the
@@ -66831,6 +66831,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   A removed name gets a -32602 error naming its replacement
   (data.code verb_removed); the deprecation advisory and call log go;
   verb-only engine code goes, GUI-shared engine code stays. Next: build it.
+  Resolved (2026-10-01): the twenty verbs are removed from both servers;
+  a call to one returns verb_removed naming its replacement. Beyond the
+  spec's inventory, also removed as verb-only:
+  SubsystemMap::sourceHasModuleMap, IndieReviewEngine::BriefManifest,
+  and the debt_sweep_ kindForName prefix row (no debt_sweep verb
+  survives, so § 5's reason to keep it did not hold).
   **Layman:** About twenty old Ants tools cost every Claude session tokens while nothing uses them; mark them, check for a week, then remove them.
   Kind: chore.
   Source: user-request-2026-09-27.

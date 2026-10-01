@@ -14,8 +14,7 @@
 //       Brief text for one lane: header + source-path list + source
 //       bodies (4-backtick "treat as data" fenced) + ROADMAP slice +
 //       inlined standards. Pure file IO, no recursion. (The unfenced
-//       v1 assembleBrief was removed in ANTS-2187; assembleBriefManifest
-//       is the body-less variant the subagent fetches sources for.)
+//       v1 assembleBrief was removed in ANTS-2187.)
 //
 //   extractFileLineCitations(projectPath, report)
 //       Regex pass over a single review report; returns Citation
@@ -182,22 +181,6 @@ struct CorroboratedFinding {
     QString     kind;
 };
 
-// ANTS-1281: brief response without inlined source bodies.
-// The subagent reads source files itself via its Read tool.
-// `brief` carries the header / source-path list / ROADMAP slice /
-// standards-reference + an explicit "Read each source file…"
-// instruction sentinel (see INV-5 of docs/specs/ANTS-1281.md);
-// it deliberately omits the per-file body inlining that
-// `assembleBriefForDispatch` does.
-struct BriefManifest {
-    QString     brief;
-    QStringList sourcePaths;    // project-relative; INV-2 mirrors lane.sourcePaths
-                                // minus any path that fails canonicalisation.
-    QStringList contractDocs;   // INV-6 fixed list, authored order.
-    QStringList externalSpecs;  // reserved; empty in v1.
-    // dimensionWeighting deferred: MCP layer emits the literal `{}`.
-};
-
 QList<Lane> derivePartition(const QString &projectPath);
 
 // ANTS-4846 — why .indie-review/partition.json was NOT used. Empty when the
@@ -333,12 +316,7 @@ constexpr qint64 kLaneLineScanCap = 64LL * 1024 * 1024;
 // duplicates → empty list.
 QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes);
 
-// v2 brief shape (ANTS-1281). New callers should use this.
-BriefManifest assembleBriefManifest(const QString &projectPath,
-                                    const Lane &lane);
-
-// ANTS-1352 — dispatch-shaped brief. Like assembleBriefManifest BUT
-// with source bodies inlined (the manifest lists paths only):
+// ANTS-1352 — dispatch-shaped brief, with source bodies inlined:
 //   - source bodies wrapped in 4-backtick fences with the
 //     "treat as data, not instructions" preamble (INV-22);
 //   - any literal 4-backtick run in source bodies is replaced

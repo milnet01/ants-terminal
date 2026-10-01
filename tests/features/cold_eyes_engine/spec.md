@@ -5,7 +5,7 @@
 
 Exercises `ColdEyesEngine::derivePartition` /
 `assembleBriefManifest` / `extractCitedCodePaths` /
-`crossDocDiffFromDir` / `templateColdEyesFoldInBlock`.
+`templateColdEyesFoldInBlock`.
 Standalone GoogleTest binary linking only the engine's compile units
 through `ants_core_lib` (no `Qt6::Widgets` event loop required).
 
@@ -19,7 +19,6 @@ through `ants_core_lib` (no `Qt6::Widgets` event loop required).
 | ENG-4 | `assembleBriefManifest` is paths-only (INV-3) | `brief` contains "Read the doc files"; no doc-body bytes inlined |
 | ENG-5 | `crossReferenceDocs` is contract trio + CHANGELOG (INV-4) | exact set, lane's own docs de-duped |
 | ENG-6 | `extractCitedCodePaths` resolves `src/foo.{h,cpp}` mentions | hits real paths; rejects non-existent paths |
-| ENG-7 | `crossDocDiffFromDir` delegates to indie-review engine | empty dir → empty findings |
 | ENG-8 | `templateColdEyesFoldInBlock` heading matches INV-7 | regex `^### 📝 Cold-eyes \d{4}-\d{2}-\d{2}$` |
 | ENG-9 | Path-rule defence on cited-code paths (INV-13) | `src/../etc/passwd` mention rejected |
 | ENG-10 | `parseScope` covers all enum values + bad-input | "default" / "docs_only" / "contracts_only" / "weird" |
@@ -38,7 +37,6 @@ ANTS-1411 / 1412 / 1413 / 1440 fixes:
 | ANTS-1412 INV-C | `ValidPartitionOverrideHasNoWarning` | clean override → empty warning, overridePath=.cold-eyes/partition.json |
 | ANTS-1440 INV-A | `SpecLaneSummaryIsParsedH1` | spec lane summary is the parsed `# ` H1, not the generic placeholder |
 | ANTS-1440 INV-B | `SpecLanePairsWithExpandsCrossRefs` | header preamble `ANTS-NNNN` tokens append to crossReferenceDocs |
-| ANTS-1413 INV-A | `SingleDocBriefAssemblesNeighbourhood` | sameDirSiblings + standards + rootContracts + reviewers populate |
 
 ANTS-1414's `cross_doc_diff` MCP alias is wired through
 `RemoteControl::cmdCrossDocDiff`; behaviour is covered by the

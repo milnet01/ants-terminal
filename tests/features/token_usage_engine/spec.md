@@ -18,9 +18,9 @@ The in-process per-tool MCP dispatch counter:
   AND advances `sinceUnixMs` in the same call.
 - **INV-4 / Saved-floor** — `est_tokens_saved` is `max(0, ...)`;
   responses that exceed the baseline report 0 saved, not negative.
-- **INV-5 / Baseline lookup** — three baselines ship in v1
+- **INV-5 / Baseline lookup** — known tools return their baseline
   (`roadmap_query=594000`, `verify_changes=8192`,
-  `plan_template=8192`); unknown tools return 0.
+  `file_outline=8192`); unknown tools return 0.
 - **INV-6 / Schema round-trip** — handled in the MCP-layer test
   (`mcp_token_usage_tool/`), not here (engine doesn't serialise).
 - **INV-9 / Pure-read `buildReport`** — repeated calls return
@@ -39,4 +39,4 @@ The in-process per-tool MCP dispatch counter:
 ## Bundle
 
 `test_audit` — engine-style pure-function test, same family as
-`test_verify_changes_engine` and `test_plan_template_engine`.
+`test_verify_changes_engine`.

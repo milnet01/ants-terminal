@@ -23,22 +23,16 @@
 namespace {
 
 
-constexpr const char *kToolNames[6] = {
+// ANTS-5485 removed indie_review_brief, _synthesis_prompt, _fold_in and
+// _orchestrate.
+constexpr const char *kToolNames[2] = {
     "indie_review_partition",
-    "indie_review_brief",
     "indie_review_corroborate",
-    "indie_review_synthesis_prompt",
-    "indie_review_fold_in",
-    "indie_review_orchestrate",  // ANTS-1279
 };
 
-constexpr const char *kCmdMethods[6] = {
+constexpr const char *kCmdMethods[2] = {
     "cmdIndieReviewPartition",
-    "cmdIndieReviewBrief",
     "cmdIndieReviewCorroborate",
-    "cmdIndieReviewSynthesisPrompt",
-    "cmdIndieReviewFoldIn",
-    "cmdIndieReviewOrchestrate",  // ANTS-1279
 };
 
 }  // namespace
@@ -85,36 +79,6 @@ TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
     }
 }
 
-// ANTS-1279 — the orchestrate handler composes the dispatch manifest from
-// the existing engine functions and emits the report-collection contract.
-TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    const auto p = rc.find("RemoteControl::cmdIndieReviewOrchestrate");
-    ASSERT_NE(p, std::string::npos);
-    // ANTS-3481 widened 3500→4800: the module_map_unparseable branch added
-    // ~1 KB to the handler head, pushing the later literals past the window.
-    // ANTS-3681 — brace-matched body. The comment above records this window
-    // being widened 3500 -> 4800 for a reason that had nothing to do with what
-    // the row asserts, which is the cost this replaces.
-    const std::string body =
-        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewOrchestrate");
-    ASSERT_FALSE(body.empty()) << "cmdIndieReviewOrchestrate body not found";
-    EXPECT_NE(body.find("derivePartition"), std::string::npos)
-        << "orchestrate must derive the partition";
-    EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)
-        << "orchestrate must assemble per-lane brief manifests";
-    EXPECT_NE(body.find("suggestedMerges"), std::string::npos)
-        << "orchestrate must surface suggested_merges (ANTS-1288 reuse)";
-    EXPECT_NE(body.find("reports_dir"), std::string::npos)
-        << "orchestrate must emit a reports_dir for the collect phase";
-    EXPECT_NE(body.find("report_path"), std::string::npos)
-        << "orchestrate must emit a per-lane report_path";
-    EXPECT_NE(body.find("next_steps"), std::string::npos)
-        << "orchestrate must emit next_steps wiring to corroborate/fold_in";
-    EXPECT_NE(body.find("include_briefs"), std::string::npos)
-        << "orchestrate must honour the include_briefs toggle";
-}
 
 // ANTS-1288 — the partition handler emits suggested_merges, computed via
 // the engine helper (locks the wiring against accidental removal).
@@ -140,66 +104,6 @@ TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
         << "cmdIndieReviewPartition no longer calls the engine helper";
 }
 
-// ANTS-3375 / ANTS-3493 INV-11 — cmdIndieReviewBrief synthesises an
-// ad-hoc lane from a caller-supplied `source_paths[]` when the lane is
-// absent from the derived partition (mirrors cold_eyes_brief's ANTS-1508
-// doc_paths[] fallback). Source-grep over the handler body.
-TEST(McpIndieReviewTools, Ants3375SourcePathsAdHocLaneInHandler) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    const auto pos = rc.find("RemoteControl::cmdIndieReviewBrief");
-    ASSERT_NE(pos, std::string::npos);
-    const auto end = rc.find("\n}\n", pos);
-    ASSERT_NE(end, std::string::npos);
-    const std::string body = rc.substr(pos, end - pos);
-
-    EXPECT_NE(body.find("\"source_paths\""), std::string::npos)
-        << "INV-11: handler must read the source_paths field";
-    EXPECT_NE(body.find("PathValidation::validatePath"), std::string::npos)
-        << "INV-11: source_paths entries must route through the "
-           "traversal-guard chokepoint";
-    EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)
-        << "INV-11: handler must feed the ad-hoc lane to "
-           "assembleBriefManifest";
-}
-
-// ANTS-3375 / ANTS-3493 INV-12 — the unknown-lane refusal names the
-// source_paths[] override and carries known_lanes + source_paths_rejected
-// so the caller recovers without a second partition round-trip.
-TEST(McpIndieReviewTools, Ants3375NotFoundNamesSourcePathsOverride) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    const auto pos = rc.find("RemoteControl::cmdIndieReviewBrief");
-    ASSERT_NE(pos, std::string::npos);
-    const auto end = rc.find("\n}\n", pos);
-    ASSERT_NE(end, std::string::npos);
-    const std::string body = rc.substr(pos, end - pos);
-
-    EXPECT_NE(body.find("source_paths[] override"), std::string::npos)
-        << "INV-12: not_found refusal must name the source_paths[] override";
-    EXPECT_NE(body.find("known_lanes"), std::string::npos)
-        << "INV-12: refusal must list known_lanes for recovery";
-    EXPECT_NE(body.find("source_paths_rejected"), std::string::npos)
-        << "INV-12: refusal must surface per-path reject reasons";
-}
-
-// ANTS-3375 / ANTS-3493 INV-13 — the indie_review_brief descriptor
-// declares the optional source_paths array prop and cites the roadmap
-// IDs so the ad-hoc mode is discoverable from tools/list.
-TEST(McpIndieReviewTools, Ants3375SourcePathsSchemaDeclared) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    ASSERT_FALSE(ci.empty());
-    const auto pos = ci.find("t[\"name\"] = \"indie_review_brief\"");
-    ASSERT_NE(pos, std::string::npos);
-    const auto end = ci.find("tools.append(t);", pos);
-    ASSERT_NE(end, std::string::npos);
-    const std::string region = ci.substr(pos, end - pos);
-
-    EXPECT_NE(region.find("props[\"source_paths\"]"), std::string::npos)
-        << "INV-13: source_paths prop not declared on indie_review_brief";
-    EXPECT_NE(region.find("ANTS-3375"), std::string::npos)
-        << "INV-13: descriptor must cite ANTS-3375 for discoverability";
-}
 
 // ANTS-3713 — indie_review_corroborate accepts an absolute reports_dir under
 // allow_outside_project, reusing test_audit_synthesis_prompt's opt-in name
@@ -270,21 +174,15 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // Defensive: every new tool's inputSchema sets additionalProperties=false
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*
     // block — start at indie_review_partition, end at the next non-indie
-    // tool block (currently debt_sweep_scan, ANTS-1113). ANTS-1352 added
-    // indie_review_dispatch within this region (sixth tool).
+    // tool block (verify_changes, ANTS-1289).
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("\"indie_review_partition\"");
     ASSERT_NE(block_start, std::string::npos);
-    // End: the next ANTS-NNNN comment after fold_in marks the next
-    // tool series. Falls back to `result["tools"] = tools;` when no
-    // subsequent block exists.
-    const auto fold_in_pos = ci.find("\"indie_review_fold_in\"", block_start);
-    ASSERT_NE(fold_in_pos, std::string::npos);
-    auto block_end = ci.find("// ANTS-1113", fold_in_pos);
-    if (block_end == std::string::npos) {
-        block_end = ci.find("result[\"tools\"] = tools;", fold_in_pos);
-    }
+    // End: the next tool series after indie_review_dispatch.
+    const auto dispatch_pos = ci.find("\"indie_review_dispatch\"", block_start);
+    ASSERT_NE(dispatch_pos, std::string::npos);
+    const auto block_end = ci.find("// ANTS-1289", dispatch_pos);
     ASSERT_NE(block_end, std::string::npos);
     const std::string region = ci.substr(block_start, block_end - block_start);
     int count = 0;
@@ -296,9 +194,8 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // ANTS-2068 — floor, not exact: every indie_review_* tool schema must
     // pin additionalProperties:false, so adding a tool shouldn't false-fail
     // this; a drop below the known floor means one was loosened/removed.
-    EXPECT_GE(count, 7)
-        << "expected >= 7 additionalProperties=false in the indie_review "
-           "tool block (5 original indie_review_* tools + ANTS-1352 "
-           "indie_review_dispatch + ANTS-1279 indie_review_orchestrate); "
+    EXPECT_GE(count, 3)
+        << "expected >= 3 additionalProperties=false in the indie_review "
+           "tool block (partition, corroborate, dispatch); "
            "fewer means a schema dropped its additionalProperties guard";
 }

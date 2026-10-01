@@ -672,7 +672,6 @@ add_library(ants_mcpcore_lib STATIC
     src/coldeyesengine.cpp
     src/verifyengine.cpp
     src/verifytrust.cpp
-    src/plantemplateengine.cpp
     src/tokenusageengine.cpp
     src/sessionmemoryengine.cpp
     src/projectlayoutengine.cpp
@@ -2392,8 +2391,8 @@ if(ANTS_TESTS)
                 tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
                 # ANTS-5506 — ants-mcpd --call, run as a child process.
                 tests/features/mcpd_call/test_mcpd_call.cpp
-                # ANTS-5485 — deprecated verbs are marked, answer and are counted.
-                tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
+                # ANTS-5485 — removed verbs say what replaced them.
+                tests/features/mcp_removed_verbs/test_mcp_removed_verbs.cpp
                 # ANTS-5254 — roadmap_log's op enum matches its dispatch.
                 tests/features/roadmap_log_op_enum/test_roadmap_log_op_enum.cpp
                 # ANTS-5464 — ants-mcpd asks the terminal to prompt for trust.
@@ -2607,24 +2606,19 @@ if(ANTS_TESTS)
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
                 tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp
                 tests/features/mcp_indie_review_tools/test_mcp_indie_review_tools.cpp
-                tests/features/indie_review_brief_manifest/test_indie_review_brief_manifest.cpp
                 tests/features/indie_review_corroborate_dir/test_indie_review_corroborate_dir.cpp
                 # ANTS-5125 — one corroboration walk per round, split by
                 # lane count, instead of two walks diffed by (file, line).
                 tests/features/review_corroboration_single_pass/test_review_corroboration_single_pass.cpp
                 tests/features/indie_review_near_miss/test_indie_review_near_miss.cpp
                 tests/features/indie_review_shared_symbol/test_indie_review_shared_symbol.cpp
-                tests/features/mcp_debt_sweep_tools/test_mcp_debt_sweep_tools.cpp
                 tests/features/mcp_verify_changes_tool/test_mcp_verify_changes_tool.cpp
-                tests/features/mcp_plan_template_tool/test_mcp_plan_template_tool.cpp
                 tests/features/mcp_token_usage_tool/test_mcp_token_usage_tool.cpp
                 tests/features/mcp_roadmap_section_slice/test_mcp_roadmap_section_slice.cpp
                 tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp
                 # ANTS-3567 indie_review_partition sparse-partition hint (source_paths ad-hoc).
                 tests/features/indie_review_partition_sparse_hint/test_sparse_hint.cpp
                 tests/features/mcp_session_memory/test_mcp_session_memory.cpp
-                # ANTS-1724 — session_brief MCP tool.
-                tests/features/mcp_session_brief/test_mcp_session_brief.cpp
                 # ANTS-1723 — workflow_state MCP tool.
                 tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp
                 tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
@@ -2937,8 +2931,6 @@ if(ANTS_TESTS)
                 tests/features/plaintext_prompt_warning/test_plaintext_prompt_warning.cpp
                 # ANTS-1453 per-tool MCP selection_hint descriptor field.
                 tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp
-                # ANTS-1510 cold_eyes_fold_in freeform-mode opt-in.
-                tests/features/cold_eyes_fold_in_freeform/test_cold_eyes_fold_in_freeform.cpp
                 # ANTS-1512 audit_run scoped-check mode.
                 tests/features/audit_run_scoped_check/test_audit_run_scoped_check.cpp
                 # ANTS-1446 audit_run compile_commands.json validation.
@@ -2982,8 +2974,6 @@ if(ANTS_TESTS)
                 tests/features/mcp_caller_cwd_info_description_hint/test_mcp_caller_cwd_info_description_hint.cpp
                 # ANTS-1565 workspace_search configurable wall-clock budget.
                 tests/features/mcp_workspace_search_timeout_sec/test_mcp_workspace_search_timeout_sec.cpp
-                # ANTS-1583 roadmap_branch_drift MCP verb.
-                tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp
                 # ANTS-1555 audit_run per-project .audit_cache/ infra.
                 tests/features/audit_run_cache/test_audit_run_cache.cpp
                 # ANTS-1504 audit_run since-last-run scope.
@@ -3000,14 +2990,6 @@ if(ANTS_TESTS)
                 tests/features/session_orient_legacy_active/test_session_orient_legacy_active.cpp
                 # ANTS-1642 schema-vs-lambda dispatch-forward completeness.
                 tests/features/mcp_dispatch_forward_completeness/test_mcp_dispatch_forward_completeness.cpp
-                # ANTS-1569 current_state MCP aggregator.
-                tests/features/mcp_current_state/test_mcp_current_state.cpp
-                # ANTS-1644 cold_eyes_fold_in narrative_mode port.
-                tests/features/cold_eyes_fold_in_narrative/test_cold_eyes_fold_in_narrative.cpp
-                # ANTS-1644 indie_review_fold_in narrative_mode port.
-                tests/features/indie_review_fold_in_narrative/test_indie_review_fold_in_narrative.cpp
-                # ANTS-1630 cold_eyes/indie_review fold-in caller_cwd anchoring.
-                tests/features/fold_in_caller_anchor/test_fold_in_caller_anchor.cpp
                 # ANTS-1309 spec_query MCP tool.
                 tests/features/mcp_spec_query/test_mcp_spec_query.cpp
                 # ANTS-1308 invariant_check MCP tool.
@@ -3179,7 +3161,6 @@ if(ANTS_TESTS)
                         tests/features/mcpd_about_version/test_mcpd_about_version.cpp
                         tests/features/mcpd_verify_trust_wiring/test_mcpd_verify_trust_wiring.cpp
                         tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
-                        tests/features/mcp_verb_deprecation/test_mcp_verb_deprecation.cpp
                         # ANTS-5506 — ants-mcpd --call.
                         tests/features/mcpd_call/test_mcpd_call.cpp
                         # ANTS-5506 — doc_facts INV-26/INV-28: cmdDocLint's
@@ -3341,10 +3322,6 @@ if(ANTS_TESTS)
         SRC_BRIEFDISPATCH_H_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.h"
         SRC_LLMCLIENT_H_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.h"
         SRC_LLMCLIENT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.cpp")
-    set_property(SOURCE tests/features/cold_eyes_fold_in_freeform/test_cold_eyes_fold_in_freeform.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        # ANTS-1510 — cold_eyes_fold_in freeform-mode source-scrape.
-        SRC_COLDEYESENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.h")
     set_property(SOURCE tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
@@ -3432,7 +3409,6 @@ if(ANTS_TESTS)
                 tests/features/foldin_id_prefix/test_foldin_id_prefix.cpp
                 # ANTS-3492 — digit-led (letter-containing) ID prefixes.
                 tests/features/roadmap_id_digit_led_prefix/test_roadmap_id_digit_led_prefix.cpp
-                tests/features/plan_template_engine/test_plan_template_engine.cpp
                 tests/features/token_usage_engine/test_token_usage_engine.cpp
                 # ANTS-1432 — failed-call accumulator on TokenUsageEngine.
                 tests/features/token_usage_failed_metric/test_token_usage_failed_metric.cpp
@@ -3469,8 +3445,6 @@ if(ANTS_TESTS)
                 tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp
                 # ANTS-1615/1616/1617 — 2026-05-19 test_audit bundle fold-in.
                 tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp
-                # ANTS-1513 — test_audit_recheck deferred-cite verifier.
-                tests/features/test_audit_recheck/test_test_audit_recheck.cpp
                 # ANTS-1709 — centralised dir-exclusion set + openUrl idiom.
                 tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp
                 # ANTS-1708 — fingerprint-keyed learned-FP ledger.

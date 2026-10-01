@@ -32,10 +32,10 @@ model and pins the discipline of "log it once, don't re-debate".
 |-------|---------------|--------|------------------------------------------|
 | `/audit` (cppcheck, clazy, ruff, bandit, semgrep, gitleaks, …) | line-grain `(path, line, rule)` | `.audit_suppress` (JSONL v2) | `auditdialog` reads at the filter stage; marks `f.suppressed = true` so SARIF § 3.34 surfaces but the report drops |
 | `review-contract` | prose claim against a contract / spec | `.ants_review_falsepos.jsonl` | `cold_eyes_brief` (Ants harness MCP tool) injects a "previously-rejected" block |
-| `/code-quality-review` | prose claim against source + spec | `.ants_review_falsepos.jsonl` | `indie_review_brief` + `indie_review_dispatch` (Ants harness MCP tools) inject the same block |
+| `/code-quality-review` | prose claim against source + spec | `.ants_review_falsepos.jsonl` | `indie_review_dispatch` (Ants harness MCP tool) injects the same block |
 | `/test-audit` | structured dimension finding (dimension + severity + summary) | `.ants_review_falsepos.jsonl` | `test_audit_brief` (Ants harness MCP tool) returns `prior_false_positives: [...]` as a structured field |
 
-Note: the tool names in the last column (`cold_eyes_brief`, `indie_review_brief`, `indie_review_dispatch`, `test_audit_brief`) are Ants-harness skill-side MCP tools — they appear in `mcp__ants__*` form in skill invocations. They are distinct from the in-app `tools/call` registry (the `registerToolProvider` verbs in `src/mainwindow.cpp`).
+Note: the tool names in the last column (`cold_eyes_brief`, `indie_review_dispatch`, `test_audit_brief`) are Ants-harness skill-side MCP tools — they appear in `mcp__ants__*` form in skill invocations. They are distinct from the in-app `tools/call` registry (the `registerToolProvider` verbs in `src/mainwindow.cpp`).
 
 `.audit_suppress` and `.ants_review_falsepos.jsonl` are **distinct
 files**. `.audit_suppress` is line-grain and tool-keyed; the new
@@ -132,7 +132,7 @@ One JSON object per line. All fields are strings unless noted.
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `review_kind` | yes | One of `audit`, `cold-eyes`, `indie-review`, `test-audit`, `debt-sweep` (ANTS-3701). Scope note: `debt-sweep` records a **judgment** dismissal made during a sweep — a class-level call with a rationale, which is what this prose ledger is for. It is *not* the route for `debt_sweep_scan`'s mechanical line-grain residue, which ANTS-3348 gives its own `.audit_suppress`-style file; that item's "not a review_kind in the prose ledger" is about the residue, not about a reasoned dismissal. Empty (or omitted) means "all kinds" — use sparingly; a finding usually belongs to one sweep. **The `audit_falsepos_log` verb requires a canonical kind and will not emit an empty `review_kind`** (ANTS-2129 § 2.2); a broadcast (empty) entry stays a hand-edit. The read path still honours hand-written empty-`review_kind` entries. |
+| `review_kind` | yes | One of `audit`, `cold-eyes`, `indie-review`, `test-audit`, `debt-sweep` (ANTS-3701). Scope note: `debt-sweep` records a **judgment** dismissal made during a sweep — a class-level call with a rationale, which is what this prose ledger is for. It is *not* the route for a debt-sweep scan's mechanical line-grain residue, which ANTS-3348 gives its own `.audit_suppress`-style file; that item's "not a review_kind in the prose ledger" is about the residue, not about a reasoned dismissal. Empty (or omitted) means "all kinds" — use sparingly; a finding usually belongs to one sweep. **The `audit_falsepos_log` verb requires a canonical kind and will not emit an empty `review_kind`** (ANTS-2129 § 2.2); a broadcast (empty) entry stays a hand-edit. The read path still honours hand-written empty-`review_kind` entries. |
 | `claim` | yes | One-line summary of the false-positive claim. ≤ 280 UTF-16 code units (one tweet's worth) on read; longer values are truncated with `…` at the nearest non-surrogate boundary (no split surrogate pairs). |
 | `rationale` | yes | Why it's a false positive. This is the **load-bearing field** — it's what future reviewers read and must explain enough to prevent re-raising. Cite specific files, lines, or external systems. ≤ 1024 UTF-16 code units on read, same surrogate-safe truncation. |
 | `timestamp` | yes | ISO date `YYYY-MM-DD` (date-only, NO `Thh:mm:ss` suffix). Validated via `QDate::fromString(s, "yyyy-MM-dd").isValid()` — datetime forms, malformed strings (`2026-02-30`), and the like are rejected on read. |
@@ -192,8 +192,8 @@ the brief.
 
 ## What MCP injects (read contract)
 
-When the brief-assembly tools (`indie_review_brief`,
-`indie_review_dispatch`, `cold_eyes_brief`, `test_audit_brief`)
+When the brief-assembly tools (`indie_review_dispatch`,
+`cold_eyes_brief`, `test_audit_brief`)
 build a brief, they MUST:
 
 1. **Resolve the ledger path** as `<projectPath>/.ants_review_falsepos.jsonl`. If the file does not exist, emit nothing (no error).
@@ -221,8 +221,8 @@ build a brief, they MUST:
    `rationale` to 1024 (with `…` ellipsis if cut, never splitting
    a surrogate pair).
 7. **Inject** as a marked block:
-   - For text-shaped briefs (`indie_review_brief` v1,
-     `indie_review_dispatch`, `cold_eyes_brief`): a `=== Previously-
+   - For text-shaped briefs (`indie_review_dispatch`,
+     `cold_eyes_brief`): a `=== Previously-
      rejected findings (do not re-raise) ===` section appended
      after the ROADMAP slice and before the standards-reference
      block.

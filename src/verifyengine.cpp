@@ -44,10 +44,8 @@ bool readFile(const QString &absPath, QByteArray *out) {
 }
 
 // INV-4 guard. Returns true iff `absPath`, after canonicalisation,
-// resolves strictly below `rootCanonical`. Mirrors
-// IndieReviewEngine::assembleBriefManifest (strict-below; equality
-// rejected because the config file is always one level under the
-// root by construction).
+// resolves strictly below `rootCanonical` (equality rejected because
+// the config file is always one level under the root by construction).
 bool pathStrictlyBelow(const QString &absPath, const QString &rootCanonical) {
     if (rootCanonical.isEmpty()) return false;
     const QString canon = QFileInfo(absPath).canonicalFilePath();

@@ -40,7 +40,6 @@ TEST(mcp_required_contract_baseline, Inv1SessionMemoryRequired) {
 // INV-2 — security-critical Required baseline.
 TEST(mcp_required_contract_baseline, Inv2RequiredBaseline) {
     const QStringList expectedRequired = {
-        QStringLiteral("get_git_status"),
         QStringLiteral("last_audit_summary"),
         QStringLiteral("git_state"),
         QStringLiteral("verify_changes"),

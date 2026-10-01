@@ -31,7 +31,6 @@ const QHash<QString, qint64> &baselineTable() {
     static const QHash<QString, qint64> kBaselines = {
         {QStringLiteral("roadmap_query"),  594000},   // ROADMAP.md size
         {QStringLiteral("verify_changes"),   8192},   // skill 4.1 KiB + ~4 KiB bash overhead
-        {QStringLiteral("plan_template"),    8192},   // skill 6.0 KiB + ~2 KiB template echo
         // ANTS-3361 — the read/search verbs each REPLACE a full-file Read
         // or a grep, so they carry a real saving the meter previously
         // credited at ~0 (no baseline → estTokensSaved 0). Unlike

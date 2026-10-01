@@ -3,7 +3,7 @@
 // per-tool static baselines. See docs/specs/ANTS-1284.md.
 //
 // Qt6::Core only. Lives in ants_mcpcore_lib (ANTS-4932) alongside
-// verifyengine, plantemplateengine, indiereviewengine, debtsweepengine,
+// verifyengine, indiereviewengine, debtsweepengine,
 // roadmapfoldin.
 
 #pragma once

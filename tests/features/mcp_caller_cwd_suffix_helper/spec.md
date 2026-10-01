@@ -18,8 +18,6 @@ list (`get_text`) sites keep their non-canonical phrasing.
   `"Pass \`caller_cwd\` to anchor to your tab (ANTS-1392)."`.
 - **INV-3a.** `get_last_command` descriptor calls
   `callerCwdSuffix()`.
-- **INV-3b.** `get_git_status` descriptor calls
-  `callerCwdSuffix()`.
 - **INV-3c.** `get_environment` descriptor calls
   `callerCwdSuffix()`.
 - **INV-4a.** `get_scrollback` descriptor does NOT call

@@ -99,30 +99,22 @@ mcp__ants__git_state({
 })
 ```
 
-## Step 4 — run the synthesis + fold-in on the surviving set
+## Step 4 — file the surviving set
 
-Once the re-verified set is in hand, call the standard fold-in path:
+Once the re-verified set is in hand, file each finding on the roadmap
+in one call:
 
 ```jsonc
-// 1. Render the synthesis prompt for the surviving findings.
-mcp__ants__test_audit_synthesis_prompt({
+mcp__ants__roadmap_log({
+  op: "append_batch",
   caller_cwd: "<your $PWD>",
-  // shape mirrors what the original orchestrator passed
-})
-
-// 2. After the synthesis subagent returns, fold into ROADMAP.
-mcp__ants__test_audit_fold_in({
-  caller_cwd: "<your $PWD>",
-  actionable: [/* the corroborated, re-verified findings */],
-  date_iso: "<today>",
-  // partition_token: "<token>"  // when the verb gains an idempotent
-                                  // gate (ANTS-1527 follow-up)
+  section: "<the section the original run filed into>",
+  bullets: [/* one per corroborated, re-verified finding */]
 })
 ```
 
-`test_audit_fold_in` allocates IDs from `.roadmap-counter` and writes
-the block atomically — the same path the original session would have
-taken, just with a hand-curated resume set.
+The synthesis and fold-in verbs this step once used were removed in
+ANTS-5485; the `review-tests` skill now owns the synthesis.
 
 ## Step 5 — clean up `session_memory`
 

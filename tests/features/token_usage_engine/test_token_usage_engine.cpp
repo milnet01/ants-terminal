@@ -77,7 +77,7 @@ TEST(TokenUsageEngine, SavedFloorClampsNegative) {
 TEST(TokenUsageEngine, BaselineLookup) {
     EXPECT_EQ(Tracker::baselineFor("roadmap_query"),  qint64(594000));
     EXPECT_EQ(Tracker::baselineFor("verify_changes"), qint64(8192));
-    EXPECT_EQ(Tracker::baselineFor("plan_template"),  qint64(8192));
+    EXPECT_EQ(Tracker::baselineFor("file_outline"),   qint64(8192));
     EXPECT_EQ(Tracker::baselineFor("unknown_tool_xyz"), qint64(0));
     EXPECT_EQ(Tracker::baselineFor(""),               qint64(0));
 }
@@ -121,15 +121,15 @@ TEST(TokenUsageEngine, CallsSortedDescByTokensSaved) {
     // response sizes — savings are proportional to baseline.
     t.recordCall("roadmap_query", 0, 0);   // 594000 baseline → ~148500 saved
     t.recordCall("verify_changes", 0, 0);  // 8192   baseline → ~2048 saved
-    t.recordCall("plan_template",  0, 0);  // 8192   baseline → ~2048 saved
+    t.recordCall("file_outline",   0, 0);  // 8192   baseline → ~2048 saved
     auto snap = t.buildReport(true);
     ASSERT_EQ(snap.calls.size(), 3);
     // First: roadmap_query (largest baseline).
     EXPECT_EQ(snap.calls[0].tool, QString("roadmap_query"));
-    // Tie between verify_changes (8192) and plan_template (8192) —
-    // tiebreak is tool name ascending, so plan_template before
-    // verify_changes (p < v).
-    EXPECT_EQ(snap.calls[1].tool, QString("plan_template"));
+    // Tie between verify_changes (8192) and file_outline (8192) —
+    // tiebreak is tool name ascending, so file_outline before
+    // verify_changes (f < v).
+    EXPECT_EQ(snap.calls[1].tool, QString("file_outline"));
     EXPECT_EQ(snap.calls[2].tool, QString("verify_changes"));
 }
 

@@ -9,9 +9,9 @@ the dispatch-site refusal envelope.
 
 ## Invariants checked
 
-- **CLS-1.** `callerCwdContractFor` exists and classifies the four
-  Required tools (`get_git_status`, `last_audit_summary`,
-  `git_state`, `verify_changes`) as `CallerCwdContract::Required`.
+- **CLS-1.** `callerCwdContractFor` exists and classifies the three
+  Required tools (`last_audit_summary`, `git_state`,
+  `verify_changes`) as `CallerCwdContract::Required`.
 - **CLS-2.** TabSpecific / ProcessGlobal groups appear in the table
   (Phase 3a documentation; no enforcement yet).
 - **DISP-1.** `processTools` invokes `callerCwdContractFor(toolName)`

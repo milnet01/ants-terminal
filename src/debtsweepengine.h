@@ -3,8 +3,7 @@
 // Qt::Core only, no widgets.
 //
 // A detector set + scanAll + applyMechanicalFix + two prompt
-// templates. detectorsByCategory() is the live roster — the count is
-// not written out here, because it went stale on the first addition.
+// templates.
 // See docs/specs/ANTS-1113.md for the v1 contract and
 // docs/specs/ANTS-1358.md for the detector-expansion addendum.
 //
@@ -251,17 +250,6 @@ QList<Finding> runPackagingDrift(
 // are not pins, and reading one as a pin invents a mismatch). Flag-only.
 QList<Finding> detectDepPinMismatch(
     const QString &projectPath, const ScanOptions &opt);
-
-// ANTS-3710's sibling problem (ANTS-3707) — the detector_ids that make up
-// each category, so a caller can read `packaging_drift: 0` next to the ONE
-// heuristic that produced it instead of as "packaging is clean". Reported
-// independently by DOOM Ants and Fin Break: both saw three zero categories
-// and `detectors_run:[all four]`, and both then found real defects by hand in
-// exactly those categories. A count is only interpretable next to its
-// denominator. Kept beside the detectors, and locked to them by a
-// source-scrape test (mcp_debt_sweep_tools) so adding a detector without
-// listing it here fails the suite.
-const QMap<QString, QStringList> &detectorsByCategory();
 
 // Convenience: run every enabled detector and concatenate. Order
 // is the canonical category order (code, test, doc, packaging).

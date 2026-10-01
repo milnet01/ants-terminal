@@ -1332,45 +1332,6 @@ QList<Finding> runPackagingDrift(
     return rows;
 }
 
-// ---------------------------------------------------------------------------
-// detectorsByCategory (ANTS-3707)
-// ---------------------------------------------------------------------------
-
-// The denominator behind each by_category count. Note how uneven it is —
-// code_drift carries several times what packaging_drift does. That asymmetry is
-// the whole reported defect: `packaging_drift: 0` was being read as "packaging
-// is clean" when it meant "one version-lockstep heuristic did not fire".
-// Locked to the implementation by a source-scrape test, so a new detector
-// cannot ship without appearing here. Counts are deliberately not written into
-// the prose anywhere — cmdDebtSweepScan's scope_note derives them from this
-// map, because the hardcoded "seven / one" it used to carry went stale the
-// first time a detector was added (ANTS-3743).
-const QMap<QString, QStringList> &detectorsByCategory() {
-    static const QMap<QString, QStringList> v = {
-        {QStringLiteral("code_drift"), {
-            QStringLiteral("stale_type_comment"),
-            QStringLiteral("added_todo"),
-            QStringLiteral("orphan_q_unused"),
-            QStringLiteral("stale_todo"),
-            QStringLiteral("duplicate_include"),
-            QStringLiteral("obsolete_qstring_idiom"),
-            QStringLiteral("dead_branch_after_return"),
-            QStringLiteral("dead_suppression"),
-        }},
-        {QStringLiteral("test_coverage"), {
-            QStringLiteral("missing_inv_test"),
-        }},
-        {QStringLiteral("doc_drift"), {
-            QStringLiteral("shipped_without_commit"),
-            QStringLiteral("stale_changelog_bullet"),
-        }},
-        {QStringLiteral("packaging_drift"), {
-            QStringLiteral("version_drift"),
-            QStringLiteral("dep_pin_mismatch"),
-        }},
-    };
-    return v;
-}
 
 // ---------------------------------------------------------------------------
 // scanAll

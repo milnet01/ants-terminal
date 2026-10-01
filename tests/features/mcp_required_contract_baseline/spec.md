@@ -27,7 +27,7 @@ contract instead.
   MCP surface.
 - **INV-2 / Security-critical Required baseline.** The Required
   group must include the full set established by ANTS-1404 + later
-  additions: `get_git_status`, `last_audit_summary`, `git_state`,
+  additions: `last_audit_summary`, `git_state`,
   `verify_changes`, `audit_run`, `project_layout`, `session_memory`,
   `roadmap_log`. A future contributor reclassifying any of these
   to `Optional` would re-open the silent-focused-fallback leak

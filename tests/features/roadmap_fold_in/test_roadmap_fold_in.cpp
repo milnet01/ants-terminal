@@ -556,17 +556,16 @@ int countOccurrences(const QByteArray &hay, const QByteArray &needle) {
 
 } // namespace
 
-// S1: remotecontrol.cpp must call RcGate::checkCallerCwd at ≥ 6 sites
-// (one per remaining gated verb). ANTS-1630 migrated cold_eyes_fold_in +
-// indie_review_fold_in off the focused-tab gate onto caller-cwd anchoring,
-// dropping the count from 8 to 6 (verify_changes, plan_template,
-// session_memory, workflow_state, debt_sweep_apply_fix, debt_sweep_defer).
+// S1: the RemoteControl TUs must call RcGate::checkCallerCwd at ≥ 3 sites
+// (one per remaining gated verb: verify_changes, session_memory,
+// workflow_state). ANTS-5485 removed plan_template and the two debt_sweep
+// writers, taking the count from 6 to 3.
 TEST(Ants1372SourceGrep, S1CheckCallerCwdCallSitesPresent) {
     const QByteArray src =
         QByteArray::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(src.isEmpty()) << "could not read the remotecontrol TUs";
     const int n = countOccurrences(src, "RcGate::checkCallerCwd");
-    EXPECT_GE(n, 6) << "expected ≥6 gate call sites (one per remaining "
+    EXPECT_GE(n, 3) << "expected ≥3 gate call sites (one per remaining "
                        "gated verb); got " << n;
 }
 

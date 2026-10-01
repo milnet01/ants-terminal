@@ -460,7 +460,7 @@ server-controllable beyond this per-tool hint.
   gains none of these fields. The same file's
   `docs_dir` / `roadmap` / `changelog` / `specs_dir` keys redirect
   `docs_index` / `roadmap_query`+`roadmap_log` / `changelog_log` /
-  `spec_query`+`spec_log`+`current_state` / `project_layout`
+  `spec_query`+`spec_log`+`session_orient` / `project_layout`
   respectively. Pure loader `ProjectSettings::load`
   (`src/projectsettings.cpp`); paths validated under root via
   `PathValidation::isInsideProject`; absent file / key ⟹ today's

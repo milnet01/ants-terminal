@@ -22,7 +22,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess>
 #include <QScopeGuard>
 #include <QThread>
 
@@ -89,7 +88,6 @@ const QVector<QString> &terminalScopedVerbNames() {
     static const QVector<QString> names{
         QStringLiteral("get_cwd"),
         QStringLiteral("get_environment"),
-        QStringLiteral("get_git_status"),
         QStringLiteral("get_last_command"),
         QStringLiteral("get_scrollback"),
         QStringLiteral("get_session_info"),
@@ -177,12 +175,6 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("changelog_query",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdChangelogQuery));
-    // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
-    // cited commit SHAs against HEAD's reachable history. caller_cwd
-    // is Required (ANTS-1404 contract registered below).
-    sink.registerToolProvider("roadmap_branch_drift",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdRoadmapBranchDrift));
     // ANTS-1351 — audit_run server-side runner. Inline in-flight gate
     // via ClaudeIntegration::verbInFlight* (§ 2.4 of v4 spec) — no
     // class abstraction; two consumers (this verb + indie_review_dispatch,
@@ -735,163 +727,6 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
             env["byte_count"]        = r.byteCount;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
         }});
-    sink.registerToolProvider("test_audit_synthesis_prompt",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            TestAuditEngine::SynthRequest req;
-            req.callerCwd          = args.value(QStringLiteral("caller_cwd")).toString();
-            req.partitionToken     = args.value(QStringLiteral("partition_token")).toString();
-            req.reportsDir         = args.value(QStringLiteral("reports_dir")).toString();
-            req.calibrationAnchor  = args.value(QStringLiteral("calibration_anchor")).toObject();
-            // ANTS-1455 — opt-in escape hatch + mode + pagination.
-            req.allowOutsideProject = args.value(QStringLiteral("allow_outside_project")).toBool(false);
-            req.mode               = args.value(QStringLiteral("mode")).toString();
-            req.offset             = args.value(QStringLiteral("offset")).toInt(0);
-            // limit defaulting: if caller omitted, leave at -1 sentinel
-            // so engine picks mode-appropriate default (5 for "full",
-            // ignored for "summary"). 0 is a valid "use default" too.
-            if (args.contains(QStringLiteral("limit"))) {
-                req.limit = args.value(QStringLiteral("limit")).toInt(-1);
-            }
-            const auto r = TestAuditEngine::synthesize(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]                  = true;
-            env["mode"]                = r.mode;
-            env["prompt"]              = r.prompt;
-            env["dimension_summaries"] = r.dimensionSummaries;
-            env["top_dimensions"]      = r.topDimensions;
-            env["file_index"]          = r.fileIndex;
-            // ANTS-1488 — per-dimension severity histograms so callers
-            // can decide whether to drop into mode:"full" or mode:"hybrid"
-            // based on whether any dimension surfaced a CRIT/HIGH.
-            env["severity_histograms"] = r.severityHistograms;
-            env["truncated"]           = r.truncated;
-            env["reports_read"]        = r.reportsRead;
-            env["chunks_total"]        = r.chunksTotal;
-            env["chunks_returned"]     = r.chunksReturned;
-            env["next_offset"]         = r.nextOffset;
-            env["truncated_by_limit"]  = r.truncatedByLimit;
-            env["byte_count"]          = r.byteCount;
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
-    sink.registerToolProvider("test_audit_fold_in",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            // ANTS-5086 — busy guard shared hold (ANTS-2132 § 2.10).
-            const RemoteControl::RoadmapWriteHold writeHold(
-                args.value(QStringLiteral("caller_cwd")).toString());
-            if (!writeHold.held())
-                return QString::fromUtf8(QJsonDocument(RemoteControl::roadmapBusyRefusal(
-                    QStringLiteral("test_audit_fold_in"))).toJson(QJsonDocument::Compact));
-            TestAuditEngine::FoldInRequest req;
-            req.callerCwd    = args.value(QStringLiteral("caller_cwd")).toString();
-            req.actionable   = args.value(QStringLiteral("actionable")).toArray();
-            req.framework    = args.value(QStringLiteral("framework")).toString();
-            req.filesScanned = args.value(QStringLiteral("files_scanned")).toInt();
-            const QJsonArray dimsArr = args.value(QStringLiteral("dimensions")).toArray();
-            for (const QJsonValue &v : dimsArr) req.dimensions.append(v.toString());
-            req.rawFindings  = args.value(QStringLiteral("raw_findings")).toInt();
-            // ANTS-1635 — narrative-mode opt-in. Forward both fields so
-            // the engine's short-circuit gate is reachable.
-            req.narrativeMode = args.value(QStringLiteral("narrative_mode")).toBool();
-            req.narrativeMd   = args.value(QStringLiteral("narrative_md")).toString();
-            // ANTS-2227 — dry_run preview (no counter bump, no ROADMAP write).
-            req.dryRun        = args.value(QStringLiteral("dry_run")).toBool();
-            // ANTS-3498 — optional id_prefix override (validated in the engine).
-            req.idPrefix      = args.value(QStringLiteral("id_prefix")).toString();
-            const auto r = TestAuditEngine::foldIn(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                env["written_count"]=r.writtenCount; env["failed_count"]=r.failedCount;
-                env["partial"]=r.partial;
-                // ANTS-1527 — surface counter_path as a programmatic
-                // field on id_counter_failed so the caller can clear
-                // a stale `.lock` sibling without parsing the prose
-                // error. Only emitted when the engine populated it
-                // (id_counter_failed path); other failure modes leave
-                // it empty.
-                if (!r.counterPath.isEmpty()) env["counter_path"] = r.counterPath;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]                    = true;
-            if (req.dryRun) env["dry_run"] = true;   // ANTS-2227
-            env["block"]                 = r.block;
-            env["allocated_ids"]         = QJsonArray::fromStringList(r.allocatedIds);
-            env["written"]               = r.written;
-            env["release_block_heading"] = r.releaseBlockHeading;
-            env["bytes_written"]         = r.bytesWritten;
-            env["written_count"]         = r.writtenCount;
-            env["failed_count"]          = r.failedCount;
-            env["partial"]               = r.partial;
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
-    // ANTS-1513 — test_audit_recheck: verify a deferred finding's cite
-    // is still live before resuming the work. Read-only project query.
-    sink.registerToolProvider("test_audit_recheck",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            TestAuditEngine::RecheckRequest req;
-            req.callerCwd  = args.value(QStringLiteral("caller_cwd")).toString();
-            req.findingId  = args.value(QStringLiteral("finding_id")).toString();
-            const auto r = TestAuditEngine::recheck(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]    = true;
-            env["found"] = r.found;
-            if (r.found) {
-                env["cited_file"]  = r.citedFile;
-                env["cited_line"]  = r.citedLine;
-                env["file_exists"] = r.fileExists;
-                env["line_exists"] = r.lineExists;
-                if (r.lineExists) {
-                    env["current_line_text"]         = r.currentLineText;
-                    env["line_still_matches_pattern"] = r.lineStillMatchesPattern;
-                    if (r.lineStillMatchesPattern) {
-                        env["matched_pattern_id"] = r.matchedPatternId;
-                        env["matched_dimension"]  = r.matchedDimension;
-                    }
-                }
-                // ANTS-1513 — best-effort git rename hint for a gone file.
-                // Lives here (not the engine) so testauditengine.cpp stays
-                // QProcess-free (test_audit trio INV-1). Only for a
-                // relative cite under an existing project root.
-                if (!r.fileExists && !r.citedFile.isEmpty() &&
-                    !r.citedFile.startsWith(QLatin1Char('/'))) {
-                    const QString canon = QFileInfo(
-                        args.value(QStringLiteral("caller_cwd")).toString())
-                        .canonicalFilePath();
-                    if (!canon.isEmpty()) {
-                        QProcess git;
-                        git.setWorkingDirectory(canon);
-                        git.start(QStringLiteral("git"), {
-                            QStringLiteral("log"), QStringLiteral("--all"),
-                            QStringLiteral("--diff-filter=R"),
-                            QStringLiteral("--name-status"),
-                            QStringLiteral("--format="), QStringLiteral("--"),
-                            r.citedFile });
-                        if (git.waitForFinished(3000) &&
-                            git.exitStatus() == QProcess::NormalExit) {
-                            const QStringList outLines = QString::fromUtf8(
-                                git.readAllStandardOutput())
-                                .split(QChar('\n'), Qt::SkipEmptyParts);
-                            for (const QString &ol : outLines) {
-                                if (!ol.startsWith(QChar('R'))) continue;
-                                const QStringList parts = ol.split(QChar('\t'));
-                                if (parts.size() >= 3) {
-                                    env["drift_hint"] = QStringLiteral(
-                                        "file likely moved to %1")
-                                        .arg(parts.at(2));
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
     // ANTS-2144 — off the socket thread: cmdWorkspaceSearch blocks on
     // rg.waitForFinished(), which starved the QLocalSocket notifier and
     // tripped concurrent verbs into a -32000 transport timeout. caller_cwd
@@ -1045,12 +880,6 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("last_audit_summary",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdLastAuditSummary));
-    // ANTS-1569 — current_state aggregator. MCP-only (mirrors
-    // last_audit_summary; no IPC dispatch branch). Pure composer over
-    // cmdRoadmapQuery + cmdGitState + cmdLastAuditSummary.
-    sink.registerToolProvider("current_state",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdCurrentState));
 
     // ANTS-1735 — model_switch_stats. Read-only aggregation of the model-switch
     // effectiveness ledger, scoped to caller_cwd's project. MCP-only (mirrors
@@ -1138,31 +967,17 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdSimilarCode));
 
-    // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
+    // ANTS-1112 — the `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd
     // (matches the convention used by git_state / subsystem /
-    // last_audit_summary). All five delegate to RemoteControl's
+    // last_audit_summary). Each delegates to RemoteControl's
     // cmdIndieReview* methods, mirroring the ANTS-1253 registry shape.
     sink.registerToolProvider("indie_review_partition",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdIndieReviewPartition));
-    sink.registerToolProvider("indie_review_brief",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdIndieReviewBrief));
     sink.registerToolProvider("indie_review_corroborate",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdIndieReviewCorroborate));
-    sink.registerToolProvider("indie_review_synthesis_prompt",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdIndieReviewSynthesisPrompt));
-    sink.registerToolProvider("indie_review_fold_in",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdIndieReviewFoldIn));
-    // ANTS-1279 — indie_review_orchestrate. Pure read (partition + brief
-    // manifests); no subprocess, so no in-flight gate. caller_cwd Required.
-    sink.registerToolProvider("indie_review_orchestrate",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdIndieReviewOrchestrate));
 
     // ANTS-1352 — indie_review_dispatch. Inline in-flight gate via
     // verbInFlight* (same pattern as audit_run); caller_cwd Required
@@ -1229,23 +1044,6 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
             return out;
         });
 
-    // ANTS-1113 — debt_sweep_* (4 tools). _scan shells out to git and
-    // _apply_fix to a packaging script (debtsweepengine.cpp
-    // waitForFinished); ANTS-2132 dispatches the whole rc-delegate family off
-    // the GUI thread, so neither blocks the window.
-    sink.registerToolProvider("debt_sweep_scan",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdDebtSweepScan));
-    sink.registerToolProvider("debt_sweep_apply_fix",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdDebtSweepApplyFix));
-    sink.registerToolProvider("debt_sweep_defer",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdDebtSweepDefer));
-    sink.registerToolProvider("debt_sweep_triage_prompt",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdDebtSweepTriagePrompt));
-
     // ANTS-1289 — verify_changes. It shells out to per-gate build/test
     // commands (verifyengine.cpp waitForFinished), which would freeze the GUI
     // for the gate timeout; ANTS-2132 dispatches it off the GUI thread.
@@ -1254,11 +1052,6 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("verify_changes",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdVerifyChanges, ClaudeIntegration::DispatchLane::Bulk));
-
-    // ANTS-1290 — plan_template.
-    sink.registerToolProvider("plan_template",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdPlanTemplate));
 
     // ANTS-1360 — mcp_trace: read a slice of ClaudeIntegration's
     // ring buffer of last tool/call dispatches. Does NOT delegate
@@ -1276,30 +1069,14 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
                     .toJson(QJsonDocument::Compact));
         });
 
-    // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review fold-in
-    // pattern; each handler delegates to RemoteControl::cmdColdEyes*.
+    // ANTS-1319 — cold_eyes_*. Each handler delegates to
+    // RemoteControl::cmdColdEyes*.
     sink.registerToolProvider("cold_eyes_partition",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdColdEyesPartition));
     sink.registerToolProvider("cold_eyes_brief",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdColdEyesBrief));
-    sink.registerToolProvider("cold_eyes_cross_doc_diff",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdColdEyesCrossDocDiff));
-    sink.registerToolProvider("cold_eyes_fold_in",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdColdEyesFoldIn));
-    // ANTS-1413 — cold_eyes_single_doc. Single-spec cross-consistency
-    // brief without the partition+brief multi-step.
-    sink.registerToolProvider("cold_eyes_single_doc",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdColdEyesSingleDoc));
-    // ANTS-1414 — cross_doc_diff. Lane-source-agnostic alias for the
-    // regex hotspot primitive shared by cold-eyes + indie-review.
-    sink.registerToolProvider("cross_doc_diff",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdCrossDocDiff));
 
     // ANTS-1283 — session_memory KV.
     sink.registerToolProvider("session_memory",
@@ -1310,11 +1087,6 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("workflow_state",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdWorkflowState));
-
-    // ANTS-1724 — session_brief: compact session-state envelope.
-    sink.registerToolProvider("session_brief",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(rc, &RemoteControl::cmdSessionBrief));
 
     // ANTS-1883 — session_orient: bundle of current_state +
     // project_layout + roadmap_query (section_index, active).

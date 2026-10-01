@@ -413,7 +413,11 @@ noise.
 - **No dependence on timing, machine speed or execution order** — outside
   a labelled performance test (§5), whose measurement is exactly that.
 - **Isolated** — no shared state, so one test's failure cannot cause
-  another's.
+  another's. **Where tests share a process, each asserts at teardown that it
+  left that state clean**, so the test that dirtied it fails rather than a
+  later one. **A test that runs a hook or a gate points it at a throwaway
+  directory with a stub gate**, or the hook can run the real gate, which
+  runs the suite again.
 - **No network unless explicitly opted in**, with a label and a gate —
   the gate being whatever makes the opt-in explicit at run time, an
   environment variable read by the test or a job condition, as against
@@ -447,7 +451,9 @@ could the author later. Decide it on the condition instead:
   not, which is why §10 names it. **Such a skip — or a test that cannot
   import without a host dependency — must be false somewhere the suite
   runs.** Where the usual developer and CI setups both skip it, name
-  where it does run; a skip true everywhere is a test nobody runs.
+  where it does run; a skip true everywhere is a test nobody runs. Where CI
+  runs the suite too, compare the local skip list with CI's (`pytest -rs`,
+  or the runner's equivalent).
 - **Two more owe nothing.** A skip whose reason string names a sibling
   test which fails on the same defect: that failure is not silent. And a skip keyed on the
   project's own history, such as no release yet: it waits on work the

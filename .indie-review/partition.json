@@ -338,12 +338,10 @@
     },
     {
       "name": "spec-engines",
-      "summary": "Spec parse/lint/log/conformance, plan templates and feature coverage.",
+      "summary": "Spec parse/lint/log/conformance and feature coverage.",
       "sourcePaths": [
         "src/featurecoverage.cpp",
         "src/featurecoverage.h",
-        "src/plantemplateengine.cpp",
-        "src/plantemplateengine.h",
         "src/specconformance.cpp",
         "src/specconformance.h",
         "src/speclint.cpp",

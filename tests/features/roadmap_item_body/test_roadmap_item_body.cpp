@@ -367,8 +367,8 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
     // otherwise: both rxBoldLayman constructions capture the Layman sentence
     // INCLUDING its trailing period (rec.layman is period-stripped by
     // ANTS-1154 INV-4, and a period-less CHANGELOG body was the bug ANTS-1933
-    // fixed), and rxCommitSha embeds `\bSource:` as a lead-in it skips past
-    // rather than a value it extracts.
+    // fixed). ANTS-5485 removed the third site, roadmap_branch_drift's
+    // rxCommitSha.
     //
     // ANTS-3833 — counted across the ELEVEN TUs rather than against one
     // filename. The split moved these three bodies to sibling TUs without
@@ -378,7 +378,7 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
     int rcHits = 0;
     for (const QString &tu : rcTranslationUnits())
         rcHits += hitsPerFile.value(tu);
-    EXPECT_EQ(rcHits, 3);
+    EXPECT_EQ(rcHits, 2);
 
     // The site this spec REMOVES. Asserting zero here rather than treating the
     // inventory as the allowlist is the whole point: an allowlist that included

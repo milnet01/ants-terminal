@@ -362,10 +362,9 @@ void ColdEyesDialog::performFoldIn() {
     const QString dateIso = QDate::currentDate().toString(Qt::ISODate);
 
     if (m_foldInMode == FoldInMode::Narrative) {
-        // Free-text prose, no ID allocation (INV-7). The engine's
-        // templateColdEyesFoldInBlockFreeform renders *findings* without
-        // IDs; the narrative mode here is the user's own prose, so we wrap
-        // it under the cold-eyes heading directly.
+        // Free-text prose, no ID allocation (INV-7). The narrative is the
+        // user's own prose, so we wrap it under the cold-eyes heading
+        // directly.
         QString block = QStringLiteral("### 📝 Cold-eyes %1\n\n").arg(dateIso);
         const QString body = m_narrative.trimmed();
         block += body.isEmpty()

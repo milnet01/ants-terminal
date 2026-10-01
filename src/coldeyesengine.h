@@ -35,12 +35,6 @@
 //       resolved path (sorted-unique) so a reviewer can read a window
 //       around each cited line instead of the whole file.
 //
-//   crossDocDiffFromDir(projectPath, reportsDirRelative, minLanes, reportsRead)
-//       Thin wrapper around IndieReviewEngine::corroboratedFindingsFromDir
-//       — same 64 KiB per-report truncate, same `(file, line)` keying.
-//       Exists to give cold-eyes a topical entry-point in the MCP
-//       namespace (ANTS-1319 INV-5).
-//
 //   templateColdEyesFoldInBlock(actionable, allocatedIds, dateIso)
 //       `### 📝 Cold-eyes <YYYY-MM-DD>` block with one bullet per
 //       finding (ANTS-1319 INV-7). Mirrors
@@ -220,35 +214,7 @@ QStringList     extractCitedCodePaths(const QString &projectPath,
                                       QStringList *staleCitationsOut = nullptr,
                                       QMap<QString, QList<int>> *citedRegionsOut = nullptr);
 
-// ANTS-1413 — single-doc cross-consistency brief. Cheap entry-point
-// for "given a `doc_path`, what other docs in this project should
-// it stay consistent with?" Returns the related-doc neighbourhood
-// (same-dir siblings, project standards, root contract docs) plus
-// a default reviewer-role list — saves callers building a partition
-// override and dispatching the full multi-lane brief workflow when
-// they just want to sanity-check one fresh spec / doc.
-// `docPathRel` must be project-relative and resolve inside
-// projectPath (the MCP layer's PathValidation already enforces
-// this; the helper trusts the input).
-struct SingleDocBrief {
-    QString     docPath;
-    QString     summary;               // parsed H1 of docPath
-    QStringList sameDirSiblings;       // *.md neighbours of docPath
-    QStringList standards;             // project standards lane
-    QStringList rootContracts;         // CLAUDE/README/ROADMAP/CHANGELOG (+ community docs)
-    QStringList recommendedReviewers;  // role labels — orchestrator dispatches one subagent per
-};
-
-SingleDocBrief assembleSingleDocBrief(const QString &projectPath,
-                                      const QString &docPathRel);
-
-QList<IndieReviewEngine::CorroboratedFinding>
-                crossDocDiffFromDir(const QString &projectPath,
-                                    const QString &reportsDirRelative,
-                                    int minLanes = 2,
-                                    int *reportsRead = nullptr);
-
-// ANTS-1509 — in-memory counterpart to crossDocDiffFromDir. Mirrors the
+// ANTS-1509 — in-memory cross-doc diff. Mirrors the
 // shape IndieReviewEngine::corroboratedFindings already takes (caller
 // passes a {lane: report_text} map; tool computes diff in-memory). The
 // `/cold-eyes` skill bundles agent reports inline in the orchestrator's
@@ -266,16 +232,6 @@ QString         templateColdEyesFoldInBlock(
                     // ROADMAP.md by the caller). Default keeps the Ants
                     // render + existing tests byte-identical.
                     const QString &idPrefix = QStringLiteral("ANTS"));
-
-// ANTS-1510 — freeform overload. Renders one bullet per finding without
-// a `[PROJ-NNNN]` ID prefix, for projects whose roadmap doesn't use the
-// shareable docs/standards/roadmap-format.md § 3.5.1 ID scheme (e.g.
-// RetroDB's "Pass N.M" headings). Caller passes the freeform release
-// heading separately via `release_block_heading`; this helper emits the
-// block body only.
-QString         templateColdEyesFoldInBlockFreeform(
-                    const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
-                    const QString &dateIso);
 
 // String parser for the `scope` MCP arg. Maps "default" / "docs_only"
 // / "contracts_only" → Scope enum. Returns false on unknown.

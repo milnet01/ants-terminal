@@ -312,13 +312,12 @@ TEST(McpProjection, Inv11CompactArgAndDefaultAreSeparate) {
                     "its false/empty fields carry meaning a caller branches on";
     }
 
-    for (const char *t : {"get_scrollback", "session_brief", "current_state",
-                          "doc_citations", ""}) {
+    for (const char *t : {"get_scrollback", "doc_citations", ""}) {
         EXPECT_FALSE(mcp::isCompactArgTool(QString::fromUtf8(t)))
             << t << " declares no `compact` argument";
     }
 
-    for (const char *t : {"get_scrollback", "session_brief", ""}) {
+    for (const char *t : {"get_scrollback", ""}) {
         EXPECT_FALSE(mcp::isDefaultCompactTool(QString::fromUtf8(t)))
             << t << " is not in the table at all";
     }

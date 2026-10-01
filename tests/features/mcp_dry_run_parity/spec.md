@@ -21,6 +21,11 @@ would change" pre-flight. This feature adds a uniform `dry_run`:
   `DebtSweepEngine::applyMechanicalFix`; dry_run runs every guard + computes
   the patched body but skips the `QSaveFile` write).
 
+ANTS-5485 removed the Part 2 and Part 3 verbs. Their engine primitives
+(`peekIds`, `applyMechanicalFix`'s `dryRun`, `FoldInRequest::dryRun`) stay,
+because the GUI dialogs drive them; INV-6 and INV-8 now scrape the engines
+only, and INV-5 counts the four part-1 descriptors.
+
 ## Surface
 
 - `ants::falsepos::appendEntry(projectPath, entry, dryRun)` — the would-be

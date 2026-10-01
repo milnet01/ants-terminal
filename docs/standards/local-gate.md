@@ -129,15 +129,18 @@ to get it.** Settled by the user 2026-09-28. So a hook of its own does all of th
 on every push, documentation-only pushes included:
 
 1. **The secret scan over the pushed commits** ([security.md](security.md)
-   § 2). The simplest way is to pipe git's stdin to
+   § 2). On this machine the simplest way is to pipe git's stdin to
    `~/.claude/githooks/pre-push --secrets-only "$1"`, which scans and runs no
    gate. Pass the remote: a branch new to it is then scanned against what
    that remote holds, not every remote, so a commit already on a backup or a
-   fork is still scanned on its way here.
+   fork is still scanned on its way here. **A hook other people's clones run
+   cannot assume `~/.claude` exists**: it calls the scanner itself, for
+   example `gitleaks` over each pushed range.
 2. **The gate over the pushed commits, never the working tree** (§ 5).
 3. **On a documentation-only push, the documentation checks** (§ 6), with
    § 6.2's rule that every pushed path must match.
-4. **A complete skip only on § 7's three conditions.**
+4. **A complete skip only on § 7's three conditions, or § 7.2's push that
+   adds no commit.**
 
 **Before writing a hook of its own, check whether a shared-hook knob gives
 the speed-up.** `ants.gate.inPlace` keeps a warm build tree, with
@@ -326,7 +329,9 @@ So **give the gate a documentation mode and select it by the paths in the
 push**. Where the gate has no such mode, run all of it and say so — never
 quietly select a subset the gate does not offer. A hook cannot invent a
 check, and a skipped check followed by a green line is indistinguishable
-from a clean run.
+from a clean run. **Where the pipeline has no documentation check at all,
+add the cheapest real one**, such as a link check, so a documentation-only
+push checks something.
 
 ### 6.1 Which files count as documentation
 
@@ -475,6 +480,24 @@ included, so any change misses and the gate runs. The hook says which
 record it skipped on. `githooks/pre-push` does this; `cut-release` Phase 2b
 writes the record, so a release push does not run the pipeline twice.
 
+**A run that skipped any leg is not a full run, and writes no record.** So a
+gate that skips a leg — a cold container, a missing tool — does one of two
+things. It exits non-zero, or it declares the skip: it writes the leg's name
+to the file named in `ANTS_GATE_SKIPPED`, when the hook sets that variable.
+The hook then lets the push through, prints the skipped legs, and writes no
+record. A gate that skips a leg and exits 0 silently has passed a tree it
+did not check, and § 7.1 would then skip that tree for good. **Prefer
+declaring for a leg that depends on an outside service**: exiting non-zero
+blocks every push for the length of someone else's outage.
+
+### 7.2 A push that adds no commit
+
+**A push may skip the gate when every pushed tip is already on a
+remote-tracking branch.** A tag-only push is the usual case. No commit
+reaches the remote that is not there already, so there is nothing new to
+check. A tip that is not on any remote-tracking branch runs the gate as
+normal.
+
 ## 8. Anti-patterns
 
 - **A hand-written `ci-local.sh` the workflow does not call.** § 3. It
@@ -501,6 +524,9 @@ the shared hook, the skeleton or a shared tool can supply is supplied there;
 the rest are the project's own, and a gap goes on its roadmap. Settled by the
 user 2026-09-28.
 
+**A lever measured and found not worth it counts as taken**, where the
+project records the measurement.
+
 **Every speed-up fails closed.** Where it cannot be sure — a range it cannot
 resolve, a classifier that crashed, a cache that is missing — it runs
 everything. It never skips on doubt. **A leg it does skip says so and why,
@@ -521,21 +547,22 @@ hook, the skeleton or `ci-gate` already supplies or reports it.
 | Lever | Where | Safe only when |
 |---|---|---|
 | Documentation-only pushes run the documentation checks (§ 6) | local: shared | the classifier follows § 6.1; ONE path list, via `ants.gate.docsCommand` where CI has its own |
-| The same, on GitHub: `paths-ignore` on the `push` trigger | GitHub: project | on `push` only, so a pull request still runs everything; the list is the local one |
+| The same, on GitHub: `paths-ignore` on the `push` trigger | GitHub: project | on `push` only, so a pull request still runs everything; the list is the local one; the project records why what § 6's documentation mode checks for those paths need not run on GitHub, or runs it there |
 | Skip a tree that already passed a full run (§ 7.1) | local: shared | keyed on the tree, so any change misses |
 | Run in place on the warm build (`ants.gate.inPlace`) | local: shared | § 5.2's two guards hold; otherwise a fresh worktree or a refusal |
-| `concurrency` with `cancel-in-progress` | GitHub: skeleton | the group key holds the workflow, the EVENT and the ref, or a push and a nightly cancel or queue behind each other; cancel on non-default branches only, since on the default branch a cancelled run hides which commit broke. **Not for a deploy workflow**: there use one fixed group with no cancel, so two deploys queue and never overlap |
+| `concurrency` with `cancel-in-progress` | GitHub: skeleton | the group key holds the workflow, the EVENT and the ref, or a push and a nightly cancel or queue behind each other; cancel on non-default branches only, since on the default branch a cancelled run hides which commit broke. **Not for a deploy workflow**: there use one fixed group with no cancel, so two deploys queue and never overlap. A group holds one pending run, so a third run cancels the queued one even without `cancel-in-progress`; for a deploy that keeps the newest commit, which is what a deploy wants |
 | `timeout-minutes` on every job | GitHub: skeleton | sized for a COLD build, or a cold cache reads as a hang |
-| Dependency and compiler caches | both: project | keyed on the lockfile or toolchain; restore by prefix, save per commit, and save with `if: always()`, since a job that timed out skips a normal save and every later run starts colder. One key prefix per job, never shared, or two jobs overwrite each other. Prune older entries after a successful save, or per-commit keys fill GitHub's per-repository limit and evict the one you need. ccache needs `sloppiness=pch_defines,time_macros` for PCH builds to hit, and `base_dir` for hits across checkout paths |
+| Dependency and compiler caches | both: project | measured separately: a download cache saves fetching, a compiler cache saves compiling. Keyed on the lockfile or toolchain; restore by prefix, save per commit, and save with `if: always()`, since a job that timed out skips a normal save and every later run starts colder. One key prefix per job, never shared, or two jobs overwrite each other. Prune older entries after a successful save, or per-commit keys fill GitHub's per-repository limit and evict the one you need. The save and prune rules are `actions/cache`'s; a built-in cache such as `setup-node`'s exposes none of them. ccache needs `sloppiness=pch_defines,time_macros` for PCH builds to hit, and `base_dir` for hits across checkout paths |
 | A fast linker (`mold`) | both: project | the toolchain supports it, LTO links included: Ubuntu 24.04's `mold` failed GCC LTO links for Vestige. A compile-bound build gains little, so measure first |
 | Compiler cache on MSVC (`ccache` via `CMAKE_VS_GLOBALS`) | both: project | no custom command in a target consumes another custom command's output in that target; fold a chain into one `add_custom_command` with several `COMMAND`s. The `UseMultiToolTask` setting it needs runs custom commands in parallel, and UT_Ants' two-step shader chain raced on GitHub only. The race is intermittent, so a green run is no evidence against it; only this structural rule is. Debug info is `/Z7`, not `/Zi`, and precompiled headers are off, or most objects miss the cache. Every leg that claims parity installs the same pinned `ccache`, since finding it switches the build route |
 | Keep a warm build between Windows legs (`git clean -e <dir>`) | local: project | under Git Bash, `MSYS_NO_PATHCONV=1` is set. Without it a leading-`/` argument to any native program is rewritten, the exclude matches nothing, and every push rebuilds cold, as UT_Ants' did. Verify by checking the build directory still exists after the clean; `git clean -n -q` prints nothing, so a dry run cannot show it |
 | Build parallelism | both: project | sized from MEMORY per job, measured by peak RSS, not from the CPU count, with an override knob so CI can set it from its runner's memory. An out-of-memory kill reads as an unrelated failure |
 | Test parallelism | both: project | tests share no state (ports, temp paths, the user's config directories), and each has a timeout, for example `ctest -j N --timeout S` |
 | Slow legs (sanitizers, fuzzing) nightly and on demand, not per push | GitHub: project | the nightly's timeout is sized for a cold cache, or the cache is warmed first. Better: size the build's own guard by whether the exact cache key matched (`actions/cache`'s `cache-hit` output), short on a hit and long on a miss |
+| Shorter waits in tests | both: project | the wait is in a test or its fixture, never in the code under test. A test whose wall time far exceeds its CPU time is waiting |
 | Timing, performance and end-to-end tests outside the push gate | both: project | they still run somewhere scheduled. They are the main flake source on a loaded machine |
-| Warm containers for toolchain-parity legs | local: project | a cold leg is never started inside a push: skip it loudly and name the warm-up command. **Where CI's toolchain differs from the host's, this leg is what makes a local green mean anything**: demoreel and Vestige each passed locally and failed on GitHub. It matches CI only when: (1) the workflow pins its runner, not `*-latest`, which moves with no commit; (2) the image is built from CI's own package list, plus a second list of what the runner image preinstalls, since a missing tool can silently skip a check; (3) the tag is keyed on the whole recipe (base, both lists, pinned tool versions); (4) it runs as the runner's user on the runner's core count, since output can depend on cores; (5) it runs the tree the local gate just ran, and never on CI itself; (6) exiting 0 without reaching the gate's last line is a failure. **A tool on one leg and not the other can change the build route, not only skip a check**, so every parity leg, container or not, installs CI's toolchain-affecting tools from one shared pinned source. **Known limit**: the runner takes package updates weekly and the image is frozen, so rebuild it periodically |
-| A cost check before a long leg (for example `ninja -n`) | local: project | a leg that will not fit the caller's timeout is skipped loudly. A killed build can corrupt the tree |
+| Warm containers for toolchain-parity legs | local: project | a cold leg is never started inside a push: skip it, declare the skip (§ 7.1), and name the warm-up command. **Where CI's toolchain differs from the host's, this leg is what makes a local green mean anything**: demoreel and Vestige each passed locally and failed on GitHub. It matches CI only when: (1) the workflow pins its runner, not `*-latest`, which moves with no commit; (2) the image is built from CI's own package list, plus a second list of what the runner image preinstalls, since a missing tool can silently skip a check; (3) the tag is keyed on the whole recipe (base, both lists, pinned tool versions); (4) it runs as the runner's user on the runner's core count, since output can depend on cores; (5) it runs the tree the local gate just ran, and never on CI itself; (6) exiting 0 without reaching the gate's last line is a failure. **A tool on one leg and not the other can change the build route, not only skip a check**, so every parity leg, container or not, installs CI's toolchain-affecting tools from one shared pinned source. **Known limit**: the runner takes package updates weekly and the image is frozen, so rebuild it periodically |
+| A cost check before a long leg (for example `ninja -n`) | local: project | a leg that will not fit the caller's timeout is skipped and the skip declared (§ 7.1). A killed build can corrupt the tree |
 
 **`ci-gate` reports the GitHub rows it can read from a workflow**: a job with
 no `timeout-minutes`, and a workflow run on branch pushes or pull requests
@@ -555,6 +582,7 @@ project's judgement. **Nothing checks the other rows mechanically.**
 | § 5 the run is over the pushed commits, not the working tree | **`Partial:`** `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally. **Route 1 is not by itself enough**: the gate runs as `( cd "$WORKTREE" && "$GATE" )`, and an absolute `ants.gate.command` resolves to the script in the real checkout, whose own `cd "$(dirname "$0")/.."` then walks back to the working tree. Measured 2026-09-25 — the gate reported the real repository as its `PWD`, an uncommitted file was present, and the hook exited 0. The machine-wide hook now re-anchors an absolute path inside the repository and refuses one outside it; a hook that does not is still exposed. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
 | § 6.2 a repository sets `ants.gate.docsGlob` | **nothing** — the machine-wide hook falls back to a built-in list with no word said, and § 6.2 says so in its own text. **It is the one of the three whose absence is always silent.** An unset `ants.gate.command` is named where no gate script is discoverable (`NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE`, then the key), so for that key an unset and a set one do not produce the same push. **`ants.gate.docsMode` is named only where the hook's `--docs`/`--lint` grep ALSO finds nothing** — a gate spelling its flag either of those ways gets documentation mode with the key unset, and the push is identical to the configured one. So unset-versus-set is visible for `command` alone, and `docsGlob` is the only one that reaches § 2's breach unannounced |
 | § 7 all three conditions hold before the skip | **nothing** — the shared hook does not implement this skip; DOOM_Ants' and Contact List's own hooks do, and nothing checks theirs. `~/.claude/githooks/pre-push` classifies a push as documentation-only, but it does that to select § 6's documentation mode: it holds no `gh` call, and after classifying it always runs the gate. So condition 1 is checked by nothing, condition 2 is a read of the pipeline's definition, and the skip is taken by hand or not at all |
+| § 7.1 a gate that skips a leg declares it | **nothing** — a gate that skips a leg and exits 0 looks the same as one that ran it |
 | § 9 speed-ups taken, failing closed | `~/.claude/tools/ci-gate` reports three GitHub rows as advisories: a job with no `timeout-minutes`, and a push or pull-request workflow with no `concurrency` or no cache. **Nothing** checks the rest, or that a speed-up fails closed |
 
 ## Cold-eyes loop log

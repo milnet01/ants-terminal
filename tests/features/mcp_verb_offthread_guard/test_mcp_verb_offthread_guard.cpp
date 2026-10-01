@@ -337,18 +337,6 @@ TEST(McpVerbOffthreadGuard, Main) {
         expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {",
                           "return "),
                "INV-21/roadmap_log-holds");
-        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdColdEyesFoldIn(", "return "),
-               "INV-21/cold_eyes_fold_in-holds");
-        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdIndieReviewFoldIn(", "return "),
-               "INV-21/indie_review_fold_in-holds");
-        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdDebtSweepDefer(", "return "),
-               "INV-21/debt_sweep_defer-holds");
-        const size_t reg = mw.find("registerToolProvider(\"test_audit_fold_in\"");
-        const std::string taf = reg == std::string::npos
-            ? std::string() : mw.substr(reg, callEnd(mw, mw.find('(', reg)) - reg);
-        expect(taf.find("RoadmapWriteHold") != std::string::npos &&
-                   taf.find("RoadmapWriteHold") < taf.find("return "),
-               "INV-21/test_audit_fold_in-holds");
     }
 
     // Matches the arrow, not a list of accessor names, so a NEW MainWindow

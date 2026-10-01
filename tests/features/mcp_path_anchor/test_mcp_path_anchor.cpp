@@ -126,13 +126,13 @@ TEST(McpPathAnchor, AbsoluteOutsideRootRejects) {
 
     const auto check = PathValidation::validatePath(
         QStringLiteral("/etc/passwd"), root,
-        QStringLiteral("debt_sweep_apply_fix"),
+        QStringLiteral("example_verb"),
         QStringLiteral("file"));
     EXPECT_TRUE(check.bad);
     EXPECT_EQ(check.err.value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_path"));
     const QString errText = check.err.value(QStringLiteral("error")).toString();
-    EXPECT_TRUE(errText.contains(QStringLiteral("debt_sweep_apply_fix")));
+    EXPECT_TRUE(errText.contains(QStringLiteral("example_verb")));
     EXPECT_TRUE(errText.contains(QStringLiteral("\"file\"")));
     // ANTS-3430 — a non-feedback outside-root path is still refused; hints
     // were retired (feedback files are now allowed, not hinted-at).
@@ -411,8 +411,7 @@ TEST(McpPathAnchorWiring, EightValidatePathCallsites) {
         << "expected at least 8 PathValidation::validatePath( calls in "
            "remotecontrol.cpp (workspace_search, file_outline, "
            "runLogOp, runDiffOp, resolveLaneFiles, "
-           "indie_review_corroborate, debt_sweep_apply_fix, "
-           "cold_eyes_cross_doc_diff); found "
+           "indie_review_corroborate, ...); found "
         << count;
 }
 

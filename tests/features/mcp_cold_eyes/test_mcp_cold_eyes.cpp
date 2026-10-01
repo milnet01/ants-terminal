@@ -30,7 +30,7 @@ size_t coldEyesBlockEnd(const std::string &ci, size_t start) {
 }  // namespace
 
 // REG-1
-TEST(McpColdEyes, FourToolNamesRegisteredWithAnchor) {
+TEST(McpColdEyes, ToolNamesRegisteredWithAnchor) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1319");
@@ -40,9 +40,7 @@ TEST(McpColdEyes, FourToolNamesRegisteredWithAnchor) {
     ASSERT_NE(end, std::string::npos);
     const std::string region = ci.substr(pos, end - pos);
     for (const std::string name : {"cold_eyes_partition",
-                                   "cold_eyes_brief",
-                                   "cold_eyes_cross_doc_diff",
-                                   "cold_eyes_fold_in"}) {
+                                   "cold_eyes_brief"}) {
         EXPECT_NE(region.find("t[\"name\"] = \"" + name + "\""),
                   std::string::npos)
             << name << " registration missing under ANTS-1319 anchor";
@@ -59,30 +57,9 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
     ASSERT_NE(end, std::string::npos);
     const std::string region = ci.substr(pos, end - pos);
 
-    // brief / fold_in each call `req.append("…")` for their one
-    // required arg.
+    // brief calls `req.append("lane")` for its one required arg.
     EXPECT_NE(region.find("req.append(\"lane\")"), std::string::npos)
         << "cold_eyes_brief should require lane";
-    // ANTS-1644 — cold_eyes_fold_in dropped `actionable` from the
-    // required array when narrative_mode landed. `caller_cwd` is now
-    // the sole required field; the handler enforces "actionable OR
-    // narrative_mode + narrative_md" downstream so a single required
-    // field can't capture the disjunction. Sibling-tool assertion
-    // lives in `cold_eyes_fold_in_narrative` /
-    // `indie_review_fold_in_narrative`.
-    const auto pCe = region.find("t[\"name\"] = \"cold_eyes_fold_in\"");
-    ASSERT_NE(pCe, std::string::npos);
-    const auto pCeEnd = region.find("tools.append(t);", pCe);
-    ASSERT_NE(pCeEnd, std::string::npos);
-    const std::string ceRegion = region.substr(pCe, pCeEnd - pCe);
-    EXPECT_EQ(ceRegion.find("req.append(\"actionable\")"),
-              std::string::npos)
-        << "ANTS-1644: cold_eyes_fold_in must NOT require "
-           "`actionable` (narrative_mode is the alternative)";
-    EXPECT_NE(ceRegion.find("req.append(\"caller_cwd\")"),
-              std::string::npos)
-        << "cold_eyes_fold_in must keep caller_cwd required";
-
     // partition: no `required` (scope is optional). Negative check —
     // look for the partition block specifically. Its block runs from
     // `t["name"] = "cold_eyes_partition"` to the next `tools.append(t);`.
@@ -93,24 +70,6 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
     const std::string partRegion = region.substr(pPart, pEnd - pPart);
     EXPECT_EQ(partRegion.find("schema[\"required\"]"), std::string::npos)
         << "cold_eyes_partition unexpectedly sets a required array";
-
-    // ANTS-1509 — cross_doc_diff is XOR `reports`/`reports_dir`,
-    // enforced at the handler (cmdColdEyesCrossDocDiff). The schema
-    // must NOT set required (mirrors indie_review_corroborate's
-    // ANTS-1282 INV-1 pattern). Negative check on the block.
-    const auto pDiff = region.find(
-        "t[\"name\"] = \"cold_eyes_cross_doc_diff\"");
-    ASSERT_NE(pDiff, std::string::npos);
-    const auto pDiffEnd = region.find("tools.append(t);", pDiff);
-    ASSERT_NE(pDiffEnd, std::string::npos);
-    const std::string diffRegion = region.substr(pDiff, pDiffEnd - pDiff);
-    EXPECT_EQ(diffRegion.find("schema[\"required\"]"), std::string::npos)
-        << "cold_eyes_cross_doc_diff unexpectedly sets a required array; "
-           "XOR is enforced at the handler per ANTS-1509";
-    EXPECT_NE(diffRegion.find("props[\"reports\"]"), std::string::npos)
-        << "cross_doc_diff missing inline reports prop (ANTS-1509)";
-    EXPECT_NE(diffRegion.find("props[\"reports_dir\"]"), std::string::npos)
-        << "cross_doc_diff missing reports_dir prop";
 }
 
 // REG-3
@@ -123,15 +82,6 @@ TEST(McpColdEyes, CmdColdEyesExtractsAllArgs) {
     EXPECT_NE(rc.find("req.value(QStringLiteral(\"lane\")).toString()"),
               std::string::npos)
         << "lane arg not extracted in cmdColdEyesBrief";
-    EXPECT_NE(rc.find("req.value(QStringLiteral(\"reports_dir\"))"),
-              std::string::npos)
-        << "reports_dir arg not extracted in cmdColdEyesCrossDocDiff";
-    EXPECT_NE(rc.find("req.value(QStringLiteral(\"actionable\")).toArray()"),
-              std::string::npos)
-        << "actionable arg not extracted in cmdColdEyesFoldIn";
-    EXPECT_NE(rc.find("req.value(QStringLiteral(\"date_iso\")).toString()"),
-              std::string::npos)
-        << "date_iso arg not extracted in cmdColdEyesFoldIn";
 }
 
 // REG-4
@@ -186,15 +136,13 @@ TEST(McpColdEyes, ProviderLambdasForwardArgs) {
     // wholesale. Assert the verb reference rather than the old inline
     // `cmd(args)` call shape.
     for (const std::string cmd : {"cmdColdEyesPartition",
-                                  "cmdColdEyesBrief",
-                                  "cmdColdEyesCrossDocDiff",
-                                  "cmdColdEyesFoldIn"}) {
+                                  "cmdColdEyesBrief"}) {
         EXPECT_NE(mw.find(cmd), std::string::npos)
             << cmd << " not wired in mainwindow.cpp";
     }
     EXPECT_NE(mw.find("registerToolProvider(\"cold_eyes_partition\""),
               std::string::npos);
-    EXPECT_NE(mw.find("registerToolProvider(\"cold_eyes_fold_in\""),
+    EXPECT_NE(mw.find("registerToolProvider(\"cold_eyes_brief\""),
               std::string::npos);
 }
 
@@ -230,26 +178,6 @@ TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
         << "INV-2: hint should cite ANTS-1412";
 }
 
-// REG-8
-TEST(McpColdEyes, FoldInUsesRoadmapFoldInAllocateAndInsert) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    // Find the cmdColdEyesFoldIn body and assert both calls appear
-    // within it.
-    const auto pos = rc.find("QJsonDocument RemoteControl::cmdColdEyesFoldIn");
-    ASSERT_NE(pos, std::string::npos);
-    // Scan to the next top-level closing brace.
-    const auto end = rc.find("\n}\n", pos);
-    ASSERT_NE(end, std::string::npos);
-    const std::string body = rc.substr(pos, end - pos);
-    EXPECT_NE(body.find("RoadmapFoldIn::allocateIds"), std::string::npos)
-        << "INV-6: cmdColdEyesFoldIn must call RoadmapFoldIn::allocateIds";
-    EXPECT_NE(body.find("RoadmapFoldIn::insertBlock"), std::string::npos)
-        << "INV-6: cmdColdEyesFoldIn must call RoadmapFoldIn::insertBlock";
-    EXPECT_NE(body.find("ColdEyesEngine::templateColdEyesFoldInBlock"),
-              std::string::npos)
-        << "cmdColdEyesFoldIn must call the engine's template helper";
-}
 
 // ANTS-1634(b) INV-11 — claudeintegration.cpp's cold_eyes_brief
 // registration block declares the `prior_loop_fixes` array prop with

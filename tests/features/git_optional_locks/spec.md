@@ -20,7 +20,7 @@ then skips optional locks and still takes every lock a write needs.
   git's child sees it.
 - **INV-3** — every read-only git runner that does not go through
   `GitWrap::run` uses `GitWrap::readOnlyEnvironment()` too:
-  `MainWindow::refreshReviewButton`, the `get_git_status` provider,
+  `MainWindow::refreshReviewButton`,
   RemoteControl's shared `runGit`, and the three git runners in
   `auditscope.cpp`. Checked by source scrape, comments stripped.
 - **INV-4** — the Claude git-context hook script runs its `git status`

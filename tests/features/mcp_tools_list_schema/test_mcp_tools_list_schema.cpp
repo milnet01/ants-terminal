@@ -74,7 +74,6 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
         { "get_cwd",          "cwdTool[\"inputSchema\"] = "       },
         { "get_session_info", "sessionTool[\"inputSchema\"] = emptySchema" },
         { "get_last_command", "lastCmdTool[\"inputSchema\"] = "   },
-        { "get_git_status",   "gitTool[\"inputSchema\"] = "       },
         { "get_environment",  "envTool[\"inputSchema\"] = "       },
         { "tab_list",         "tabListTool[\"inputSchema\"] = "   },
     };

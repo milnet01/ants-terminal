@@ -667,7 +667,6 @@ QJsonObject irErr(const QString &code, const QString &message);
 VerifyGitSnapshot collectGitSnapshot(const QString &root);
 QJsonObject ceErr(const QString &code, const QString &msg);
 QString ceSanitiseEcho(const QString &raw);
-QJsonObject ceFindingToJson(const IndieReviewEngine::CorroboratedFinding &f);
 QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes);
 
 }  // namespace rcdetail

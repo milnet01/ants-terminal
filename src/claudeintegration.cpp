@@ -2016,15 +2016,6 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         responseText =
             mcp::withIgnoredArgs(responseText, ignoredArgKeys);
     }
-    // ANTS-5485 — a deprecated verb's reply names what to use instead, on a
-    // refusal too; before the cache insert, so a hit carries it. Every call is
-    // logged, a cache hit included, because a hit is still a call to measure.
-    if (toolHandled) {
-        if (!cachedHit)
-            responseText = mcp::withDeprecationAdvisory(responseText, toolName);
-        mcp::recordDeprecatedCall(
-            toolName, argsObj.value(QStringLiteral("caller_cwd")).toString());
-    }
     // ANTS-1357 — the body the cache stores on miss-success. The
     // insert itself is finishToolDispatch's, on the GUI thread
     // (ANTS-5072). The cache stores the un-etagged response so
@@ -2172,8 +2163,6 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
                 responseText = mcp::withIgnoredArgs(
                     responseText, ignoredArgKeys);
             }
-            // ANTS-5485 — the offload discards the advisory too; same remedy.
-            responseText = mcp::withDeprecationAdvisory(responseText, toolName);
         }
     }
 
@@ -2285,8 +2274,14 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
         haveResult = true;
     } else {
         // JSON-RPC application error: tool not found or provider missing.
-        error["code"] = -32602; // Invalid params
-        error["message"] = QString("Unknown tool: %1").arg(toolName);
+        // ANTS-5485 — a removed verb is told what replaced it.
+        const QJsonObject removed = mcp::removedVerbError(toolName);
+        if (!removed.isEmpty()) {
+            error = removed;
+        } else {
+            error["code"] = -32602; // Invalid params
+            error["message"] = QString("Unknown tool: %1").arg(toolName);
+        }
         // ANTS-1402-INV-4 — failure-branch hook now routes
         // through recordDispatch with result="tool_not_found".
         // m_tokenUsage.recordCall is skipped inside
@@ -2701,27 +2696,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     return p;
                 };
 
-                // ANTS-3498 — optional id_prefix override for the three
-                // fold-in verbs (test_audit / cold_eyes / indie_review_fold_in),
-                // parity with roadmap_log op:append's id_prefix. Same grammar
-                // (RoadmapFoldIn::isValidIdPrefix / ANTS-3492): 1-16 chars of
-                // [A-Za-z0-9_-] containing ≥1 letter.
-                auto makeFoldInIdPrefixProp = []{
-                    QJsonObject p;
-                    p["type"] = "string";
-                    p["pattern"] =
-                        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$";
-                    p["description"] = QStringLiteral(
-                        "Optional (ANTS-3498). Pin the ID prefix used for the "
-                        "folded-in bullets instead of sniffing it from the "
-                        "target ROADMAP.md — parity with roadmap_log op:append. "
-                        "Must contain a letter and be 1-16 chars of "
-                        "[A-Za-z0-9_-] (e.g. ANTS, 3D_E). When omitted, the "
-                        "project's dominant [PREFIX-NNNN] prefix is sniffed "
-                        "(fallback \"ANTS\" on a greenfield roadmap).");
-                    return p;
-                };
-
                 // ANTS-2090 — `encoding` selector, declared on the
                 // list-shaped read verbs. "tabular" packs each eligible
                 // top-level array-of-objects into a columnar
@@ -2895,25 +2869,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     lastCmdTool["inputSchema"] = schema;
                 }
                 tools.append(lastCmdTool);
-
-                QJsonObject gitTool;
-                gitTool["name"] = "get_git_status";
-                gitTool["description"] = QStringLiteral(
-                    "Get git branch, status, and recent commits for "
-                    "the terminal's CWD. ") + callerCwdSuffix();
-                gitTool["selection_hint"] = QStringLiteral(
-                    "Use for branch + dirty-state + recent-commits "
-                    "in one call. Cheaper than spawning `git status` "
-                    "yourself; prefer git_state for diff/log too.");
-                {
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject props;
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    gitTool["inputSchema"] = schema;
-                }
-                tools.append(gitTool);
 
                 QJsonObject envTool;
                 envTool["name"] = "get_environment";
@@ -4035,97 +3990,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     roadmapTool["inputSchema"] = schema;
                 }
                 tools.append(roadmapTool);
-
-                // ANTS-1583 — roadmap_branch_drift descriptor.
-                {
-                    QJsonObject t;
-                    t["name"] = "roadmap_branch_drift";
-                    t["description"] = QStringLiteral(
-                        "Compare ROADMAP shipped entries' cited commit SHAs against "
-                        "HEAD's history and list the ones HEAD cannot reach. Use after "
-                        "a rebase or multi-branch merge. Returns {ok, current_branch, "
-                        "current_commit, scanned_bullets, with_sha, drift_count, "
-                        "drift:[{bullet_id, cited_sha, reason, headline}], path}. "
-                        "against_refs:[\"branch\", ...] also reports SHAs missing from a "
-                        "named sibling ref under mis_branched[].");
-                    t["detail"] = QStringLiteral(
-                        "Compare ROADMAP ✅ entries' cited commit SHAs "
-                        "against HEAD's reachable history. Returns a "
-                        "drift list when a claimed-shipped commit "
-                        "isn't reachable from current HEAD — useful for "
-                        "projects with multiple long-lived branches "
-                        "where fix commits and docs commits land on "
-                        "different branches and drift. Composes with "
-                        "last_audit_summary's branch capture "
-                        "(ANTS-1576) — once the SARIF records its "
-                        "source branch, this verb's drift list tells "
-                        "the caller whether to trust the audit's "
-                        "claim. Use after a rebase / multi-branch "
-                        "merge to validate ROADMAP claims against "
-                        "actual code state. Envelope: {ok, "
-                        "current_branch, current_commit, "
-                        "scanned_bullets, with_sha, drift_count, "
-                        "drift:[{bullet_id, cited_sha, reason, "
-                        "headline}], path, drift_truncated?, "
-                        "truncated_history?}. ANTS-2057 — pass "
-                        "against_refs:[\"branch\", ...] to also catch a fix "
-                        "that landed on the WRONG long-lived branch: a SHA "
-                        "reachable from HEAD but ABSENT from a named sibling "
-                        "ref is reported under mis_branched:[{bullet_id, "
-                        "cited_sha, headline, missing_from:[refs]}] (plus "
-                        "checked_refs, mis_branched_count, unknown_refs?, "
-                        "mis_branched_truncated?). Omit against_refs for the "
-                        "HEAD-only scan (envelope unchanged). SHA detector "
-                        "uses an "
-                        "anchored regex (commit-prefix or trailing-"
-                        "punct context required) plus alpha-required "
-                        "lookahead — keeps the false-positive rate "
-                        "low on heterogeneous citation forms.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use when investigating 'ROADMAP says ✅ but "
-                        "the bug is still there', or before claiming "
-                        "a fix shipped. Cross-checks against "
-                        "last_audit_summary's branch/commit "
-                        "(ANTS-1576).");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject props;
-                    QJsonObject maxDriftProp;
-                    maxDriftProp["type"]    = "integer";
-                    maxDriftProp["default"] = 20;
-                    maxDriftProp["minimum"] = 1;
-                    maxDriftProp["maximum"] = 100;
-                    maxDriftProp["description"] = QStringLiteral(
-                        "Cap on drift[] length. Server-clamp [1, 100]. "
-                        "When the scan hits the cap, "
-                        "`drift_truncated:true` flags the envelope.");
-                    props["max_drift"]  = maxDriftProp;
-                    // ANTS-2057 — optional sibling refs for the cross-branch
-                    // (mis_branched) reachability pass.
-                    QJsonObject againstRefsProp;
-                    againstRefsProp["type"] = "array";
-                    {
-                        QJsonObject items; items["type"] = "string";
-                        againstRefsProp["items"] = items;
-                    }
-                    againstRefsProp["description"] = QStringLiteral(
-                        "Optional (ANTS-2057). Sibling long-lived refs to "
-                        "check cited SHAs against in addition to HEAD. A SHA "
-                        "reachable from HEAD but absent from a named ref is "
-                        "reported under mis_branched[] with missing_from — "
-                        "catches a fix committed to the wrong branch. Refs "
-                        "starting with `-`, equal to the current branch, or "
-                        "that don't resolve land in unknown_refs. Capped at "
-                        "10 refs.");
-                    props["against_refs"] = againstRefsProp;
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    props["etag_match"] = makeEtagMatchProp();
-                    schema["properties"] = props;
-                    schema["required"]   = QJsonArray{
-                        QStringLiteral("caller_cwd")};
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
 
                 {
                     // ANTS-1735 — model_switch_stats: read-only effectiveness
@@ -8922,108 +8786,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
                 tools.append(lasTool);
 
-                // ANTS-1569 — current_state aggregator. Bundles
-                // roadmap_query (active filter) + git_state(status) +
-                // last_audit_summary + .claude/workflow.md parse +
-                // docs/specs/<id>.md probe into one envelope. The
-                // session-start dance is currently a 3-4 read cascade;
-                // this verb collapses it.
-                {
-                    QJsonObject csTool;
-                    csTool["name"] = "current_state";
-                    csTool["description"] = QStringLiteral(
-                        "One-call session-start state: the active roadmap item, git "
-                        "branch state, open audit findings and spec existence. Returns "
-                        "{ok, active_bullet?, workflow_status_line?, git_branch_state, "
-                        "open_audit_findings_count, open_audit_findings_count_stale, "
-                        "spec_path?, etag}. A true open_audit_findings_count_stale "
-                        "means the cached audit predates HEAD. Upstream failures fall "
-                        "back to documented fields; ok stays true while the project "
-                        "root resolves.");
-                    csTool["detail"] = QStringLiteral(
-                        "One-call session-start state. Returns "
-                        "{ok, active_bullet?, workflow_status_line?, "
-                        "git_branch_state, open_audit_findings_count, "
-                        "open_audit_findings_count_stale, spec_path?, "
-                        "etag}. open_audit_findings_count_stale (ANTS-3370) "
-                        "mirrors last_audit_summary's stale signal — true "
-                        "means the cached audit predates HEAD, so the count "
-                        "may describe already-fixed findings; discount it "
-                        "and re-run audit_run. Bundles roadmap_query "
-                        "(status:active) + git_state(op:status) + "
-                        "last_audit_summary + .claude/workflow.md "
-                        "best-effort parse + docs/specs/<active-id>.md "
-                        "existence probe. `active_bullet` is the first "
-                        "🚧 in document order, else the first 📋; "
-                        "omitted when neither exists. Upstream "
-                        "failures collapse to documented field "
-                        "fallbacks — `ok:true` is preserved as long "
-                        "as the project root resolves. Etag-able via "
-                        "the ANTS-1499 304 pattern: pass `etag_match` "
-                        "to short-circuit when nothing has changed. "
-                        "See docs/specs/ANTS-1569.md.");
-                    csTool["selection_hint"] = QStringLiteral(
-                        "Use once at session start instead of chaining "
-                        "roadmap_query + git_state + last_audit_summary "
-                        "— one round-trip, ~3 KB envelope. Pass the "
-                        "returned `etag` as `etag_match` on subsequent "
-                        "calls within the session for 304 short-circuit.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject props;
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    props["etag_match"] = makeEtagMatchProp();
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("caller_cwd");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    csTool["inputSchema"] = schema;
-                    tools.append(csTool);
-                }
-
-                // ANTS-1724 — session_brief: compact session-state envelope.
-                {
-                    QJsonObject t;
-                    t["name"] = "session_brief";
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to orient a fresh /clear session: returns "
-                        "git branch, build/test result, open audit "
-                        "count, and active roadmap item in one call.");
-                    t["description"] = QStringLiteral(
-                        "Compact session-state envelope for orienting "
-                        "a fresh session in one call. Returns git "
-                        "branch+ahead/behind+files_changed_count, last "
-                        "build result (pass/fail/unknown) with "
-                        "error/warning counts, last test result with "
-                        "pass/fail/total counts, open audit findings "
-                        "count, and the active roadmap item id+headline. "
-                        "All data comes from on-disk caches — no new I/O. "
-                        "ETag-eligible: pass etag_match from a prior call "
-                        "to skip re-emission when state is unchanged. "
-                        "ANTS-1724.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    schema["additionalProperties"] = false;
-                    QJsonObject cwdProp;
-                    cwdProp["type"] = "string";
-                    cwdProp["description"] = QStringLiteral("Your $PWD (required).");
-                    QJsonObject etagProp;
-                    etagProp["type"] = "string";
-                    etagProp["description"] = QStringLiteral(
-                        "ETag from a previous session_brief call. "
-                        "When it matches: {ok:true,unchanged:true,etag:\"<same>\"}.");
-                    QJsonObject props;
-                    props["caller_cwd"] = cwdProp;
-                    props["etag_match"] = etagProp;
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append(QStringLiteral("caller_cwd"));
-                    schema["required"] = req;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-
                 // ANTS-1883 — session_orient: bundle of current_state +
                 // project_layout + roadmap_query (section_index, active).
                 {
@@ -10680,94 +10442,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
                 {
                     QJsonObject t;
-                    t["name"] = "indie_review_brief";
-                    t["description"] = QStringLiteral(
-                        "Return a brief manifest for one review lane: prompt template, "
-                        "source-path list and contract docs, without inlined source "
-                        "bodies. Returns {brief, source_paths[], contract_docs[], "
-                        "external_specs[], dimension_weighting{}}. Required: lane. "
-                        "Optional source_paths[]: when `lane` is not in the partition, "
-                        "the brief is built from these project-relative paths; rejected "
-                        "ones are listed in source_paths_rejected. Rate limit: "
-                        "BriefAssembly tier, 30 calls / 60 s per (tool, caller_cwd).");
-                    t["detail"] = QStringLiteral(
-                        "Return a brief manifest for one lane: "
-                        "prompt template + source-path list + "
-                        "contract-doc list (ANTS-1281). Response "
-                        "fields: brief, source_paths[], "
-                        "contract_docs[], external_specs[], "
-                        "dimension_weighting{}. Source bodies are "
-                        "NOT inlined; the subagent reads them via "
-                        "its Read tool. Saves ~10-30 K orchestrator "
-                        "tokens per lane vs the v1 shape that "
-                        "inlined bodies. Pure file IO (no LLM). "
-                        "Required: lane (string). **Rate limit "
-                        "(ANTS-1643):** BriefAssembly tier — 30 calls "
-                        "/ 60 s per (tool, caller_cwd). A canonical "
-                        "`/indie-review` Phase-2 fan-out dispatches "
-                        "12-16 briefs in one parallel batch, which "
-                        "fits comfortably under this cap. Higher "
-                        "than the 10/min Expensive tier the sibling "
-                        "`indie_review_*` verbs sit in. "
-                        "Optional (ANTS-3375 / ANTS-3493): "
-                        "source_paths[] — when `lane` is not in the "
-                        "auto-partition, the brief is synthesised from "
-                        "these caller-supplied changed-file paths "
-                        "instead. The code-review analogue of "
-                        "cold_eyes_brief's doc_paths[] (ANTS-1508): use "
-                        "it as a lightweight single-reviewer broker for a "
-                        "Rule-8 cold review of a small code / dependency "
-                        "diff, without committing a "
-                        ".indie-review/partition.json. Paths must be "
-                        "project-relative and resolve inside the project "
-                        "root (traversal-guarded); non-resolving / "
-                        "escaping entries are refused and surfaced in "
-                        "`source_paths_rejected`.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to assemble the brief for one "
-                        "indie-review chunk. Run after "
-                        "indie_review_partition. Pass source_paths[] "
-                        "with an ad-hoc lane label for a cold review of "
-                        "a changed-file set / dependency diff.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject laneProp;
-                    laneProp["type"] = "string";
-                    laneProp["description"] = QStringLiteral(
-                        "Lane name as returned by indie_review_partition. "
-                        "In source_paths[] ad-hoc mode (ANTS-3375) this "
-                        "is any label you choose for the changed-file set.");
-                    // ANTS-3375 / ANTS-3493 — optional ad-hoc source set.
-                    QJsonObject sourcePathsProp;
-                    sourcePathsProp["type"] = "array";
-                    QJsonObject sourcePathsItems;
-                    sourcePathsItems["type"] = "string";
-                    sourcePathsProp["items"] = sourcePathsItems;
-                    sourcePathsProp["description"] = QStringLiteral(
-                        "Optional (ANTS-3375 / ANTS-3493). When `lane` is "
-                        "absent from the auto-partition, synthesise an "
-                        "ad-hoc review lane over these project-relative "
-                        "source paths (e.g. the changed files of a "
-                        "dependency bump / code diff). Mirrors "
-                        "cold_eyes_brief's doc_paths[]. Each path is "
-                        "traversal-guarded; entries that escape the root "
-                        "or don't exist are refused and listed in "
-                        "`source_paths_rejected`.");
-                    QJsonObject props;
-                    props["lane"] = laneProp;
-                    props["source_paths"] = sourcePathsProp;
-                    // ANTS-1391 — caller_cwd anchor.
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("lane");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
                     t["name"] = "indie_review_corroborate";
                     t["description"] = QStringLiteral(
                         "Cross-lane corroboration filter: returns findings cited by at "
@@ -10903,206 +10577,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
-                {
-                    QJsonObject t;
-                    t["name"] = "indie_review_synthesis_prompt";
-                    t["description"] = QStringLiteral(
-                        "Render the synthesis-prompt template for the "
-                        "optional cross-cutting LLM call. Combines "
-                        "per-lane reports + threat-model extras "
-                        "(CLAUDE.md + SECURITY.md + .semgrep.yml). "
-                        "Caller dispatches the prompt. Required: "
-                        "reports (object). Optional: "
-                        "include_threat_model_extras (default true).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to draft the synthesis prompt for "
-                        "folding N reviewer chunks into one report. "
-                        "Run before the synthesis subagent dispatch.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject reportsProp;
-                    reportsProp["type"] = "object";
-                    QJsonObject incProp;
-                    incProp["type"]    = "boolean";
-                    incProp["default"] = true;
-                    QJsonObject props;
-                    props["reports"]                    = reportsProp;
-                    props["include_threat_model_extras"] = incProp;
-                    // ANTS-1391 — caller_cwd anchor.
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("reports");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
-                    t["name"] = "indie_review_fold_in";
-                    t["description"] = QStringLiteral(
-                        "Render an `### 🔍 Indie-review fold-in (DATE)` "
-                        "ROADMAP block from a list of corroborated "
-                        "findings. Allocates IDs from .roadmap-counter "
-                        "(via RoadmapFoldIn::allocateIds) and, if a "
-                        "release-block heading is found via "
-                        "findActiveReleaseHeading, atomically inserts "
-                        "the block into ROADMAP.md. ANTS-1644 — pass "
-                        "`narrative_mode:true` + `narrative_md:\"<pre-"
-                        "rendered markdown>\"` to insert prose under "
-                        "the section heading verbatim, skipping ID "
-                        "allocation and per-finding bullet rendering. "
-                        "Use this when the natural shape is one prose "
-                        "subsection (Closed inline / Deferred / "
-                        "False-positives) rather than N bullets the "
-                        "reviewer doesn't want. Required: caller_cwd "
-                        "(string — your $PWD; ANTS-1372 cross-project "
-                        "gate). One of: actionable (array) OR "
-                        "narrative_mode=true + narrative_md.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to merge a finished indie-review report "
-                        "back into ROADMAP.md as a fold-in block. "
-                        "Mutates ROADMAP — caller_cwd required.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject actProp;
-                    actProp["type"] = "array";
-                    actProp["description"] = QStringLiteral(
-                        "Array of {file, line, citing_lanes[]} "
-                        "objects describing the corroborated set. "
-                        "ANTS-1278 — each object MAY also carry "
-                        "{title, description, layman, kind} to "
-                        "render a real roadmap card (bold title + "
-                        "body + Layman: + Kind:). Omit any of them "
-                        "and the renderer emits a LOUD "
-                        "`**TODO: describe this finding (cited by "
-                        "N lanes at file:line).**` placeholder so "
-                        "a caller cannot ship a stub bullet.");
-                    QJsonObject dateProp;
-                    dateProp["type"] = "string";
-                    dateProp["description"] = QStringLiteral(
-                        "ISO date for the heading + Source. Defaults "
-                        "to today.");
-                    QJsonObject hdrProp;
-                    hdrProp["type"] = "string";
-                    hdrProp["description"] = QStringLiteral(
-                        "Optional explicit `## ` heading to insert "
-                        "after; defaults to "
-                        "RoadmapFoldIn::findActiveReleaseHeading.");
-                    // ANTS-1389 — surface the ANTS-1372 caller-cwd gate
-                    // in the schema so Claude Code's MCP client fills
-                    // it on the first call.
-                    QJsonObject callerProp;
-                    callerProp["type"] = "string";
-                    callerProp["description"] = QStringLiteral(
-                        "Your $PWD — the project this fold-in writes to. "
-                        "Anchored to caller_cwd (ANTS-1630): the write "
-                        "lands on YOUR project's ROADMAP regardless of "
-                        "which Ants tab is focused; refuses cwd_bad if "
-                        "caller_cwd doesn't resolve to a directory.");
-                    // ANTS-1644 — narrative-mode escape hatch.
-                    QJsonObject nmProp;
-                    nmProp["type"] = "boolean";
-                    nmProp["description"] = QStringLiteral(
-                        "Opt out of per-finding bullet rendering. "
-                        "When true, the handler inserts "
-                        "`narrative_md` verbatim under the "
-                        "`### 🔍 Indie-review fold-in (<DATE>)` "
-                        "heading, skips `.roadmap-counter` "
-                        "allocation, and returns `allocated_ids:[]`. "
-                        "`actionable` is then optional. Use for "
-                        "prose subsections (Closed inline / "
-                        "Deferred / False-positives) where N bullets "
-                        "would be noise.");
-                    QJsonObject nmdProp;
-                    nmdProp["type"] = "string";
-                    nmdProp["description"] = QStringLiteral(
-                        "Pre-rendered markdown body for "
-                        "`narrative_mode:true`. Inserted verbatim "
-                        "after a blank line under the section "
-                        "heading. Trailing newline added if absent. "
-                        "Refused with code "
-                        "`narrative_md_required` when empty or "
-                        "whitespace-only.");
-                    QJsonObject props;
-                    props["actionable"]             = actProp;
-                    props["date_iso"]               = dateProp;
-                    props["release_block_heading"]  = hdrProp;
-                    props["narrative_mode"]         = nmProp;
-                    props["narrative_md"]           = nmdProp;
-                    props["dry_run"]                = makeDryRunProp();  // ANTS-2227
-                    props["id_prefix"]              = makeFoldInIdPrefixProp();  // ANTS-3498
-                    props["caller_cwd"]             = callerProp;
-                    schema["properties"] = props;
-                    // ANTS-1644 — `actionable` dropped from required.
-                    // Handler still refuses with bad_args when both
-                    // narrative_mode=false AND actionable[] empty.
-                    QJsonArray req;
-                    req.append("caller_cwd");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1279 — indie_review_orchestrate (single-call
-                // dispatch manifest for a Claude-Code-driven sweep).
-                {
-                    QJsonObject t;
-                    t["name"] = "indie_review_orchestrate";
-                    t["description"] = QStringLiteral(
-                        "One call that returns the whole dispatch plan for an "
-                        "indie-review sweep, replacing indie_review_partition + N "
-                        "indie_review_brief calls. Returns {ok, lane_count, "
-                        "reports_dir, lanes:[{name, summary, source_paths, report_path, "
-                        "brief, contract_docs, byte_count}], suggested_merges, "
-                        "next_steps}. Dispatch one agent per lane, then collect with "
-                        "indie_review_corroborate + indie_review_fold_in. "
-                        "include_briefs:false returns a names-and-paths skeleton. "
-                        "caller_cwd Required.");
-                    t["detail"] = QStringLiteral(
-                        "One call that returns the whole dispatch plan for "
-                        "an /indie-review sweep — replaces "
-                        "indie_review_partition + N indie_review_brief "
-                        "calls. Returns {ok, lane_count, reports_dir, "
-                        "lanes:[{name, summary, source_paths, report_path, "
-                        "brief, contract_docs, byte_count}], "
-                        "suggested_merges, next_steps}. Each lane's `brief` "
-                        "is the v2 manifest (no inlined source bodies — the "
-                        "subagent Reads source_paths itself), so the "
-                        "response stays compact. Dispatch one Agent per "
-                        "lane (folding any suggested_merges pair first), "
-                        "have each Write its review to "
-                        "`<project_root>/<report_path>`, then call "
-                        "indie_review_corroborate (reports_dir=<reports_dir>) "
-                        "+ indie_review_fold_in to collect. Pass "
-                        "include_briefs:false for a tiny skeleton (names + "
-                        "paths only). Required: caller_cwd (ANTS-1404). "
-                        "See docs/specs/ANTS-1279.md.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to kick off a full multi-lane indie-review in "
-                        "one call instead of partition + per-lane briefs. "
-                        "Collection reuses indie_review_corroborate + "
-                        "indie_review_fold_in.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject props;
-                    QJsonObject ibProp;
-                    ibProp["type"]    = "boolean";
-                    ibProp["default"] = true;
-                    ibProp["description"] = QStringLiteral(
-                        "When true (default), each lane carries its full "
-                        "`brief` manifest + contract_docs. When false, "
-                        "return only the skeleton (name / summary / "
-                        "source_paths / report_path) for a tiny response.");
-                    props["include_briefs"] = ibProp;
-                    // ANTS-1391 — caller_cwd anchor.
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
                 // ANTS-1352 — indie_review_dispatch (server-side
                 // reviewer fan-out).
                 {
@@ -11186,202 +10660,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonArray req;
                     req.append("caller_cwd");
                     req.append("reports_dir");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1113 — debt_sweep_* (4 tools).
-                {
-                    QJsonObject t;
-                    t["name"] = "debt_sweep_scan";
-                    t["description"] = QStringLiteral(
-                        "Run the four-category mechanical debt-sweep scan "
-                        "(code_drift, test_coverage, doc_drift, "
-                        "packaging_drift) and return findings as JSON. "
-                        "Replaces the file-reading subagent in the "
-                        "/debt-sweep skill for Ants-managed projects. "
-                        "Optional: since (git ref, default = most-recent "
-                        "tag or HEAD~10), categories (subset of the four), "
-                        "limit/offset (page the findings array — default "
-                        "limit 100, max 500; by_category always counts the "
-                        "full scan). Envelope carries total_findings, "
-                        "returned, has_more, next_offset (ANTS-3345).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use when planning a debt-sweep pass. Returns "
-                        "triaged findings + suggested fixes; pairs "
-                        "with debt_sweep_apply_fix + _defer.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject sinceProp;
-                    sinceProp["type"] = "string";
-                    sinceProp["description"] = QStringLiteral(
-                        "Git ref to scope diffs against. Empty = auto.");
-                    QJsonObject catProp;
-                    catProp["type"] = "array";
-                    catProp["description"] = QStringLiteral(
-                        "Subset of {code_drift, test_coverage, "
-                        "doc_drift, packaging_drift}. Omit for all.");
-                    // ANTS-3345 — pagination over the findings array.
-                    QJsonObject limitProp; limitProp["type"] = "integer";
-                    limitProp["description"] = QStringLiteral(
-                        "Max findings to return in this page. Default 100, "
-                        "clamped to [1,500]. by_category still counts the "
-                        "full scan.");
-                    QJsonObject offsetProp; offsetProp["type"] = "integer";
-                    offsetProp["description"] = QStringLiteral(
-                        "0-based index into the full finding list. Page with "
-                        "next_offset from the prior response. Default 0.");
-                    QJsonObject props;
-                    props["since"]      = sinceProp;
-                    props["categories"] = catProp;
-                    props["limit"]      = limitProp;
-                    props["offset"]     = offsetProp;
-                    // ANTS-1391 — caller_cwd anchor.
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
-                    t["name"] = "debt_sweep_apply_fix";
-                    t["description"] = QStringLiteral(
-                        "Apply ONE mechanical fix in-place. Caller passes "
-                        "the {detector_id, file, line} triple from a "
-                        "prior debt_sweep_scan. Engine re-validates the "
-                        "marker is still on the line before mutating. "
-                        "Returns {ok, applied, error_code?, error?}; "
-                        "ok=true with applied=false signals a recognised "
-                        "no-op (file_changed / not_fixable). Pass "
-                        "dry_run:true to run every guard + compute the "
-                        "patch but skip the write — the envelope then "
-                        "carries {dry_run:true, would_apply} (applied "
-                        "stays false). Required: "
-                        "caller_cwd (string — your $PWD; ANTS-1372).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to apply ONE triaged debt-sweep fix in "
-                        "place. Mutates files — caller_cwd Required. "
-                        "Pairs with debt_sweep_scan.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject didProp; didProp["type"] = "string";
-                    QJsonObject fProp;   fProp["type"]   = "string";
-                    QJsonObject lProp;   lProp["type"]   = "integer";
-                    QJsonObject aProp;   aProp["type"]   = "boolean";
-                    aProp["description"] = QStringLiteral(
-                        "Caller asserts the finding was auto_fixable in "
-                        "the prior scan. Defaults to true.");
-                    // ANTS-1389 — caller_cwd schema surfacing.
-                    QJsonObject callerProp;
-                    callerProp["type"] = "string";
-                    callerProp["description"] = QStringLiteral(
-                        "Your $PWD. Mutating verbs refuse on mismatch "
-                        "with the focused tab's cwd (ANTS-1372).");
-                    QJsonObject props;
-                    props["detector_id"]  = didProp;
-                    props["file"]         = fProp;
-                    props["line"]         = lProp;
-                    props["auto_fixable"] = aProp;
-                    props["dry_run"]      = makeDryRunProp();   // ANTS-2227
-                    props["caller_cwd"]   = callerProp;
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("detector_id");
-                    req.append("file");
-                    req.append("line");
-                    req.append("caller_cwd");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
-                    t["name"] = "debt_sweep_defer";
-                    t["description"] = QStringLiteral(
-                        "Render an `### 🧹 Debt-sweep fold-in (DATE)` "
-                        "ROADMAP block from a list of deferred findings. "
-                        "Allocates IDs from .roadmap-counter and, if a "
-                        "release-block heading is found, atomically "
-                        "inserts the block into ROADMAP.md. Refuses "
-                        "(needs_triage) a bulk batch of >25 findings unless "
-                        "triaged:true — a raw scan is a mix of real, FP-prone, "
-                        "and mechanical findings that must be reviewed, not "
-                        "dumped (ANTS-3346). Required: deferred (array), "
-                        "caller_cwd (string — your $PWD; ANTS-1372).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to defer (not action) a debt-sweep "
-                        "finding set so it doesn't re-surface every "
-                        "scan. Mutates ROADMAP — caller_cwd required.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject dProp; dProp["type"] = "array";
-                    dProp["description"] = QStringLiteral(
-                        "Array of Finding-shaped objects ({category, "
-                        "detector_id, file, line, message}).");
-                    QJsonObject dateProp; dateProp["type"] = "string";
-                    dateProp["description"] = QStringLiteral(
-                        "ISO date YYYY-MM-DD. Defaults to today.");
-                    QJsonObject hdrProp; hdrProp["type"] = "string";
-                    hdrProp["description"] = QStringLiteral(
-                        "Optional explicit `## ` heading. Defaults to "
-                        "RoadmapFoldIn::findActiveReleaseHeading.");
-                    // ANTS-3346 — triage gate override.
-                    QJsonObject triagedProp; triagedProp["type"] = "boolean";
-                    triagedProp["description"] = QStringLiteral(
-                        "Assert this batch was reviewed. Required to defer "
-                        ">25 findings at once; without it such a batch is "
-                        "refused (needs_triage) to prevent dumping raw scan "
-                        "output into ROADMAP. Defaults to false.");
-                    // ANTS-1389 — caller_cwd schema surfacing.
-                    QJsonObject callerProp;
-                    callerProp["type"] = "string";
-                    callerProp["description"] = QStringLiteral(
-                        "Your $PWD. Mutating verbs refuse on mismatch "
-                        "with the focused tab's cwd (ANTS-1372).");
-                    QJsonObject props;
-                    props["deferred"]              = dProp;
-                    props["date_iso"]              = dateProp;
-                    props["release_block_heading"] = hdrProp;
-                    props["triaged"]               = triagedProp;   // ANTS-3346
-                    props["dry_run"]               = makeDryRunProp();   // ANTS-2227
-                    props["caller_cwd"]            = callerProp;
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("deferred");
-                    req.append("caller_cwd");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
-                    t["name"] = "debt_sweep_triage_prompt";
-                    t["description"] = QStringLiteral(
-                        "Render an LLM triage prompt for the LLM-shaped "
-                        "(non-mechanical) subset of findings. Caller "
-                        "filters the scan output and passes only the "
-                        "judgment-required entries. Pure string "
-                        "templating — no LLM call inside Ants.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to draft the triage prompt for the "
-                        "judgment-required subset of debt-sweep "
-                        "findings. Pure templating; no LLM call.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject fProp; fProp["type"] = "array";
-                    fProp["description"] = QStringLiteral(
-                        "Array of Finding-shaped objects.");
-                    QJsonObject props;
-                    props["findings"] = fProp;
-                    // ANTS-1391 — caller_cwd anchor.
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("findings");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -12045,336 +11323,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
-                // ANTS-1397 — test_audit_synthesis_prompt
-                // ANTS-1455 — adds allow_outside_project, mode, offset, limit.
-                {
-                    QJsonObject t;
-                    t["name"] = "test_audit_synthesis_prompt";
-                    t["description"] = QStringLiteral(
-                        "Phase 3 of the test_audit trio: read the per-chunk reports in "
-                        "<reports_dir>, fence each, and return a synthesis prompt. "
-                        "mode:\"summary\" (default: stats + pointers), mode:\"full\" "
-                        "(verbatim, paged by offset/limit) or mode:\"hybrid\" (summary + "
-                        "the top-N chunks verbatim). allow_outside_project:true accepts "
-                        "an absolute reports_dir. Refusals: bad_mode, "
-                        "reports_dir_outside_root, reports_dir_unreadable, "
-                        "reports_dir_empty.");
-                    t["detail"] = QStringLiteral(
-                        "Phase 3 of the test_audit trio. Read per-"
-                        "chunk reports from <reports_dir>, fence each "
-                        "via <chunk_report file=\"…\"> tags (prompt-"
-                        "injection defence, INV-8), and return a "
-                        "synth prompt. Three modes: "
-                        "mode:\"summary\" (default) returns stats + "
-                        "pointers only — top_dimensions, file_index, "
-                        "severity_histograms (ANTS-1488), and a chunk "
-                        "inventory annotated with per-chunk finding "
-                        "counts; ≤ 16 KiB; for actionable text use "
-                        "mode:\"full\" + offset/limit, or read per-"
-                        "chunk report files directly. "
-                        "mode:\"full\" returns the verbatim fenced "
-                        "bundle, paginated via offset/limit (default "
-                        "limit:5; -1 = all). "
-                        "mode:\"hybrid\" (ANTS-1486) returns the "
-                        "summary header + the top-N highest-finding-"
-                        "count chunks verbatim (N comes from `limit`, "
-                        "default 3) — call once, get both navigation "
-                        "and actionable text for heavy chunks without "
-                        "paging. allow_outside_project:true accepts "
-                        "an absolute reports_dir (e.g. /tmp) for "
-                        "ephemeral CI workflows (ANTS-1455). Refusals: "
-                        "bad_mode, reports_dir_outside_root, "
-                        "reports_dir_unreadable, reports_dir_empty.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to draft the synthesis prompt that "
-                        "folds N test-audit chunks back into one "
-                        "report. Phase 3 of the trio.");
-                    QJsonObject schema; schema["type"] = "object";
-                    QJsonObject pP; pP["type"] = "string";
-                    QJsonObject rP; rP["type"] = "string";
-                    QJsonObject aP; aP["type"] = "object";
-                    QJsonObject ccwd; ccwd["type"] = "string";
-                    QJsonObject aopP; aopP["type"] = "boolean";
-                    aopP["description"] = QStringLiteral(
-                        "ANTS-1455 — when true, reports_dir may resolve "
-                        "outside callerCwd (still NFC + control-char "
-                        "checked + canonicalised). Default false.");
-                    QJsonObject mP; mP["type"] = "string";
-                    mP["enum"] = QJsonArray{QStringLiteral("summary"),
-                                            QStringLiteral("full"),
-                                            QStringLiteral("hybrid")};
-                    mP["description"] = QStringLiteral(
-                        "ANTS-1455 — \"summary\" (default) returns "
-                        "counts + top pointers + severity histograms; "
-                        "\"full\" returns the verbatim fenced bundle "
-                        "(paginated); \"hybrid\" (ANTS-1486) returns "
-                        "summary header + top-N highest-finding-count "
-                        "chunks verbatim.");
-                    QJsonObject oP; oP["type"] = "integer";
-                    oP["description"] = QStringLiteral(
-                        "Chunk offset for mode:\"full\" pagination. "
-                        "Default 0. Ignored in summary/hybrid.");
-                    QJsonObject lP; lP["type"] = "integer";
-                    lP["description"] = QStringLiteral(
-                        "Chunk limit for mode:\"full\" (default 5; "
-                        "-1 returns all). For mode:\"hybrid\", this "
-                        "is N — the number of top chunks to inline "
-                        "verbatim (default 3). Ignored in summary.");
-                    QJsonObject props;
-                    props["partition_token"]       = pP;
-                    props["reports_dir"]           = rP;
-                    props["calibration_anchor"]    = aP;
-                    props["caller_cwd"]            = ccwd;
-                    props["allow_outside_project"] = aopP;
-                    props["mode"]                  = mP;
-                    props["offset"]                = oP;
-                    props["limit"]                 = lP;
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("caller_cwd");
-                    req.append("partition_token");
-                    req.append("reports_dir");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1397 — test_audit_fold_in
-                {
-                    QJsonObject t;
-                    t["name"] = "test_audit_fold_in";
-                    t["description"] = QStringLiteral(
-                        "Phase 4 of the test_audit trio: render actionable findings as "
-                        "ROADMAP bullets in one batched write, ids allocated from "
-                        ".roadmap-counter. Each actionable[] item has file, line, "
-                        "dimension, severity (CRITICAL/HIGH/MEDIUM/LOW/INFO), fix and a "
-                        "headline (summary or claim accepted). narrative_mode:true + "
-                        "narrative_md inserts prose instead, with no ids. Refusals: "
-                        "bad_actionable, narrative_md_required, id_counter_failed.");
-                    t["detail"] = QStringLiteral(
-                        "Phase 4 of the test_audit trio. Render "
-                        "actionable findings as ROADMAP bullets via "
-                        "RoadmapFoldIn::allocateIds + insertBlock "
-                        "(engine-level delegation, NOT MCP re-entry "
-                        "— INV-3). Single batched write: all N IDs "
-                        "allocated upfront, one insertBlock call. "
-                        "Per-project state: <caller_cwd>/.roadmap-"
-                        "counter (advisory-locked via flock; ANTS-1490 "
-                        "falls back to .roadmap-counter.lock O_EXCL "
-                        "rename-lock on filesystems where flock returns "
-                        "systemic errors). On id_counter_failed the "
-                        "error message names the counter path so the "
-                        "caller can clear a stale .lock sibling. "
-                        "Each `actionable[]` item is an object with "
-                        "fields: `file` (path), `line` (int), "
-                        "`dimension` (one of the 18 kDimensions; 13 are "
-                        "the auto default), "
-                        "`severity` (CRITICAL/HIGH/MEDIUM/LOW/INFO), "
-                        "`fix` (one-line remediation), and a "
-                        "headline-bearing field — `headline` "
-                        "preferred, with `summary` and `claim` "
-                        "accepted as fallbacks (ANTS-1615). Missing "
-                        "or empty in all three → "
-                        "{ok:false, code:\"bad_actionable\"} naming "
-                        "the offending index. Long headlines are "
-                        "truncated to 120 chars with \" …\" suffix. "
-                        "**Narrative mode (ANTS-1635):** pass "
-                        "`narrative_mode=true` + `narrative_md=\"…\"` "
-                        "to insert pre-rendered prose verbatim under "
-                        "the `### 🧪 Test Audit YYYY-MM-DD` heading "
-                        "instead of the per-finding bullet rendering. "
-                        "Skips ID allocation and `.roadmap-counter` "
-                        "touch entirely. `actionable[]` is not "
-                        "required in narrative mode. Empty / "
-                        "whitespace-only `narrative_md` → "
-                        "{ok:false, code:\"narrative_md_required\"}.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to merge a finished test-audit set "
-                        "back into ROADMAP.md as a fold-in block. "
-                        "Phase 4; mutates ROADMAP — caller_cwd "
-                        "required.");
-                    QJsonObject schema; schema["type"] = "object";
-                    QJsonObject aP; aP["type"] = "array";
-                    QJsonObject fP; fP["type"] = "string";
-                    QJsonObject fsP; fsP["type"] = "integer";
-                    QJsonObject dP; dP["type"] = "array";
-                    QJsonObject rfP; rfP["type"] = "integer";
-                    QJsonObject ccwd; ccwd["type"] = "string";
-                    // ANTS-1635 — narrative-mode opt-in.
-                    QJsonObject nmP; nmP["type"] = "boolean";
-                    nmP["description"] = QStringLiteral(
-                        "When true, skip per-finding bullet rendering "
-                        "and ID allocation; insert `narrative_md` "
-                        "verbatim under the section heading.");
-                    QJsonObject nmdP; nmdP["type"] = "string";
-                    nmdP["description"] = QStringLiteral(
-                        "Pre-rendered markdown inserted under the "
-                        "`### 🧪 Test Audit YYYY-MM-DD` heading when "
-                        "narrative_mode=true. Required + non-empty in "
-                        "that mode; ignored when narrative_mode is "
-                        "false / absent. Caller owns sub-headings and "
-                        "structure inside this body.");
-                    QJsonObject props;
-                    props["actionable"]      = aP;
-                    props["framework"]       = fP;
-                    props["files_scanned"]   = fsP;
-                    props["dimensions"]      = dP;
-                    props["raw_findings"]    = rfP;
-                    props["narrative_mode"]  = nmP;
-                    props["narrative_md"]    = nmdP;
-                    props["caller_cwd"]      = ccwd;
-                    props["dry_run"]         = makeDryRunProp();  // ANTS-2227
-                    props["id_prefix"]       = makeFoldInIdPrefixProp();  // ANTS-3498
-                    schema["properties"] = props;
-                    // ANTS-1635 — `actionable` is no longer strictly
-                    // required at the schema level; the engine refuses
-                    // missing+non-narrative requests with the same
-                    // `missing_field` error (now naming the
-                    // narrative_mode escape hatch in the message).
-                    // Keep `caller_cwd` required (mutating verb).
-                    QJsonArray req;
-                    req.append("caller_cwd");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1513 — test_audit_recheck
-                {
-                    QJsonObject t;
-                    t["name"] = "test_audit_recheck";
-                    t["description"] = QStringLiteral(
-                        "Recheck a deferred test-audit "
-                        "finding's cite before resuming the work days "
-                        "later. Parses ROADMAP.md for the bullet "
-                        "`[<finding_id>]`, extracts the first `path:line` "
-                        "citation from its body, and reports whether the "
-                        "file still exists and whether the cited line "
-                        "still trips any pre-pass smell pattern "
-                        "(line_still_matches_pattern + matched_pattern_id "
-                        "/ matched_dimension). When the file is gone, a "
-                        "best-effort git rename `drift_hint` is offered "
-                        "(\"file likely moved to …\"). Read-only; reads "
-                        "are confined to under the project root. Returns "
-                        "{ok, found, cited_file, cited_line, file_exists, "
-                        "line_exists, current_line_text, "
-                        "line_still_matches_pattern, drift_hint?}. "
-                        "found:false when no bullet matches the id "
-                        "(ANTS-1513).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to recheck whether a deferred test-audit "
-                        "finding's cited file:line is still valid "
-                        "(file present, line still smells) before "
-                        "resuming the work.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject props;
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        p["description"] = QStringLiteral(
-                            "Your $PWD — the project whose ROADMAP.md "
-                            "carries the finding (Required; refuses "
-                            "caller_cwd_required when absent).");
-                        props["caller_cwd"] = p;
-                    }
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        p["description"] = QStringLiteral(
-                            "The roadmap bullet id to recheck, e.g. "
-                            "\"ANTS-1234\" (matched as the `[id]` token).");
-                        props["finding_id"] = p;
-                    }
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("caller_cwd");
-                    req.append("finding_id");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1290 — plan_template
-                {
-                    QJsonObject t;
-                    t["name"] = "plan_template";
-                    t["description"] = QStringLiteral(
-                        "Emit a project-conventional implementation-"
-                        "plan skeleton with placeholders for the body. "
-                        "Replaces the writing-plans skill's template "
-                        "emission. Returns markdown + suggested save "
-                        "path + project conventions (commit format, "
-                        "test scaffolding, build commands). Optionally "
-                        "writes to docs/plans/ when save:true. "
-                        "Required: feature_name. Optional: goal, "
-                        "architecture, tech_stack, task_count_hint, "
-                        "includes_tests, ants_id, save.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use when starting any non-trivial "
-                        "implementation task to scaffold spec.md "
-                        "+ test wiring + CHANGELOG entry skeleton.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject featProp;
-                    featProp["type"] = "string";
-                    featProp["description"] = QStringLiteral(
-                        "Kebab-case feature name (^[a-z0-9_-]+$, max "
-                        "64 chars). Becomes the h1 + test-dir name.");
-                    QJsonObject goalProp;
-                    goalProp["type"] = "string";
-                    goalProp["description"] = QStringLiteral(
-                        "One-sentence \"what this builds\". Empty = "
-                        "placeholder in the skeleton.");
-                    QJsonObject archProp;
-                    archProp["type"] = "string";
-                    archProp["description"] = QStringLiteral(
-                        "2-3 sentences on the approach. Empty = "
-                        "placeholder.");
-                    QJsonObject stackProp;
-                    stackProp["type"] = "string";
-                    stackProp["description"] = QStringLiteral(
-                        "Key technologies/libraries. Empty = "
-                        "placeholder.");
-                    QJsonObject countProp;
-                    countProp["type"] = "integer";
-                    countProp["description"] = QStringLiteral(
-                        "Number of task blocks to emit. Server-"
-                        "clamped [1, 12]; default 4.");
-                    QJsonObject testsProp;
-                    testsProp["type"] = "boolean";
-                    testsProp["description"] = QStringLiteral(
-                        "Whether each task block carries its test file "
-                        "line and test-first steps. Default true; false "
-                        "drops them and numbers the rest from 1.");
-                    QJsonObject antsProp;
-                    antsProp["type"] = "string";
-                    antsProp["description"] = QStringLiteral(
-                        "Pre-allocated ANTS-NNNN id. Empty = engine "
-                        "allocates from .roadmap-counter.");
-                    QJsonObject saveProp;
-                    saveProp["type"] = "boolean";
-                    saveProp["description"] = QStringLiteral(
-                        "If true, also writes the skeleton to "
-                        "docs/plans/<id>-<feature>.md atomically. "
-                        "Refuses to overwrite. Default false.");
-                    QJsonObject props;
-                    props["feature_name"]    = featProp;
-                    props["goal"]            = goalProp;
-                    props["architecture"]    = archProp;
-                    props["tech_stack"]      = stackProp;
-                    props["task_count_hint"] = countProp;
-                    props["includes_tests"]  = testsProp;
-                    props["ants_id"]         = antsProp;
-                    props["save"]            = saveProp;
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append(QStringLiteral("feature_name"));
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
                 // ANTS-1284 — token_usage
                 {
                     QJsonObject t;
@@ -12459,9 +11407,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
-                // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review /
-                // debt_sweep fold-in pattern; pure delegation to
-                // ColdEyesEngine + RoadmapFoldIn helpers.
+                // ANTS-1319 — cold_eyes_*. Pure delegation to
+                // ColdEyesEngine.
                 {
                     QJsonObject t;
                     t["name"] = "cold_eyes_partition";
@@ -12685,326 +11632,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonArray req;
                     req.append("lane");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
-                    t["name"] = "cold_eyes_cross_doc_diff";
-                    t["description"] = QStringLiteral(
-                        "Cross-doc corroboration filter. Input: "
-                        "EITHER `reports` (inline map of "
-                        "{lane: report_text}, ANTS-1509 — **no disk "
-                        "needed**, ideal for /cold-eyes which holds "
-                        "agent reports inline in the orchestrator's "
-                        "context rather than spilling to disk; "
-                        "ANTS-1626) OR `reports_dir` (project-relative "
-                        "directory of *.md files, ANTS-1282 — saves "
-                        "parent context by reading from disk server-"
-                        "side; ideal for /indie-review which writes "
-                        "lane reports to disk). Returns findings "
-                        "cited by >= min_lanes distinct reports at "
-                        "the same (file, line). Pure regex pass; no "
-                        "LLM. Mirrors indie_review_corroborate. "
-                        "Provide exactly one of `reports` or "
-                        "`reports_dir`. Optional: min_lanes (default 2).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to surface drift across two related "
-                        "docs (spec vs CHANGELOG, ROADMAP vs spec). "
-                        "Regex pass; no LLM.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject reportsProp;
-                    reportsProp["type"] = "object";
-                    reportsProp["description"] = QStringLiteral(
-                        "Map of {lane_name: report_markdown}. "
-                        "Mutually exclusive with reports_dir.");
-                    QJsonObject rdProp;
-                    rdProp["type"] = "string";
-                    rdProp["description"] = QStringLiteral(
-                        "Project-relative path to a directory of "
-                        "*.md report files. Lane name = filename "
-                        "stem. Top level only; sub-dirs not "
-                        "recursed. Mutually exclusive with reports.");
-                    QJsonObject mlProp;
-                    mlProp["type"]    = "integer";
-                    mlProp["default"] = 2;
-                    mlProp["minimum"] = 1;
-                    mlProp["description"] = QStringLiteral(
-                        "Minimum distinct lanes citing a (file, "
-                        "line) for it to count as corroborated.");
-                    QJsonObject props;
-                    props["reports"]     = reportsProp;
-                    props["reports_dir"] = rdProp;
-                    props["min_lanes"]   = mlProp;
-                    // ANTS-1391 — caller_cwd anchor.
-                    props["caller_cwd"]  = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    // INV-1 XOR is enforced at the handler layer
-                    // (cmdColdEyesCrossDocDiff), not the schema —
-                    // JSON Schema's oneOf is verbose and Claude
-                    // Code's schema validator handles oneOf poorly
-                    // (same rationale as indie_review_corroborate
-                    // post-ANTS-1282).
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                {
-                    QJsonObject t;
-                    t["name"] = "cold_eyes_fold_in";
-                    t["description"] = QStringLiteral(
-                        "Render a `### 📝 Cold-eyes <YYYY-MM-DD>` ROADMAP block from "
-                        "corroborated findings. id_allocation:\"auto\" (default) "
-                        "allocates ids from .roadmap-counter; id_allocation:\"skip\" "
-                        "emits bullets without ids. The block is inserted into "
-                        "ROADMAP.md when a release-block heading is found or given "
-                        "(release_block_heading), else returned in `block`. "
-                        "narrative_mode:true + narrative_md inserts prose instead. "
-                        "Required: caller_cwd, and actionable[] or narrative_mode + "
-                        "narrative_md.");
-                    t["detail"] = QStringLiteral(
-                        "Render an `### 📝 Cold-eyes <YYYY-MM-DD>` "
-                        "ROADMAP block from a list of corroborated "
-                        "findings. Default (`id_allocation:\"auto\"`) "
-                        "allocates IDs from .roadmap-counter (via "
-                        "RoadmapFoldIn::allocateIds) and renders "
-                        "bullets with `[ANTS-NNNN]` prefixes — "
-                        "**REQUIRES** the project to follow "
-                        "docs/standards/roadmap-format.md (counter "
-                        "file + ID-prefixed bullets). "
-                        "`id_allocation:\"skip\"` skips the counter "
-                        "touch and emits prefix-free bullets — use "
-                        "for projects whose roadmap uses ad-hoc "
-                        "headings (e.g. \"Pass N.M\"). When a "
-                        "release-block heading is found via "
-                        "findActiveReleaseHeading (or supplied via "
-                        "`release_block_heading`), the block is "
-                        "atomically inserted into ROADMAP.md; "
-                        "otherwise the block is returned in "
-                        "`block` for caller-side splicing. "
-                        "ANTS-1644 — pass `narrative_mode:true` + "
-                        "`narrative_md:\"<pre-rendered markdown>\"` "
-                        "to insert prose under the section heading "
-                        "verbatim, skipping ID allocation and the "
-                        "per-finding bullet rendering. Use this when "
-                        "the natural shape is one prose subsection "
-                        "(Closed inline / Deferred / False-positives) "
-                        "rather than N bullets the reviewer doesn't "
-                        "want. Required: caller_cwd (string — your "
-                        "$PWD; ANTS-1372). One of: actionable "
-                        "(array) OR narrative_mode=true + "
-                        "narrative_md.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use to fold a cold-eyes set into "
-                        "ROADMAP.md. id_allocation:\"skip\" for "
-                        "projects without .roadmap-counter / "
-                        "[PROJ-NNNN] IDs. caller_cwd required.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject aProp;
-                    aProp["type"] = "array";
-                    aProp["description"] = QStringLiteral(
-                        "Array of {file, line, citing_lanes[]} "
-                        "objects describing the corroborated set. "
-                        "ANTS-1278 — each object MAY also carry "
-                        "{title, description, layman, kind} to "
-                        "render a real roadmap card (bold title + "
-                        "body + Layman: + Kind:). Omit any of them "
-                        "and the renderer emits a LOUD "
-                        "`**TODO: describe this finding (cited by "
-                        "N lanes at file:line).**` placeholder so "
-                        "a caller cannot ship a stub bullet.");
-                    QJsonObject dProp;
-                    dProp["type"] = "string";
-                    dProp["description"] = QStringLiteral(
-                        "ISO date for the heading + Source. "
-                        "Defaults to today.");
-                    QJsonObject hProp;
-                    hProp["type"] = "string";
-                    hProp["description"] = QStringLiteral(
-                        "Optional explicit `## ` heading to "
-                        "insert after; defaults to "
-                        "RoadmapFoldIn::findActiveReleaseHeading. "
-                        "Required when the project's ROADMAP.md "
-                        "has no `## (target: YYYY-NN)` or "
-                        "`## N.M.P — …` line (e.g. freeform "
-                        "headings like \"Pass N.M\").");
-                    // ANTS-1510 — id_allocation freeform-mode switch.
-                    QJsonObject iaProp;
-                    iaProp["type"] = "string";
-                    QJsonArray iaEnum;
-                    iaEnum.append("auto");
-                    iaEnum.append("skip");
-                    iaProp["enum"] = iaEnum;
-                    iaProp["default"] = "auto";
-                    iaProp["description"] = QStringLiteral(
-                        "ID allocation mode. \"auto\" (default) "
-                        "pulls N consecutive IDs from "
-                        ".roadmap-counter and renders bullets "
-                        "prefixed with `[ANTS-NNNN]` per "
-                        "docs/standards/roadmap-format.md § 3.5.1. "
-                        "\"skip\" suppresses the counter touch and "
-                        "emits prefix-free bullets — use for "
-                        "projects whose roadmap doesn't follow the "
-                        "shareable ID scheme (e.g. RetroDB's \"Pass "
-                        "N.M\" headings). Echoed in the response "
-                        "envelope.");
-                    // ANTS-1389 — caller_cwd schema surfacing.
-                    QJsonObject callerProp;
-                    callerProp["type"] = "string";
-                    callerProp["description"] = QStringLiteral(
-                        "Your $PWD — the project this fold-in writes "
-                        "to. Anchored to caller_cwd (ANTS-1630): the "
-                        "write lands on YOUR project's ROADMAP "
-                        "regardless of which Ants tab is focused; "
-                        "refuses cwd_bad if it doesn't resolve to a "
-                        "directory.");
-                    // ANTS-1644 — narrative-mode escape hatch.
-                    QJsonObject nmProp;
-                    nmProp["type"] = "boolean";
-                    nmProp["description"] = QStringLiteral(
-                        "Opt out of per-finding bullet rendering. "
-                        "When true, the handler inserts "
-                        "`narrative_md` verbatim under the "
-                        "`### 📝 Cold-eyes <DATE>` heading, skips "
-                        "`.roadmap-counter` allocation, and returns "
-                        "`allocated_ids:[]`. `actionable` is then "
-                        "optional. Use for prose subsections "
-                        "(Closed inline / Deferred / False-"
-                        "positives) where N bullets would be "
-                        "noise.");
-                    QJsonObject nmdProp;
-                    nmdProp["type"] = "string";
-                    nmdProp["description"] = QStringLiteral(
-                        "Pre-rendered markdown body for "
-                        "`narrative_mode:true`. Inserted verbatim "
-                        "after a blank line under the section "
-                        "heading. Trailing newline added if absent. "
-                        "Refused with code "
-                        "`narrative_md_required` when empty or "
-                        "whitespace-only.");
-                    QJsonObject props;
-                    props["actionable"]            = aProp;
-                    props["date_iso"]              = dProp;
-                    props["release_block_heading"] = hProp;
-                    props["id_allocation"]         = iaProp;
-                    props["narrative_mode"]        = nmProp;
-                    props["narrative_md"]          = nmdProp;
-                    props["dry_run"]               = makeDryRunProp();  // ANTS-2227
-                    props["id_prefix"]             = makeFoldInIdPrefixProp();  // ANTS-3498
-                    props["caller_cwd"]            = callerProp;
-                    schema["properties"] = props;
-                    // ANTS-1644 — `actionable` dropped from required.
-                    // Handler still refuses with bad_args when both
-                    // narrative_mode=false AND actionable[] empty.
-                    QJsonArray req;
-                    req.append("caller_cwd");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1413 — cold_eyes_single_doc. Cross-consistency
-                // brief for one doc without the full multi-lane
-                // partition + brief workflow. Returns the doc's
-                // related-doc neighbourhood (same-dir siblings,
-                // project standards, root contracts).
-                {
-                    QJsonObject t;
-                    t["name"] = "cold_eyes_single_doc";
-                    t["description"] = QStringLiteral(
-                        "Single-doc cross-consistency brief. Given a "
-                        "`doc_path`, return the docs it should stay "
-                        "consistent with: same-dir siblings, project "
-                        "standards, root contracts. Useful for "
-                        "sanity-checking a freshly drafted spec "
-                        "without committing a "
-                        ".cold-eyes/partition.json or dispatching the "
-                        "full multi-lane sweep. Returns {doc_path, "
-                        "summary, related:{same_dir_siblings, "
-                        "standards, root_contracts}, "
-                        "recommended_reviewers}.");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use when reviewing one new spec — gives "
-                        "the cross-consistency neighbourhood without "
-                        "running cold_eyes_partition + brief.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject dpProp;
-                    dpProp["type"] = "string";
-                    dpProp["description"] = QStringLiteral(
-                        "Project-relative doc path. Anchored under "
-                        "project root (INV-13).");
-                    QJsonObject props;
-                    props["doc_path"]   = dpProp;
-                    props["caller_cwd"] = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("doc_path");
-                    schema["required"] = req;
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
-                // ANTS-1414 — cross_doc_diff. Lane-source-agnostic
-                // alias for cold_eyes_cross_doc_diff / indie_review_-
-                // corroborate's regex hotspot primitive. Same args,
-                // same envelope shape — different name so callers
-                // working from arbitrary reviewer-report bundles
-                // don't have to pick a cold-eyes or indie-review
-                // framing.
-                {
-                    QJsonObject t;
-                    t["name"] = "cross_doc_diff";
-                    t["description"] = QStringLiteral(
-                        "Regex hotspot corroboration across reviewer "
-                        "reports. Input: EITHER `reports` (inline map "
-                        "of {lane: report_text}) OR `reports_dir` "
-                        "(project-relative directory of *.md files). "
-                        "Returns findings cited by >= min_lanes "
-                        "distinct reports at the same (file, line). "
-                        "Pure regex pass; no LLM. Lane-source-"
-                        "agnostic alias for "
-                        "cold_eyes_cross_doc_diff / "
-                        "indie_review_corroborate (same engine "
-                        "primitive). Provide exactly one of `reports` "
-                        "or `reports_dir`. Optional: min_lanes "
-                        "(default 2).");
-                    t["selection_hint"] = QStringLiteral(
-                        "Use when corroborating an arbitrary "
-                        "reviewer-report bundle without committing "
-                        "to the cold-eyes vs indie-review framing.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject reportsProp;
-                    reportsProp["type"] = "object";
-                    reportsProp["description"] = QStringLiteral(
-                        "Map of {lane_name: report_markdown}. "
-                        "Mutually exclusive with reports_dir.");
-                    QJsonObject rdProp;
-                    rdProp["type"] = "string";
-                    rdProp["description"] = QStringLiteral(
-                        "Project-relative path to a directory of "
-                        "*.md report files. Lane name = filename "
-                        "stem. Top level only; sub-dirs not "
-                        "recursed. Mutually exclusive with reports.");
-                    QJsonObject mlProp;
-                    mlProp["type"]    = "integer";
-                    mlProp["default"] = 2;
-                    mlProp["minimum"] = 1;
-                    mlProp["description"] = QStringLiteral(
-                        "Minimum distinct lanes citing a (file, "
-                        "line) for it to count as corroborated.");
-                    QJsonObject props;
-                    props["reports"]     = reportsProp;
-                    props["reports_dir"] = rdProp;
-                    props["min_lanes"]   = mlProp;
-                    props["caller_cwd"]  = makeCallerCwdReadProp();
-                    schema["properties"] = props;
-                    // XOR enforced at the handler (cmdCrossDocDiff),
-                    // not the schema — mirrors ANTS-1509 rationale.
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -16333,7 +14960,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("mcp_trace"),         {800,  3000}},
                         // Terminal-state reads.
                         {QStringLiteral("get_last_command"),  {600,  3000}},
-                        {QStringLiteral("get_git_status"),    {400,  1500}},
                         {QStringLiteral("get_environment"),   {300,  800}},
                         {QStringLiteral("get_scrollback"),    {1500, 8000}},
                         {QStringLiteral("get_text"),          {1200, 6000}},
@@ -16385,7 +15011,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // a small list; result_cap_bytes (64 KiB default) bounds it.
                         {QStringLiteral("project_query"),     {400,  4000}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
-                        {QStringLiteral("session_brief"),     {300,  1200}},
                         // ANTS-1883 — composer of three large reads + ANTS-1922
                         // active_bullets (top-20 headline_only, ~2 KB); bucket
                         // = sum of constituents' worst case + bullet overhead.
@@ -16396,37 +15021,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("git_state"),         {700,  4000}},
                         {QStringLiteral("subsystem"),         {400,  1500}},
                         // Plan + verify.
-                        {QStringLiteral("plan_template"),     {1500, 6000}},
                         {QStringLiteral("verify_changes"),    {600,  3000}},
                         // Audit suite.
                         {QStringLiteral("audit_run"),         {4000, 25000}},
                         {QStringLiteral("last_audit_summary"),{600,  2500}},
-                        // Debt-sweep suite.
-                        {QStringLiteral("debt_sweep_scan"),         {2000, 12000}},
-                        {QStringLiteral("debt_sweep_triage_prompt"),{1500, 8000}},
-                        {QStringLiteral("debt_sweep_apply_fix"),    {400,  1500}},
-                        {QStringLiteral("debt_sweep_defer"),        {200,  800}},
                         // Cold-eyes.
                         {QStringLiteral("cold_eyes_partition"),    {1000, 4000}},
                         {QStringLiteral("cold_eyes_brief"),        {1500, 6000}},
-                        {QStringLiteral("cold_eyes_cross_doc_diff"),{1200, 5000}},
-                        {QStringLiteral("cold_eyes_fold_in"),      {800,  3000}},
-                        {QStringLiteral("cold_eyes_single_doc"),   {800,  3000}},
-                        {QStringLiteral("cross_doc_diff"),         {1200, 5000}},
                         // Indie-review.
                         {QStringLiteral("indie_review_partition"),    {1500, 6000}},
-                        {QStringLiteral("indie_review_brief"),        {2000, 8000}},
                         {QStringLiteral("indie_review_corroborate"),  {1500, 6000}},
-                        {QStringLiteral("indie_review_synthesis_prompt"), {2500, 10000}},
                         {QStringLiteral("indie_review_dispatch"),     {3000, 12000}},
-                        {QStringLiteral("indie_review_fold_in"),      {1000, 4000}},
-                        // ANTS-1279 — one call replaces partition + N briefs.
-                        {QStringLiteral("indie_review_orchestrate"),  {4000, 20000}},
                         // Test-audit.
                         {QStringLiteral("test_audit_partition"),       {1500, 6000}},
                         {QStringLiteral("test_audit_brief"),           {2000, 8000}},
-                        {QStringLiteral("test_audit_synthesis_prompt"),{2500, 10000}},
-                        {QStringLiteral("test_audit_fold_in"),         {1000, 4000}},
                         // Spec-aware (ANTS-1309 + ANTS-1308).
                         {QStringLiteral("spec_query"),         {500,  2500}},
                         {QStringLiteral("invariant_check"),    {800,  4000}},
@@ -16476,8 +15084,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         return QStringLiteral("indie-review");
                     if (name.startsWith(QStringLiteral("test_audit_")))
                         return QStringLiteral("test-audit");
-                    if (name.startsWith(QStringLiteral("debt_sweep_")))
-                        return QStringLiteral("debt-sweep");
                     if (name.startsWith(QStringLiteral("roadmap_")))
                         return QStringLiteral("roadmap");
                     // ANTS-1548 — changelog_log (writer) + ANTS-3533
@@ -16485,9 +15091,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // of the roadmap family.
                     if (name.startsWith(QStringLiteral("changelog_")))
                         return QStringLiteral("roadmap");
-                    // ANTS-1414 — lane-source-agnostic alias bucket.
-                    if (name == QLatin1String("cross_doc_diff"))
-                        return QStringLiteral("cold-eyes");
                     if (name == QLatin1String("audit_run") ||
                         name == QLatin1String("last_audit_summary") ||
                         // ANTS-3396 — audit_poll: poll an async audit_run job.
@@ -16559,13 +15162,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         name == QLatin1String("project_query") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
-                        // ANTS-1569 — current_state is a project-scoped
-                        // read aggregator (joins project_layout's family).
-                        name == QLatin1String("current_state") ||
-                        // ANTS-1724 — session_brief is the compact variant.
-                        name == QLatin1String("session_brief") ||
-                        // ANTS-1883 — session_orient bundles
-                        // current_state + project_layout + roadmap
+                        // ANTS-1883 — session_orient bundles the
+                        // session-start state + project_layout + roadmap
                         // section_index; same workspace family.
                         name == QLatin1String("session_orient"))
                         return QStringLiteral("workspace");
@@ -16584,8 +15182,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // model-switcher effectiveness scorecard.
                     if (name == QLatin1String("model_switch_stats"))
                         return QStringLiteral("model");
-                    if (name == QLatin1String("plan_template"))
-                        return QStringLiteral("plan");
                     // ANTS-1309 + ANTS-1308 + ANTS-1963 — spec-aware
                     // tools (spec_log is the write sibling of spec_query).
                     if (name == QLatin1String("spec_query") ||
@@ -16839,21 +15435,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         meta[QStringLiteral("anthropic/alwaysLoad")] = true;
                         t[QStringLiteral("_meta")] = meta;
                     }
-                    tools.replace(i, t);
-                }
-
-                // ANTS-5485 — a deprecated verb's description LEADS with
-                // what to use instead, ahead of the `[<kind>]` prefix, so it
-                // is the first thing a session reads. Before the snapshot,
-                // so tool_info serves the same line.
-                for (int i = 0; i < tools.size(); ++i) {
-                    QJsonObject t = tools.at(i).toObject();
-                    const QString prefix = mcp::deprecationPrefix(
-                        t.value(QStringLiteral("name")).toString());
-                    const QString desc =
-                        t.value(QStringLiteral("description")).toString();
-                    if (prefix.isEmpty() || desc.startsWith(prefix)) continue;
-                    t[QStringLiteral("description")] = prefix + desc;
                     tools.replace(i, t);
                 }
 
@@ -17447,6 +16028,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                     "tool_info: no MCP tool registered "
                                     "as '%1'").arg(reqName);
                                 env["available"] = available;
+                                // ANTS-5485 — a removed verb names its successor.
+                                const QString replacement =
+                                    mcp::removedReplacement(reqName);
+                                if (!replacement.isEmpty())
+                                    env["replacement"] = replacement;
                             } else {
                                 env["ok"]          = true;
                                 env["name"]        = match.value(QStringLiteral("name"));
@@ -17882,7 +16468,6 @@ ClaudeIntegration::CallerCwdContract
 ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     using C = CallerCwdContract;
     // Required — refuse with caller_cwd_required when absent.
-    if (toolName == QStringLiteral("get_git_status"))     return C::Required;
     if (toolName == QStringLiteral("last_audit_summary")) return C::Required;
     if (toolName == QStringLiteral("git_state"))          return C::Required;
     if (toolName == QStringLiteral("verify_changes"))     return C::Required;
@@ -17969,7 +16554,6 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // contract — kept for diagnostic parity. Asymmetric internal
     // routing: reads anchor to caller_cwd, writes match focused tab.
     if (toolName == QStringLiteral("session_memory"))     return C::Required;
-    if (toolName == QStringLiteral("session_brief"))      return C::Required;
     if (toolName == QStringLiteral("session_orient"))     return C::Required;  // ANTS-1883
     if (toolName == QStringLiteral("workflow_state"))     return C::Required;
     // TabSpecific — ENFORCED since ANTS-1415 Phase 3b: no caller_cwd and
@@ -18016,9 +16600,6 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;
-    // ANTS-1583 — roadmap_branch_drift: read-only ROADMAP scan +
-    // git reachability check, anchored to the caller's project root.
-    if (toolName == QStringLiteral("roadmap_branch_drift")) return C::Required;
     // ANTS-1400 — caller_cwd_info is the diagnostic verb that
     // surfaces the resolution Source enum. caller_cwd is its
     // INPUT (not an anchor), so neither Required nor ProcessGlobal
@@ -18048,12 +16629,6 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("co_change_family"))   return C::Required;
     if (toolName == QStringLiteral("file_outline"))       return C::Required;
     if (toolName == QStringLiteral("mutation_probe"))     return C::Required;  // ANTS-4398
-    if (toolName == QStringLiteral("plan_template"))      return C::Required;
-    // ANTS-1569 — current_state aggregator: project-scoped read over
-    // ROADMAP + git + audit cache. The ANTS-1520 fall-through default
-    // already returns Required; this explicit branch is declarative
-    // parity with sibling project-scoped tools.
-    if (toolName == QStringLiteral("current_state"))      return C::Required;
     // ANTS-1735 — model_switch_stats: read-only ledger aggregation scoped to the
     // caller's project. Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("model_switch_stats"))  return C::Required;
@@ -18087,29 +16662,13 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("project_conventions")) return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
     if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
-    if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;
-    if (toolName == QStringLiteral("cold_eyes_fold_in"))       return C::Required;
     if (toolName == QStringLiteral("cold_eyes_partition"))     return C::Required;
-    if (toolName == QStringLiteral("cold_eyes_single_doc"))    return C::Required;
-    if (toolName == QStringLiteral("cross_doc_diff"))          return C::Required;
-    // Debt-sweep verb cluster (ANTS-1316).
-    if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return C::Required;
-    if (toolName == QStringLiteral("debt_sweep_defer"))         return C::Required;
-    if (toolName == QStringLiteral("debt_sweep_scan"))          return C::Required;
-    if (toolName == QStringLiteral("debt_sweep_triage_prompt")) return C::Required;
     // Indie-review verb cluster (ANTS-1311).
-    if (toolName == QStringLiteral("indie_review_brief"))            return C::Required;
     if (toolName == QStringLiteral("indie_review_corroborate"))      return C::Required;
-    if (toolName == QStringLiteral("indie_review_fold_in"))          return C::Required;
-    if (toolName == QStringLiteral("indie_review_orchestrate"))      return C::Required;  // ANTS-1279
     if (toolName == QStringLiteral("indie_review_partition"))        return C::Required;
-    if (toolName == QStringLiteral("indie_review_synthesis_prompt")) return C::Required;
     // Test-audit verb cluster (ANTS-1397).
     if (toolName == QStringLiteral("test_audit_brief"))            return C::Required;
-    if (toolName == QStringLiteral("test_audit_fold_in"))          return C::Required;
     if (toolName == QStringLiteral("test_audit_partition"))        return C::Required;
-    if (toolName == QStringLiteral("test_audit_synthesis_prompt")) return C::Required;
-    if (toolName == QStringLiteral("test_audit_recheck"))          return C::Required;
 
     // Unclassified — fall through. Future tools should be added
     // above; the ANTS-1417 coverage test fails the build if a
@@ -18168,22 +16727,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("tab_list")
         || toolName == QStringLiteral("subsystem")
         || toolName == QStringLiteral("git_state")
-        // ANTS-1583 — roadmap_branch_drift response is small but the
-        // drift list rarely changes between calls (ROADMAP mtime +
-        // HEAD reachability snapshot), so the etag 304 round-trip
-        // saves the full re-emit on stable repos.
-        || toolName == QStringLiteral("roadmap_branch_drift")
-        // ANTS-1569 — current_state aggregator. Three upstream
-        // payloads (roadmap_query + git_state + last_audit_summary)
-        // composed into one envelope; the etag covers the union, so
-        // a session re-asking "what's the state" between upstream
-        // changes short-circuits.
-        || toolName == QStringLiteral("current_state")
         // ANTS-1735 — model_switch_stats: the aggregate is stable between
         // switches, so a session re-polling its scorecard short-circuits.
         || toolName == QStringLiteral("model_switch_stats")
-        // ANTS-1724 — session_brief: compact current_state variant.
-        || toolName == QStringLiteral("session_brief")
         // ANTS-1883 — session_orient: composer over three ETag-
         // eligible verbs, naturally ETag-eligible too.
         || toolName == QStringLiteral("session_orient")
@@ -18355,7 +16901,6 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     // Expensive. ANTS-1643 extended the tier to indie_review_brief +
     // test_audit_brief before the sibling fan-out report landed.
     if (toolName == QStringLiteral("cold_eyes_brief"))          return R::BriefAssembly;
-    if (toolName == QStringLiteral("indie_review_brief"))       return R::BriefAssembly;
     if (toolName == QStringLiteral("test_audit_brief"))         return R::BriefAssembly;
     // Expensive — 10/min. Heavy verbs (shell-out, subagent dispatch,
     // cmake/ctest, full-corpus scan).
@@ -18365,26 +16910,14 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     // ANTS-1302 — focused_test shells out to ctest.
     if (toolName == QStringLiteral("focused_test"))             return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_partition"))      return R::Expensive;
-    if (toolName == QStringLiteral("cold_eyes_cross_doc_diff")) return R::Expensive;
-    if (toolName == QStringLiteral("cold_eyes_fold_in"))        return R::Expensive;
-    if (toolName == QStringLiteral("cold_eyes_single_doc"))     return R::Expensive;
-    if (toolName == QStringLiteral("cross_doc_diff"))           return R::Expensive;
-    // ANTS-1643: indie_review_brief + test_audit_brief moved to
-    // BriefAssembly above. Their sibling partition / corroborate /
-    // fold_in / dispatch verbs stay Expensive (heavier cost shapes —
-    // subagent dispatch, multi-doc scan, file writes).
+    // ANTS-1643: test_audit_brief moved to BriefAssembly above. Its
+    // sibling partition / corroborate / dispatch verbs stay Expensive
+    // (heavier cost shapes — subagent dispatch, multi-doc scan).
     if (toolName == QStringLiteral("indie_review_partition"))   return R::Expensive;
     if (toolName == QStringLiteral("indie_review_corroborate")) return R::Expensive;
-    if (toolName == QStringLiteral("indie_review_fold_in"))     return R::Expensive;
-    // ANTS-1279: indie_review_orchestrate derives the partition + N brief
-    // manifests in one call — heavier than a single partition read.
-    if (toolName == QStringLiteral("indie_review_orchestrate")) return R::Expensive;
     // ANTS-1352: indie_review_dispatch
     if (toolName == QStringLiteral("indie_review_dispatch"))    return R::Expensive;
     if (toolName == QStringLiteral("test_audit_partition"))     return R::Expensive;
-    if (toolName == QStringLiteral("test_audit_fold_in"))       return R::Expensive;
-    if (toolName == QStringLiteral("debt_sweep_scan"))          return R::Expensive;
-    if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return R::Expensive;
     // Default — Cheap (60/min). All read verbs not classified above.
     return R::Cheap;
 }

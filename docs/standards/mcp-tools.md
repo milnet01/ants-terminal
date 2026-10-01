@@ -310,14 +310,8 @@ place when it saves a Claude session real tokens or round-trips
    the shared `makeDryRunProp()` factory (the pre-factory verbs
    roadmap_log / changelog_log / spec_log keep tailored copies). Supported:
    roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
-   feedback_log, audit_falsepos_log, indie_review_fold_in,
-   cold_eyes_fold_in, debt_sweep_defer, roadmap_migrate, audit_dismiss,
-   session_message, test_audit_fold_in, debt_sweep_apply_fix — the last
-   three were this rule's outstanding tail until 2026-08-25, when all three
-   were opened and found to declare the property and branch on it. The
-   ROADMAP-fold-in verbs peek the would-be IDs via
-   `RoadmapFoldIn::peekIds` (no `.roadmap-counter` bump) and skip
-   `insertBlock`.
+   feedback_log, audit_falsepos_log, roadmap_migrate, audit_dismiss,
+   session_message.
 
    **`roadmap_migrate` is a stated deviation from the "before any disk
    write" rule** (ANTS-3855 § 2.3.1): its preview opens the store, and on a

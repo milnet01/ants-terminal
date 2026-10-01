@@ -10,7 +10,7 @@ JSON-RPC response: every tool entry must carry an `inputSchema` field.
 | # | Statement |
 |---|-----------|
 | 1 | Every tool in `tools/list` emits an `inputSchema` field. Missing the field causes Claude Code's Zod validator to reject the **entire** response and register zero tools. |
-| 2 | Zero-argument tools (`get_cwd`, `get_session_info`, `get_last_command`, `get_git_status`, `get_environment`, `tab_list`) declare `{"type":"object"}` as their `inputSchema`. The MCP spec mandates the field even when there are no parameters. |
+| 2 | Zero-argument tools (`get_cwd`, `get_session_info`, `get_last_command`, `get_environment`, `tab_list`) declare `{"type":"object"}` as their `inputSchema`. The MCP spec mandates the field even when there are no parameters. |
 | 3 | The `emptySchema` object (shared by all zero-arg tools) sets `type` to `"object"`. It must not be constructed without this field, because an empty JSON object `{}` is not a valid JSON Schema. |
 | 4 | Tools added in future must also declare `inputSchema`. The source must contain an `emptySchema` declaration with `type = "object"` that serves as the canonical shared sentinel, making compliance the path of least resistance for new tools. |
 

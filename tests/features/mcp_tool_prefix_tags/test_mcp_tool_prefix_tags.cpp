@@ -269,8 +269,9 @@ TEST(mcp_tool_prefix_tags, Inv4NoDescriptionPreBracketed) {
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::vector<std::string> names =
         collectAllToolNamesInClaudeIntegration(ci);
-    expect(names.size() >= 90,
-           "INV-4 setup: at least 90 tool name registrations seen "
+    // ANTS-5485 removed twenty verbs, taking the count from 93 to 73.
+    expect(names.size() >= 70,
+           "INV-4 setup: at least 70 tool name registrations seen "
            "(sanity check)");
     for (const std::string &name : names) {
         char first = '\0';

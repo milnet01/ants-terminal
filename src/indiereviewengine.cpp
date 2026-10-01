@@ -933,7 +933,7 @@ QString assembleBriefForDispatch(const QString &projectPath,
         out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon));
     }
 
-    // ROADMAP slice — same logic as assembleBriefManifest.
+    // ROADMAP slice.
     const QString roadmap = slurpUtf8(projectPath
                                       + QStringLiteral("/ROADMAP.md"));
     if (!roadmap.isEmpty()) {
@@ -991,104 +991,6 @@ QString assembleBriefForDispatch(const QString &projectPath,
     return out;
 }
 
-BriefManifest assembleBriefManifest(const QString &projectPath,
-                                    const Lane &lane) {
-    BriefManifest m;
-    m.contractDocs = {
-        QStringLiteral("docs/standards/coding.md"),
-        QStringLiteral("docs/standards/testing.md"),
-        QStringLiteral("docs/standards/documentation.md"),
-    };
-    // INV-4: path-traversal guard parity. Filter sourcePaths through
-    // the same canonicalisation check assembleBriefForDispatch uses on
-    // the body-inline loop, but apply it BEFORE listing the path in the
-    // brief — tighter than v1's path-listed-but-body-skipped.
-    const QFileInfo rootInfo(projectPath);
-    const QString rootCanon = rootInfo.canonicalFilePath();
-    QStringList safePaths;
-    safePaths.reserve(lane.sourcePaths.size());
-    for (const QString &sp : lane.sourcePaths) {
-        const QString abs = projectPath + QChar('/') + sp;
-        const QString canon = QFileInfo(abs).canonicalFilePath();
-        if (!canon.isEmpty() && !rootCanon.isEmpty()
-            && canon.startsWith(rootCanon + QChar('/'))) {
-            safePaths << sp;
-        }
-    }
-    m.sourcePaths = safePaths;
-
-    QString out;
-    out.reserve(4 * 1024);
-    out += QStringLiteral("=== Lane: ");
-    out += lane.name;
-    out += QStringLiteral(" ===\n\n");
-    out += QStringLiteral("Summary: ");
-    out += lane.summary;
-    out += QStringLiteral("\n\n");
-    out += QStringLiteral("Source files (");
-    out += QString::number(m.sourcePaths.size());
-    out += QStringLiteral("):\n");
-    for (const QString &sp : m.sourcePaths) {
-        out += QStringLiteral("- ");
-        out += sp;
-        out += QChar('\n');
-    }
-    out += QChar('\n');
-
-    // INV-5: verbatim sentinel — test asserts presence so future
-    // edits can't silently drop the read-instruction.
-    out += QStringLiteral(
-        "Read each source file in the list above using your Read tool "
-        "BEFORE beginning the review. The contract docs listed at the "
-        "bottom are project standards — read them only if your review "
-        "surfaces a violation you want to cite by line. The MCP server "
-        "has deliberately NOT inlined source bodies into this brief; "
-        "doing so would inflate parent (orchestrator) context for no "
-        "reviewer benefit.\n\n");
-
-    // ROADMAP slice — same filter as assembleBriefForDispatch.
-    const QString roadmap = slurpUtf8(projectPath
-                                      + QStringLiteral("/ROADMAP.md"));
-    if (!roadmap.isEmpty()) {
-        out += QStringLiteral("=== ROADMAP slice ===\n");
-        const QStringList lines = roadmap.split(QChar('\n'));
-        const QString needle = lane.name;
-        for (const QString &line : lines) {
-            if (line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
-                && line.contains(needle, Qt::CaseInsensitive)) {
-                out += line;
-                out += QChar('\n');
-            } else if (line.contains(QStringLiteral("`")
-                                     + needle + QStringLiteral("`"))) {
-                out += line;
-                out += QChar('\n');
-            }
-        }
-        out += QChar('\n');
-    }
-
-    // ANTS-1457 — previously-rejected findings (do not re-raise).
-    // v2 BriefManifest path mirrors the assembleBriefForDispatch injection.
-    {
-        const auto fpEntries = ants::falsepos::filter(
-            ants::falsepos::loadEntries(projectPath),
-            QStringLiteral("indie-review"), lane.name);
-        const QString block = ants::falsepos::formatForBrief(fpEntries);
-        if (!block.isEmpty()) {
-            out += block;
-            if (!out.endsWith(QChar('\n'))) out += QChar('\n');
-        }
-    }
-
-    out += QStringLiteral("=== Standards reference (not inlined; reviewer fetches if needed) ===\n");
-    for (const QString &doc : m.contractDocs) {
-        out += QStringLiteral("- ");
-        out += doc;
-        out += QChar('\n');
-    }
-    m.brief = out;
-    return m;
-}
 
 QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
     // Same walk shape and caps as deriveComputedPartition: indexable

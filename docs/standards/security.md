@@ -205,6 +205,22 @@ because it reads as a list nobody filled in.
     media (images, video, fonts). This rule covers
     a match inside tracked project source.
 
+### 2.1 Real personal and financial data
+
+- **Never in a tracked file, a commit or a message.** That covers an account
+  or card number, a name with an address, a statement, a medical or tax
+  record. Fixtures, specs and examples use made-up values. A real document
+  kept as test material lives in a gitignored path.
+- **A secret scanner does not catch it.** `gitleaks` matches credential
+  shapes, and an account number is not one. A project that handles such
+  data adds a check that searches every tracked text file for the real
+  values. It reads them from a gitignored file the user writes in an editor.
+- **Never on a command line, and never in an agent's output.** Shell history
+  and a session transcript both keep it. An agent never prints, echoes or
+  quotes the real values, not even to check them.
+- **Found in a commit, it is a leak.** Tell the user. Removing the file does
+  not remove it from history, and rewriting history is the user's call.
+
 ## 3. Validate at the boundary, by shape
 
 Validate **where the data arrives**, not where it is used — a value
@@ -372,6 +388,7 @@ enforcement.** An absence is not coverage.
 | Rule | What catches a breach |
 |---|---|
 | Secrets in the repo (§2) | **`Partial:`** `check-code`'s `gitleaks` step, a secret-scanning check, over the **tracked files** — that step passes `--no-git` and feeds the tool `git ls-files`. **Nothing** catches a secret in a commit message, one already in history, or one in a file that has never been added, in ANY scope. `git ls-files` cannot yield an untracked path (measured 2026-09-26: zero), and `--changed` resolves its list from `git diff --name-only <base>...HEAD`, which is committed changes only — so the carve-out that re-admits untracked files reaches a path the run was handed some other way, never one either list produces. Measured on `gitleaks` 8.30.1: a committed-then-removed secret is found in git mode and not without it. That is §10's commit-then-remove anti-pattern exactly. **`Partial:`** at push: the machine-wide `githooks/pre-push` runs `gitleaks git` over the commits a push adds and refuses on a finding, where `gitleaks` is installed and the repository uses that hook; it says so where `gitleaks` is missing. Measured 2026-09-27 on 8.30.1: a committed token was refused, a clean push passed. A secret never committed, or already on the remote, it does not reach |
+| Real personal and financial data (§2.1) | **nothing** on this machine — the secret scans above do not match an account number. A project's own search for its real values catches it, where the project has one |
 | Injection and unsafe calls (§3) | **`Partial:`** `check-code`'s `semgrep` step, a static-analysis check it selects on every project, plus `bandit` on Python, and `cppcheck` on a **CMake** C++ project — `check-code` keys that row on `CMakeLists.txt` AND `*.cpp/*.h` together, so a Meson, Make or Bazel C++ tree selects it not at all. **`ruff` counts only where `S` is selected** — `check-code` supplies `--select E,F,B,S` where the project's ruff config sets no `select`, and runs it as-is otherwise, so a project selecting without `S` gets no injection rule from it. **Nothing** decides the rest of §3 — what bounds to accept, a filename that can begin with `-`, or whether validation happens where the data arrives — and **nothing** reaches a language whose selected tools carry no injection rule. `--quick` drops `semgrep`, which leaves such a project with neither |
 | Dependency advisories (§8) | **nothing** — `check-dependencies` reports staleness only — it queries no advisory database, so a package at latest stable with an open advisory is invisible to it. **The ecosystem's advisory command is the project's to run**, on the `dependencies.md` cadence |
 | Lockfile committed (§8) | `dependencies.md` § What checks this owns the answer |

@@ -76,16 +76,12 @@ TEST(mcp_test_audit_trio, Inv4TokenViaQHash) {
 // Rewritten as a VALUE assertion against callerCwdContractFor rather
 // than a byte-window scrape of its source: window drift is what made the
 // original test lie, and calling the function cannot drift. (Same move
-// ANTS-3611 made for the aggregate-cap constant.) These verbs read and
-// WRITE under the caller's project root — test_audit_fold_in appends to
-// ROADMAP.md — so Required is the security-relevant classification, not
-// a stylistic one.
+// ANTS-3611 made for the aggregate-cap constant.) These verbs read under
+// the caller's project root, so Required is the security-relevant
+// classification, not a stylistic one.
 TEST(mcp_test_audit_trio, Inv5RequiredContract) {
     for (const QString &name : {QStringLiteral("test_audit_partition"),
-                                QStringLiteral("test_audit_brief"),
-                                QStringLiteral("test_audit_synthesis_prompt"),
-                                QStringLiteral("test_audit_fold_in"),
-                                QStringLiteral("test_audit_recheck")}) {
+                                QStringLiteral("test_audit_brief")}) {
         EXPECT_EQ(ClaudeIntegration::callerCwdContractFor(name),
                   ClaudeIntegration::CallerCwdContract::Required)
             << "INV-5: " << name.toStdString()
@@ -266,62 +262,20 @@ TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// Schema/dispatch — all four verbs registered.
-TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
+// Schema/dispatch — both verbs registered (ANTS-5485 removed
+// test_audit_synthesis_prompt, _fold_in and _recheck).
+TEST(mcp_test_audit_trio, AllVerbsRegistered) {
     expect_reset();
     const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "registerToolProvider(\"test_audit_partition\""),
            "dispatch: test_audit_partition registered");
     expect(contains(mw, "registerToolProvider(\"test_audit_brief\""),
            "dispatch: test_audit_brief registered");
-    expect(contains(mw, "registerToolProvider(\"test_audit_synthesis_prompt\""),
-           "dispatch: test_audit_synthesis_prompt registered");
-    expect(contains(mw, "registerToolProvider(\"test_audit_fold_in\""),
-           "dispatch: test_audit_fold_in registered");
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "t[\"name\"] = \"test_audit_partition\""),
            "schema: test_audit_partition descriptor");
     expect(contains(ci, "t[\"name\"] = \"test_audit_brief\""),
            "schema: test_audit_brief descriptor");
-    expect(contains(ci, "t[\"name\"] = \"test_audit_synthesis_prompt\""),
-           "schema: test_audit_synthesis_prompt descriptor");
-    expect(contains(ci, "t[\"name\"] = \"test_audit_fold_in\""),
-           "schema: test_audit_fold_in descriptor");
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-1635 — test_audit_fold_in declares narrative_mode + narrative_md
-// schema props and the handler forwards both fields. Source-grep over
-// claudeintegration.cpp's registration block + mainwindow.cpp's
-// provider lambda.
-TEST(mcp_test_audit_trio, Ants1635NarrativeModeSchemaAndHandler) {
-    expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    // Scope to the test_audit_fold_in registration block.
-    const auto pos = ci.find("t[\"name\"] = \"test_audit_fold_in\"");
-    ASSERT_NE(pos, std::string::npos);
-    const auto end = ci.find("tools.append(t);", pos);
-    ASSERT_NE(end, std::string::npos);
-    const std::string region = ci.substr(pos, end - pos);
-
-    expect(contains(region, "props[\"narrative_mode\"]"),
-           "ANTS-1635: schema declares narrative_mode prop");
-    expect(contains(region, "props[\"narrative_md\"]"),
-           "ANTS-1635: schema declares narrative_md prop");
-
-    // The handler in mainwindow.cpp forwards both args.
-    const std::string mw = ants_test::slurpMainWindow();
-    const auto hpos = mw.find("registerToolProvider(\"test_audit_fold_in\"");
-    ASSERT_NE(hpos, std::string::npos);
-    // Scan to the closing of the registration call (next `});`).
-    const auto hend = mw.find("});", hpos);
-    ASSERT_NE(hend, std::string::npos);
-    const std::string hbody = mw.substr(hpos, hend - hpos);
-
-    expect(contains(hbody, "narrative_mode"),
-           "ANTS-1635: handler extracts narrative_mode arg");
-    expect(contains(hbody, "narrative_md"),
-           "ANTS-1635: handler extracts narrative_md arg");
-
-    EXPECT_EQ(0, expect_failures());
-}
