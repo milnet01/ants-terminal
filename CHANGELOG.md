@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a top heading in the Roadmap window now hides the sub-sections under it** (ANTS-5596)
+  The window opens on the top headings; open one to see what is inside.
+
 - **audit_falsepos_log now names the review tools that actually read its ledger** (ANTS-5595)
 
 - **The status bar shows how full Claude Code's context is again, in large outlined text with the exact numbers on hover.** (ANTS-5592)

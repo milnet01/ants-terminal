@@ -1386,6 +1386,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     QString currentSlug;
     bool sectionVisible = true;   // section header emitted?
     bool sectionExpanded = false; // user has opened this section?
+    // ANTS-5596 — a ### shows only while its ## is open, so collapsing
+    // a ## folds away everything under it. True before the first ##.
+    bool parentExpanded = true;
     int headingIdx = 0;
     // ANTS-1239 — must run in lockstep with parseBullets above so that
     // bySection[slug] keys match the slugs computed here. uniqueSlug
@@ -1675,10 +1678,17 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                 // duplicate noise.
                 sectionVisible = false;
                 sectionExpanded = false;
+                parentExpanded = true;
                 continue;
             }
             currentSlug = slug;
+            if (level == 3 && !parentExpanded) {
+                sectionVisible = false;
+                sectionExpanded = false;
+                continue;
+            }
             sectionExpanded = opts.expandedSections.contains(slug);
+            if (level == 2) parentExpanded = sectionExpanded;
             // ANTS-1693 — chips show the rolled-up (self + descendants)
             // tally to match the MCP.
             const SectionCounts rolled = rolledCounts.value(slug);

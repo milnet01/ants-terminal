@@ -69362,6 +69362,35 @@ project. Reported causes are claims until checked in source.
   Source: AI_Prompts feedback 2026-10-01.
   Lanes: mcp-feedback.
 
+- ✅ [ANTS-5596] **Roadmap dialog: collapsing a top heading hides its sub-sections.**
+  Reported 2026-10-01: collapsing a ## heading (e.g. the 0.7.50–0.7.59
+  one) did nothing. The renderer in src/roadmapdialog.cpp gated each ###
+  on its own expanded state only; a ## with no direct items therefore had
+  no visible collapse. User chose: a collapsed ## hides its ### children
+  (and their items), so the dialog opens on top headings only.
+  Spec docs/specs/ANTS-1154.md §3.4 changes with it.
+  Resolved 2026-10-01: renderCardsHtml skips a ### while its ## is
+  collapsed. RoadmapDialogCards INV-26 added (red before, green after);
+  tests that opened a ### alone now open its ## too. 13/13 roadmap
+  dialog tests green.
+  **Layman:** Closing a big heading in the Roadmap window now hides everything under it, like closing a folder.
+  Kind: fix.
+  Source: user-request-2026-10-01.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5597] **Roadmap dialog Contents pane jumps to the wrong heading when sections are hidden.**
+  extractToc numbers every heading in the file (tocAnchorAt(idx++)),
+  but renderCardsHtml advances headingIdx only for headings it emits. A
+  section suppressed on a non-Full tab, the skipped "Table of Contents"
+  h2, an h4 under a collapsed section, and (after ANTS-5596) an h3 under
+  a collapsed h2 all shift every later anchor. Fix: advance headingIdx
+  for every heading the TOC lists, emitted or not, or list only emitted
+  headings. Found while fixing ANTS-5596; not yet reproduced in the UI.
+  **Layman:** Clicking a heading in the Roadmap window's Contents list can scroll to a different heading when a filter is hiding some sections.
+  Kind: fix.
+  Source: in-session-2026-10-01.
+  Lanes: roadmap-dialog.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

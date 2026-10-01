@@ -67,6 +67,7 @@ TEST(roadmap_current_preset_excludes_shipped,
     RD::CardRenderOptions opts;
     opts.activePreset = RD::Preset::Current;
     opts.expandedSections.insert(QStringLiteral("bundle"));
+    opts.expandedSections.insert(QStringLiteral("0-7-92-in-flight"));
 
     const unsigned filter = RD::filterFor(RD::Preset::Current);
     const QString html = RD::renderCardsHtml(
@@ -92,6 +93,7 @@ TEST(roadmap_current_preset_excludes_shipped,
     RD::CardRenderOptions opts;
     opts.activePreset = RD::Preset::Full;
     opts.expandedSections.insert(QStringLiteral("bundle"));
+    opts.expandedSections.insert(QStringLiteral("0-7-92-in-flight"));
 
     const unsigned filter = RD::filterFor(RD::Preset::Full);
     const QString html = RD::renderCardsHtml(
@@ -136,6 +138,7 @@ TEST(roadmap_current_preset_excludes_shipped,
     RD::CardRenderOptions opts;
     opts.activePreset = RD::Preset::Current;
     opts.expandedSections.insert(QStringLiteral("bundle"));
+    opts.expandedSections.insert(QStringLiteral("0-7-92-in-flight"));
 
     const unsigned filter = RD::filterFor(RD::Preset::Current);
     const QString html = RD::renderCardsHtml(

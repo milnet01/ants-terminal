@@ -53,6 +53,7 @@ QString renderWith(const QHash<QString, QString> &legend, bool fromStore) {
     RD::CardRenderOptions opts;
     opts.activePreset = RD::Preset::Full;
     opts.expandedSections.insert(QStringLiteral("features"));
+    opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
     opts.legend = legend;
     opts.legendFromStore = fromStore;
     return RD::renderCardsHtml(fixtureMarkdown(), kAllOn, {},

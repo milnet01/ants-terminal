@@ -183,6 +183,7 @@ static int runMain(int argc, char **argv) {
         RD::CardRenderOptions opts;
         opts.activePreset = RD::Preset::Full;
         opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         const QString html = RD::renderCardsHtml(
             fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
             RD::SortOrder::Document, QString(), {}, opts);
@@ -218,6 +219,7 @@ static int runMain(int argc, char **argv) {
         RD::CardRenderOptions opts;
         opts.activePreset = RD::Preset::Full;
         opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         const QString html = RD::renderCardsHtml(
             fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
             RD::SortOrder::Document, QString(), {}, opts);
@@ -250,10 +252,37 @@ static int runMain(int argc, char **argv) {
                 "non-status section prose rendered under History");
     }
 
+    // INV-26 (ANTS-5596) — a collapsed ## hides its ### sub-sections,
+    // even one the user expanded; expanding the ## brings them back.
+    {
+        RD::CardRenderOptions opts;
+        opts.activePreset = RD::Preset::Full;
+        opts.expandedSections.insert(QStringLiteral("features"));
+        const auto render = [&]() {
+            return RD::renderCardsHtml(
+                fixtureMarkdown(), /*filter=*/0xFF,
+                {}, QStringLiteral("light"),
+                RD::SortOrder::Document, QString(), {}, opts).toStdString();
+        };
+        const std::string collapsed = render();
+        if (!contains(collapsed, "0.8.0 — feature delivery"))
+            fail("INV-26", "collapsed ## heading itself not rendered");
+        if (contains(collapsed, "ants://collapse-section/features\"")
+            || contains(collapsed, "rm-ANTS-9001"))
+            fail("INV-26", "### and its cards rendered under a collapsed ##");
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
+        const std::string open = render();
+        if (!contains(open, "ants://collapse-section/features\"")
+            || !contains(open, "rm-ANTS-9001"))
+            fail("INV-26", "### hidden under an expanded ##");
+    }
+
     // INV-12 / renderer: empty sections suppressed on non-Full.
     {
         RD::CardRenderOptions opts;
         opts.activePreset = RD::Preset::History;
+        // INV-26 — the parent must be open for its ### to show at all.
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         const QString html = RD::renderCardsHtml(
             fixtureMarkdown(),
             /*filter=*/0x01,  // ShowDone only
@@ -288,6 +317,7 @@ static int runMain(int argc, char **argv) {
         RD::CardRenderOptions opts;
         opts.activePreset = RD::Preset::Full;
         opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         const QString html = RD::renderCardsHtml(
             fixtureMarkdown(), /*filter=*/0xFF,
             {}, QStringLiteral("light"),
@@ -401,6 +431,9 @@ static int runMain(int argc, char **argv) {
         // slugs, only ANTS-7002 should render as a card; the first
         // and third must stay collapsed.
         opts.expandedSections.insert(QStringLiteral("performance-2"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-release"));
+        opts.expandedSections.insert(QStringLiteral("0-7-0-release"));
+        opts.expandedSections.insert(QStringLiteral("beyond-1-0"));
         const QString html = RD::renderCardsHtml(
             fixtureDuplicateHeadings(), kAllOn, {}, QStringLiteral("light"),
             RD::SortOrder::Document, QString(), {}, opts);
@@ -487,6 +520,7 @@ static int runMain(int argc, char **argv) {
         RD::CardRenderOptions opts;
         opts.activePreset = RD::Preset::Full;
         opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         opts.expandedItems.insert(QStringLiteral("ANTS-9001"));
         const QString html = RD::renderCardsHtml(
             fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
@@ -545,6 +579,7 @@ static int runMain(int argc, char **argv) {
         opts.activePreset = RD::Preset::Full;
         // Section must be expanded for the card bullets to render.
         opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         // ANTS-9001 is ✅ in the fixture; feed a shippedDate so the
         // rm-date span emission path is also exercised.
         opts.shippedDates.insert(QStringLiteral("ANTS-9001"),
@@ -614,7 +649,9 @@ static int runMain(int argc, char **argv) {
         RD::CardRenderOptions opts;
         opts.activePreset = RD::Preset::Full;
         opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-feature-delivery"));
         opts.expandedSections.insert(QStringLiteral("considered"));
+        opts.expandedSections.insert(QStringLiteral("0-9-0-far-future"));
         const QString html = RD::renderCardsHtml(
             fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
             RD::SortOrder::Document, QString(), {}, opts);
