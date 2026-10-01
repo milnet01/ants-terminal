@@ -69186,6 +69186,30 @@ project. Reported causes are claims until checked in source.
   Source: session-message-281 finbreak 2026-09-29.
   Lanes: mcp.
 
+- 📋 [ANTS-5593] **Two stored items hold a Blocked-by declaration as body text, with no relationship row.**
+  ANTS-5546's body holds `Blocked-by: ANTS-5545` and ANTS-4405's holds
+  `Blocked-by: ANTS-4507.` Both are declarations by
+  RoadmapParse::linkLine, yet roadmap_query returns no `links` for either,
+  so the store treats neither as blocked and the render prints the line
+  where the body puts it, not as a composed link line. Find how they
+  entered the body past the body_shadowed guard, move them to rows with
+  op:"link", and add a check that no stored body declares a link.
+  **Layman:** Two roadmap items say they are waiting on another item, but the database does not know, so nothing treats them as blocked.
+  Kind: fix.
+  Source: in-session-2026-10-01 (roadmap-format field pass for claude-config).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-5594] **session_message refuses a caller_cwd that is a subdirectory of a registered root.**
+  `ants-mcpd --call session_message` with caller_cwd
+  /mnt/Games/Scripts/Linux/Ants_Terminal/src refused no_project while the
+  root answered. ants-inbox-notice.sh works around it with git's top
+  level. Resolve the containing registered root, as the file-backed
+  verbs do.
+  **Layman:** Checking messages from inside a project's subfolder says the project is unknown.
+  Kind: fix.
+  Source: in-session-2026-10-01 (found building ANTS-5553).
+  Lanes: mcp, roadmap-store.
+
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage
 
 - ✅ [ANTS-5583] **indie_review_partition empties a pinned lane's sourcePaths when its files are not under src/.**
