@@ -39291,7 +39291,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (ANTS-4065 Phase B3 closeout).
 
-- 📋 [ANTS-4068] **Four rules roadmap-data-model.md has never stated, filed at its cold-eyes cap rather than guessed at.**
+- ✅ [ANTS-4068] **Four rules roadmap-data-model.md has never stated, filed at its cold-eyes cap rather than guessed at.**
   ANTS-4067's `/cold-eyes` run exited at the 3-loop cap having verified 21
   findings and fixed 17. These four survived verification but each needs a
   decision rather than a wording fix, so none was applied.
@@ -39382,7 +39382,15 @@ against current source before filing.
   a render carrying quarantined ids is conforming except for
   those ids, with the quarantine report as the standing to-do.
   That sentence is the actual finding; the rest resolves.
-
+  Resolved (2026-10-01): checked against today's text and code. All four
+  rulings were already written into roadmap-data-model.md: INV-3 is "a
+  store project row plus ants-v1"; § 6 stores relates-to once in the
+  lower-sorting direction (RoadmapStore::relateItems); § 7.2 needs no
+  bold headline on a GFM checkbox, which migration files as an item; §
+  7.1 lists the three quarantine routes and § 8 carries the
+  quarantined-id exception. The one defect left, § 7.1 saying "the third
+  is preferred" then "the first is preferred" about the same route, now
+  reads "the first".
 
 - ✅ [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
   Raised by the CC session bringing the shared `/start-app` roadmap standard up
@@ -40109,7 +40117,7 @@ against current source before filing.
   Kind: implement.
   Source: in-session-2026-08-10 (ANTS-4070 implementation).
 
-- 📋 [ANTS-4082] **roadmap-data-model.md never mentions the level-0 root section, which every migrated file has.**
+- ✅ [ANTS-4082] **roadmap-data-model.md never mentions the level-0 root section, which every migrated file has.**
   Content above a file's first `##` becomes a section with **level 0 and
   slug `""`** — `roadmapmigrateload.cpp` `rebuildElements()` calls it "the
   synthetic root ... the same row the plan uses for content above the first
@@ -40130,6 +40138,11 @@ against current source before filing.
   Filed rather than fixed in place because both roadmap standards already
   carry post-gate authoring edits from ANTS-4070 (see its annotation) and
   the user's standing instruction is not to re-run `/cold-eyes` on either.
+  Resolved (2026-10-01): roadmap-data-model.md § 5 now states that
+  content above a file's first heading is a level-0 section with an
+  empty slug and title, one per source file, sorted first within it, and
+  counted apart from headed sections (ANTS-5355). Recorded from
+  src/roadmapmigrateload.cpp.
   **Layman:** The data-model document is missing one kind of row the importer always creates, so anyone reasoning from it gets section counts wrong.
   Kind: doc.
   Source: in-session-2026-08-10 (ANTS-4070 implementation).

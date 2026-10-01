@@ -439,6 +439,12 @@ A **project** holds its sections, plus the status legend of § 5.1 — the legen
 belongs to the project rather than to any section, because it describes the
 whole document's vocabulary.
 
+**Content above a file's first heading is a section too: level 0, with an empty
+slug and title** (ANTS-3757 § 2.1). Migration makes one for each source file,
+and it sorts first within that source. Count it when reasoning about section
+counts. The migration report counts it apart from the headed sections
+(ANTS-5355).
+
 A section has a slug, title, level, optional intro prose, an optional parent, a
 **position**, a **source**, and an **ordered element list**. The `position` and
 the `source` are not bookkeeping:
@@ -660,7 +666,7 @@ rather than blocking, and the run reports them. Three items in the corpus are
 affected, all in one project.
 
 **Quarantine is a hand-off, not a resting state, and the owning project is what
-clears it.** Three routes exist and the third is preferred: the project
+clears it.** Three routes exist and the first is preferred: the project
 **renumbers its own items** to conforming IDs and fixes its own citations in the
 same change, after which a re-import parses them normally and the quarantine
 report empties; or it amends `roadmap-format.md` § 3.5.1 to admit the shape; or
