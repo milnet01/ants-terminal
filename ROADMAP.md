@@ -66932,10 +66932,13 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   /.flatpak-info, or the host pid). Also seen, cause unknown: a second
   offscreen sandboxed run with the same XDG dirs printed nothing and
   never bound a socket.
+  User decision 2026-10-01: parked until Flathub resumes (ANTS-1070); no
+  user can hit it before then.
   **Layman:** If two copies of the Flatpak terminal run at once, Claude Code can only reach one of them.
   Kind: fix.
   Source: ANTS-5527 sandbox test, 2026-10-01.
   Lanes: mcp, packaging.
+  Blocked-by: ANTS-1070.
 
 - 📋 [ANTS-5600] **In the Flatpak, run the editor, notify-send, dbus-send and the audit tools on the host.**
   Not covered by HostExec yet (src/hostexec.h): QProcess::startDetached
@@ -66946,10 +66949,13 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   src/auditrunner.cpp resolveToolAbsolute finds with findExecutable.
   startDetached and a findExecutable lookup both need a host form, such
   as `flatpak-spawn --host which <tool>`. Not measured in a sandbox.
+  User decision 2026-10-01: parked until Flathub resumes (ANTS-1070); no
+  user can hit it before then.
   **Layman:** In the Flatpak, opening a file in your editor, desktop notifications and the code audit's tools still look inside the sandbox, where they are missing.
   Kind: package.
   Source: split from ANTS-5598, 2026-10-01.
   Lanes: packaging.
+  Blocked-by: ANTS-1070.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
@@ -69443,6 +69449,20 @@ project. Reported causes are claims until checked in source.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-10-01.
   Lanes: mcp.
+
+- 📋 [ANTS-5603] **audit_dismiss takes one finding per call and cannot replace a stored reason.**
+  Reported by LocalWebServerManager: closing one vulture list took 14
+  audit_dismiss calls; two wrong reasons could only be fixed by a hand
+  sed on .audit_cache/learned-fp.jsonl, because re-dismissing a
+  fingerprint is a no-op. Asked for: an entries[] batch form (one read,
+  one atomic write, skipped[] per entry, as roadmap_log append_batch),
+  and a way to replace the reason on an existing fingerprint. Related:
+  ANTS-4966 (a rule-wide form, a different axis) and ANTS-5410 (revoke
+  by tombstone; revoke then re-dismiss would also amend a reason).
+  **Layman:** Marking a list of audit warnings as false alarms takes one call each, and a wrong reason cannot be corrected without editing the file by hand.
+  Kind: feature.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md, 2026-10-01.
+  Lanes: mcp, audit.
 
 ### Ants MCP feedback from CC sessions — 2026-10-01 triage
 
