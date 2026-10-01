@@ -40693,6 +40693,11 @@ against current source before filing.
   mutations (a dry run that commits, a rollback that leaks, a creation that
   starts recording) and are not evidence the feature works. Those three are
   not mutation-proved either.
+  Progress (2026-10-01, b602cf18): INV-8 locked by
+  RoadmapWriteHistory.Inv8NonCapHistoryFailureAbortsTheWrite, driving the
+  real rlFlushHistory with an unresolvable item_pk, plus a control leg.
+  Two mutants (swallow the failure; always-over-cap) both killed. INV-7
+  (export round-trip) remains.
   **Layman:** Two of the eight rules in the roadmap-history feature shipped without a test; one of them guards the dangerous case.
   Kind: test.
   Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).
