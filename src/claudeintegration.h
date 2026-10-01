@@ -221,6 +221,10 @@ public:
     // touched session.
     QStringList recentSessionsForCwd(const QString &projectCwd) const;
 
+    // ANTS-5169 — a file whose name marks it as holding secrets: .env*,
+    // *.pem, id_*. The name only, never the directory.
+    static bool isSecretFileName(const QString &path);
+
     // Hook server (receives events from Claude Code hooks). ANTS-5144 — the
     // path is a parameter so a test can bind its own.
     static QString defaultHookSocketPath();
@@ -657,6 +661,9 @@ signals:
     void sessionStarted(const QString &sessionId);
     void sessionStopped(const QString &reason);
     void fileChanged(const QString &filePath);
+    // ANTS-5169 — Claude read a file isSecretFileName() matches. Fires on
+    // every read, not once per path like fileChanged.
+    void sensitiveFileRead(const QString &filePath);
     void contextUpdated(int percent);
     // ANTS-3572 — MCP tokens-saved surfacing. tokensSavedUpdated drives the
     // status-bar chip (carries the live session total; 0 blanks it at a

@@ -1094,6 +1094,14 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     }
 }
 
+bool ClaudeIntegration::isSecretFileName(const QString &path)
+{
+    const QString name = QFileInfo(path).fileName();
+    return name.startsWith(QLatin1String(".env"))
+        || name.endsWith(QLatin1String(".pem"))
+        || name.startsWith(QLatin1String("id_"));
+}
+
 void ClaudeIntegration::updateChangedFiles(const QString &toolName,
                                            const QJsonObject &toolInput) {
     QString filePath;
@@ -1103,6 +1111,11 @@ void ClaudeIntegration::updateChangedFiles(const QString &toolName,
         // Can't reliably extract file paths from bash commands
         return;
     }
+
+    // ANTS-5169 — every read of a secrets file warns, so this sits ahead
+    // of the once-per-path check below.
+    if (toolName == "Read" && isSecretFileName(filePath))
+        emit sensitiveFileRead(filePath);
 
     if (!filePath.isEmpty() && !m_changedFiles.contains(filePath)) {
         m_changedFiles.append(filePath);

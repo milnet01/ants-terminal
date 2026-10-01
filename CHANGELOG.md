@@ -49,6 +49,13 @@ for security-relevant changes.
 
 ### Security
 
+- **Secrets shown in the terminal are hidden before Claude reads them** (ANTS-5169)
+  get_scrollback, get_text, recent_errors and last_selection now replace
+  keys, tokens and passwords with [REDACTED:<kind>] and say how many they
+  hid. On by default; set claude.mcp_redact_secrets to false in
+  config.json to turn it off, with no relaunch. The status bar also warns
+  when Claude reads a .env*, *.pem or id_* file.
+
 - **Plugin settings have size limits: a key is at most 256 bytes, a value at most 64 KiB, and one plugin's settings at most 1 MiB in total; over a limit, ants.settings.set raises an error the plugin can catch** (ANTS-5419)
 
 - **The roadmap store's raw database handle is private: only the export/import rebuild path and schema tests can reach it, so no other code can write around the store's safety checks** (ANTS-3819)

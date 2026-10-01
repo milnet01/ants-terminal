@@ -11,6 +11,7 @@
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
 #include "docintegrity.h"  // ANTS-3601 — DocIntegrity::Finding in helper sig
 #include "doccitations.h"  // ANTS-3636 — DocCitations::Options in helper sig
+#include "secretredact.h"  // ANTS-5169 — redactForClaude below
 #include "docsymbols.h"    // ANTS-3661 — DocSymbols::Symbol in helper sig
                            // (pulls docfinding.h for DocFinding::Finding)
 #include "docdedup.h"
@@ -287,6 +288,19 @@ public:
                  + QString::fromUtf8(kept);
         r.truncated = true;
         return r;
+    }
+
+    // ANTS-5169 — terminal text bound for Claude, with secrets replaced
+    // when `enabled` (config claude.mcp_redact_secrets). Contract:
+    // tests/features/mcp_secret_redaction/spec.md.
+    struct ClaudeText {
+        QString text;
+        int     redacted = 0;
+    };
+    static inline ClaudeText redactForClaude(const QString &text, bool enabled) {
+        if (!enabled) return {text, 0};
+        SecretRedact::Result r = SecretRedact::scrub(text);
+        return {std::move(r.text), r.redactedCount};
     }
 
     // ANTS-1293 — server-side byte cap for structured read-tool responses

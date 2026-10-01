@@ -80671,7 +80671,7 @@ command ledger is the foundation several others read from.
   Kind: feature.
   Source: user-request-2026-09-14 (coder-helper research).
 
-- 📋 [ANTS-5169] **Terminal-reading MCP verbs hand scrollback and selections to Claude with no secret redaction.**
+- ✅ [ANTS-5169] **Terminal-reading MCP verbs hand scrollback and selections to Claude with no secret redaction.**
   Research rank 8 of 24. Measured 2026-09-14: a search for redaction
   across src/remotecontrol_terminal.cpp, remotecontrol_state.cpp,
   remotecontrol.cpp and claudeintegration.cpp finds only
@@ -80691,6 +80691,13 @@ command ledger is the foundation several others read from.
   - recent_errors is cmdRecentErrors, per entry o["message"] and o["text"].
   - last_selection is cmdLastSelection, out["text"], plus length and bytes.
   get_scrollback and get_text share RemoteControl::trimScrollbackForGetText. Config: bool keys follow claude.mcp_orientation_enabled (config.h/.cpp, toBool(true) getter, storeIfChanged setter). config.json hot-reloads through MainWindow::onConfigFileChanged (m_config = Config()); a Config() temporary re-reads the file. Hook: processHookEvent in claudeintegration.cpp; its PreToolUse branch does not read file_path. updateChangedFiles takes Read/Edit/Write file_path and emits fileChanged. claudestatuswidgets.cpp turns that into statusMessageRequested("Claude edited: %1"), and MainWindow::showStatusMessage shows it. No flash helper exists.
+  Resolved 2026-10-01: RemoteControl::redactForClaude wraps SecretRedact::scrub;
+  the four verbs call it per request under claude.mcp_redact_secrets
+  (default true, read through Config() so it hot-reloads). get_text and
+  get_scrollback redact before the byte trim. ClaudeIntegration emits
+  sensitiveFileRead on every Read of a .env*/*.pem/id_* file; the status
+  bar shows it for 10 s. Not covered: a secrets file read through Bash.
+  Contract: tests/features/mcp_secret_redaction/spec.md.
   **Layman:** Passwords or keys shown in the terminal can be copied into Claude's context; Ants should hide them first.
   Kind: security.
   Source: user-request-2026-09-14 (coder-helper research).

@@ -4595,14 +4595,22 @@ void MainWindow::setupClaudeMcpProviders() {
             // legacy raw-text response (current contract).
             const QString sinceStr =
                 args.value(QStringLiteral("since_cursor")).toString();
+            // ANTS-5169 — secrets are redacted before the trim, so the
+            // byte cap bounds what is sent.
+            const bool redact = Config().claudeMcpRedactSecrets();
             if (sinceStr.isEmpty()) {
                 const auto req = RemoteControl::capScrollbackRequest(lines, available, 0);
+                const auto clean = RemoteControl::redactForClaude(
+                    t->recentOutput(req.lines), redact);
                 const auto trim = RemoteControl::trimScrollbackForGetText(
-                    t->recentOutput(req.lines), RemoteControl::kGetTextDefaultBytesCap);
+                    clean.text, RemoteControl::kGetTextDefaultBytesCap);
+                QString head;
+                if (clean.redacted > 0)
+                    head = QStringLiteral("<redacted %1 secrets>\n").arg(clean.redacted);
                 if (req.linesCapped > 0)
-                    return QStringLiteral("<capped at %1 of %2 requested lines>\n")
-                               .arg(req.lines).arg(lines) + trim.text;
-                return trim.text;
+                    head += QStringLiteral("<capped at %1 of %2 requested lines>\n")
+                                .arg(req.lines).arg(lines);
+                return head + trim.text;
             }
             const uint64_t currentPushed =
                 t->grid()->scrollbackPushed();
@@ -4618,9 +4626,13 @@ void MainWindow::setupClaudeMcpProviders() {
             auto setContent = [&](int requestedLines) {
                 const auto req =
                     RemoteControl::capScrollbackRequest(requestedLines, available, 0);
+                const auto clean = RemoteControl::redactForClaude(
+                    t->recentOutput(req.lines), redact);
                 const auto trim = RemoteControl::trimScrollbackForGetText(
-                    t->recentOutput(req.lines), RemoteControl::kGetTextDefaultBytesCap);
+                    clean.text, RemoteControl::kGetTextDefaultBytesCap);
                 env[QStringLiteral("content")] = trim.text;
+                if (clean.redacted > 0)
+                    env[QStringLiteral("redacted")] = clean.redacted;
                 const bool truncated = req.linesCapped > 0 || trim.truncated;
                 env[QStringLiteral("truncated")] = truncated;
                 if (truncated) {

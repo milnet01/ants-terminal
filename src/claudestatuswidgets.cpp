@@ -502,6 +502,13 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         if (!m_tokensSavedRefresh->isActive()) m_tokensSavedRefresh->start();
     });
 
+    // ANTS-5169 — a read of a .env*, *.pem or id_* file is worth a longer look.
+    connect(m_integration, &ClaudeIntegration::sensitiveFileRead,
+            this, [this](const QString &path) {
+        emit statusMessageRequested(
+            QStringLiteral("⚠ Claude read a secrets file: %1").arg(path), 10000);
+    });
+
     connect(m_integration, &ClaudeIntegration::fileChanged,
             this, [this](const QString &path) {
         emit statusMessageRequested(QString("Claude edited: %1").arg(path), 3000);

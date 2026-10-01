@@ -574,9 +574,12 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
         if (requested > 0) maxBytes = requested;
     }
 
-    const QString raw = target->recentOutput(lines);
+    // ANTS-5169 — redact before the trim, so the byte cap bounds what is
+    // sent and the trim never cuts a secret in half.
+    const auto clean = RemoteControl::redactForClaude(
+        target->recentOutput(lines), Config().claudeMcpRedactSecrets());
     const auto trim =
-        RemoteControl::trimScrollbackForGetText(raw, maxBytes);
+        RemoteControl::trimScrollbackForGetText(clean.text, maxBytes);
 
     out["ok"] = true;
     out["text"] = trim.text;
@@ -589,6 +592,7 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
         out["lines_dropped"] = trim.linesDropped;
     }
     if (trim.capClamped) out["bytes_cap_clamped"] = true;
+    if (clean.redacted > 0) out["redacted"] = clean.redacted;
     return QJsonDocument(out);
 }
 
@@ -624,8 +628,11 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     const QJsonValue mr = req.value(QStringLiteral("max_results"));
     if (mr.isDouble()) opts.maxResults = mr.toInt();  // lib clamps ≤0 / >1000
 
-    const ScrollbackErrors::Result res =
-        ScrollbackErrors::parse(target->recentLogicalOutput(lines), opts);
+    // ANTS-5169 — redact the scanned text, so every message and text field
+    // built from it is clean.
+    const auto clean = RemoteControl::redactForClaude(
+        target->recentLogicalOutput(lines), Config().claudeMcpRedactSecrets());
+    const ScrollbackErrors::Result res = ScrollbackErrors::parse(clean.text, opts);
 
     QJsonArray errors;
     for (const ScrollbackErrors::ErrorEntry &e : res.errors) {
@@ -647,6 +654,7 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     out["errors_count"]  = res.errorsTotal;
     out["lines_scanned"] = res.linesScanned;
     out["truncated"]     = res.truncated;
+    if (clean.redacted > 0) out["redacted"] = clean.redacted;
     return QJsonDocument(out);
 }
 
@@ -674,7 +682,10 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
-    const QString text = target->selectedText();
+    // ANTS-5169 — length and bytes describe the text actually sent.
+    const auto clean = RemoteControl::redactForClaude(
+        target->selectedText(), Config().claudeMcpRedactSecrets());
+    const QString &text = clean.text;
     const bool hasSelection = !text.isEmpty();
 
     out[QStringLiteral("ok")]            = true;
@@ -682,6 +693,7 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     out[QStringLiteral("text")]          = text;
     out[QStringLiteral("length")]        = text.size();
     out[QStringLiteral("bytes")]         = text.toUtf8().size();
+    if (clean.redacted > 0) out[QStringLiteral("redacted")] = clean.redacted;
     return QJsonDocument(out);
 }
 

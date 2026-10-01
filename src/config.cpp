@@ -643,6 +643,16 @@ void Config::setClaudeMcpOrientationEnabled(bool enabled) {
     save();
 }
 
+// ANTS-5169.
+bool Config::claudeMcpRedactSecrets() const {
+    return m_data.value("claude.mcp_redact_secrets").toBool(true);
+}
+
+void Config::setClaudeMcpRedactSecrets(bool enabled) {
+    if (!storeIfChanged("claude.mcp_redact_secrets", enabled)) return;
+    save();
+}
+
 // ANTS-1901 — master MCP gate (default true).
 bool Config::claudeMcpEnabled() const {
     return m_data.value("claude.mcp_enabled").toBool(true);

@@ -92,7 +92,10 @@ TEST(McpGetScrollbackCap, Inv3EveryReadIsByteTrimmed) {
     ASSERT_FALSE(p.empty()) << "setup: the get_scrollback provider was not found";
     const std::size_t reads = count(p, "recentOutput(");
     EXPECT_GT(reads, 0u) << "setup: the provider reads no output";
-    EXPECT_EQ(count(p, "trimScrollbackForGetText(t->recentOutput("), reads)
+    // ANTS-5169 — each read is redacted first, then trimmed.
+    EXPECT_EQ(count(p, "redactForClaude(t->recentOutput("), reads)
+        << "INV-3: some recentOutput result skips redactForClaude";
+    EXPECT_EQ(count(p, "trimScrollbackForGetText(clean.text,"), reads)
         << "INV-3: some recentOutput result skips trimScrollbackForGetText";
     EXPECT_NE(p.find("RemoteControl::kGetTextDefaultBytesCap"), std::string::npos)
         << "INV-3: the trim does not use kGetTextDefaultBytesCap";

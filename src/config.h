@@ -164,6 +164,12 @@ public:
     bool claudeMcpOrientationNudgeShown() const;
     void setClaudeMcpOrientationNudgeShown(bool shown);
 
+    // ANTS-5169 — hide secrets in terminal text the MCP verbs hand to
+    // Claude (get_scrollback, get_text, recent_errors, last_selection).
+    // Default true.
+    bool claudeMcpRedactSecrets() const;
+    void setClaudeMcpRedactSecrets(bool enabled);
+
     // ANTS-1901 — master on/off gate for the whole Ants MCP integration
     // (default true). When false: no socket binds, no ANTS_MCP_SOCKET
     // export, the orientation hook is removed, the auto model switcher

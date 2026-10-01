@@ -3011,6 +3011,8 @@ if(ANTS_TESTS)
                 tests/features/verify_and_audit_guards/test_verify_and_audit_guards.cpp
                 # ANTS-1312 last_selection MCP wiring contract.
                 tests/features/mcp_last_selection/test_mcp_last_selection.cpp
+                # ANTS-5169 secrets hidden from the terminal-reading verbs.
+                tests/features/mcp_secret_redaction/test_mcp_secret_redaction.cpp
                 # ANTS-1636 find_sources MCP + pure-function tests.
                 tests/features/mcp_find_sources/test_mcp_find_sources.cpp
                 # ANTS-3368 co_change_family seam + MCP wiring.

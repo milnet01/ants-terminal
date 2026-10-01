@@ -12,7 +12,8 @@ its invariants; the numbering below is that spec's.
 - **INV-2** — the plain reply's `<capped at L of R requested lines>` marker is
   guarded by `linesCapped > 0`. Source scrape of the `get_scrollback` provider.
 - **INV-3** — every `recentOutput` result in the provider passes through
-  `trimScrollbackForGetText` with `kGetTextDefaultBytesCap`. Source scrape.
+  `trimScrollbackForGetText` with `kGetTextDefaultBytesCap`, after
+  `redactForClaude` (ANTS-5169). Source scrape.
 - **INV-4** — the `since_cursor` envelope sets `truncated`, `lines_dropped` and
   `bytes_dropped`, and the cap marker appears only in the plain reply. Source
   scrape.
