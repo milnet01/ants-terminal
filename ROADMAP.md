@@ -66891,18 +66891,26 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: split from ANTS-5527, 2026-10-01.
   Lanes: packaging.
 
-- 📋 [ANTS-5599] **In the Flatpak, ants-mcpd picks a dead terminal's socket over a live one.**
-  Measured: the sandbox runtime dir
-  ($XDG_RUNTIME_DIR/.flatpak/<app-id>/xdg-run/ants-terminal) is shared
-  by every run of the app and persists. A killed terminal left mcp-2
-  behind; the next ants-mcpd chose it and got "Connection refused".
-  pickTerminalSocket (src/mcpdsocket.cpp) prefers a socket whose pid
-  passes kill(pid,0), but each sandbox has its own pid namespace, so
-  every terminal is pid 2 and the check always passes. Fix candidates:
-  try-connect each candidate newest first, or unlink a socket that
-  refuses. Also seen, cause unknown: a second offscreen sandboxed
-  terminal run with the same XDG dirs printed nothing and bound no socket.
-  **Layman:** If the Flatpak terminal ever crashes, Claude Code can keep trying to talk to the dead one.
+- 📋 [ANTS-5599] **In the Flatpak, every terminal names its MCP socket mcp-2, so two running at once collide.**
+  Measured 2026-10-01: each sandbox has its own pid namespace, and the
+  terminal is pid 2 in it, so its socket is
+  $XDG_RUNTIME_DIR/ants-terminal/mcp-2 every time (likewise
+  claude-hooks-2). That directory is shared by every run of the app.
+  LocalSocketHub (src/localsockethub.cpp) leaves an existing socket that
+  accepts a connection and binds nothing, so a second terminal process
+  running at the same time would get no MCP socket. Not verified: whether
+  a second `flatpak run` starts a second process or hands off to the
+  first. A crashed terminal's leftover mcp-2 is harmless: the next start
+  finds it refusing, removes it and binds. kill(pid,0) liveness checks in
+  src/mcpdsocket.cpp (pickTerminalSocket, reapStaleTerminalSockets) mean
+  nothing across sandboxes, since pid 2 always exists. Correction: this
+  item first said ants-mcpd picks a dead socket over a live one; one name
+  cannot hold both, so that was wrong. Fix candidate: name the socket by
+  something unique across sandboxes (the Flatpak instance id from
+  /.flatpak-info, or the host pid). Also seen, cause unknown: a second
+  offscreen sandboxed run with the same XDG dirs printed nothing and
+  never bound a socket.
+  **Layman:** If two copies of the Flatpak terminal run at once, Claude Code can only reach one of them.
   Kind: fix.
   Source: ANTS-5527 sandbox test, 2026-10-01.
   Lanes: mcp, packaging.
