@@ -553,6 +553,7 @@
         "src/gitwrap.cpp",
         "src/gitwrap.h",
         "src/guithread.h",
+        "src/hostexec.h",
         "src/pathvalidation.cpp",
         "src/pathvalidation.h",
         "src/prunedwalk.h",

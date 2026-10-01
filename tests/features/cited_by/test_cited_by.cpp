@@ -364,7 +364,10 @@ TEST(CitedBy, Inv8CappedCellsUncappedFilesCount) {
 TEST(CitedBy, Inv9OneRgCallSiteAndNoProcessInHandlers) {
     expect_reset();
     const std::string rc = ants_test::slurpRemoteControl();
-    expect(ants_test::countOccurrences(rc, "rg.start(") == 1,
+    // ANTS-5527 — the site is spelled HostExec::start(rg, ...); a plain
+    // rg.start( still counts, so a second launch site still fails.
+    expect(ants_test::countOccurrences(rc, "rg.start(") +
+               ants_test::countOccurrences(rc, "HostExec::start(rg,") == 1,
            "INV-9: exactly one rg.start( call site across the RemoteControl TUs");
 
     const std::string ws =
