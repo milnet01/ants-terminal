@@ -989,8 +989,7 @@ the closed `<MAJOR>.<MINOR>` and nothing else. **It is implemented and it is
 not reachable** — the handler exists, but the verb's `op` dispatch does not
 carry it, so a call reaches `bad_op_combo` and none of the refusal codes
 below can fire. Do not build a
-bump recipe on it yet; ANTS-4081 owns the wiring, and § 4.3's
-`retitle_section` is unreachable for the same reason and by the same commit.
+bump recipe on it yet; ANTS-4081 owns the wiring.
 Three things about it are part of this convention rather than that project's
 implementation detail:
 
@@ -1341,8 +1340,7 @@ than a text edit. **Step 4 is neither** — it rewrites a release-block
 `##` heading (§ 3.7), which is a *section title*, and editing the
 rendered heading by hand is discarded at the next render, silently. It
 has its own store operation, `roadmap_log op:"retitle_section"`
-(Ants ANTS-4070; implemented but not yet reachable, per § 3.9 and
-ANTS-4081), which takes the section's slug and the new title and
+(Ants ANTS-4070), which takes the section's slug and the new title and
 **recomputes the slug from it**: a slug is derived on import from the
 heading, never round-tripped, so keeping the old one would make the
 store disagree with what the next import derives. The envelope reports
