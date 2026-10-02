@@ -9886,6 +9886,15 @@ extends an existing item, that item carries it instead.
   restart, the unbounded line read, the size-then-read race,
   DocFinding's auto_fixable key guard, [[nodiscard]] on parser returns,
   and the ANTS-3660 shingle memory figure.
+  Progress (2026-10-02): both remaining mediums shipped. docs_index
+  compares a capped cache against its cached prefix, so a tree past the
+  ceiling stays warm (DocsIndex Ants5099CappedCacheStaysWarm).
+  DocSymbols::applyRunDeadline makes the resolve deadline run-wide in
+  DocLint::run and the doc_symbols verb (DocLint
+  Ants5099SymbolDeadlineIsRunWide). Both red first. Still open (low): the
+  unbounded line read, the size-then-read race, DocFinding's auto_fixable
+  key guard, [[nodiscard]] on parser returns, and the ANTS-3660 shingle
+  memory figure.
   **Layman:** Smaller doc-tool fixes, including one that can write a table of contents entry in the wrong place.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
