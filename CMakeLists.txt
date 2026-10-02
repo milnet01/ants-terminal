@@ -572,6 +572,7 @@ add_library(ants_mcpcore_lib STATIC
     src/localsockethub.cpp       # ANTS-5144
     src/fileoutline.cpp
     src/mutationprobe.cpp        # ANTS-4398
+    src/mutationjournal.cpp      # ANTS-5096
     # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
     src/claudepromptdetect.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).

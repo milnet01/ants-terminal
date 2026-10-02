@@ -96,6 +96,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`mutation_probe` puts back a source file that a killed probe left holding its mutant.** (ANTS-5096)
+  It journals the original outside the project before each mutant, and
+  the next probe in any session restores a file still holding that
+  mutant, listing it in `recovered`. A file edited since, or one a
+  running probe owns, is left alone.
+
 - **Re-migrating a roadmap now records an id a person filed by hand as filed by hand.** (ANTS-4343)
   A store row whose id the migration made up becomes `parsed`, with its
   id provenance `asserted`, once the source file declares that id. The

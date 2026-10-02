@@ -591,3 +591,138 @@ TEST(MutationProbe, Ants5360CollectionErrorReportsBrokenEndToEnd) {
         << "a broken mutant must say why it is not a kill";
     EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
 }
+
+// ANTS-5096 — the crash-recovery journal. ants-mcpd runs one process per
+// session, so a session that ends mid-probe kills it with a mutant on disk.
+#include "mutationjournal.h"
+#include "../../_support/xdg_guard.h"
+
+#include <QProcess>
+
+namespace {
+
+QByteArray slurp(const QString &path) {
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+
+void spit(const QString &path, const QByteArray &bytes) {
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(bytes);
+}
+
+// The pid of a process that has exited, so its journal reads as orphaned.
+qint64 deadPid() {
+    QProcess p;
+    p.start(QStandardPaths::findExecutable(QStringLiteral("true")), {});
+    EXPECT_TRUE(p.waitForStarted(5000));
+    const qint64 pid = p.processId();
+    EXPECT_TRUE(p.waitForFinished(5000));
+    return pid;
+}
+
+// Rewrite every journal in `dir` as if its writer had died.
+void orphanJournals(const QString &dir) {
+    const qint64 pid = deadPid();
+    for (const QString &n : QDir(dir).entryList({QStringLiteral("*.json")}, QDir::Files)) {
+        const QString p = QDir(dir).filePath(n);
+        QJsonObject o = QJsonDocument::fromJson(slurp(p)).object();
+        o[QStringLiteral("pid")] = pid;
+        spit(p, QJsonDocument(o).toJson(QJsonDocument::Compact));
+    }
+}
+
+int journalCount(const QString &dir) {
+    return int(QDir(dir).entryList({QStringLiteral("*.json")}, QDir::Files).size());
+}
+
+}  // namespace
+
+// A dead writer's journal over a file still holding its mutant: restored, and
+// the journal goes. The journal is private, since it copies a source file.
+TEST(MutationProbe, Ants5096JournalRestoresALeftoverMutant) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.filePath(QStringLiteral("journal"));
+    const QString src = tmp.filePath(QStringLiteral("a.py"));
+    spit(src, "mutant\n");
+    ASSERT_TRUE(MutationJournal::write(dir, src, "original\n", "mutant\n"));
+    ASSERT_EQ(journalCount(dir), 1);
+    const QString j = QDir(dir).filePath(
+        QDir(dir).entryList({QStringLiteral("*.json")}, QDir::Files).first());
+    EXPECT_EQ(QFileInfo(j).permissions() & (QFileDevice::ReadGroup | QFileDevice::ReadOther),
+              QFileDevice::Permissions());
+    orphanJournals(dir);
+
+    const auto rec = MutationJournal::recover(dir);
+    ASSERT_EQ(rec.size(), 1);
+    EXPECT_EQ(rec.first().outcome.toStdString(), "restored");
+    EXPECT_EQ(slurp(src), QByteArray("original\n"));
+    EXPECT_EQ(journalCount(dir), 0);
+}
+
+// The file changed since the mutant was written: it is someone's edit, so it
+// is left alone and reported.
+TEST(MutationProbe, Ants5096JournalLeavesAnEditedFile) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.filePath(QStringLiteral("journal"));
+    const QString src = tmp.filePath(QStringLiteral("a.py"));
+    ASSERT_TRUE(MutationJournal::write(dir, src, "original\n", "mutant\n"));
+    spit(src, "edited by hand\n");
+    orphanJournals(dir);
+
+    const auto rec = MutationJournal::recover(dir);
+    ASSERT_EQ(rec.size(), 1);
+    EXPECT_EQ(rec.first().outcome.toStdString(), "left_edited");
+    EXPECT_EQ(slurp(src), QByteArray("edited by hand\n"));
+}
+
+// A live writer is a probe still running: its mutant is what its tests are
+// running against, so recovery must not touch it.
+TEST(MutationProbe, Ants5096JournalSkipsALiveWriter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.filePath(QStringLiteral("journal"));
+    const QString src = tmp.filePath(QStringLiteral("a.py"));
+    spit(src, "mutant\n");
+    ASSERT_TRUE(MutationJournal::write(dir, src, "original\n", "mutant\n"));
+
+    EXPECT_TRUE(MutationJournal::recover(dir).isEmpty());
+    EXPECT_EQ(slurp(src), QByteArray("mutant\n"));
+    EXPECT_EQ(journalCount(dir), 1);
+}
+
+// End to end: a mutant a killed probe left in THIS file is put back before the
+// next probe reads its baseline, the reply says so, and a clean run leaves no
+// journal behind.
+TEST(MutationProbe, Ants5096ProbeRecoversBeforeReadingItsBaseline) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard g;
+    g.setTestMode(false);
+    g.setEnv("XDG_DATA_HOME", tmp.filePath(QStringLiteral("data")).toUtf8());
+    const QString dir = MutationJournal::defaultDir();
+    ASSERT_TRUE(dir.startsWith(tmp.path())) << "journal dir escaped the sandbox: "
+                                            << dir.toStdString();
+
+    const QString src = seedProject(tmp);
+    const QString canonical = QFileInfo(src).canonicalFilePath();
+    const QByteArray original(kTwoSiteSource);
+    const QByteArray leftover = original + "# leftover mutant\n";
+    spit(src, leftover);
+    ASSERT_TRUE(MutationJournal::write(dir, canonical, original, leftover));
+    orphanJournals(dir);
+
+    const QJsonObject env = probe(tmp, tmp.filePath(QStringLiteral("ran")), mutation(0));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonArray rec = env.value(QStringLiteral("recovered")).toArray();
+    ASSERT_EQ(rec.size(), 1) << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(rec.at(0).toObject().value(QStringLiteral("outcome")).toString().toStdString(),
+              "restored");
+    EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
+    EXPECT_EQ(slurp(src), original) << "the probe restored to the leftover mutant";
+    EXPECT_EQ(journalCount(dir), 0) << "a clean run left its journal behind";
+}

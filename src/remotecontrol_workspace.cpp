@@ -1,6 +1,7 @@
 // ANTS-3833 TU 8/20 — Workspace and code index verbs.
 #include "remotecontrol.h"
 #include "mutationprobe.h"   // ANTS-4398
+#include "mutationjournal.h" // ANTS-5096
 #include "findsources.h"
 #include "remotecontrol_internal.h"
 #include "guithread.h"
@@ -1939,6 +1940,13 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     batchClock.start();
     qint64 slowestRunMs = 0;
 
+    // ANTS-5096 — put back any mutant a killed probe left on disk, in any
+    // file, BEFORE reading this file's baseline: a leftover mutant here would
+    // otherwise become the "original" this run restores to.
+    const QString journalDir = MutationJournal::defaultDir();
+    const QList<MutationJournal::Recovered> recovered =
+        MutationJournal::recover(journalDir);
+
     // Read the baseline ONCE. Every mutation is applied to this, never to the
     // previous mutant, so two mutations cannot compound.
     QFile bf(check.resolved);
@@ -2224,6 +2232,17 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             }
         }
 
+        const QByteArray patched = ap.patched.toUtf8();
+        // ANTS-5096 — no mutant goes on disk without a journal to undo it.
+        if (!MutationJournal::write(journalDir, check.resolved, baselineBytes, patched)) {
+            r[QStringLiteral("applied")] = false;
+            r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
+            r[QStringLiteral("summary")] = QStringLiteral(
+                "the crash-recovery journal could not be written under \"%1\", "
+                "so the mutant was not written either").arg(journalDir);
+            results.append(r);
+            continue;
+        }
         QSaveFile w(check.resolved);   // ANTS-5096 — see restore()
         if (!w.open(QIODevice::WriteOnly)) {
             r[QStringLiteral("applied")] = false;
@@ -2231,7 +2250,6 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             results.append(r);
             continue;
         }
-        const QByteArray patched = ap.patched.toUtf8();
         const bool wrote = (w.write(patched) == patched.size()) && w.commit();
         if (!wrote) {
             if (!restore(patched)) restoredClean = false;
@@ -2308,10 +2326,22 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                 .arg(budgetSec).arg(rawPath);
     }
 
+    // ANTS-5096 — the journal goes once the file is the baseline again, or once
+    // a concurrent edit owns it. A failed restore keeps it for the next probe.
+    if (restoredClean || concurrentEdit)
+        MutationJournal::clear(journalDir, check.resolved);
+
     out[QStringLiteral("ok")]             = true;
     out[QStringLiteral("path")]           = rawPath;
     out[QStringLiteral("results")]        = results;
     out[QStringLiteral("restored_clean")] = restoredClean;
+    if (!recovered.isEmpty()) {
+        QJsonArray rec;
+        for (const MutationJournal::Recovered &x : recovered)
+            rec.append(QJsonObject{{QStringLiteral("path"), x.path},
+                                   {QStringLiteral("outcome"), x.outcome}});
+        out[QStringLiteral("recovered")] = rec;
+    }
     if (concurrentEdit) {
         out[QStringLiteral("concurrent_edit")] = true;
         out[QStringLiteral("restore_hint")] = QStringLiteral(

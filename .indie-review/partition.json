@@ -387,6 +387,8 @@
         "src/focusedtest.h",
         "src/mutationprobe.cpp",
         "src/mutationprobe.h",
+        "src/mutationjournal.cpp",
+        "src/mutationjournal.h",
         "src/testauditdialog.cpp",
         "src/testauditdialog.h",
         "src/testauditengine.cpp",

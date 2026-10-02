@@ -5548,6 +5548,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "transport had given up, which reaches the leaked "
                         "mutant by the one route `restored_clean` cannot "
                         "report: you are no longer there to read it. "
+                        "ANTS-5096: before each mutant the original is journaled "
+                        "under the data dir's ants-terminal/mutation-journal, and "
+                        "every call first restores a file a killed probe left "
+                        "holding its mutant, listing it in `recovered` "
+                        "({path, outcome}: restored | left_edited | "
+                        "left_missing | restore_failed). A journal whose writer "
+                        "is still running is left alone. "
                         "`test_command` is an ARGV ARRAY, never a shell string — "
                         "a deliberate narrowing, because this verb writes to a "
                         "source file and spawns a process. caller_cwd required.");

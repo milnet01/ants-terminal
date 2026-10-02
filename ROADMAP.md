@@ -9638,7 +9638,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch).
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-5096] **Performance pass findings for session_orient, workspace verbs, focused_test and mutation_probe (medium and low).**
+- ✅ [ANTS-5096] **Performance pass findings for session_orient, workspace verbs, focused_test and mutation_probe (medium and low).**
   Filed separately: ANTS-5052, 5073, 5074.
   Medium:
   - focused_test and mutation_probe hold the single MCP worker past the
@@ -9711,6 +9711,18 @@ extends an existing item, that item carries it instead.
   notifications/cancelled handling exists, so a verb still runs to its own
   timeout after a client gives up. STILL OPEN: mutation_probe's sidecar
   baseline.
+  Shipped (2026-10-02): the last finding, mutation_probe's sidecar
+  baseline. The finding's "as apply_edits already does" was wrong:
+  apply_edits only writes through QSaveFile, which mutation_probe already
+  did, so no pattern existed to copy. New src/mutationjournal.{h,cpp}:
+  before each mutant the original bytes, the mutant's SHA-256 and the
+  writer's pid are journaled under GenericDataLocation/ants-terminal/
+  mutation-journal (mode 0600, outside every project); every call first
+  restores any file a dead writer left holding its recorded mutant, before
+  reading its own baseline, and reports it in `recovered`. A clean restore
+  removes the journal; a failed one keeps it. Tests: mutation_probe INV-6,
+  four cases; three seen red by mutation (recovery skipped, live-writer
+  check removed, permissions dropped).
   **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
