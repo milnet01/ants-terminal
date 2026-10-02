@@ -51,6 +51,21 @@
         QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
+// ANTS-5106 — open `path` for writing (truncated), created 0600 by open(2).
+// The alternative, umask(0077) around a QFile::open, changes the PROCESS-wide
+// mask, so a file another thread creates in that window gets the wrong mode.
+// False on failure, with errno set; `file` is left closed.
+[[nodiscard]] inline bool openOwnerOnlyForWrite(QFile &file, const QString &path) {
+    const int fd = ::open(path.toLocal8Bit().constData(),
+                          O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (fd < 0) return false;
+    if (!file.open(fd, QIODevice::WriteOnly, QFileDevice::AutoCloseHandle)) {
+        ::close(fd);
+        return false;
+    }
+    return true;
+}
+
 // ANTS-5151 — the warn half of the policy above. `what` names the file's
 // purpose for the reader of the log ("config", "audit allowlist").
 inline void warnNotOwnerOnly(const QString &path, const char *what) {

@@ -173,10 +173,10 @@ void Config::save() {
     m_data[QStringLiteral("_schema")] =
         qMax(kSchemaVersion, m_data.value(QStringLiteral("_schema")).toInt(0));
 
-    // Set restrictive umask before creating file to avoid brief world-readable window
-    mode_t oldMask = ::umask(0077);
-    QFile file(tmpPath);
-    if (file.open(QIODevice::WriteOnly)) {
+    // ANTS-5106 — created 0600 by open(2): no world-readable window, and no
+    // process-wide umask change that other threads' files would inherit.
+    QFile file;
+    if (openOwnerOnlyForWrite(file, tmpPath)) {
         if (!setOwnerOnlyPerms(file))
             warnNotOwnerOnly(tmpPath, "config");
         QByteArray json = QJsonDocument(m_data).toJson();
@@ -251,9 +251,8 @@ void Config::save() {
     } else {
         // ANTS-5106 — and so was a failed temp open.
         qWarning("Config::save: could not open %s (%s) — config.json unchanged",
-                 qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
+                 qUtf8Printable(tmpPath), std::strerror(errno));
     }
-    ::umask(oldMask);
 }
 
 // Idempotent helper. Compare-then-assign on m_data; returns true only when

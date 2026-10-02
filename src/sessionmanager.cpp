@@ -692,9 +692,9 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     QString path = sessionDir() + "/tab_order.txt";
     // ANTS-5106 — per-process temp name; see saveSession.
     QString tmpPath = path + QStringLiteral(".%1.tmp").arg(QCoreApplication::applicationPid());
-    mode_t oldMask = ::umask(0077);
-    QFile file(tmpPath);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // ANTS-5106 — created 0600 directly; no process-wide umask window.
+    QFile file;
+    if (openOwnerOnlyForWrite(file, tmpPath)) {
         if (!setOwnerOnlyPerms(file))
             warnNotOwnerOnly(tmpPath, "session tab order");
         // First line: active tab index
@@ -711,7 +711,6 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
                      qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
             file.close();
             QFile::remove(tmpPath);
-            ::umask(oldMask);
             return;
         }
         // fsync after flush — flush is Qt-layer (kernel-layer not guaranteed).
@@ -743,9 +742,8 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
         // ANTS-5106 — a failed temp open was silent.
         qWarning("SessionManager::saveTabOrder: could not open %s (%s) — "
                  "prior tab_order.txt unchanged",
-                 qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
+                 qUtf8Printable(tmpPath), std::strerror(errno));
     }
-    ::umask(oldMask);
 }
 
 QStringList SessionManager::loadTabOrder(int *activeIndex) {
