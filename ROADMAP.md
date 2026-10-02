@@ -36958,6 +36958,8 @@ against current source before filing.
   built: put the checker in the export TU and use StoreHandle, or add a
   typed relationship reader. The spec amendment then goes through the
   rule 14 gate.
+  User decision 2026-10-02: go ahead; settle the db() route in the spec,
+  gate it, then build.
 
 - 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
   `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
@@ -37645,6 +37647,9 @@ against current source before filing.
 
   Owner is ANTS-3758 (the render) plus roadmap-format.md. Not a blocker
   for ANTS-3810, which states the exclusion either way.
+  User decision 2026-10-02: rely on the body. Closure notes stay in the
+  item text, which round-trips; roadmap-data-model.md marks the
+  `resolution` column unused. No render carrier.
   **Layman:** Closed roadmap items can record "what was done and why" in the database, but the published roadmap file has nowhere to put it — so it is lost on any rebuild from the file.
   Kind: investigate.
   Source: in-session-2026-08-04 (found while drafting ANTS-3810).
@@ -41466,6 +41471,9 @@ against current source before filing.
   Two facts bearing on the choice. The corpus already carries 88 such lines, so dropping discards real authored data. And ANTS-4140 records that the two copies of the format standard disagree on the value vocabulary — a 1-5 band globally, a severity word here — so a build would have to settle that first.
 
   Not urgent: nothing reads the field today, so neither path fixes a live defect.
+  User decision 2026-10-02: drop the harvest. roadmap-data-model.md §
+  7.5's mapping goes; position stays priority, and existing Priority:
+  lines stay as reader text.
   **Layman:** Our data standard describes reading an item's priority out of the roadmap file, but no code does it — we need to decide whether to build it or delete the description.
   Kind: investigate.
   Source: global-findings-2026-08-12 item 1 (CFG-0064), maintainer-verified 2026-08-18.
@@ -55955,6 +55963,24 @@ filed below.
   Sequencing: this must be settled BEFORE any pass that rewrites the column, including ANTS-4585's repair. A repair walking it will otherwise either preserve the wrong value or overwrite it with a guess, and there is no second copy to check against afterwards.
 
   Ants_Terminal's 419 sit alongside 269 truncations in the same column, so the two populations overlap and a single pass touches both.
+  User decision 2026-10-02: clear the placeholder to blank (reads as no
+  source recorded); no schema change. Build it as a per-project repair
+  op so each project runs it on its own store rows.
+  User decision 2026-10-02 (supersedes the "clear to blank" note above,
+  which assumed all were invented): clear ONLY this project's 36 items
+  whose source column is "planned" with provenance `asserted` (the
+  2026-04-30 ANTS-1129 backfill, commit 7e4edf92); all have created
+  NULL, ids ANTS-1060..ANTS-1098. Leave every `defaulted` "planned"
+  alone: roadmap-format § 3.5.3 makes planned the default for a bullet
+  with no provenance line, and the render never shows it (about 2,140
+  across 8 projects, measured by read-only sqlite3 2026-10-02). Do not
+  touch other projects (finbreak has 16 asserted, which may be genuine).
+  5 of the 36 also carry the `Source: planned.` line in the stored body,
+  which must go too or the next body write re-derives the column. Route:
+  amend_field refuses an empty value for this column, so this needs a
+  small repair op (e.g. repair_trailers clear_placeholder_source, scoped
+  to the caller project, provenance asserted, created NULL), recorded in
+  history.
   **Layman:** Nearly two thousand old roadmap entries record "planned" as the reason they exist, which says nothing about where they came from.
   Kind: fix.
   Source: ANTS-4585 phase 1 measurement, 2026-08-20.
@@ -85580,6 +85606,8 @@ here.)
   it needs the spec amendment to say *why* the exception is safe — that a
   parsed id arriving for a synthesised row is the one origin transition
   that cannot mean a different item.
+  User decision 2026-10-02: go ahead; amend ANTS-3765 § 2.6 and run its
+  review-contract gate before building.
   **Layman:** The database still says the computer made up five ID numbers that a person actually typed in.
   Kind: fix.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D2 re-run).
@@ -86589,6 +86617,8 @@ here.)
   sample nothing useful; `sample_ids` is the field that answers "which items?".
   That asymmetry is the tell that the id wants its own slot rather than a
   prefix on a string.
+  User decision 2026-10-02: go ahead; amend ANTS-3765 and run its
+  review-contract gate before building.
   **Layman:** Importing a roadmap still prints one line per item for a problem that is really one problem.
   Kind: perf.
   Source: in-session-2026-08-25 (measured while closing ANTS-4429).
