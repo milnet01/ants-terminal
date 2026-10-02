@@ -2647,6 +2647,8 @@ if(ANTS_TESTS)
                 # ANTS-1406 last_audit_summary `since_commit` short-circuit.
                 tests/features/mcp_last_audit_summary_since_commit/test_mcp_last_audit_summary_since_commit.cpp
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
+                # ANTS-5098 — git_state flags a read past GitWrap's stdout cap.
+                tests/features/git_state_truncation/test_git_state_truncation.cpp
                 # ANTS-1839 — GitWrap per-caller stdout budget.
                 tests/features/gitwrap_stdout_cap/test_gitwrap_stdout_cap.cpp
                 # ANTS-5527 — inside a Flatpak, tools run on the host.

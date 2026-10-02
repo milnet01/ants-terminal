@@ -2450,7 +2450,13 @@ QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req)
     out["op"]   = QStringLiteral("status");
     QJsonArray files;
     QJsonArray untracked;
-    const QList<QByteArray> lines = g.stdoutBytes.split('\n');
+    QList<QByteArray> lines = g.stdoutBytes.split('\n');
+    // ANTS-5098 — past GitWrap's stdout cap the last line can be a path cut
+    // mid-name: drop it, and say the list is incomplete.
+    if (g.stdoutTruncated && !lines.isEmpty()) {
+        lines.removeLast();
+        out["truncated"] = true;
+    }
     for (const QByteArray &lineBytes : lines) {
         if (lineBytes.isEmpty()) continue;
         const QString line = QString::fromUtf8(lineBytes);
@@ -2763,7 +2769,10 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     QJsonArray files;
     int totalAdded   = 0;
     int totalRemoved = 0;
-    const QList<QByteArray> lines = g.stdoutBytes.split('\n');
+    QList<QByteArray> lines = g.stdoutBytes.split('\n');
+    // ANTS-5098 — as runStatusOp: drop a cut last line, flag the rest.
+    const bool cut = g.stdoutTruncated && !lines.isEmpty();
+    if (cut) lines.removeLast();
     for (const QByteArray &lineBytes : lines) {
         if (lineBytes.isEmpty()) continue;
         const QString line = QString::fromUtf8(lineBytes);
@@ -2811,6 +2820,7 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     }
     out["files"]  = files;
     out["totals"] = totals;
+    if (cut) out["truncated"] = true;
     return out;
 }
 }  // namespace rcdetail

@@ -8573,7 +8573,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "old_count, new_start, new_count, lines?}]} for a clean "
                     "commit split (include_lines attaches hunk bodies, "
                     "context sets the -U width); staged=true diffs the index "
-                    "vs HEAD.");
+                    "vs HEAD. ANTS-5098: when git's output passes GitWrap's "
+                    "stdout cap, status and diff set truncated:true and drop the "
+                    "cut last line, so files[] and totals cover only what was "
+                    "read.");
                 gsTool["selection_hint"] = QStringLiteral(
                     "Use for git status/log/diff in one structured "
                     "call (vs three Bash invocations). Pairs with "

@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`git_state` says when a large repository's status or diff was cut short, and never returns a half path.** (ANTS-5098)
+
 - **`mutation_probe` puts back a source file that a killed probe left holding its mutant.** (ANTS-5096)
   It journals the original outside the project before each mutant, and
   the next probe in any session restores a file still holding that

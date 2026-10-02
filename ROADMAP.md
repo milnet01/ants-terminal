@@ -9728,7 +9728,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
   Lanes: mcp.
 
-- 📋 [ANTS-5097] **Performance pass findings for the cold-eyes, indie-review and verify MCP verbs (medium and low).**
+- ✅ [ANTS-5097] **Performance pass findings for the cold-eyes, indie-review and verify MCP verbs (medium and low).**
   Filed separately: ANTS-5024, 5025.
   Medium:
   - roadmap_branch_drift reads a git log timeout as no reachable
@@ -9762,6 +9762,18 @@ extends an existing item, that item carries it instead.
   that replies with a handle, the way audit_run does, so it never holds
   the single MCP worker past the transport budget. The contract change
   runs through a spec amendment and rule 14's gate.
+  Resolved (2026-10-02), no code change. roadmap_branch_drift and
+  cold_eyes_cross_doc_diff were removed by ANTS-5485 (2451b750); both are
+  in src/mcpdeprecation.cpp and tests/features/mcp_removed_verbs, and
+  existsInGit / against_refs match nothing in src/. That settles the git
+  log timeout, against_refs' memory, the existsInGit timeout and the
+  cross_doc_diff comment. verify_changes' 1800 s hold: it is registered
+  on DispatchLane::Bulk (src/mcptoolregistry.cpp) and ants-mcpd runs one
+  process per session, so it holds neither another session nor this
+  session's Shared lane. This applies the user's 2026-09-28 ANTS-5096
+  decision, which replaced the same background-job plan for focused_test
+  and mutation_probe on this premise; reopen if a background job is
+  still wanted.
   **Layman:** Smaller review-tool fixes, including a code check that can report a stale pass and a dry run that writes anyway.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-review-verbs).
@@ -9797,6 +9809,13 @@ extends an existing item, that item carries it instead.
   truncation flag, add_batch skipping ANTS-4563 routing, the
   add_from_roadmap summary guard, the two docs walks, and the marshal
   cwd fallback.
+  Progress (2026-10-02): git_state's status and numstat branches now
+  honour GitWrap's stdoutTruncated: they drop the cut last line and set
+  truncated:true, as the hunks branch did (tests/features/
+  git_state_truncation, red first: no flag and a cut path in both). Still
+  open: feedback_query's quadratic trim, last_selection's cap, add_batch
+  skipping ANTS-4563 routing, the add_from_roadmap summary guard, the two
+  docs walks, and the marshal cwd fallback.
   **Layman:** Smaller fixes to Ants' content tools, including a slow trimming loop and outputs cut short without saying so.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
