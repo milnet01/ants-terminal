@@ -9779,7 +9779,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-review-verbs).
   Lanes: mcp, review.
 
-- 📋 [ANTS-5098] **Performance pass findings for the feedback, changelog, docs, terminal and message verbs (medium and low).**
+- ✅ [ANTS-5098] **Performance pass findings for the feedback, changelog, docs, terminal and message verbs (medium and low).**
   Filed separately: ANTS-5053.
   Medium:
   - feedback_query trims its delta 64 characters at a time, re-encoding
@@ -9840,6 +9840,18 @@ extends an existing item, that item carries it instead.
   follows the user's 2026-09-07 op:add decision. The changelog_log_writer
   test comment saying add_batch lands in skipped[] changes with it; copy
   Ants4563AddRoutesAMixedSectionToTheTop for the red test.
+  Resolved (2026-10-02): the rest shipped. add_batch routes a mixed
+  [Unreleased] like op:add through one helper, routeOrInsertUnreleased
+  (changelog_log_writer Ants5098AddBatchRoutesAMixedSectionToTheTop).
+  add_from_roadmap's summary override takes the ANTS-4629 guard
+  (Ants5098SummaryOverrideRefusesAPreRenderedSummary). A root provider's
+  empty answer refuses instead of falling back to the process cwd, in
+  resolveRootCanonical and workspace_search / cited_by (McpAsyncDispatch
+  Ants5098EmptyHostAnswerRefusesInsteadOfProcessCwd). doc_citations'
+  markdown scan caps entries visited and reports md_scan_truncated
+  (DocCitationsVerb Ants5098MdScanCapsEntriesVisited). All red first.
+  The GUI-thread selection build and two uncapped docs walks moved to
+  ANTS-5623.
   **Layman:** Smaller fixes to Ants' content tools, including a slow trimming loop and outputs cut short without saying so.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
@@ -11702,6 +11714,21 @@ extends an existing item, that item carries it instead.
   Kind: security.
   Source: ANTS-5236 spec § 5 deferral (2026-10-01).
   Lanes: claude, mcp.
+
+- 📋 [ANTS-5623] **last_selection builds its text on the GUI thread uncapped, and two docs walks have no cap at all.**
+  Left over when ANTS-5098 closed (2026-10-02).
+  - last_selection trims after redaction now, but the text is still built
+    by TerminalWidget::selectedText on the GUI thread with no cap. Capping
+    it needs a widget change.
+  - docIntegrityEnumerate (src/remotecontrol_docs.cpp, doc_integrity and
+    doc_lint) and walkDocs (src/docsindex.cpp, docs_index) walk *.md
+    recursively with no cap on entries visited or files kept. The review
+    named two capped walks; only doc_citations' was found and fixed, so
+    these are the nearest remaining shape.
+  **Layman:** Two leftover speed fixes: copying a huge selection can stall the window, and two document scans can walk a whole drive.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.
+  Lanes: mcp.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

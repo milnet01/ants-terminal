@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_citations bounds its markdown scan by every entry it visits and reports a cut** (ANTS-5098)
+  A large build directory no longer makes the scan walk the whole tree;
+  md_scan_truncated:true says when the cap stopped it.
+
 - **changelog_log op:"add_from_roadmap" refuses a summary override that is already rendered, as op:"add" does** (ANTS-5098)
   An override such as `**Done.**` was bolded a second time and reported ok.
 
