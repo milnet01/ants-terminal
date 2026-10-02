@@ -10062,6 +10062,22 @@ extends an existing item, that item carries it instead.
   keeps them (INV-6). Test test_audit_dialog INV-12. STILL OPEN: the
   test-audit pre-pass read cap, the CMake scan's symlink loop, the fold-in
   counter lock wait, the store-backed fold-in write, and the lows.
+  Progress (2026-10-02): shipped the pre-pass 1 MiB read cap
+  (TestAuditPaginationPrePass Ants5102PrePassReadIsCapped), a visited set
+  in VerifyEngine's CMake scan (unproven: no safe red test), one stateful
+  UTF-8 decoder for gate output (VerifyEngine Ants5102Utf8...), the local
+  date on the fold-in heading (unproven: differs only near midnight),
+  CMake-dialect checks on focused_test map patterns (McpFocusedTest
+  Ants5102...), synthesis bounded to 1,000 reports of 64 KiB
+  (TestAuditSynth Ants5102ReportCountIsCapped) and [[nodiscard]] on the
+  lane's parsers. The partition-cache pointer finding was already fixed
+  (lookupPartition returns a copy). The store-backed fold-in write is
+  ANTS-5229. Left open, both needing a decision recorded for the user:
+  the fold-in counter lock's 5 s GUI wait (recommend a ~1 s cap with a
+  busy message), and pruning old .audit_cache/test_audit_<token> report
+  folders (AI output with no other copy; recommend keeping the newest 5).
+  The mtime-recheck map is not evicted: entries are one token and one
+  timestamp per brief request, so it is left as is.
   **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
