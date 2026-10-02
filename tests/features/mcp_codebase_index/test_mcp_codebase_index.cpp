@@ -325,6 +325,33 @@ TEST(CodebaseIndex, FileCountCeiling) {
     EXPECT_EQ(idx.files[1].path, QStringLiteral("src/b.cpp"));
 }
 
+// ANTS-5103 — past the ceiling, the uncached tail is not "added". It was, so
+// every call on a capped tree refreshed and rewrote the cache and never
+// answered 304. A new file INSIDE the cached prefix still counts.
+TEST(CodebaseIndex, Ants5103CappedIndexStaysWarm) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/b.cpp", cppWith("B", "f"));
+    writeFile(dir.path() + "/src/c.cpp", cppWith("C", "f"));
+    writeFile(dir.path() + "/tests/t.cpp", cppWith("T", "f"));
+    const QString cache = dir.path() + "/cache.json";
+    Options o; o.maxIndexFiles = 2;
+
+    const QJsonObject c1 = serve(dir.path(), 1000, summaryQ(), o, cache);
+    ASSERT_TRUE(c1.value("files_truncated").toBool());
+    const QJsonObject c2 = serve(dir.path(), 2000, summaryQ(), o, cache);
+    const QJsonObject c3 = serve(dir.path(), 3000, summaryQ(), o, cache);
+    EXPECT_EQ(c2.value("refreshed_files").toInt(), 0)
+        << "the uncached tail must not count as added on every call";
+    EXPECT_EQ(QJsonDocument(c2).toJson(QJsonDocument::Compact),
+              QJsonDocument(c3).toJson(QJsonDocument::Compact))
+        << "two warm calls on a capped tree must be byte-identical (304)";
+
+    // A file that sorts INTO the prefix is added.
+    writeFile(dir.path() + "/src/a.cpp", cppWith("A", "f"));
+    const QJsonObject c4 = serve(dir.path(), 4000, summaryQ(), o, cache);
+    EXPECT_GE(c4.value("refreshed_files").toInt(), 1);
+}
+
 // INV-15 — byte ceiling: tiny maxCacheBytes truncates, prefix survives.
 TEST(CodebaseIndex, ByteCeiling) {
     QTemporaryDir dir;
