@@ -984,3 +984,40 @@ TEST(DebtSweepEngine, Ants5101FixKeepsNonUtf8Bytes) {
               QByteArray("#include <a.h>\nconst char *s = \"\xE9t\xE9\";\n"))
         << "the fix re-encoded a non-UTF-8 byte";
 }
+
+// ANTS-5101 — a git that does not finish is not a clean detector result.
+// runGit returned an empty string on timeout, crash or failure to start, and
+// every detector read that as "nothing found". A fake `git` that crashes
+// stands in for the timeout (same branch, without a 30 s wait): scanAll must
+// report git_failed under the affected detector's category.
+TEST(DebtSweepEngine, Ants5101GitFailureIsNotAClean) {
+    QTemporaryDir proj, bin;
+    ASSERT_TRUE(proj.isValid() && bin.isValid());
+    const QString fake = bin.path() + QStringLiteral("/git");
+    {
+        QFile f(fake);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("#!/bin/sh\nkill -SEGV $$\n");
+    }
+    QFile::setPermissions(fake, QFile::ReadOwner | QFile::WriteOwner |
+                                    QFile::ExeOwner);
+    const QByteArray oldPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toUtf8() + ':' + oldPath);
+
+    DebtSweepEngine::ScanOptions opt;
+    opt.includeTestCoverage   = false;
+    opt.includeDocDrift       = false;
+    opt.includePackagingDrift = false;
+    const QList<DebtSweepEngine::Finding> fs =
+        DebtSweepEngine::scanAll(proj.path(), opt);
+    qputenv("PATH", oldPath);
+
+    bool sawFailure = false;
+    for (const auto &f : fs)
+        if (f.detectorId == QLatin1String("git_failed")) {
+            sawFailure = true;
+            EXPECT_EQ(f.category, QStringLiteral("code_drift"));
+        }
+    EXPECT_TRUE(sawFailure)
+        << "a crashed git must be reported, not read as no findings";
+}

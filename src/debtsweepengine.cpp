@@ -46,8 +46,21 @@ QString slurpUtf8(const QString &absPath) {
     return FileContentCache::slurpUtf8(absPath);
 }
 
+// ANTS-5101 — where runGit records a git that did not finish, so scanAll can
+// report it instead of reading the empty output as "nothing found". Set per
+// detector by scanAll; null outside it (a detector called directly).
+thread_local QStringList *tGitFailures = nullptr;
+
+void noteGitFailure(const QStringList &args, const QString &why) {
+    if (tGitFailures)
+        tGitFailures->append(QStringLiteral("git %1 %2")
+                                 .arg(args.value(0), why));
+}
+
 // Run a git command in projectPath; return stdout (capped).
-// Returns empty QString on timeout / non-zero exit / process error.
+// Returns empty QString on timeout / non-zero exit / process error. A
+// timeout, crash or failure to start is also recorded (ANTS-5101); a
+// non-zero exit is not, since `git describe` exits non-zero by design.
 QString runGit(const QString &projectPath,
                const QStringList &args,
                int stdoutCap = kGitStdoutCap) {
@@ -55,12 +68,20 @@ QString runGit(const QString &projectPath,
     p.setWorkingDirectory(projectPath);
     p.setProcessChannelMode(QProcess::SeparateChannels);
     HostExec::start(p, QStringLiteral("git"), args);
-    if (!p.waitForStarted(2000)) return {};
-    if (!p.waitForFinished(kGitTimeoutMs)) {
-        p.kill();
+    if (!p.waitForStarted(2000)) {
+        noteGitFailure(args, QStringLiteral("did not start"));
         return {};
     }
-    if (p.exitStatus() != QProcess::NormalExit) return {};
+    if (!p.waitForFinished(kGitTimeoutMs)) {
+        p.kill();
+        noteGitFailure(args, QStringLiteral("timed out after %1 s")
+                                 .arg(kGitTimeoutMs / 1000));
+        return {};
+    }
+    if (p.exitStatus() != QProcess::NormalExit) {
+        noteGitFailure(args, QStringLiteral("crashed"));
+        return {};
+    }
     QByteArray out = p.readAllStandardOutput();
     if (out.size() > stdoutCap) out.truncate(stdoutCap);
     return QString::fromUtf8(out);
@@ -1341,26 +1362,52 @@ QList<Finding> runPackagingDrift(
 QList<Finding> scanAll(
     const QString &projectPath, const ScanOptions &opt) {
     QList<Finding> out;
+    // ANTS-5101 — each detector runs with a failure list; a git that did not
+    // finish becomes a git_failed finding under that detector's category, one
+    // per category, so an incomplete result is never mistaken for a clean one.
+    using Detector = QList<Finding> (*)(const QString &, const ScanOptions &);
+    QStringList failedCategories;
+    QHash<QString, QStringList> failuresByCategory;
+    const auto run = [&](const char *category, Detector fn) {
+        QStringList failures;
+        tGitFailures = &failures;
+        out += fn(projectPath, opt);
+        tGitFailures = nullptr;
+        if (failures.isEmpty()) return;
+        const QString cat = QString::fromLatin1(category);
+        if (!failuresByCategory.contains(cat)) failedCategories << cat;
+        failuresByCategory[cat] += failures;
+    };
     if (opt.includeCodeDrift) {
-        out += detectStaleTypeComments(projectPath, opt);
-        out += detectAddedTodos(projectPath, opt);
-        out += detectOrphanQUnused(projectPath, opt);
-        out += detectStaleTodos(projectPath, opt);
-        out += detectDuplicateIncludes(projectPath, opt);
-        out += detectObsoleteQStringIdioms(projectPath, opt);
-        out += detectDeadBranchAfterReturn(projectPath, opt);
-        out += detectDeadSuppressions(projectPath, opt);
+        run("code_drift", detectStaleTypeComments);
+        run("code_drift", detectAddedTodos);
+        run("code_drift", detectOrphanQUnused);
+        run("code_drift", detectStaleTodos);
+        run("code_drift", detectDuplicateIncludes);
+        run("code_drift", detectObsoleteQStringIdioms);
+        run("code_drift", detectDeadBranchAfterReturn);
+        run("code_drift", detectDeadSuppressions);
     }
     if (opt.includeTestCoverage) {
-        out += detectMissingInvariantTests(projectPath, opt);
+        run("test_coverage", detectMissingInvariantTests);
     }
     if (opt.includeDocDrift) {
-        out += detectRoadmapShippedWithoutCommit(projectPath, opt);
-        out += detectChangelogStaleBullets(projectPath, opt);
+        run("doc_drift", detectRoadmapShippedWithoutCommit);
+        run("doc_drift", detectChangelogStaleBullets);
     }
     if (opt.includePackagingDrift) {
-        out += runPackagingDrift(projectPath, opt);
-        out += detectDepPinMismatch(projectPath, opt);
+        run("packaging_drift", runPackagingDrift);
+        run("packaging_drift", detectDepPinMismatch);
+    }
+    for (const QString &cat : std::as_const(failedCategories)) {
+        QStringList why = failuresByCategory.value(cat);
+        why.removeDuplicates();
+        Finding f;
+        f.category   = cat;
+        f.detectorId = QStringLiteral("git_failed");
+        f.message    = QStringLiteral("%1; these results are incomplete")
+                           .arg(why.join(QStringLiteral("; ")));
+        out << f;
     }
     return out;
 }

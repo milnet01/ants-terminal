@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The cold-eyes contracts lane no longer runs the document check over the multi-megabyte ROADMAP and CHANGELOG logs** (ANTS-5101)
+
+- **The debt sweep reports git_failed when git times out or crashes, instead of showing a clean result** (ANTS-5101)
+
 - **The spec-drift source scan skips files over 2 MiB and stops at 64 MiB in total** (ANTS-5100)
   One large data file or bundled script no longer goes into memory whole.
 
