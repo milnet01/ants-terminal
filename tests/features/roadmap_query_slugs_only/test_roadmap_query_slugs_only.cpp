@@ -153,3 +153,67 @@ TEST(RoadmapQuerySlugsOnly, Ants4467IsInertOnTheBulletsPath) {
               plain.value(QStringLiteral("bullets")).toArray().size());
     EXPECT_FALSE(withFlag.contains(QStringLiteral("slugs")));
 }
+
+// ANTS-5154 — with_titles pairs each slug with its heading text, so finding
+// a section by name needs neither the full rows nor a second call.
+TEST(RoadmapQuerySlugsOnly, Ants5154WithTitlesPairsEachSlugWithItsTitle) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(tmp.path() + QStringLiteral("/ROADMAP.md"), fixture()));
+    const QJsonObject resp =
+        query(tmp.path(), {{QStringLiteral("mode"), QStringLiteral("section_index")},
+                           {QStringLiteral("slugs_only"), true},
+                           {QStringLiteral("with_titles"), true}});
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    const QJsonArray pairs = resp.value(QStringLiteral("slug_titles")).toArray();
+    ASSERT_EQ(pairs.size(), 3);
+    EXPECT_EQ(pairs.at(0).toObject().value(QStringLiteral("slug")).toString(),
+              QStringLiteral("alpha-section"));
+    EXPECT_EQ(pairs.at(0).toObject().value(QStringLiteral("headline")).toString(),
+              QStringLiteral("Alpha section"));
+    EXPECT_EQ(slugsOf(resp, "slugs").size(), 3) << "the flat list stays";
+
+    // Without the flag the reply is unchanged.
+    const QJsonObject plain =
+        query(tmp.path(), {{QStringLiteral("mode"), QStringLiteral("section_index")},
+                           {QStringLiteral("slugs_only"), true}});
+    EXPECT_FALSE(plain.contains(QStringLiteral("slug_titles")));
+}
+
+// ANTS-4986 — a section's counts include its subsections, so the rows cannot
+// be summed. Each row also carries its OWN counts, and the reply says so.
+TEST(RoadmapQuerySlugsOnly, Ants4986DirectCountsExcludeSubsections) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(tmp.path() + QStringLiteral("/ROADMAP.md"),
+        QByteArrayLiteral(
+            "<!-- ants-roadmap: 1 -->\n"
+            "# Roadmap\n\n"
+            "## Parent\n\n"
+            "- \xF0\x9F\x93\x8B [ANTS-0011] **Own item.**\n"
+            "  Kind: fix.\n\n"
+            "### Child\n\n"
+            "- \xF0\x9F\x93\x8B [ANTS-0012] **Child item one.**\n"
+            "  Kind: fix.\n"
+            "- \xE2\x9C\x85 [ANTS-0013] **Child item two.**\n"
+            "  Kind: fix.\n")));
+    const QJsonObject resp =
+        query(tmp.path(), {{QStringLiteral("mode"), QStringLiteral("section_index")}});
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    QJsonObject parent, child;
+    for (const QJsonValue &v : resp.value(QStringLiteral("sections")).toArray()) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("slug")).toString() == QStringLiteral("parent")) parent = o;
+        if (o.value(QStringLiteral("slug")).toString() == QStringLiteral("child"))  child = o;
+    }
+    ASSERT_FALSE(parent.isEmpty());
+    ASSERT_FALSE(child.isEmpty());
+    EXPECT_EQ(parent.value(QStringLiteral("total_count")).toInt(), 3);
+    EXPECT_EQ(parent.value(QStringLiteral("direct_total_count")).toInt(), 1);
+    EXPECT_EQ(parent.value(QStringLiteral("direct_active_count")).toInt(), 1);
+    EXPECT_EQ(child.value(QStringLiteral("direct_active_count")).toInt(), 1);
+    EXPECT_EQ(child.value(QStringLiteral("direct_shipped_count")).toInt(), 1);
+    EXPECT_TRUE(resp.value(QStringLiteral("counts_hint")).toString()
+                    .contains(QStringLiteral("direct_")))
+        << "the double-count must be visible, not merely avoidable";
+}

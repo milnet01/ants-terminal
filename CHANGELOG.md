@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query's section list gives each section's own item counts, so section totals can be added up without double-counting.** (ANTS-4986)
+  A section's counts include its subsections. Each row now also has
+  direct_active_count, direct_shipped_count and direct_total_count, and
+  the reply says which to sum.
+
+- **roadmap_query's short section list can include each section's title (with_titles:true).** (ANTS-5154)
+
 - **roadmap_query mode:"sources" lists where roadmap items came from, with open and shipped counts for each.** (ANTS-4119)
   Filtering by origin needed you to guess its spelling. The new view lists
   every origin, grouped by name without its date (or exactly, with

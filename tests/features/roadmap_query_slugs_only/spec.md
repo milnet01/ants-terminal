@@ -43,6 +43,17 @@ drops in the object form.
 **INV-4 — it is inert outside section_index.** Passing `slugs_only` to
 the bullets path changes nothing.
 
+**INV-5 (ANTS-5154) — `with_titles:true` pairs each slug with its title.**
+With `slugs_only`, it adds `slug_titles`, `[{slug, headline}]` in the same
+order as `slugs`, which stays. Without it the reply has no `slug_titles`.
+*Test:* `Ants5154WithTitlesPairsEachSlugWithItsTitle`.
+
+**INV-6 (ANTS-4986) — each section row carries its own counts.** The
+plain counts include every subsection; `direct_active_count`,
+`direct_shipped_count` and `direct_total_count` count only the section's
+own items, and the object-form reply carries a `counts_hint` saying which
+to sum. *Test:* `Ants4986DirectCountsExcludeSubsections`.
+
 ## Scope
 
 ### In scope

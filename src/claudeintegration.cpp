@@ -3752,9 +3752,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "sections[{slug, headline, level, active_count, "
                         "shipped_count, total_count, "
                         "active_count_id_only, shipped_count_id_only, "
-                        "total_count_id_only}] (the `*_id_only` "
-                        "parallels match the default bullets[] "
-                        "predicate; ANTS-1622) and no bullets — "
+                        "total_count_id_only, direct_active_count, "
+                        "direct_shipped_count, direct_total_count}] (the "
+                        "`*_id_only` parallels match the default bullets[] "
+                        "predicate; ANTS-1622; the plain counts include "
+                        "subsections and `direct_*` do not, so sum "
+                        "`direct_*` for a total; ANTS-4986) and no bullets — "
                         "use for slug discovery (response < 5 KB on a "
                         "500-bullet roadmap). ANTS-1848 — honours `status`: "
                         "status:\"active\"/\"shipped\" drops sections whose "
@@ -3964,6 +3967,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "and does not spill. Same filter, same drop rules, "
                             "same order — only the row shape changes.");
                         props["slugs_only"] = p;
+                    }
+                    {   // ANTS-5154 — titles beside the flat slug list.
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "With slugs_only:true, also return `slug_titles`, "
+                            "[{slug, headline}] in the same order, to find a "
+                            "section by name without the full rows. Default "
+                            "false.");
+                        props["with_titles"] = p;
                     }
                     {   // ANTS-4119 / ANTS-4993 — mode:"sources" grouping.
                         QJsonObject p;

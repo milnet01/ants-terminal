@@ -86824,7 +86824,7 @@ here.)
   Source: in-session-2026-09-09.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4986] **section_index counts roll descendants into the parent, so the sections cannot be summed and a total is silently wrong.**
+- ✅ [ANTS-4986] **section_index counts roll descendants into the parent, so the sections cannot be summed and a total is silently wrong.**
   Hit on 2026-09-09 while answering "how many review fixes remain?".
   mode:"section_index" with a `query` narrowing to review sections returns
   both level-2 release buckets and the level-3 fold-in sections nested inside
@@ -86849,6 +86849,11 @@ here.)
   is wrong. That is the shape ANTS-4507 was filed for — a figure with no zero
   point that reads as actionable. Whatever is built should make the
   double-count visible, not merely avoidable.
+  Resolved (2026-10-02): section_index rows add direct_active_count /
+  direct_shipped_count / direct_total_count (the section's own items,
+  from the un-rolled tally), and the object-form reply carries
+  counts_hint saying the plain counts include subsections and which to
+  sum. Test: roadmap_query_slugs_only INV-6.
   **Layman:** Counting roadmap items by section double-counts, because a heading's count already includes the headings underneath it.
   Kind: enhancement.
   Source: in-session-2026-09-09.
@@ -88172,7 +88177,7 @@ contributors don't duplicate research.
   truncated:true, on the session's first search. A narrower lane or
   glob answered in tens of milliseconds for the rest of the session.
 
-- 📋 [ANTS-5154] **roadmap_query has no slugs-only section list, so finding a section slug on a large roadmap costs a spill.**
+- ✅ [ANTS-5154] **roadmap_query has no slugs-only section list, so finding a section slug on a large roadmap costs a spill.**
   Split from ANTS-4121, whose other half (candidates on an unknown slug) shipped under ANTS-4556.
   roadmap_query mode:"section_index" (alias mode:"sections", ANTS-4380) returns a row per section with count fields. On this roadmap, 243 sections by roadmap_log's sections_total, that reply is large enough to offload to a spill handle, so it is not a cheap way to look up one slug.
   Fix direction: a projection that returns only the slug and title per section, small enough to stay inline.
@@ -88180,6 +88185,9 @@ contributors don't duplicate research.
   slugs_only:true on mode:"section_index", and ANTS-4610's query filter
   narrows it by name. What remains is the section title beside each
   slug, which this item also asked for.
+  Resolved (2026-10-02): slugs_only:true with with_titles:true adds
+  slug_titles [{slug, headline}] beside the flat slugs. Opt-in so the
+  default list stays small. Test: roadmap_query_slugs_only INV-5.
   **Layman:** Looking up the name of a roadmap section means downloading a big list when a short one would do.
   Kind: enhancement.
   Source: in-session-2026-09-14, split from ANTS-4121.

@@ -2500,6 +2500,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             obj["active_count_id_only"]  = t.activeWithId;
             obj["shipped_count_id_only"] = t.shippedWithId;
             obj["total_count_id_only"]   = t.totalWithId;
+            // ANTS-4986 — the counts above include every subsection (INV-10),
+            // so rows cannot be summed. These are the section's OWN items.
+            const auto own = direct.value(sec.slug, RoadmapIndex::SectionCounts{});
+            obj["direct_active_count"]   = own.active;
+            obj["direct_shipped_count"]  = own.shipped;
+            obj["direct_total_count"]    = own.total;
             // ANTS-1907 — per-section etag emission (opt-in). Honours
             // the same per-slug cache as section= so the etag stays
             // stable across mode swaps.
@@ -2638,10 +2644,26 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["slugs"]       = slugs;
             out["slugs_only"]  = true;
             out["total"]       = slugs.size();
+            // ANTS-5154 — opt-in, so the default list stays the small one.
+            if (req.value(QStringLiteral("with_titles")).toBool()) {
+                QJsonArray pairs;
+                for (const QJsonValue &v : std::as_const(sections)) {
+                    const QJsonObject o = v.toObject();
+                    pairs.append(QJsonObject{
+                        {QStringLiteral("slug"), o.value(QStringLiteral("slug"))},
+                        {QStringLiteral("headline"), o.value(QStringLiteral("headline"))}});
+                }
+                out["slug_titles"] = pairs;
+            }
         } else {
         const auto secPage =
             PaginationEngine::pageBullets(sections, offsetArg, limitArg);
         out["sections"] = secPage.slice;
+        // ANTS-4986 — make the double-count visible rather than merely avoidable.
+        out["counts_hint"] = QStringLiteral(
+            "active_count, shipped_count and total_count include every "
+            "subsection, so summing rows double-counts. To total sections, sum "
+            "direct_active_count / direct_shipped_count / direct_total_count.");
         if (PaginationEngine::shouldEmitPaginationFields(
                 callerPassedOffset, callerPassedLimit, secPage.truncated)) {
             out["offset"]    = secPage.offset;
