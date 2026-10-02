@@ -577,3 +577,25 @@ TEST(VerifyEngine, GateKeyMapsToCanonicalStrings) {
     EXPECT_EQ(VerifyEngine::gateKey(VerifyEngine::GateName::Lint),
               QStringLiteral("lint"));
 }
+
+// ANTS-5102 — build output is decoded with one stateful decoder, so a UTF-8
+// character split across two reads survives. It was decoded per read, and
+// each half became U+FFFD. The sleep forces the split: the first byte of
+// "€" arrives, then the other two.
+TEST(VerifyEngine, Ants5102Utf8SplitAcrossReadsSurvives) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".ants/verify.json", R"({
+        "build": {"command": "printf '\\342'; sleep 0.5; printf '\\202\\254 euro\\n'",
+                  "format": "plain"}
+    })");
+    VerifyEngine::VerifyOptions opts;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+    auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
+                       VerifyEngine::GateName::Build);
+    ASSERT_NE(g, nullptr);
+    ASSERT_TRUE(g->ran);
+    EXPECT_TRUE(g->logTail.contains(QString::fromUtf8("\xE2\x82\xAC euro")))
+        << "log tail: " << g->logTail.toStdString();
+    EXPECT_FALSE(g->logTail.contains(QChar(0xFFFD)));
+}

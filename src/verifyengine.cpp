@@ -15,6 +15,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStringDecoder>
 
 namespace VerifyEngine {
 
@@ -265,13 +266,16 @@ GateResult runOneGate(const QString &projectPath,
 
     QStringList lines;
     QString carry;                 // partial last line (no trailing '\n' yet)
+    // ANTS-5102 — one stateful decoder for the run: decoding each read on its
+    // own turned a UTF-8 character split across two reads into U+FFFDs.
+    QStringDecoder utf8(QStringDecoder::Utf8);
     int totalLines = 0;
     constexpr qsizetype kSingleLineCap = kHardByteCap * 2;
 
     QObject::connect(&p, &QProcess::readyReadStandardOutput,
                      [&]() {
         QByteArray chunk = p.readAllStandardOutput();
-        carry += QString::fromUtf8(chunk);
+        carry += utf8.decode(chunk);
         int idx;
         while ((idx = carry.indexOf(QChar('\n'))) >= 0) {
             lines.append(carry.left(idx));
