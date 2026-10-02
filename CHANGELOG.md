@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_lint reports only the invariants the spec parser reads, ending false invariant_no_test findings** (ANTS-5100)
+  An indented invariant, or one after a `## ` line inside a code fence, was
+  flagged as having no test although the parser never read it.
+
 - **A documentation finding can no longer be marked auto-fixable by its per-kind detail** (ANTS-5099)
 
 - **docs_index stays warm on a tree larger than its cache, instead of rewriting the cache on every call** (ANTS-5099)

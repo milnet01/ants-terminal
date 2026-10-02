@@ -1881,3 +1881,37 @@ TEST(SpecLint, Ants5537StampAndNewFileCheckInFull) {
         EXPECT_FALSE(r.stamped);
     }
 }
+
+// ANTS-5100 — the lint checks exactly the invariants the parser reads (user
+// decision 2026-09-14: specparse's section rule is the definition). The lint
+// skipped fenced lines when finding the section's end and allowed indented
+// anchors, so it filed invariant_no_test against invariants the parser never
+// saw: INV-2 sits past the parser's section end (a `## ` line inside a fence
+// ends it), and INV-3 is indented, which the parser's anchor does not match.
+TEST(SpecLint, Ants5100LintChecksOnlyTheInvariantsTheParserReads) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "  - **INV-3** — indented, invisible to the parser.\n"
+        "- **INV-1** — has one. *Test:* a unit test → passes.\n"
+        "\n"
+        "```\n"
+        "## an example heading inside a fence\n"
+        "```\n"
+        "\n"
+        "- **INV-2** — past the parser's section end.\n"
+        "\n"
+        "## 4. Notes\n");
+    const QJsonObject parsed = SpecParse::parseSpecBody(doc);
+    const int parsedCount =
+        parsed.value(QStringLiteral("invariants")).toArray().size();
+    ASSERT_EQ(parsedCount, 1) << "fixture premise: the parser reads INV-1 only";
+
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(r.invariantsFound, parsedCount)
+        << "the lint must count the invariants the parser reads, no more";
+    EXPECT_EQ(countKind(r, "invariant_no_test"), 0)
+        << "no finding for an invariant the parser never saw";
+}

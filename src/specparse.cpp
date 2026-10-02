@@ -99,6 +99,33 @@ QVector<bool> inlineCodeMask(const QString &text) {
     return mask;
 }
 
+InvariantsSection invariantsSection(const QString &body) {
+    // The heading's TEXT must CONTAIN the word "invariants" (ANTS-4115);
+    // strict first, so a heading that merely mentions invariants loses to a
+    // real section.
+    static const QRegularExpression hdrRe(
+        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
+        QRegularExpression::MultilineOption);
+    static const QRegularExpression hdrLooseRe(
+        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[^\n]*\b[Ii]nvariants\b.*$)"),
+        QRegularExpression::MultilineOption);
+    InvariantsSection out;
+    auto hdrM = hdrRe.match(body);
+    if (!hdrM.hasMatch()) hdrM = hdrLooseRe.match(body);
+    if (!hdrM.hasMatch()) return out;
+    out.headingStart = static_cast<int>(hdrM.capturedStart());
+    out.start        = static_cast<int>(hdrM.capturedEnd());
+    // Section ends at the next `## ` heading of equal-or-lower depth (treat
+    // any subsequent `## ` as the boundary).
+    static const QRegularExpression nextHdrRe(
+        QStringLiteral(R"(^##\s+\S)"),
+        QRegularExpression::MultilineOption);
+    const auto nextM = nextHdrRe.match(body, out.start);
+    out.end = nextM.hasMatch() ? static_cast<int>(nextM.capturedStart())
+                               : static_cast<int>(body.size());
+    return out;
+}
+
 QJsonObject parseSpecBody(const QString &body) {
     QJsonObject out;
     QString title, status, kind;
@@ -143,24 +170,10 @@ QJsonObject parseSpecBody(const QString &body) {
     // document carrying both a real Invariants section and a heading that merely
     // mentions one (`## Why these invariants matter`), where the loose form alone
     // would take whichever came first.
-    static const QRegularExpression hdrRe(
-        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
-        QRegularExpression::MultilineOption);
-    static const QRegularExpression hdrLooseRe(
-        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[^\n]*\b[Ii]nvariants\b.*$)"),
-        QRegularExpression::MultilineOption);
-    auto hdrM = hdrRe.match(body);
-    if (!hdrM.hasMatch()) hdrM = hdrLooseRe.match(body);
-    if (hdrM.hasMatch()) {
-        const int sectionStart = hdrM.capturedEnd();
-        // Section ends at the next `## ` heading of equal-or-lower
-        // depth (treat any subsequent `## ` as the boundary).
-        static const QRegularExpression nextHdrRe(
-            QStringLiteral(R"(^##\s+\S)"),
-            QRegularExpression::MultilineOption);
-        const auto nextM = nextHdrRe.match(body, sectionStart);
-        const int sectionEnd =
-            nextM.hasMatch() ? nextM.capturedStart() : body.size();
+    const InvariantsSection sec = invariantsSection(body);
+    if (sec.start >= 0) {
+        const int sectionStart = sec.start;
+        const int sectionEnd   = sec.end;
         const QString section = body.mid(sectionStart,
                                          sectionEnd - sectionStart);
 

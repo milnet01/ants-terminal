@@ -516,36 +516,28 @@ Result check(const QString &text, const QString &relPath,
     };
 
     // --- headings (fence-aware) ------------------------------------------
-    // The Invariants section's line range, mirroring parseSpecBody's own
-    // boundaries (its heading regex, then the next `## `). The anchor scan below
-    // is confined to it: an `- **INV-4**` written in § 7 as an EXAMPLE is prose,
-    // and counting it would invent both an invariant and an id gap.
-    //
-    // ANTS-4115 — strict-first, then a heading whose text merely CONTAINS the
-    // word (`## 5. Correctness invariants`). Mirroring parseSpecBody is the whole
-    // point of this block: a lint whose section boundaries disagree with the
-    // parser's reads one document and reports on another.
-    static const QRegularExpression invHdrRe(
-        QStringLiteral(R"(^ {0,3}#{2,3}\s+(?:\d+\.\s+)?[Ii]nvariants\b)"));
-    static const QRegularExpression invHdrLooseRe(
-        QStringLiteral(R"(^ {0,3}#{2,3}\s+(?:\d+\.\s+)?.*\b[Ii]nvariants\b)"));
-    int invHdrStrict = -1, invHdrLoose = -1;
     QStringList headingLines;   // normalised `## N. Name`
     for (int i = 0; i < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
         const QString h = normalisedHeading(lines[i]);
         if (!h.isEmpty()) headingLines.append(h);
-        if (invHdrStrict < 0 && invHdrRe.match(lines[i]).hasMatch())
-            invHdrStrict = i;
-        if (invHdrLoose < 0 && invHdrLooseRe.match(lines[i]).hasMatch())
-            invHdrLoose = i;
     }
-    const int invHdrLine = invHdrStrict >= 0 ? invHdrStrict : invHdrLoose;
-    int invStart = invHdrLine >= 0 ? invHdrLine + 1 : -1;
-    int invEnd   = lines.size();
-    for (int i = invStart; invStart >= 0 && i < lines.size(); ++i) {
-        if (i < fence.size() && fence[i]) continue;
-        if (nextH2Re().match(lines[i]).hasMatch()) { invEnd = i; break; }
+
+    // The Invariants section's line range. The anchor scan below is confined
+    // to it: an `- **INV-4**` written in § 7 as an EXAMPLE is prose, and
+    // counting it would invent both an invariant and an id gap.
+    //
+    // ANTS-5100 — taken from SpecParse::invariantsSection, the one definition
+    // (user decision 2026-09-14), rather than a mirror of it. The mirror had
+    // drifted: it skipped fenced lines and allowed indentation, so the lint
+    // filed invariant_no_test against invariants the parser never read.
+    const SpecParse::InvariantsSection invSec = SpecParse::invariantsSection(text);
+    int invStart = -1;
+    int invEnd   = static_cast<int>(lines.size());
+    if (invSec.start >= 0) {
+        invStart = static_cast<int>(text.left(invSec.start).count(QLatin1Char('\n'))) + 1;
+        if (invSec.end < text.size())
+            invEnd = static_cast<int>(text.left(invSec.end).count(QLatin1Char('\n')));
     }
 
     // --- missing_section (gated on an injected list) ----------------------
@@ -594,10 +586,18 @@ Result check(const QString &text, const QString &relPath,
     // --- INV-N anchor lines ----------------------------------------------
     // parseSpecBody supplies neither line numbers nor sections nor loop-log
     // rows, so every `line` on this verb's findings comes from this scan.
+    // ANTS-5100 — the parser's anchor shapes: no indentation, and fenced lines
+    // are not skipped, since the parser reads neither way. The row anchor stays
+    // looser than the parser's three-cell row on purpose (see the next block).
+    static const QRegularExpression sectionBulletRe(
+        QStringLiteral(R"(^-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
+    static const QRegularExpression sectionRowRe(
+        QStringLiteral(R"(^\|\s*(INV-\d+[a-z]?)\s*\|)"));
     QHash<QString, int> anchorLine;   // id -> 1-based line, first occurrence
     for (int i = qMax(invStart, 0); invStart >= 0 && i < invEnd; ++i) {
-        if (i < fence.size() && fence[i]) continue;
-        const QString id = anchorId(lines[i]);
+        auto am = sectionBulletRe.match(lines[i]);
+        if (!am.hasMatch()) am = sectionRowRe.match(lines[i]);
+        const QString id = am.hasMatch() ? am.captured(1) : QString();
         if (!id.isEmpty() && !anchorLine.contains(id))
             anchorLine.insert(id, i + 1);
     }

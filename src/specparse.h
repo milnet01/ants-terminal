@@ -74,4 +74,17 @@ bool isHeaderBlockEnd(const QString &line);
 // a GFM table row, or the `*Test:*` sentence of a bullet.
 QJsonObject parseSpecBody(const QString &body);
 
+// ANTS-5100 — where the Invariants section is, as character offsets into
+// `body`: the heading line starts at `headingStart`, the section runs
+// [start, end). All -1 when there is none. This is THE definition (user
+// decision 2026-09-14): parseSpecBody reads it, and spec_lint confines its
+// anchor scan to it, so the two never disagree about which invariants exist.
+// Fences are not consulted, and the section ends at the first `## ` line.
+struct InvariantsSection {
+    int headingStart = -1;
+    int start        = -1;
+    int end          = -1;
+};
+[[nodiscard]] InvariantsSection invariantsSection(const QString &body);
+
 }  // namespace SpecParse
