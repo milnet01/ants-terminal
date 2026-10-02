@@ -196,3 +196,39 @@ TEST(PlaintextPromptWarning, INV2_AuditDialogCallSitesCallPredicate) {
                "its result in the text it shows the user (ANTS-5010 § 2.4)";
     }
 }
+
+// ANTS-5105 — Send is usable again after a request that never reaches the
+// client's finished(). sendRequest disabled Send before the plaintext-key
+// refusal returned, and resetTransient's abort suppresses finished(), so in
+// both cases Send stayed disabled for good.
+TEST(PlaintextPromptWarning, Ants5105SendReenabledAfterRefusalAndReset) {
+    const QString remote = QStringLiteral("http://192.0.2.1/v1/chat/completions");
+    {   // Refused: an API key over remote plain http.
+        AiDialog dlg;
+        dlg.setConfig(remote, QStringLiteral("sk-test"), QStringLiteral("gpt-4"), 50);
+        auto *input = dlg.findChild<QLineEdit *>();
+        auto *chat  = dlg.findChild<QTextEdit *>();
+        QPushButton *sendBtn = findButtonByText(&dlg, QStringLiteral("Send"));
+        ASSERT_TRUE(input && chat && sendBtn);
+        input->setText(QStringLiteral("hello"));
+        sendBtn->click();
+        ASSERT_TRUE(chat->toPlainText().contains(QStringLiteral("Refused")))
+            << "fixture premise: the request is refused";
+        EXPECT_TRUE(sendBtn->isEnabled()) << "Send must be usable after a refusal";
+    }
+    {   // In flight, then the dialog's transient state is reset.
+        AiDialog dlg;
+        dlg.setConfig(remote, QString(), QStringLiteral("gpt-4"), 50);
+        auto *input = dlg.findChild<QLineEdit *>();
+        QPushButton *sendBtn = findButtonByText(&dlg, QStringLiteral("Send"));
+        auto *client = dlg.findChild<LlmClient *>();
+        ASSERT_TRUE(input && sendBtn && client);
+        input->setText(QStringLiteral("hello"));
+        sendBtn->click();
+        ASSERT_TRUE(client->busy()) << "fixture premise: a reply is in flight";
+        dlg.resetTransient();
+        EXPECT_FALSE(client->busy());
+        EXPECT_TRUE(sendBtn->isEnabled())
+            << "Send must be usable after an in-flight request is reset";
+    }
+}

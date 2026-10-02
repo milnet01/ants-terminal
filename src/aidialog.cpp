@@ -123,7 +123,15 @@ void AiDialog::resetTransient() {
     // continue across re-opens.
     if (m_input)        m_input->clear();
     if (m_statusLabel)  m_statusLabel->clear();
-    if (m_client)       m_client->abort();
+    // ANTS-5105 — abort() suppresses finished(), so onLlmFinished never runs
+    // for a request cut off here: re-enable Send ourselves, and say the
+    // reply was dropped rather than losing it without a word.
+    if (m_client && m_client->busy()) {
+        m_client->abort();
+        if (m_statusLabel)
+            m_statusLabel->setText(tr("The previous request was cancelled."));
+    }
+    if (m_sendBtn)      m_sendBtn->setEnabled(true);
 }
 
 void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
@@ -244,6 +252,7 @@ void AiDialog::sendRequest(const QString &userMessage) {
         appendMessage("System", "Refused: endpoint is plaintext HTTP to a remote host — "
                                 "the API key would travel unencrypted. Use https:// "
                                 "(localhost is exempt).");
+        m_sendBtn->setEnabled(true);   // ANTS-5105 — nothing was sent
         return;
     }
 
