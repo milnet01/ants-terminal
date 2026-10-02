@@ -2,7 +2,8 @@
 
 > **Status:** Adopted 2026-07-30; amended 2026-08-03
 > (§ 1 INV-2, §§ 3.3, 4.1, 5, 8) and 2026-08-05 (§ 1 INV-3, § 3.2, § 4.1,
-> § 7.1, § 8, § 9, § 10, *What checks this*). **Partly
+> § 7.1, § 8, § 9, § 10, *What checks this*) and 2026-10-02 (§§ 3.1, 3.3,
+> 4.1, 7.3.1, 7.5). **Partly
 > implemented** — the store, the migration, the export and the published
 > render have shipped
 > ([ANTS-3756](../specs/ANTS-3756-roadmap-store-schema.md),
