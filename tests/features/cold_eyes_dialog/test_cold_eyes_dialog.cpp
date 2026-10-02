@@ -400,3 +400,30 @@ TEST(ColdEyesDialog, INV9_LoopLogTracksDispatchedRoundsNotMergedReports) {
     EXPECT_EQ(dlg.loopLog().size(), 2)
         << "a collection with no dispatched round pending must not log";
 }
+
+// ANTS-5101 — stale citations belong to the partition they were found in.
+// m_staleByLane outlived a re-partition, so a citation already fixed, on a
+// lane that was not re-briefed, kept surfacing as a finding.
+TEST(ColdEyesDialog, Ants5101StaleCitationsDoNotSurviveRepartition) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    buildDocTree(tmp.path());
+    writeFile(tmp.path() + "/docs/standards/coding.md",
+              "# Coding\n\nSee src/missing_xyz.cpp:10 — does not exist.\n");
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    const ReviewLane std = laneById(dlg.derivePartition(), QStringLiteral("standards"));
+    ASSERT_FALSE(std.id.isEmpty());
+    (void)dlg.composeBrief(std);   // records the stale citation
+
+    // The doc is fixed and the lanes re-derived; standards is not re-briefed.
+    writeFile(tmp.path() + "/docs/standards/coding.md", "# Coding\n\nFixed.\n");
+    (void)dlg.derivePartition();
+    QHash<QString, QString> reports;
+    reports.insert(QStringLiteral("contracts"), QString());
+    dlg.onAllReportsCollected(reports);
+
+    for (const QString &s : dlg.results().staleFindings)
+        EXPECT_FALSE(s.contains(QStringLiteral("missing_xyz.cpp")))
+            << "a stale citation from the previous partition survived: "
+            << s.toStdString();
+}

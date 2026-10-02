@@ -133,6 +133,9 @@ void ColdEyesDialog::setScope(ColdEyesEngine::Scope s) {
 QList<ReviewLane> ColdEyesDialog::derivePartition() {
     const auto pr = ColdEyesEngine::derivePartition(projectCwd(), m_scope);
     m_allLanes = pr.lanes;
+    // ANTS-5101 — stale citations belong to the partition they were found
+    // in; the next round's briefs recompute them for the lanes they run.
+    m_staleByLane.clear();
 
     QStringList notes;
     if (pr.truncated)
