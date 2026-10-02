@@ -691,7 +691,48 @@ STUB
         fi
         dry="$(bash "$INSTALLER" --dry-run --target "$ib_tmp/settings.json" --hooks-dir "$ib_tmp/hooks" 2>/dev/null \
                | awk '/^\{/{j=1} j{print}' | sed -n '1,/^}/p')"
-        for ev in SessionStart UserPromptSubmit; do
+        # ANTS-5619 — with an event named, the answer is JSON: a line the user
+        # sees plus context telling Claude to read the mail first.
+        out="$(run_inbox '{"ok":true,"unacked_count":2}' \
+               '{"hook_event_name":"SessionStart","session_id":"s5619"}')"
+        if printf '%s' "$out" | jq -e '
+              (.systemMessage | startswith("[ants:inbox] 2 unread messages"))
+              and .hookSpecificOutput.hookEventName == "SessionStart"
+              and (.hookSpecificOutput.additionalContext | contains("op:\"inbox\""))' >/dev/null 2>&1; then
+            pass "ANTS-5619 SessionStart answers with systemMessage + additionalContext"
+        else
+            fail "ANTS-5619 SessionStart JSON wrong: $out"
+        fi
+        # Mid-session it speaks only when the count rises past what this
+        # session was told; ANTS_INBOX_INTERVAL=0 lifts the throttle.
+        post() {  # $1 = unread count, $2 = interval
+            (cd "$ib_tmp" && printf '%s\n' '{"hook_event_name":"PostToolUse","session_id":"s5619"}' \
+                | ANTS_MCPD="$stub" STUB_REPLY="{\"ok\":true,\"unacked_count\":$1}" \
+                  ANTS_INBOX_INTERVAL="$2" XDG_RUNTIME_DIR="$ib_tmp/run" HOME="$ib_tmp" \
+                  timeout 5 bash "$INBOX")
+        }
+        (cd "$ib_tmp" && printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"s5619"}' \
+            | ANTS_MCPD="$stub" STUB_REPLY='{"ok":true,"unacked_count":2}' \
+              XDG_RUNTIME_DIR="$ib_tmp/run" HOME="$ib_tmp" timeout 5 bash "$INBOX" >/dev/null)
+        out="$(post 2 0)"
+        if [ -z "$out" ]; then pass "ANTS-5619 PostToolUse silent on mail already announced"; else fail "ANTS-5619 PostToolUse repeated old mail: $out"; fi
+        out="$(post 3 0)"
+        if printf '%s' "$out" | jq -e '(.systemMessage | contains("New mail arrived"))
+              and .hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1; then
+            pass "ANTS-5619 PostToolUse announces newly arrived mail"
+        else
+            fail "ANTS-5619 PostToolUse did not announce new mail: $out"
+        fi
+        out="$(post 3 0)"
+        if [ -z "$out" ]; then pass "ANTS-5619 PostToolUse announces new mail once"; else fail "ANTS-5619 PostToolUse repeated: $out"; fi
+        rm -f "$ib_tmp/argv"
+        out="$(post 9 3600)"
+        if [ -z "$out" ] && [ ! -e "$ib_tmp/argv" ]; then
+            pass "ANTS-5619 PostToolUse throttled: no ants-mcpd call inside the interval"
+        else
+            fail "ANTS-5619 PostToolUse ignored its throttle: $out"
+        fi
+        for ev in SessionStart UserPromptSubmit PostToolUse; do
             if printf '%s\n' "$dry" | jq -e --arg ev "$ev" \
                 '[.hooks[$ev][]?.hooks[]?.command] | any(endswith("/ants-inbox-notice.sh"))' >/dev/null 2>&1; then
                 pass "ANTS-5553 installer registers the notice on $ev"

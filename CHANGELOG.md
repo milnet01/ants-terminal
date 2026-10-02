@@ -67,6 +67,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Unread mail from other Claude Code sessions is now shown on your screen at start-up, and a working session is told when new mail arrives** (ANTS-5619)
+  Claude is told to read the inbox before other work. The mid-session
+  check runs after tool calls, at most every 30 seconds, and speaks only
+  about mail that is new since it last spoke.
+
 - **roadmap_migrate folds repeated field_conflict notes on one column into a single row.** (ANTS-4656)
   The note names the item in a new `id` field and only the column in
   `detail`, so a merged row lists up to three `sample_ids`. A merged row

@@ -78,6 +78,9 @@ hook_entries() {
       {"matcher": "Bash", "hooks": [{"type": "command", "command": "$hooks_dir/ants-bash-veto.sh"}]},
       {"matcher": "Read", "hooks": [{"type": "command", "command": "$hooks_dir/ants-read-roadmap-veto.sh"}]}
     ],
+    "PostToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-inbox-notice.sh", "timeout": 5}]}
+    ],
     "Stop": [
       {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-drift-check.sh"}]}
     ],

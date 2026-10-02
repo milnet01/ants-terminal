@@ -69654,6 +69654,30 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-10-01 (found building ANTS-5553).
   Lanes: mcp, roadmap-store.
 
+- ✅ [ANTS-5619] **The unread-mail notice reaches the user's screen, and mail arriving mid-session is announced.**
+  User, 2026-10-02: "Sessions still aren't notified that there is
+  outstanding email after I start a session." Measured first: every
+  session started since ANTS-5553's hook was installed (2026-10-01 09:44Z)
+  with mail waiting got the [ants:inbox] line; the only two misses started
+  before the install. Two real gaps: the line went only to Claude's
+  context, never the user's screen, as background a session could pass
+  over; and mail arriving mid-session waited for the user's next prompt.
+  Fix: answer in JSON when the payload names its event (systemMessage for
+  the user, additionalContext telling Claude to read first), and a
+  PostToolUse leg that speaks only when the count rises, throttled to one
+  ants-mcpd call per 30 s per session.
+  Shipped (2026-10-02): hooks/ants-inbox-notice.sh answers in JSON when
+  the payload names its event (systemMessage + additionalContext), and
+  install-hooks.sh registers it on PostToolUse, where it speaks only when
+  the unread count rises, at most one ants-mcpd call per 30 s per session.
+  Test: tests/features/hook_pack (five ANTS-5619 assertions, red against
+  the previous hook). A hook is a file Claude Code runs fresh each time:
+  no terminal relaunch; new sessions pick up the settings entry.
+  **Layman:** You see a line on screen when another session has left mail, and a working session is told when new mail arrives.
+  Kind: enhancement.
+  Source: user-request-2026-10-02.
+  Lanes: hooks.
+
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage
 
 - ✅ [ANTS-5583] **indie_review_partition empties a pinned lane's sourcePaths when its files are not under src/.**

@@ -168,7 +168,22 @@ the split looks settled.
 - It asks about the `cwd` from the hook payload, and from a subdirectory
   of a git repository it asks about the repository root, because the
   store refuses a subdirectory.
-- `install-hooks.sh` registers it on SessionStart and UserPromptSubmit.
+- `install-hooks.sh` registers it on SessionStart, UserPromptSubmit and
+  PostToolUse.
+
+## ANTS-5619 — the notice reaches the user, and mid-session mail
+
+When the payload names its event, the hook answers in JSON instead of the
+plain line: `systemMessage` (shown to the user) beginning
+`[ants:inbox] 2 unread messages`, and `hookSpecificOutput` with that
+`hookEventName` and an `additionalContext` telling Claude to read the
+inbox (`op:"inbox"`) before other work.
+
+On PostToolUse it keeps the count it last announced per `session_id`
+(under `$XDG_RUNTIME_DIR/ants-inbox/`). It speaks only when the count has
+risen past that, once, saying new mail arrived. It calls `ants-mcpd` at
+most once per `ANTS_INBOX_INTERVAL` seconds (default 30), and calls
+nothing inside that window. With no `session_id` it stays silent.
 
 ## Why shell, not C++
 
