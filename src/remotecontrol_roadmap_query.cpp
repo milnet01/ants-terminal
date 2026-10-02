@@ -18,6 +18,7 @@
 #include <QFile>
 #include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
 #include <QFileInfo>
+#include <iterator>    // ANTS-4543 — std::size over the trailer-key table
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
 
 using namespace rcdetail;  // ANTS-3833
@@ -1590,6 +1591,43 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
     return true;
 }
 
+// A body value in the column's stored form. The capture arrives raw; the column
+// holds the canonical kind, mapped exactly as rlDeriveTrailerColumns() maps it.
+static QString rlColumnFormOf(const RlTrailerKey &k, QString value) {
+    if (QLatin1String(k.field) == QLatin1String("kind")) {
+        QString folded = value.trimmed().toLower();
+        if (RoadmapParse::canonicalKinds().contains(folded))
+            return folded;
+        if (const QString mapped = RoadmapParse::mappedKind(folded); !mapped.isEmpty())
+            return mapped;
+    }
+    return value;
+}
+
+static QString rlColumnValue(const RoadmapStore::ItemWrite &w, const RlTrailerKey &k) {
+    return k.colList ? rlJsonArrayText(w.*(k.colList)) : w.*(k.col);
+}
+
+// True when `stripped` drops only copies of the columns: for every key whose
+// body value the strip changes, the stripped body no longer declares it and the
+// old value equals the column. A value left in the stripped prose would take
+// over on the next re-parse, so the strip would change the key rather than drop
+// a copy of the column.
+static bool rlStripDropsOnlyColumnCopies(const RoadmapStore::ItemWrite &w,
+                                         const QString &stripped) {
+    const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(w.body);
+    const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(stripped);
+    for (const RlTrailerKey &k : kRlTrailerKeys) {
+        const QString oldValue = rlBodyValueFor(oldTv, k);
+        const QString newValue = rlBodyValueFor(newTv, k);
+        if (oldValue == newValue)
+            continue;  // the strip did not touch this key
+        if (!newValue.isEmpty() || rlColumnFormOf(k, oldValue) != rlColumnValue(w, k))
+            return false;
+    }
+    return true;
+}
+
 std::optional<QString> rcdetail::rlRedundantTrailerRunStripped(
         const RoadmapStore::ItemWrite &w, bool *conflict) {
     if (conflict)
@@ -1597,35 +1635,71 @@ std::optional<QString> rcdetail::rlRedundantTrailerRunStripped(
     QString stripped = RoadmapParse::stripTrailingTrailerLines(w.body);
     if (stripped == w.body)
         return std::nullopt;
+    if (!rlStripDropsOnlyColumnCopies(w, stripped)) {
+        if (conflict)
+            *conflict = true;
+        return std::nullopt;
+    }
+    return stripped;
+}
 
-    const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(w.body);
-    const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(stripped);
-    for (const RlTrailerKey &k : kRlTrailerKeys) {
-        QString oldValue = rlBodyValueFor(oldTv, k);
-        const QString newValue = rlBodyValueFor(newTv, k);
-        if (oldValue == newValue)
-            continue;  // the run did not carry this key
-        // A value left in the stripped prose would take over from the run on the
-        // next re-parse, so the strip would change the key rather than drop a
-        // copy of the column.
-        bool same = newValue.isEmpty();
-        // The capture arrives raw; the column holds the canonical kind. Mapped
-        // exactly as rlDeriveTrailerColumns() maps it.
-        if (same && QLatin1String(k.field) == QLatin1String("kind")) {
-            const QString folded = oldValue.trimmed().toLower();
-            if (RoadmapParse::canonicalKinds().contains(folded))
-                oldValue = folded;
-            else if (const QString mapped = RoadmapParse::mappedKind(folded);
-                     !mapped.isEmpty())
-                oldValue = mapped;
+// ANTS-4543 — a key declared at a line start MORE than once renders every copy,
+// and stripTrailingTrailerLines() reaches only a trailing run. Remove each
+// one-key declaration line whose value equals the column, for a key the body
+// declares at least twice; the render then composes the one line. A key
+// declared once is the author's and stays wherever it sits.
+std::optional<QString> rcdetail::rlRepeatedTrailerDeclarationsStripped(
+        const RoadmapStore::ItemWrite &w, bool *conflict) {
+    if (conflict)
+        *conflict = false;
+    if (w.body.isEmpty())
+        return std::nullopt;
+    const QStringList lines = w.body.split(QLatin1Char('\n'));
+
+    // Per line: the one key it declares at its start, or -1. A line naming
+    // two keys is not a bare declaration and is never removed.
+    QVector<int> keyOf(lines.size(), -1);
+    QVector<QString> valueOf(lines.size());
+    QHash<int, int> declared;
+    constexpr int kKeys = int(std::size(kRlTrailerKeys));
+    for (int i = 0; i < lines.size(); ++i) {
+        const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(lines.at(i));
+        int found = -1, keys = 0;
+        for (int k = 0; k < kKeys; ++k) {
+            const RoadmapParse::TrailerMatch &m = tv.*(kRlTrailerKeys[k].match);
+            if (m.value.isEmpty()) continue;
+            ++keys;
+            if (m.offset >= 0 && m.anchored) found = k;
         }
-        const QString current =
-            k.colList ? rlJsonArrayText(w.*(k.colList)) : w.*(k.col);
-        if (!same || oldValue != current) {
-            if (conflict)
-                *conflict = true;
-            return std::nullopt;
+        if (keys != 1 || found < 0) continue;
+        keyOf[i]   = found;
+        valueOf[i] = rlBodyValueFor(tv, kRlTrailerKeys[found]);
+        declared[found] += 1;
+    }
+
+    QStringList kept;
+    bool removed = false;
+    for (int i = 0; i < lines.size(); ++i) {
+        const int k = keyOf.at(i);
+        if (k >= 0 && declared.value(k) >= 2
+            && rlColumnFormOf(kRlTrailerKeys[k], valueOf.at(i))
+                   == rlColumnValue(w, kRlTrailerKeys[k])) {
+            removed = true;
+            continue;
         }
+        kept.append(lines.at(i));
+    }
+    if (!removed)
+        return std::nullopt;
+    while (!kept.isEmpty() && kept.last().trimmed().isEmpty())
+        kept.removeLast();
+    while (!kept.isEmpty() && kept.first().trimmed().isEmpty())
+        kept.removeFirst();
+    QString stripped = kept.join(QLatin1Char('\n'));
+    if (!rlStripDropsOnlyColumnCopies(w, stripped)) {
+        if (conflict)
+            *conflict = true;
+        return std::nullopt;
     }
     return stripped;
 }

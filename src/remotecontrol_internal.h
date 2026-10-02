@@ -374,6 +374,11 @@ bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapSto
 // there is no trailing run, and when there is one that is not redundant — which
 // sets *conflict, because the render shows the run's value today.
 std::optional<QString> rlRedundantTrailerRunStripped(const RoadmapStore::ItemWrite &w, bool *conflict);
+// ANTS-4543 — a key declared at a line start more than once: removes each
+// one-key declaration line whose value equals the column, under the same
+// redundancy test. nullopt when no key repeats or nothing matches; *conflict
+// when the removal would change a key's value.
+std::optional<QString> rlRepeatedTrailerDeclarationsStripped(const RoadmapStore::ItemWrite &w, bool *conflict);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 // ANTS-4485 — resolve an `id` or `headline` locator against the STORE on a

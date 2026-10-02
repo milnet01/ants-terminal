@@ -4574,7 +4574,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
             if (env.value(QStringLiteral("code")).toString()
                     == QLatin1String("render_gate_unmet")) {
                 QStringList blocked;
-                for (const QJsonValue &v : env.value(QStringLiteral("gate_failures")).toArray())
+                for (const auto &v : env.value(QStringLiteral("gate_failures")).toArray())
                     blocked << v.toString();
                 env[QStringLiteral("error")] = QStringLiteral(
                     "roadmap_log: a moved item that is open needs a Layman line "

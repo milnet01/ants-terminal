@@ -142,6 +142,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     QStringList skippedIds;
     QVector<RlBodyWrite> bodyPlan;
     int stripSkipped = 0;
+    int repeatsStripped = 0;   // ANTS-4543 — the subset of bodyPlan that is repeats
     QStringList stripSkippedIds;
 
     for (auto it = items->constBegin(); it != items->constEnd(); ++it) {
@@ -211,6 +212,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
                 stripSkippedIds.append(w.id);
             } else if (stripped) {
                 bodyPlan.push_back({pk, w.body, *stripped});
+            } else if (!skippedHere && plan.size() == planBefore) {
+                // ANTS-4543 — a repeated mid-body declaration, which no
+                // trailing run covers. Judged on the same terms.
+                bool repeatConflict = false;
+                const auto deduped = rlRepeatedTrailerDeclarationsStripped(w, &repeatConflict);
+                if (repeatConflict) {
+                    ++stripSkipped;
+                    stripSkippedIds.append(w.id);
+                } else if (deduped) {
+                    bodyPlan.push_back({pk, w.body, *deduped});
+                    ++repeatsStripped;
+                }
             }
         }
     }
@@ -272,7 +285,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     env[QStringLiteral("chars_recovered")]  = double(charsRecovered);
     env[QStringLiteral("skipped")]          = skipped;
     if (stripRuns) {
-        env[QStringLiteral("runs_stripped")] = int(bodyPlan.size());
+        env[QStringLiteral("runs_stripped")] = int(bodyPlan.size()) - repeatsStripped;
+        env[QStringLiteral("repeats_stripped")] = repeatsStripped;   // ANTS-4543
         env[QStringLiteral("strip_skipped")] = stripSkipped;
         // A far higher cap than skipped_ids': every id here is an item somebody
         // is meant to read, so the list is the work queue rather than a sample.

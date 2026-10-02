@@ -527,3 +527,61 @@ TEST(RoadmapRepairTrailers, Inv12StripDryRunPredictsAndSecondRunStripsNothing) {
     EXPECT_EQ(again.value(QStringLiteral("runs_stripped")).toInt(), 0)
         << "the strip is not idempotent";
 }
+
+// ----------------------------------------------------------------- INV-13/14 --
+// ANTS-4543 — a key the body declares MORE than once, at a line start but not
+// in a trailing run, renders every copy. Such a declaration is removed where
+// its value equals the column; the render then composes the one line.
+
+TEST(RoadmapRepairTrailers, Inv13RepeatedDeclarationEqualToColumnIsStripped) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(damage(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body"),
+                       QStringLiteral("Kind: fix.\n") + QString::fromUtf8(kProse)
+                           + QStringLiteral("\nKind: fix.")));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = repair(rc, root, false, /*stripRuns=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("repeats_stripped")).toInt(), 1)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              std::string(kProse)) << "the repeated declarations were not removed";
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("kind")).toStdString(),
+              std::string("fix"));
+    // DEMO-0003 declares each key once mid-body: not a repeat, so untouched.
+    EXPECT_NE(columnOf(projectId, QStringLiteral("DEMO-0003"), QStringLiteral("body")).indexOf(
+                  QStringLiteral("Kind: fix.")), -1);
+
+    const QJsonObject again = repair(rc, root, false, true);
+    EXPECT_EQ(again.value(QStringLiteral("repeats_stripped")).toInt(), 0)
+        << "the strip is not idempotent";
+}
+
+TEST(RoadmapRepairTrailers, Inv14RepeatWhoseRemovalChangesTheValueIsSkipped) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    // The column is `fix`, the last declaration. Removing it would leave `test`.
+    const QString body = QStringLiteral("Kind: test.\n") + QString::fromUtf8(kProse)
+                          + QStringLiteral("\nKind: fix.");
+    ASSERT_TRUE(damage(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body"), body));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = repair(rc, root, false, /*stripRuns=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              body.toStdString()) << "a repeat whose removal changes the value was stripped";
+    EXPECT_EQ(resp.value(QStringLiteral("repeats_stripped")).toInt(), 0);
+    EXPECT_TRUE(idListed(resp, "strip_skipped_ids", QStringLiteral("DEMO-0004")))
+        << QJsonDocument(resp).toJson().toStdString();
+}

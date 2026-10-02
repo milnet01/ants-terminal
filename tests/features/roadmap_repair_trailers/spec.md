@@ -111,3 +111,21 @@ fields below.
   `runs_stripped` is absent.
 - **INV-12** — with `dry_run`, no body is written and `runs_stripped`
   equals the real run's; a second run strips nothing.
+
+## Stripping repeated mid-body declarations — ANTS-4543
+
+A key the body declares at a line start more than once, outside a
+trailing run, renders every copy. Under `strip_runs`, on an item with no
+trailing run to strip, each line that declares only that key and whose
+value equals the column is removed, for a key declared at least twice.
+The same redundancy test as above decides it; an item it fails is
+listed in `strip_skipped_ids`. A key declared once stays wherever it
+sits. `repeats_stripped` counts these items and `runs_stripped` the
+trailing runs.
+
+- **INV-13** — two declarations equal to the column are both removed,
+  the column is unchanged, `repeats_stripped` counts the item, and a
+  second run strips nothing. A key declared once is not touched.
+- **INV-14** — where removing the copies equal to the column would leave
+  another value declared, nothing is removed and the item is listed in
+  `strip_skipped_ids`.

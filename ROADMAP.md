@@ -50292,7 +50292,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, hit while filing ANTS-4536.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4543] **Trailer accretion still fires when the body's own declaration is INFIX rather than trailing.**
+- ✅ [ANTS-4543] **Trailer accretion still fires when the body's own declaration is INFIX rather than trailing.**
   Measured 2026-08-20 during ANTS-4501's flip, which re-rendered the
   whole file as every store write does (ANTS-4462).
 
@@ -50326,6 +50326,15 @@ are closed inline in the feedback files rather than filed here.
 
   Read ANTS-4506's resolution note and
   docs/specs/ANTS-3808-item-body-and-trailer-suppression.md section 2.1.
+  Resolved (2026-10-02): re-measured. The render no longer adds copies
+  (composed_trailers is empty on the flagged items since ANTS-4599), so
+  accretion has stopped; 52 bullets in ROADMAP.md still repeat a trailer
+  line in their STORED bodies (73 on 2026-08-20), and strip_runs'
+  trailing-run pass finds none left. repair_trailers strip_runs:true now
+  also removes repeated one-key declaration lines equal to the column,
+  under the same redundancy test, counted in repeats_stripped. Tests:
+  roadmap_repair_trailers INV-13, INV-14. Running it on this project's
+  store is a separate step after an ants-mcpd reconnect.
   **Layman:** A roadmap entry can end up with the same "Kind:" or "Source:" line twice, because the de-duplication only looks at the very end of the entry.
   Kind: fix.
   Source: in-session-2026-08-20.
