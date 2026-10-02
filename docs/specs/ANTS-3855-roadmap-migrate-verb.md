@@ -1,6 +1,6 @@
 # ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. **Built 2026-09-08** — `Request::maxNotes`, `run()`'s clamp, `notes_summary` and the echoed `max_notes` shipped as specified, with INV-10's third leg proved red against a stubbed `setNotes()` before the code was restored. No contract changed at implementation. **Amended 2026-09-27** — § 2.1, § 2.4, § 2.5, § 3 and § 7 for ANTS-5247 (the snapshot folder) and ANTS-5287 (deleted items); gated by review-contract loops 8–9, capped; ready to implement. **Amended 2026-10-02** — § 2.1's `only_ids` row, recording ANTS-4992 as built and tested; no gate, under `CLAUDE.md` rule 14's amendment-records-what-was-built exception.
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. **Built 2026-09-08** — `Request::maxNotes`, `run()`'s clamp, `notes_summary` and the echoed `max_notes` shipped as specified, with INV-10's third leg proved red against a stubbed `setNotes()` before the code was restored. No contract changed at implementation. **Amended 2026-09-27** — § 2.1, § 2.4, § 2.5, § 3 and § 7 for ANTS-5247 (the snapshot folder) and ANTS-5287 (deleted items); gated by review-contract loops 8–9, capped; ready to implement. **Amended 2026-10-02** — § 2.1's `only_ids` row, recording ANTS-4992 as built and tested; no gate, under `CLAUDE.md` rule 14's amendment-records-what-was-built exception. **Amended 2026-10-02 (ANTS-4656)** — § 2.4 and INV-10: a note row carries `id`, and a merged row collects `sample_ids`; gated with ANTS-3765's amendment of the same day.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
@@ -694,7 +694,7 @@ bounds no bytes — `Note::detail` is a `QString` with no length rule of its own
 | Bound | Value | On breach |
 |---|---|---|
 | rows | 200 DISTINCT `(code, detail, source_index)` groups by default; the caller raises it with `max_notes`, clamped to `[1, 2000]` | `notes_truncated: true`; `notes_count` stays the TRUE total |
-| repetition | collapsed before the row cap (ANTS-4649) | `notes_collapsed: true`; the merged row carries `count` + up to 3 `sample_lines` and NO `line` |
+| repetition | collapsed before the row cap (ANTS-4649) | `notes_collapsed: true`; the merged row carries `count`, up to 3 `sample_lines` when a member has a non-zero `line`, up to 3 `sample_ids` when a member has an `id`, and NO `line` or `id` |
 | `detail` | 2048 characters each | that entry's `detail` is clipped to exactly 2048 with an ellipsis as the last character |
 
 **The detail bound is in CHARACTERS, not bytes** — corrected at implementation
@@ -806,7 +806,12 @@ names it at step 9 rather than leaving the sequence reading `envelope from
 
 `notes[]` is `Outcome::notes` grouped by `(code, detail, source_index)` in
 first-appearance order — one object per GROUP, each carrying `count` and its
-`source_index` verbatim including the `-1` sentinel (ANTS-3766 § 2.4). No note
+`source_index` verbatim including the `-1` sentinel (ANTS-3766 § 2.4). A row
+of one carries the note's `id` (ANTS-3765 § 2.11) when it is non-empty, and
+omits the key when it is empty. A merged row's samples come from its members in
+order: `sample_lines` from their `line`s, left out when every member's is `0`,
+since a load note has no line (ANTS-3765 § 2.11) and `[0, 0, 0]` names nothing;
+`sample_ids` from their non-empty `id`s, left out when there are none. No note
 CODE is filtered out: the load's notes are already a superset of the plan's, so
 one envelope covers the whole migration. Rows past `max_notes` ARE dropped,
 which is why `notes_summary` is tallied from `Outcome::notes` **before**
@@ -1064,7 +1069,13 @@ ANTS-3819).
   `(code, detail, source_index)` in first-appearance order, a row of one keeps
   the pre-ANTS-4649 shape exactly, and a merged row carries `count` plus up to
   three `sample_lines` and omits `line` — it has no single line and must not
-  claim one. EVERY row carries `count`. **When `notes_truncated` is `false` the counts sum
+  claim one. *(Amended 2026-10-02, ANTS-4656.)* A merged row whose members all
+  have `line` 0 omits `sample_lines`, and one whose members carry an `id`
+  carries up to three `sample_ids` and omits `id`; a row of one carries `id`
+  when it is non-empty. Asserted with two load-time `field_conflict` notes on
+  one column for two items: one row, `count` 2, `sample_ids` naming both ids in
+  order, no `sample_lines`. *Breaks when:* the group key takes the id into
+  account (two rows), or the samples are read from the first member only. EVERY row carries `count`. **When `notes_truncated` is `false` the counts sum
   to `notes_count`**, so the collapse is checkably lossless in aggregate; when
   it is `true` they sum to less, because rows were dropped, and `notes_summary`
   is what accounts for the difference. Asserting the sum unconditionally reds
