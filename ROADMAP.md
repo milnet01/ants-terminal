@@ -9966,7 +9966,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
   Lanes: spec, mcp.
 
-- 📋 [ANTS-5101] **Performance pass findings for the review engines and dispatcher (medium and low).**
+- ✅ [ANTS-5101] **Performance pass findings for the review engines and dispatcher (medium and low).**
   Filed separately: ANTS-5042, 5056, 5057, 5058; the mid-round
   Re-review click is in the dialog-chrome findings.
   Medium:
@@ -10000,6 +10000,15 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-14, user): the code is wrong. The contracts lane
   leaves the large logs out, as docs/specs/ANTS-3601.md § 2.7 says; the
   spec stays as written.
+  Resolved (2026-10-02): the cold-eyes contracts lane keeps the large
+  logs out of DocIntegrity::check, per ANTS-3601 section 2.7 and the
+  user's 2026-09-14 decision (ColdEyesEngine Ants5101*). The debt sweep
+  reports git_failed for a git that timed out, crashed or did not start
+  (DebtSweepEngine Ants5101GitFailureIsNotAClean). The stale-TODO check
+  blames only the TODO lines (Ants5101StaleTodoDeepInALargeFile).
+  Cold-eyes stale citations are cleared on re-partition (ColdEyesDialog
+  Ants5101*). All red first. Brief composition on the GUI thread moved
+  to ANTS-5624, a threading design across three dialogs.
   **Layman:** Smaller AI-review fixes: a timeout that isn't really a limit, unbounded replies, and slow brief building.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
@@ -11771,6 +11780,25 @@ extends an existing item, that item carries it instead.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.
   Lanes: mcp.
+
+- 📋 [ANTS-5624] **Compose review briefs off the GUI thread.**
+  Split from ANTS-5101 (2026-10-02). ReviewDialogBase's dispatcher runner
+  calls composeBrief(lane) on the GUI thread as each job starts
+  (src/reviewdialogbase.cpp). Each Independent Review brief re-splits
+  ROADMAP.md; each Cold-eyes brief runs DocIntegrity and hashes every
+  cited file.
+  Why it was not done inline: it is a threading design across three
+  dialogs (ColdEyes, IndieReview, TestAudit). Each composeBrief writes
+  dialog state (ColdEyesDialog fills m_staleByLane), two jobs run at once,
+  and a dialog closed mid-compose needs the worker cancelled or joined in
+  its destructor. Decide first: run composeBrief on a worker with the
+  writes moved to the GUI-thread completion, or keep it on the GUI thread
+  and cache the per-round work (one ROADMAP split, one DocIntegrity pass)
+  so each brief is cheap. The second is smaller and may be enough.
+  **Layman:** Stop the window freezing briefly while an AI review prepares each part of its work.
+  Kind: perf.
+  Source: code-quality-review-2026-09-11 perf pass (lane review-engines), split from ANTS-5101.
+  Lanes: review.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
