@@ -213,7 +213,7 @@ TEST(ClaudeSocketRuntimeDir, Inv2BadDirBindsNothing) {
 }
 
 // INV-3
-TEST(ClaudeSocketRuntimeDir, Inv3PickerScansBothDirs) {
+TEST(ClaudeSocketRuntimeDir, Inv3PickerIgnoresLegacyName) {
     Sandbox sb;
     ASSERT_TRUE(sb.ok());
     const QString pid = QString::number(::getpid());
@@ -229,13 +229,12 @@ TEST(ClaudeSocketRuntimeDir, Inv3PickerScansBothDirs) {
         srv.close();
         QFile::remove(path);
     }
-    {   // (b) only a legacy socket in tempPath()
+    {   // (b) a live socket under the legacy tempPath() name is not picked (ANTS-5587)
         const QString path = sb.b + QStringLiteral("/ants-terminal-mcp-") + pid;
         Collector srv;
         ASSERT_TRUE(srv.listen(path));
-        QString why;
-        EXPECT_EQ(mcpd::pickTerminalSocket(::getuid(), &why), path)
-            << "(b) legacy socket not picked; whyNot: " << why.toStdString();
+        EXPECT_EQ(mcpd::pickTerminalSocket(::getuid()), QString())
+            << "(b) a legacy tempPath() socket was picked";
         srv.close();
         QFile::remove(path);
     }
@@ -251,20 +250,20 @@ TEST(ClaudeSocketRuntimeDir, Inv3PickerScansBothDirs) {
 }
 
 // INV-5
-TEST(ClaudeSocketRuntimeDir, Inv5ScriptTriesBothPaths) {
+TEST(ClaudeSocketRuntimeDir, Inv5ScriptUsesExportedSocketOnly) {
     if (!haveTool("python3") || !haveTool("bash"))
         GTEST_SKIP() << "python3 or bash not installed";
     Sandbox sb;
     ASSERT_TRUE(sb.ok());
     sb.makeAntsDir(0700);
 
-    const QString script = ants::claude_setup::statusHookScript(sb.b);
+    const QString script = ants::claude_setup::statusHookScript();
     EXPECT_FALSE(script.isEmpty()) << "statusHookScript returned no text";
 
-    // Text checks: the peer-uid compare guards the one send both routes share,
-    // and the path reaches Python as argv, never spliced into its source.
+    // Text checks: the peer-uid compare guards the send, and the path reaches
+    // Python as argv, never spliced into its source.
     EXPECT_EQ(script.count(QStringLiteral("s.connect(")), 1)
-        << "expected exactly one socket connect shared by both routes";
+        << "expected exactly one socket connect";
     const int peer = script.indexOf(QStringLiteral("SO_PEERCRED"));
     const int uid  = script.indexOf(QStringLiteral("getuid"), peer);
     const int send = script.indexOf(QStringLiteral("sendall"));
@@ -302,7 +301,8 @@ TEST(ClaudeSocketRuntimeDir, Inv5ScriptTriesBothPaths) {
         EXPECT_EQ(srv.data(), payload)
             << "route 1: stdin not delivered to $ANTS_CLAUDE_HOOK_SOCKET";
     }
-    {   // Route 2: legacy <tempPath>/ants-claude-hooks-<pid> of an ants-terminal ancestor
+    {   // No route 2 (ANTS-5587): a legacy <tempPath>/ants-claude-hooks-<pid> of an
+        // ants-terminal ancestor receives nothing when the variable is unset.
         const QString fake = sb.base.path() + QStringLiteral("/ants-terminal");
         ASSERT_TRUE(QFile::copy(bash, fake));
         QFile::setPermissions(fake, QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -323,9 +323,10 @@ TEST(ClaudeSocketRuntimeDir, Inv5ScriptTriesBothPaths) {
         Collector srv;
         ASSERT_TRUE(srv.listen(sb.b + QStringLiteral("/ants-claude-hooks-")
                                + QString::number(pid)));
-        waitUntil([&] { return srv.data() == payload; }, 10000);
-        EXPECT_EQ(srv.data(), payload)
-            << "route 2: stdin not delivered to the legacy "
+        waitUntil([&] { return tree.state() == QProcess::NotRunning; }, 10000);
+        waitUntil([&] { return !srv.data().isEmpty(); }, 500);
+        EXPECT_TRUE(srv.data().isEmpty())
+            << "stdin was delivered to the legacy "
                "<tempPath>/ants-claude-hooks-<pid> of the ants-terminal ancestor";
         if (tree.state() != QProcess::NotRunning) {
             tree.kill();
@@ -340,7 +341,7 @@ TEST(ClaudeSocketRuntimeDir, Inv6RefreshOnlyWhatExists) {
     ASSERT_TRUE(sb.ok());
     const QString file = ConfigPaths::antsClaudeForwardScript();
     ASSERT_TRUE(file.startsWith(sb.home)) << "precondition: HOME drives the path: " << file.toStdString();
-    const QString expected = ants::claude_setup::statusHookScript(QDir::tempPath());
+    const QString expected = ants::claude_setup::statusHookScript();
 
     // Absent: nothing is created.
     ants::claude_setup::refreshStatusHookScript();
@@ -363,7 +364,7 @@ TEST(ClaudeSocketRuntimeDir, Inv6RefreshOnlyWhatExists) {
     in.close();
     EXPECT_FALSE(expected.isEmpty()) << "statusHookScript returned no text";
     EXPECT_EQ(now, expected.toUtf8())
-        << "a stale forwarder must be rewritten to statusHookScript(tempPath)";
+        << "a stale forwarder must be rewritten to statusHookScript()";
 
     // Up to date: untouched (mtime survives).
     const QDateTime past = QDateTime::currentDateTime().addDays(-30);
@@ -379,7 +380,7 @@ TEST(ClaudeSocketRuntimeDir, Inv6RefreshOnlyWhatExists) {
 }
 
 // INV-7
-TEST(ClaudeSocketRuntimeDir, Inv7SweepCoversBothDirs) {
+TEST(ClaudeSocketRuntimeDir, Inv7SweepCoversRuntimeDirOnly) {
     Sandbox sb;
     ASSERT_TRUE(sb.ok());
     sb.makeAntsDir(0700);
@@ -417,7 +418,8 @@ TEST(ClaudeSocketRuntimeDir, Inv7SweepCoversBothDirs) {
     mcpd::reapStaleTerminalSockets(::getpid());
 
     EXPECT_FALSE(QFileInfo::exists(deadA)) << "dead-pid socket in the runtime dir survived";
-    EXPECT_FALSE(QFileInfo::exists(deadB)) << "dead-pid socket in tempPath() survived";
+    EXPECT_TRUE(QFileInfo::exists(deadB))
+        << "a socket under the legacy tempPath() name was swept (ANTS-5587)";
     EXPECT_TRUE(QFileInfo::exists(initA)) << "pid 1 (EPERM, live) was removed";
     EXPECT_TRUE(QFileInfo::exists(selfA)) << "self's socket was removed";
     EXPECT_TRUE(QFileInfo::exists(plantedB))

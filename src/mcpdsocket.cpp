@@ -16,20 +16,16 @@ namespace mcpd {
 
 namespace {
 
-// ANTS-5236 § 2.4 — every terminal MCP socket name, in the private runtime
-// directory (mcp-<pid>) and under the legacy /tmp name a terminal started
-// before ANTS-5236 still binds (ants-terminal-mcp-<pid>).
+// ANTS-5236 § 2.4 — every terminal MCP socket name (mcp-<pid>) in the
+// private runtime directory. The legacy /tmp name is no longer read (ANTS-5587).
 QStringList terminalSocketCandidates() {
     QStringList paths;
-    const auto add = [&paths](const QString &dirPath, const QString &glob) {
-        if (dirPath.isEmpty()) return;
-        const QDir dir(dirPath);
-        for (const QString &name : dir.entryList(QStringList{glob},
-                 QDir::System | QDir::Files | QDir::Hidden))
-            paths << dir.filePath(name);
-    };
-    add(ConfigPaths::antsRuntimeDir(), QStringLiteral("mcp-*"));
-    add(QDir::tempPath(), QStringLiteral("ants-terminal-mcp-*"));
+    const QString dirPath = ConfigPaths::antsRuntimeDir();
+    if (dirPath.isEmpty()) return paths;
+    const QDir dir(dirPath);
+    for (const QString &name : dir.entryList(QStringList{QStringLiteral("mcp-*")},
+             QDir::System | QDir::Files | QDir::Hidden))
+        paths << dir.filePath(name);
     return paths;
 }
 
@@ -96,8 +92,7 @@ QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {
     if (best.isEmpty() && whyNot) {
         *whyNot = foreign > 0
             ? QStringLiteral("no terminal socket owned by uid %1; %2 owned by another uid skipped (uid check)").arg(expectedUid).arg(foreign)
-            : QStringLiteral("no mcp-* socket in %1 and no ants-terminal-mcp-* socket in %2")
-                  .arg(ConfigPaths::antsRuntimeDir(), QDir::tempPath());
+            : QStringLiteral("no mcp-* socket in %1").arg(ConfigPaths::antsRuntimeDir());
     }
     return best;
 }

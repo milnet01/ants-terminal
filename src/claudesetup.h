@@ -34,9 +34,8 @@ Status  statusHooksStatus();
 Outcome installStatusHooks();
 
 // ANTS-5236 § 2.3 — the forwarder script's text. It sends to
-// $ANTS_CLAUDE_HOOK_SOCKET, else to <legacyDir>/ants-claude-hooks-<pid> of
-// the nearest ants-terminal ancestor (a terminal started before ANTS-5236).
-QString statusHookScript(const QString &legacyDir);
+// $ANTS_CLAUDE_HOOK_SOCKET and to nothing else (ANTS-5587).
+QString statusHookScript();
 // Rewrite an installed forwarder whose bytes are stale. Never creates it.
 Outcome refreshStatusHookScript();
 

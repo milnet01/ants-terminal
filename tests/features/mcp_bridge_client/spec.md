@@ -20,5 +20,5 @@ bridge is the client's only process — anything that raises kills it.
 ## How it is tested
 
 `test_mcp_bridge_client.py` imports the bridge as a module for INV-1 and
-INV-2 (pointing `SOCK_GLOB` at a temp dir), and runs it as a subprocess
+INV-2 (pointing `RUNTIME_SOCK_GLOB` at a temp dir), and runs it as a subprocess
 for INV-3.

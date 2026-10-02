@@ -1,6 +1,7 @@
 # ANTS-5236 — Bind the Claude hook and MCP sockets in the private runtime directory
 
-**Status:** accepted (2026-10-01).
+**Status:** accepted (2026-10-01); amended 2026-10-02 — the legacy `/tmp`
+readers were removed one release later (ANTS-5587).
 **Kind:** security.
 **Source:** ROADMAP.md ANTS-5236 (code-quality-review-2026-09-11 perf pass,
 lane claude-integration-a, via ANTS-5089).
@@ -80,9 +81,8 @@ private, so it is an acceptable home. Its name is guessable, though: where
 another user holds it, both servers stay off, as a squat stops them today.
 Sessions with a working `XDG_RUNTIME_DIR` do not reach that case.
 
-The terminal never binds a legacy path again. Legacy paths are only READ, by
-the clients in § 2.3 and § 2.4, so a terminal started before this change stays
-reachable until it is relaunched.
+The terminal never binds a legacy path again. Since ANTS-5587 no client reads
+one either.
 
 ### 2.2 The terminal side
 
@@ -104,8 +104,7 @@ reachable until it is relaunched.
 - The stale-socket sweep moves out of that function into
   `mcpd::reapStaleTerminalSockets(pid_t self)` (`src/mcpdsocket.cpp`, which
   `ants_mcpcore_lib` builds and the terminal links), so a test can call it. It
-  runs over both directories, `mcp-*` in `antsRuntimeDir()` and
-  `ants-terminal-mcp-*` in `tempPath()`. Its rules are unchanged: skip `self`,
+  runs over `mcp-*` in `antsRuntimeDir()`. Its rules are unchanged: skip `self`,
   skip a live pid, remove only through `safeToUnlinkLocalSocket`.
 
 ### 2.3 The hook forwarder script
@@ -114,39 +113,35 @@ The script text moves into one function that both writers use:
 
 ```cpp
 // src/claudesetup.h
-QString statusHookScript(const QString &legacyDir);
+QString statusHookScript();
 Outcome refreshStatusHookScript();   // rewrite an installed forwarder when stale
 ```
 
-- The script sends to `$ANTS_CLAUDE_HOOK_SOCKET` when that names a socket.
-  Otherwise it walks up to the nearest `ants-terminal` as today and tries the
-  legacy `<legacyDir>/ants-claude-hooks-$pid`, which is how a pre-change
-  terminal is reached. The terminal writes it with `QDir::tempPath()`, the
-  directory a pre-change terminal bound in. No runtime directory is baked in,
-  so terminals with different environments write the same bytes.
-- The `SO_PEERCRED` uid check stays, for both candidates.
+- The script sends to `$ANTS_CLAUDE_HOOK_SOCKET` when that names a socket, and
+  otherwise sends nothing. No runtime directory is baked in, so terminals with
+  different environments write the same bytes.
+- The `SO_PEERCRED` uid check stays.
 - The socket path reaches Python as `argv[1]`, not spliced into the Python
   source, so a path containing a quote cannot change the program.
 - `refreshStatusHookScript()` runs at start-up, before `startHookServer()`. It
   writes the script only where the forwarder file already exists and its bytes
-  differ from `statusHookScript(QDir::tempPath())`. It never creates the
+  differ from `statusHookScript()`. It never creates the
   file and never touches `~/.claude/settings.json`, so a user who never installed
   the hooks is not opted in.
 
 ### 2.4 The MCP clients
 
 - `mcpd::pickTerminalSocket` keeps its `ANTS_MCP_SOCKET` override unchanged.
-  Without it, it ranks candidates from both directories in one list: `mcp-*` in
-  `antsRuntimeDir()` and `ants-terminal-mcp-*` in `tempPath()`. The ranking and
-  the per-candidate checks do not change: `lstat` socket owned by the uid, live
-  pid first, then newest mtime. The `whyNot` text names both directories.
+  Without it, it ranks the `mcp-*` candidates in `antsRuntimeDir()`. The ranking
+  and the per-candidate checks do not change: `lstat` socket owned by the uid,
+  live pid first, then newest mtime. The `whyNot` text names the directory.
 - `tools/mcp-bridge.py::pick_socket` does the same, with
   `$XDG_RUNTIME_DIR/ants-terminal/mcp-*` checked when `XDG_RUNTIME_DIR` is set.
-  That pattern is a module variable beside `SOCK_GLOB`, so a test can point it
-  elsewhere. The bridge is kept through the next release only (ANTS-5308), so  it gets no equivalent of Qt's fallback, and misses a terminal that took it.
+  That pattern is the module variable `RUNTIME_SOCK_GLOB`, so a test can point
+  it elsewhere. The bridge is kept through the next release only (ANTS-5308), so  it gets no equivalent of Qt's fallback, and misses a terminal that took it.
 - Outside an Ants tab, both pickers resolve the runtime directory from their
   own environment. A picker whose environment resolves it differently from the
-  terminal's finds only a pre-change terminal. That case is accepted.
+  terminal's finds nothing. That case is accepted.
 
 ### 2.5 How it reaches a running terminal
 
@@ -177,31 +172,34 @@ its next launch. Until then:
   `ensureSocketDir`. *Test:*
   `tests/features/claude_socket_runtime_dir/` case `Inv2BadDirBindsNothing`.
 - **INV-3** — `pickTerminalSocket` returns a live socket in the runtime
-  directory, and still returns a live legacy socket in `tempPath()` when that is
-  the only one. It skips a candidate in either directory that is not a socket
-  owned by the uid. Broken by scanning one directory only. *Test:*
-  `tests/features/claude_socket_runtime_dir/` case `Inv3PickerScansBothDirs`.
+  directory, never a live socket under the legacy `tempPath()` name, and skips
+  a candidate that is not a socket owned by the uid. Broken by reading the
+  legacy name. *Test:* `tests/features/claude_socket_runtime_dir/` case
+  `Inv3PickerIgnoresLegacyName`.
 - **INV-4** — `mcp-bridge.py`'s `pick_socket` finds a socket in
-  `$XDG_RUNTIME_DIR/ants-terminal/` and in the legacy glob. Broken by keeping
-  the single `SOCK_GLOB`. *Test:*
+  `$XDG_RUNTIME_DIR/ants-terminal/` and never one under the legacy
+  `/tmp/ants-terminal-mcp-*` name. Broken by reading that glob. *Test:*
   `tests/features/mcp_bridge_client/test_mcp_bridge_client.py`.
-- **INV-5** — The script from `statusHookScript(legacy)` delivers stdin to
-  `$ANTS_CLAUDE_HOOK_SOCKET` when that socket exists, and to
-  `<legacy>/ants-claude-hooks-<pid>` when the variable is unset. Broken by
-  dropping either route. *Test:* `tests/features/claude_socket_runtime_dir/`
-  case `Inv5ScriptTriesBothPaths`, which runs the script against listening
+- **INV-5** — The script from `statusHookScript()` delivers stdin to
+  `$ANTS_CLAUDE_HOOK_SOCKET` when that socket exists, and with the variable
+  unset delivers nothing, even to a listening legacy
+  `<tempPath>/ants-claude-hooks-<pid>` of an `ants-terminal` ancestor. Broken
+  by dropping the variable route or keeping the ancestor walk. *Test:*
+  `tests/features/claude_socket_runtime_dir/` case
+  `Inv5ScriptUsesExportedSocketOnly`, which runs the script against listening
   sockets with a fake process tree. The peer-uid check cannot be exercised by
   a single-user test, so the case also checks the script text: the uid compare
-  guards the one send both routes share.
+  guards the send.
 - **INV-6** — `refreshStatusHookScript()` rewrites an existing forwarder whose
   bytes differ, leaves an up-to-date one untouched, and creates nothing when
   the file is absent. Broken by creating the file, or by rewriting unchanged
   bytes. *Test:* `tests/features/claude_socket_runtime_dir/` case
   `Inv6RefreshOnlyWhatExists`.
 - **INV-7** — `mcpd::reapStaleTerminalSockets` removes a dead-pid socket in
-  each directory and keeps a live one and `self`'s. Broken by sweeping one directory only.
-  *Test:* `tests/features/claude_socket_runtime_dir/` case
-  `Inv7SweepCoversBothDirs`.
+  the runtime directory, keeps a live one and `self`'s, and leaves the legacy
+  `tempPath()` name alone. Broken by skipping the runtime directory, or by
+  sweeping the legacy name. *Test:* `tests/features/claude_socket_runtime_dir/`
+  case `Inv7SweepCoversRuntimeDirOnly`.
 - **INV-9** — `mainwindow.cpp` exports `ANTS_CLAUDE_HOOK_SOCKET` exactly once,
   after a successful `startHookServer()` and before the first `newTab()`.
   Broken by exporting before the bind, or not at all. *Test:*
@@ -219,9 +217,6 @@ feature test joins an existing bundle.
 
 ## 5. Out of scope
 
-- Removing the legacy `/tmp` readers from the picker, the bridge and the
-  script. They exist for terminals started before this change, so they can go
-  one release after it ships (ANTS-5587).
 - Flatpak. Inside the sandbox the runtime directory is the app's own, and
   whether host-side clients can reach it is ANTS-5527's question.
 - The remote-control socket. It is already in the runtime directory

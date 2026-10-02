@@ -26,6 +26,10 @@ for security-relevant changes.
 
 - **A narrow Roadmap window keeps section titles readable: the date columns wrap between words instead of squeezing titles into a word-wide strip** (ANTS-5610)
 
+### Security
+
+- **Claude Code tools no longer look for the terminal's connection points in the shared /tmp folder; they use only the private per-user folder introduced in 0.7.113.** (ANTS-5587)
+
 ## [0.7.113] - 2026-10-01
 
 **Theme:** A tidier, faster Roadmap window. Everything lines up in

@@ -11594,7 +11594,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-19 (ANTS-5215 follow-up).
   Lanes: terminal.
 
-- 📋 [ANTS-5587] **Remove the legacy /tmp socket readers one release after ANTS-5236 ships.**
+- ✅ [ANTS-5587] **Remove the legacy /tmp socket readers one release after ANTS-5236 ships.**
   ANTS-5236 moves the hook and MCP sockets into the private runtime
   directory and keeps three readers of the old /tmp names so a terminal
   started before the change stays reachable: mcpd::pickTerminalSocket,
@@ -11602,6 +11602,15 @@ extends an existing item, that item carries it instead.
   route. Once one release has shipped with the move, drop them and the
   legacy half of mcpd::reapStaleTerminalSockets. Contract:
   docs/specs/ANTS-5236-sockets-in-runtime-dir.md § 5.
+  Resolved (2026-10-02): ANTS-5236 shipped in 0.7.113, so the legacy
+  /tmp readers are gone — mcpd::pickTerminalSocket and
+  reapStaleTerminalSockets read only mcp-* in the runtime dir,
+  mcp-bridge.py drops SOCK_GLOB, and statusHookScript() sends only to
+  $ANTS_CLAUDE_HOOK_SOCKET (no ancestor walk). Tests flipped first and
+  proven red (Inv3, Inv5, Inv7, bridge INV-4), then green 7/7 + 8/8.
+  Spec ANTS-5236 amended to match. Reaches a running terminal on its
+  next start (the forwarder is refreshed at start-up); ants-mcpd on
+  rebuild + /mcp reconnect.
   **Layman:** After everyone has restarted on the new version, stop looking for Claude connection points in the old shared folder.
   Kind: security.
   Source: ANTS-5236 spec § 5 deferral (2026-10-01).

@@ -22,18 +22,16 @@ with tempfile.TemporaryDirectory() as d:
     real = os.path.join(d, "real.sock")
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(real); srv.listen(1)
-    link = os.path.join(d, f"ants-terminal-mcp-{os.getpid()}")
+    link = os.path.join(d, f"mcp-{os.getpid()}")
     os.symlink(real, link)
-    bridge.SOCK_GLOB = os.path.join(d, "ants-terminal-mcp-*")
-    bridge.RUNTIME_SOCK_GLOB = os.path.join(d, "rt-none", "mcp-*")
+    bridge.RUNTIME_SOCK_GLOB = os.path.join(d, "mcp-*")
     os.environ.pop("ANTS_MCP_SOCKET", None)
     picked = bridge.pick_socket()
     check(picked == "", "INV-1 picker skips a symlink named like an Ants socket", repr(picked))
     srv.close()
 
-# ANTS-5236 INV-4 — pick_socket finds a socket in the runtime directory and in
-# the legacy glob. The implementer must name the runtime pattern
-# RUNTIME_SOCK_GLOB (a module variable beside SOCK_GLOB).
+# ANTS-5236 INV-4 — pick_socket finds a socket in the runtime directory, and
+# (ANTS-5587) never one under the legacy /tmp name.
 def listening(path):
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.bind(path); s.listen(1)
@@ -47,17 +45,19 @@ with tempfile.TemporaryDirectory() as d:
     want = os.path.join(rt, f"mcp-{os.getpid()}")
     srv = listening(want)
     bridge.RUNTIME_SOCK_GLOB = os.path.join(rt, "mcp-*")
-    bridge.SOCK_GLOB = os.path.join(legacy, "ants-terminal-mcp-*")
     picked = bridge.pick_socket()
     check(picked == want, "INV-4 picker finds a socket in the runtime directory",
           f"expected {want!r}, got {picked!r}")
     srv.close(); os.unlink(want)
-    # (b) only in the legacy glob
-    want = os.path.join(legacy, f"ants-terminal-mcp-{os.getpid()}")
-    srv = listening(want)
+    # (b) only under the legacy name, which is no longer read (ANTS-5587)
+    bridge.RUNTIME_SOCK_GLOB = os.path.join(rt, "mcp-*")
+    old = os.path.join(legacy, f"ants-terminal-mcp-{os.getpid()}")
+    if hasattr(bridge, "SOCK_GLOB"):  # a bridge that still reads the old name
+        bridge.SOCK_GLOB = os.path.join(legacy, "ants-terminal-mcp-*")
+    srv = listening(old)
     picked = bridge.pick_socket()
-    check(picked == want, "INV-4 picker still finds a legacy socket",
-          f"expected {want!r}, got {picked!r}")
+    check(picked == "", "INV-4 picker ignores a legacy /tmp-name socket",
+          f"expected '', got {picked!r}")
     srv.close()
 
 # INV-2

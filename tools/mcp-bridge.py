@@ -11,8 +11,7 @@
 #   claude mcp add ants -- /mnt/Games/Scripts/Linux/Ants_Terminal/tools/mcp-bridge.py
 #
 # Socket selection: $ANTS_MCP_SOCKET overrides; otherwise the newest
-# $XDG_RUNTIME_DIR/ants-terminal/mcp-* socket, or legacy
-# /tmp/ants-terminal-mcp-* one (ANTS-5236), by mtime wins. Multi-instance users
+# $XDG_RUNTIME_DIR/ants-terminal/mcp-* socket (ANTS-5236) by mtime wins. Multi-instance users
 # wanting to pin a specific tab can `export ANTS_MCP_SOCKET=...`
 # before launching Claude Code.
 
@@ -24,7 +23,6 @@ import socket
 import struct
 import sys
 
-SOCK_GLOB = "/tmp/ants-terminal-mcp-*"
 # ANTS-5236 — where a terminal binds since the move. Qt's own fallback, used
 # when XDG_RUNTIME_DIR is unset or unusable, is not followed: this bridge is
 # kept for one release only (ANTS-5308).
@@ -67,9 +65,7 @@ def pick_socket() -> str:
     # connect" the user sees in `claude mcp list`.
     from stat import S_ISSOCK
     candidates = []
-    paths = glob.glob(SOCK_GLOB)
-    if RUNTIME_SOCK_GLOB:
-        paths += glob.glob(RUNTIME_SOCK_GLOB)
+    paths = glob.glob(RUNTIME_SOCK_GLOB) if RUNTIME_SOCK_GLOB else []
     for p in paths:
         # lstat, not stat: a co-tenant can plant a symlink at a live-PID
         # name pointing at any socket we own, and stat would follow it.
@@ -79,13 +75,13 @@ def pick_socket() -> str:
             continue
         if not S_ISSOCK(st.st_mode):
             continue
-        # Only connect to a socket we own. /tmp is world-writable + sticky,
-        # so a co-tenant could pre-create an AF_UNIX listener at a live-PID
+        # Only connect to a socket we own. A runtime dir Qt falls back to may
+        # sit under world-writable /tmp, so a co-tenant could pre-create an AF_UNIX listener at a live-PID
         # path and intercept our request stream. The C++ server enforces the
         # peer UID via SO_PEERCRED; the client must mirror it. indie-review-2026-05-21.
         if st.st_uid != os.getuid():
             continue
-        # Path shape: .../ants-terminal-mcp-<PID> or .../mcp-<PID>
+        # Path shape: .../mcp-<PID>
         pid_str = p.rsplit("-", 1)[-1]
         live = False
         try:

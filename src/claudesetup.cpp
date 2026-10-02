@@ -234,10 +234,7 @@ Status statusHooksStatus() {
 // ANTS-5236 § 2.3. No runtime directory is baked in: each terminal exports
 // its own socket as ANTS_CLAUDE_HOOK_SOCKET, so terminals whose environments
 // resolve that directory differently still write the same bytes here.
-QString statusHookScript(const QString &legacyDir) {
-    // Single-quoted for bash, so no character in the path is interpreted.
-    QString quoted = legacyDir;
-    quoted.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+QString statusHookScript() {
     // Python3 for the socket send: every Linux desktop that runs Claude Code
     // has it, where socat is not universal. Timeouts keep a slow hook from
     // blocking Claude Code's turn. The path reaches Python as argv[1], never
@@ -245,49 +242,31 @@ QString statusHookScript(const QString &legacyDir) {
     return QStringLiteral(
         "#!/bin/bash\n"
         "# Ants Terminal — Claude Code hook forwarder.\n"
-        "# Sends the hook event JSON on stdin to the terminal's Unix socket:\n"
-        "# $ANTS_CLAUDE_HOOK_SOCKET, exported by the terminal this session runs\n"
-        "# in, else the legacy name of the nearest ants-terminal ancestor (a\n"
-        "# terminal started before ANTS-5236).\n"
-        "legacy='%1'\n"
-        "sock=\"\"\n"
-        "if [[ -S \"${ANTS_CLAUDE_HOOK_SOCKET:-}\" ]]; then\n"
-        "    sock=\"$ANTS_CLAUDE_HOOK_SOCKET\"\n"
-        "else\n"
-        "    pid=$PPID\n"
-        "    for _ in $(seq 1 20); do\n"
-        "        comm=$(cat /proc/$pid/comm 2>/dev/null) || break\n"
-        "        if [[ \"$comm\" == \"ants-terminal\" && -S \"$legacy/ants-claude-hooks-$pid\" ]]; then\n"
-        "            sock=\"$legacy/ants-claude-hooks-$pid\"\n"
-        "            break\n"
-        "        fi\n"
-        "        ppid=$(awk '{print $4}' /proc/$pid/stat 2>/dev/null) || break\n"
-        "        [[ -z \"$ppid\" || \"$ppid\" -le 1 ]] && break\n"
-        "        pid=$ppid\n"
-        "    done\n"
-        "fi\n"
-        "[[ -n \"$sock\" ]] || exit 0\n"
+        "# Sends the hook event JSON on stdin to the terminal's Unix socket,\n"
+        "# $ANTS_CLAUDE_HOOK_SOCKET, exported by the terminal this session runs in.\n"
+        "sock=\"${ANTS_CLAUDE_HOOK_SOCKET:-}\"\n"
+        "[[ -S \"$sock\" ]] || exit 0\n"
         "timeout 1 python3 -c \"\n"
         "import os, socket, struct, sys\n"
         "s = socket.socket(socket.AF_UNIX)\n"
         "s.settimeout(1.0)\n"
         "s.connect(sys.argv[1])\n"
         // Send the hook event (commands, file paths) only to a socket this
-        // user's process is listening on, whichever route named it.
+        // user's process is listening on.
         "u = struct.unpack('3i', s.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]\n"
         "if u != os.getuid(): sys.exit(0)\n"
         "s.sendall(sys.stdin.buffer.read())\n"
         "s.shutdown(socket.SHUT_WR)\n"
         "s.close()\n"
         "\" \"$sock\" 2>/dev/null\n"
-        "exit 0\n").arg(quoted);
+        "exit 0\n");
 }
 
 Outcome refreshStatusHookScript() {
     const QString scriptPath = ConfigPaths::antsClaudeForwardScript();
     if (!QFileInfo::exists(scriptPath))
         return {true, QStringLiteral("Hooks not installed; nothing to refresh.")};
-    const QByteArray wanted = statusHookScript(QDir::tempPath()).toUtf8();
+    const QByteArray wanted = statusHookScript().toUtf8();
     QFile current(scriptPath);
     if (current.open(QIODevice::ReadOnly) && current.readAll() == wanted)
         return {true, QStringLiteral("Hook forwarder is up to date.")};
@@ -296,7 +275,7 @@ Outcome refreshStatusHookScript() {
 
 Outcome installStatusHooks() {
     const QString scriptPath = ConfigPaths::antsClaudeForwardScript();
-    Outcome wrote = writeScript(scriptPath, statusHookScript(QDir::tempPath()));
+    Outcome wrote = writeScript(scriptPath, statusHookScript());
     if (!wrote.ok) return wrote;
 
     const QString settingsPath = claudeSettingsPath();
