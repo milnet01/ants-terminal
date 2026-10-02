@@ -2520,6 +2520,40 @@ bool RoadmapStore::reassignItemId(qint64 itemPk, const QString &newId, QString *
     return true;
 }
 
+std::optional<bool> RoadmapStore::markIdParsed(qint64 itemPk, QString *error) {
+    QSqlQuery cur(m_db);
+    cur.prepare(QStringLiteral(
+        "SELECT provenance FROM item WHERE item_pk = ? AND id_origin = 'synthesised'"));
+    cur.addBindValue(itemPk);
+    if (!cur.exec()) {
+        if (error)
+            *error = lastErr(cur);
+        return std::nullopt;
+    }
+    if (!cur.next())
+        return false;   // not synthesised, or no such row: nothing to mark
+
+    // Merged, not replaced: every other key keeps its provenance (§ 2.6).
+    QJsonObject prov =
+        QJsonDocument::fromJson(cur.value(0).toString().toUtf8()).object();
+    prov.insert(QStringLiteral("id"), QStringLiteral("asserted"));
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE item SET id_origin = 'parsed', provenance = ? "
+                             "WHERE item_pk = ? AND id_origin = 'synthesised'"));
+    q.addBindValue(canonicalJson(prov));
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (q.numRowsAffected() != 1)
+        return false;
+    m_writtenItems.insert(itemPk);   // ANTS-4628
+    return true;
+}
+
 bool RoadmapStore::raiseIdHighWater(qint64 projectId, const QString &prefix,
                                     qint64 highWater, QString *error) {
     // Upward only, expressed in the UPSERT rather than in a read-then-write:

@@ -84,14 +84,18 @@ tested apart from is not a seam.
   and 200 DISTINCT `(code, detail, source_index)` rows BY DEFAULT after
   ANTS-4649 collapses repetition — `max_notes` moves that bound, clamped to
   `[1, 2000]`, and `notes_summary` maps each note `code` to its total count
-  across all notes before the cap. A merged row carries `count` + up to three
-  `sample_lines` and no `line`; every row carries `count`, and when
+  across all notes before the cap. A merged row carries `count`, the first
+  three non-zero lines as `sample_lines` and the first three non-empty ids as
+  `sample_ids` (each left out when empty), and no `line` or `id`; a row of one
+  carries `id` when its note has one (ANTS-4656); every row carries `count`, and when
   `notes_truncated` is `false` the counts sum to `notes_count`. Do not assert
   that sum unconditionally: on a truncating run the shown rows sum to less.
-  THREE legs, not two: the collapse fixture, the 2048-character `detail`
-  fixture, and a fixture of >200 bullets with non-grammatical id tokens, whose
-  `quarantined_id` details are unique so nothing collapses — that one is the
-  only leg that exercises `max_notes` and `notes_summary`.
+  FOUR legs: the collapse fixture, the 2048-character `detail` fixture, a
+  fixture of >200 bullets with non-grammatical id tokens, whose
+  `quarantined_id` details are unique so nothing collapses — the only leg that
+  exercises `max_notes` and `notes_summary` — and a re-run where two items
+  lose their `Kind:` line, whose two `field_conflict` notes collapse into one
+  row with `sample_ids` and no `sample_lines`.
   `notes_collapsed` (rows MERGED, nothing lost) and `notes_truncated` (rows
   DROPPED, unrecoverable) are two facts and stay two fields.
 

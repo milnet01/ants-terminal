@@ -74,6 +74,10 @@ QJsonObject noteToJson(const RoadmapMigrate::Note &n) {
     // file that is NOT a source indexes nothing, and defaulting it to 0 would
     // have it claim to be about the live roadmap.
     o[QStringLiteral("source_index")] = n.sourceIndex;
+    // ANTS-4656 — present only when set (field_conflict), so every other
+    // note keeps its shape.
+    if (!n.id.isEmpty())
+        o[QStringLiteral("id")] = n.id;
     return o;
 }
 
@@ -92,9 +96,9 @@ QJsonObject noteToJson(const RoadmapMigrate::Note &n) {
 //
 // Rows are keyed by (code, detail, source_index) and keep first-appearance
 // order. A row of one keeps the old shape exactly, so a genuine one-off is
-// untouched; a merged row carries `count` + up to kMaxNoteSampleLines
-// `sample_lines` and NO `line`, because it has no single line and must not
-// claim one. Every row carries `count`, so when nothing was DROPPED the counts
+// untouched; a merged row carries `count`, up to kMaxNoteSampleLines non-zero
+// `sample_lines` and non-empty `sample_ids` (ANTS-4656), and NO `line` or `id`,
+// because it has no single line or item and must not claim one. Every row carries `count`, so when nothing was DROPPED the counts
 // sum to `notes_count` and the collapse is checkably lossless in aggregate.
 //
 // ANTS-4559 — `maxNotes` is the caller's row bound, already clamped by run(),
@@ -110,7 +114,14 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
     struct Group {
         RoadmapMigrate::Note first;
         int         count = 0;
-        QJsonArray  sampleLines;
+        QJsonArray  sampleLines;   // first non-zero lines: 0 names nothing
+        QJsonArray  sampleIds;     // ANTS-4656 — first non-empty ids
+    };
+    const auto sample = [](Group &g, const RoadmapMigrate::Note &n) {
+        if (n.line != 0 && g.sampleLines.size() < kMaxNoteSampleLines)
+            g.sampleLines.append(n.line);
+        if (!n.id.isEmpty() && g.sampleIds.size() < kMaxNoteSampleLines)
+            g.sampleIds.append(n.id);
     };
     QVector<Group>      groups;
     QHash<QString, int> indexOf;          // key → position in `groups`
@@ -124,13 +135,13 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
             Group g;
             g.first = n;
             g.count = 1;
-            g.sampleLines.append(n.line);
+            sample(g, n);
             groups.append(g);
             continue;
         }
         Group &g = groups[at.value()];
         ++g.count;
-        if (g.sampleLines.size() < kMaxNoteSampleLines) g.sampleLines.append(n.line);
+        sample(g, n);
     }
 
     bool collapsed = false;
@@ -143,7 +154,11 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
         if (g.count > 1) {
             collapsed = true;
             o.remove(QStringLiteral("line"));
-            o[QStringLiteral("sample_lines")] = g.sampleLines;
+            o.remove(QStringLiteral("id"));
+            if (!g.sampleLines.isEmpty())
+                o[QStringLiteral("sample_lines")] = g.sampleLines;
+            if (!g.sampleIds.isEmpty())
+                o[QStringLiteral("sample_ids")] = g.sampleIds;
         }
         arr.append(o);
     }

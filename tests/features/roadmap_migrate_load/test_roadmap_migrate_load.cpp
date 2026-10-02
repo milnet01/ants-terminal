@@ -16,6 +16,8 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMap>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -1855,4 +1857,169 @@ TEST(RoadmapMigrateLoad, Ants4507SourceDifferingOnlyByItsStopIsUnchanged) {
     const auto moved = RoadmapMigrateLoad::load(f.store, planOf({third}), f.opts(true));
     ASSERT_TRUE(moved.ok) << moved.error.toStdString();
     EXPECT_EQ(moved.itemsUpdated, 1);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-4343 — INV-19. A synthesised row the source starts declaring becomes
+// `parsed`, and no other origin moves. The plans are constructed: no parsed
+// source yields an id-bearing item with idOrigin `synthesised`, which is the
+// stored state legs (a) and (d) need.
+namespace {
+
+PlannedItem withOrigin(const QString &id, const QString &origin,
+                       const QString &provId) {
+    PlannedItem it = item(id, QStringLiteral("Same headline"), QStringLiteral("s"), 0);
+    it.idOrigin = origin;
+    it.provenance.insert(QStringLiteral("id"), provId);
+    return it;
+}
+
+QString idProvenance(Fixture &f) {
+    return QJsonDocument::fromJson(
+               f.scalar(QStringLiteral("SELECT provenance FROM item")).toUtf8())
+        .object()
+        .value(QStringLiteral("id"))
+        .toString();
+}
+
+}  // namespace
+
+TEST(RoadmapMigrateLoad, Inv19SynthesisedRowTheSourceDeclaresBecomesParsed) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const auto first = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({withOrigin(QStringLiteral("X-1"), QStringLiteral("synthesised"),
+                           QStringLiteral("migrated"))}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    ASSERT_EQ(f.scalar(QStringLiteral("SELECT id_origin FROM item")),
+              QStringLiteral("synthesised"));
+
+    const MigrationPlan declared = planOf(
+        {withOrigin(QStringLiteral("X-1"), QStringLiteral("parsed"), QStringLiteral("asserted"))});
+    const auto second = RoadmapMigrateLoad::load(f.store, declared, f.opts());
+    ASSERT_TRUE(second.ok) << second.error.toStdString();
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT id_origin FROM item")), QStringLiteral("parsed"));
+    EXPECT_EQ(idProvenance(f), QStringLiteral("asserted"));
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT COUNT(*) FROM history WHERE field = 'id_origin'")),
+              QStringLiteral("1"));
+    EXPECT_EQ(second.itemsUpdated, 1);
+    EXPECT_EQ(second.itemsUpdatedGoverned, 0);
+    ASSERT_EQ(second.updatedItems.size(), 1);
+    EXPECT_TRUE(second.updatedItems.first().fields.contains(QStringLiteral("id_origin")));
+
+    // A re-run over the same source finds `parsed` and writes nothing.
+    const auto third = RoadmapMigrateLoad::load(f.store, declared, f.opts());
+    ASSERT_TRUE(third.ok) << third.error.toStdString();
+    EXPECT_EQ(third.itemsUpdated, 0);
+    EXPECT_EQ(f.count(QStringLiteral("history")), 1);
+}
+
+// Leg (b) — § 2.6.1's fallback: an allocated `-S` row re-matched by headline
+// under a hand-written id takes that id AND becomes `parsed`.
+TEST(RoadmapMigrateLoad, Inv19FallbackReassignmentAlsoBecomesParsed) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const auto first = RoadmapMigrateLoad::load(
+        f.store, planOf({item({}, QStringLiteral("Same headline"), QStringLiteral("s"), 0)}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    ASSERT_EQ(f.scalar(QStringLiteral("SELECT id_origin FROM item")),
+              QStringLiteral("synthesised"));
+
+    const auto second = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QStringLiteral("PROJ-0007"), QStringLiteral("Same headline"),
+                              QStringLiteral("s"), 0)}),
+        f.opts());
+    ASSERT_TRUE(second.ok) << second.error.toStdString();
+    EXPECT_EQ(f.count(QStringLiteral("item")), 1);
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT id FROM item")), QStringLiteral("PROJ-0007"));
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT id_origin FROM item")), QStringLiteral("parsed"));
+    EXPECT_EQ(idProvenance(f), QStringLiteral("asserted"));
+}
+
+// Legs (c) and (d) — no other transition: `quarantined` is not upgraded, and
+// `parsed` is never downgraded.
+TEST(RoadmapMigrateLoad, Inv19NoOtherOriginTransitionIsWritten) {
+    const struct {
+        const char *stored;
+        const char *plan;
+    } legs[] = {{"quarantined", "parsed"}, {"parsed", "quarantined"}};
+    for (const auto &leg : legs) {
+        Fixture f;
+        QString err;
+        ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+        const QString stored = QString::fromLatin1(leg.stored);
+        const auto first = RoadmapMigrateLoad::load(
+            f.store,
+            planOf({withOrigin(QStringLiteral("X-1"), stored, QStringLiteral("asserted"))}),
+            f.opts());
+        ASSERT_TRUE(first.ok) << first.error.toStdString();
+        const auto second = RoadmapMigrateLoad::load(
+            f.store,
+            planOf({withOrigin(QStringLiteral("X-1"), QString::fromLatin1(leg.plan),
+                               QStringLiteral("asserted"))}),
+            f.opts());
+        ASSERT_TRUE(second.ok) << second.error.toStdString();
+        EXPECT_EQ(f.scalar(QStringLiteral("SELECT id_origin FROM item")), stored)
+            << "stored " << leg.stored << ", plan " << leg.plan;
+        EXPECT_EQ(second.itemsUpdated, 0) << "stored " << leg.stored << ", plan " << leg.plan;
+    }
+}
+
+// Leg (e) — the plan side is the caller's check. An id-less re-match carries no
+// plan origin and must stay `synthesised` / `migrated`, or it leaves § 2.6.1's
+// key and is deleted and re-inserted on the next run.
+TEST(RoadmapMigrateLoad, Inv19IdlessRematchStaysSynthesised) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const MigrationPlan idless =
+        planOf({item({}, QStringLiteral("Same headline"), QStringLiteral("s"), 0)});
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, idless, f.opts()).ok);
+    const auto again = RoadmapMigrateLoad::load(f.store, idless, f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT id_origin FROM item")),
+              QStringLiteral("synthesised"));
+    EXPECT_EQ(idProvenance(f), QStringLiteral("migrated"));
+    EXPECT_EQ(again.itemsUpdated, 0);
+}
+
+// ANTS-4656 — INV-20. A field_conflict carries the item in Note::id and only
+// the column in `detail`; every other note leaves `id` empty.
+TEST(RoadmapMigrateLoad, Inv20FieldConflictCarriesTheIdApartFromTheColumn) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const auto two = [](const QString &kind, const QString &prov) {
+        PlannedItem a = itemWithProv(QStringLiteral("A-1"), kind,
+                                     QStringLiteral("a-real-source"), prov);
+        PlannedItem b = itemWithProv(QStringLiteral("A-2"), kind,
+                                     QStringLiteral("a-real-source"), prov);
+        b.headline = QStringLiteral("Second");
+        b.position = 1;
+        return planOf({a, b});
+    };
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store,
+                                         two(QStringLiteral("fix"), QStringLiteral("asserted")),
+                                         f.opts())
+                    .ok);
+    const auto second = RoadmapMigrateLoad::load(
+        f.store, two(QStringLiteral("implement"), QStringLiteral("defaulted")), f.opts());
+    ASSERT_TRUE(second.ok) << second.error.toStdString();
+
+    QStringList ids;
+    for (const RoadmapMigrate::Note &n : second.notes) {
+        if (n.code == QLatin1String("field_conflict") && n.detail == QLatin1String("kind")) {
+            ids.append(n.id);
+            continue;
+        }
+        EXPECT_TRUE(n.id.isEmpty()) << n.code.toStdString() << ": " << n.detail.toStdString();
+    }
+    EXPECT_EQ(ids, (QStringList{QStringLiteral("A-1"), QStringLiteral("A-2")}));
 }

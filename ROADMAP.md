@@ -85653,7 +85653,7 @@ here.)
   in session_memory because that is where it hurt, not because it is the only
   place focus is standing in for tenancy.
 
-- 📋 [ANTS-4343] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
+- ✅ [ANTS-4343] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
   Found in ANTS-4065 Phase D2. `ANTS-4141`…`ANTS-4145` were allocated by
   the loader in run 1, then filed by hand into `ROADMAP.md` before run 2.
   Run 2 matched each bullet to its stored row by `(project_id, id_fold)`
@@ -85688,6 +85688,12 @@ here.)
   (reassignItemId, maxSynthesisedId, maxAllocatedId, allocationFloor);
   whether an id_origin entry in updatedItems carries a values record is
   left to the builder.
+  Shipped (2026-10-02): RoadmapStore::markIdParsed(), called from
+  applyPlanFields() only for a parsed plan origin on a synthesised row,
+  after the fallback's reassignment; history row under id_origin; counts
+  in itemsUpdated, not itemsUpdatedGoverned. Contract ANTS-3765 § 2.6 and
+  INV-19 (legs a-e), shown red before the fix. Full suite 5369/5369.
+  ANTS-4141..4145 change on this project's next re-migration.
   **Layman:** The database still says the computer made up five ID numbers that a person actually typed in.
   Kind: fix.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D2 re-run).
@@ -86654,7 +86660,7 @@ here.)
   Kind: investigate.
   Source: in-session-2026-08-24.
 
-- 📋 [ANTS-4656] **roadmap_migrate's field_conflict notes cannot collapse: the item id is baked into `detail`.**
+- ✅ [ANTS-4656] **roadmap_migrate's field_conflict notes cannot collapse: the item id is baked into `detail`.**
   ANTS-4649 collapses repeated notes by keying rows on (code, detail,
   source_index). Measured on this project today, that took field_defaulted
   from 383 rows to 2. It did NOT touch field_conflict, which stayed at ~145
@@ -86704,6 +86710,11 @@ here.)
   prefix on a string.
   User decision 2026-10-02: go ahead; amend ANTS-3765 and run its
   review-contract gate before building.
+  Shipped (2026-10-02): Note::id; field_conflict detail is the bare
+  column; setNotes() emits id on a single row and sample_ids on a merged
+  one, and drops zero sample_lines. Contracts ANTS-3765 § 2.11 / INV-20
+  and ANTS-3855 INV-10's fourth leg (gated loops 10-11 each), both new
+  tests shown red against the old detail shape. Full suite 5369/5369.
   **Layman:** Importing a roadmap still prints one line per item for a problem that is really one problem.
   Kind: perf.
   Source: in-session-2026-08-25 (measured while closing ANTS-4429).

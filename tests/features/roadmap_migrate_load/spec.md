@@ -64,6 +64,20 @@ four passes without it: the boundary.
 any absent item under `keepAbsent` (ANTS-5287).** Both are counted as orphans,
 noted `orphaned_item`, and stay filed once.
 
+**INV-19 — a synthesised row the source starts declaring becomes `parsed`,
+and no other origin moves (ANTS-4343).** A stored `synthesised` row re-loaded
+under a `parsed` plan origin ends `parsed` with `provenance.id` `asserted`, one
+`id_origin` history row, and `itemsUpdated == 1` but `itemsUpdatedGoverned ==
+0`; a third load writes nothing. The § 2.6.1 fallback path ends the same way
+under the hand-written id. `quarantined` is not upgraded, `parsed` is not
+downgraded, and an id-less re-match stays `synthesised` / `migrated`, because
+the plan-side check is the loader's, not the store method's.
+
+**INV-20 — a `field_conflict` note carries the item in `Note::id` and only the
+column in `detail` (ANTS-4656).** Two items whose asserted `kind` survives a
+defaulted re-load raise two notes with `detail == "kind"` and the two ids, in
+order; every other note leaves `id` empty.
+
 **INV-5 — ordering is rebuilt, not shifted.** A three-item section re-loaded
 **reversed** must succeed, and afterwards the positions are exactly `0..n-1`.
 `element` carries `UNIQUE (section_id, position)` and SQLite enforces it per row

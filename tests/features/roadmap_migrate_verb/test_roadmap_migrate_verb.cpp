@@ -2287,3 +2287,59 @@ TEST(RoadmapMigrateVerb, Inv16DeletionsReachTheEnvelope) {
         << taken.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_EQ(taken.value(QStringLiteral("items_deleted")).toInt(), 2);
 }
+
+// ANTS-4656 — INV-10's fourth leg. Two items lose their declared `Kind:` on a
+// re-run, so the load raises one `field_conflict` per item on one column. With
+// the id in Note::id rather than in `detail`, the two collapse into ONE row
+// whose samples are the ids; the notes carry no line, so `sample_lines` is
+// left out rather than emitted as zeros.
+TEST(RoadmapMigrateVerb, Inv10FieldConflictsOnOneColumnCollapseWithSampleIds) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const auto roadmap = [](bool withKind) {
+        QByteArray md =
+            "<!-- ants-roadmap-format: 1 -->\n"
+            "\n"
+            "# Demo — Roadmap\n"
+            "\n"
+            "## Work\n"
+            "\n";
+        for (const char *id : {"DEMO-0001", "DEMO-0002"}) {
+            md += "- \xF0\x9F\x93\x8B [";
+            md += id;
+            md += "] **Item ";
+            md += id;
+            md += ".**\n  Layman: A thing.\n";
+            if (withKind) md += "  Kind: fix.\n";
+            md += "  Source: test.\n";
+        }
+        return md;
+    };
+    const QString root = makeProjectRoot(dir, QStringLiteral("conf"), roadmap(true));
+    ASSERT_FALSE(root.isEmpty());
+    const QString store = dir.filePath(QStringLiteral("store.sqlite"));
+    const QJsonObject first = RoadmapMigrateVerb::run(store, request(root));
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool())
+        << first.value(QStringLiteral("error")).toString().toStdString();
+
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmap(false)));
+    const QJsonObject env = RoadmapMigrateVerb::run(store, request(root));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    QJsonArray conflictRows;
+    for (const QJsonValue &v : env.value(QStringLiteral("notes")).toArray())
+        if (v.toObject().value(QStringLiteral("code")).toString()
+            == QLatin1String("field_conflict"))
+            conflictRows.append(v);
+    ASSERT_EQ(conflictRows.size(), 1) << "one column's conflicts must collapse";
+    const QJsonObject row = conflictRows.first().toObject();
+    EXPECT_EQ(row.value(QStringLiteral("detail")).toString(), QStringLiteral("kind"));
+    EXPECT_EQ(row.value(QStringLiteral("count")).toInt(), 2);
+    EXPECT_EQ(row.value(QStringLiteral("sample_ids")).toArray(),
+              (QJsonArray{QStringLiteral("DEMO-0001"), QStringLiteral("DEMO-0002")}));
+    EXPECT_FALSE(row.contains(QStringLiteral("sample_lines")))
+        << "load notes have no line, and [0, 0] names nothing";
+    EXPECT_FALSE(row.contains(QStringLiteral("id")));
+    EXPECT_FALSE(row.contains(QStringLiteral("line")));
+}

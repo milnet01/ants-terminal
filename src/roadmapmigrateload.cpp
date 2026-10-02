@@ -196,6 +196,14 @@ struct Loader {
     QString prefix;
     qint64  highWater = 0;
 
+    // ANTS-4656 — a field_conflict names the item in Note::id and only the
+    // column in `detail`, so the verb can collapse one column's conflicts.
+    void fieldConflict(const QString &id, const QString &column) {
+        Note n{QStringLiteral("field_conflict"), column, 0};
+        n.id = id;
+        out.notes.push_back(n);
+    }
+
     void note(const char *code, const QString &detail) {
         // § 2.11 — line is ALWAYS 0 on a load note. A plan note is keyed to the
         // source line it came from; a load note is about a store row, and the
@@ -683,6 +691,22 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
 
     int seq = 0;
     bool seqPrimed = false;
+    // § 2.9 — continue from the stored maximum for this (item, stamp), never
+    // restart at 0: two runs given the same stamp would otherwise collide on
+    // UNIQUE (item_pk, changed_at, seq) and abort the whole project, and a
+    // caller stamping two runs identically is not a misuse. nullopt means no
+    // row yet, so the first row is seq 0.
+    const auto primeSeq = [&]() {
+        if (seqPrimed)
+            return true;
+        err.clear();
+        const auto storedSeq = store.maxHistorySeq(itemPk, opts.changedAt, &err);
+        if (!err.isEmpty())
+            return fail(err);
+        seq = storedSeq.value_or(-1) + 1;
+        seqPrimed = true;
+        return true;
+    };
     *chg = FieldChanges{};
     // The plan's id when it carries one, the row's when it does not — the form
     // the `field_conflict` note below already uses. A matched item whose source
@@ -716,7 +740,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
         // both. Checked BEFORE the write, not after, or the note would report a
         // suppression that had already happened.
         if (prov == QLatin1String("defaulted") && !f.storedEmpty) {
-            note("field_conflict", QStringLiteral("%1: %2").arg(chg->id, f.column));
+            fieldConflict(chg->id, f.column);
             chg->fieldsSuppressed.append(f.column);   // ANTS-4522
             chg->values.append(valueChange(f, true));
             continue;
@@ -728,10 +752,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
             // whose continuation lines were deleted), and it is cleared to SQL
             // NULL rather than '' so one logical state has one representation.
             if (f.column != QLatin1String("body")) {
-                note("field_conflict", QStringLiteral("%1: %2").arg(it.id.isEmpty()
-                                                                       ? cur->id
-                                                                       : it.id,
-                                                                   f.column));
+                fieldConflict(chg->id, f.column);
                 chg->fieldsSuppressed.append(f.column);   // ANTS-4522
                 chg->values.append(valueChange(f, true));
                 continue;
@@ -742,19 +763,8 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
             return fail(err);
         }
 
-        if (!seqPrimed) {
-            // § 2.9 — continue from the stored maximum for this (item, stamp),
-            // never restart at 0: two runs given the same stamp would otherwise
-            // collide on UNIQUE (item_pk, changed_at, seq) and abort the whole
-            // project, and a caller stamping two runs identically is not a
-            // misuse. nullopt means no row yet, so the first row is seq 0.
-            err.clear();
-            const auto storedSeq = store.maxHistorySeq(itemPk, opts.changedAt, &err);
-            if (!err.isEmpty())
-                return fail(err);
-            seq = storedSeq.value_or(-1) + 1;
-            seqPrimed = true;
-        }
+        if (!primeSeq())
+            return false;
         if (!recordHistory(itemPk, f.column, f.storedText, f.planText, &seq))
             return false;
         chg->changed = true;
@@ -767,6 +777,28 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
         // failure this counter exists to catch.
         if (f.column != QLatin1String("extras"))
             chg->changedGoverned = true;
+    }
+
+    // § 2.6 (ANTS-4343) — the one id_origin transition. A synthesised row the
+    // source now declares becomes `parsed`. The plan side is checked HERE:
+    // markIdParsed() guards only the stored side, and an id-less re-match
+    // marked parsed would leave § 2.6.1's key and be re-inserted next run.
+    // Runs after matchItems(), so the fallback's reassigned id is final. Not
+    // governed: the render does not read the column.
+    if (it.idOrigin == QLatin1String("parsed")
+        && cur->idOrigin == QLatin1String("synthesised")) {
+        const auto marked = store.markIdParsed(itemPk, &err);
+        if (!marked)
+            return fail(err);
+        if (*marked) {
+            if (!primeSeq())
+                return false;
+            if (!recordHistory(itemPk, QStringLiteral("id_origin"), cur->idOrigin,
+                               QStringLiteral("parsed"), &seq))
+                return false;
+            chg->changed = true;
+            chg->fields.append(QStringLiteral("id_origin"));
+        }
     }
     return true;
 }

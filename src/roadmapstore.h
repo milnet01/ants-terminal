@@ -1105,6 +1105,14 @@ public:
     // UNIQUE (project_id, id_fold) and is returned as an error, not swallowed.
     bool reassignItemId(qint64 itemPk, const QString &newId, QString *error = nullptr);
 
+    // ANTS-4343 (ANTS-3765 § 2.6) — the one id_origin transition. A row whose
+    // id the store synthesised, now declared by the source, becomes `parsed`
+    // and its provenance.id `asserted`. Guarded on the STORED origin only (in
+    // the UPDATE's WHERE), so it cannot rewrite any other origin; the plan
+    // origin is the caller's check. Returns whether a row changed; nullopt on
+    // an SQL error.
+    std::optional<bool> markIdParsed(qint64 itemPk, QString *error = nullptr);
+
     // § 2.9's seq continuation: appendHistory() takes `seq` from its caller, so
     // the caller needs the current maximum for this (item, stamp). Absent rows
     // ⇒ nullopt, not an error — and the first row of a stamp is seq 0.

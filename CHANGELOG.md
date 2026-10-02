@@ -53,6 +53,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_migrate folds repeated field_conflict notes on one column into a single row.** (ANTS-4656)
+  The note names the item in a new `id` field and only the column in
+  `detail`, so a merged row lists up to three `sample_ids`. A merged row
+  of notes with no line leaves out `sample_lines` instead of listing
+  zeros.
+
 - **The roadmap format standard now rotates closed versions into archive files on every minor or major release, moves unfinished items forward first, and records priority as a band from 1 to 5.** (ANTS-5609)
 
 - **roadmap_query's section list, section view and per-section etags reuse the call's own read of ROADMAP.md instead of opening the file a second time** (ANTS-4433)
@@ -60,6 +66,12 @@ for security-relevant changes.
 - **roadmap_log's write reply reports `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview), which says only what was measured; `discarded_external_edits` stays one more release as a deprecated alias** (ANTS-4984)
 
 ### Fixed
+
+- **Re-migrating a roadmap now records an id a person filed by hand as filed by hand.** (ANTS-4343)
+  A store row whose id the migration made up becomes `parsed`, with its
+  id provenance `asserted`, once the source file declares that id. The
+  change is in the item's history and counts as an update. Only that one
+  change of origin is ever written.
 
 - **roadmap_log op:"repair_trailers" strip_runs:true also removes a Kind:, Source: or other summary line repeated mid-entry.** (ANTS-4543)
   Some roadmap entries showed the same "Kind:" or "Source:" line twice,

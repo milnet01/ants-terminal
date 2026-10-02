@@ -157,6 +157,11 @@ struct Note {
     // (there is no file here to be inside). Without the -1 it would default to
     // 0 and claim to be about the live roadmap.
     int     sourceIndex = 0;
+    // ANTS-4656 (ANTS-3765 § 2.11) — the item a note is about, where its
+    // subject is one field of that item. Set on `field_conflict` alone, whose
+    // `detail` is then the bare column, so one column's conflicts collapse
+    // into one row. Empty on every other note.
+    QString id;
 };
 
 // ANTS-3766 § 2.1 — one file of a project, and the unit `sourceIndex` indexes.
