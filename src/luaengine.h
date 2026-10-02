@@ -141,6 +141,12 @@ public:
     // §2.4 join grace added to the timeout before the worker is detached.
     static constexpr int kQueryJoinGraceMs = 250;
 
+    // ANTS-5107 — project.list stops after this many entries visited and
+    // raises, rather than walking a huge tree in full. Tests lower it; 0
+    // restores the default.
+    static constexpr int kProjectListMaxEntries = 200000;
+    static void setProjectListEntryCapForTest(int cap);
+
 public slots:
     // Worker-side entry points (ANTS-1750). After the engine is moved onto
     // its worker QThread, PluginManager invokes these across the thread

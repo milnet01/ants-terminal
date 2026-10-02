@@ -9,6 +9,7 @@
 // so the <lua5.4/...> prefix that worked here resolved only on openSUSE and
 // broke the Fedora build even though CMake had found Lua correctly.
 #include <lua.hpp>
+#include <atomic>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -1092,6 +1093,9 @@ QVector<QThread *> g_queryZombies;
 // 512 KiB ≈ 32 MiB — well past any healthy steady state, short of run-away.
 constexpr int kMaxQueryZombies = 64;
 
+// ANTS-5107 — see LuaEngine::kProjectListMaxEntries.
+std::atomic<int> g_projectListEntryCap{LuaEngine::kProjectListMaxEntries};
+
 }  // namespace
 
 void LuaEngine::registerQueryApi(const QString &root) {
@@ -1207,6 +1211,8 @@ int LuaEngine::lua_project_list(lua_State *L) {
     // the table is built inside a protected call, so a push that runs out of
     // memory raises only after the scope has ended.
     bool pushed = false;
+    bool tooMany = false;   // ANTS-5107 — raised after this scope, like OOM
+    const int entryCap = g_projectListEntryCap.load();
     {
         const QString base = sub ? resolvedSub : engine->m_queryRoot;
         // Enumerate regular files (incl. dotfiles like .gitignore — project
@@ -1218,8 +1224,12 @@ int LuaEngine::lua_project_list(lua_State *L) {
         QDirIterator it(base,
                         QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden,
                         QDirIterator::Subdirectories);
+        int visited = 0;
         while (it.hasNext()) {
             const QString abs = it.next();
+            // ANTS-5107 — bounded: a huge tree raises instead of being
+            // walked in full. Counted before any skip, so .git/ counts too.
+            if (++visited > entryCap) { tooMany = true; break; }
             const QString rel = rootDir.relativeFilePath(abs);
             if (rel == QStringLiteral(".git") ||
                 rel.startsWith(QStringLiteral(".git/")) ||
@@ -1242,7 +1252,7 @@ int LuaEngine::lua_project_list(lua_State *L) {
         // order, locale-independent, so identical snapshots yield identical
         // bytes regardless of the runner's collation (INV-7; guards ANTS-2120).
         std::sort(rels.begin(), rels.end());
-        if (lua_checkstack(L, 3)) {
+        if (!tooMany && lua_checkstack(L, 3)) {
             lua_pushcfunction(L, luaPushStringList);
             lua_pushlightuserdata(L, &rels);
             if (lua_pcall(L, 1, 1, 0) == LUA_OK)
@@ -1251,11 +1261,20 @@ int LuaEngine::lua_project_list(lua_State *L) {
                 lua_pop(L, 1);  // the error object
         }
     }
+    if (tooMany) {
+        resolvedSub = QString();  // a null QString owns no heap memory
+        return luaL_error(L, "project.list: more than %d entries; list a "
+                             "subdirectory instead", entryCap);
+    }
     if (!pushed) {
         resolvedSub = QString();  // a null QString owns no heap memory
         return luaL_error(L, "project.list: not enough memory");
     }
     return 1;
+}
+
+void LuaEngine::setProjectListEntryCapForTest(int cap) {
+    g_projectListEntryCap.store(cap > 0 ? cap : kProjectListMaxEntries);
 }
 
 int LuaEngine::lua_project_root(lua_State *L) {

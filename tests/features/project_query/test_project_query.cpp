@@ -490,6 +490,28 @@ TEST(ProjectQuery, VerbEnvelopeAndGate) {
     EXPECT_FALSE(big.contains("result"));
 }
 
+// ANTS-5107 — project.list stops after a cap on entries visited and raises,
+// rather than walking a huge tree in full with no bound.
+TEST(ProjectQuery, Ants5107ListCapsEntriesVisited) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    for (int i = 0; i < 5; ++i) {
+        QFile f(root + QStringLiteral("/f%1.txt").arg(i));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("x");
+    }
+    LuaEngine::setProjectListEntryCapForTest(3);
+    const auto capped = run("return project.list()", root);
+    LuaEngine::setProjectListEntryCapForTest(0);
+    EXPECT_FALSE(capped.ok) << "five files must trip a cap of three";
+    EXPECT_EQ(capped.code, QStringLiteral("query_error"));
+
+    const auto whole = run("return project.list()", root);
+    ASSERT_TRUE(whole.ok);
+    EXPECT_EQ(whole.result.toArray().size(), 5);
+}
+
 #endif  // ANTS_LUA_PLUGINS
 
 // ANTS-5107 — project.read refuses a FIFO instead of blocking on it. Run
