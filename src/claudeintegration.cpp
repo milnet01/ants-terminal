@@ -12136,6 +12136,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("set_preamble");  // ANTS-4968
                     opEnum.append("amend_intro");   // ANTS-5373
                     opEnum.append("amend_preamble"); // ANTS-5523
+                    opEnum.append("set_legend");     // ANTS-5615
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
                     opEnum.append("retitle_section"); // ANTS-5557
@@ -13161,6 +13162,18 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "The element ops: address the elements under the "
                             "roadmap's preamble instead of a `section`.");
                         props["preamble"] = preambleProp;
+                        // ANTS-5615 — op:"set_legend"'s operand.
+                        QJsonObject legendProp;
+                        legendProp["type"] = "object";
+                        legendProp["description"] = QStringLiteral(
+                            "op:\"set_legend\" — {status: wording} for the status "
+                            "legend under the preamble (planned, in-progress, "
+                            "shipped, considered, dropped). Named statuses change, "
+                            "others keep theirs; an empty string removes one. "
+                            "Wording is one line opening with Done, In progress, "
+                            "Planned, Considered or Dropped. Store-only, dry_run "
+                            "previewable; echoes legend and previous_legend.");
+                        props["legend"] = legendProp;
                     }
                     {   // ANTS-4079 — op:"link" / op:"unlink" operands.
                         QJsonObject linkTypeProp;

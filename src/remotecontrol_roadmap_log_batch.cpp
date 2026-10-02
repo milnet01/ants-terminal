@@ -3973,6 +3973,101 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntroForTest(const QJsonObject &req
     return cmdRoadmapLogSetIntro(req, preamble);
 }
 
+// ANTS-5615 — set_legend. The legend is a {status: wording} object on the
+// project row, rendered after the preamble; it is neither intro text nor an
+// element, so no other op reached it. `legend` names the statuses to change:
+// each wording replaces that status's line, and an empty string removes it.
+// Statuses not named keep their wording.
+QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
+    static const QStringList kStatuses = {
+        QStringLiteral("planned"), QStringLiteral("in-progress"),
+        QStringLiteral("shipped"), QStringLiteral("considered"),
+        QStringLiteral("dropped")};
+    // The migration recognises a legend line by its first word, so a wording
+    // that does not open with one would come back as narration on the next
+    // import (looksLikeLegendLine in roadmapmigrate.cpp).
+    static const QRegularExpression kLegendLine(
+        QStringLiteral("^(Done|In progress|Planned|Considered|Dropped)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QJsonValue legendArg = req.value(QStringLiteral("legend"));
+    if (!legendArg.isObject() || legendArg.toObject().isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: set_legend requires `legend`, an object "
+                           "mapping a status (%1) to its wording")
+                .arg(kStatuses.join(QStringLiteral(", "))));
+    const QJsonObject changes = legendArg.toObject();
+    for (auto it = changes.begin(); it != changes.end(); ++it) {
+        if (!kStatuses.contains(it.key()))
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: set_legend: unknown status \"%1\"; "
+                               "expected one of %2")
+                    .arg(it.key(), kStatuses.join(QStringLiteral(", "))));
+        if (!it.value().isString())
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: set_legend: the wording for \"%1\" "
+                               "must be a string").arg(it.key()));
+        const QString w = it.value().toString().trimmed();
+        if (w.isEmpty()) continue;   // removes the entry
+        if (w.contains(QChar('\n')) || w.size() >= 160 ||
+            !kLegendLine.match(w).hasMatch())
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: set_legend: the wording for \"%1\" "
+                               "must be one line under 160 characters opening "
+                               "with Done, In progress, Planned, Considered or "
+                               "Dropped, or the next import reads it as a note")
+                    .arg(it.key()));
+    }
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    QString err;
+    const auto project = store.readProject(projectId, &err);
+    if (!project)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    QJsonObject previous;
+    if (!project->legendText.isEmpty()) {
+        QJsonParseError perr{};
+        const QJsonDocument doc =
+            QJsonDocument::fromJson(project->legendText.toUtf8(), &perr);
+        if (perr.error != QJsonParseError::NoError || !doc.isObject())
+            return rcSectionOpErr(QStringLiteral("store_failed"),
+                QStringLiteral("roadmap_log: the stored legend is not a JSON "
+                               "object, so set_legend cannot merge into it"));
+        previous = doc.object();
+    }
+    QJsonObject legend = previous;
+    for (auto it = changes.begin(); it != changes.end(); ++it) {
+        const QString w = it.value().toString().trimmed();
+        if (w.isEmpty()) legend.remove(it.key());
+        else             legend[it.key()] = w;
+    }
+
+    const auto mutate = [&](QString *mErr) -> bool {
+        return store.setLegend(projectId, legend, mErr);
+    };
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+
+    env[QStringLiteral("ok")]              = true;
+    env[QStringLiteral("op")]              = QStringLiteral("set_legend");
+    env[QStringLiteral("legend")]          = legend;
+    env[QStringLiteral("previous_legend")] = previous;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
+}
+
 namespace {
 
 // ANTS-4958 — a section's subtree in document order: the section itself and
@@ -4565,6 +4660,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
         if (!preamble) env[QStringLiteral("section")] = slug;
         env[QStringLiteral("elements")] = out;
         env[QStringLiteral("count")]    = int(out.size());
+        // ANTS-5615 — the status legend renders under the preamble but is
+        // not an element, so name it here with the op that reaches it.
+        if (preamble) {
+            const auto project = store.readProject(projectId, &err);
+            if (project && !project->legendText.isEmpty()) {
+                env[QStringLiteral("legend")] = QJsonDocument::fromJson(
+                    project->legendText.toUtf8()).object();
+                env[QStringLiteral("legend_hint")] = QStringLiteral(
+                    "The legend is not an element; op:\"set_legend\" changes it.");
+            }
+        }
         return QJsonDocument(env);
     }
 

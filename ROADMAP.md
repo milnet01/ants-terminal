@@ -69724,7 +69724,7 @@ project. Reported causes are claims until checked in source.
   Source: Pressless feedback 2026-10-01.
   Lanes: readregion, mcp.
 
-- 📋 [ANTS-5615] **list_elements preamble:true skips the preamble's Legend block, so no op can change a Legend line.**
+- ✅ [ANTS-5615] **list_elements preamble:true skips the preamble's Legend block, so no op can change a Legend line.**
   Reported by LocalWebServerManager (2026-10-02). On that project,
   list_elements preamble:true returns Themes heading, themes list,
   Priority heading, priority list and ---; the **Legend** heading and its
@@ -69738,6 +69738,12 @@ project. Reported causes are claims until checked in source.
   or render-owned) and either list it as a narration element
   amend_element can replace, or name it in list_elements' reply as
   render-owned. Follow-up to ANTS-5379.
+  Resolved (2026-10-02): the legend is a {status: wording} object on the
+  project row, written only by the migration. New op set_legend merges
+  named statuses into it and renders; list_elements preamble:true returns
+  it as `legend` with a hint naming the op. Wording must open with the
+  word the import reads a legend line by, so it round-trips. Tests:
+  roadmap_log_elements INV-5. Live after an ants-mcpd rebuild and /mcp.
   **Layman:** One block at the top of a project's roadmap, the colour legend, can't be edited through the roadmap tools yet.
   Kind: fix.
   Source: localwebservermanager-feedback-2026-10-02.

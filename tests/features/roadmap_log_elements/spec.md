@@ -1,4 +1,4 @@
-# roadmap_log element ops — list, amend, delete, promote (ANTS-5379)
+# roadmap_log element ops — list, amend, delete, promote (ANTS-5379), and the legend (ANTS-5615)
 
 A section holds items, tables and narration as ordered elements, keyed by
 position within the section. The intro ops (`set_intro`, `set_preamble`)
@@ -36,6 +36,16 @@ an MCP reconnect make them live; the terminal is not relaunched.
 - **INV-4** — `promote_element` files one item at the narration's position,
   with an allocated id, and the narration is gone; a non-narration element
   refuses `element_kind_refused`. *Test:* `PromoteFilesItemInPlace`.
+
+- **INV-5** — (ANTS-5615) The status legend is not an element.
+  `list_elements preamble:true` returns it as `legend` with a
+  `legend_hint` naming `op:"set_legend"`. `set_legend` takes `legend`, a
+  `{status: wording}` object: named statuses change, others keep their
+  line, and an empty string removes one. It refuses an unknown status or a
+  wording the import would not read back as a legend line (`bad_args`), and
+  an empty `legend` (`missing_field`); a refusal or dry run writes nothing.
+  *Test:* `SetLegendChangesOneStatusWording`,
+  `SetLegendRefusalsAndDryRunWriteNothing`.
 
 ## Test
 

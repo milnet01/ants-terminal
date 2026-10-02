@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **roadmap_log op:"set_legend" changes the wording of a roadmap's status legend.** (ANTS-5615)
+  The legend lines under a roadmap's preamble (such as "📋 Planned (next up
+  for this phase)") could not be edited by any tool, and a hand edit was
+  undone by the next write. set_legend changes one status's wording and
+  leaves the rest; list_elements preamble:true now shows the legend and
+  names this op.
+
 ### Changed
 
 - **The roadmap format standard now rotates closed versions into archive files on every minor or major release, moves unfinished items forward first, and records priority as a band from 1 to 5.** (ANTS-5609)

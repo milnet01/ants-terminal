@@ -89,6 +89,10 @@ QByteArray fixture() {
         "# Demo \xE2\x80\x94 Roadmap\n"
         "\n";
     b += kPad;
+    // ANTS-5615 — a status legend, which the migration stores on the project.
+    b += "\n"
+        "- \xF0\x9F\x93\x8B Planned (next up for this phase)\n"
+        "- \xE2\x9C\x85 Done\n";
     b += "\n"
         "## Work\n"
         "\n"
@@ -333,4 +337,55 @@ TEST(RoadmapLogElements, PromoteFilesItemInPlace) {
     EXPECT_EQ(positionOf(after, QStringLiteral("narration"), QStringLiteral("Promote me")), -1);
     const std::string md = readAll(roadmapPath(fx.root)).toStdString();
     EXPECT_TRUE(has(md, "**Promote me to an item")) << md;
+}
+
+// ANTS-5615 — the status legend is not an element, so list_elements names it
+// with the op that reaches it, and set_legend changes one status's wording.
+TEST(RoadmapLogElements, SetLegendChangesOneStatusWording) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const std::string before = readAll(roadmapPath(fx.root)).toStdString();
+    ASSERT_TRUE(has(before, "Planned (next up for this phase)")) << before;
+
+    const QJsonObject listed = call(rc, fx.root, QStringLiteral("list_elements"),
+        QJsonObject{{QStringLiteral("preamble"), true}});
+    ASSERT_TRUE(listed.value(QStringLiteral("ok")).toBool()) << dump(listed);
+    EXPECT_EQ(listed.value(QStringLiteral("legend")).toObject()
+                  .value(QStringLiteral("planned")).toString(),
+              QStringLiteral("Planned (next up for this phase)")) << dump(listed);
+    EXPECT_TRUE(listed.value(QStringLiteral("legend_hint")).toString()
+                    .contains(QStringLiteral("set_legend"))) << dump(listed);
+
+    const QJsonObject resp = call(rc, fx.root, QStringLiteral("set_legend"),
+        QJsonObject{{QStringLiteral("legend"),
+                     QJsonObject{{QStringLiteral("planned"),
+                                  QStringLiteral("Planned (next up)")}}}});
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << dump(resp);
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_TRUE(has(md, "\xF0\x9F\x93\x8B Planned (next up)\n")) << md;
+    EXPECT_FALSE(has(md, "next up for this phase")) << md;
+    EXPECT_TRUE(has(md, "\xE2\x9C\x85 Done")) << "an unnamed status lost its line\n" << md;
+}
+
+TEST(RoadmapLogElements, SetLegendRefusalsAndDryRunWriteNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    const auto setLegend = [&](const QJsonObject &legend, bool dryRun) {
+        QJsonObject req{{QStringLiteral("legend"), legend}};
+        if (dryRun) req[QStringLiteral("dry_run")] = true;
+        return call(rc, fx.root, QStringLiteral("set_legend"), req);
+    };
+    EXPECT_EQ(setLegend(QJsonObject{{QStringLiteral("blocked"), QStringLiteral("Planned")}}, false)
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_EQ(setLegend(QJsonObject{{QStringLiteral("planned"), QStringLiteral("Next up")}}, false)
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args")) << "a wording the import cannot read back";
+    EXPECT_EQ(setLegend(QJsonObject{}, false).value(QStringLiteral("code")).toString(),
+              QStringLiteral("missing_field"));
+    const QJsonObject dry =
+        setLegend(QJsonObject{{QStringLiteral("planned"), QStringLiteral("Planned soon")}}, true);
+    EXPECT_TRUE(dry.value(QStringLiteral("ok")).toBool()) << dump(dry);
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before) << "a refusal or dry run changed the file";
 }

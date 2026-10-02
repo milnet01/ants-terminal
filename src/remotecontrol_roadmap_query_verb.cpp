@@ -4042,6 +4042,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
         op == QStringLiteral("amend_intro") || op == QStringLiteral("amend_preamble"))
         return cmdRoadmapLogSetIntro(req, op == QStringLiteral("set_preamble") ||
                                           op == QStringLiteral("amend_preamble"));
+    // ANTS-5615 — the status legend's wording.
+    if (op == QStringLiteral("set_legend"))
+        return cmdRoadmapLogSetLegend(req);
     // ANTS-4958 — remove an emptied section; move a section with its subsections.
     if (op == QStringLiteral("delete_section"))
         return cmdRoadmapLogDeleteSection(req);
@@ -4118,7 +4121,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"amend_field\", \"amend_field_batch\", "
                            "\"amend_batch\", \"set_body\", "
                            "\"set_intro\", \"amend_intro\", \"amend_preamble\", "
-                           "\"set_preamble\", \"delete_section\", "
+                           "\"set_preamble\", \"set_legend\", \"delete_section\", "
                            "\"move_section\", \"retitle_section\", "
                            "\"link\", \"unlink\", "
                            "\"list_elements\", "

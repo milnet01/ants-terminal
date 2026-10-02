@@ -1326,6 +1326,9 @@ private:
     // set_preamble replaces the live file's root intro, which holds the
     // roadmap's title. One handler, store-only.
     QJsonDocument cmdRoadmapLogSetIntro(const QJsonObject &req, bool preamble);
+    // ANTS-5615 — set_legend changes the status legend's wording, which the
+    // project holds as one JSON object and the render owns. Store-only.
+    QJsonDocument cmdRoadmapLogSetLegend(const QJsonObject &req);
     // ANTS-4958 — delete_section removes an emptied section; move_section
     // moves a section and its subsections. Store-only; the store owns the
     // roadmap's structure (user decision 2026-09-19).
