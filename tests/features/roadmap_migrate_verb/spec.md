@@ -231,3 +231,16 @@ id carried one, the reply's `warnings` gains `id_prefix_guessed` with the
 ids is not announced. It is a reply field, not a note code, so
 ANTS-3757 § 2.10's closed set is unchanged. *Test:*
 `RoadmapMigrateVerb.Ants5374FolderPrefixIsAnnounced`.
+
+## ANTS-4992 — `only_ids` scopes the report
+
+`updated_items[]` is capped at 200, so on a large project one item's
+answer could be past the cap. `only_ids` collects entries for the named
+ids only (case-insensitive) before the cap; the migration still runs
+whole and `items_updated` stays the full count. The reply echoes
+`only_ids` and lists in `only_ids_not_updated` each asked-for id the
+report does not carry.
+
+- **`Ants4992OnlyIdsScopesUpdatedItems`** — an id past the cap is
+  reported alone, `items_updated` is the whole run's, and an unknown id
+  is named in `only_ids_not_updated`.

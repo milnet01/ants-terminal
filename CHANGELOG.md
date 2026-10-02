@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate takes only_ids, so a preview can answer whether one particular item still changes.** (ANTS-4992)
+  The preview lists at most 200 changed items, so on a big roadmap the
+  one you fixed could be cut off. only_ids reports just the items you
+  name, and lists the ones that no longer change.
+
 - **roadmap_query's section list gives each section's own item counts, so section totals can be added up without double-counting.** (ANTS-4986)
   A section's counts include its subsections. Each row now also has
   direct_active_count, direct_shipped_count and direct_total_count, and

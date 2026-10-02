@@ -968,6 +968,10 @@ bool Loader::updateMatched() {
         // nothing moves — and a non-empty `fieldsSuppressed`.
         if (!chg.changed && chg.fieldsSuppressed.isEmpty())
             continue;
+        // ANTS-4992 — a scoped report skips other ids before the cap, so the
+        // cap can no longer hide the one the caller asked about.
+        if (!opts.onlyIdFolds.isEmpty() && !opts.onlyIdFolds.contains(chg.id.toLower()))
+            continue;
         if (out.updatedItems.size() < kMaxUpdatedItems)
             out.updatedItems.append({chg.id, chg.fields, chg.fieldsSuppressed,
                                      chg.values});

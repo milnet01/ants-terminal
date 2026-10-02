@@ -226,6 +226,10 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // would be a second answer. An absent or non-numeric value leaves the
     // Request default, which is where the 200 lives.
     r.maxNotes    = req.value(QStringLiteral("max_notes")).toInt(r.maxNotes);
+    // ANTS-4992 — report scope only; the migration still runs whole.
+    for (const auto &v : req.value(QStringLiteral("only_ids")).toArray())
+        if (v.isString() && !v.toString().trimmed().isEmpty())
+            r.onlyIds.append(v.toString().trimmed());
     // ANTS-4499 — the pre-migration snapshot, ON unless the caller says
     // otherwise, so a session that never thought to ask still gets one. Not
     // validated against the project root, deliberately: the store is

@@ -1520,6 +1520,42 @@ TEST(RoadmapMigrateVerb, Inv13UpdatedItemsIsBoundedAt200) {
         << "items_updated must stay the TRUE total, not the clipped one";
 }
 
+// ANTS-4992 — `only_ids` scopes the REPORT to named ids, so one item's answer
+// is reachable past the 200 cap. The migration itself still runs whole.
+TEST(RoadmapMigrateVerb, Ants4992OnlyIdsScopesUpdatedItems) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const int kItems = 205;
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"),
+                                         manyItemRoadmap(kItems, QStringLiteral("first")));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"),
+                          manyItemRoadmap(kItems, QStringLiteral("second"))));
+
+    auto req2 = request(root);
+    req2.changedAt = QStringLiteral("2026-08-06T11:00:00Z");
+    req2.dryRun    = true;
+    // DEMO-0204 sits past the cap; DEMO-9999 does not exist.
+    req2.onlyIds   = {QStringLiteral("DEMO-0204"), QStringLiteral("demo-9999")};
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req2);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const QJsonArray items = env.value(QStringLiteral("updated_items")).toArray();
+    ASSERT_EQ(items.size(), 1) << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(items.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("DEMO-0204"));
+    EXPECT_FALSE(env.value(QStringLiteral("updated_items_truncated")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("items_updated")).toInt(), kItems)
+        << "the count stays the whole run's";
+    const QJsonArray notUpdated = env.value(QStringLiteral("only_ids_not_updated")).toArray();
+    ASSERT_EQ(notUpdated.size(), 1) << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(notUpdated.at(0).toString(), QStringLiteral("demo-9999"));
+}
+
 // --------------------------------------------------------------- INV-14 -----
 //
 // ANTS-4600 — § 2.5 step 0b. The machine-global store acquired a project whose

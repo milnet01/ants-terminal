@@ -18,6 +18,7 @@
 #include "roadmapmigrate.h"
 #include "roadmapstore.h"
 
+#include <QSet>
 #include <QString>
 #include <QVector>
 
@@ -197,6 +198,9 @@ struct Options {
     // ants_core_lib and this library deliberately does not link it.
     RoadmapParse::IdFormat idFormat;
     bool    dryRun = false;      // plan the writes, roll back instead of commit
+    // ANTS-4992 — collect Outcome::updatedItems for these ids only, folded to
+    // lower case. Reporting only: every write still happens. Empty = all.
+    QSet<QString> onlyIdFolds;
     // ANTS-4491 § 4.3 — run inside a transaction the CALLER already opened,
     // rather than opening one here. `RoadmapStore::begin()` refuses to nest, so
     // without this a load cannot run inside `RoadmapWrite::commitAndRender()`'s

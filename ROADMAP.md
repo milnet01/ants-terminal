@@ -87152,7 +87152,7 @@ here.)
   Source: in-session-2026-09-09 (found in the 0.7.109 release doc sweep).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4992] **roadmap_migrate dry_run cannot answer whether ONE id still moves.**
+- ✅ [ANTS-4992] **roadmap_migrate dry_run cannot answer whether ONE id still moves.**
   Hit while verifying ANTS-4405. The repair's acceptance question is
   narrow — does THIS id still move on a round trip — and the only
   instrument is a whole-project dry-run migrate. That returned 1548
@@ -87168,6 +87168,12 @@ here.)
   ANTS-4507 rather than duplicating it: 4507 says the COUNT has no zero
   point, this says the per-id detail behind the count is unreachable.
   Either one alone leaves a single-item repair unverifiable.
+  Resolved (2026-10-02): roadmap_migrate `only_ids[]` scopes
+  updated_items[] to the named ids (case-insensitive), filtered before
+  the 200 cap; the migration runs whole and items_updated stays the full
+  count. The reply echoes only_ids and only_ids_not_updated. ANTS-3855 §
+  2.1 records the argument. Test: roadmap_migrate_verb
+  Ants4992OnlyIdsScopesUpdatedItems. Unblocks ANTS-4405's re-measure.
   **Layman:** After fixing one roadmap item, there is no cheap way to ask whether that item specifically still drifts.
   Kind: enhancement.
   Source: in-session-2026-09-09.

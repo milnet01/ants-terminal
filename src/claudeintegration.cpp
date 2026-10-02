@@ -13620,6 +13620,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "rather than a failure.");
                         props["max_notes"] = p;
                     }
+                    {   // ANTS-4992 — scope the report to named ids.
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}};
+                        p["description"] = QStringLiteral(
+                            "Report only these ids in updated_items[] "
+                            "(case-insensitive), so one item's answer is "
+                            "reachable past the 200 cap. The migration still "
+                            "runs whole and items_updated stays the full count. "
+                            "Echoes only_ids and only_ids_not_updated, the ids "
+                            "that do not move. Pair with dry_run:true to ask "
+                            "\"does this item still change?\".");
+                        props["only_ids"] = p;
+                    }
                     // ANTS-4499 — the pre-migration snapshot. Declared for the
                     // reason the ANTS-4429 note below gives: this schema sets
                     // additionalProperties:false, so an undeclared argument

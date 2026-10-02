@@ -33,6 +33,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <functional>
@@ -54,6 +55,10 @@ struct Request {
     // verb's `max_notes` argument. run() applies the [1, 2000] clamp, so a
     // test driving this seam directly is bounded identically to a live call.
     int     maxNotes = 200;
+    // ANTS-4992 — scope the REPORT to these ids (case-insensitive). The
+    // migration still runs whole; only updated_items[] narrows, so one item's
+    // answer is reachable past its 200 cap. Empty means every item.
+    QStringList onlyIds;
     // ANTS-4499 — the pre-migration snapshot of the machine-global store.
     //
     // On by default, because the session that most needs a backup is the one

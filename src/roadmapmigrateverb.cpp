@@ -240,6 +240,23 @@ void setUpdatedItems(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out) {
     env[QStringLiteral("updated_items_truncated")] = out.updatedItemsDropped > 0;
 }
 
+// ANTS-4992 — echo the scope, and name each asked-for id the report does not
+// carry, so "it does not move" is an answer rather than an absence.
+void setOnlyIds(QJsonObject &env, const QStringList &onlyIds,
+                const RoadmapMigrateLoad::Outcome &out) {
+    if (onlyIds.isEmpty())
+        return;
+    QSet<QString> reported;
+    for (const auto &u : out.updatedItems)
+        reported.insert(u.id.toLower());
+    QJsonArray notUpdated;
+    for (const QString &id : onlyIds)
+        if (!reported.contains(id.trimmed().toLower()))
+            notUpdated.append(id);
+    env[QStringLiteral("only_ids")]             = QJsonArray::fromStringList(onlyIds);
+    env[QStringLiteral("only_ids_not_updated")] = notUpdated;
+}
+
 // ANTS-4065 § 2.3 — the run-level tally, beside `notes_count`. A per-FIELD
 // count, and it must be complete: `notes[]` is row-capped, so a
 // reader counting `field_defaulted` entries in the array would under-report
@@ -602,6 +619,8 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     opts.changedAt   = req.changedAt;
     opts.projectRoot = req.projectRoot;
     opts.dryRun      = req.dryRun;
+    for (const QString &id : req.onlyIds)   // ANTS-4992
+        opts.onlyIdFolds.insert(id.trimmed().toLower());
     opts.idFormat    = idFormat;      // ANTS-3771 § 2.3
     opts.acceptDeletions = req.acceptDeletions;   // ANTS-5287
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);
@@ -893,6 +912,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes, maxNotes);
     setUpdatedItems(env, out);
+    setOnlyIds(env, req.onlyIds, out);   // ANTS-4992
     env[QStringLiteral("defaulted_fields")] = defaultedFieldTally(plan);
     return env;
 }
