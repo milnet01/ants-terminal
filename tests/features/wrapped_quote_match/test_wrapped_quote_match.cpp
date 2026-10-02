@@ -10,6 +10,7 @@
 #include "../../_support/srcgrep.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QIODevice>
 #include <QJsonArray>
@@ -432,4 +433,26 @@ TEST(wrapped_quote_match, Inv9MatchWrappedRefusesRegex) {
     EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_args"));
+}
+
+// ANTS-5103 — a guard, not a red test. The separator nests quantifiers
+// (`(?:(?:>+|/{2,}|#+|\*)[ \t]*)*`), and the review asked whether a failing
+// search over a long marker run backtracks exponentially. Measured
+// 2026-10-02: a 60-character run of `#`, `/` or `>` fails in well under the
+// bound, so the pattern was left as is; this pins that.
+TEST(WrappedQuoteMatch, Ants5103MarkerRunsDoNotBacktrack) {
+    for (const QChar marker : {QLatin1Char('#'), QLatin1Char('/'), QLatin1Char('>')}) {
+        const QString hay = QStringLiteral("alpha ") + QString(60, marker) +
+                            QStringLiteral(" gamma\n");
+        QElapsedTimer t;
+        t.start();
+        const auto hits = WrapMatch::find(hay, QStringLiteral("alpha beta"), 10);
+        const qint64 ms = t.elapsed();
+        EXPECT_TRUE(hits.isEmpty());
+        EXPECT_LT(ms, 200) << "a failing search over a run of '"
+                           << QString(marker).toStdString() << "' took " << ms << " ms";
+    }
+    // The fold still works through a marker run.
+    EXPECT_EQ(WrapMatch::find(QStringLiteral("alpha\n## beta\n"),
+                              QStringLiteral("alpha beta"), 10).size(), 1);
 }
