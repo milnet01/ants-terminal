@@ -232,3 +232,32 @@ TEST(LlmDispatcher, INV15_EnqueueEmptyListEmitsNothing) {
     EXPECT_EQ(disp.inFlight(), 0);
     EXPECT_EQ(disp.pending(), 0);
 }
+
+// ANTS-5105 — a completion from a cancelled batch is not forwarded into the
+// next one. enqueue() cleared the cancelled flag, so the old batch's late
+// results arrived as jobFinished for the new round.
+TEST(LlmDispatcher, Ants5105CancelledBatchResultsDoNotLeakIntoTheNext) {
+    LlmDispatcher disp(4);
+    std::vector<std::function<void(const LlmResult &)>> pending;
+    disp.setRunner([&](const LlmJob &, std::function<void(const LlmResult &)> done) {
+        pending.push_back(std::move(done));
+    });
+    QStringList forwarded;
+    QObject::connect(&disp, &LlmDispatcher::jobFinished,
+                     [&](const QString &id, const LlmResult &) { forwarded << id; });
+
+    disp.enqueue(nJobs(2));        // old batch: 2 in flight
+    disp.cancelAll();
+    LlmJob fresh;
+    fresh.id = QStringLiteral("fresh");
+    disp.enqueue({fresh});         // new batch: 1 in flight
+    ASSERT_EQ(pending.size(), 3u);
+
+    LlmResult r;
+    pending[0](r);                 // late results of the cancelled batch
+    pending[1](r);
+    EXPECT_TRUE(forwarded.isEmpty())
+        << "a cancelled batch's result reached the next round";
+    pending[2](r);
+    EXPECT_EQ(forwarded, QStringList{QStringLiteral("fresh")});
+}

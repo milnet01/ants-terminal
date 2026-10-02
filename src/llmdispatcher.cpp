@@ -27,6 +27,7 @@ void LlmDispatcher::cancelAll() {
     // allFinished. Emits nothing itself, so a cancelAll() after the batch
     // finished cannot fire allFinished twice.
     m_cancelled = true;
+    ++m_generation;   // ANTS-5105 — enqueue() clears m_cancelled; this does not
     m_queue.clear();
 }
 
@@ -35,9 +36,13 @@ void LlmDispatcher::pump() {
         const LlmJob job = m_queue.takeFirst();
         ++m_inFlight;
         const QString id = job.id;
-        m_runner(job, [this, id](const LlmResult &r) {
+        const quint64 gen = m_generation;
+        m_runner(job, [this, id, gen](const LlmResult &r) {
             --m_inFlight;
-            if (!m_cancelled)
+            // ANTS-5105 — a later enqueue() clears m_cancelled, so the batch
+            // generation is what keeps a cancelled job's late result out of
+            // the next round.
+            if (!m_cancelled && gen == m_generation)
                 emit jobFinished(id, r);   // result forwarded, not stored
             pump();
         });

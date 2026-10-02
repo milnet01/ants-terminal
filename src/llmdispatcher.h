@@ -54,6 +54,9 @@ private:
     int            m_inFlight = 0;
     bool           m_cancelled = false;
     bool           m_batchOpen = false;   // enqueued, allFinished not yet sent
+    // ANTS-5105 — bumped by cancelAll(); a completion from an older
+    // generation still drains but is never forwarded.
+    quint64        m_generation = 0;
     QList<LlmJob>  m_queue;
     JobRunner      m_runner;
 };
