@@ -14,6 +14,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 
 namespace VerifyEngine {
 
@@ -546,13 +547,19 @@ VerifyReport runVerify(const QString &projectPath,
 // `dir` into `out`, pruning build/vendor dirs at the directory level
 // (never descends an isNoiseDir) so a generated build-tree CMakeLists
 // can't mask a real orphan.
-static void collectCmakeText(const QString &dir, QString &out) {
+// ANTS-5102 — `visited` holds canonical paths, so a directory symlink to an
+// ancestor (or to /) is walked once rather than re-walked down the link.
+static void collectCmakeText(const QString &dir, QString &out,
+                             QSet<QString> &visited) {
+    const QString canon = QFileInfo(dir).canonicalFilePath();
+    if (canon.isEmpty() || visited.contains(canon)) return;
+    visited.insert(canon);
     const QFileInfoList entries = QDir(dir).entryInfoList(
         QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QFileInfo &fi : entries) {
         if (fi.isDir()) {
             if (ProjectSettings::isNoiseDir(fi.fileName())) continue;
-            collectCmakeText(fi.absoluteFilePath(), out);
+            collectCmakeText(fi.absoluteFilePath(), out, visited);
         } else if (fi.fileName() == QLatin1String("CMakeLists.txt")
                    || fi.fileName().endsWith(QLatin1String(".cmake"))) {
             QFile f(fi.absoluteFilePath());
@@ -569,7 +576,8 @@ QStringList findUnreferencedSources(const QString &projectPath,
     if (addedSourcePaths.isEmpty()) return {};
 
     QString cmakeText;
-    collectCmakeText(projectPath, cmakeText);
+    QSet<QString> visited;
+    collectCmakeText(projectPath, cmakeText, visited);
 
     QStringList orphaned;
     for (const QString &p : addedSourcePaths) {
