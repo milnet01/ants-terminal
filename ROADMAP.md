@@ -10398,6 +10398,18 @@ extends an existing item, that item carries it instead.
   tracking-table escaped pipe, the writer's indented heading match and
   fences, ChangelogQuery's unlocked regex cache, and the release op
   accepting a heading-only section.
+  Progress (2026-10-02): the medium shipped. retireTrackingHeadings
+  counts a Proposed ID line only when it carries an id, so a blank slot no
+  longer lets compact_resolved delete a condensed file's sole id record
+  (FeedbackCompactResolved Ants5108BlankProposedIdIsNotAnInlineId, red
+  first). Both release paths need a releasable line, not a heading or
+  comment (changelog_log_writer Ants5108HeadingOnly..., red first).
+  ChangelogQuery's regex cache is locked. Still open (low): the v1
+  tracking-table reader splitting on the escaped pipe its writer emits,
+  and the changelog writer's heading match: eight sites in
+  src/changeloglog.cpp test `trimmed().startsWith("### ")` and ignore
+  fences while the reader requires column 0. That wants one pass over all
+  eight, with tests for an indented line and a fenced heading.
   **Layman:** Smaller changelog and feedback-file fixes, including one that can delete a project's only record of which fixes shipped.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
