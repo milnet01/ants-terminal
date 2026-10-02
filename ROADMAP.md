@@ -10353,6 +10353,14 @@ extends an existing item, that item carries it instead.
   queued Unload, settings.get teardown deadlock, init.lua wedge
   detection, per-handler budget timing, plugin signal rate limits,
   broadcast fan-out, zombies per reload, and the lows.
+  Progress (2026-10-02): project.list stops after 200,000 entries
+  visited and raises (ProjectQuery Ants5107ListCapsEntriesVisited, red
+  first); ANTS-2093's table records it. Still open, and all of it is
+  PluginManager / LuaEngine threading that wants one design pass rather
+  than piecemeal edits: teardown waiting per plugin on the GUI thread and a
+  queued Unload zombifying a healthy plugin, the settings.get teardown
+  deadlock, init.lua wedge detection, per-handler budget timing, plugin
+  signal rate limits, broadcast fan-out, zombies per reload, and the lows.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
