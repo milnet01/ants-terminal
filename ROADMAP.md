@@ -55981,6 +55981,11 @@ filed below.
   small repair op (e.g. repair_trailers clear_placeholder_source, scoped
   to the caller project, provenance asserted, created NULL), recorded in
   history.
+  Progress (2026-10-02): op built and pushed in d968263f — roadmap_log
+  op:"repair_trailers" clear_placeholder_source:true. It skips an item
+  whose body declares any other source. Tests INV-15..19. Still to do:
+  after /mcp, dry_run on this project (expect 36 ids, ANTS-1060..1098,
+  5 lines), then the real run, then flip.
   **Layman:** Nearly two thousand old roadmap entries record "planned" as the reason they exist, which says nothing about where they came from.
   Kind: fix.
   Source: ANTS-4585 phase 1 measurement, 2026-08-20.
