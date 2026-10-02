@@ -66708,6 +66708,10 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   User decision 2026-10-01: keep tools/mcp-bridge.py through the next
   release, so 0.7.112's README promise stays true. Remove it in the
   release after that.
+  User decision 2026-10-02: 0.7.113's README repeated "one more
+  release", so keep the bridge in 0.7.114 and remove it in 0.7.115.
+  README now names both versions. The user wants it removed then for
+  certain. Do it straight after 0.7.114 is tagged.
   **Layman:** After the new standalone MCP program has been out for a release, remove the old Python bridge it replaced.
   Kind: chore.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).

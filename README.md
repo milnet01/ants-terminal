@@ -268,8 +268,8 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
    When `ants-mcpd` is rebuilt, reconnect Claude Code (`/mcp`) to pick it
    up. Ants itself keeps running, and so do your other sessions. The older
-   connector, `tools/mcp-bridge.py`, still works for now and will be removed
-   in a later release.
+   connector, `tools/mcp-bridge.py`, still works in 0.7.114 and is removed
+   in 0.7.115.
 3. **Start Claude Code in an Ants tab** by typing `claude`. At the top of
    the session you should see a note that starts "Ants MCP is connected."
 4. **Watch the savings.** Once Claude has used a few of the tools, a
