@@ -164,6 +164,12 @@ struct BlobOptions {
     bool appendPathManifest      = false;  // true  → append every walked
                                            //         file's project-relative
                                            //         path (before all gates)
+    // ANTS-5100 — bounds. A file over maxFileBytes is not read (its path can
+    // still enter the manifest); content stops being added once the blob
+    // reaches maxBlobBytes, and *truncatedOut (when set) says so.
+    qint64 maxFileBytes = 2 * 1024 * 1024;
+    qint64 maxBlobBytes = 64 * 1024 * 1024;
+    bool  *truncatedOut = nullptr;
 };
 
 QString buildProjectSourceBlob(const QString &projectPath,

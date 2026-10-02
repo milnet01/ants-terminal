@@ -383,6 +383,10 @@ QString buildProjectSourceBlob(const QString &projectPath,
         return s;
     }();
     QString sourceBlob;
+    // ANTS-5100 — bounded: the content half stops at opts.maxBlobBytes (UTF-8
+    // bytes read), and a file over opts.maxFileBytes is not read at all.
+    qint64 blobBytes = 0;
+    if (opts.truncatedOut) *opts.truncatedOut = false;
     // ANTS-3600 — when opts.appendPathManifest, record every walked file's
     // project-relative path here and append it to the blob after the walk, so
     // a doc-cited *filename* resolves even when the file's content is
@@ -450,9 +454,16 @@ QString buildProjectSourceBlob(const QString &projectPath,
             if (!opts.includeMarkdownContents &&
                 name.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
                 continue;
+            if (fi.size() > opts.maxFileBytes) continue;   // ANTS-5100
+            if (blobBytes + fi.size() > opts.maxBlobBytes) {
+                if (opts.truncatedOut) *opts.truncatedOut = true;
+                continue;
+            }
             QFile f(fi.filePath());
             if (f.open(QIODevice::ReadOnly)) {
-                sourceBlob += QString::fromUtf8(f.readAll());
+                const QByteArray bytes = f.read(opts.maxFileBytes);
+                blobBytes += bytes.size();
+                sourceBlob += QString::fromUtf8(bytes);
                 sourceBlob += '\n';
             }
         }

@@ -490,3 +490,31 @@ static int runMain() {
 TEST(FeatureCoverage, Main) {
     ASSERT_EQ(0, runMain());
 }
+
+// ANTS-5100 — the source blob is bounded. Every matching file was read whole
+// with no limit, so one vendored minified bundle or a large JSON fixture went
+// into memory in full. A file over maxFileBytes is skipped, and the blob stops
+// at maxBlobBytes and says so.
+TEST(FeatureCoverage, Ants5100SourceBlobIsBounded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(writeFile(root + "/src/small.cpp", "int SmallToken = 1;\n"));
+    ASSERT_TRUE(writeFile(root + "/data/huge.json",
+                          QString(3 * 1024 * 1024, QLatin1Char('x')) +
+                              QStringLiteral("HugeToken")));
+
+    FeatureCoverage::BlobOptions o;
+    const QString blob = FeatureCoverage::buildProjectSourceBlob(root, o);
+    EXPECT_TRUE(blob.contains(QStringLiteral("SmallToken")));
+    EXPECT_FALSE(blob.contains(QStringLiteral("HugeToken")))
+        << "a file over the per-file cap must not be read into the blob";
+
+    bool cut = false;
+    FeatureCoverage::BlobOptions tight;
+    tight.maxBlobBytes = 8;
+    tight.truncatedOut = &cut;
+    const QString small = FeatureCoverage::buildProjectSourceBlob(root, tight);
+    EXPECT_TRUE(cut) << "a blob that hits its total cap must say so";
+    EXPECT_LE(small.toUtf8().size(), 64);
+}

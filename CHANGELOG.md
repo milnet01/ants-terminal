@@ -96,6 +96,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The spec-drift source scan skips files over 2 MiB and stops at 64 MiB in total** (ANTS-5100)
+  One large data file or bundled script no longer goes into memory whole.
+
 - **spec_conformance counts malformed rows against max_cases and refuses a spec file over 8 MiB as too_large** (ANTS-5100)
 
 - **spec_log append_inv recognises table-form and sub-lettered invariants as duplicates correctly, and append_loop finds a loop-log table below a fenced example** (ANTS-5100)
