@@ -315,9 +315,22 @@ static StaleSet staleDocsWith(const Index &prev, const QString &rootCanonical,
         prevMtime.insert(de.path, de.mtimeMs);
     }
 
+    // ANTS-5099 — a capped cache holds a PREFIX of the walk. Docs past its
+    // last entry were never cached, so counting them as added refreshed and
+    // rewrote the whole cache on every call (INV-10). Compare against the
+    // prefix; a removed prefix doc still triggers the refresh that lets the
+    // tail shift in.
+    qsizetype prefixEnd = docs.size();
+    if (prev.docsTruncated && !prev.docs.isEmpty()) {
+        const qsizetype last = docs.indexOf(prev.docs.constLast().path);
+        if (last >= 0) prefixEnd = last + 1;
+    }
+
     QSet<QString> curSet;
-    for (const QString &rel : docs) {
+    for (qsizetype i = 0; i < docs.size(); ++i) {
+        const QString &rel = docs.at(i);
         curSet.insert(rel);
+        if (i >= prefixEnd) continue;
         const qint64 m = QFileInfo(rootCanonical + QLatin1Char('/') + rel)
                              .lastModified().toMSecsSinceEpoch();
         if (!prevPaths.contains(rel)) ss.added << rel;

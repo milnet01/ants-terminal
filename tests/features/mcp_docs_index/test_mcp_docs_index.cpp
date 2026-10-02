@@ -365,6 +365,40 @@ TEST(DocsIndex, DocCountCeiling) {
     EXPECT_EQ(idx.docs[1].path, QStringLiteral("r2.md"));  // docs/d1.md dropped
 }
 
+// ANTS-5099 — past the ceiling, the uncached tail is not "added". It was, so
+// every query on a capped tree refreshed and rewrote the whole cache, which
+// INV-10's warm query forbids. A new doc INSIDE the cached prefix still counts.
+TEST(DocsIndex, Ants5099CappedCacheStaysWarm) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/r1.md", QStringLiteral("# R1\n"));
+    writeFile(dir.path() + "/r2.md", QStringLiteral("# R2\n"));
+    writeFile(dir.path() + "/docs/d1.md", QStringLiteral("# D1\n"));
+    const QString cache = dir.path() + "/cache.json";
+    Options o; o.maxIndexDocs = 2;
+
+    const QJsonObject c1 = serve(dir.path(), 1000, summaryQ(), o, cache);
+    ASSERT_TRUE(c1.value("docs_truncated").toBool());
+    const QJsonObject c2 = serve(dir.path(), 2000, summaryQ(), o, cache);
+    EXPECT_EQ(c2.value("refreshed_docs").toInt(), 0)
+        << "the uncached tail must not count as added on every call";
+    EXPECT_EQ(c2.value("generated_at_ms").toDouble(), 1000.0)
+        << "a warm capped cache must not be rewritten";
+
+    // A doc after the cached prefix changes nothing the cache holds.
+    writeFile(dir.path() + "/docs/d2.md", QStringLiteral("# D2\n"));
+    const QJsonObject c3 = serve(dir.path(), 3000, summaryQ(), o, cache);
+    EXPECT_EQ(c3.value("refreshed_docs").toInt(), 0);
+
+    // A doc that sorts INTO the prefix is added, and displaces the tail.
+    writeFile(dir.path() + "/r0.md", QStringLiteral("# R0\n"));
+    const QJsonObject c4 = serve(dir.path(), 4000, summaryQ(), o, cache);
+    EXPECT_GE(c4.value("refreshed_docs").toInt(), 1)
+        << "a new doc inside the cached prefix must still be picked up";
+    const QString body =
+        QString::fromUtf8(QJsonDocument(c4).toJson(QJsonDocument::Compact));
+    EXPECT_TRUE(body.contains(QStringLiteral("r0.md"))) << body.toStdString();
+}
+
 // INV-13 — round-trip serialisation equality.
 TEST(DocsIndex, SerialisationRoundTrip) {
     QTemporaryDir dir;
