@@ -1519,6 +1519,15 @@ SynthResult synthesize(const SynthRequest &req) {
         return r;
     }
     r.chunksTotal = md.size();
+    // ANTS-5102 — a bounded number of reports is read; chunksTotal keeps the
+    // true count and `truncated` says the rest were left out.
+    constexpr qsizetype kMaxSynthReports = 1000;
+    const bool reportsCapped = md.size() > kMaxSynthReports;
+    bool summaryCapped = false;   // the top_dimensions / file_index caps
+    if (reportsCapped) {
+        md = md.mid(0, kMaxSynthReports);
+        r.truncated = true;
+    }
 
     // Two-pass: pass 1 reads every chunk to compute dimension counts
     // + file-reference index (cheap, both modes need it). Pass 2 emits
@@ -1579,7 +1588,7 @@ SynthResult synthesize(const SynthRequest &req) {
             findingCountByChunk.append(0);
             continue;
         }
-        const QByteArray raw = f.readAll().left(64 * 1024);
+        const QByteArray raw = f.read(64 * 1024);   // ANTS-5102 — bounded read
         QString contents = QString::fromUtf8(raw);
         // Escape BOTH the open `<chunk_report` and close `</chunk_report>`
         // markers so a hostile chunk report can't forge a report frame in
@@ -1802,7 +1811,7 @@ SynthResult synthesize(const SynthRequest &req) {
         o["count"] = dimRanked.at(i).second;
         topDims.append(o);
     }
-    if (dimRanked.size() > kTopDimCap) r.truncated = true;
+    if (dimRanked.size() > kTopDimCap) { r.truncated = true; summaryCapped = true; }
     r.topDimensions = topDims;
 
     // ANTS-1461 — dedup file_index by basename before ranking.
@@ -1846,7 +1855,7 @@ SynthResult synthesize(const SynthRequest &req) {
         o["dimension_hits_total"] = fileRanked.at(i).second;
         fileIdx.append(o);
     }
-    if (fileRanked.size() > kFileIdxCap) r.truncated = true;
+    if (fileRanked.size() > kFileIdxCap) { r.truncated = true; summaryCapped = true; }
     r.fileIndex = fileIdx;
 
     // ANTS-1488 — assemble per-dimension severity histogram envelope.
@@ -1902,7 +1911,11 @@ SynthResult synthesize(const SynthRequest &req) {
                << "` — " << o.value("dimension_hits_total").toInt()
                << " ref(s)\n";
         }
-        if (r.truncated) {
+        if (reportsCapped) {
+            ts << "\n*(only the first " << md.size() << " of " << r.chunksTotal
+               << " chunk reports were read.)*\n";
+        }
+        if (summaryCapped) {
             ts << "\n*(top_dimensions and/or file_index truncated; "
                   "pass mode:\"full\" for the verbatim chunk reports.)*\n";
         }

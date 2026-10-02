@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Test-audit synthesis reads at most 1,000 chunk reports of 64 KiB each, and says when it left any out** (ANTS-5102)
+
 - **focused_test refuses coverage-map patterns that CMake's test filter cannot read, such as \d, {2}, (?:…) and lazy quantifiers** (ANTS-5102)
 
 - **verify_changes keeps non-ASCII characters in build output intact when they arrive split across two reads** (ANTS-5102)

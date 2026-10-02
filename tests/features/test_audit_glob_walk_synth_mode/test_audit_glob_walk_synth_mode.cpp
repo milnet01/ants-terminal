@@ -551,3 +551,31 @@ TEST(TestAuditWalk, G18InTreeScopesStillAccepted) {
             << " wrongly refused as an escape";
     }
 }
+
+// ANTS-5102 — synthesis reads a bounded number of report files and says when
+// it stopped. Every *.md / *.json in reports_dir was read, with no count cap.
+TEST(TestAuditSynth, Ants5102ReportCountIsCapped) {
+    QTemporaryDir tmpProject; ASSERT_TRUE(tmpProject.isValid());
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/CMakeLists.txt",
+                          "project(t)\nenable_testing()\n"));
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/tests/test_x.cpp",
+                          "int main() { return 0; }\n"));
+    for (int i = 0; i < 1005; ++i)
+        ASSERT_TRUE(writeFile(tmpProject.path() +
+                                  QStringLiteral("/reports/c-%1.md").arg(i, 4, 10, QLatin1Char('0')),
+                              "## flakiness\n"));
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd = tmpProject.path();
+    const auto p = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(p.ok) << p.error.toStdString();
+
+    TestAuditEngine::SynthRequest req;
+    req.callerCwd = tmpProject.path();
+    req.partitionToken = p.partitionToken;
+    req.reportsDir = QStringLiteral("reports");
+    const auto r = TestAuditEngine::synthesize(req);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_EQ(r.chunksTotal, 1005) << "the true count is still reported";
+    EXPECT_LE(r.reportsRead, 1000);
+    EXPECT_TRUE(r.truncated) << "a capped read must say so";
+}
