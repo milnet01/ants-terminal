@@ -366,11 +366,6 @@ acceptance test, just not that test.)
 > and **cycle 2 may move ONLY the write that drove the render**. Anything else
 > fails the step.
 >
-> **One bounded exception, and it is an open defect rather than a licence:**
-> `ANTS-1861`, whose `layman` text quotes the markup the renderer emits and so
-> moves on every cycle. Filed as [ANTS-4405]; when that ships the exception is
-> deleted from this step.
->
 > **This wording is deliberately mechanical.** The first attempt read "cycle 2
 > must move only items whose movement is individually explained", which nothing
 > can fail — every mover admits an account after the fact, and `ANTS-1861` was

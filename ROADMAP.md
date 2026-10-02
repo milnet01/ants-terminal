@@ -85713,7 +85713,7 @@ here.)
   Lanes: roadmap-store, mcp.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D3 acceptance run).
 
-- 📋 [ANTS-4405] **ANTS-1861's layman text quotes the renderer's own markup, so it moves on every round-trip cycle.**
+- ✅ [ANTS-4405] **ANTS-1861's layman text quotes the renderer's own markup, so it moves on every round-trip cycle.**
   Found by all three cold lanes of the ANTS-4065 build-plan gate. D3
   measured cycle 1 moving `layman` on exactly one item and cycle 2 moving
   two, one of which is this same item -- so it is not a one-time
@@ -85744,6 +85744,11 @@ here.)
   The plan's exception is NOT deleted, and should not be until ANTS-4507 lands. `docs/plans/ANTS-4065-import-mapping-contract.md` D3 says the exception goes "when that ships", but its criterion counts items that MOVE, and a dry-run migrate today reports 1548 moved — nearly all `body`. That is ANTS-4507's subject: the counter has no zero point, so this item's movement cannot be observed against it either way. Deleting the exception now would rest on a measurement that cannot currently distinguish a fixed item from a moving one.
   Note (2026-10-01): its blocker ANTS-4507 has shipped, so the plan half
   above is no longer blocked.
+  Resolved (2026-10-02): roadmap_migrate dry_run:true
+  only_ids:["ANTS-1861"] reports it in only_ids_not_updated, so it no
+  longer moves. The D3 exception is deleted from
+  docs/plans/ANTS-4065-import-mapping-contract.md, as that step said it
+  would be.
   Blocked-by: ANTS-4507.
 
 - ✅ [ANTS-4406] **The store-divergence witness compares two different quantities, so it warns forever and both its numbers are wrong.**
