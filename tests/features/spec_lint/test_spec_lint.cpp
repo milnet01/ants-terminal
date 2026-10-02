@@ -1915,3 +1915,30 @@ TEST(SpecLint, Ants5100LintChecksOnlyTheInvariantsTheParserReads) {
     EXPECT_EQ(countKind(r, "invariant_no_test"), 0)
         << "no finding for an invariant the parser never saw";
 }
+
+// ANTS-5100 — one mistyped id must not produce one finding per number in the
+// span. The scan walked every number from the lowest id to the highest and
+// filed a finding for each missing one, so INV-100000 beside INV-1 filed
+// 99,998 of them (and a larger typo could exhaust memory). A long run is one
+// finding naming the range; a short gap still reports each number.
+TEST(SpecLint, Ants5100LongIdRunIsOneFinding) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — one. *Test:* a unit test → passes.\n"
+        "- **INV-3** — three. *Test:* a unit test → passes.\n"
+        "- **INV-100000** — a typo. *Test:* a unit test → passes.\n"
+        "\n"
+        "## 4. Notes\n");
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(countKind(r, "invariant_id_gap"), 2)
+        << "INV-2 alone, then one finding for INV-4..INV-99999";
+    bool range = false;
+    for (const auto &f : r.findings)
+        if (f.kind == QLatin1String("invariant_id_gap") &&
+            f.message.contains(QStringLiteral("INV-4 to INV-99999")))
+            range = true;
+    EXPECT_TRUE(range) << "the long run must be named as one range";
+}

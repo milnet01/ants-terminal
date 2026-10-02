@@ -800,8 +800,6 @@ Result check(const QString &text, const QString &relPath,
         // against the corpus (measured: it was most of the 109 id-gap findings
         // in the first calibration run), and § 1e asks for gaps in "a doc's own
         // numbered ids".
-        int lo = ids.first().n, hi = ids.first().n;
-        for (const InvId &e : ids) { lo = qMin(lo, e.n); hi = qMax(hi, e.n); }
         // ANTS-3784 — a floor the DOCUMENT declares, for a gap it skipped on
         // purpose. ANTS-4110's sibling set answers the same question but is
         // corpus-wide and all-or-nothing: one number shared by two specs
@@ -826,11 +824,16 @@ Result check(const QString &text, const QString &relPath,
                 if (m.hasMatch()) { idBase = m.captured(1).toInt(); break; }
             }
         }
-        for (int n = lo; n <= hi; ++n) {
-            if (have.contains(n)) continue;
+        // ANTS-5100 — walk the gaps BETWEEN the ids present, not every number
+        // from lo to hi: one mistyped id (INV-100000 beside INV-1) made the
+        // scan visit the whole span. A run longer than kLongRun is one finding
+        // naming the range, since that many withdrawn invariants is far less
+        // likely than a typo; a short gap still reports each number.
+        constexpr int kLongRun = 50;
+        const auto reportGap = [&](int n) {
             if (n < idBase) {
                 ++r.idGapsSuppressed;
-                continue;
+                return;
             }
             // ANTS-4110 — a number a SIBLING spec owns is not a gap. On a
             // project that numbers invariants once across the corpus, every id
@@ -841,7 +844,7 @@ Result check(const QString &text, const QString &relPath,
             // afterwards, so the count below is the whole story.
             if (opts.siblingInvNumbers.contains(n)) {
                 ++r.idGapsSuppressed;
-                continue;
+                return;
             }
             // A missing invariant has no line of its own, so the finding
             // anchors on the bullet FOLLOWING the gap.
@@ -873,6 +876,31 @@ Result check(const QString &text, const QString &relPath,
                 opts.diff.active   // ANTS-5537 — the gap rule reads it
                     ? QJsonObject{{QStringLiteral("invariant"),
                                    QStringLiteral("INV-%1").arg(n)}}
+                    : QJsonObject{});
+        };
+        QList<int> nums(have.cbegin(), have.cend());
+        std::sort(nums.begin(), nums.end());
+        for (qsizetype k = 0; k + 1 < nums.size(); ++k) {
+            const int a = nums.at(k), b = nums.at(k + 1);
+            const qint64 run = qint64(b) - a - 1;
+            if (run <= 0) continue;
+            if (run <= kLongRun) {
+                for (int n = a + 1; n < b; ++n) reportGap(n);
+                continue;
+            }
+            int from = a + 1;
+            if (b - 1 < idBase) { r.idGapsSuppressed += int(run); continue; }
+            if (from < idBase) { r.idGapsSuppressed += idBase - from; from = idBase; }
+            add(QStringLiteral("invariant_id_gap"), anchorLine.value(
+                    QStringLiteral("INV-%1").arg(b), 0),
+                QStringLiteral("INV-%1 to INV-%2 (%3 numbers) are missing from "
+                               "the id sequence — a run this long is more likely "
+                               "a mistyped id than withdrawn invariants")
+                    .arg(from).arg(b - 1).arg(qint64(b) - from),
+                false,
+                opts.diff.active
+                    ? QJsonObject{{QStringLiteral("invariant"),
+                                   QStringLiteral("INV-%1").arg(from)}}
                     : QJsonObject{});
         }
     }
