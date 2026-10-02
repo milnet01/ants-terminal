@@ -87,6 +87,23 @@ TEST(DocFinding, Inv1JsonKeysAndOmission) {
         << "emission_index must never be serialised, in any array, by any verb";
 }
 
+// ANTS-5099 — `extra` may never redefine a core key, auto_fixable included.
+// The guard skipped only keys already PRESENT, and auto_fixable is omitted when
+// false, so extra["auto_fixable"] = true turned an unfixable finding fixable.
+TEST(DocFinding, Ants5099ExtraCannotSetAutoFixable) {
+    Finding f = make(QStringLiteral("doc_integrity"), QStringLiteral("toc_gap"),
+                     QStringLiteral("a.md"), 3, QStringLiteral("m"),
+                     /*autoFixable=*/false);
+    f.extra[QStringLiteral("auto_fixable")] = true;
+    f.extra[QStringLiteral("spec_status")]  = QStringLiteral("Draft");
+    const QJsonObject o = toJson(f);
+    EXPECT_FALSE(o.contains(QStringLiteral("auto_fixable")))
+        << "extra must not mark an unfixable finding fixable";
+    EXPECT_EQ(o.value(QStringLiteral("spec_status")).toString(),
+              QStringLiteral("Draft"))
+        << "a non-core extra key still passes through";
+}
+
 // INV-1 (list overload) — the array form is the object form, in order.
 TEST(DocFinding, Inv1ListOverloadPreservesOrder) {
     const QList<Finding> fs = {

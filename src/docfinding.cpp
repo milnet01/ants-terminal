@@ -24,8 +24,15 @@ QJsonObject toJson(const Finding &f) {
     // silently redefining the field ANTS-3663 sorts on. Null values survive:
     // `spec_status` is JSON null when the spec carries no Status line, and
     // that is a value the consumer groups by (spec § 2.3).
+    // ANTS-5099 — tested against the six core names, not the keys present:
+    // auto_fixable is omitted when false, so a presence test let
+    // extra["auto_fixable"] mark an unfixable finding fixable.
+    static const QStringList kCore{
+        QStringLiteral("verb"), QStringLiteral("kind"), QStringLiteral("file"),
+        QStringLiteral("line"), QStringLiteral("message"),
+        QStringLiteral("auto_fixable")};
     for (auto it = f.extra.constBegin(); it != f.extra.constEnd(); ++it) {
-        if (o.contains(it.key())) continue;
+        if (kCore.contains(it.key())) continue;
         o[it.key()] = it.value();
     }
     return o;

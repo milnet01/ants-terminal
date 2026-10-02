@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A documentation finding can no longer be marked auto-fixable by its per-kind detail** (ANTS-5099)
+
 - **docs_index stays warm on a tree larger than its cache, instead of rewriting the cache on every call** (ANTS-5099)
 
 - **doc_lint and doc_symbols stop resolving names once the run's time limit is spent, rather than restarting it for every document** (ANTS-5099)
