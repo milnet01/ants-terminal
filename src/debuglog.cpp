@@ -89,20 +89,19 @@ void DebugLog::openLogFileLocked() {
         QFile::rename(path, rotated);
     }
     s_file.setFileName(path);
-    // ANTS-1142 — tighten umask BEFORE create so the kernel
-    // applies 0600 perms at file-creation time, eliminating
-    // the same-UID race window between open() and the
-    // post-open setOwnerOnlyPerms call. Save/restore so the
-    // tighter umask doesn't leak into other parts of the
-    // process. The 0077 mask zeros every group/other perm
-    // bit at create; combined with the QFile::open default
-    // 0666 request, the kernel produces 0600.
-    const mode_t prevMask = ::umask(0077);
+    // ANTS-1142 — created 0600, so there is no window between create and
+    // the setOwnerOnlyPerms calls below. ANTS-5110 — by open(2)'s mode
+    // argument rather than umask(0077): the umask is process-wide, so files
+    // other threads created while it was set took the wrong mode.
     // Append — don't truncate; user can clear() on demand.
-    if (!s_file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+    const int fd = ::open(path.toLocal8Bit().constData(),
+                          O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+    if (fd < 0 || !s_file.open(fd, QIODevice::WriteOnly | QIODevice::Append
+                                       | QIODevice::Text,
+                               QFileDevice::AutoCloseHandle)) {
+        if (fd >= 0) ::close(fd);
         fprintf(stderr, "DebugLog: could not open %s\n", qPrintable(path));
     }
-    ::umask(prevMask);
     // Owner-only. The log can contain PTY output (keystrokes),
     // network responses (API bodies), and HMAC material from
     // OSC 133 forgery detection. Apply both via the open fd
