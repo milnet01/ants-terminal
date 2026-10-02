@@ -41543,7 +41543,7 @@ against current source before filing.
   Source: ANTS-3794 spec, out of scope (in-session-2026-09-19).
   Lanes: roadmap.
 
-- 📋 [ANTS-5245] **A project's roadmap export grows with its history and will pass GitHub's file size limits.**
+- ✅ [ANTS-5245] **A project's roadmap export grows with its history and will pass GitHub's file size limits.**
   The first real ANTS-3794 export (claude-config commit ed04140,
   2026-09-19) wrote roadmap-export/ants-terminal.jsonl at 19 MB
   (ls -lS). The export carries every history row, so the file grows
@@ -41553,6 +41553,13 @@ against current source before filing.
   for that project. Options to weigh: splitting history into its own
   file per project, or rotating old history out of the export.
   Measure the growth rate over a few weekly runs first.
+  Resolved (2026-10-02), measured. ants-terminal.jsonl in claude-config:
+  19,064,776 bytes (ed04140, 2026-09-19), 19,254,835 (255f093,
+  2026-09-21), 20,544,161 (16e41f0, 2026-09-28), so +1.29 MB in the
+  latest week. At that rate: 50 MB warning about March 2027, 100 MB
+  refusal about 14 months out. Repo growth is not a concern: git
+  delta-packs the weekly copies, and the whole config repo is a 21.5 MiB
+  pack. Follow-up with a 35 MB trigger: ANTS-5622.
   **Layman:** The biggest weekly backup file keeps growing and will one day be too big for GitHub; plan for that before it happens.
   Kind: investigate.
   Source: ANTS-3794 first real run (in-session-2026-09-19).
@@ -52923,6 +52930,21 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-10-02 (ANTS-4438 re-measure).
   Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-5622] **Split a project's roadmap export history into its own file before the export reaches 35 MB.**
+  ANTS-5245 measured roadmap-export/ants-terminal.jsonl at 20.5 MB on
+  2026-09-28, growing 1.29 MB a week. GitHub warns at 50 MB and refuses
+  100 MB. Recommended route: write history rows to a second file per
+  project (e.g. <slug>.history.jsonl), which also needs
+  RoadmapExport::rebuildProject to read both and ANTS-5244's restore to
+  accept the pair. Rotating old history out was the other option; it
+  loses the record a restore exists to keep. Trigger: start when the
+  largest export passes 35 MB, which at the measured rate is about
+  January 2027. Re-measure first, since the rate is one week's.
+  **Layman:** Keep the weekly roadmap backup under GitHub's size limit by storing its edit history in a separate file.
+  Kind: implement.
+  Source: ANTS-5245 measurement (in-session-2026-10-02).
+  Lanes: roadmap.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
