@@ -40641,6 +40641,9 @@ against current source before filing.
   (3) Q2, § 3.7: a release block is "version + theme + target date", but § 3.2's example has no date and § 4.3 step 4 rewrites (target: YYYY-MM). Global makes the date optional.
   (4) Q2, § 3.9: rotate_minor's archive path is relative to the "project root", the convention bullet says dir(ROADMAP.md). Diverge only when ROADMAP.md is not at the root.
   (5) Open, § 3.5.1: a store-migrated project on a machine without the store falls to the counter + corpus, which cannot see internal ids. Global says such a project must refuse to allocate. Not decided here.
+  Second pass of the same gate (2026-10-02) re-found items (1)-(4) above and the existing § 3.10.3 step 2 fresh-counter item, and added two, also out of radius:
+  (6) Q2: § 3.5 lists Layman: as optional, while § 3.10.3 says the store's publish gate is unmet until Layman: lines are filled. The global copy makes Layman: required. Decide and state it in § 3.5.
+  (7) Q2, unverified: § 3.10.4 says a multi-prefix counter allocates max(shared counter, per-prefix corpus floor) + 1 (effCounter in remotecontrol_roadmap_log_batch.cpp); roadmap-data-model.md § 7.1 says non-first prefixes fall through to the corpus floor alone. Read effCounter and make the losing document match.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -90748,7 +90751,7 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-10-01 (roadmap-format § 3.9 field pass, gap 7).
 
-- 📋 [ANTS-5609] **Bring this project's roadmap-format § 3.9 into line with the global copy's new versioned-rotation text.**
+- ✅ [ANTS-5609] **Bring this project's roadmap-format § 3.9 into line with the global copy's new versioned-rotation text.**
   claude-config landed this session's § 3.9 draft in ~/.claude 3f3a5da and
   902d851: every minor or major bump rotates (size is a review trigger only),
   blocks are chosen by their heading's release designator (range headings
@@ -90760,6 +90763,12 @@ reports are asked for separately, each time.
   2026-10-02: user chose this rule over ANTS-3751's per-bullet rotation,
   which is dropped. ANTS-3749 (shrink this project's ROADMAP.md) now
   rides on it.
+  Resolved (2026-10-02, 6c26cea5 + dcbecb4d): § 3.9 now takes the global
+  rule — every minor or major bump rotates, size is a review trigger
+  only, blocks are chosen by their heading's designator, open work is
+  re-filed first — and keeps rotate_minor's contract, now saying a store
+  project cannot rotate yet. Gated by review-contract (loops 14-15),
+  converged.
   **Layman:** The rule for archiving old roadmap sections is now worded differently in two copies; this makes them agree.
   Kind: doc-fix.
   Source: claude-config-request-2026-10-01 (CFG-0708).

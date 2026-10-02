@@ -455,7 +455,8 @@ supersedes both.
 
 **Illustrative only — this is NOT the allocation path.** It shows the
 counter's shape, not how an id is issued: real allocation goes through
-`roadmap_log`, which takes the lock above and floors to the committed corpus.
+`roadmap_log`, which on the counter path takes the lock above and floors to the
+committed corpus.
 
 ```bash
 # What the counter file holds -- NOT an allocator.
