@@ -30,8 +30,15 @@
 #include "claudeintegration.h"
 #include "guithread.h"
 #include "remotecontrol.h"
-#include "remotecontrol_internal.h"
 #include "rootprovider.h"
+
+// ANTS-5098 — the root resolver lives in remotecontrol_internal.h, which only
+// the RemoteControl TUs may include (RcTuSplit INV-5); declared here the way
+// remotecontrol.cpp declares it.
+namespace rcdetail {
+QString resolveRootCanonical(const ants::RootProvider *roots);
+QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject &req);
+}  // namespace rcdetail
 
 using Lane = ClaudeIntegration::DispatchLane;
 
