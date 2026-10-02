@@ -8,6 +8,8 @@
 
 #include <QDialog>
 #include <QFile>
+#include <QDateTime>
+#include <QHash>
 #include <QFileInfo>
 #include <QFont>
 #include <QHBoxLayout>
@@ -99,7 +101,7 @@ QString diffHeaderPath(const QString &line) {
 // Read in fixed-size chunks rather than readAll(): the Status list routinely
 // includes multi-MiB files (this repo's own ROADMAP.md is ~2.4 MiB), and the
 // dialog should not hold a whole file in memory just to count newlines.
-int fileLineCount(const QString &absPath) {
+int fileLineCountUncached(const QString &absPath) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return -1;
     constexpr qint64 kMaxScanBytes = 64LL * 1024 * 1024;
@@ -127,6 +129,26 @@ int fileLineCount(const QString &absPath) {
     if (!sawAny) return 0;              // empty file
     if (last != '\n') ++lines;          // count a final unterminated line
     return static_cast<int>(lines);
+}
+
+// ANTS-5109 — every refresh re-read every Status file in full to count its
+// lines. The count is remembered per path, keyed on size and mtime, so an
+// unchanged file is not read again. GUI-thread only, like its caller; the
+// cache is dropped whole past kMaxCached entries rather than tracked LRU.
+int fileLineCount(const QString &absPath) {
+    struct Cached { qint64 size; qint64 mtimeMs; int lines; };
+    static QHash<QString, Cached> cache;
+    constexpr int kMaxCached = 4096;
+    const QFileInfo fi(absPath);
+    const qint64 size = fi.size();
+    const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    const auto it = cache.constFind(absPath);
+    if (it != cache.constEnd() && it->size == size && it->mtimeMs == mtimeMs)
+        return it->lines;
+    const int lines = fileLineCountUncached(absPath);
+    if (cache.size() >= kMaxCached) cache.clear();
+    cache.insert(absPath, Cached{size, mtimeMs, lines});
+    return lines;
 }
 
 // " (N lines)" for a repo-relative path, or empty when the count is
@@ -460,7 +482,12 @@ QDialog *show(QWidget *parent,
         // ANTS-3632 — dimmed " (N lines)" after a Status entry, so the
         // filename stays the thing the eye lands on. Empty when the count
         // is unavailable (deleted / binary / unreadable / oversized).
-        auto countSuffix = [&state, &lth](const QString &path) -> QString {
+        // ANTS-5109 — counted for the first kMaxCountedEntries only, so a
+        // Status list of thousands does not stat and scan them all.
+        constexpr int kMaxCountedEntries = 500;
+        int countedEntries = 0;
+        auto countSuffix = [&state, &lth, &countedEntries](const QString &path) -> QString {
+            if (++countedEntries > kMaxCountedEntries) return {};
             const QString s = lineCountSuffix(state->cwd, path);
             if (s.isEmpty()) return {};
             return QStringLiteral("<span style='color: %1;'>%2</span>")
