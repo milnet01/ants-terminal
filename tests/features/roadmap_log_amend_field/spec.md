@@ -90,6 +90,13 @@ rather than reaching the caller as a raw SQLite constraint string.
   refuses `section_not_found` with `candidates`. An item already in the
   destination is reported in `already_there` and nothing is written.
   *Tests:* the `Ants4948*` cases.
+- **INV-11 (ANTS-5589)** — a move is judged by the Layman gate on the items
+  it moves only, so an uncured item already in either section does not block
+  it. A moved open item with no Layman refuses `render_gate_unmet` and moves
+  nothing; its `error` names `op:"amend_field_batch"` and each blocking id,
+  and does not claim a note can carry the line, since a move takes none.
+  Setting the Layman and repeating the move succeeds. *Tests:* the
+  `Ants5589*` cases.
 
 ## Out of scope
 

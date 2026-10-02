@@ -31,6 +31,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A refused roadmap item move now says how to fix it: set the item's Layman line, then move again.** (ANTS-5589)
+  Moving an open item with no Layman line is still refused. The refusal
+  used to suggest adding the line in the same call, which a move cannot
+  do. It now names op:"amend_field_batch" and the items to fill.
+
 - **The developer pre-push check now stops when its copy of CI's build system is out of date, instead of quietly testing on the local machine and letting CI-only failures through.** (ANTS-5614)
 
 - **A narrow Roadmap window keeps section titles readable: the date columns wrap between words instead of squeezing titles into a word-wide strip** (ANTS-5610)

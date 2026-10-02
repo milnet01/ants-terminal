@@ -69595,13 +69595,19 @@ project. Reported causes are claims until checked in source.
   Source: finbreak session message 341, 2026-10-01.
   Lanes: mcp.
 
-- 📋 [ANTS-5589] **The Layman render gate refuses a pure section move.**
+- ✅ [ANTS-5589] **The Layman render gate refuses a pure section move.**
   Reported by vestige: moving an item to another section (no text change)
   was refused by the render gate's missing-Layman check, and working round
   it cost about 8k tokens. A move adds no item without a Layman line, so
   the gate should not fire on it, or should name the items it blocks on
   and how to fill them. Reproduce with amend_field field:"section" on an
   item whose section holds an item with no layman.
+  Resolved (2026-10-02): reproduced. Only the MOVED item is judged (an
+  uncured neighbour does not block a move); a moved open item with no
+  Layman was refused with advice to add it "in this same call", which a
+  move cannot carry. User decision 2026-10-02: the gate rule stands; fix
+  the message. The move's refusal now names amend_field_batch and each
+  blocking id. Test: roadmap_log_amend_field INV-11.
   **Layman:** Moving a roadmap item to another section is blocked by a check that should only care about new text.
   Kind: fix.
   Source: vestige session message 266, relayed by claude-config 2026-10-01.

@@ -4567,8 +4567,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
         const auto r = RoadmapWrite::commitAndRender(
             store, target->projectId, root, roadmapPath, dryRun, mutate,
             &outcome, &writeErr);
-        if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+            // ANTS-5589 — the shared refusal says a note can carry the Layman
+            // line in the same call, and a move takes no note. Name the route
+            // a move does have. The rule itself stands (user, 2026-10-02).
+            if (env.value(QStringLiteral("code")).toString()
+                    == QLatin1String("render_gate_unmet")) {
+                QStringList blocked;
+                for (const QJsonValue &v : env.value(QStringLiteral("gate_failures")).toArray())
+                    blocked << v.toString();
+                env[QStringLiteral("error")] = QStringLiteral(
+                    "roadmap_log: a moved item that is open needs a Layman line "
+                    "first, and a move cannot carry one. Nothing was moved. Set "
+                    "it, then repeat the move: op:\"amend_field_batch\" with "
+                    "{id, field:\"layman\", value} for each of: %1.")
+                    .arg(blocked.join(QStringLiteral(", ")));
+            }
             return QJsonDocument(env);
+        }
         rlAttachHistoryNote(env, store, hist);      // ANTS-3822 § 2.3.1
         rcRoadmapWriteFields(env, outcome, dryRun);  // ANTS-4463
     }

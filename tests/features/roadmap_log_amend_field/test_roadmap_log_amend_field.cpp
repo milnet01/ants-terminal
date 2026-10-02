@@ -862,6 +862,49 @@ QJsonObject batchReq(const QString &root, const QJsonArray &amendments) {
 
 }  // namespace
 
+// ANTS-5589 — the Layman gate judges only the items a move moves, so an
+// uncured neighbour does not block it; a moved item with no Layman is refused
+// with the route a move actually has. DEMO-0009 is open with no Layman.
+TEST(RoadmapLogAmendField, Ants5589MoveIntoSectionWithUncuredItem) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0007"), QStringLiteral("section"),
+                 QStringLiteral("backlog"))).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+TEST(RoadmapLogAmendField, Ants5589MoveRefusalNamesTheRouteAMoveHas) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QJsonObject move = fieldReq(fx.root, QStringLiteral("DEMO-0009"),
+                                      QStringLiteral("section"), QStringLiteral("later"));
+    const QJsonObject refused = rc.cmdRoadmapLogAmendFieldForTest(move).object();
+    ASSERT_EQ(refused.value(QStringLiteral("code")).toString(),
+              QStringLiteral("render_gate_unmet"))
+        << QJsonDocument(refused).toJson().toStdString();
+    const QString error = refused.value(QStringLiteral("error")).toString();
+    EXPECT_TRUE(error.contains(QStringLiteral("amend_field_batch"))) << error.toStdString();
+    EXPECT_TRUE(error.contains(QStringLiteral("DEMO-0009"))) << error.toStdString();
+    EXPECT_FALSE(error.contains(QStringLiteral("same call")))
+        << "a move takes no note, so it must not say one rides along\n"
+        << error.toStdString();
+
+    // Following the advice works.
+    const QJsonObject set = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0009"), QStringLiteral("layman"),
+                 QStringLiteral("A thing migrated without a summary."))).object();
+    ASSERT_TRUE(set.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(set).toJson().toStdString();
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(move).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const auto item = itemOf(QStringLiteral("DEMO-0009"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->sectionId, sectionIdOf(QStringLiteral("later"), fx.projectId));
+}
+
 // ANTS-5385a — several columns on several items, one call.
 TEST(RoadmapLogAmendFieldBatch, SetsSeveralColumnsInOneCall) {
     Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
