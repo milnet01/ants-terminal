@@ -281,7 +281,13 @@ Result findSources(const QString &topic,
     }
 
     // Walk src/ + tests/ — find_sources is for source code.
-    const QVector<QString> candidates = collectCandidates(rootCanonical);
+    QVector<QString> candidates = collectCandidates(rootCanonical);
+    // ANTS-5103 — a bounded scan: the first maxFiles candidates (sorted),
+    // with walkCapped saying the rest were left out.
+    if (opts.maxFiles > 0 && candidates.size() > opts.maxFiles) {
+        candidates.resize(opts.maxFiles);
+        r.walkCapped = true;
+    }
     r.filesScanned = candidates.size();
 
     QVector<int> tokenHitCount(tokens.size(), 0);

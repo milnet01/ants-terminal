@@ -377,3 +377,20 @@ TEST(McpFindSources, WiringContract) {
 
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-5103 — the candidate walk is capped by Options::maxFiles and says so.
+// It scanned every file under the roots with no count cap; the header
+// recorded ~52 s cold on this repo.
+TEST(McpFindSources, Ants5103WalkIsCappedAndSaysSo) {
+    Sandbox s;
+    s.build();
+    ASSERT_TRUE(s.ok);
+    FindSources::Options o;
+    o.maxFiles = 2;
+    const auto r = FindSources::findSources(QStringLiteral("audit run"), s.root, o);
+    EXPECT_TRUE(r.walkCapped) << "five candidate files must trip a cap of two";
+    EXPECT_LE(r.filesScanned, 2);
+
+    const auto whole = FindSources::findSources(QStringLiteral("audit run"), s.root);
+    EXPECT_FALSE(whole.walkCapped) << "the default cap must not fire on a small tree";
+}

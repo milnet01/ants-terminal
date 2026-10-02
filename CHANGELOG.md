@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_sources scans at most 20,000 files per call and reports walk_capped when it stops early** (ANTS-5103)
+
 - **codebase_index stays warm on a project larger than its cache, so repeat calls answer 304 instead of rewriting the cache** (ANTS-5103)
 
 - **Test-audit synthesis reads at most 1,000 chunk reports of 64 KiB each, and says when it left any out** (ANTS-5102)

@@ -35,12 +35,17 @@ struct Result {
     QStringList      unmatchedTerms;  // input tokens with zero file hits
     int              filesScanned = 0;
     bool             truncated = false;
+    // ANTS-5103 — the candidate walk stopped at Options::maxFiles.
+    bool             walkCapped = false;
 };
 
 struct Options {
     int maxResults     = 20;          // INV-3 default cap
     int contentByteCap = 256 * 1024;  // INV-4 per-file scan budget
     int maxResultsHard = 100;         // INV-3 hard cap (server clamp)
+    // ANTS-5103 — files scanned per call; the rest are left out and
+    // Result::walkCapped says so. A cold scan of a large tree was ~52 s.
+    int maxFiles       = 20000;
 };
 
 // Tokenise a free-text topic into search tokens. Splits on whitespace

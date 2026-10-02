@@ -4152,6 +4152,8 @@ QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
     out[QStringLiteral("files_count")]     = static_cast<int>(res.files.size());
     out[QStringLiteral("unmatched_terms")] = unmatched;
     out[QStringLiteral("files_scanned")]   = res.filesScanned;
+    // ANTS-5103 — the scan stopped at its file cap; a miss may be past it.
+    if (res.walkCapped) out[QStringLiteral("walk_capped")] = true;
     out[QStringLiteral("truncated")]       = res.truncated;
     // ANTS-3435 — an empty result must not read as a genuine "no such code".
     // find_sources ranks by FILENAME + keyword frequency, so a topic that
