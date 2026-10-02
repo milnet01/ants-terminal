@@ -42466,7 +42466,7 @@ in each bullet, not just the reporter's symptom.
   Source: user-request-2026-09-28.
   Lanes: ci.
 
-- 📋 [ANTS-5614] **A stale CI image makes the push gate fall back to this machine's Qt without stopping, so a CI-only failure passes locally.**
+- ✅ [ANTS-5614] **A stale CI image makes the push gate fall back to this machine's Qt without stopping, so a CI-only failure passes locally.**
   Seen 2026-10-01/02: fd4b73b5, 33e9e5c8 and 98923952 all passed the
   push gate and failed GitHub CI on RoadmapDialogCards.Ants5610 (a
   font-dependent width bar). tools/local-ci.sh runs build-test in CI's
@@ -42481,6 +42481,18 @@ in each bullet, not just the reporter's symptom.
   User decision 2026-10-02: option (a) — a stale CI image is rebuilt
   inside the push, then the job runs in it. No silent fallback to this
   machine's Qt.
+  User decision 2026-10-02 (revised, supersedes option (a) above):
+  option (a) conflicts with local-gate.md § 9 ("a cold leg is never
+  started inside a push"), so the push is BLOCKED when the CI image is
+  stale, naming the warm command; the session pushing runs that warm-up
+  and pushes again. Where podman is absent, the job still runs on this
+  machine but the in-image leg is declared skipped (§ 7.1).
+  Resolved (2026-10-02): tools/local-ci.sh blocks the push when CI's
+  build-test image is cold or stale and names the warm-up command; with
+  no podman it runs the job on this machine and declares the image leg
+  skipped via ANTS_GATE_SKIPPED. Exercised against a stand-in guard:
+  stale -> exit 1, warm -> in image, no podman -> skip declared, opt-out
+  unchanged.
   **Layman:** The check before each upload can quietly test on the wrong system, so a problem only GitHub sees slips through.
   Kind: fix.
   Source: in-session-2026-10-02 (CI red on three pushes).

@@ -135,16 +135,29 @@ fi
 # ANTS-5375 — tells ci_workflow.py this is the push gate; ci.yml's perf step
 # then skips here and runs on GitHub only (user ruling, 2026-09-26).
 #
-# The job runs in CI's own image (ubuntu 24.04: its GCC, mold and Qt) when
-# that image and its build tree are warm, and on this machine otherwise. The
+# The job runs in CI's own image (ubuntu 24.04: its GCC, mold and Qt). The
 # image is the match: this box's newer Qt passed ANTS-5479's button test while
-# every CI run failed it. A cold image never runs inside a push; warm it once
-# with `tools/qt62-guard.sh --job build-test --run-job`.
+# every CI run failed it. A cold image never runs inside a push
+# (local-gate.md § 9), and falling back to this machine let three CI-only
+# failures through (ANTS-5614). So a cold image BLOCKS the push and names the
+# warm-up; with no podman at all the job runs here and the image leg is
+# declared skipped (local-gate.md § 7.1).
 # ANTS_PREPUSH_NO_UBUNTU24=1 keeps the job on this machine for one push.
 job_in_image=0
 if [[ -z "${ANTS_PREPUSH_NO_UBUNTU24:-}" && -x tools/qt62-guard.sh ]] \
-   && tools/qt62-guard.sh --job build-test --run-job --check-warm; then
+   && command -v podman >/dev/null 2>&1; then
+    if ! tools/qt62-guard.sh --job build-test --run-job --check-warm; then
+        echo >&2
+        echo "pre-push: CI's build-test image is cold or stale — push blocked." >&2
+        echo "          Warm it (about 20 min), then push again:" >&2
+        echo "            tools/qt62-guard.sh --job build-test --run-job" >&2
+        echo "          ('git push --no-verify' to override.)" >&2
+        exit 1
+    fi
     job_in_image=1
+elif [[ -z "${ANTS_PREPUSH_NO_UBUNTU24:-}" && -n "${ANTS_GATE_SKIPPED:-}" ]]; then
+    echo "build-test in CI's image (podman or tools/qt62-guard.sh missing)" \
+        >> "$ANTS_GATE_SKIPPED"
 fi
 if [[ "$job_in_image" == 1 ]]; then
     echo "pre-push: running ci.yml's build-test job in CI's image (tools/qt62-guard.sh --run-job)…"
@@ -152,8 +165,7 @@ if [[ "$job_in_image" == 1 ]]; then
     ANTS_PUSH_GATE=1 tools/qt62-guard.sh --job build-test --run-job
 else
     echo "pre-push: running ci.yml's build-test job on this machine (tools/ci_workflow.py)…"
-    echo "          CI's image is not warm, so this is this box's Qt and compiler, not CI's."
-    echo "          Warm it once: tools/qt62-guard.sh --job build-test --run-job"
+    echo "          CI's image is not used, so this is this box's Qt and compiler, not CI's."
     echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.sh --full"
     ANTS_PUSH_GATE=1 python3 "$runner" run build-test
 fi

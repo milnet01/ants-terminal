@@ -116,8 +116,10 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   commit that is not HEAD.
 - `tools/local-ci.sh` runs `ci.yml`'s `build-test` job in CI's own image
   (ubuntu:24.04: its GCC, mold and Qt 6.4) through
-  `tools/qt62-guard.sh --job build-test --run-job`, and on this machine only
-  while that image is cold. Warm it once by running that command. It also runs
+  `tools/qt62-guard.sh --job build-test --run-job`. A cold or stale image
+  blocks the push: run that command (about 20 min, through `cc-job`), then
+  push again. With no podman the job runs on this machine and the image leg is
+  declared skipped. It also runs
   `build-asan` when `build-asan/` is warm, and the Qt 6.2 compile guard
   `tools/qt62-guard.sh --warm-only`.
 - This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button

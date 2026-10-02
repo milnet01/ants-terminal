@@ -22,6 +22,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The developer pre-push check now stops when its copy of CI's build system is out of date, instead of quietly testing on the local machine and letting CI-only failures through.** (ANTS-5614)
+
 - **A narrow Roadmap window keeps section titles readable: the date columns wrap between words instead of squeezing titles into a word-wide strip** (ANTS-5610)
 
 ## [0.7.113] - 2026-10-01
