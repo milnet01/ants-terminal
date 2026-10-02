@@ -29,6 +29,9 @@ struct Options {
 inline constexpr int kMaxPatternBytes = 512;
 inline constexpr int kMaxInputBytes   = 512;
 inline constexpr int kMaxCasesCeiling = 1000;
+// ANTS-5100 — the spec file is read up to this many bytes; a larger one is
+// refused too_large rather than read whole.
+inline constexpr qint64 kMaxSpecBytes = 8 * 1024 * 1024;
 
 // Returns the spec § 2.3 envelope:
 //   {ok, path, cases_run, findings[], candidates[], refusals[],

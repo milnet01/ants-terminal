@@ -414,3 +414,31 @@ TEST(spec_conformance, Ants5100InvalidPatternIsRefused) {
     EXPECT_EQ(at(env, "refusals", 0).value("code").toString().toStdString(), "bad_pattern");
     EXPECT_TRUE(arr(env, "findings").isEmpty());
 }
+
+// ANTS-5100 — every examined row counts against max_cases, malformed ones
+// included. A row with an empty expected cell was skipped before the cap, so a
+// long malformed table emitted one candidate per row with no bound.
+TEST(spec_conformance, Ants5100MalformedRowsCountAgainstMaxCases) {
+    QTemporaryDir d;
+    QByteArray body = fence("regex pcre2", "a") +
+                      "| input | expected |\n|---|---|\n";
+    for (int i = 0; i < 10; ++i) body += "| `a` |  |\n";
+    const QString p = writeSpec(d, "m.md", body);
+    SpecConformance::Options o;
+    o.maxCases = 3;
+    const QJsonObject env = SpecConformance::run(p, o);
+    EXPECT_TRUE(env.value("truncated").toBool())
+        << "ten malformed rows must trip a cap of three";
+    EXPECT_LE(arr(env, "candidates").size(), 3);
+}
+
+// ANTS-5100 — the spec is read up to a cap, not whole: an oversized file is
+// refused too_large before it is read into memory.
+TEST(spec_conformance, Ants5100OversizedSpecIsRefused) {
+    QTemporaryDir d;
+    const QByteArray big(9 * 1024 * 1024, 'x');
+    const QString p = writeSpec(d, "big.md", big);
+    const QJsonObject env = SpecConformance::run(p);
+    EXPECT_FALSE(env.value("ok").toBool(true));
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("too_large"));
+}

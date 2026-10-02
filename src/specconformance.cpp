@@ -108,9 +108,15 @@ QJsonObject run(const QString &absPath, const Options &opt) {
         return refusal("not_found",
                        QStringLiteral("cannot read %1").arg(absPath));
     }
-    const QStringList lines =
-        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    // ANTS-5100 — bounded: one byte past the cap says it is over.
+    const QByteArray raw = f.read(kMaxSpecBytes + 1);
     f.close();
+    if (raw.size() > kMaxSpecBytes) {
+        return refusal("too_large",
+                       QStringLiteral("%1 is over %2 bytes")
+                           .arg(absPath).arg(kMaxSpecBytes));
+    }
+    const QStringList lines = QString::fromUtf8(raw).split(QLatin1Char('\n'));
 
     QJsonArray findings, candidates, refusals, observations;
     // ANTS-4370 — every fence this verb DECLINED, with its tag and line.
@@ -130,6 +136,9 @@ QJsonObject run(const QString &absPath, const Options &opt) {
     QJsonArray skippedFences;
     int taggedFences = 0;
     int casesRun = 0;
+    // ANTS-5100 — the cap counts every row EXAMINED, malformed ones included;
+    // `cases_run` still reports only the cases that ran.
+    int rowsExamined = 0;
     bool truncated = false;
 
     for (int i = 0; i < lines.size(); ++i) {
@@ -249,11 +258,11 @@ QJsonObject run(const QString &absPath, const Options &opt) {
         for (; row < lines.size(); ++row) {
             const QString t = lines.at(row).trimmed();
             if (!t.startsWith(QLatin1Char('|'))) break;
+            if (rowsExamined >= opt.maxCases) { truncated = true; break; }
+            ++rowsExamined;
             const QStringList c = cellsOf(t);
             if (c.size() < 2) continue;
             const int rowLine = row + 1;   // 1-based
-
-            if (casesRun >= opt.maxCases) { truncated = true; break; }
 
             const QString rawInput    = c.at(0);
             const QString rawExpected = c.at(1);
