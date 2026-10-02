@@ -980,8 +980,17 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     // ANTS-3601 — deterministic doc-integrity findings for the lane's OWN docs
     // (docPaths only — never crossReferenceDocs; the giant ROADMAP/CHANGELOG
     // logs must not be handed to check, § 2.7). Formatted for the envelope.
+    // ANTS-5101 — the contracts lane carries those logs AS docPaths, so they
+    // are dropped here by the same size rule (user decision 2026-09-14).
+    QStringList checkDocs;
+    for (const QString &d : lane.docPaths) {
+        if (kCrossRefs.contains(d) &&
+            QFileInfo(projectPath + QChar('/') + d).size() > kLargeCrossRefBytes)
+            continue;
+        checkDocs << d;
+    }
     for (const DocIntegrity::Finding &f :
-         DocIntegrity::check(projectPath, lane.docPaths)) {
+         DocIntegrity::check(projectPath, checkDocs)) {
         const QString kind = f.kind == DocIntegrity::Kind::DeadAnchor
                                  ? QStringLiteral("dead_anchor")
                              : f.kind == DocIntegrity::Kind::BrokenLink

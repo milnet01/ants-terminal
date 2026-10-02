@@ -1313,3 +1313,29 @@ TEST(ColdEyesEngine, Ants1634PriorLoopFixesPartialFields) {
     EXPECT_FALSE(m.brief.contains(QStringLiteral("Title only** — \n")))
         << "INV-10: title-only must not emit a dangling em-dash";
 }
+
+// ANTS-5101 — ANTS-3601 § 2.7: the big append-only logs are never handed to
+// DocIntegrity::check (user decision 2026-09-14: the code was wrong). The
+// contracts lane lists ROADMAP.md and CHANGELOG.md among its OWN docPaths, so
+// it read both logs whole. A small contract doc is still checked.
+TEST(ColdEyesEngine, Ants5101ContractsLaneLeavesLargeLogsOutOfCheck) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md",
+        QStringLiteral("# CLAUDE\n\nSee [here](#missing-claude).\n")));
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md",
+        QStringLiteral("# Roadmap\n\nSee [there](#missing-roadmap).\n\n") +
+        QString(200 * 1024, QLatin1Char('x')) + QLatin1Char('\n')));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("contracts");
+    lane.summary = QStringLiteral("contracts");
+    lane.docPaths << QStringLiteral("CLAUDE.md") << QStringLiteral("ROADMAP.md");
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    const QString all = m.docIntegrity.join(QLatin1Char('\n'));
+    EXPECT_TRUE(all.contains(QStringLiteral("missing-claude")))
+        << "a small contract doc is still checked: " << all.toStdString();
+    EXPECT_FALSE(all.contains(QStringLiteral("ROADMAP.md")))
+        << "the large ROADMAP log must not reach check: " << all.toStdString();
+}
