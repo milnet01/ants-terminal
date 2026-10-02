@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The test-audit pre-pass reads at most 1 MiB of each test file** (ANTS-5102)
+
+- **verify_changes' build-file scan walks each folder once, even when a symlink points back up the tree** (ANTS-5102)
+
 - **The debt sweep checks the age of every TODO in a large file, not just those near the top** (ANTS-5101)
 
 - **The cold-eyes contracts lane no longer runs the document check over the multi-megabyte ROADMAP and CHANGELOG logs** (ANTS-5101)

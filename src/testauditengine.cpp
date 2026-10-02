@@ -913,7 +913,10 @@ QJsonArray prePassFile(const QString &path,
     if (capRemaining <= 0) return out;
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
-    const QString raw = QString::fromUtf8(f.readAll());
+    // ANTS-5102 — bounded read: a test file larger than this is scanned up
+    // to the cap rather than read whole (and held three times over below).
+    constexpr qint64 kPrePassMaxFileBytes = 1024 * 1024;
+    QString raw = QString::fromUtf8(f.read(kPrePassMaxFileBytes));
     // ANTS-1491 — strip C/C++ string literals and comments before
     // matching, so patterns don't fire inside fixture-string Python
     // scripts. ANTS-1627 extends the same strip to .py files
@@ -927,6 +930,7 @@ QJsonArray prePassFile(const QString &path,
     else if (isPyPath(path))  { text = stripPythonLiteralsAndComments(raw);
                                 lang = QStringLiteral("py"); }
     else                      { text = raw; }
+    raw.clear();   // ANTS-5102 — the stripped copy is all that is matched
     // ANTS-4112 — resolve the language gate ONCE per file, not per line per
     // pattern. An ungated pattern (the common case) applies everywhere; a gated
     // one applies only to a language it names, and a file whose language is not

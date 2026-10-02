@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -183,4 +184,37 @@ TEST(TestAuditPaginationPrePass, Inv4NoPrePassDoesNotPoisonTheBriefCache) {
     EXPECT_FALSE(b.prePassFindings.isEmpty())
         << "a pre-pass-free partition displaced the cached one, so chunk "
         << chunkId.toStdString() << " lost its pre_pass_findings";
+}
+
+// ANTS-5102 — the pre-pass reads each test file up to a cap (about 1 MiB),
+// not whole: a hit inside the cap is still reported, one past it is not.
+TEST(TestAuditPaginationPrePass, Ants5102PrePassReadIsCapped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    writeFile(root + "/pyproject.toml", QStringLiteral("[tool.pytest.ini_options]\n"));
+    QString body = QStringLiteral("import time, datetime\n\n\ndef test_big():\n"
+                                  "    time.sleep(1)\n");
+    body.reserve(1400 * 1024);
+    while (body.size() < 1300 * 1024) body += QStringLiteral("    x = 1\n");
+    body += QStringLiteral("    datetime.now()\n");
+    writeFile(root + "/test_big.py", body);
+
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd  = root;
+    preq.scope      = QStringLiteral("auto");
+    preq.dimensions = QStringLiteral("auto");
+    const TestAuditEngine::PartitionResult p = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(p.ok) << p.error.toStdString();
+
+    bool sawSleep = false, sawNow = false;
+    for (auto it = p.prePassFindingsByChunk.cbegin();
+         it != p.prePassFindingsByChunk.cend(); ++it)
+        for (const QJsonValue &v : it.value()) {
+            const QString id = v.toObject().value(QStringLiteral("pattern_id")).toString();
+            sawSleep = sawSleep || id == QLatin1String("sleep_call");
+            sawNow   = sawNow   || id == QLatin1String("datetime_now");
+        }
+    EXPECT_TRUE(sawSleep) << "a hit inside the cap is still reported";
+    EXPECT_FALSE(sawNow) << "a hit past the 1 MiB cap must not be read";
 }
