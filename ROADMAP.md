@@ -9857,7 +9857,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
   Lanes: mcp.
 
-- 📋 [ANTS-5099] **Performance pass findings for the documentation engines (medium and low).**
+- ✅ [ANTS-5099] **Performance pass findings for the documentation engines (medium and low).**
   Filed separately: ANTS-5054, 5055.
   Medium:
   - Past its file or byte cap, docs_index counts the uncached files as
@@ -9895,6 +9895,14 @@ extends an existing item, that item carries it instead.
   unbounded line read, the size-then-read race, DocFinding's auto_fixable
   key guard, [[nodiscard]] on parser returns, and the ANTS-3660 shingle
   memory figure.
+  Resolved (2026-10-02): the lows shipped. DocFinding's extra can no
+  longer set auto_fixable (DocFinding Ants5099ExtraCannotSetAutoFixable,
+  red first). docs_index reads lines in bounded chunks and doc_lint reads
+  at most maxDocBytes+1; both unproven by a failing test, since output is
+  identical and the race cannot be forced. [[nodiscard]] on fifteen pure
+  parser returns, zero -Wunused-result. ANTS-3660 section 4 now estimates
+  the interned shingle keys: about 100 bytes each, ~45 MB at the measured
+  471,079, up to ~120 MB at the cap.
   **Layman:** Smaller doc-tool fixes, including one that can write a table of contents entry in the wrong place.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
