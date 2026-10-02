@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_log append_inv recognises table-form and sub-lettered invariants as duplicates correctly, and append_loop finds a loop-log table below a fenced example** (ANTS-5100)
+
 - **spec_lint reports only the invariants the spec parser reads, ending false invariant_no_test findings** (ANTS-5100)
   An indented invariant, or one after a `## ` line inside a code fence, was
   flagged as having no test although the parser never read it.

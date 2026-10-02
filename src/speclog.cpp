@@ -8,7 +8,10 @@
 // and this writer share one definition of where a field ends.
 #include "specparse.h"
 
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStringList>
 
 namespace SpecLog {
@@ -291,8 +294,16 @@ EditResult appendLoop(const QString &content, const QString &label,
         // `review-contract` tells sessions outright not to reach for it.
         // That is self-reinforcing: a verb the governing skill says to avoid
         // gets no usage, so the mismatch never becomes pressure to fix.
+        // ANTS-5100 — fence-aware, like findSectionHeading: a `## ` line or
+        // a `|` row inside a fenced example is not the section's end or its
+        // table.
+        const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+        const auto fenced = [&fence](int i) {
+            return i < fence.size() && fence.at(i);
+        };
         int sectionEnd = lines.size();
         for (int i = hdr + 1; i < lines.size(); ++i) {
+            if (fenced(i)) continue;
             if (lines.at(i).startsWith(QStringLiteral("## "))) {
                 sectionEnd = i;
                 break;
@@ -300,6 +311,7 @@ EditResult appendLoop(const QString &content, const QString &label,
         }
         int headerLine = -1, sepLine = -1;
         for (int i = hdr + 1; i + 1 < sectionEnd && i + 1 < lines.size(); ++i) {
+            if (fenced(i)) continue;
             if (lines.at(i).trimmed().startsWith(QLatin1Char('|')) &&
                 slIsTableSeparator(lines.at(i + 1))) {
                 headerLine = i;
@@ -504,19 +516,33 @@ EditResult appendInv(const QString &content, const QString &invId,
         return fail(QStringLiteral("unrecognised_format"),
                     QStringLiteral("spec_log: no Invariants section found"));
     }
-    // Duplicate guard: refuse if `invId` already appears as an INV
-    // bullet anywhere in the file. The bullet form is
-    // `- **INV-N** —` / `- **INV-N.** —` (specs.md § 3.5).
-    static const QRegularExpression invBulletRe(
-        QStringLiteral("^-\\s+\\*\\*(INV-[0-9]+)"));
-    for (const QString &line : lines) {
-        const auto m = invBulletRe.match(line);
-        if (m.hasMatch() && m.captured(1) == invId) {
-            return fail(QStringLiteral("bad_args"),
-                        QStringLiteral("spec_log: %1 already present "
-                                       "(append_inv never renumbers / "
-                                       "duplicates)").arg(invId));
-        }
+    // Duplicate guard: refuse if `invId` is already an invariant.
+    // ANTS-5100 — "an invariant" means what the parser reads, in the section
+    // SpecParse::invariantsSection defines (user decision 2026-09-14), plus
+    // any table-row anchor there: a row with an empty test cell is still an
+    // invariant though the parser's three-cell row skips it. The old scan
+    // matched `- **INV-N` across the whole file, so a table-form invariant
+    // was no duplicate, a fenced example elsewhere was, and INV-3b blocked
+    // INV-3 (the pattern stopped at the digits).
+    QSet<QString> existing;
+    for (const auto &v : SpecParse::parseSpecBody(content)
+                             .value(QStringLiteral("invariants")).toArray())
+        existing.insert(v.toObject().value(QStringLiteral("id")).toString());
+    const SpecParse::InvariantsSection invSec =
+        SpecParse::invariantsSection(content);
+    if (invSec.start >= 0) {
+        static const QRegularExpression rowRe(
+            QStringLiteral(R"(^\|\s*(INV-[0-9]+[a-z]?)\s*\|)"),
+            QRegularExpression::MultilineOption);
+        auto it = rowRe.globalMatch(
+            content.mid(invSec.start, invSec.end - invSec.start));
+        while (it.hasNext()) existing.insert(it.next().captured(1));
+    }
+    if (existing.contains(invId)) {
+        return fail(QStringLiteral("bad_args"),
+                    QStringLiteral("spec_log: %1 already present "
+                                   "(append_inv never renumbers / "
+                                   "duplicates)").arg(invId));
     }
 
     QString bullet = QStringLiteral("- **") + invId +

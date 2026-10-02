@@ -823,3 +823,65 @@ TEST(McpSpecLog, Ants4886StillCreatesTheSectionOnASpecThatHasNoLogYet) {
     EXPECT_TRUE(r.content.contains(QStringLiteral("## Cold-eyes loop log")));
     EXPECT_TRUE(r.content.contains(QStringLiteral("- **Loop 1 (2026-09-06)** — ")));
 }
+
+// ANTS-5100 — append_inv's duplicate guard reads the invariants the parser
+// reads (SpecParse::invariantsSection, the one definition) plus any table row
+// anchor in that section. It matched only `- **INV-N` across the whole file:
+// a table-form invariant was not a duplicate, a fenced example elsewhere was,
+// and an existing INV-3b blocked INV-3.
+TEST(McpSpecLog, Ants5100AppendInvDuplicateGuardReadsTheSection) {
+    const QString spec = QStringLiteral(
+        "# ANTS-9 — t\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "| ID | Rule | Test |\n"
+        "|---|---|---|\n"
+        "| INV-1 | a | b |\n"
+        "| INV-2 | c |  |\n"
+        "\n"
+        "- **INV-3b** — a sub-lettered one.\n"
+        "\n"
+        "## 7. Examples\n"
+        "\n"
+        "```\n"
+        "- **INV-7** — an example, not an invariant.\n"
+        "```\n");
+    const auto add = [&](const char *id) {
+        return SpecLog::appendInv(spec, QString::fromUtf8(id),
+                                  QStringLiteral("x"), QString());
+    };
+    const auto one = add("INV-1");
+    EXPECT_FALSE(one.ok) << "a table-form INV-1 already exists";
+    EXPECT_EQ(one.code, QStringLiteral("bad_args"));
+    const auto two = add("INV-2");
+    EXPECT_FALSE(two.ok) << "a table row with an empty test cell still exists";
+    EXPECT_TRUE(add("INV-3").ok) << "INV-3b is not INV-3";
+    EXPECT_TRUE(add("INV-7").ok) << "a fenced example outside the section is "
+                                    "not an invariant";
+}
+
+// ANTS-5100 — append_loop's section scan honours fences: a `## ` line inside
+// a fenced block in the loop log does not end the section, so the table below
+// it is still found.
+TEST(McpSpecLog, Ants5100AppendLoopSectionScanSkipsFences) {
+    const QString spec = QStringLiteral(
+        "# T\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "```\n"
+        "## an example heading inside a fence\n"
+        "```\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n"
+        "| 1 | 2026-08-01 | x |\n");
+    const auto r = SpecLog::appendLoop(
+        spec, QString(), QString(),
+        {QStringLiteral("2"), QStringLiteral("2026-08-02"), QStringLiteral("y")});
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_EQ(r.rowShape, QStringLiteral("table"));
+    EXPECT_GT(r.content.indexOf(QStringLiteral("| 2 | 2026-08-02 | y |")),
+              r.content.indexOf(QStringLiteral("| 1 | 2026-08-01 | x |")));
+}
