@@ -3024,6 +3024,30 @@ remainder, captured so they don't drop on the floor.
   feature test. Stage 1 scope complete.
   Kind: implement.
 
+- ✅ [ANTS-5620] **A status-bar chip shows the active tab's unread session_message mail.**
+  User, 2026-10-02: "give the user of Ants Terminal some sort of
+  indication per tab if that session has unread messages in their inbox.
+  Perhaps something in the status bar?" Companion to ANTS-5619, which
+  tells the Claude session itself. Count from
+  RoadmapStore::mailSummaryFor() for the project the active tab's cwd
+  belongs to; hidden at zero; tooltip names the senders.
+  Reload story: GUI code, so the chip appears after the next terminal
+  relaunch, unavoidably (a status-bar widget lives in the terminal
+  process). Once running it needs nothing further: the count is re-read
+  from the store.
+  Shipped (2026-10-02): ClaudeStatusBarController::refreshMailChip()
+  shows "✉ N unread" (bold, yellow border) beside the tokens pill for the
+  focused tab's project, tooltip naming the senders; hidden at zero. New
+  RoadmapStore::projectIdContaining() finds the project from a
+  subdirectory. Own store connection on the GUI thread via storeFor();
+  re-queries only when the cwd or the store files change. Test:
+  tests/features/status_bar_mail_chip. Visible after one terminal
+  relaunch.
+  **Layman:** The bar at the bottom of the terminal shows when the session in the tab you're looking at has unread messages from other sessions.
+  Kind: feature.
+  Source: user-request-2026-10-02.
+  Lanes: statusbar, roadmap-store.
+
 ### 🎨 Claude Code UX — token-saving git-context hook (user request 2026-04-24)
 
 - ✅ [ANTS-4250] **UserPromptSubmit git-context hook.**

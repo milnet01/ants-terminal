@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <utility>
 
 namespace {
 
@@ -1580,8 +1581,7 @@ std::optional<QByteArray> RoadmapStore::contentDigest(qint64 projectId,
         "SELECT * FROM project WHERE project_id = ?",
         "SELECT * FROM section WHERE project_id = ? ORDER BY section_id",
         "SELECT * FROM item WHERE project_id = ? ORDER BY item_pk",
-        "SELECT e.* FROM element e JOIN section s USING (section_id) WHERE s.project_id = ? "
-        "ORDER BY e.element_id",
+        "SELECT e.* FROM element e JOIN section s USING (section_id) WHERE s.project_id = ? ORDER BY e.element_id",
     };
     QCryptographicHash h(QCryptographicHash::Sha256);
     for (const char *sql : kQueries) {
@@ -2161,6 +2161,28 @@ std::optional<qint64> RoadmapStore::projectIdForRoot(const QString &root,
     if (!q.next())
         return std::nullopt;
     return q.value(0).toLongLong();
+}
+
+std::optional<qint64> RoadmapStore::projectIdContaining(const QString &path,
+                                                        QString *error) const {
+    // Walk up from the canonical path, asking projectIdForRoot() at each level,
+    // so the match is exactly the one a registered root would give.
+    QString dir = QFileInfo(path).canonicalFilePath();
+    while (!dir.isEmpty()) {
+        QString err;
+        if (const auto id = projectIdForRoot(dir, &err))
+            return id;
+        if (!err.isEmpty()) {
+            if (error)
+                *error = std::move(err);
+            return std::nullopt;
+        }
+        const QString up = QFileInfo(dir).path();
+        if (up == dir)
+            break;
+        dir = up;
+    }
+    return std::nullopt;
 }
 
 bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,

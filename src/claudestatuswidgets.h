@@ -18,6 +18,7 @@
 #include <QPointer>   // ANTS-1920 — pollModelSwitchConfirm parameter type
 #include <QString>
 #include <functional>
+#include <memory>     // ANTS-5620 — the mail chip's store handle
 
 #include "claudeintegration.h"   // ClaudeState — member-typed
 #include "modelrecommender.h"   // ANTS-1893 — ModelRecommender::Tier member-typed
@@ -35,6 +36,8 @@ class ColoredTabBar;
 class ClaudeBgTaskTracker;
 class ClaudeTaskListTracker;
 class TerminalWidget;
+class RoadmapStore;
+struct Theme;
 
 // ANTS-1928 — modelautoswitch.h is now included directly (was forward-decl'd
 // for the maybeEmitNearMiss/emitSwitchSurfacing by-ref params). The original
@@ -54,6 +57,8 @@ class ClaudeStatusBarController : public QObject {
 public:
     explicit ClaudeStatusBarController(QStatusBar *statusBar,
                                        QObject *parent);
+    // Out of line: m_mailStore holds a type only the .cpp completes.
+    ~ClaudeStatusBarController() override;
 
     // Wiring (called once from MainWindow ctor — services are
     // owned by MainWindow, the controller observes them).
@@ -113,6 +118,9 @@ public:
     // Called from the tokensSavedUpdated nudge AND MainWindow::
     // refreshStatusBarForActiveTab() on a tab switch (INV-7).
     void refreshTokensSavedChip();
+    // ANTS-5620 — the focused tab's project's unread session_message mail
+    // ("✉ 3 unread"), hidden at zero. Status timer + both onTabChanged arms.
+    void refreshMailChip();
 
     // ANTS-1735 §2.3 — autonomous switcher tick. Reads the focused
     // tab's tracker entry, builds a ModelAutoSwitch::Gate, calls
@@ -322,6 +330,17 @@ private:
     QLabel              *m_statusLabel = nullptr;
     QProgressBar        *m_contextBar = nullptr;
     QLabel              *m_tokensSavedChip = nullptr;  // ANTS-3572
+    // ANTS-5620 — the unread-mail chip and its own store connection, opened
+    // and used on the GUI thread only (ANTS-5141's cross-thread hazard).
+    // m_mailSig is the last cwd + store-file signature queried, so the 2 s
+    // tick re-queries only when either changed; m_mailProjectForCwd caches the
+    // cwd → project lookup and is cleared whenever the store files change.
+    QLabel              *m_mailChip = nullptr;
+    static QString mailChipStyle(const Theme &th);
+    std::unique_ptr<RoadmapStore> m_mailStore;
+    QString              m_mailSig;
+    QString              m_mailStoreSig;
+    QHash<QString, qint64> m_mailProjectForCwd;
     // ANTS-5092 — coalesces the per-MCP-call nudge into one refresh.
     QTimer              *m_tokensSavedRefresh = nullptr;
     QPushButton         *m_reviewBtn = nullptr;

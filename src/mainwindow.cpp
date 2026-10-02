@@ -814,6 +814,10 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // silent, leaving a phantom "Background Tasks (12)" chip when
     // every task has actually finished. User report 2026-04-27.
     connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController, &ClaudeStatusBarController::refreshBgTasksButton);
+    // ANTS-5620 — unread-mail chip; re-queries only when the cwd or the
+    // store's files changed, so the tick is a few stat() calls otherwise.
+    connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshMailChip);
     // ANTS-1158 — task-list chip ticks alongside bg-tasks. Same 2 s
     // cadence; cheap (one parseTranscript per fire on a 16 MiB-capped
     // file) but only meaningful when the focused tab has a Claude
@@ -5414,8 +5418,10 @@ void MainWindow::refreshStatusBarForActiveTab() {
         if (m_roadmapBtn) m_roadmapBtn->hide();
         m_roadmapPath.clear();
         if (m_repoVisibilityLabel) m_repoVisibilityLabel->hide();
-        if (m_claudeStatusBarController)  // ANTS-3579 — no tab → hide the pill
+        if (m_claudeStatusBarController) {  // ANTS-3579 — no tab → hide the pill
             m_claudeStatusBarController->refreshTokensSavedChip();
+            m_claudeStatusBarController->refreshMailChip();   // ANTS-5620
+        }
         return;
     }
 
@@ -5449,8 +5455,11 @@ void MainWindow::refreshStatusBarForActiveTab() {
     refreshRepoVisibility();
     // ANTS-3579 (INV-7) — re-scope the tokens-saved pill to the new tab's
     // project, so a tab switch shows that project's savings with no MCP call.
-    if (m_claudeStatusBarController)
+    if (m_claudeStatusBarController) {
         m_claudeStatusBarController->refreshTokensSavedChip();
+        // ANTS-5620 — and the unread-mail chip for the new tab's project.
+        m_claudeStatusBarController->refreshMailChip();
+    }
 
     // ANTS-1851 — if the tab we just switched TO owns a still-pending
     // permission prompt, re-paint its bottom-bar Allow/Deny buttons (the

@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **The status bar shows when the session in the current tab has unread messages from other Claude Code sessions** (ANTS-5620)
+  A "✉ 3 unread" chip appears for the tab you are looking at, and its
+  tooltip names who sent them. It disappears once the messages are read.
+
 - **`roadmap_query check_sync` now says which side moved when a roadmap file and its store disagree** (ANTS-5381)
   `drift_cause` is `file` (edited by hand since the last publish), `store`
   (changed but never published), `file_and_store`, `renderer` (neither

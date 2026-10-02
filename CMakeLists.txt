@@ -920,7 +920,10 @@ add_library(ants_claude_lib STATIC
 )
 target_link_libraries(ants_claude_lib
     PUBLIC  ants_chrome_lib
-    PRIVATE ants_warnings)
+    # ANTS-5620 — the status-bar mail chip reads the roadmap store. PRIVATE, as
+    # ants_core_lib links it: no store type appears in this library's headers.
+    PRIVATE ants_roadmapstore_lib
+            ants_warnings)
 set_target_properties(ants_claude_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ANTS-1952 + ANTS-3582: claudeintegration.cpp #includes src/build_info.h to
 # stamp the MCP serverInfo with git SHA + build time. The header is a stable
@@ -3097,6 +3100,9 @@ if(ANTS_TESTS)
                 # ANTS-3579 — per-project pill wiring scrapes (recordDispatch /
                 # widget / mainwindow fold + tab refresh).
                 tests/features/tokens_saved_by_project/test_tokens_saved_by_project_wiring.cpp
+                # ANTS-5620 — status-bar unread-mail chip: store lookup +
+                # count, and the chip's wiring scrape.
+                tests/features/status_bar_mail_chip/test_status_bar_mail_chip.cpp
                 # ANTS-5124 — qt62-guard.sh compile-interrupt containment
                 # (named+init container, INT/TERM/HUP trap around the
                 # compile, interrupted marker, --warm-only skip) source

@@ -46,6 +46,8 @@
 #include "debuglog.h"
 #include "terminalwidget.h"
 #include "themes.h"
+#include "roadmapsource.h"         // ANTS-5620 — storeFor(), the mail chip's store
+#include "roadmapstore.h"          // ANTS-5620 — projectIdContaining / mailSummaryFor
 
 // ANTS-1146 — extracted from mainwindow.cpp by Bundle G Tier 3.
 // See docs/specs/ANTS-1146.md for the design rationale, the
@@ -178,6 +180,15 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_tokensSavedChip->setAccessibleName(tr("MCP tokens saved this session"));
     m_tokensSavedChip->hide();
     m_statusBar->addPermanentWidget(m_tokensSavedChip);
+
+    // ANTS-5620 — unread session_message mail for the focused tab's project.
+    // Beside the tokens pill (both are per-project); hidden until mail waits.
+    m_mailChip = new QLabel(m_statusBar);
+    m_mailChip->setObjectName(QStringLiteral("claudeMailChip"));
+    m_mailChip->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_mailChip->setAccessibleName(tr("Unread messages from other Claude Code sessions"));
+    m_mailChip->hide();
+    m_statusBar->addPermanentWidget(m_mailChip);
 
     // Review Changes button (shown when Claude edits files). Size/height
     // intentionally left at Qt's default so it matches the sibling
@@ -956,6 +967,8 @@ void ClaudeStatusBarController::applyTheme(const QString &themeName) {
                            "font-size: 10px; }")
                 .arg(th.border.name(), th.bgSecondary.name(),
                      th.textPrimary.name()));
+    if (m_mailChip)   // ANTS-5620
+        m_mailChip->setStyleSheet(mailChipStyle(th));
 }
 
 void ClaudeStatusBarController::refreshBgTasksButton() {
@@ -1372,6 +1385,95 @@ void ClaudeStatusBarController::apply() {
 
 // ANTS-1226 — Passive model-tier recommender chip.
 // Reads the last 20 assistant turns from the active session's
+ClaudeStatusBarController::~ClaudeStatusBarController() = default;
+
+// ANTS-5620 — the mail chip's look. Larger and bolder than the tokens pill,
+// with a border in the theme's yellow, because it asks the user to act.
+QString ClaudeStatusBarController::mailChipStyle(const Theme &th)
+{
+    return QStringLiteral("QLabel { border: 1px solid %1; border-radius: 3px; "
+                          "background: %2; color: %3; padding: 0px 6px; "
+                          "font-size: 11px; font-weight: bold; }")
+        .arg(th.ansi[3].name(), th.bgSecondary.name(), th.textPrimary.name());
+}
+
+// ANTS-5620 — unread session_message mail for the FOCUSED tab's project.
+// Called from the 2 s status timer and both arms of MainWindow::onTabChanged.
+// Spec: tests/features/status_bar_mail_chip/spec.md.
+void ClaudeStatusBarController::refreshMailChip()
+{
+    if (!m_mailChip) return;
+
+    QString cwd;
+    if (m_focusedTerminalProvider) {
+        if (TerminalWidget *t = m_focusedTerminalProvider()) {
+            const QString shell = t->shellCwd();
+            if (!shell.isEmpty()) cwd = QFileInfo(shell).canonicalFilePath();
+        }
+    }
+    if (cwd.isEmpty()) {
+        m_mailChip->hide();
+        m_mailSig.clear();
+        return;
+    }
+
+    // INV-5 — a send or an ack writes the store, which moves its WAL (or, after
+    // a checkpoint, the main file). Nothing moved and the cwd is the same →
+    // the chip already shows the right answer.
+    const QString dbPath = RoadmapStore::defaultPath();
+    const QFileInfo db(dbPath);
+    const QFileInfo wal(dbPath + QStringLiteral("-wal"));
+    const QString storeSig =
+        QString::number(db.lastModified().toMSecsSinceEpoch()) + QLatin1Char('|')
+        + QString::number(wal.lastModified().toMSecsSinceEpoch()) + QLatin1Char('|')
+        + QString::number(wal.size());
+    const QString sig = cwd + QLatin1Char('|') + storeSig;
+    if (sig == m_mailSig) return;
+    m_mailSig = sig;
+    if (storeSig != m_mailStoreSig) {
+        m_mailStoreSig = storeSig;
+        m_mailProjectForCwd.clear();   // a project may have been registered
+    }
+
+    // Never creates a store: storeFor() opens only one that is already there.
+    if (!m_mailStore) {
+        RoadmapSource::ReadError why{};
+        m_mailStore = RoadmapSource::storeFor(dbPath, &why);
+        if (!m_mailStore) { m_mailChip->hide(); return; }
+    }
+
+    qint64 projectId = 0;
+    const auto cached = m_mailProjectForCwd.constFind(cwd);
+    if (cached != m_mailProjectForCwd.constEnd()) {
+        projectId = *cached;
+    } else {
+        if (const auto id = m_mailStore->projectIdContaining(cwd))
+            projectId = *id;
+        m_mailProjectForCwd.insert(cwd, projectId);
+    }
+
+    int unread = 0;
+    QStringList senders;
+    if (projectId == 0
+        || !m_mailStore->mailSummaryFor(projectId, &unread, &senders)
+        || unread == 0) {
+        m_mailChip->hide();
+        return;
+    }
+
+    m_mailChip->setText(tr("\u2709 %1 unread").arg(unread));
+    QString tip = tr("%n unread message(s) from other Claude Code sessions", "", unread);
+    if (!senders.isEmpty())
+        tip += QLatin1Char('\n') + tr("From: %1").arg(senders.join(QStringLiteral(", ")));
+    tip += QLatin1Char('\n')
+         + tr("The Claude session in this tab reads them with session_message.");
+    m_mailChip->setToolTip(tip);
+    m_mailChip->setAccessibleName(tr("%n unread message(s) from other sessions", "", unread));
+    m_mailChip->setAccessibleDescription(tip);
+    m_mailChip->setStyleSheet(mailChipStyle(Themes::byName(m_currentThemeName)));
+    m_mailChip->show();
+}
+
 // ANTS-3579 — render the tokens-saved pill for the FOCUSED tab's project.
 // Called from the tokensSavedUpdated nudge AND MainWindow::
 // refreshStatusBarForActiveTab() (tab switch, INV-7). See docs/specs/ANTS-3579.md.

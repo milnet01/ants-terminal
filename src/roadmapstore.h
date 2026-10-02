@@ -273,6 +273,12 @@ public:
     // stores.
     std::optional<qint64> projectIdForRoot(const QString &root,
                                            QString *error = nullptr) const;
+    // ANTS-5620 — the registered project whose root is `path` or the nearest
+    // directory above it, so a tab whose shell sits in a subdirectory still
+    // finds its project. Read-only, like projectIdForRoot(): it never
+    // registers. nullopt = under no registered root (or a query failed).
+    std::optional<qint64> projectIdContaining(const QString &path,
+                                              QString *error = nullptr) const;
 
     // ANTS-3796 § 2.3 — `position` is a required parameter and not a setter,
     // unlike setSectionIntro()/setSectionSource(): those columns are nullable
