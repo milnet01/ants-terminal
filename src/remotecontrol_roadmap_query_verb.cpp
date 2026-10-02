@@ -699,6 +699,7 @@ bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
         }
         if (!sample.isEmpty()) out[QStringLiteral("drift_sample")] = sample;
         if (d->headerOnly) out[QStringLiteral("drift_header_only")] = true;
+        out[QStringLiteral("drift_cause")] = d->cause;   // ANTS-5381
     }
     return true;
 }

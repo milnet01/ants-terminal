@@ -68622,8 +68622,16 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: LocalWebServerManager feedback 2026-09-25.
 
-- 📋 [ANTS-5381] **check_sync reports whether drift came from a renderer change, a file edit or the store.**
+- ✅ [ANTS-5381] **check_sync reports whether drift came from a renderer change, a file edit or the store.**
   A file last written by the store drifts after a renderer upgrade, and nothing in the envelope says which side moved, so the documented rule re-migrates the old renderer's punctuation into the store. Stamp the render with a renderer version or store hash and report drift_cause.
+  Shipped (2026-10-02): every committed real render writes a publish
+  stamp (file SHA-256 + RoadmapStore::contentDigest()) under
+  ~/.local/share/ants-terminal/render-stamps/; check_sync's drifted arm
+  reports drift_cause = file, store, file_and_store, renderer or unknown.
+  No schema bump, no kRenderVersion to forget: the renderer case is what
+  is left when neither side moved. Test: RoadmapSourceWitness.
+  Ants5381DriftCauseNamesTheSideThatMoved. Live after ants-mcpd rebuild
+  and /mcp; no terminal relaunch.
   **Layman:** Tells a session which way to repair a roadmap that no longer matches its store.
   Kind: enhancement.
   Source: LottoTracker feedback 2026-09-25.

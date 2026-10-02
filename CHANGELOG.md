@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query check_sync` now says which side moved when a roadmap file and its store disagree** (ANTS-5381)
+  `drift_cause` is `file` (edited by hand since the last publish), `store`
+  (changed but never published), `file_and_store`, `renderer` (neither
+  changed, so re-render rather than re-migrate) or `unknown`. Each publish
+  leaves a small stamp outside the project to compare against.
+
 - **A round-trip test now proves publishing the roadmap and reading it back loses nothing, and a store check finds relationship loops.** (ANTS-3810)
   tests/features/roadmap_round_trip renders a store, loads the result into
   a second store, and compares both exports line for line, links included.

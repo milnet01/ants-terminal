@@ -6,6 +6,7 @@
 #include "roadmapparse.h"
 #include "roadmapstore.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -15,6 +16,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStandardPaths>
 
 #include <algorithm>
 #include <memory>
@@ -842,7 +844,65 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
 
     out.filesWritten = landed;
     out.committed = true;
+    // ANTS-5381 — stamped on EVERY committed real render, an unchanged file
+    // included: the render just confirmed these bytes are what the store says.
+    if (contentOf.contains(opts.liveRoadmapPath))
+        writePublishStamp(opts.liveRoadmapPath,
+                          contentOf.value(opts.liveRoadmapPath).toUtf8(),
+                          store.contentDigest(projectId));
     return out;
+}
+
+QString publishStampPath(const QString &liveRoadmapPath) {
+    const QString base =
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    if (base.isEmpty() || liveRoadmapPath.isEmpty())
+        return {};
+    // Every project calls its file ROADMAP.md, so the absolute path is hashed.
+    const QByteArray key = QFileInfo(liveRoadmapPath).absoluteFilePath().toUtf8();
+    return QStringLiteral("%1/ants-terminal/render-stamps/%2.json")
+        .arg(base, QString::fromLatin1(
+                       QCryptographicHash::hash(key, QCryptographicHash::Sha256)
+                           .toHex()
+                           .left(16)));
+}
+
+void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileBytes,
+                       const std::optional<QByteArray> &storeDigest) {
+    const QString path = publishStampPath(liveRoadmapPath);
+    if (path.isEmpty())
+        return;
+    // A digest that could not be taken leaves no stamp, rather than one that
+    // would later blame the store for a change it never had.
+    if (!storeDigest) {
+        QFile::remove(path);
+        return;
+    }
+    QJsonObject o;
+    o[QStringLiteral("path")] = QFileInfo(liveRoadmapPath).absoluteFilePath();
+    o[QStringLiteral("file_sha256")] = QString::fromLatin1(
+        QCryptographicHash::hash(fileBytes, QCryptographicHash::Sha256).toHex());
+    o[QStringLiteral("store_sha256")] = QString::fromLatin1(storeDigest->toHex());
+    if (!QDir().mkpath(QFileInfo(path).path()))
+        return;
+    QSaveFile f(path);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+        f.commit();
+    }
+}
+
+std::optional<PublishStamp> readPublishStamp(const QString &liveRoadmapPath) {
+    QFile f(publishStampPath(liveRoadmapPath));
+    if (!f.open(QIODevice::ReadOnly))
+        return std::nullopt;
+    const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+    PublishStamp s;
+    s.fileSha256 = QByteArray::fromHex(o.value(QStringLiteral("file_sha256")).toString().toLatin1());
+    s.storeSha256 = QByteArray::fromHex(o.value(QStringLiteral("store_sha256")).toString().toLatin1());
+    if (s.fileSha256.size() != 32 || s.storeSha256.size() != 32)
+        return std::nullopt;
+    return s;
 }
 
 } // namespace RoadmapRender

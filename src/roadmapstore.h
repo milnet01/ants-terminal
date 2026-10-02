@@ -402,6 +402,13 @@ public:
     // SQL error.
     std::optional<int> unresolvedEdgeCount(const QString &type,
                                            QString *error = nullptr) const;
+    // ANTS-5381 — a SHA-256 over every row a render reads for one project: its
+    // project row, sections, items and elements, each column in table order.
+    // Equal digests mean the store has not changed for that project, so a
+    // drifted file whose store digest still matches its publish stamp was moved
+    // by the renderer. nullopt on an SQL error.
+    std::optional<QByteArray> contentDigest(qint64 projectId,
+                                            QString *error = nullptr) const;
     // ANTS-4079 § 2.6 — make one item's CONVERTED rows match `body`. Its
     // specified-by rows are replaced by the body's Spec: paths. A relates-to row
     // touching it is kept while either endpoint's body declares the pair and

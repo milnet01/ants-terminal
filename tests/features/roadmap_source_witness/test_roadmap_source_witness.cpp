@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -635,4 +636,88 @@ TEST(RoadmapSourceWitness, Ants5382BodyDriftSamplesBothSides) {
     }
     EXPECT_TRUE(paired) << "the edited line must appear in the sample\n"
                         << QJsonDocument(out).toJson().toStdString();
+}
+
+// ANTS-5381 — on the drifted arm, `drift_cause` names the side that moved
+// since the last publish, so a caller knows whether to re-migrate the file or
+// re-render the store. One case walks all five answers on one project.
+TEST(RoadmapSourceWitness, Ants5381DriftCauseNamesTheSideThatMoved) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    const QString root = tmp.filePath(QStringLiteral("proj"));
+    const QString rmPath = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(writeFile(rmPath, roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    const QString stampPath = RoadmapRender::publishStampPath(rmPath);
+    ASSERT_TRUE(QFile::exists(stampPath))
+        << "a committed render must leave a publish stamp";
+    const QJsonObject clean = checkSync(root);
+    ASSERT_TRUE(clean.value(QStringLiteral("file_in_sync")).toBool());
+    EXPECT_FALSE(clean.contains(QStringLiteral("drift_cause")))
+        << "a cause rides the drifted arm only";
+
+    QFile pub(rmPath);
+    ASSERT_TRUE(pub.open(QIODevice::ReadOnly));
+    const QByteArray published = pub.readAll();
+    pub.close();
+    QByteArray edited = published;
+    edited.replace("**An open item.**", "**An open item, edited by hand.**");
+    ASSERT_NE(edited, published) << "the fixture edit must actually apply";
+
+    // 1. The file moved.
+    ASSERT_TRUE(writeFile(rmPath, edited));
+    EXPECT_EQ(checkSync(root).value(QStringLiteral("drift_cause")).toString(),
+              QStringLiteral("file"));
+
+    // 2. The file is back as published; the store moved and was never rendered.
+    ASSERT_TRUE(writeFile(rmPath, published));
+    {
+        RoadmapStore store(RoadmapStore::defaultPath(),
+                           RoadmapStore::kDefaultHistoryCapBytes,
+                           RoadmapStore::Access::Interactive);
+        QString err;
+        ASSERT_TRUE(store.open(&err)) << err.toStdString();
+        const auto pid = store.projectIdForRoot(root, &err);
+        ASSERT_TRUE(pid);
+        const auto pk = store.findItem(*pid, QStringLiteral("DEMO-0001"), &err);
+        ASSERT_TRUE(pk) << err.toStdString();
+        ASSERT_TRUE(store.begin(&err));
+        ASSERT_TRUE(store.setItemField(*pk, QStringLiteral("headline"),
+                                       QStringLiteral("An open item, edited in the store."),
+                                       &err))
+            << err.toStdString();
+        ASSERT_TRUE(store.commit(&err));
+    }
+    EXPECT_EQ(checkSync(root).value(QStringLiteral("drift_cause")).toString(),
+              QStringLiteral("store"));
+
+    // 3. Both moved.
+    ASSERT_TRUE(writeFile(rmPath, edited));
+    EXPECT_EQ(checkSync(root).value(QStringLiteral("drift_cause")).toString(),
+              QStringLiteral("file_and_store"));
+
+    // 4. Publish, then stand in for an OLDER renderer: rewrite the file and
+    // re-stamp it as if that renderer had published these bytes. Neither the
+    // file nor the store moved since that stamp, so the renderer did.
+    ASSERT_TRUE(renderStore(root));
+    ASSERT_TRUE(writeFile(rmPath, published));
+    {
+        QFile f(stampPath);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        QJsonObject stamp = QJsonDocument::fromJson(f.readAll()).object();
+        f.close();
+        stamp[QStringLiteral("file_sha256")] = QString::fromLatin1(
+            QCryptographicHash::hash(published, QCryptographicHash::Sha256).toHex());
+        ASSERT_TRUE(writeFile(stampPath, QJsonDocument(stamp).toJson()));
+    }
+    EXPECT_EQ(checkSync(root).value(QStringLiteral("drift_cause")).toString(),
+              QStringLiteral("renderer"));
+
+    // 5. No stamp at all.
+    ASSERT_TRUE(QFile::remove(stampPath));
+    EXPECT_EQ(checkSync(root).value(QStringLiteral("drift_cause")).toString(),
+              QStringLiteral("unknown"));
 }

@@ -5,6 +5,7 @@
 #include "jsoncanonical.h"
 #include "secureio.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -14,6 +15,7 @@
 #include <QThread>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QSqlRecord>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QVariant>
@@ -1567,6 +1569,47 @@ std::optional<int> RoadmapStore::unresolvedEdgeCount(const QString &type,
         return std::nullopt;
     }
     return q.value(0).toInt();
+}
+
+std::optional<QByteArray> RoadmapStore::contentDigest(qint64 projectId,
+                                                      QString *error) const {
+    // SELECT * so a column added later is covered without touching this. A
+    // NULL is hashed apart from an empty string, and every value is length-
+    // prefixed, so no two different row sets can serialise alike.
+    static const char *const kQueries[] = {
+        "SELECT * FROM project WHERE project_id = ?",
+        "SELECT * FROM section WHERE project_id = ? ORDER BY section_id",
+        "SELECT * FROM item WHERE project_id = ? ORDER BY item_pk",
+        "SELECT e.* FROM element e JOIN section s USING (section_id) WHERE s.project_id = ? "
+        "ORDER BY e.element_id",
+    };
+    QCryptographicHash h(QCryptographicHash::Sha256);
+    for (const char *sql : kQueries) {
+        QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+        q.prepare(QString::fromLatin1(sql));
+        q.addBindValue(projectId);
+        if (!q.exec()) {
+            if (error)
+                *error = lastErr(q);
+            return std::nullopt;
+        }
+        h.addData(QByteArrayView("T"));
+        while (q.next()) {
+            const int n = q.record().count();
+            h.addData(QByteArrayView("R"));
+            for (int i = 0; i < n; ++i) {
+                const QVariant v = q.value(i);
+                if (v.isNull()) {
+                    h.addData(QByteArrayView("N"));
+                    continue;
+                }
+                const QByteArray b = v.toString().toUtf8();
+                h.addData(QByteArray::number(b.size()) + ':');
+                h.addData(b);
+            }
+        }
+    }
+    return h.result();
 }
 
 std::optional<qint64> RoadmapStore::historyBytes() const {

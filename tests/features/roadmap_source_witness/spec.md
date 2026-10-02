@@ -102,3 +102,27 @@ title, preamble or banner differ.
   no flag, and the edited line appears as a row's `file` side.
 
 Both fail against the tree before ANTS-5382, which emitted neither field.
+
+## ANTS-5381 — `check_sync` says which side moved
+
+Every committed render of a roadmap file writes a publish stamp outside the
+project: the SHA-256 of the live file it published and
+`RoadmapStore::contentDigest()` of the project. On the drifted arm,
+`check_sync` compares the file and the store against that stamp and reports
+`drift_cause`:
+
+- `file` — the file changed since the publish; the store did not.
+- `store` — the store changed since the publish and was never published.
+- `file_and_store` — both changed.
+- `renderer` — neither changed, so the render itself now differs: a renderer
+  upgrade. Re-render; do not re-migrate.
+- `unknown` — no stamp (nothing published this file since stamps existed).
+
+A dry render writes no stamp (ANTS-3809 INV-7).
+
+- *Test:* `Ants5381DriftCauseNamesTheSideThatMoved` — migrate and render,
+  then in turn: hand-edit the file (`file`); restore it and change a store
+  headline without rendering (`store`); render, then rewrite the file and its
+  stamp to stand for an older renderer's output (`renderer`); delete the stamp
+  (`unknown`). Fails against the tree before ANTS-5381, which emitted no
+  `drift_cause`.

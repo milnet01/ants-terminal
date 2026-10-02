@@ -78,6 +78,12 @@ struct Drift {
     // banner differ.
     QList<std::pair<QString, QString>> sample;
     bool        headerOnly = false;
+    // ANTS-5381 — which side moved since the last publish stamp, set only when
+    // total > 0: "file", "store", "file_and_store", "renderer" (neither moved,
+    // so the render did), or "unknown" (no stamp). The stamp adds no currency
+    // claim of its own: drift is still found by comparing, as above, and the
+    // stamp only says which side to blame.
+    QString     cause;
 };
 
 // nullopt means the measurement could not be taken — the render failed or came

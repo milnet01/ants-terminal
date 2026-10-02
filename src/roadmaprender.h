@@ -293,4 +293,26 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                               QString *error = nullptr,
                               QHash<QString, QString> *contentOut = nullptr);
 
+// ANTS-5381 — what the last committed render of a live roadmap file published:
+// the file's SHA-256 and the project's RoadmapStore::contentDigest() at that
+// moment. render() writes it after every committed real render; a dry render
+// writes nothing. Kept outside the project, beside the discarded-text backups,
+// so it never shows in `git status`. Best-effort: a stamp that cannot be
+// written fails nothing, and check_sync then reports its cause as unknown.
+struct PublishStamp {
+    QByteArray fileSha256;    // raw digest bytes, not hex
+    QByteArray storeSha256;
+};
+
+// The stamp file for one live roadmap path, keyed by its absolute path.
+QString publishStampPath(const QString &liveRoadmapPath);
+
+// Called by render() after a committed real render. A nullopt digest removes
+// the stamp instead of writing a half one.
+void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileBytes,
+                       const std::optional<QByteArray> &storeDigest);
+
+// nullopt when there is no stamp or it cannot be parsed.
+std::optional<PublishStamp> readPublishStamp(const QString &liveRoadmapPath);
+
 } // namespace RoadmapRender

@@ -515,6 +515,24 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
     out.lostText = d.lostText;
     out.sample     = d.sample;       // ANTS-5382
     out.headerOnly = d.headerOnly;
+    if (out.total > 0) {
+        // ANTS-5381 — compare each side with what the last publish recorded.
+        const auto stamp = RoadmapRender::readPublishStamp(liveRoadmapPath);
+        QFile live(liveRoadmapPath);
+        const auto digest = store.contentDigest(projectId);
+        if (!stamp || !digest || !live.open(QIODevice::ReadOnly)) {
+            out.cause = QStringLiteral("unknown");
+        } else {
+            const bool fileMoved =
+                QCryptographicHash::hash(live.readAll(), QCryptographicHash::Sha256)
+                != stamp->fileSha256;
+            const bool storeMoved = *digest != stamp->storeSha256;
+            out.cause = fileMoved && storeMoved ? QStringLiteral("file_and_store")
+                      : fileMoved               ? QStringLiteral("file")
+                      : storeMoved              ? QStringLiteral("store")
+                                                : QStringLiteral("renderer");
+        }
+    }
     return out;
 }
 
