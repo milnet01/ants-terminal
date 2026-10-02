@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Cancelling an AI review round no longer lets its late answers appear in the next round** (ANTS-5105)
+
 - **The AI Assistant's Send button works again after a refused request or after the dialog is reopened mid-reply** (ANTS-5105)
 
 - **AI requests end after 10 minutes in total, even when the server keeps the connection alive** (ANTS-5105)

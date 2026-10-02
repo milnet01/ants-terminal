@@ -10246,6 +10246,21 @@ extends an existing item, that item carries it instead.
   staying disabled after a plaintext refusal, LlmClient's wall-clock
   deadline, the uncapped drain on finish, the thinking-level chip, and
   the lows.
+  Progress (2026-10-02): every medium is done. LlmClient has a
+  wall-clock deadline, LlmRequest::deadlineMs, default 10 minutes
+  (llm_client Ants5105WallClockDeadlineEndsAStalledReply). Its finish
+  drain keeps the 256-line per-tick cap (unproven: not observable without
+  timing the event loop). AiDialog re-enables Send after a plaintext
+  refusal and after resetTransient, and says a dropped reply was
+  cancelled (plaintext_prompt_warning Ants5105Send...). The thinking-level
+  chip already skipped tool-result lines (ANTS-1892). LlmDispatcher gates
+  forwarding on a batch generation, so a cancelled batch's late results
+  stay out of the next round (llm_dispatcher Ants5105...). Still open
+  (low): ANTS-1727 section 4's buffer budget, the 10 MiB HTML append on
+  the GUI thread, allFinished firing with pump frames on the stack, the
+  switch ledgers' 5 s lock (off by default), ANTS-1735 INV-2 and INV-3,
+  the unconnected chunk signal, AI dialog strings outside tr(), and a
+  runner that never calls done (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
