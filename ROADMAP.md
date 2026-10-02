@@ -69682,6 +69682,25 @@ project. Reported causes are claims until checked in source.
   Source: Pressless feedback 2026-10-01.
   Lanes: readregion, mcp.
 
+- 📋 [ANTS-5615] **list_elements preamble:true skips the preamble's Legend block, so no op can change a Legend line.**
+  Reported by LocalWebServerManager (2026-10-02). On that project,
+  list_elements preamble:true returns Themes heading, themes list,
+  Priority heading, priority list and ---; the **Legend** heading and its
+  five status lines, which render between the preamble quote block and
+  Themes, are not listed. amend_preamble old_text "next up for this
+  phase" refuses intro_match_not_found. So '- 📋 Planned (next up for
+  this phase)' has no route, and a hand edit is reverted by the next
+  render. Only 2 of 25 roadmaps carry that wording, so it is stored per
+  project, not a render constant. Blocks LWSM-1313.
+  Fix: find where the Legend block is stored (element row, preamble text,
+  or render-owned) and either list it as a narration element
+  amend_element can replace, or name it in list_elements' reply as
+  render-owned. Follow-up to ANTS-5379.
+  **Layman:** One block at the top of a project's roadmap, the colour legend, can't be edited through the roadmap tools yet.
+  Kind: fix.
+  Source: localwebservermanager-feedback-2026-10-02.
+  Lanes: roadmap-store.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
