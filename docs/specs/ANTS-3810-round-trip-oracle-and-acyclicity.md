@@ -7,7 +7,9 @@ status-gated check that reads it). Accepted (2026-08-04) — rule-14 gate run to
 deferred tail. Two caveats a reader should have: **loop 3's own fixes were not
 themselves cold-read**, which is what the cap means; and collateral outran draft
 defects for two loops, so a further split is available and is the user's call.
-The loop log carries the numbers.
+The loop log carries the numbers. **Amended 2026-10-02** — § 2.2's checker
+reads through `edgesOfType()`, `listProjects()`, `listItems()` and a new
+`unresolvedEdgeCount()`, not the private `db()`; § 7 to match.
 **Kind:** test.
 **Source:** ROADMAP.md ANTS-3810 (ANTS-3793 cold-eyes loop-3 split, 2026-08-03).
 Split from the 934-line umbrella `docs/specs/ANTS-3793-roadmap-consumer-cutover.md`,
@@ -544,17 +546,28 @@ std::optional<AcyclicityReport> findRelationshipCycles(RoadmapStore &store,
 }  // namespace RoadmapCheck
 ```
 
-**The walk.** Per type, one query over `relationship` joined to `item` and
-`project` collects the edge list — same-project edges via `dst_pk`, cross-project
-edges resolved from `(dst_project, dst_id_fold)` to an item in this store, and
-`dst_path` edges skipped as document targets. Then an iterative three-colour DFS
+**The walk.** Per type, `RoadmapStore::edgesOfType()` (ANTS-4079 § 2.2)
+collects the edge list as `(src_pk, dst_pk)` pairs — same-project edges via
+`dst_pk`, cross-project edges resolved from `(dst_project, dst_id_fold)` to an
+item in this store, and `dst_path` edges skipped as document targets.
+`RoadmapStore::unresolvedEdgeCount()`, added here, gives `unresolvedEdges` for
+the same type. A pair is named by a map from `item_pk` to `(export_slug,
+id_fold)`, built from `listProjects()` and each project's `listItems()`. Then an iterative three-colour DFS
 over that list; a back edge yields the cycle, unwound from the stack and then
 rotated to its canonical start. Iterative rather than recursive because the edge
 list is data-driven and a recursive walk's depth is the store's, not the code's.
-It reads the database through `RoadmapStore::db()` — in-library use of an
-in-library accessor, which is how the export path already reaches the same
-table: `writeRelationships()` takes a `QSqlDatabase &` its caller obtained the
-same way.
+It uses the typed surface only. `RoadmapStore::db()` is private since
+ANTS-3819, and its two friends are the export pair and the schema tests.
+
+```cpp
+// src/roadmapstore.h — the one reader § 2.2 adds. Rows of `type` carrying a
+// cross-project target, (dst_project, dst_id_fold), that names no item in this
+// store: the far project absent, or present with no item at that id_fold.
+// Same-project rows (dst_pk) and document rows (dst_path) are never counted.
+// nullopt on an SQL error.
+std::optional<int> unresolvedEdgeCount(const QString &type,
+                                       QString *error = nullptr) const;
+```
 
 **It ships with no scheduled caller, deliberately.** The scheduling belongs to
 ANTS-3794 along with the rest of the family. Until then it is reachable from its
@@ -902,6 +915,9 @@ Which `Access` each store opens on is § 2.1's rule 1.
   no entry at all despite having shipped. That gap is pre-existing and is filed
   as **ANTS-3825**, not fixed here; this spec adds its own entry only.
   `CLAUDE.md` is unaffected — ANTS-1292 moved the per-file catalogue out of it.
+- **ANTS-3756's public surface gains `unresolvedEdgeCount()`** (§ 2.2). It is
+  a reader beside `edgesOfType()`, so no friend is added and `db()` stays
+  private (ANTS-3819).
 - **`CMakeLists.txt`** gains `src/roadmapcheck.cpp` in `ants_roadmapstore_lib`
   and `tests/features/roadmap_round_trip/test_roadmap_round_trip.cpp` — shipped
   as `tests/features/roadmap_export_roundtrip/`, see § 6's amendment — in the
