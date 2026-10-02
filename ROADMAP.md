@@ -37621,7 +37621,7 @@ against current source before filing.
   Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 3, lane E).
   Resolved (2026-08-15): `bad_op_combo` now has a row in `mcp-error-codes.md`, next to its read-side sibling `bad_mode_combo`. Re-measured first — 29 uses in `src/` now, up from the 23 at filing, and the single pre-existing mention in the file was inside the `locator_unsupported` row rather than a row of its own, so a caller branching on `code` still had nothing to look up. The row names both conditions (unknown op; valid op carrying another op's argument), says why the second is not `bad_args` (the argument is well-formed — the PAIRING is wrong, so the remedy is to change the op, not to fix a value), and distinguishes it from `bad_mode` and `missing_field`.
 
-- 📋 [ANTS-3824] **Decide whether the render gains a markdown carrier for `resolution`.**
+- ✅ [ANTS-3824] **Decide whether the render gains a markdown carrier for `resolution`.**
   Verified 2026-08-04 while grounding ANTS-3810's round-trip oracle.
   `roadmap-data-model.md` § 4.1 lists `resolution` as write-at-close and
   NON-DEFAULTABLE, and calls closed items the institutional value. But:
@@ -37650,6 +37650,11 @@ against current source before filing.
   User decision 2026-10-02: rely on the body. Closure notes stay in the
   item text, which round-trips; roadmap-data-model.md marks the
   `resolution` column unused. No render carrier.
+  Resolved (2026-10-02): roadmap-data-model.md § 4.1 marks `resolution`
+  unused; a closed item's closure note lives in its body, which § 4.1
+  now requires at close. Gated by review-contract, converged at its
+  second round (review log rows 19-20); out-of-scope findings filed as
+  ANTS-5616.
   **Layman:** Closed roadmap items can record "what was done and why" in the database, but the published roadmap file has nowhere to put it — so it is lost on any rebuild from the file.
   Kind: investigate.
   Source: in-session-2026-08-04 (found while drafting ANTS-3810).
@@ -41457,7 +41462,7 @@ against current source before filing.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18.
 
-- 📋 [ANTS-4440] **Decide whether the specified-but-unbuilt priority harvest is implemented or dropped.**
+- ✅ [ANTS-4440] **Decide whether the specified-but-unbuilt priority harvest is implemented or dropped.**
   roadmap-data-model.md 7.5 described the harvest in the present tense while nothing implements it. Verified 2026-08-18: the trailer key does not occur anywhere under `src/`, and `roadmapmigrateload.cpp`'s reconciled field list omits `priority` on purpose (its INV-3 comment).
 
   7.5 now carries a SPECIFIED-NOT-IMPLEMENTED note, so the immediate hazard is closed — a migration author can no longer build the harvest believing it exists. This item is the decision the note defers.
@@ -41474,6 +41479,11 @@ against current source before filing.
   User decision 2026-10-02: drop the harvest. roadmap-data-model.md §
   7.5's mapping goes; position stays priority, and existing Priority:
   lines stay as reader text.
+  Resolved (2026-10-02): the harvest and its band mapping are dropped
+  from § 7.5; position is priority and a Priority line is reader text.
+  On the gate's finding, the user also marked the `priority` column
+  unused. roadmap-format.md § 3.5.2 updated to match. Converged gate,
+  review log rows 19-20.
   **Layman:** Our data standard describes reading an item's priority out of the roadmap file, but no code does it — we need to decide whether to build it or delete the description.
   Kind: investigate.
   Source: global-findings-2026-08-12 item 1 (CFG-0064), maintainer-verified 2026-08-18.
@@ -41506,7 +41516,7 @@ against current source before filing.
   Source: ANTS-3794 first real run (in-session-2026-09-19).
   Lanes: roadmap.
 
-- 📋 [ANTS-5616] **roadmap-data-model.md disagrees with the code and with roadmap-format.md in four places.**
+- 📋 [ANTS-5616] **roadmap-data-model.md disagrees with the code and with roadmap-format.md in six places.**
   Found by the 2026-10-02 review-contract gate on the ANTS-3824/4440
   amendment, both lanes independently; outside that change, so filed
   rather than looped on. Each was verified against the code.
@@ -41532,6 +41542,16 @@ against current source before filing.
      Kind, and files Source as optional. roadmap-format.md § 3.5 made
      Source required in v1.2 (2026-09-09); the render omits a defaulted
      source on purpose, which § 8 would need to state as an exception.
+  Two more, from the same gate's second round, both verified:
+  5. [Q1] § 3.2 says the whole-project missing-layman figure is reported
+     by nothing on the verb surface. roadmap_log op:"convert" renders
+     with laymanGateAdvisory (src/roadmapwrite.cpp, ANTS-5256/5330) and
+     reports every open offender, so the route exists.
+  6. [Q1] § 7.7 never says what an ABSENT provenance key means. The
+     render treats absent as "not a defaultable field", never
+     "defaulted" (src/roadmaprender.cpp, the assertedSource test), since
+     roadmap_log op:append writes no source key. A reader testing for
+     asserted would miss every post-cutover append.
   **Layman:** The written rules for how roadmap data is stored have fallen behind the code in four spots, so someone following them would build the wrong thing.
   Kind: doc-fix.
   Source: review-contract-2026-10-02 (roadmap-data-model gate, loop 1).
