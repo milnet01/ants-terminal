@@ -127,14 +127,15 @@ TEST(McpGitState, WiringContract) {
            "INV-6a",
            "tools/list missing \"git_state\" name registration");
     {
-        // Window widened to 6400 (ANTS-3365 lengthened the description +
-        // opProp; ANTS-3377 added hunks/staged/include_lines/context props
-        // ahead of the `props["op"]` assignment); a fixed scrape window must
-        // outrun added schema text.
+        // The window is git_state's own tool block: from its name to the
+        // next tool's `["name"] =`. A fixed size was widened twice
+        // (ANTS-3365, ANTS-3377) and broke again when ANTS-5098 lengthened
+        // the detail text, so it is bounded by structure instead.
         const size_t pos = ciCpp.find("\"git_state\"");
         bool ok = false;
         if (pos != std::string::npos) {
-            const size_t windowEnd = std::min(ciCpp.size(), pos + 6400);
+            const size_t next = ciCpp.find("[\"name\"] =", pos + 1);
+            const size_t windowEnd = next == std::string::npos ? ciCpp.size() : next;
             const std::string window = ciCpp.substr(pos, windowEnd - pos);
             ok = contains(window, "\"status\"") &&
                  contains(window, "\"log\"") &&
