@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **verify_changes keeps non-ASCII characters in build output intact when they arrive split across two reads** (ANTS-5102)
+
+- **A test-audit fold-in is dated by the local calendar, not UTC** (ANTS-5102)
+
 - **The test-audit pre-pass reads at most 1 MiB of each test file** (ANTS-5102)
 
 - **verify_changes' build-file scan walks each folder once, even when a symlink points back up the tree** (ANTS-5102)

@@ -2017,9 +2017,10 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // per-finding bullet rendering entirely. Useful when the natural
     // shape is "prose subsection grouped by Closed-inline / Deferred /
     // False-positives", not 30 structured bullets.
+    // ANTS-5102 — the user's date, not UTC's: a fold-in after local midnight
+    // was dated the day before (or after) on any machine off UTC.
     const QString heading = QStringLiteral("### 🧪 Test Audit %1")
-        .arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODate)
-                .left(10));
+        .arg(QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")));
     if (req.narrativeMode) {
         const QString narrative = req.narrativeMd.trimmed();
         if (narrative.isEmpty()) {
