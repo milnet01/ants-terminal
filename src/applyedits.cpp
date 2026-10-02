@@ -184,8 +184,16 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
 
     QString out = contents;
     if (replaceAll) {
+        // ANTS-5103 — replace() makes non-overlapping replacements, while
+        // `count` above counts overlapping occurrences (`aa` in `aaa` is 2,
+        // replaced once). Report what was replaced; `count` stays the
+        // stricter test for the ambiguity check.
+        int made = 0;
+        for (int from = 0; (from = contents.indexOf(oldStr, from)) >= 0;
+             from += oldStr.size())
+            ++made;
         out.replace(oldStr, newStr);
-        r.replacements = count;
+        r.replacements = made;
     } else {
         const int idx = out.indexOf(oldStr);
         out.replace(idx, oldStr.size(), newStr);

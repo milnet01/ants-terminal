@@ -897,3 +897,13 @@ TEST(McpApplyEdits, Ants4856PartialBatchIsFlagged) {
         EXPECT_FALSE(r.contains(QStringLiteral("partial")));
     }
 }
+
+// ANTS-5103 — replace_all reports the replacements it MADE. QString::count
+// counts overlapping occurrences (`aa` in `aaa` is 2) while replace() makes
+// non-overlapping ones (1), so the reply over-reported.
+TEST(McpApplyEdits, Ants5103ReplaceAllCountsWhatItReplaced) {
+    const auto r = ApplyEdits::applyToContent("aaa", "aa", "b", /*replaceAll=*/true);
+    ASSERT_TRUE(r.applied);
+    EXPECT_EQ(r.newContents, QStringLiteral("ba"));
+    EXPECT_EQ(r.replacements, 1) << "one replacement was made";
+}
