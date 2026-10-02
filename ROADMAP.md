@@ -8622,7 +8622,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane chrome-widgets).
   Lanes: chrome.
 
-- 📋 [ANTS-5082] **Performance pass findings for dialog chrome, review dialogs, themes and the trust store (medium and low).**
+- ✅ [ANTS-5082] **Performance pass findings for dialog chrome, review dialogs, themes and the trust store (medium and low).**
   Medium:
   - ReviewDialogBase composes every lane's brief on the GUI thread and
     queues them all, so peak memory is lanes times the 200 KiB cap,
@@ -8723,6 +8723,14 @@ extends an existing item, that item carries it instead.
   Tests: verify_trust_gate TF-7, TF-8, MD-1, MD-2, red first (six checks);
   full default suite green. Still open: the review view's second copy of
   each report.
+  Resolved (2026-10-02): the last low, the review view's second copy of
+  each report, needs no change. IndieReviewDialog::onAllReportsCollected
+  assigns m_lastReports from ReviewDialogBase::m_reports; QHash and its
+  QString values are implicitly shared, so both name one buffer. The base
+  only clear()s its hash at the next startDispatch, which drops its
+  reference rather than copying. The per-lane QPlainTextEdit holds the
+  display text, which the dialog needs. Every other finding here shipped
+  or was closed by the user's 2026-09-15 decisions.
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
