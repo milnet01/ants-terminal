@@ -1,0 +1,3052 @@
+#!/usr/bin/env python3
+"""demoreel — record a GUI app on a private virtual X display.
+
+Only the app is in frame. The display it runs on has no desktop, no
+notifications and no magnifier, so nothing of the user's real session can
+end up in the video. README.md explains why that is the whole point.
+"""
+
+import argparse
+import contextlib
+import fcntl
+import itertools
+import json
+import math
+import os
+import re
+import resource
+import secrets
+import select
+import shlex
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+__version__ = "0.3.1"
+
+SIZE_RE = re.compile(r"^(\d+)x(\d+)$")
+DISPLAY_READY_TIMEOUT = 15.0
+
+# The one definition of "nothing is on this display". Measured: an empty Xvfb
+# is 0.99994, and a window as small as 200x100 on a 1280x800 display already
+# drops to 0.98, so there is room on both sides. ci.sh imports this rather than
+# restating it -- a threshold with two homes is one a person has to remember to
+# move, and this project has already answered that question the same way twice
+# (`ci.sh --ruff-version`, `ci.sh --docs-glob`).
+BLANK_THRESHOLD = 0.999
+# How long one xdotool call or one frame grab may take before the display is
+# taken to have stopped answering (DEMO-0079). Each normally returns in a few
+# milliseconds -- a grab costs about 112ms of CPU on a 1600x1000 display -- so
+# this is a hang detector, not a performance budget. Typing is paced by xdotool
+# at 12ms a key, so a `type` step gets TYPE_SECONDS_PER_CHAR more per character.
+CALL_TIMEOUT = 10
+TYPE_SECONDS_PER_CHAR = 0.05
+
+# Both backends need this. Unset, wl_display_connect() falls back to the
+# hardcoded $XDG_RUNTIME_DIR/wayland-0, which exists on a Wayland session — so
+# the app connects to the user's REAL compositor, renders there, and the
+# private display records black while every signal says success. A name that
+# cannot resolve fails the connection instead, and the toolkit falls back to
+# X11. It is the non-Flatpak twin of --nosocket=wayland, and unlike
+# QT_QPA_PLATFORM=xcb it does not need to know the app's toolkit.
+NO_WAYLAND = "demoreel-no-wayland"
+
+# An Event, not a flag, so a wait on it ends the moment a stop arrives. A
+# plain sleep resumes after the handler runs (PEP 475), and a stop landed up
+# to one sleep late: a median 107 ms, measured, all of it in the video
+# (DEMO-0075).
+_stop = threading.Event()
+
+# Set once a call to the display has timed out (DEMO-0079): the run has failed
+# and hands back no video. The recorder and the display are then ended at
+# once, since each waits on the frozen display and a graceful stop only runs
+# out its timeouts, 25 seconds of them (DEMO-0078).
+_display_gone = threading.Event()
+
+
+def _request_stop(signum, frame):
+    """SIGUSR1 (from `demoreel stop`), SIGINT or SIGTERM: finish the video now."""
+    _stop.set()
+
+
+def _exit_on_signal(signum, frame):
+    """SIGTERM or SIGHUP anywhere but a recording: exit through die(), so the
+    finally blocks that end the display and the app still run. Left at their
+    default, either signal ended Python on the spot and leaked Xvfb, which
+    holds its display number for good (DEMO-0115)."""
+    die(f"ended by {signal.Signals(signum).name} before it finished, so there "
+        "is nothing to hand back.")
+
+
+_progress_line = ""
+
+
+def progress(text):
+    """Show `text` as one line updated in place on a terminal; None clears it.
+
+    Only on a terminal: a script, a log or a Claude session reading stderr
+    gets exactly what it got before this existed (DEMO-0053). One short line
+    and no colour, because the screen it is read on may be magnified.
+    """
+    global _progress_line  # noqa: PLW0603 - one line on one terminal
+    text = text or ""
+    if not sys.stderr.isatty() or text == _progress_line:
+        return
+    try:
+        # \r goes back to the start of the line; \033[K clears the rest.
+        sys.stderr.write("\r\033[K" + (f"demoreel: {text}" if text else ""))
+        sys.stderr.flush()
+    except OSError:
+        # A closed terminal, as in note(): nobody is reading, and a line
+        # about the recording must not end it (DEMO-0115).
+        sys.stderr = open(os.devnull, "w")  # noqa: SIM115 - lives to exit
+    _progress_line = text
+
+
+def die(msg):
+    sys.exit(f"demoreel: {msg}")
+
+
+def note(msg):
+    """Tell the caller something on stderr. A note is advice: if the terminal
+    has gone (a hung-up run finishing its video), losing it must not fail
+    the recording it was about (DEMO-0115)."""
+    try:
+        progress(None)
+        print(f"demoreel: {msg}", file=sys.stderr)
+    except OSError:
+        # What failed to write is still buffered, and flushing it at exit
+        # fails again and turns the exit status to 120. Nobody is reading.
+        sys.stderr = open(os.devnull, "w")  # noqa: SIM115 - lives to exit
+
+
+def poll(check, timeout, interval=0.05, grow=1.0, ceiling=None):
+    """Call check() until it returns something true, and return that.
+
+    None once `timeout` seconds pass without it, or never with timeout=None.
+    Every wait for a condition goes through here, so none can sleep past its
+    own deadline and tuning an interval is one argument (DEMO-0080). The pipe
+    reads wait in select instead, and the recording loop is its own. check() runs
+    at least once, and once more at the deadline, however short the timeout.
+    `grow` widens the interval after each miss, up to `ceiling`.
+    """
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        result = check()
+        if result:
+            return result
+        if deadline is None:
+            time.sleep(interval)
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            time.sleep(min(interval, remaining))
+        interval = interval * grow if ceiling is None else min(interval * grow, ceiling)
+
+
+def state_dir():
+    base = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp")
+    d = base / f"demoreel-{os.getuid()}"
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        die(f"could not use {d}: {exc.strerror}.\n"
+            "  demoreel keeps its run files there. Point XDG_RUNTIME_DIR at a "
+            "directory you can write to.")
+    # A desktop session sets XDG_RUNTIME_DIR, so the /tmp fallback is the
+    # unusual path — which is also why it would go unnoticed. The name there is
+    # predictable, so another user can create it first and exist_ok would adopt
+    # it. lstat, not stat: a symlink planted at that name is followed by both
+    # stat and chmod, so checking through it proves nothing.
+    st = os.lstat(d)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        die(f"{d} is not a directory you own, so demoreel will not use it.\n"
+            "  On a shared machine another user can create that name first.\n"
+            "  Remove it, or point XDG_RUNTIME_DIR at a directory you own.")
+    d.chmod(0o700)
+    return d
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+def proc_stat(pid, field):
+    """One field of /proc/<pid>/stat, numbered as proc(5) numbers them.
+
+    Field 2 is the command name in parentheses and may itself contain spaces
+    and parentheses, so the fields are split after the LAST ')' rather than on
+    the whole line. Only fields from 3 on can be asked for.
+    """
+    try:
+        line = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    try:
+        return line[line.rindex(")") + 1:].split()[field - 3]
+    except (ValueError, IndexError):
+        return None
+
+
+def proc_starttime(pid):
+    """The process's start time, field 22 of /proc/<pid>/stat.
+
+    Unique per pid incarnation, which is what tells a recycled pid apart from
+    the process we started.
+    """
+    return proc_stat(pid, 22)
+
+
+def is_our_run(entry):
+    """True when the process a state file names is still the run that wrote it.
+
+    alive() alone asks only whether SOME process holds that pid. Every run's
+    state file outlives it, left for `stop` to read the verdict from -- and
+    Linux recycles pids.
+    Acting on alive() alone sends SIGUSR1 to whatever inherited the number, and
+    the default action for SIGUSR1 is to terminate.
+
+    Comparing the start time recorded when the file was written closes that.
+    A race remains in principle -- the process could exit between this check
+    and the signal -- but that window is microseconds, against however long a
+    stale file has been lying around.
+    """
+    pid = entry.get("pid")
+    if not isinstance(pid, int) or not alive(pid):
+        return False
+    # A file written without a start time cannot be checked, and an entry that
+    # cannot be checked is the one this exists to refuse.
+    recorded = entry.get("starttime")
+    return recorded is not None and proc_starttime(pid) == recorded
+
+
+def write_state(statefile, entry):
+    """Replace the state file in one step, so `stop` never reads half of it.
+
+    It is written twice per run -- once at start, again when recording begins
+    -- and a reader landing mid-write would see invalid JSON and skip the run.
+    """
+    tmp = statefile.with_suffix(".tmp")
+    tmp.write_text(json.dumps(entry))
+    os.replace(tmp, statefile)
+
+
+def claim_name(name):
+    """Hold the name for this run's whole life, or die if a live run holds it.
+
+    The lock is what makes the duplicate check atomic (DEMO-0011). Checking the
+    state file and writing it later left a gap that two runs started together
+    both passed, and the later one's state file hid the earlier from `stop`.
+    flock has no such gap, and the kernel drops it when the process dies, even
+    to SIGKILL -- so a crashed run cannot hold its name hostage.
+
+    The lock file is never removed. Unlinking it would let a later run lock a
+    fresh inode while an earlier one still holds the old, which is two owners.
+    Returns the open descriptor, which must stay open until the run ends.
+    Children do not inherit it: Popen closes descriptors by default, and an
+    app left running must not keep the name.
+    """
+    fd = os.open(state_dir() / f"{name}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        try:
+            pid = f" (pid {json.loads((state_dir() / f'{name}.json').read_text())['pid']})"
+        except (OSError, ValueError, KeyError, TypeError):
+            pid = ""
+        die(f"a recording named {name!r} is already running{pid}.\n"
+            f"  Use --name to tell this run apart from it.")
+    return fd
+
+
+def start_xvfb(width, height, base, logfile):
+    """Start Xvfb on a display number it picks itself, behind an auth cookie.
+
+    -displayfd is why two sessions can record at once: the server finds a free
+    number and reports it back, so there is no window between "looks free" and
+    "is ours" for a second run to lose.
+
+    The cookie is why another local process cannot watch the recording. Measured
+    on this machine: without one, a client with no credential at all reads the
+    geometry and grabs a frame of whatever is on the display. Socket permissions
+    are no answer — Xvfb also listens on an abstract socket, which has none.
+
+    The number has to come first and the cookie is keyed to it, so the order is:
+    start with an empty auth file, learn the number, write the cookie for it,
+    and SIGHUP the server to re-read. Measured: Xvfb loads the file at its
+    first connection, and none is made before the cookie is written, so the
+    lock is on from the first. The SIGHUP covers a server that loaded the file
+    earlier, and wait_until_locked proves the lock rather than trusting either.
+
+    The server's stderr goes to a file, never to a pipe. It writes there for
+    the whole run — every keymap an app loads adds xkbcomp's warnings — and a
+    pipe nobody drains fills, then blocks the server mid-write. The display
+    freezes, and so does every X call waiting on it: GIMP did this in the gate.
+    """
+    auth = Path(f"{base}.Xvfb.Xauthority")
+    auth.unlink(missing_ok=True)
+    auth.touch(mode=0o600)
+
+    read_fd, write_fd = os.pipe()
+    os.set_inheritable(write_fd, True)
+    with open(logfile, "wb") as log:
+        proc = subprocess.Popen(
+            ["Xvfb", "-displayfd", str(write_fd), "-screen", "0",
+             f"{width}x{height}x24", "-nolisten", "tcp", "-auth", str(auth),
+             # Without it the server resets whenever its last client leaves,
+             # which puts the pointer back at the centre the moment the
+             # xdotool that parked it exits (DEMO-0103). SIGHUP still resets
+             # it, which is how the cookie gets read.
+             "-noreset"],
+            pass_fds=(write_fd,),
+            stdout=subprocess.DEVNULL,
+            stderr=log,
+            # Its own session, so Ctrl+C at a terminal does not reach it. It
+            # did: Xvfb went down with the run's own SIGINT, the app with it,
+            # and the end-of-run blank check was skipped as if the app had
+            # closed itself (DEMO-0054).
+            start_new_session=True,
+        )
+    os.close(write_fd)
+
+    buf = b""
+    deadline = time.monotonic() + DISPLAY_READY_TIMEOUT
+    while b"\n" not in buf:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        if not select.select([read_fd], [], [], remaining)[0]:
+            continue
+        chunk = os.read(read_fd, 64)
+        if not chunk:
+            break
+        buf += chunk
+    os.close(read_fd)
+
+    number = buf.decode(errors="replace").strip()
+    if not number.isdigit():
+        proc.kill()
+        auth.unlink(missing_ok=True)
+        proc.wait()
+        stderr = Path(logfile).read_text(errors="replace").strip()
+        die("Xvfb did not start, so there is no private display to record."
+            + (f"\n  It said: {stderr}" if stderr else "")
+            + "\n  `demoreel check` tests this start on its own.")
+
+    display = f":{number}"
+    cookie = secrets.token_hex(16)
+    added = subprocess.run(["xauth", "-f", str(auth), "add",
+                            display, "MIT-MAGIC-COOKIE-1", cookie],
+                           capture_output=True, text=True, check=False)
+    if added.returncode != 0:
+        proc.kill()
+        auth.unlink(missing_ok=True)
+        die("could not write the display's auth cookie, so the display "
+            "cannot be made private." + (f"\n  xauth said: {added.stderr.strip()}"
+                                          if added.stderr.strip() else "")
+            + "\n  `demoreel check` tests this on its own.")
+    proc.send_signal(signal.SIGHUP)  # the server re-reads its auth file on reset
+
+    # Do not report success until the cookie is actually in force. A client
+    # holding the cookie connects before the lock as well as after it
+    # (measured), so it alone proves nothing (DEMO-0113).
+    if wait_until_locked(display, auth):
+        return proc, display, auth
+    proc.kill()
+    auth.unlink(missing_ok=True)
+    die("the display did not lock: a client without its auth cookie "
+        "could still connect, or none could.")
+    return None  # unreachable; die() exits
+
+
+def wait_until_locked(display, auth):
+    """True once a client without the cookie is refused and one with it gets in.
+
+    Both halves are needed. Before the cookie is in force both clients get in,
+    so the holder connecting proves nothing; a dead display refuses both, so
+    the stranger's refusal alone proves nothing either.
+    """
+    locked = dict(os.environ, DISPLAY=display, XAUTHORITY=str(auth))
+    stranger = dict(os.environ, DISPLAY=display, XAUTHORITY=os.devnull)
+    return bool(poll(
+        lambda: (xdotool(stranger, "getdisplaygeometry").returncode != 0
+                 and xdotool(locked, "getdisplaygeometry").returncode == 0),
+        DISPLAY_READY_TIMEOUT, interval=0.1))
+
+
+def start_gpu_display(width, height, base, logfile):
+    """Start a GPU-capable private display: (cage, display, auth, wayland).
+
+    Xvfb is a software X server with no DRI, so an OpenGL or Vulkan app cannot
+    render on it at all — it is not slow there, it is absent. A rootful
+    Xwayland on a headless `cage` compositor reaches the GPU. Same privacy
+    property: cage shows one client and nothing else, and it is a separate
+    compositor from the user's session.
+
+    The order is fixed. cage's headless output starts at 1280x720, and an
+    Xwayland already running keeps its first size however the output is
+    resized later, so cage's one child resizes the output and only then
+    becomes Xwayland (DEMO-0111). `xwfb-run` starts the two as one step, with
+    no place for the resize, which is why it is not used.
+
+    Nothing is guessed: cage picks its socket name and Xwayland its display
+    number, and both come back on one pipe, in that order. -noreset keeps the
+    pointer where park_pointer puts it, as on Xvfb (DEMO-0103).
+
+    The cookie goes in after -displayfd reports the number, as on Xvfb, and
+    Xwayland re-reads the changed file without being signalled. So the lock is
+    proven by a client without the cookie being refused while one holding it
+    connects: before the cookie both get in, and a dead display refuses both.
+    """
+    auth = Path(f"{base}.Xauthority")
+    auth.unlink(missing_ok=True)
+    auth.touch(mode=0o600)
+
+    read_fd, write_fd = os.pipe()
+    os.set_inheritable(write_fd, True)
+    inner = (f'printf "%s\\n" "$WAYLAND_DISPLAY" >&{write_fd} && '
+             f"wlr-randr --output HEADLESS-1 --custom-mode {width}x{height} && "
+             f"exec Xwayland -displayfd {write_fd} -auth {shlex.quote(str(auth))} "
+             f"-geometry {width}x{height} -fullscreen -noreset -nolisten tcp")
+    with open(logfile, "wb") as log:
+        # Its own session, so ending it takes Xwayland with it. The log is a
+        # file for the reason start_xvfb gives: a pipe nobody drains blocks.
+        proc = subprocess.Popen(
+            ["cage", "--", "sh", "-c", inner],
+            env=dict(os.environ, WLR_BACKENDS="headless"),
+            pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=log,
+            start_new_session=True)
+    os.close(write_fd)
+
+    buf = b""
+    deadline = time.monotonic() + DISPLAY_READY_TIMEOUT
+    while buf.count(b"\n") < 2:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        if not select.select([read_fd], [], [], remaining)[0]:
+            continue
+        chunk = os.read(read_fd, 64)
+        if not chunk:
+            break
+        buf += chunk
+    os.close(read_fd)
+
+    lines = buf.decode(errors="replace").split("\n")
+    wayland = lines[0].strip()
+    number = lines[1].strip() if len(lines) > 1 else ""
+    if not wayland or not number.isdigit():
+        end_process(proc, group=True)
+        auth.unlink(missing_ok=True)
+        tail = "\n  ".join(Path(logfile).read_text(errors="replace")
+                           .strip().splitlines()[-3:])
+        die("the GPU display did not start, so there is nothing to record on."
+            + (f"\n  The end of its log:\n  {tail}" if tail else "")
+            + "\n  `demoreel check` says whether --gpu has what it needs.")
+
+    display = f":{number}"
+    added = subprocess.run(["xauth", "-f", str(auth), "add", display,
+                            "MIT-MAGIC-COOKIE-1", secrets.token_hex(16)],
+                           capture_output=True, text=True, check=False)
+    if added.returncode != 0:
+        end_process(proc, group=True)
+        auth.unlink(missing_ok=True)
+        die("could not write the display's auth cookie, so the display "
+            "cannot be made private." + (f"\n  xauth said: {added.stderr.strip()}"
+                                          if added.stderr.strip() else "")
+            + "\n  `demoreel check` tests this on its own.")
+
+    if wait_until_locked(display, auth):
+        return proc, display, auth, wayland
+    end_process(proc, group=True)
+    auth.unlink(missing_ok=True)
+    die("the GPU display did not lock: a client without its auth cookie "
+        "could still connect, or none could.")
+    return None  # unreachable; die() exits
+
+
+def xdotool(env, *args, check=False, stdin_text=None):
+    """stdin_text feeds `type --file -`, which is how text stays out of the
+    process list; every other call leaves stdin alone.
+
+    Every call is bounded (DEMO-0079). A display that stops answering used to
+    hang the run for good, because the startup deadline is checked between
+    calls and nothing bounded one call.
+    """
+    timeout = CALL_TIMEOUT + TYPE_SECONDS_PER_CHAR * len(stdin_text or "")
+    try:
+        return subprocess.run(["xdotool", *[str(a) for a in args]], env=env,
+                              input=stdin_text, capture_output=True, text=True,
+                              check=check, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _display_gone.set()
+        die(f"the private display {env.get('DISPLAY')} stopped answering: "
+            f"`xdotool {args[0]}` did not return within {timeout:g}s.")
+
+
+def window_geometry(env, wid):
+    """(x, y, width, height), or None if the window vanished before the query."""
+    out = xdotool(env, "getwindowgeometry", "--shell", wid).stdout
+    dims = dict(line.split("=", 1) for line in out.split() if "=" in line)
+    try:
+        return tuple(int(dims[k]) for k in ("X", "Y", "WIDTH", "HEIGHT"))
+    except (KeyError, ValueError):
+        return None
+
+
+def window_area(env, wid):
+    geometry = window_geometry(env, wid)
+    return geometry[2] * geometry[3] if geometry else 0
+
+
+def window_off_frame(env, window, width, height):
+    """Say how the window no longer fills the frame, or return None if it does.
+
+    demoreel sizes the window once, before recording. An app that then sets
+    its own size records cropped or off to one side, and the picture is not
+    flat, so the blank check passes it (DEMO-0099). This is checked beside
+    each blank sample, and it warns rather than fails: a window that moved is
+    still a video of the app.
+    """
+    geometry = window_geometry(env, window)
+    if geometry is None or geometry == (0, 0, width, height):
+        return None
+    x, y, w, h = geometry
+    return (f"the app resized its window to {w}x{h} at {x},{y}, so it no longer "
+            f"fills the {width}x{height} frame and part of the video is cropped "
+            f"or empty.\n  Record at the app's own size with -s {w}x{h}.")
+
+
+# A --gpu video whose frames changed less often than this is noted. Measured
+# with changed_share on 2026-09-26: Vestige's fly-through 48%, vkcube 96%
+# (DEMO-0109).
+CHANGED_NOTE_BELOW = 0.7
+CHANGED_WINDOW = 10
+# "The picture changed", twice, because one threshold cannot serve both uses.
+# The filter compares each frame with the last NEW one, not the one before,
+# and counts it new when any 8x8 block moved by more than the threshold.
+#
+# For the note above: 256. The filter's defaults count near-repeats as
+# repeats, which scored a smooth test pattern 50%; at 256 it scores 100%, a
+# 3 fps pattern stored at 30 scores 12%, and a still one 0%.
+NOTE_NEW_FRAME = "mpdecimate=hi=256:lo=256:frac=0"
+# For `motion`: 640. At 256 x264's own sharpening of a picture, over the
+# frames after it changes, counts as new frames. Measured 2026-09-30 on
+# patterns with a known number of new frames, encoded as the recorder
+# encodes: 9 in 90 scored 44 at 256 and 9 at 640; 36 in 360 scored 167 and
+# 36; 12 in 120 at 1280x800 scored 31 and 12. That is the dangerous way to be
+# wrong here: a stuttering video reports as smooth. What 640 costs is faint,
+# slow movement: a gradient drifting a little each frame scored 360 of 360 at
+# 256 and 145 at 640, noticed only as it adds up. Movement with edges in it
+# is unaffected: a moving pattern scored 60 of 60 at both, and a real
+# recording 282 and 244 of 646. The note keeps 256 because it only ever asks
+# "fewer than 70%?", and 640 would answer yes for that gradient.
+MOTION_NEW_FRAME = "mpdecimate=hi=640:lo=640:frac=0"
+
+
+def changed_share(output, framerate):
+    """The share of frames that differ from the one before, over a window from
+    the middle of the video; None if it could not be measured.
+
+    On --gpu a moving app that draws few frames records as runs of repeated
+    ones, and nothing else notices. It was written when the X side's stale
+    picture caused exactly that (DEMO-0109); record --gpu now captures the
+    compositor's, so what is left is the app's own rate. A still app repeats
+    frames too, which is why this only ever produces a note. One window, not the
+    whole video: decoding a long recording to count would add most of its
+    length.
+    """
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(output)],
+            capture_output=True, text=True, timeout=CALL_TIMEOUT, check=True)
+        duration = float(probe.stdout.strip())
+        window = min(CHANGED_WINDOW, duration)
+        count = subprocess.run(
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+             "-ss", f"{(duration - window) / 2:.3f}", "-t", f"{window:.3f}",
+             "-i", str(output), "-vf", NOTE_NEW_FRAME,
+             "-f", "null", "-",
+             "-progress", "pipe:1", "-nostats"],
+            capture_output=True, text=True, timeout=6 * CALL_TIMEOUT, check=True)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    kept = [ln for ln in count.stdout.splitlines() if ln.startswith("frame=")]
+    frames = window * framerate
+    if not kept or frames < framerate:
+        return None
+    return min(1.0, int(kept[-1].split("=", 1)[1]) / frames)
+
+
+def named_windows(env):
+    """The visible windows that carry a title, under either title property.
+
+    `search --name .` reads only the old WM_NAME, and some apps set nothing but
+    _NET_WM_NAME -- vkcube among them, so its window was never found and every
+    run waited out the whole startup timeout (DEMO-0043). getwindowname reads
+    both. The unfiltered list is no substitute: it also holds a nameless
+    window the size of the display, which is not the app and would win on
+    size. Two xdotool spawns per window, at about 2ms each, measured.
+    """
+    ids = xdotool(env, "search", "--onlyvisible", "").stdout.split()
+    return [wid for wid in ids if xdotool(env, "getwindowname", wid).stdout.strip()]
+
+
+def wait_for_window(env, app, timeout):
+    """Return the id of the app's main window, or None if it never showed one.
+
+    Biggest window wins. An app that opens a modal dialog at startup has two,
+    and picking by search order gets the dialog about as often as not — which
+    then gets stretched to fill the frame while the real window is left alone
+    behind it. Size is the one signal that separates them without knowing
+    anything about the app.
+    """
+    def biggest():
+        ids = named_windows(env)
+        if ids:
+            return max(ids, key=lambda wid: window_area(env, wid))
+        if app.poll() is not None:
+            if app.returncode == 0:
+                # The first line is what happened; the rest is a guess, and is
+                # written as one. The hand-over is the common case here, but a
+                # command that legitimately does its work and exits looks
+                # identical from the outside, and so does one that failed for
+                # its own reasons and still returned 0.
+                die("the app exited immediately (status 0) without opening a window.\n"
+                    "  The likely cause is a single-instance app: it finds a copy already\n"
+                    "  running on your real desktop, hands the request over to it and exits\n"
+                    "  successfully. If a copy is running, close it and try again.\n"
+                    "  If not, the command may simply have finished without needing a\n"
+                    "  window — in which case there is nothing to record.")
+            die(f"the app exited with status {app.returncode} before opening a "
+                f"window.\n  Its own output, above or in --app-log, says why. To "
+                f"see it on its own, run: {shlex.join(app.args)}")
+        return None
+    # About 2ms of CPU per xdotool spawn, measured, so a tight poll costs
+    # nothing and a loose one costs up to its whole interval in wall time.
+    return poll(biggest, timeout, interval=0.05)
+
+
+def wait_for_size(env, window, area, timeout=2.0):
+    """Wait until a resize has landed, rather than sleeping a guessed interval.
+
+    No window manager runs here, so the request is applied directly and this
+    normally returns on the first check. The timeout is only for an app that
+    refuses the size; recording goes ahead either way, as it always has.
+    """
+    poll(lambda: window_area(env, window) == area, timeout, interval=0.05)
+
+
+# Every action verb, with the example a malformed step is told to follow.
+ACTION_EXAMPLES = {"wait": "wait 2", "move": "move 400 300",
+                   "click": "click 400 300", "type": "type some text",
+                   "key": "key Return", "hold": "hold w 3"}
+
+
+def parse_step(spec):
+    """Read one -a step into (verb, values), or die saying how to write it.
+
+    Every step is read before the display starts (prepare), so a typo in the
+    last step fails the run at once rather than after most of a recording.
+    None for an empty step, which does nothing.
+    """
+    # `type` takes the rest of the step exactly, after the verb and one space:
+    # it is text to type, not arguments. Splitting it like a shell command
+    # dropped its quotes, collapsed its spaces and died on an apostrophe
+    # (DEMO-0101). The other verbs take short arguments, and keep the split.
+    head, text = re.match(r"(\S*)\s?(.*)\Z", spec.lstrip(), re.DOTALL).groups()
+    if head == "type":
+        return "type", {"text": text}
+    try:
+        parts = shlex.split(spec)
+    except ValueError as e:
+        die(f"cannot read the step {spec!r}: {e}.")
+    if not parts:
+        return None
+    verb, args = parts[0], parts[1:]
+    if verb not in ACTION_EXAMPLES:
+        die(f"unknown action {verb!r}. The steps are: "
+            f"{', '.join(repr(e) for e in ACTION_EXAMPLES.values())}.")
+    # A malformed step used to reach float() or args[1] unchecked and end
+    # the run with a Python traceback.
+    try:
+        if verb == "wait":
+            return verb, {"seconds": float(args[0])}
+        if verb == "hold":
+            return verb, {"key": args[0], "seconds": float(args[1])}
+        if verb == "move" or (verb == "click" and args):
+            return verb, {"at": (str(int(args[0])), str(int(args[1])))}
+        if verb == "key" and not args:
+            raise IndexError
+    except (IndexError, ValueError):
+        die(f"cannot read the step {spec!r}: write it like "
+            f"{ACTION_EXAMPLES[verb]!r}.")
+    return verb, {"keys": args, "at": None}
+
+
+def run_action(spec, env):
+    """One scripted step: wait / move / click / type / key / hold."""
+    step = parse_step(spec)
+    if step is None:
+        return
+    verb, v = step
+    if verb == "wait":
+        _stop.wait(v["seconds"])  # a stop ends the wait, as it ends the run
+    elif verb == "move":
+        xdotool(env, "mousemove", "--sync", *v["at"])
+    elif verb == "click":
+        if v["at"]:
+            xdotool(env, "mousemove", "--sync", *v["at"])
+        xdotool(env, "click", "1")
+    elif verb == "type":
+        # --file - takes the text on stdin. As an argument it sits in the
+        # process list, readable by any other local user, for as long as the
+        # typing lasts — and at 60ms a keystroke that is seconds. A demo that
+        # types into a login form is the obvious thing to script.
+        xdotool(env, "type", "--delay", "60", "--file", "-",
+                stdin_text=v["text"])
+    elif verb == "key":
+        xdotool(env, "key", *v["keys"])
+    elif verb == "hold":
+        # The keyup runs however the hold ends -- time up, a stop, an error --
+        # or the key stays down on the display for the rest of the run.
+        xdotool(env, "keydown", v["key"])
+        try:
+            _stop.wait(v["seconds"])
+        finally:
+            xdotool(env, "keyup", v["key"])
+
+
+# How ffmpeg encodes every video demoreel writes with it: the recording on
+# Xvfb and every finishing command, so one command's file is the same kind as
+# another's. record --gpu's recorder is told the same in its own options.
+ENCODER = [
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    # x264's default is a multiple of the cores, and its buffers set most
+    # of a recording's memory: about 530 MB peak on twelve cores, about
+    # 270 MB at four. Four threads pinned to four cores still encoded a
+    # full-frame glxgears at 1600x1000 with no dropped or duplicated
+    # frame (DEMO-0073).
+    "-threads", "4",
+    "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+]
+
+
+def start_ffmpeg(env, display, width, height, framerate, output, logfile, cursor):
+    """Record the display. env matters: the GPU backend's Xwayland wants an
+    auth cookie, and ffmpeg is as much a client of that display as xdotool."""
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "-progress", "pipe:1", "-stats_period", "0.05",
+        "-f", "x11grab", "-framerate", str(framerate),
+        "-draw_mouse", "1" if cursor else "0",
+        "-video_size", f"{width}x{height}", "-i", f"{display}.0",
+        *ENCODER, "-y", str(output),
+    ]
+    # Deliberate: the handle is owned by the ffmpeg process and closed in
+    # record()'s finally block, so it must outlive this statement.
+    log = open(logfile, "wb")  # noqa: SIM115
+    # Its own session, so a terminal's Ctrl+C or hang-up cannot end it before
+    # stop_recorder does: a SIGHUP killed it with no index written, and the
+    # run printed the path of a file nothing could play (DEMO-0115).
+    proc = subprocess.Popen(cmd, env=env, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=log,
+                            start_new_session=True)
+    # Return when ffmpeg is actually capturing, not after a guessed interval.
+    # The first progress report is that signal: it arrives once the input is
+    # open and frames are flowing. The duration is counted from here, so a
+    # blind sleep in its place was recorded into every video (DEMO-0012).
+    # The frame count in those reports is no use as the signal -- it counts
+    # ENCODED frames and sits at 0 for most of a second while x264 fills its
+    # look-ahead.
+    ready = select.select([proc.stdout], [], [], DISPLAY_READY_TIMEOUT)[0]
+    if not ready or not proc.stdout.readline():
+        proc.kill()
+        proc.wait()
+        log.close()
+        tail = Path(logfile).read_text(errors="replace").strip()
+        die("ffmpeg could not start recording." + (f"\n  It said: {tail}" if tail else "")
+            + "\n  `demoreel check` tests the programs and the encoder it needs.")
+    # Keep draining the reports, or ffmpeg blocks once the pipe fills.
+    threading.Thread(target=proc.stdout.read, daemon=True).start()
+    return proc, log
+
+
+def partial_video(output):
+    """Where record --gpu's recorder writes before finish_gpu_video: beside
+    the output, on its disk, and not in the state directory, which is RAM."""
+    return output.with_name(f".{output.stem}.demoreel-part.mp4")
+
+
+def start_wf_recorder(env, wayland, framerate, output, logfile):
+    """Record cage's own output, for record --gpu (DEMO-0111).
+
+    Under a busy 3D app the X side's copy of the picture goes stale, so x11grab
+    records a slideshow: 156 new frames of 588 where this got 643 of 643, over
+    the same run (DEMO-0109). -D asks for every frame rather than only changed
+    ones, without which SIGINT is also ignored while the screen is still, and
+    -y stops it prompting before an overwrite. The encoder settings match
+    start_ffmpeg's, so the two backends hand back the same kind of file.
+
+    It prints no progress reports, so the start signal is the line announcing
+    its output, printed once the encoder has its first frame. The countdown is
+    counted from there, as start_ffmpeg's is from its first report (DEMO-0012).
+    """
+    part = partial_video(output)
+    cmd = ["wf-recorder", "-D", "-y", "-r", str(framerate),
+           "-c", "libx264", "-p", "preset=veryfast", "-p", "crf=23",
+           "-x", "yuv420p", "-f", str(part)]
+    # Deliberate: closed in record()'s finally block, as start_ffmpeg's is.
+    log = open(logfile, "wb")  # noqa: SIM115
+    # Unbuffered, or a readline that pulls in several lines leaves the rest in
+    # Python's buffer, where select cannot see them: the start line sat there
+    # unread until the deadline and the run failed, one run in three.
+    proc = subprocess.Popen(cmd, env=dict(env, WAYLAND_DISPLAY=wayland),
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, bufsize=0,
+                            start_new_session=True)  # as ffmpeg's, DEMO-0115
+    deadline = time.monotonic() + DISPLAY_READY_TIMEOUT
+    while True:
+        remaining = deadline - time.monotonic()
+        line = (proc.stdout.readline()
+                if remaining > 0 and select.select([proc.stdout], [], [], remaining)[0]
+                else b"")
+        log.write(line)
+        if line.startswith(b"Output #0"):
+            break
+        if not line:
+            proc.kill()
+            proc.wait()
+            log.close()
+            part.unlink(missing_ok=True)
+            tail = Path(logfile).read_text(errors="replace").strip()
+            die("wf-recorder could not start recording."
+                + (f"\n  It said: {tail}" if tail else "")
+                + "\n  `demoreel check` says whether --gpu has what it needs.")
+    # Keep copying its output to the log, or it blocks once the pipe fills.
+    threading.Thread(target=lambda: log.write(proc.stdout.read()),
+                     daemon=True).start()
+    return proc, log
+
+
+def finish_gpu_video(output, logfile):
+    """Give record --gpu's file the +faststart the Xvfb path's has.
+
+    wf-recorder has no option for muxer flags, so a stream copy moves the index
+    to the front. Nothing is re-encoded. The partial file is kept if the copy
+    fails, and the message names it.
+    """
+    part = partial_video(output)
+    if not part.exists():
+        return
+    copy = subprocess.run(  # noqa: PLW1510 - a failed copy is handled below
+        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+         "-i", str(part), "-c", "copy", "-movflags", "+faststart",
+         "-y", str(output)],
+        capture_output=True, timeout=6 * CALL_TIMEOUT)
+    if copy.returncode != 0:
+        with open(logfile, "ab") as log:
+            log.write(copy.stderr)
+        die(f"could not finish the video: turning the recording into {output.name}"
+            f" failed.\n  What was recorded is kept in {part}, and {logfile}"
+            f" says why.")
+    part.unlink()
+
+
+class SampleError(Exception):
+    """The display could not be sampled, so whether it is blank is unknown."""
+
+
+def display_is_blank(env, display, width, height):
+    """True if the display is one flat colour, i.e. nothing is drawn on it.
+
+    Silently recording nothing is the worst failure this tool has: valid file,
+    exit 0, black picture, every signal saying success. So grab one frame and
+    measure how much of it is a single grey level. Measured here: an empty Xvfb
+    is 0.99994, and a window as small as 200x100 on a 1280x800 display already
+    drops it to 0.98 — so the threshold has room on both sides.
+
+    Raises SampleError when no frame comes back. That is the third answer,
+    "could not tell", and it must not collapse into either of the other two:
+    reading it as "not blank" is how this guard used to pass everything the
+    moment its own measurement broke (DEMO-0033). A grab that does not return
+    in time is that answer too (DEMO-0079): the display stopped answering.
+    """
+    try:
+        grab = subprocess.run(  # noqa: PLW1510 - a failed grab is handled below
+            ["ffmpeg", "-hide_banner", "-loglevel", "error",
+             "-f", "x11grab", "-video_size", f"{width}x{height}",
+             "-i", f"{display}.0", "-frames:v", "1",
+             "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+            env=env, capture_output=True, timeout=CALL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _display_gone.set()
+        raise SampleError(f"the display did not give up a frame within "
+                          f"{CALL_TIMEOUT}s; it has stopped answering") from None
+    if grab.returncode != 0 or len(grab.stdout) != width * height:
+        lines = [ln for ln in grab.stderr.decode(errors="replace").splitlines()
+                 if ln.strip()]
+        raise SampleError("\n  ".join(lines[-3:])
+                          or f"ffmpeg exited {grab.returncode} with no frame")
+    return frame_is_flat(grab.stdout)
+
+
+def video_is_blank(output, at, width, height):
+    """True if the finished video is one flat colour at `at` seconds in, or in
+    its last half second when `at` is None.
+
+    display_is_blank reads the X side, and on record --gpu the video comes from
+    the compositor instead, so a recorder writing black under a drawn display
+    would pass it. This asks the file the same question, at the moments the
+    display was asked, with the same test. Raises SampleError, as that does.
+    """
+    seek = ["-sseof", "-0.5"] if at is None else ["-ss", f"{at:.3f}"]
+    try:
+        grab = subprocess.run(  # noqa: PLW1510 - a failed read is handled below
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+             *seek, "-i", str(output), "-frames:v", "1",
+             "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+            capture_output=True, timeout=CALL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise SampleError(f"reading a frame of {output} took over "
+                          f"{CALL_TIMEOUT}s") from None
+    if grab.returncode != 0 or len(grab.stdout) != width * height:
+        lines = [ln for ln in grab.stderr.decode(errors="replace").splitlines()
+                 if ln.strip()]
+        raise SampleError("\n  ".join(lines[-3:])
+                          or f"no frame of {output} could be read")
+    return frame_is_flat(grab.stdout)
+
+
+def dominant_fraction(frame):
+    """The share of a raw grey frame taken by its commonest byte value.
+
+    One pass per distinct byte value, which looks worse than Counter's single
+    pass and is not. Measured on a 1600x1000 frame: on a blank display, one
+    distinct value, this form is about five times faster; on a busy screen with
+    every value present it is about twice as slow. The case it wins is what
+    wait_until_drawn polls against, and the case it loses is sampled once at the
+    end of a run. Do not tidy it into Counter.most_common.
+    """
+    return max(frame.count(v) for v in set(frame)) / len(frame)
+
+
+def frame_is_flat(frame):
+    """True if the frame is one flat colour by BLANK_THRESHOLD's measure.
+
+    The threshold AND its comparator live here together, because splitting them
+    is what let a copy drift: a frame measuring exactly the threshold would pass
+    one side and fail the other.
+
+    The question is yes or no, so it seldom needs every value counted
+    (DEMO-0076). Count one likely candidate, the commonest value in a thin
+    sample. Over the threshold: flat. At least the rest (1 - threshold): not
+    flat, since no other value can then reach the threshold. Only a sample
+    that picked a rare value falls back to dominant_fraction. The answer is
+    the same either way; on a busy 1600x1000 frame it takes a fraction of the
+    time, which the end-of-run check waits on.
+    """
+    sample = frame[::997]
+    if sample:
+        candidate = max(set(sample), key=sample.count)
+        share = frame.count(candidate) / len(frame)
+        if share > BLANK_THRESHOLD:
+            return True
+        if share >= 1 - BLANK_THRESHOLD:
+            return False
+    return dominant_fraction(frame) > BLANK_THRESHOLD
+
+
+def wait_until_drawn(env, display, width, height, timeout):
+    """Hold the recorder until the app has actually drawn something.
+
+    A GPU app can spend seconds on a black screen while it builds acceleration
+    structures, and recording that means the caller trims the head off
+    afterwards, which costs a second encode. Same uniform-frame test as the
+    end-of-run check, used here as a gate rather than as an assertion.
+    """
+    # Back the poll off as the wait lengthens. Each sample spawns an ffmpeg and
+    # moves a whole frame across a process boundary -- about 112ms of CPU on a
+    # 1600x1000 display -- so a fixed quarter-second poll burns most of a core.
+    # --settle exists for apps that spend seconds building GPU acceleration
+    # structures, which means the sampler was competing for the machine with
+    # the very work it was waiting for.
+    #
+    # Starting tighter than the old fixed interval and widening to a ceiling
+    # answers a fast-drawing app sooner and a slow one far more cheaply. The
+    # ceiling is what it costs: up to that long between the app drawing and the
+    # recorder noticing. That is the right trade here, because the alternative
+    # is taking CPU from the app to find out a second earlier.
+    #
+    # A smaller frame is NOT the lever, and was measured: decimating to a
+    # hundredth of the data gives an all but identical answer and saves about
+    # 10%, because the cost is the process spawn and the capture, not the data.
+    return bool(poll(lambda: not display_is_blank(env, display, width, height),
+                     timeout, interval=0.1, grow=1.5, ceiling=1.0))
+
+
+def stop_recorder(proc):
+    """Ask the recorder to finish so the file gets its index written; a killed
+    recorder leaves an mp4 that most players refuse to open. ffmpeg takes `q`
+    on its stdin, wf-recorder takes SIGINT."""
+    if proc.poll() is not None:
+        return
+    if _display_gone.is_set():  # no video to save, and it cannot finish
+        proc.kill()
+        proc.wait()
+        return
+    try:
+        if proc.args[0] == "wf-recorder":
+            proc.send_signal(signal.SIGINT)
+        else:
+            proc.stdin.write(b"q")
+            proc.stdin.flush()
+            proc.stdin.close()
+    except OSError:
+        proc.terminate()
+    try:
+        proc.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def end_process(proc, group=False):
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if group:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        else:
+            proc.terminate()
+        proc.wait(timeout=5)
+    except (subprocess.TimeoutExpired, ProcessLookupError, PermissionError):
+        try:
+            if group:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            else:
+                proc.kill()
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+FLATPAK_FLAGS = ("--socket=x11", "--nosocket=wayland", "--filesystem=/tmp/.X11-unix")
+
+
+def warn_if_flatpak_underflagged(command):
+    """Say up front when a Flatpak target is missing the flags it needs.
+
+    Without them the app renders on the user's real compositor, the virtual
+    display stays empty, and the run fails the blank check with a message
+    listing two possible causes. We can tell which one it is before spending
+    the recording on it.
+
+    A warning, not an error: a manifest with no wayland socket does not need
+    --nosocket=wayland, and refusing would break an invocation that works. This
+    reads the caller's own command line and knows nothing about any
+    application, which is what keeps it out of per-app profile territory.
+    """
+    if Path(command[0]).name != "flatpak" or "run" not in command:
+        return
+    missing = [f for f in FLATPAK_FLAGS
+               if not any(arg.startswith(f) for arg in command)]
+    if missing:
+        note(f"this is a Flatpak target and the command is missing: "
+             f"{', '.join(missing)}")
+        note("  A missing one can send it to your real compositor instead, "
+             "leaving this")
+        note("  recording empty. README.md says what each flag is for.")
+
+
+# Which package gives each program, per package manager, looked up in each
+# distro's own package index on 2026-09-27 (DEMO-0051): openSUSE from rpm on
+# this machine, the rest with apt-file, dnf repoquery and pacman -F in their
+# own containers. Knowledge about distros, not about apps.
+PACKAGES = {
+    "zypper": ("sudo zypper install", {
+        "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "xdotool": "xdotool",
+        "xauth": "xauth", "Xvfb": "xorg-x11-server-Xvfb", "cage": "cage",
+        "Xwayland": "xwayland", "wlr-randr": "wlr-randr",
+        "wf-recorder": "wf-recorder"}),
+    "apt": ("sudo apt install", {
+        "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "xdotool": "xdotool",
+        "xauth": "xauth", "Xvfb": "xvfb", "cage": "cage",
+        "Xwayland": "xwayland", "wlr-randr": "wlr-randr",
+        "wf-recorder": "wf-recorder"}),
+    "dnf": ("sudo dnf install", {
+        "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "xdotool": "xdotool",
+        "xauth": "xorg-x11-xauth", "Xvfb": "xorg-x11-server-Xvfb",
+        "cage": "cage", "Xwayland": "xorg-x11-server-Xwayland",
+        "wlr-randr": "wlr-randr", "wf-recorder": "wf-recorder"}),
+    "pacman": ("sudo pacman -S", {
+        "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "xdotool": "xdotool",
+        "xauth": "xorg-xauth", "Xvfb": "xorg-server-xvfb", "cage": "cage",
+        "Xwayland": "xorg-xwayland", "wlr-randr": "wlr-randr",
+        "wf-recorder": "wf-recorder"}),
+}
+# /etc/os-release ID or ID_LIKE -> package manager.
+DISTRO_FAMILIES = {"opensuse": "zypper", "suse": "zypper", "debian": "apt",
+                   "ubuntu": "apt", "fedora": "dnf", "arch": "pacman"}
+# Measured in containers the same day: the distros' own ffmpeg on openSUSE
+# (ffmpeg-8) and Fedora (ffmpeg-free) has no libx264 encoder; Packman's and
+# RPM Fusion's do (DEMO-0117).
+X264_ADVICE = {
+    "zypper": "\n  openSUSE's own ffmpeg leaves it out. Install ffmpeg from the "
+              "Packman repository,\n  which has it.",
+    "dnf": "\n  Fedora's ffmpeg-free leaves it out. Enable RPM Fusion, then:\n"
+           "    sudo dnf swap ffmpeg-free ffmpeg --allowerasing",
+    None: "\n  Install a build of ffmpeg that includes libx264.",
+}
+
+
+def distro_family():
+    """The package manager this distro uses, from /etc/os-release; None if
+    it is not one the table knows."""
+    try:
+        lines = Path("/etc/os-release").read_text().splitlines()
+    except OSError:
+        return None
+    fields = dict(line.split("=", 1) for line in lines if "=" in line)
+    ids = [fields.get("ID", ""), *fields.get("ID_LIKE", "").split()]
+    for name in (i.strip('"') for i in ids):
+        family = DISTRO_FAMILIES.get(name)
+        if family:
+            return family
+    return None
+
+
+def install_hint(programs):
+    """The command that installs `programs` here, or "" on an unknown distro."""
+    family = distro_family()
+    if family is None:
+        return ""
+    command, names = PACKAGES[family]
+    packages = list(dict.fromkeys(names[p] for p in programs if p in names))
+    hint = f"\n  Install with: {command} {' '.join(packages)}"
+    if "ffmpeg" in packages and family in X264_ADVICE:
+        hint += X264_ADVICE[family]
+    return hint
+
+
+def has_libx264():
+    try:
+        encoders = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
+                                  capture_output=True, text=True,
+                                  timeout=CALL_TIMEOUT, check=False).stdout
+    except subprocess.TimeoutExpired:
+        return True  # cannot tell; let the recording itself say what is wrong
+    return " libx264 " in encoders
+
+
+def required_programs(gpu, recording):
+    """What a run needs installed, for its backend and for record or shot."""
+    required = ["ffmpeg", "xdotool", "xauth"] + (["ffprobe"] if recording else [])
+    if gpu:
+        return required + ["cage", "Xwayland", "wlr-randr"] + (
+            ["wf-recorder"] if recording else [])
+    return [*required, "Xvfb"]
+
+
+def prepare(a, suffix):
+    """What `record` and `shot` both check before starting anything: the tools,
+    the app command, the size, and where the output and the app log go."""
+    recording = suffix == ".mp4"
+    missing = [t for t in required_programs(a.gpu, recording)
+               if shutil.which(t) is None]
+    if missing:
+        die(f"missing required program(s): {', '.join(missing)}"
+            + install_hint(missing))
+    if recording and not has_libx264():
+        die("this ffmpeg cannot encode H.264 with libx264, which every "
+            "recording uses." + X264_ADVICE.get(distro_family(), X264_ADVICE[None]))
+    if recording and a.gpu and a.cursor:
+        die("--cursor is not available with record --gpu: that backend records "
+            "the compositor's picture, which never has the pointer in it.")
+
+    for spec in a.action:
+        parse_step(spec)  # every step is readable before anything starts
+
+    command = list(a.command)
+    if command and command[0] == "--":
+        command.pop(0)
+    if not command:
+        die(f"give the app to run after `--`, e.g. demoreel {a.cmd} -- xclock")
+    warn_if_flatpak_underflagged(command)
+
+    match = SIZE_RE.match(a.size)
+    if not match:
+        die(f"--size takes a width and a height in pixels, like 1600x1000, "
+            f"not {a.size!r}.")
+    width, height = int(match[1]), int(match[2])
+    if suffix == ".mp4" and (width % 2 or height % 2):
+        die(f"--size needs even numbers for a video, since H.264 cannot encode "
+            f"an odd width or height.\n  Try {width + width % 2}x{height + height % 2}.")
+
+    if a.output:
+        output = own_path(a.output, "the output")
+    else:
+        stem = re.sub(r"[^A-Za-z0-9._-]", "_", Path(command[0]).name) or "demo"
+        output = Path.cwd() / f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}{suffix}"
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    applog = own_path(a.app_log, "the app log") if a.app_log else None
+    if applog:
+        applog.parent.mkdir(parents=True, exist_ok=True)
+    return command, width, height, output, applog
+
+
+def own_path(raw, what):
+    """Resolve a path demoreel will write, refusing a symlink someone else made.
+
+    resolve() follows the link here, in demoreel, so the writer is handed its
+    target and the kernel's fs.protected_symlinks never gets to refuse it.
+    Measured: a link at the -o path had its target overwritten, exit 0. So
+    another local user could plant /tmp/demo.mp4 pointing at one of your files
+    and have your run overwrite it (DEMO-0082). A link you made yourself is
+    yours to follow. A link planted after this check is opened by the writer,
+    and there the kernel's protection applies.
+    """
+    path = Path(os.path.abspath(Path(raw).expanduser()))
+    if path.is_symlink() and path.lstat().st_uid != os.getuid():
+        die(f"{what} {path} is a symbolic link another user made, so demoreel\n"
+            f"  will not write through it: it could point at a file of yours.\n"
+            f"  Choose another path, or remove the link if it is not meant to be there.")
+    return path.resolve()
+
+
+def park_pointer(env, width, height):
+    """Put the pointer in the bottom-right corner. A fresh display starts it
+    at the centre, where it lights up whatever the app draws under it before
+    any step runs, drawn pointer or not (DEMO-0103)."""
+    xdotool(env, "mousemove", width - 1, height - 1)
+
+
+def launch(a, command, width, height, base, displaylog, appout):
+    """Start the private display and the app on it.
+
+    Returns (server, app, display, auth, env, wayland). server is Xvfb, or on
+    --gpu the cage that holds Xwayland, and ends with end_server. wayland is
+    cage's socket name on --gpu, which only the recorder uses, and None on
+    Xvfb. Both backends start the app afterwards, so the pointer is parked
+    before the app first sees it. Nothing is left running if the app cannot
+    be started.
+    """
+    if a.gpu:
+        server, display, auth, wayland = start_gpu_display(width, height, base,
+                                                           displaylog)
+    else:
+        server, display, auth = start_xvfb(width, height, base, displaylog)
+        wayland = None
+    env = dict(os.environ, DISPLAY=display, WAYLAND_DISPLAY=NO_WAYLAND,
+               XAUTHORITY=str(auth))
+    park_pointer(env, width, height)
+    try:
+        app = subprocess.Popen(command, env=env, start_new_session=True,
+                               stdout=appout, stderr=subprocess.STDOUT)
+    except (FileNotFoundError, PermissionError) as exc:
+        end_server(server)
+        auth.unlink(missing_ok=True)
+        die(f"could not run {command[0]!r}: {exc.strerror}.\n"
+            "  Check that the command after `--` is installed and spelled as you "
+            "would type it.")
+    return server, app, display, auth, env, wayland
+
+
+def end_server(server):
+    """End the display. Both servers run in a session of their own, and the
+    group goes, so on --gpu Xwayland goes with cage."""
+    if server is None or server.poll() is not None:
+        return
+    if _display_gone.is_set():  # a hung server may not act on SIGTERM
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(os.getpgid(server.pid), signal.SIGKILL)
+        server.wait()
+        return
+    end_process(server, group=True)
+
+
+def place_window(env, app, a, width, height, going_on):
+    """Find the app's window and make it fill the frame; None if none appeared."""
+    window = wait_for_window(env, app, a.startup_timeout)
+    if window is None:
+        note(f"no window appeared within {a.startup_timeout}s; {going_on} anyway.\n"
+             "  If the app is slow to start, give it longer with --startup-timeout.")
+    else:
+        # No window manager runs here, so no windowactivate: the only
+        # window already has focus.
+        xdotool(env, "windowmove", window, 0, 0)
+        xdotool(env, "windowsize", window, width, height)
+        wait_for_size(env, window, width * height)
+    return window
+
+
+def blank_causes(gpu):
+    """What usually made the display blank, for the backend that ran. On
+    --gpu the first Xvfb cause cannot apply, and telling that run to use
+    --gpu was advice to do what it had just done (DEMO-0110)."""
+    first = ("  - It had not drawn yet. A GPU app can spend seconds on a black\n"
+             "    screen while it starts: --settle waits for the first picture.\n"
+             if gpu else
+             "  - It needs the GPU, and Xvfb has none. An OpenGL or Vulkan app\n"
+             "    cannot render on it at all: record it with --gpu instead.\n")
+    return ("  The app ran but drew nothing here. Two causes account for most of it:\n"
+            + first
+            + "  - It rendered somewhere else. A Flatpak needs --nosocket=wayland on\n"
+            "    its command line; see README.md.")
+
+
+class Checks:
+    """What the display samples found during a run, read after teardown.
+
+    blank: when the display was found blank, "halfway" or "at the end".
+    unsampled: why a sample could not be taken, which fails the run too.
+    sampled: when each display sample was taken, as (when, seconds into the
+    video). record --gpu asks the finished file the same question at the same
+    moments, so the skips that decided whether a sample was taken carry over.
+    None means the end of the video.
+    moved: how the window stopped filling the frame, said once.
+    """
+
+    def __init__(self):
+        self.blank = None
+        self.unsampled = None
+        self.sampled = []
+        self.moved = None
+
+    def failed(self):
+        return self.blank is not None or self.unsampled is not None
+
+    def sample(self, when, at, env, display, width, height):
+        """Sample the display now, and record what was found."""
+        self.sampled.append((when, at))
+        try:
+            if display_is_blank(env, display, width, height):
+                self.blank = when
+        except SampleError as exc:
+            self.unsampled = str(exc)
+
+    def look_at_window(self, env, window, width, height):
+        if self.moved is None and window is not None:
+            self.moved = window_off_frame(env, window, width, height)
+            if self.moved:
+                note(self.moved)
+
+
+def settle(a, env, display, width, height):
+    """--settle: wait for the app's first picture before recording."""
+    try:
+        drawn = not a.settle or wait_until_drawn(env, display, width,
+                                                 height, a.settle)
+    except SampleError as exc:
+        die(f"--settle could not sample the display, so it cannot tell "
+            f"when the app has drawn.\n  {exc}")
+    if not drawn:
+        note(f"nothing was drawn within {a.settle}s; recording anyway.\n"
+             "  If the app takes longer to show its first picture, raise --settle.")
+
+
+def start_recorder(a, env, display, wayland, width, height, output, logpath):
+    if a.gpu:
+        return start_wf_recorder(env, wayland, a.framerate, output, logpath)
+    return start_ffmpeg(env, display, width, height, a.framerate, output,
+                        logpath, a.cursor)
+
+
+def run_countdown(a, env, app, window, display, recorder, width, height,
+                  logpath, started, checks):
+    """Play the scripted actions, then record until the run should end.
+
+    It ends at the -d deadline, on a stop request, when the recorder or the
+    app goes away, or when the halfway sample finds the display blank.
+    """
+    for action in a.action:
+        if _stop.is_set():
+            break
+        run_action(action, env)
+
+    deadline = time.monotonic() + a.duration if a.duration else None
+    # A second look, halfway through the countdown (DEMO-0008). The end
+    # sample alone passes an app that draws only in the final moments,
+    # which is a video mostly empty. Blank at halfway means at least half
+    # of the countdown is empty, and the run fails there rather than
+    # recording the rest. A -d 0 run has no halfway point.
+    halfway = deadline - a.duration / 2 if deadline else None
+    try:
+        while not _stop.is_set():
+            now = time.monotonic()
+            if deadline and now >= deadline:
+                break
+            if halfway and now >= halfway:
+                halfway = None
+                if app.poll() is None:
+                    checks.look_at_window(env, window, width, height)
+                    checks.sample("halfway", now - started, env, display,
+                                  width, height)
+                    if checks.failed():
+                        break
+            if recorder.poll() is not None:
+                note(f"the recorder stopped early; see {logpath}")
+                break
+            if deadline:
+                progress(f"recording, {math.ceil(deadline - now)}s left")
+            else:
+                seconds = int(now - started)
+                progress(f"recording for {seconds // 60}:{seconds % 60:02d}"
+                         " (Ctrl+C to finish)")
+            if app.poll() is not None:
+                note("the app closed; ending the recording.")
+                break
+            # Never wait past the deadline: a fixed interval here added up to
+            # its own length to every video. A stop ends the wait at once.
+            _stop.wait(0.2 if deadline is None
+                       else max(0.0, min(0.2, deadline - time.monotonic())))
+    finally:
+        progress(None)  # the line goes before anything else is said
+
+
+def check_at_end(env, app, window, display, width, height, checks):
+    """The end-of-run look, taken after the recorder stops.
+
+    Stop recording before sampling. The display does not change when the
+    recorder stops, and sampling first put a third of a second of overshoot
+    into every video (DEMO-0012). Only meaningful while the app is still up:
+    one that closed itself mid-run leaves an empty display behind, and that
+    video is fine.
+    """
+    if app.poll() is not None:
+        return
+    checks.look_at_window(env, window, width, height)
+    if not checks.failed():
+        checks.sample("at the end", None, env, display, width, height)
+
+
+def vouch_for(a, output, logpath, width, height, checks):
+    """Fail the run unless the finished video is one it can stand behind."""
+    if not output.exists() or output.stat().st_size == 0:
+        die(f"no video was written to {output}: the recorder produced nothing."
+            f"\n  Its log, {logpath}, says why.")
+    unreadable = video_error(output)
+    if unreadable:
+        die(f"the video cannot be played: {output}\n  {unreadable}\n"
+            f"  The recorder most likely stopped before it finished the file. "
+            f"See {logpath}")
+    if checks.blank:
+        what = ("so at least half of it is a flat colour"
+                if checks.blank == "halfway" else "so it ends on a flat colour")
+        die(f"the virtual display was blank {checks.blank}, {what}: {output}\n"
+            + blank_causes(a.gpu))
+    if checks.unsampled is not None:
+        die(f"could not sample the virtual display to check {output} is not blank,\n"
+            f"  so this run cannot vouch for it.\n  {checks.unsampled}")
+    if a.gpu:
+        for when, at in checks.sampled:
+            try:
+                flat = video_is_blank(output, at, width, height)
+            except SampleError as exc:
+                die(f"could not read {output} back to check it is not blank,\n"
+                    f"  so this run cannot vouch for it.\n  {exc}")
+            if flat:
+                die(f"the video is a flat colour {when}, though the private "
+                    f"screen was not: {output}\n  The recorder captured "
+                    f"something other than the screen. See {logpath}")
+        share = changed_share(output, a.framerate)
+        if share is not None and share < CHANGED_NOTE_BELOW:
+            note(f"only {share:.0%} of the frames in the middle of {output} "
+                 f"changed from the one before.\n  If the app was moving the "
+                 f"whole time, it drew that few new frames itself: the video "
+                 f"has every frame it drew.")
+
+
+def video_error(output):
+    """Why the finished video cannot be read back, or None if it can.
+
+    A file that is there and not empty is not yet a video: a recorder killed
+    mid-run leaves an mp4 with no index, and the run printed its path and
+    exited 0 (DEMO-0116).
+    """
+    try:
+        probe = subprocess.run(["ffprobe", "-v", "error", str(output)],
+                               capture_output=True, text=True,
+                               timeout=CALL_TIMEOUT, check=False)
+    except subprocess.TimeoutExpired:
+        return f"reading it back took over {CALL_TIMEOUT}s."
+    if probe.returncode == 0:
+        return None
+    lines = probe.stderr.strip().splitlines()
+    return lines[-1] if lines else "ffprobe could not read it."
+
+
+def summarise(output):
+    """On a terminal, the video's length and size once it is done."""
+    if not sys.stderr.isatty():
+        return
+    try:
+        seconds = float(subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(output)], capture_output=True, text=True,
+            timeout=CALL_TIMEOUT, check=True).stdout)
+    except (subprocess.SubprocessError, ValueError):
+        return  # the video was already vouched for; this is only a courtesy
+    size = output.stat().st_size
+    note(f"{seconds:.1f}s of video, " + (f"{size / 1e6:.1f} MB" if size >= 1e6
+                                         else f"{size / 1e3:.0f} kB"))
+
+
+def cmd_record(a):
+    command, width, height, output, applog = prepare(a, ".mp4")
+
+    # SIGHUP is a closed terminal: finish the video as for Ctrl+C, rather
+    # than dying where we stand and leaking the display (DEMO-0115).
+    for sig in (signal.SIGUSR1, signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _request_stop)
+
+    # The run is addressable from here, before anything slow happens, so a
+    # `stop` issued straight after launching it finds it (DEMO-0034). Holding
+    # the name makes any state file already there a dead run's, so it is
+    # simply replaced. "recording" flips to true once ffmpeg has its first
+    # frame; `stop` waits for that rather than ending a run with no video.
+    # "result" is written as "ok" just before the path is printed, and the
+    # file is left in place so `stop` can read it after this process has gone
+    # (DEMO-0047). A run that fails never writes it.
+    claim_name(a.name)
+    statefile = state_dir() / f"{a.name}.json"
+    state = {"name": a.name, "pid": os.getpid(),
+             "starttime": proc_starttime(os.getpid()),
+             "output": str(output), "recording": False}
+
+    logpath = state_dir() / f"{a.name}.ffmpeg.log"
+    displaylog = state_dir() / f"{a.name}.display.log"
+    # The app's own output goes to our stderr, or to --app-log, but never to
+    # our stdout: this command prints the finished path and nothing else, and a
+    # caller writing `out=$(demoreel record ...)` must not collect the app's
+    # chatter along with it. Worth keeping somewhere when the app says whether
+    # what it drew was the real thing — a wrong-but-not-blank recording passes
+    # every check this tool can make.
+    # Deliberate: as above - closed in the finally block, not here.
+    appout = open(applog, "wb") if applog else sys.stderr  # noqa: SIM115
+    server = app = recorder = log = auth = None
+    checks = Checks()
+    try:
+        write_state(statefile, state)
+        server, app, display, auth, env, wayland = launch(
+            a, command, width, height, state_dir() / a.name, displaylog, appout)
+        window = place_window(env, app, a, width, height, "recording")
+        settle(a, env, display, width, height)
+
+        recorder, log = start_recorder(a, env, display, wayland, width, height,
+                                       output, logpath)
+        started = time.monotonic()
+        write_state(statefile, dict(state, display=display, recording=True))
+        note(f"recording {display} to {output} "
+             f"({'until stopped' if a.duration == 0 else f'{a.duration}s'})")
+
+        run_countdown(a, env, app, window, display, recorder, width, height,
+                      logpath, started, checks)
+        stop_recorder(recorder)
+        check_at_end(env, app, window, display, width, height, checks)
+    finally:
+        # Order matters: finish the video before the app and display go away,
+        # or the last frames catch a half-dead app.
+        if recorder is not None:
+            stop_recorder(recorder)
+        if log is not None:
+            log.close()
+        if appout is not sys.stderr:
+            appout.close()
+        end_process(app, group=True)
+        end_server(server)
+        if auth is not None:
+            auth.unlink(missing_ok=True)
+        if a.gpu:
+            finish_gpu_video(output, logpath)
+
+    vouch_for(a, output, logpath, width, height, checks)
+    summarise(output)
+    for stale in (logpath, displaylog):
+        stale.unlink(missing_ok=True)  # only worth keeping when something failed
+    write_state(statefile, dict(state, result="ok"))
+    print(output)
+
+
+def take_picture(env, display, width, height, cursor, output, gpu):
+    """Save one PNG of the display and check it; the reason it failed, or None.
+
+    The check reads the saved file back rather than grabbing a second frame, so
+    the picture judged is the picture handed over. The test is frame_is_flat,
+    the same one that judges a recording.
+    """
+    grab = subprocess.run(  # noqa: PLW1510 - a failed grab is handled below
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-f", "x11grab", "-draw_mouse", "1" if cursor else "0",
+         "-video_size", f"{width}x{height}", "-i", f"{display}.0",
+         "-frames:v", "1", "-y", str(output)],
+        env=env, capture_output=True, timeout=CALL_TIMEOUT)
+    if grab.returncode != 0 or not output.exists():
+        tail = grab.stderr.decode(errors="replace").strip().splitlines()[-3:]
+        return "could not take the picture.\n  " + "\n  ".join(tail)
+    gray = subprocess.run(  # noqa: PLW1510 - a failed read is handled below
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(output),
+         "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+        capture_output=True, timeout=CALL_TIMEOUT)
+    if gray.returncode != 0 or len(gray.stdout) != width * height:
+        return f"could not read back {output} to check it is not blank."
+    if frame_is_flat(gray.stdout):
+        return f"the picture is one flat colour: {output}\n" + blank_causes(gpu)
+    return None
+
+
+def cmd_shot(a):
+    """One picture of the app, on the same private display `record` uses.
+
+    No name and no state file: there is nothing to stop, so a shot keeps its
+    files in a folder of its own and `stop` never sees it. The folder goes when
+    the shot succeeds and is kept, and named, when it fails.
+    """
+    command, width, height, output, applog = prepare(a, ".png")
+    rundir = Path(tempfile.mkdtemp(prefix="shot-", dir=state_dir()))
+    displaylog = rundir / "display.log"
+    # Deliberate: closed in the finally block, as in cmd_record.
+    appout = open(applog, "wb") if applog else sys.stderr  # noqa: SIM115
+    server = app = auth = None
+    try:
+        server, app, display, auth, env, _ = launch(a, command, width, height,
+                                                    rundir / "shot", displaylog,
+                                                    appout)
+        window = place_window(env, app, a, width, height, "taking the picture")
+        try:
+            drawn = wait_until_drawn(env, display, width, height, a.settle)
+        except SampleError as exc:
+            die(f"--settle could not sample the display, so it cannot tell "
+                f"when the app has drawn.\n  {exc}")
+        if not drawn:
+            note(f"nothing was drawn within {a.settle}s; taking the picture "
+                 f"anyway.\n  If the app takes longer to show its first picture, "
+                 f"raise --settle.")
+        for action in a.action:
+            run_action(action, env)
+        if window is not None:
+            moved = window_off_frame(env, window, width, height)
+            if moved:
+                note(moved)
+        failed = take_picture(env, display, width, height, a.cursor, output,
+                              a.gpu)
+    except subprocess.TimeoutExpired:
+        failed = (f"could not take the picture: the display did not answer "
+                  f"within {CALL_TIMEOUT}s.")
+    except SystemExit as exc:
+        # Every die() above lands here, so every failure names the folder it
+        # keeps -- which is in RAM, under /run/user (DEMO-0107).
+        raise SystemExit(f"{exc.code}\n  Its display log is kept in {rundir}") from None
+    finally:
+        if appout is not sys.stderr:
+            appout.close()
+        end_process(app, group=True)
+        end_server(server)
+        if auth is not None:
+            auth.unlink(missing_ok=True)
+    if failed:
+        die(f"{failed}\n  Its display log is kept in {rundir}")
+    shutil.rmtree(rundir, ignore_errors=True)
+    print(output)
+
+
+def cmd_check(a):
+    """Say whether this machine can record, on each backend (DEMO-0052).
+
+    Everything goes to stderr, like every other message: stdout carries a
+    finished path and nothing else, and a check has no path to print.
+    """
+    ready = True
+    for gpu in (False, True):
+        name = "--gpu" if gpu else "record and shot"
+        missing = [t for t in dict.fromkeys(required_programs(gpu, True))
+                   if shutil.which(t) is None]
+        problems = [f"missing {', '.join(missing)}{install_hint(missing)}"] \
+            if missing else []
+        if "ffmpeg" not in missing and not has_libx264():
+            problems.append("this ffmpeg has no libx264, which every recording "
+                            "uses." + X264_ADVICE.get(distro_family(),
+                                                      X264_ADVICE[None]))
+        if gpu and not list(Path("/dev/dri").glob("renderD*")):
+            problems.append("no graphics render node in /dev/dri, so there is "
+                            "no GPU for it to use.")
+        if not gpu and not missing:
+            problems += display_problem()
+        if problems:
+            note(f"{name}: NOT READY\n  - " + "\n  - ".join(
+                problem.replace("\n", "\n    ") for problem in problems))
+            if not gpu:  # only the default backend decides the exit status
+                ready = False
+        else:
+            note(f"{name}: ready")
+    # The finishing commands need no display, and nothing here changes the
+    # exit status: that still says only whether the default backend records.
+    videos, words = finishing_problems()
+    for name, problem in (("edit, trim, caption, join, card, motion and "
+                           "poster", videos),
+                          ("text on a card or a caption", words)):
+        note(f"{name}: " + ("NOT READY\n  - " + problem.replace("\n", "\n    ")
+                            if problem else "ready"))
+    if not ready:
+        sys.exit(1)
+
+
+def display_problem():
+    """Start and end a private display, the way a run does; [] if that works."""
+    base = Path(tempfile.mkdtemp(prefix="check-", dir=state_dir()))
+    server = auth = None
+    try:
+        server, _, auth = start_xvfb(320, 240, base / "check", base / "display.log")
+    except SystemExit as exc:
+        reason = str(exc.code).removeprefix("demoreel: ")
+        return [f"a private display did not start: {reason}"]
+    finally:
+        end_server(server)
+        if auth is not None:
+            auth.unlink(missing_ok=True)
+        shutil.rmtree(base, ignore_errors=True)
+    return []
+
+
+# How long `stop` looks for a run before saying there is none. A run registers
+# itself before anything slow, but not before Python has started, so a stop
+# launched on the very next line of a script can still arrive first -- measured
+# on the second of ten back-to-back tries. A second is far more than that
+# startup, and it is only ever spent when the answer is going to be "none".
+STOP_GRACE = 1.0
+
+
+def live_runs():
+    """Every run whose state file names a process that is still that run.
+
+    A dead run's file is left where it is. The next run of that name replaces
+    it under the name lock, and removing it here could race that run and
+    delete the file it has just written.
+    """
+    live = []
+    for f in sorted(state_dir().glob("*.json")):
+        try:
+            entry = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue  # gone since the glob, or not ours to read
+        if isinstance(entry, dict) and is_our_run(entry):
+            live.append(entry)
+    return live
+
+
+def cmd_stop(a):
+    def matching():
+        return [e for e in live_runs() if not a.name or e.get("name") == a.name]
+    live = poll(matching, STOP_GRACE, interval=0.05) or []
+
+    if a.name:
+        if not live:
+            others = sorted(e["name"] for e in live_runs())
+            die(f"no recording named {a.name!r} is running."
+                + (f"\n  Running now: {', '.join(others)}." if others else ""))
+    elif not live:
+        die("no recording is running, so there is nothing to stop.")
+    elif len(live) > 1:
+        names = ", ".join(sorted(e["name"] for e in live))
+        die(f"{len(live)} recordings are running: {names}.\n"
+            f"  Name the one to stop, e.g. demoreel stop {min(e['name'] for e in live)}")
+
+    for found in live:
+        entry = wait_until_recording(found)
+        os.kill(entry["pid"], signal.SIGUSR1)
+        if not run_succeeded(entry):
+            die("the recording failed after it was stopped, so there is no "
+                "video to hand back.\n  Its own error message says why.")
+        print(entry["output"])
+
+
+def run_succeeded(entry):
+    """Wait for a stopped run to exit, then say whether it succeeded.
+
+    A stopped run still has work to do: finish the video, then check the
+    display was not blank. Printing its path before that handed the caller a
+    half-written file, or a path for a run that went on to fail (DEMO-0047).
+    The run writes "result": "ok" to its state file just before it prints its
+    own path. Anything else -- a failure, a kill, the file already replaced by
+    a later run of the same name -- is not a success.
+    """
+    pid = entry["pid"]
+    # A zombie keeps its pid and start time until whatever started it reaps
+    # it, which may be the same script that is waiting on this stop.
+    poll(lambda: not is_our_run(entry) or proc_stat(pid, 3) == "Z", None)
+    try:
+        final = json.loads((state_dir() / f"{entry['name']}.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return (isinstance(final, dict) and final.get("pid") == pid
+            and final.get("starttime") == entry.get("starttime")
+            and final.get("result") == "ok")
+
+
+def wait_until_recording(entry):
+    """Hold a stop aimed at a run that is still starting, until it records.
+
+    A run is addressable from its first moment, but stopping it before ffmpeg
+    has a frame would leave no video at all -- and stop's one line of stdout
+    is a video path. So wait, and stop it the moment it is recording. That
+    gives a very short video rather than none (DEMO-0034).
+
+    No timeout of its own: the run has its own startup timeouts, and it
+    either starts recording or exits. A run that exits first is reported as
+    such, since there is no path to print.
+    """
+    statefile = state_dir() / f"{entry['name']}.json"
+    pid = entry["pid"]
+    # A file written by 0.1.x has no "recording" key, and existed only once
+    # that run was already recording.
+    if entry.get("recording", True):
+        return entry
+
+    def recording():
+        try:
+            current = json.loads(statefile.read_text())
+        except (OSError, ValueError):
+            current = {}
+        # Same pid, or a new run that took the name after this one died would
+        # be stopped in its place.
+        if (not isinstance(current, dict) or current.get("pid") != pid
+                or not is_our_run(current)):
+            die("the recording ended before it started recording, so there "
+                "is no video to stop.")
+        return current if current.get("recording", True) else None
+    return poll(recording, None)
+
+
+# Defaults of the finishing commands (README, Finishing a recording).
+FADE_LENGTH = 0.5
+CARD_TEXT_SIZE = 7
+CAPTION_TEXT_SIZE = 5
+CARD_BACKGROUND = "#101418"
+
+
+class _CaptionText(argparse.Action):
+    """`caption --text`: each one starts a new text."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        texts = list(getattr(namespace, self.dest) or [])
+        texts.append({"words": values})
+        setattr(namespace, self.dest, texts)
+
+
+class _CaptionField(argparse.Action):
+    """`caption --from`, `--to` and `--text-size` belong to the --text before
+    them. One given before any --text is refused: caption never cuts."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if not namespace.texts:
+            parser.error(f"{option_string} belongs to a --text, and none comes "
+                         f"before it. caption never cuts the video; use trim.")
+        namespace.texts[-1][self.dest] = values
+
+
+_text_fonts = {}
+
+
+def text_font(name=None, where=None):
+    """The drawtext option naming a text's font: the one its line names, else
+    the machine's own bold sans, so the same line measures differently on two
+    machines (README says so).
+
+    Asked of fontconfig's fc-match and passed as a file. drawtext's own `font`
+    option takes a fontconfig pattern, and measured here it ignores the weight
+    in one: Sans:bold, Sans:style=Bold and Sans:weight=bold all drew the
+    regular face, 310 pixels wide where the bold file draws 332. Without
+    fc-match, or with a path the filter syntax cannot carry, the machine's
+    font is drawn in the regular face rather than not at all.
+
+    A font the line names is refused rather than swapped. fc-match never says
+    no: asked for a font the machine lacks it answers with another (measured:
+    "Noto Sans Mono" came back as Liberation Mono). So the family it answers
+    with is compared with the one asked for. A name with a slash in it is a
+    font file and is used as it is.
+    """
+    if name in _text_fonts:
+        return _text_fonts[name]
+    families = ""
+    if name and "/" in name:
+        found = str(Path(name).expanduser())
+        if not Path(found).is_file():
+            die(f"{where}: there is no font file {found}")
+    else:
+        # A hyphen in a fontconfig pattern starts a size, so one in a family's
+        # name is escaped: unescaped, "Goha-Tibeb Zemen" came back as Roboto.
+        family, colon, rest = (name or "sans:bold").partition(":")
+        pattern = family.replace("-", "\\-") + colon + rest
+        try:
+            answer = subprocess.run(
+                ["fc-match", "-f", "%{file}\n%{family}", pattern],
+                capture_output=True, text=True, timeout=CALL_TIMEOUT,
+                check=False).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            answer = ""
+        found, _, families = answer.strip().partition("\n")
+    if name and "/" not in name:
+        asked = name.split(":")[0].strip()
+        if not found:
+            die(f"{where}: a font is found by its name with fc-match, which "
+                f"gave no answer here. Give the font's file instead: "
+                f"font /path/to/font.ttf")
+        if asked.lower() not in [f.strip().lower() for f in families.split(",")]:
+            die(f"{where}: this machine has no font named {asked!r}; the "
+                f"nearest it offers is {families.split(',')[0]!r}.\n"
+                f"  `fc-list : family` lists the names it has.")
+    usable = bool(found) and Path(found).is_file() \
+        and not set(found) & set("':\\,;[]")
+    if name and not usable:
+        die(f"{where}: the font file {found} has a character in its path that "
+            f"ffmpeg's filters cannot carry. Copy it to a plainer path.")
+    _text_fonts[name] = f"fontfile='{found}'" if usable else "font='Sans'"
+    return _text_fonts[name]
+
+
+_box_can_be_sized = None
+
+
+def box_can_be_sized():
+    """Whether this ffmpeg's drawtext can make its box a size of our choosing
+    (`boxw`), which is how a band fades with its text: drawbox cannot change
+    with time. Present in ffmpeg 6.1.1 and 8.1.2, the two measured. An ffmpeg
+    without it draws its bands with drawbox, and a band that fades is
+    refused."""
+    global _box_can_be_sized  # noqa: PLW0603 - asked once per run
+    if _box_can_be_sized is None:
+        try:
+            told = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-h", "filter=drawtext"],
+                capture_output=True, text=True, timeout=CALL_TIMEOUT,
+                check=False).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            told = ""
+        _box_can_be_sized = bool(re.search(r"^\s+boxw\s", told, re.MULTILINE))
+    return _box_can_be_sized
+
+
+# A caption's band is this many times its text's height, and a card keeps this
+# share of the frame clear at each edge.
+CAPTION_BAND = 2.0
+CARD_MARGIN = 0.05
+# A time may overshoot the end of its file by this much and still mean the
+# end: `motion` prints three decimals, so its own figure can round up.
+TIME_SLACK = 0.0006
+
+
+def frame_at(moment, step):
+    """The number of the frame on screen at `moment`, with frames `step`
+    apart. A moment up to TIME_SLACK before a frame starts means that frame:
+    `motion` prints three decimals, so a frame starting at 1.33333 comes back
+    as 1.333, and README says its numbers can be used as they are
+    (DEMO-0137)."""
+    return math.floor((moment + TIME_SLACK) / step + 1e-9)
+
+
+SCENE_WORDS = {
+    "clip": ("from", "to", "fade-in", "fade-out", "fade-at", "fade-length",
+             "crossfade"),
+    "card": ("background", "fade-in", "fade-out", "crossfade"),
+    "text": ("from", "to", "size", "font", "colour", "outline", "shadow",
+             "fade-in", "fade-out", "band", "at"),
+}
+# The words of a text line whose value is not a number.
+TEXT_NAMES = ("font", "colour", "outline", "shadow", "band", "at")
+TEXT_PLACES = ("top", "middle", "bottom")
+COLOUR_RE = re.compile(r"#[0-9a-fA-F]{6}")
+# An outline is this share of its text's height thick, and a shadow falls this
+# share of it down and to the right.
+OUTLINE_SHARE = 1 / 16
+SHADOW_SHARE = 1 / 12
+
+
+class Scene:
+    """One scene of a film: part of a video, or a card.
+
+    `where` names it in an error: "line 3" for a script, the file's name for a
+    shortcut. Times on a clip are in its file's own time, as the caller wrote
+    them; check_film turns them into times from the scene's start.
+    """
+
+    def __init__(self, kind, where):
+        self.kind = kind
+        self.where = where
+        self.path = None        # a clip's video; a card's picture, or None
+        self.start = 0.0        # a clip: the part kept
+        self.end = None
+        self.seconds = None     # a card: how long it lasts
+        self.background = CARD_BACKGROUND
+        self.fade_in = self.fade_out = self.crossfade = 0.0
+        self.fade_at = []
+        self.fade_length = FADE_LENGTH
+        self.texts = []         # each: words, start, end, size, where
+        self.info = None        # what ffprobe says of `path`
+        self.frames = 1         # a card's picture: more than 1 if animated
+
+
+def script_number(word, where, what):
+    try:
+        value = float(word)
+    except ValueError:
+        value = -1.0
+    if value < 0 or not math.isfinite(value):
+        die(f"{where}: {what} takes a number of seconds, not {word!r}.")
+    return value
+
+
+def script_words(target, words, kind, where):
+    """Read `word value` pairs after a scene's or a text's first part."""
+    names = {"from": "start", "to": "end", "fade-in": "fade_in",
+             "fade-out": "fade_out", "fade-length": "fade_length"}
+    for at in range(0, len(words), 2):
+        word = words[at]
+        if word not in SCENE_WORDS[kind]:
+            die(f"{where}: {word!r} is not something a {kind} line takes. "
+                f"It takes: {', '.join(SCENE_WORDS[kind])}.")
+        if at + 1 >= len(words):
+            die(f"{where}: {word!r} needs a value after it.")
+        value = words[at + 1]
+        if word == "background":
+            target.background = value
+        elif word == "fade-at":
+            target.fade_at.append(script_number(value, where, word))
+        elif kind == "text" and word in TEXT_NAMES:
+            target[word] = value
+        elif kind == "text":
+            target[names.get(word, word)] = script_number(value, where, word)
+        else:
+            setattr(target, names.get(word, word),
+                    script_number(value, where, word))
+
+
+def parse_script(text):
+    """Read an `edit` script into scenes, or die naming the line.
+
+    One scene a line, `clip FILE ...` or `card SECONDS [PICTURE] ...`; a
+    `text "WORDS" ...` line belongs to the scene above it. A line is split as
+    a shell splits one, except that `#` starts a comment only at the start of
+    a line: a colour is written `#101418`.
+    """
+    scenes = []
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        where = f"line {number}"
+        try:
+            words = shlex.split(line)
+        except ValueError as exc:
+            die(f"{where} cannot be read: {exc}.\n  {line}")
+        verb, rest = words[0], words[1:]
+        if verb == "text":
+            if not scenes:
+                die(f"{where}: a text belongs to the scene above it, and no "
+                    f"scene comes before this one.")
+            if not rest:
+                die(f"{where}: text needs its words, in quotes: "
+                    f"text \"Saving a file\"")
+            entry = {"words": rest[0], "where": where}
+            script_words(entry, rest[1:], "text", where)
+            scenes[-1].texts.append(entry)
+        elif verb == "clip":
+            if not rest:
+                die(f"{where}: clip needs a video file after it.")
+            scene = Scene("clip", where)
+            scene.path = Path(rest[0]).expanduser()
+            script_words(scene, rest[1:], "clip", where)
+            scenes.append(scene)
+        elif verb == "card":
+            if not rest:
+                die(f"{where}: card needs its length in seconds: card 3")
+            scene = Scene("card", where)
+            scene.seconds = script_number(rest[0], where, "card")
+            rest = rest[1:]
+            if rest and rest[0] not in SCENE_WORDS["card"]:
+                scene.path = Path(rest[0]).expanduser()
+                rest = rest[1:]
+            script_words(scene, rest, "card", where)
+            scenes.append(scene)
+        else:
+            die(f"{where}: a line starts with clip, card or text, not "
+                f"{verb!r}.\n  {line}")
+    if not scenes:
+        die("the script has no scenes in it. A scene is a line starting with "
+            "clip or card.")
+    return scenes
+
+
+def probe(path, where):
+    """What ffprobe says of a video or a picture: its size, frame rate, length
+    and format. Dies if it cannot be read, naming the scene that asked."""
+    if not Path(path).is_file():
+        die(f"{where}: there is no file {path}")
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries",
+             "stream=width,height,avg_frame_rate:format=duration,format_name",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=CALL_TIMEOUT, check=False)
+    except subprocess.TimeoutExpired:
+        die(f"{where}: reading {path} took over {CALL_TIMEOUT}s.")
+    try:
+        info = json.loads(out.stdout) if out.returncode == 0 else {}
+        stream = info["streams"][0]
+        num, _, den = stream.get("avg_frame_rate", "0/1").partition("/")
+        rate = float(num) / float(den) if float(den or 0) else 0.0
+        return {"width": int(stream["width"]), "height": int(stream["height"]),
+                "rate": rate,
+                "duration": float(info["format"].get("duration") or 0),
+                "format": info["format"].get("format_name", "")}
+    except (KeyError, IndexError, ValueError):
+        lines = out.stderr.strip().splitlines()
+        die(f"{where}: {path} is not a video or picture ffmpeg can read."
+            + (f"\n  {lines[-1]}" if lines else ""))
+    return None  # unreachable; die() exits
+
+
+# A card's picture is held in memory to be shown again and again, so an
+# animation is refused past this many bytes of decoded frames.
+PICTURE_BYTES = 512 * 1024 * 1024
+
+
+def picture_frames(scene, where):
+    """How many frames a card's picture has: 1 for a still, more for an
+    animated .gif or .png. Which it is comes from its content, not its name:
+    an animated .png is format apng."""
+    if scene.info["format"] not in ("apng", "gif"):
+        return 1
+    try:
+        counted = subprocess.run(
+            ["ffprobe", "-v", "error", "-count_frames", "-select_streams",
+             "v:0", "-show_entries", "stream=nb_read_frames", "-of",
+             "csv=p=0", str(scene.path)],
+            capture_output=True, text=True, timeout=6 * CALL_TIMEOUT,
+            check=False)
+        frames = int(counted.stdout.strip().split(",")[0])
+    except (subprocess.TimeoutExpired, ValueError):
+        die(f"{where}: could not count the frames of {scene.path}.")
+    if frames * scene.info["width"] * scene.info["height"] * 4 > PICTURE_BYTES:
+        die(f"{where}: {scene.path} is too big an animation to hold in memory "
+            f"and play again and again ({frames} frames of "
+            f"{scene.info['width']}x{scene.info['height']}).\n  Turn it into a "
+            f"video and use it as a clip instead.")
+    return max(1, frames)
+
+
+def memory_cap():
+    """Run in the ffmpeg that makes a film, before it starts: refuse it more
+    than half this machine's memory, or 4 GB where that is more.
+
+    A filter graph whose input never ends buffers frames without limit. One
+    did, while this was being built: ffmpeg reached 14 GB in six minutes on a
+    machine other sessions were using. Every stream in the graph is bounded
+    now, and this is what stops the next such mistake from taking the machine
+    down with it.
+    """
+    cap = max(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2,
+              4 * 1024 ** 3)
+    # Only ever lower it: a caller may already hold this process to less.
+    _, hard = resource.getrlimit(resource.RLIMIT_AS)
+    if hard != resource.RLIM_INFINITY:
+        cap = min(cap, hard)
+    resource.setrlimit(resource.RLIMIT_AS, (cap, hard))
+
+
+def rate_text(rate):
+    """A frame rate as ffmpeg takes it: whole where it is whole."""
+    return str(round(rate)) if abs(rate - round(rate)) < 0.01 else f"{rate:.3f}"
+
+
+def text_size(textfile, fontsize, font=None, border=0):
+    """(width, height) in pixels of the text in `textfile` at `fontsize`, as
+    ffmpeg will draw it in `font` with an outline `border` pixels thick; dies
+    if this machine cannot draw text at all.
+
+    Measured by drawing it: white on a black strip, then ffmpeg's own bounding
+    box of what is not black. Nothing else knows the font's metrics, and there
+    is no Python library here to ask (standard library only).
+    """
+    try:
+        drawn = subprocess.run(
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "info",
+             "-f", "lavfi", "-i",
+             f"color=black:s={fontsize * 80}x{fontsize * 3}:d=1",
+             "-vf", f"drawtext=textfile='{textfile}':expansion=none:"
+                    f"{font or text_font()}:fontsize={fontsize}:"
+                    f"fontcolor=white:borderw={border}:bordercolor=white:"
+                    f"x={border}:y={border},bbox",
+             "-frames:v", "1", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=CALL_TIMEOUT, check=False)
+    except subprocess.TimeoutExpired:
+        die(f"drawing a line of text took over {CALL_TIMEOUT}s.")
+    if drawn.returncode != 0:
+        lines = [ln for ln in drawn.stderr.splitlines() if ln.strip()]
+        die("this machine cannot draw text on a video: ffmpeg needs its "
+            "drawtext filter and a font.\n  " + "\n  ".join(lines[-2:])
+            + "\n  `demoreel check` tests this on its own.")
+    boxes = re.findall(r" w:(\d+) h:(\d+) ", drawn.stderr)
+    return (int(boxes[-1][0]), int(boxes[-1][1])) if boxes else (0, 0)
+
+
+def check_texts(scene, length, width, height, workdir):
+    """Check a scene's texts and turn their times into times from its start.
+
+    A text shows from its `from` up to its `to`, and not on the frame at `to`,
+    so one may start where another ends.
+    """
+    default = CARD_TEXT_SIZE if scene.kind == "card" else CAPTION_TEXT_SIZE
+    for text in scene.texts:
+        where = text.get("where", scene.where)
+        words = text["words"]
+        if not words.strip() or "\n" in words:
+            die(f"{where}: a text is one line of words, and this one is "
+                f"{'empty' if not words.strip() else 'more than one line'}.")
+        # A time printed just short of a frame's start means that frame, so a
+        # text may start that much before its scene does (DEMO-0136).
+        begin = text.get("start", scene.start) - scene.start
+        if -TIME_SLACK <= begin < 0:
+            begin = 0.0
+        finish = (text["end"] - scene.start) if "end" in text else length
+        if begin < 0 or finish > length + TIME_SLACK or begin >= finish:
+            die(f"{where}: the text {words!r} is asked to show from "
+                f"{begin + scene.start:g} to {finish + scene.start:g}, which "
+                f"is not inside its scene ({scene.start:g} to "
+                f"{scene.start + length:.3f}).")
+        size = text.get("size", default)
+        if not 0 < size <= 50:
+            die(f"{where}: a text's size is a percentage of the frame's "
+                f"height, between 0 and 50, not {size:g}.")
+        for what in ("colour", "outline", "shadow"):
+            if what in text and not COLOUR_RE.fullmatch(text[what]):
+                die(f"{where}: a text's {what} is a colour written #RRGGBB, "
+                    f"like #FFD040, not {text[what]!r}.")
+        band = text.get("band", "on" if scene.kind == "clip" else "off")
+        if band not in ("on", "off"):
+            die(f"{where}: a text's band is on or off, not {band!r}.")
+        place = text.get("at", "bottom" if scene.kind == "clip"
+                         else "top" if scene.path is not None else "middle")
+        if place not in TEXT_PLACES:
+            die(f"{where}: a text sits at {', '.join(TEXT_PLACES[:-1])} or "
+                f"{TEXT_PLACES[-1]}, not at {place!r}.")
+        fades = text.get("fade_in", 0) + text.get("fade_out", 0)
+        if fades > min(finish, length) - begin + 1e-6:
+            die(f"{where}: the text {words!r} fades for {fades:g} seconds, "
+                f"and shows for only {min(finish, length) - begin:g}.")
+        if fades and band == "on" and not box_can_be_sized():
+            die(f"{where}: a band that fades with its text needs a newer "
+                f"ffmpeg than this one: its text filter has no `boxw`.\n"
+                f"  Give the text `band off`, or take its fade away.")
+        fontsize = max(1, round(size / 100 * height))
+        font = text_font(text.get("font"), where)
+        border = max(1, round(fontsize * OUTLINE_SHARE)) \
+            if "outline" in text else 0
+        textfile = workdir / f"text-{len(list(workdir.iterdir()))}.txt"
+        textfile.write_text(words, encoding="utf-8")
+        wide, _ = text_size(textfile, fontsize, font, border)
+        room = width - 2 * round(CARD_MARGIN * width)
+        if wide > room:
+            die(f"{where}: the text {words!r} is {wide} pixels wide at size "
+                f"{size:g}, and the frame has room for {room}.\n  Shorten it, "
+                f"or give it a smaller size: about "
+                f"{size * room / wide:.1f} would fit.")
+        text.update(begin=begin, finish=min(finish, length), fontsize=fontsize,
+                    textfile=textfile, fontfile=font, border=border,
+                    banded=band == "on", place=place)
+    ordered = sorted(scene.texts, key=lambda t: t["begin"])
+    for before, after in itertools.pairwise(ordered):
+        if after["begin"] < before["finish"] - 1e-6:
+            die(f"{after.get('where', scene.where)}: the texts "
+                f"{before['words']!r} and {after['words']!r} would be on "
+                f"screen at the same time. Only one shows at a time.")
+
+
+def check_scene(scene, width, height, rate, workdir):
+    """Check one scene against the film's size and return its length.
+
+    A clip's cut is snapped to its file's frames: the frame on screen at
+    `from` is the first one kept and the frame on screen at `to` the last
+    (README), so the numbers `motion` prints can be used as they are.
+    """
+    where = scene.where
+    if scene.kind == "card":
+        if scene.seconds <= 0:
+            die(f"{where}: a card needs a length above zero.")
+        if not COLOUR_RE.fullmatch(scene.background):
+            die(f"{where}: a background is a colour written #RRGGBB, like "
+                f"{CARD_BACKGROUND}, not {scene.background!r}.")
+        if scene.path is not None:
+            scene.info = probe(scene.path, where)
+            scene.frames = picture_frames(scene, where)
+        length = scene.seconds
+    else:
+        info = scene.info = probe(scene.path, where)
+        whole = info["duration"]
+        step = 1 / (info["rate"] or rate)
+        if whole <= 0:
+            die(f"{where}: {scene.path} has no length ffmpeg can tell.")
+        if abs(info["width"] * height - info["height"] * width) \
+                > 0.01 * info["height"] * width:
+            die(f"{where}: {scene.path} is {info['width']}x{info['height']}, "
+                f"a different shape from the film's {width}x{height}, and "
+                f"demoreel will not stretch it.")
+        for what, value in (("from", scene.start), ("to", scene.end)):
+            if value is not None and value > whole + TIME_SLACK:
+                die(f"{where}: `{what} {value:g}` is past the end of "
+                    f"{scene.path}, which is {whole:.3f} seconds long.")
+        first = frame_at(scene.start, step)
+        scene.start = first * step
+        if scene.end is None or scene.end + TIME_SLACK >= whole - step:
+            last = None
+            length = whole - scene.start
+        else:
+            last = frame_at(scene.end, step)
+            length = (last + 1) * step - scene.start
+        if length <= 0:
+            die(f"{where}: `from` must come before `to`, and both inside "
+                f"{scene.path} ({whole:.3f} seconds long).")
+        # Seek half a frame early, and read half a frame past the last one
+        # kept, so neither edge turns on how a float rounds.
+        scene.seek = max(0.0, scene.start - step / 2)
+        scene.read = None if last is None else (last + 0.5) * step - scene.seek
+        for moment in scene.fade_at:
+            if not (scene.start + scene.fade_length <= moment
+                    <= scene.start + length - scene.fade_length):
+                die(f"{where}: `fade-at {moment:g}` needs "
+                    f"{scene.fade_length:g} seconds of the scene on each "
+                    f"side, and the scene runs from {scene.start:.3f} to "
+                    f"{scene.start + length:.3f}.")
+    if scene.fade_in + scene.fade_out > length + 1e-6:
+        die(f"{where}: its fades come to {scene.fade_in + scene.fade_out:g} "
+            f"seconds, and the scene is only {length:.3f} long.")
+    check_texts(scene, length, width, height, workdir)
+    if scene.kind == "card" and scene.path is not None \
+            and picture_room(scene, width, height)[2] < 2:
+        die(f"{where}: its texts leave no room for the picture between them. "
+            f"Give them a smaller size.")
+    return length
+
+
+def film_shape(scenes, size, rate):
+    """(width, height, rate) of the film: what was asked for, else the first
+    clip's, else what `record` defaults to."""
+    clips = [s for s in scenes if s.kind == "clip"]
+    first = probe(clips[0].path, clips[0].where) if clips else None
+    if size:
+        match = SIZE_RE.match(size)
+        if not match:
+            die(f"--size takes a width and a height in pixels, like 1600x1000, "
+                f"not {size!r}.")
+        width, height = int(match[1]), int(match[2])
+    elif first:
+        width, height = first["width"], first["height"]
+    else:
+        width, height = 1600, 1000
+    if width % 2 or height % 2 or not width or not height:
+        die(f"a video's width and height must be even, since H.264 cannot "
+            f"encode an odd one, and this film would be {width}x{height}.\n"
+            f"  Set the size with -s {width + width % 2}x{height + height % 2}.")
+    if rate is None:
+        rate = first["rate"] if first and first["rate"] else 30
+    if rate <= 0:
+        die(f"--framerate takes a number above zero, not {rate:g}.")
+    return width, height, rate
+
+
+def text_filters(scene, width, height):
+    """The filters that draw a scene's texts, each in its own time."""
+    if not scene.texts:
+        return []
+    dark = True
+    if scene.kind == "card":
+        red, green, blue = (int(scene.background[i:i + 2], 16) for i in (1, 3, 5))
+        dark = 0.299 * red + 0.587 * green + 0.114 * blue < 140
+    margin = round(CARD_MARGIN * height)
+    filters = []
+    for text in scene.texts:
+        begin, finish, size = text["begin"], text["finish"], text["fontsize"]
+        colour = ("0x" + text["colour"][1:] if "colour" in text
+                  else "white" if dark or text["banded"] else "0x101418")
+        draw = [f"drawtext=textfile='{text['textfile']}'", "expansion=none",
+                text["fontfile"], f"fontsize={size}", f"fontcolor={colour}"]
+        if text["border"]:
+            draw += [f"borderw={text['border']}",
+                     f"bordercolor=0x{text['outline'][1:]}"]
+        if "shadow" in text:
+            off = max(1, round(size * SHADOW_SHARE))
+            draw += [f"shadowx={off}", f"shadowy={off}",
+                     f"shadowcolor=0x{text['shadow'][1:]}"]
+        fade_in, fade_out = text.get("fade_in", 0), text.get("fade_out", 0)
+        when = f"enable='gte(t,{begin:.4f})*lt(t,{finish:.4f})'"
+        if text["banded"]:
+            band = round(size * CAPTION_BAND)
+            top = {"top": 0, "middle": (height - band) // 2,
+                   "bottom": height - band}[text["place"]]
+            if box_can_be_sized():
+                # The text's own box, which fades with it. An ffmpeg that
+                # cannot size that box gets drawbox, which cannot fade.
+                draw += ["box=1", "boxcolor=black@0.75", f"boxw={width}",
+                         f"boxh={band}", "text_align=C+M", "x=0", f"y={top}"]
+            else:
+                filters.append(f"drawbox=x=0:y={top}:w={width}:h={band}:"
+                               f"color=black@0.75:t=fill:{when}")
+                draw += ["x=(w-text_w)/2", f"y={top + (band - size) // 2}"]
+        else:
+            top = {"top": margin, "middle": (height - size) // 2,
+                   "bottom": height - margin - size}[text["place"]]
+            draw += ["x=(w-text_w)/2", f"y={top}"]
+        if fade_in or fade_out:
+            rise = f"(t-{begin:.4f})/{fade_in:.4f}" if fade_in else "1"
+            fall = f"({finish:.4f}-t)/{fade_out:.4f}" if fade_out else "1"
+            draw.append(f"alpha='min(1,min({rise},{fall}))'")
+        filters.append(":".join([*draw, when]))
+    return filters
+
+
+def picture_room(scene, width, height):
+    """(top, width, height) of the room a card leaves its picture: the frame
+    inside its margins, less what a text at the top or the bottom takes. A
+    text in the middle takes none and lies over the picture."""
+    margin = round(CARD_MARGIN * height)
+    edge = {"top": margin, "bottom": margin}
+    for text in scene.texts:
+        if text["place"] != "middle":
+            size = text["fontsize"]
+            taken = round(size * CAPTION_BAND) if text["banded"] \
+                else margin + round(size * 1.3)
+            edge[text["place"]] = max(edge[text["place"]], taken + margin // 2)
+    return edge["top"], width - 2 * margin, height - edge["top"] - edge["bottom"]
+
+
+def fade_filters(scene, length):
+    """A scene's fades, to and from black. A fade-at is a fade out then a fade
+    in, each switched on only for its own half: left on, the first would hold
+    everything after it black and the second everything before it."""
+    filters = []
+    if scene.fade_in:
+        filters.append(f"fade=t=in:st=0:d={scene.fade_in:.4f}")
+    for moment in scene.fade_at:
+        at, half = moment - scene.start, scene.fade_length
+        filters.append(f"fade=t=out:st={at - half:.4f}:d={half:.4f}:"
+                       f"enable='between(t,{at - half:.4f},{at:.4f})'")
+        filters.append(f"fade=t=in:st={at:.4f}:d={half:.4f}:"
+                       f"enable='gt(t,{at:.4f})*lte(t,{at + half:.4f})'")
+    if scene.fade_out:
+        filters.append(f"fade=t=out:st={length - scene.fade_out:.4f}:"
+                       f"d={scene.fade_out:.4f}")
+    return filters
+
+
+def scene_graph(scene, length, number, first_input, width, height, rate):
+    """(ffmpeg inputs, filter chains) that turn one scene into `[v<number>]`,
+    a stream of the film's size and rate starting at time zero."""
+    fps = rate_text(rate)
+    # trim bounds every scene to its own frames, whatever its input does: a
+    # stream that never ends is buffered without limit by whatever waits for
+    # it (see memory_cap).
+    shape = (f"fps={fps},scale={width}:{height},setsar=1,format=yuv420p,"
+             f"trim=end_frame={max(1, round(length * rate))}")
+    tail = ",".join([*text_filters(scene, width, height),
+                     *fade_filters(scene, length)])
+    tail = f",{tail}" if tail else ""
+    out = f"[v{number}]"
+    if scene.kind == "clip":
+        inputs = ["-ss", f"{scene.seek:.6f}"]
+        if scene.read is not None:
+            inputs += ["-t", f"{scene.read:.6f}"]
+        inputs += ["-i", str(scene.path)]
+        return inputs, [f"[{first_input}:v]setpts=PTS-STARTPTS,{shape}{tail}{out}"]
+    inputs = ["-f", "lavfi", "-i", f"color=c=0x{scene.background[1:]}:"
+              f"s={width}x{height}:r={fps}:d={length:.6f}"]
+    if scene.path is None:
+        return inputs, [f"[{first_input}:v]{shape}{tail}{out}"]
+    # The picture is read once and shown again and again by the loop filter,
+    # which hands on a frame only when one is wanted. Asking the demuxer to
+    # loop instead (-ignore_loop 0, -loop 1) makes an input with no end: an
+    # animated .png read that way, waiting behind another scene, is what
+    # filled the memory.
+    inputs += ["-i", str(scene.path)]
+    top, room_w, room_h = picture_room(scene, width, height)
+    return inputs, [
+        # Fitted into the room left for it, keeping its shape, never enlarged.
+        f"[{first_input + 1}:v]loop=loop=-1:size={scene.frames}:start=0,"
+        f"scale=w='min({room_w},iw)':h='min({room_h},ih)':"
+        f"force_original_aspect_ratio=decrease,format=rgba[p{number}]",
+        f"[{first_input}:v][p{number}]overlay=x='(W-w)/2':"
+        f"y='{top}+({room_h}-h)/2':format=auto,{shape}{tail}{out}"]
+
+
+def finishing_output(raw, inputs, endings):
+    """Where a finishing command writes: a path ending as README says, and
+    never one of the files it reads."""
+    output = own_path(raw, "the output")
+    if output.suffix.lower() not in endings:
+        die(f"-o must end in {' or '.join(endings)}, and {output.name} does "
+            f"not.")
+    for source in inputs:
+        if Path(source).expanduser().resolve() == output:
+            die(f"-o is {output}, which is also a file this command reads. "
+                f"demoreel never writes over its own input.")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    return output
+
+
+def finishing_tools():
+    """What every finishing command needs installed."""
+    missing = [t for t in ("ffmpeg", "ffprobe") if shutil.which(t) is None]
+    if missing:
+        die(f"missing required program(s): {', '.join(missing)}"
+            + install_hint(missing))
+
+
+def make_film(scenes, raw_output, size=None, rate=None, also_read=()):
+    """Check every scene, then encode the film once and print its path.
+
+    Everything is checked before ffmpeg is started, so a mistake in the last
+    scene costs nothing. The film is written beside its output and moved into
+    place only when it is whole, so a failure leaves nothing at -o.
+    """
+    finishing_tools()
+    if not has_libx264():
+        die("this ffmpeg cannot encode H.264 with libx264, which every video "
+            "uses." + X264_ADVICE.get(distro_family(), X264_ADVICE[None]))
+    output = finishing_output(
+        raw_output, [*(s.path for s in scenes if s.path), *also_read],
+        (".mp4",))
+    workdir = Path(tempfile.mkdtemp(prefix="edit-", dir=state_dir()))
+    part = partial_video(output)
+    try:
+        width, height, rate = film_shape(scenes, size, rate)
+        inputs, chains, lengths = [], [], []
+        for number, scene in enumerate(scenes):
+            lengths.append(check_scene(scene, width, height, rate, workdir))
+            if scene.crossfade:
+                if number == 0:
+                    die(f"{scene.where}: a crossfade fades from the scene "
+                        f"before, and this is the first scene.")
+                if scene.fade_in:
+                    die(f"{scene.where}: a scene takes a crossfade or a "
+                        f"fade-in, not both.")
+                spent = scene.crossfade + scenes[number - 1].crossfade
+                if scene.crossfade > lengths[-1] or spent > lengths[-2]:
+                    die(f"{scene.where}: a crossfade of {scene.crossfade:g} "
+                        f"seconds does not fit: the two scenes overlap for "
+                        f"that long, and one of them is shorter.")
+        film, total = "[v0]", 0.0
+        for number, (scene, length) in enumerate(zip(scenes, lengths, strict=True)):
+            more, graph = scene_graph(scene, length, number,
+                                      inputs.count("-i"), width, height, rate)
+            inputs += more
+            chains += graph
+            begins = total - scene.crossfade
+            if scene.crossfade:
+                chains.append(f"{film}[v{number}]xfade=transition=fade:"
+                              f"duration={scene.crossfade:.4f}:"
+                              f"offset={begins:.4f}[f{number}]")
+            elif number:
+                # concat hands on a microsecond timebase, and xfade refuses two
+                # inputs whose timebases differ; fps puts the film's back.
+                chains.append(f"{film}[v{number}]concat=n=2:v=1:a=0,"
+                              f"fps={rate_text(rate)}[f{number}]")
+            if number:
+                film = f"[f{number}]"
+            total = begins + length
+            name = scene.path.name if scene.path else "text"
+            note(f"scene {number + 1}: {scene.kind} {name}, "
+                 f"{begins:.3f} to {total:.3f}")
+        note(f"making {output}, {total:.3f} seconds at {width}x{height}")
+        made = subprocess.run(  # noqa: PLW1510 - a failure is handled below
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+             *inputs, "-filter_complex", ";".join(chains), "-map", film,
+             # The film ends at its planned length even if a stream does not.
+             "-t", f"{total + 0.5 / rate:.4f}",
+             "-an", *ENCODER, "-y", str(part)],
+            capture_output=True, text=True, timeout=60 + 20 * total,
+            preexec_fn=memory_cap)
+        unreadable = None if made.returncode else video_error(part)
+        if made.returncode or unreadable:
+            lines = [ln for ln in made.stderr.splitlines() if ln.strip()]
+            die("ffmpeg could not make the film.\n  "
+                + ("\n  ".join(lines[-4:]) or unreadable))
+        os.replace(part, output)
+    except subprocess.TimeoutExpired:
+        die("ffmpeg did not finish making the film in the time allowed for "
+            "its length, so it was stopped.")
+    finally:
+        part.unlink(missing_ok=True)
+        shutil.rmtree(workdir, ignore_errors=True)
+    summarise(output)
+    print(output)
+
+
+def cmd_edit(a):
+    """A film from a script (README, Finishing a recording)."""
+    try:
+        text = sys.stdin.read() if a.script == "-" else Path(
+            a.script).expanduser().read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        die(f"could not read the script {a.script}: "
+            f"{getattr(exc, 'strerror', None) or exc}.")
+    make_film(parse_script(text), a.output, a.size, a.framerate)
+
+
+def one_clip(path, a):
+    scene = Scene("clip", Path(path).name)
+    scene.path = Path(path).expanduser()
+    scene.fade_in, scene.fade_out = a.fade_in, a.fade_out
+    return scene
+
+
+def cmd_trim(a):
+    """One clip, with its from and to."""
+    if a.start is None and a.end is None and not (
+            a.fade_in or a.fade_out or a.fade_at):
+        die("trim needs something to do: --from, --to, or a fade.")
+    scene = one_clip(a.input, a)
+    scene.start, scene.end = a.start or 0.0, a.end
+    scene.fade_at, scene.fade_length = a.fade_at, a.fade_length
+    make_film([scene], a.output)
+
+
+def cmd_caption(a):
+    """One clip, whole, with its texts."""
+    scene = one_clip(a.input, a)
+    scene.texts = a.texts
+    make_film([scene], a.output)
+
+
+def cmd_join(a):
+    """One clip scene for each video, in order."""
+    if len(a.inputs) < 2:
+        die("join takes two or more videos; one on its own is already whole.")
+    scenes = []
+    for path in a.inputs:
+        scene = Scene("clip", Path(path).name)
+        scene.path = Path(path).expanduser()
+        scene.crossfade = a.crossfade if scenes else 0.0
+        scenes.append(scene)
+    scenes[0].fade_in, scenes[-1].fade_out = a.fade_in, a.fade_out
+    make_film(scenes, a.output)
+
+
+def cmd_card(a):
+    """One card. Its size and rate come from --like unless -s and -r say."""
+    scene = Scene("card", "the card")
+    scene.seconds, scene.background = a.duration, a.background
+    scene.path = Path(a.image).expanduser() if a.image else None
+    scene.fade_in, scene.fade_out = a.fade_in, a.fade_out
+    if a.text is not None:
+        scene.texts = [{"words": a.text}
+                       | ({"size": a.text_size} if a.text_size else {})]
+    size, rate = a.size, a.framerate
+    if a.like:
+        finishing_tools()
+        like = probe(a.like, "--like")
+        size = size or f"{like['width']}x{like['height']}"
+        rate = rate or like["rate"] or None
+    make_film([scene], a.output, size, rate, [a.like] if a.like else [])
+
+
+def cmd_motion(a):
+    """Report how often a video's picture changes, and where it stands still.
+
+    Read-only, and its report is what goes to stdout. "New" is
+    MOTION_NEW_FRAME, whose comment says why it is not the --gpu note's test.
+    A new frame is one that differs from the last new frame, not from the
+    frame before it: a slow drift is noticed once it has added up.
+    """
+    finishing_tools()
+    info = probe(a.input, Path(a.input).name)
+    whole = info["duration"]
+    start = a.start or 0.0
+    end = whole if a.end is None else min(a.end, whole)
+    if (a.end is not None and a.end > whole + TIME_SLACK) or start >= end:
+        die(f"--from and --to must be inside {a.input}, which is "
+            f"{whole:.3f} seconds long, with --from before --to.")
+    try:
+        seen = subprocess.run(
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "info",
+             "-ss", f"{start:.6f}", "-t", f"{end - start:.6f}",
+             "-i", str(Path(a.input).expanduser()),
+             "-vf", f"showinfo=checksum=0,{MOTION_NEW_FRAME},"
+                    "showinfo=checksum=0",
+             "-an", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=60 + 10 * (end - start),
+            check=False)
+    except subprocess.TimeoutExpired:
+        die(f"reading {a.input} took too long for its length, so it was "
+            f"stopped.")
+    # Two showinfo filters, one each side of the test: the first sees every
+    # frame, the second only the new ones.
+    every = re.findall(r"Parsed_showinfo_0 .* pts_time:([0-9.]+)", seen.stderr)
+    new = [start + float(t) for t in
+           re.findall(r"Parsed_showinfo_2 .* pts_time:([0-9.]+)", seen.stderr)]
+    if seen.returncode != 0 or not every or not new:
+        lines = [ln for ln in seen.stderr.splitlines() if ln.strip()]
+        die(f"could not read the frames of {a.input}.\n  "
+            + "\n  ".join(lines[-2:]))
+    stills = [(before, after) for before, after in itertools.pairwise([*new, end])
+              if after - before > a.still]
+    report = {"duration": round(end - start, 3), "frames": len(every),
+              "new_frames": len(new),
+              "new_frames_per_second": round(len(new) / (end - start), 2),
+              "last_change": round(new[-1], 3),
+              "still": [{"from": round(b, 3), "to": round(e, 3),
+                         "seconds": round(e - b, 3)} for b, e in stills]}
+    if a.json:
+        print(json.dumps(report))
+        return
+    print(f"duration: {report['duration']:.3f}")
+    print(f"frames: {report['frames']}")
+    print(f"new frames: {report['new_frames']}")
+    print(f"new frames per second: {report['new_frames_per_second']:.2f}")
+    print(f"last change: {report['last_change']:.3f}")
+    for still in report["still"]:
+        print(f"still: {still['from']:.3f} to {still['to']:.3f} "
+              f"({still['seconds']:.3f})")
+
+
+def cmd_poster(a):
+    """The frame on screen at -t, as a picture."""
+    finishing_tools()
+    output = finishing_output(a.output, [a.input], (".png", ".jpg"))
+    info = probe(a.input, Path(a.input).name)
+    whole, step = info["duration"], 1 / (info["rate"] or 30)
+    if a.time < 0 or a.time > whole + TIME_SLACK:
+        die(f"-t {a.time:g} is not inside {a.input}, which is {whole:.3f} "
+            f"seconds long.")
+    # The frame on screen at a time is the last one that started at or before
+    # it; seeking lands on the first frame at or after the point given, so
+    # aim half a frame before that frame's own start.
+    frame = min(frame_at(a.time, step),
+                max(0, math.ceil(whole / step - 1e-6) - 1))
+    part = output.with_name(f".{output.stem}.demoreel-part{output.suffix}")
+    try:
+        grab = subprocess.run(  # noqa: PLW1510 - a failure is handled below
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+             "-ss", f"{max(0.0, (frame - 0.5) * step):.6f}",
+             "-i", str(Path(a.input).expanduser()), "-frames:v", "1",
+             *(["-q:v", "3"] if output.suffix.lower() == ".jpg" else []),
+             "-y", str(part)],
+            capture_output=True, text=True, timeout=6 * CALL_TIMEOUT)
+        if grab.returncode != 0 or not part.exists() or not part.stat().st_size:
+            lines = [ln for ln in grab.stderr.splitlines() if ln.strip()]
+            die(f"could not take the frame at {a.time:g} from {a.input}."
+                + ("\n  " + "\n  ".join(lines[-2:]) if lines else ""))
+        os.replace(part, output)
+    except subprocess.TimeoutExpired:
+        die(f"taking the frame took over {6 * CALL_TIMEOUT}s.")
+    finally:
+        part.unlink(missing_ok=True)
+    print(output)
+
+
+def finishing_problems():
+    """(why the finishing commands cannot run, why text cannot be drawn), each
+    None when it can. `check` reports both; neither decides its exit status."""
+    missing = [t for t in ("ffmpeg", "ffprobe") if shutil.which(t) is None]
+    if missing:
+        why = f"missing {', '.join(missing)}{install_hint(missing)}"
+        return why, "needs ffmpeg first"
+    videos = None if has_libx264() else (
+        "this ffmpeg has no libx264, which every video uses."
+        + X264_ADVICE.get(distro_family(), X264_ADVICE[None]))
+    workdir = Path(tempfile.mkdtemp(prefix="check-", dir=state_dir()))
+    try:
+        (workdir / "text.txt").write_text("demoreel")
+        wide, _ = text_size(workdir / "text.txt", 40)
+        words = None if wide else (
+            "ffmpeg drew nothing for a line of text: no font was found.")
+    except SystemExit as exc:
+        words = str(exc.code).removeprefix("demoreel: ").split(
+            "\n  `demoreel check`")[0]
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    return videos, words
+
+
+# The examples at the end of --help (DEMO-0050). ci.sh parses every line that
+# starts with `demoreel `, so each one must stay a command the tool accepts.
+EXAMPLES = """\
+examples:
+  # can this machine record? If not, it says what to install
+  demoreel check
+
+  # record Kate for 20 seconds
+  demoreel record -o demo.mp4 -d 20 -- kate
+
+  # one picture instead of a video
+  demoreel shot -o kate.png -- kate
+
+  # cut the end off a recording, where `demoreel motion demo.mp4` says to
+  demoreel trim demo.mp4 -o short.mp4 --to 29.8
+
+  # make a film from a script of scenes: clips, cards, text and fades
+  demoreel edit film.txt -o film.mp4
+
+  # record until you say stop, then stop it from any terminal
+  demoreel record -o demo.mp4 -d 0 -n mydemo -- kate &
+  demoreel stop mydemo
+
+more examples: demoreel record --help"""
+
+RECORD_EXAMPLES = """\
+examples:
+  # record Kate for 20 seconds
+  demoreel record -o demo.mp4 -d 20 -- kate
+
+  # record until you say stop, then stop it from any terminal
+  demoreel record -o demo.mp4 -d 0 -n mydemo -- kate &
+  demoreel stop mydemo
+
+  # show the app being used: these steps run while it records
+  demoreel record -o demo.mp4 -d 20 --cursor \\
+    -a 'wait 2' -a 'click 400 300' -a 'type hello' -a 'key Return' -- kate
+
+  # an app that needs the graphics card (OpenGL, Vulkan)
+  demoreel record -o cube.mp4 -d 10 --gpu -- vkcube
+
+  # a Flatpak app, which needs three flags on its own command line
+  demoreel record -o demo.mp4 -d 20 -- \\
+    flatpak run --socket=x11 --nosocket=wayland \\
+    --filesystem=/tmp/.X11-unix org.kde.kate"""
+
+
+def build_parser():
+    """The command line. Separate from main() so ci.sh can parse the --help
+    examples with it without running anything."""
+    parser = argparse.ArgumentParser(
+        prog="demoreel",
+        description="Record a GUI app on a private virtual display, so nothing "
+                    "of your real desktop\nis in frame.",
+        epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--version", action="version",
+                        version=f"demoreel {__version__}")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    rec = sub.add_parser("record", help="record an app and write a video file",
+                         epilog=RECORD_EXAMPLES,
+                         formatter_class=argparse.RawDescriptionHelpFormatter)
+    rec.add_argument("-o", "--output",
+                     help="video file to write (default: "
+                          "./<app>-<timestamp>.mp4)")
+    rec.add_argument("-d", "--duration", type=float, default=30,
+                     help="seconds to record; 0 means until `demoreel stop` "
+                          "(default: 30)")
+    rec.add_argument("-s", "--size", default="1600x1000",
+                     help="virtual display size, even numbers (default: 1600x1000)")
+    rec.add_argument("-r", "--framerate", type=int, default=30,
+                     help="frames per second (default: 30)")
+    rec.add_argument("-n", "--name", default="default",
+                     help="name for this run, so `demoreel stop` can find it "
+                          "(default: default)")
+    rec.add_argument("-a", "--action", action="append", default=[], metavar="ACTION",
+                     help="scripted step, repeatable and run in order: "
+                          "'wait 2', 'move X Y', 'click [X Y]', 'type some text', "
+                          "'key Return', 'hold w 3'")
+    rec.add_argument("--app-log", metavar="PATH",
+                     help="keep the app's own output in PATH; otherwise it goes "
+                          "to this terminal's stderr. Useful when the app prints "
+                          "whether it drew the real thing, which no recording "
+                          "check here can tell")
+    rec.add_argument("--settle", type=float, default=0, metavar="SECONDS",
+                     help="wait up to SECONDS for the app to draw its first "
+                          "frame before recording starts, instead of filming "
+                          "its startup black screen (default: 0, don't wait)")
+    rec.add_argument("--gpu", action="store_true",
+                     help="for an app that needs the graphics card (OpenGL, "
+                          "Vulkan): record it on a headless compositor instead "
+                          "of Xvfb, which has no GPU. Needs cage, Xwayland, "
+                          "wlr-randr and wf-recorder; not with --cursor")
+    rec.add_argument("--cursor", action="store_true",
+                     help="show the mouse pointer; off by default, since with no "
+                          "actions it just sits in the corner")
+    rec.add_argument("--startup-timeout", type=float, default=20, metavar="SECONDS",
+                     help="how long to wait for the app's window (default: 20)")
+    rec.add_argument("command", nargs=argparse.REMAINDER,
+                     help="-- followed by the command that starts the app")
+    rec.set_defaults(func=cmd_record)
+
+    # The options `record` takes, less the ones about time and names: a shot
+    # has no duration, no frame rate and nothing to stop (README, Taking a
+    # picture). --settle defaults to 10 here, since a picture of a startup
+    # screen is never what anyone wanted.
+    shot = sub.add_parser("shot", help="take one picture of an app and write a PNG")
+    shot.add_argument("-o", "--output",
+                      help="picture file to write (default: "
+                           "./<app>-<timestamp>.png)")
+    shot.add_argument("-s", "--size", default="1600x1000",
+                      help="virtual display size (default: 1600x1000)")
+    shot.add_argument("-a", "--action", action="append", default=[],
+                      metavar="ACTION",
+                      help="scripted step run before the picture, repeatable: "
+                           "'wait 2', 'move X Y', 'click [X Y]', "
+                           "'type some text', 'key Return', 'hold w 3'")
+    shot.add_argument("--app-log", metavar="PATH",
+                      help="keep the app's own output in PATH; otherwise it "
+                           "goes to this terminal's stderr")
+    shot.add_argument("--settle", type=float, default=10, metavar="SECONDS",
+                      help="wait up to SECONDS for the app to draw before the "
+                           "steps and the picture (default: 10)")
+    shot.add_argument("--gpu", action="store_true",
+                      help="for an app that needs the graphics card: use a "
+                           "headless compositor instead of Xvfb. Needs "
+                           "cage, Xwayland and wlr-randr")
+    shot.add_argument("--cursor", action="store_true",
+                      help="show the mouse pointer in the picture")
+    shot.add_argument("--startup-timeout", type=float, default=20,
+                      metavar="SECONDS",
+                      help="how long to wait for the app's window (default: 20)")
+    shot.add_argument("command", nargs=argparse.REMAINDER,
+                      help="-- followed by the command that starts the app")
+    shot.set_defaults(func=cmd_shot)
+
+    check = sub.add_parser(
+        "check", help="test whether this machine can record, without recording",
+        description="Report what each backend needs and whether it is "
+                    "installed, start a private display to prove it works, "
+                    "and name the install command for anything missing. "
+                    "Exits non-zero if the default backend cannot record.")
+    check.set_defaults(func=cmd_check)
+
+    stop = sub.add_parser("stop", help="end a running recording early")
+    stop.add_argument("name", nargs="?", help="which run to stop (default: the "
+                                              "only one running)")
+    stop.set_defaults(func=cmd_stop)
+
+    # The finishing commands (README, Finishing a recording). They read and
+    # write files; none starts a display or takes a run name.
+    def finishing(name, summary, output="video file to write, ending in .mp4"):
+        p = sub.add_parser(name, help=summary, description=summary + ".")
+        if output:
+            p.add_argument("-o", "--output", required=True, help=output)
+        return p
+
+    def fades(p):
+        p.add_argument("--fade-in", type=float, default=0, metavar="SECONDS",
+                       help="start black; the picture arrives over SECONDS")
+        p.add_argument("--fade-out", type=float, default=0, metavar="SECONDS",
+                       help="go to black over the last SECONDS")
+
+    edit = finishing("edit", "make a film from a script of scenes")
+    edit.add_argument("script", help="the script file, or - for standard input")
+    edit.add_argument("-s", "--size", help="the film's picture size, like "
+                      "1280x800 (default: the first clip's)")
+    edit.add_argument("-r", "--framerate", type=int,
+                      help="the film's frames per second (default: the first "
+                           "clip's)")
+    edit.set_defaults(func=cmd_edit)
+
+    trim = finishing("trim", "cut the start and the end off a video")
+    trim.add_argument("input", help="the video to cut")
+    trim.add_argument("--from", dest="start", type=float, metavar="SECONDS",
+                      help="where the kept part starts (default: the start)")
+    trim.add_argument("--to", dest="end", type=float, metavar="SECONDS",
+                      help="the last moment kept (default: the end)")
+    fades(trim)
+    trim.add_argument("--fade-at", type=float, action="append", default=[],
+                      metavar="SECONDS",
+                      help="fade to black and back around this moment; "
+                           "repeatable")
+    trim.add_argument("--fade-length", type=float, default=FADE_LENGTH,
+                      metavar="SECONDS",
+                      help="how long each half of a --fade-at takes "
+                           f"(default: {FADE_LENGTH})")
+    trim.set_defaults(func=cmd_trim)
+
+    caption = finishing("caption", "put text over part of a video")
+    caption.add_argument("input", help="the video to put text on")
+    caption.add_argument("--text", action=_CaptionText, dest="texts",
+                         default=[], required=True, metavar="WORDS",
+                         help="one line of text; repeatable")
+    for flag, key in (("--from", "start"), ("--to", "end"),
+                      ("--text-size", "size")):
+        caption.add_argument(flag, action=_CaptionField, dest=key, type=float,
+                             metavar="PERCENT" if key == "size" else "SECONDS",
+                             help="for the --text before it: "
+                                  + {"start": "when it appears",
+                                     "end": "when it goes",
+                                     "size": "its height, as a percentage of "
+                                             "the frame's"}[key])
+    fades(caption)
+    caption.set_defaults(func=cmd_caption)
+
+    join = finishing("join", "put videos end to end")
+    join.add_argument("inputs", nargs="+", metavar="input",
+                      help="two or more videos, in order")
+    join.add_argument("--crossfade", type=float, default=0, metavar="SECONDS",
+                      help="fade from each video into the next over SECONDS "
+                           "(default: a plain cut)")
+    fades(join)
+    join.set_defaults(func=cmd_join)
+
+    card = finishing("card", "make a clip from a picture, or from text")
+    card.add_argument("image", nargs="?", help="a picture to show; a .gif or "
+                                               "an animated .png plays")
+    card.add_argument("-d", "--duration", type=float, required=True,
+                      help="how many seconds the card lasts")
+    card.add_argument("--text", metavar="WORDS", help="one line of text")
+    card.add_argument("--text-size", type=float, metavar="PERCENT",
+                      help="the text's height, as a percentage of the "
+                           f"frame's (default: {CARD_TEXT_SIZE})")
+    card.add_argument("--background", default=CARD_BACKGROUND,
+                      metavar="#RRGGBB",
+                      help=f"the background colour (default: {CARD_BACKGROUND})")
+    card.add_argument("--like", metavar="VIDEO",
+                      help="take the size and frame rate from this video")
+    card.add_argument("-s", "--size", help="the picture size, like 1280x800 "
+                                           "(default: 1600x1000)")
+    card.add_argument("-r", "--framerate", type=int,
+                      help="frames per second (default: 30)")
+    fades(card)
+    card.set_defaults(func=cmd_card)
+
+    motion = finishing("motion", "report how smooth a video is and where it "
+                                 "stands still", output=None)
+    motion.add_argument("input", help="the video to look at")
+    motion.add_argument("--from", dest="start", type=float, metavar="SECONDS",
+                        help="look from here (default: the start)")
+    motion.add_argument("--to", dest="end", type=float, metavar="SECONDS",
+                        help="look up to here (default: the end)")
+    motion.add_argument("--still", type=float, default=1.0, metavar="SECONDS",
+                        help="report a stretch with no change longer than "
+                             "this (default: 1)")
+    motion.add_argument("--json", action="store_true",
+                        help="print the report as one JSON object")
+    motion.set_defaults(func=cmd_motion)
+
+    poster = finishing("poster", "save one frame of a video as a picture",
+                       output="picture file to write, ending in .png or .jpg")
+    poster.add_argument("input", help="the video to take the frame from")
+    poster.add_argument("-t", "--time", type=float, required=True,
+                        metavar="SECONDS", help="which moment to save")
+    poster.set_defaults(func=cmd_poster)
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _exit_on_signal)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

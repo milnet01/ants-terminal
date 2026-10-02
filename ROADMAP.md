@@ -75583,7 +75583,7 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, spotted while fixing ANTS-4529.
   Lanes: docs, packaging.
 
-- 📋 [ANTS-5617] **Ship a stripped-down demoreel with Ants Terminal.**
+- ✅ [ANTS-5617] **Ship the full demoreel, pinned to a release, with Ants Terminal.**
   User request 2026-10-02: bundle demoreel, as small as possible
   ("a stripped down version that does what it needs to do"). Agreed with
   the demoreel session (its DEMO-0163) as shape (a): one file, installed
@@ -75596,6 +75596,15 @@ assistant suggestions, accepted by the user for filing.
   --version. Ants side: CMake install rule, per-package optional
   dependency lines, a test that the installed copy runs --version.
   Hot reload: nothing; a file installed with the package.
+  Shipped (2026-10-02): user ruled for the full demoreel, kept in step
+  with each demoreel release to 1.0.0 (relayed by DEMO-0163). Vendored at
+  third_party/demoreel/ (v0.3.1, sha256 checked at configure); installs
+  to libexec/ants-terminal/ with LICENSE.demoreel; po/ installs once it
+  exists. Option ANTS_BUNDLE_DEMOREEL, OFF in the Flatpak. Optional deps
+  in debian/control, the rpm spec and PKGBUILD; rpmlint env-shebang
+  filter. Test: tests/features/demoreel_bundle (INV-1). demoreel's own
+  record check passed against the installed copy. Each release: replace
+  the vendored file and the two values in CMakeLists.txt.
   **Layman:** Ants Terminal will come with a small built-in tool for recording short demo videos of apps, without showing your real desktop.
   Kind: package.
   Source: user-request-2026-10-02 via demoreel session (DEMO-0163).

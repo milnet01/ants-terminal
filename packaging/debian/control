@@ -33,6 +33,11 @@ Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          hicolor-icon-theme
+Recommends: python3,
+            xvfb,
+            xauth,
+            ffmpeg,
+            xdotool
 Description: Qt6 terminal emulator with Lua plugins and project-audit dialog
  Ants Terminal is a terminal emulator built from scratch in C++20 with
  Qt6. Features include a VT100/xterm parser with Kitty keyboard and

@@ -228,6 +228,18 @@ Requires:       hicolor-icon-theme
 %if 0%{?suse_version}
 Requires:       qt6-sql-sqlite
 %endif
+# ANTS-5617 — the bundled demoreel recorder. Weak dependencies only: the
+# terminal runs without them, and `demoreel check` names what is missing.
+Recommends:     python3
+%if 0%{?suse_version}
+Recommends:     xorg-x11-server-Xvfb
+Recommends:     xauth
+%else
+Recommends:     xorg-x11-server-Xvfb
+Recommends:     xorg-x11-xauth
+%endif
+Recommends:     ffmpeg
+Recommends:     xdotool
 
 %description
 Ants Terminal is a terminal emulator built from scratch in C++20 with
@@ -389,6 +401,10 @@ cd ..
 # — every entry must be matched by a line in this section.
 %dir %{_datadir}/%{name}
 %{_datadir}/%{name}/shell-integration
+# ANTS-5617 — demoreel, outside PATH.
+%dir %{_libexecdir}/%{name}
+%{_libexecdir}/%{name}/demoreel
+%license %{_libexecdir}/%{name}/LICENSE.demoreel
 
 %changelog
 # openSUSE convention keeps the changelog in a separate .changes file

@@ -7,6 +7,10 @@ Files: *
 Copyright: 2026 Ants Terminal Contributors
 License: MIT
 
+Files: third_party/demoreel/*
+Copyright: 2026 Anthony Schemel
+License: MIT
+
 Files: debian/*
 Copyright: 2026 Ants Terminal Contributors
 License: MIT

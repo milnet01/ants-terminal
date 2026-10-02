@@ -29,3 +29,10 @@
 # Self-expiring: if rpmlint fixes the check, this filter stops matching and
 # rpmlint reports `unused-rpmlintrc-filter`. That is the signal to delete it.
 addFilter("branding-requires-unversioned hicolor-icon-theme")
+
+# E: env-script-interpreter /usr/libexec/ants-terminal/demoreel
+#
+# demoreel (ANTS-5617) is a vendored file pinned by sha256, run with
+# `#!/usr/bin/env python3`. Rewriting the shebang would break the pin, and
+# the file is outside PATH, called by absolute path.
+addFilter("env-script-interpreter .*/ants-terminal/demoreel")

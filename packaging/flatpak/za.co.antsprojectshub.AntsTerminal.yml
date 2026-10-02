@@ -129,6 +129,9 @@ modules:
       # (no run-tests:true), so building the test binaries would be pure
       # cost even if the fetch succeeded.
       - -DANTS_TESTS=OFF
+      # demoreel (ANTS-5617) is left out: the sandbox cannot start the host's
+      # Xvfb, so the recorder could not run here.
+      - -DANTS_BUNDLE_DEMOREEL=OFF
     sources:
       - type: dir
         # flatpak-builder invokes from this manifest's directory; the

@@ -28,6 +28,14 @@ optdepends=(
   # library only — the CMake config and headers are bundled with the
   # same package on Arch (no split -devel here).
   'layer-shell-qt: Wayland-native Quake-mode anchoring'
+  # ANTS-5617 — the bundled demoreel recorder (/usr/lib/ants-terminal/demoreel
+  # on Arch, whose libexecdir is /usr/lib). Each is optional; `demoreel check`
+  # names what is missing.
+  'python: run the bundled demoreel recorder'
+  'xorg-server-xvfb: demoreel records on a private display'
+  'xorg-xauth: demoreel display authentication'
+  'ffmpeg: demoreel video encoding'
+  'xdotool: demoreel window driving'
 )
 makedepends=(
   'cmake'

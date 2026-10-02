@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Ants Terminal now ships demoreel, the tool that records short demo videos of an app on a private display.** (ANTS-5617)
+  It installs to libexec/ants-terminal/demoreel, outside PATH, pinned to
+  demoreel v0.3.1 by sha256 (the build stops if the file does not match).
+  python3, Xvfb, xauth, ffmpeg and xdotool are optional; `demoreel check`
+  names any that are missing. Not included in the Flatpak, whose sandbox
+  cannot start Xvfb.
+
 - **roadmap_log repair_trailers takes clear_placeholder_source, which blanks the "planned" placeholder an old backfill recorded as an item's source** (ANTS-4595)
   Only in the caller's project, and only where the value was asserted and
   the item has no created date. A body line declaring only that source is

@@ -1341,6 +1341,39 @@ install(FILES packaging/shell-integration/ants-osc133.bash
               packaging/shell-integration/README.md
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/shell-integration)
 
+# ANTS-5617 — demoreel, the headless demo recorder, shipped whole and pinned.
+# Vendored rather than fetched: OBS and Flathub build with no network. Outside
+# PATH; callers run it by absolute path. python3, Xvfb, xauth, ffmpeg and
+# xdotool are optional at run time (`demoreel check` names what is missing).
+# The hash is checked at configure time so the file cannot drift from the pin.
+# Each demoreel release: replace third_party/demoreel/, update the two values
+# below. A po/ folder ships beside the script once demoreel has one.
+option(ANTS_BUNDLE_DEMOREEL "Install the bundled demoreel recorder" ON)
+if(ANTS_BUNDLE_DEMOREEL)
+    set(ANTS_DEMOREEL_VERSION "0.3.1")
+    set(ANTS_DEMOREEL_SHA256
+        "4168563edd2b468c2555a82e69e849628836808487ac79be4f4d8d2bf3b54e63")
+    set(_demoreel "${CMAKE_CURRENT_SOURCE_DIR}/third_party/demoreel/demoreel")
+    file(SHA256 "${_demoreel}" _demoreel_sha)
+    if(NOT _demoreel_sha STREQUAL ANTS_DEMOREEL_SHA256)
+        message(FATAL_ERROR "third_party/demoreel/demoreel does not match the "
+                "pinned v${ANTS_DEMOREEL_VERSION} sha256 (got ${_demoreel_sha})")
+    endif()
+    install(PROGRAMS "${_demoreel}"
+            DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ants-terminal
+            COMPONENT demoreel)
+    # MIT asks for the notice to travel with the copy; the script has none.
+    install(FILES third_party/demoreel/LICENSE
+            DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ants-terminal
+            RENAME LICENSE.demoreel
+            COMPONENT demoreel)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/demoreel/po")
+        install(DIRECTORY third_party/demoreel/po
+                DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ants-terminal
+                COMPONENT demoreel)
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Tests — audit rule fixtures (ctest)
 # ---------------------------------------------------------------------------
@@ -1579,6 +1612,17 @@ if(ANTS_TESTS)
     set_tests_properties(appimage_apprun PROPERTIES
         LABELS "features;fast"
         TIMEOUT 30)
+
+    # ANTS-5617 — the bundled demoreel installs to libexec and runs.
+    if(ANTS_BUNDLE_DEMOREEL)
+        add_test(NAME demoreel_bundle
+                 COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/demoreel_bundle/test_demoreel_bundle.sh"
+                         "${CMAKE_BINARY_DIR}" "${ANTS_DEMOREEL_VERSION}")
+        set_tests_properties(demoreel_bundle PROPERTIES
+            LABELS "features;fast"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 60)
+    endif()
 
     # tools/mcp-bridge.py: symlink-safe socket pick, sane timeouts, and a
     # reply rather than a crash on a non-object request.
