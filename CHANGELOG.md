@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **AI requests end after 10 minutes in total, even when the server keeps the connection alive** (ANTS-5105)
+
 - **A result too large to spill (over 64 MiB) is refused with a hint to narrow the call, instead of emptying the spill directory** (ANTS-5104)
 
 - **apply_edits replace_all reports the number of replacements it made when matches overlap** (ANTS-5103)

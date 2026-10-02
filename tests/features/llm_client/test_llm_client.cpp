@@ -800,3 +800,35 @@ TEST(LlmClient, Ants5105UnrecognisedSuccessBodyFails) {
     EXPECT_TRUE(captured.error.contains(QStringLiteral("unrecognised response")))
         << captured.error.toStdString();
 }
+
+// ANTS-5105 — a wall-clock deadline ends a reply that never finishes. The
+// only bound was Qt's transfer timeout, which counts INACTIVITY, so a stream
+// that keeps the connection alive never ended. Here the server sends one
+// keep-alive and holds the connection; the inactivity timeout is 120 s, so
+// only the 500 ms deadline can end it inside the wait.
+TEST(LlmClient, Ants5105WallClockDeadlineEndsAStalledReply) {
+    const QByteArray response =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n: keep-alive\n\n";
+    FakeHttpServer server(FakeHttpServer::Mode::RespondKeepOpen, response);
+    ASSERT_TRUE(server.isListening());
+
+    LlmClient client;
+    LlmResult captured;
+    int finishedCount = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &r) { captured = r; ++finishedCount; });
+    LlmRequest req;
+    req.endpoint =
+        QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.port());
+    req.model = QStringLiteral("test-model");
+    req.userPrompt = QStringLiteral("user");
+    req.timeoutMs  = 120000;
+    req.deadlineMs = 500;
+    client.send(req);
+
+    ASSERT_TRUE(server.waitUntil([&]() { return finishedCount == 1; }, 5000))
+        << "the deadline did not end a reply the server holds open";
+    EXPECT_FALSE(captured.ok);
+    EXPECT_TRUE(captured.error.contains(QStringLiteral("within")))
+        << captured.error.toStdString();
+}

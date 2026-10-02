@@ -12,6 +12,7 @@
 
 #include <QByteArray>
 #include <QNetworkAccessManager>
+#include <QTimer>
 #include <QObject>
 #include <QString>
 
@@ -25,6 +26,9 @@ struct LlmRequest {
     QString userPrompt;
     int     maxTokens = 1024;
     int     timeoutMs = 30000;
+    // ANTS-5105 — wall clock for the whole reply. timeoutMs is Qt's transfer
+    // (inactivity) timeout, so a stream of keep-alives never ended. 0 = none.
+    int     deadlineMs = 10 * 60 * 1000;
     bool    scrubSecrets = true;   // OWASP LLM06 — scrub before send
 };
 
@@ -148,4 +152,8 @@ private:
     QByteArray     m_rawBody;
     bool           m_sawSse = false;
     bool           m_stoppedAtCap = false;  // ANTS-5008 — drain() aborted at kMaxBytes
+    // ANTS-5105 — the request's wall-clock deadline, and whether it fired.
+    QTimer         m_deadline;
+    int            m_deadlineMs = 0;
+    bool           m_stoppedAtDeadline = false;
 };

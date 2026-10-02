@@ -31,7 +31,16 @@ QString scrubErrorString(const QString &s) {
 }
 }  // namespace
 
-LlmClient::LlmClient(QObject *parent) : QObject(parent) {}
+LlmClient::LlmClient(QObject *parent) : QObject(parent) {
+    // ANTS-5105 — the wall-clock deadline ends the transfer the same way the
+    // byte cap does: abort, and let onFinished() report why.
+    m_deadline.setSingleShot(true);
+    connect(&m_deadline, &QTimer::timeout, this, [this]() {
+        if (!m_reply) return;
+        m_stoppedAtDeadline = true;
+        m_reply->abort();
+    });
+}
 
 LlmClient::~LlmClient() {
     // Abort and drop any in-flight reply before member teardown so a late
@@ -46,6 +55,7 @@ LlmClient::~LlmClient() {
 bool LlmClient::busy() const { return m_reply != nullptr; }
 
 void LlmClient::abort() {
+    m_deadline.stop();   // ANTS-5105
     if (m_reply) {
         QNetworkReply *r = m_reply;
         m_reply = nullptr;
@@ -284,6 +294,10 @@ void LlmClient::send(const LlmRequest &req) {
     m_reply = m_net.post(httpReq, bodyBytes);
     connect(m_reply, &QNetworkReply::readyRead, this, &LlmClient::drain);
     connect(m_reply, &QNetworkReply::finished, this, &LlmClient::onFinished);
+    // ANTS-5105 — setTransferTimeout counts inactivity; this counts the clock.
+    m_stoppedAtDeadline = false;
+    m_deadlineMs = req.deadlineMs;
+    if (m_deadlineMs > 0) m_deadline.start(m_deadlineMs);
 }
 
 void LlmClient::emitDeferredError(const QString &error) {
@@ -365,6 +379,7 @@ bool LlmClient::consumeLines(int maxLines) {
 
 void LlmClient::onFinished() {
     if (!m_reply) return;
+    m_deadline.stop();   // ANTS-5105
 
     // ANTS-5015 — drain() parses kMaxLinesPerTick lines and re-arms itself,
     // and the reply can finish before the re-armed call runs; that call then
@@ -413,6 +428,13 @@ void LlmClient::onFinished() {
             "unrecognised response: neither an event stream nor a chat "
             "completion body%1").arg(m_truncated ? QStringLiteral(" (cut at the size cap)")
                                                 : QString());
+    }
+    // ANTS-5105 — say WHY the transfer stopped: the abort's own error string
+    // ("Operation canceled") names nothing the caller can act on.
+    if (m_stoppedAtDeadline) {
+        hadError = true;
+        result.error = QStringLiteral("no complete reply within %1 s")
+                           .arg(m_deadlineMs / 1000.0);
     }
     if (hadError && m_text.isEmpty() && result.error.isEmpty())
         result.error = scrubErrorString(m_reply->errorString());
