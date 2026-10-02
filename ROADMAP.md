@@ -10456,6 +10456,19 @@ extends an existing item, that item carries it instead.
   at its fixed path is owned by the current user and refuses otherwise.
   The path stays; moving it under XDG_RUNTIME_DIR would migrate hook
   scripts already installed in ~/.claude.
+  Progress (2026-10-02): the hook forwarder findings were already met.
+  The forwarder takes its socket from $ANTS_CLAUDE_HOOK_SOCKET (no
+  hardcoded /tmp, so no TMPDIR mismatch) and checks with SO_PEERCRED that
+  the listening process belongs to the current user, which is stronger
+  than the decided owner check. Review Changes now remembers each Status
+  file's line count by size and mtime and counts the first 500 entries
+  only (unproven: output identical). gitContextStatus compares the script
+  on disk with gitContextHookScript() and reports Partial for an older
+  one (ClaudeSetup Ants5109OutdatedGitContextScriptIsNotInstalled, red
+  first). Still open: git ls-files on every change burst, the installers
+  reading before the lock, ants-helper list blocking on stdin, branch
+  names in the hook prompt, dialog colours and sizes, ANTS-1145 INV-2a and
+  the --remote help text.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).
