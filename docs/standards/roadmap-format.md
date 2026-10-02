@@ -373,7 +373,8 @@ read-modify-write under a brief flock so collisions are impossible.
 
 **The counter is a derived, per-machine cache — NOT source (ANTS-3450).**
 It is `.gitignore`d, not committed. Its true value is the highest
-`PROJ-NNNN` id across the committed roadmap corpus — `ROADMAP.md` +
+`PROJ-NNNN` id the committed roadmap corpus *declares* — on a top-level
+list item outside a code fence (`maxDeclaredId`, ANTS-4631) — in `ROADMAP.md` +
 `CHANGELOG.md` + `docs/roadmap/*.md` (the archives that shipped/rotated
 bullets migrate into). Every allocation *floors* to that committed
 high-water mark (`RoadmapFoldIn::corpusHighWater`), so a stale, wiped, or
