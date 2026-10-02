@@ -10083,7 +10083,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
   Lanes: test-audit, verify.
 
-- 📋 [ANTS-5103] **Performance pass findings for the codebase index, outlines, region reads and edits (medium and low).**
+- ✅ [ANTS-5103] **Performance pass findings for the codebase index, outlines, region reads and edits (medium and low).**
   Filed separately: ANTS-5052, 5066, 5073.
   Medium:
   - Past maxIndexFiles or maxCacheBytes, the codebase index counts the
@@ -10116,6 +10116,16 @@ extends an existing item, that item carries it instead.
   find_sources' file-count cap, per-line read buffers, WrapMatch's
   nested quantifiers, apply_edits' overlapping count, and find_sources
   following symlinked files.
+  Resolved (2026-10-02): codebase_index compares a capped index against
+  its prefix, so a large project stays warm and answers 304 (CodebaseIndex
+  Ants5103CappedIndexStaysWarm). find_sources caps its scan at 20,000
+  files and reports walk_capped (McpFindSources Ants5103*). apply_edits
+  replace_all reports the replacements it made (McpApplyEdits Ants5103*).
+  file_outline and symbolquery read lines through BoundedReadLine
+  (unproven: output identical). All with red tests except where noted.
+  WrapMatch's nested quantifiers were measured: a failing search over a
+  60-character marker run is fast, so the pattern is unchanged and a guard
+  test pins it. find_sources already skipped symlinked files.
   **Layman:** Smaller code-search fixes, including a cache that rewrites itself on every call on big projects.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).
