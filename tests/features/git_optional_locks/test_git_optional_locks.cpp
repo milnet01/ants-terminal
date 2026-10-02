@@ -103,7 +103,7 @@ TEST(GitOptionalLocks, Inv4HookScriptStatusSkipsOptionalLocks) {
         // the script text moved into gitContextHookScript(), which the
         // installer and the status check share.
         ants_test::slurpFile(SRC_CLAUDESETUP_CPP_PATH),
-        "QString gitContextHookScript()");
+        "QString gitContextHookScript() {");
     ASSERT_FALSE(hook.empty());
     EXPECT_NE(hook.find("GIT_OPTIONAL_LOCKS=0 git status"), std::string::npos);
 }
