@@ -136,13 +136,21 @@ constexpr double kMissRatio         = 0.5;    // default walk must miss > this
 // source subdirs (not a dominant-cover subset) so a low-count entry-point
 // dir + a spread src-less layout are both covered, not silently dropped.
 
-// Admitted-suffix files under <root>/<sub> (recursive), capped at `budget`.
+// ANTS-5106 — files VISITED per counting walk, whatever their suffix. The
+// budget below counts only admitted sources, so a subtree of other files
+// (assets, data, generated output) was walked in full against ANTS-2161.
+constexpr int    kDetectVisitCeiling = 100000;
+
+// Admitted-suffix files under <root>/<sub> (recursive), capped at `budget`
+// and at kDetectVisitCeiling files visited.
 int countSourceFiles(const QString &root, const QString &sub, int budget) {
     int n = 0;
+    int visited = 0;
     QDirIterator it(root + QLatin1Char('/') + sub,
                     QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
-    while (it.hasNext() && n < budget) {
+    while (it.hasNext() && n < budget && visited < kDetectVisitCeiling) {
         it.next();
+        ++visited;
         if (CodebaseIndex::isIndexableSuffix(it.fileInfo().suffix().toLower())) ++n;
     }
     return n;
