@@ -9816,6 +9816,17 @@ extends an existing item, that item carries it instead.
   open: feedback_query's quadratic trim, last_selection's cap, add_batch
   skipping ANTS-4563 routing, the add_from_roadmap summary guard, the two
   docs walks, and the marshal cwd fallback.
+  Progress (2026-10-02, later): two more shipped. feedback_query cuts the
+  delta at max_bytes on a byte boundary, encoding once (McpFeedbackQuery
+  Ants5098MaxBytesTrimsToTheByte, red first: 948 of a 1001-byte cap).
+  last_selection goes through get_text's trimScrollbackForGetText after
+  redaction, takes max_bytes (declared in its schema) and reports
+  truncated (McpSecretRedaction Ants5098LastSelectionTrimsAfterRedacting,
+  red first). The selection is still BUILT on the GUI thread by
+  TerminalWidget::selectedText; capping that needs a widget change and is
+  not done. Still open: add_batch skipping ANTS-4563 routing, the
+  add_from_roadmap summary guard, the two docs walks, and the marshal cwd
+  fallback.
   **Layman:** Smaller fixes to Ants' content tools, including a slow trimming loop and outputs cut short without saying so.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).

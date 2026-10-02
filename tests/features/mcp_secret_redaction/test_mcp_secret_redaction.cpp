@@ -106,6 +106,17 @@ TEST(McpSecretRedaction, Inv3EveryVerbRedacts) {
     EXPECT_TRUE(has(sb, "env[QStringLiteral(\"redacted\")]"));
 }
 
+// ANTS-5098 — last_selection had no size cap. It now goes through get_text's
+// trim, after redaction, so the cap bounds what is sent and never cuts a
+// secret in half; it takes max_bytes and reports truncated as get_text does.
+TEST(McpSecretRedaction, Ants5098LastSelectionTrimsAfterRedacting) {
+    const std::string body = verbBody("cmdLastSelection");
+    ASSERT_FALSE(body.empty());
+    EXPECT_TRUE(before(body, "redactForClaude(", "trimScrollbackForGetText("));
+    EXPECT_TRUE(has(body, "\"max_bytes\""));
+    EXPECT_TRUE(has(body, "\"truncated\""));
+}
+
 // INV-5
 TEST(McpSecretRedaction, Inv5SecretFileNames) {
     for (const char *p : {".env", "/proj/.env.local", "/etc/ssl/server.pem",

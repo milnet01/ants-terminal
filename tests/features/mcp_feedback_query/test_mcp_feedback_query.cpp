@@ -708,3 +708,40 @@ TEST(McpFeedbackQuery, MappedIdStatusAbsentWhenNoMappedIds) {
     EXPECT_TRUE(env.value("mapped_ids").toArray().isEmpty());
     EXPECT_FALSE(env.contains("mapped_id_status"));
 }
+
+// ANTS-5098 — max_bytes trims the delta at the byte level: the result fits,
+// keeps every byte that fits up to one character short of the cap, and never
+// splits a character. The old loop backed off 64 QChars at a time and could
+// stop that far short, or leave half a surrogate pair.
+TEST(McpFeedbackQuery, Ants5098MaxBytesTrimsToTheByte) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    QString tail;
+    for (int i = 0; i < 400; ++i)
+        tail += QString::fromUtf8("\xF0\x9F\x93\x8B \xC3\xA9");  // 4-, 1- and 2-byte
+    const QString body = QStringLiteral(
+        "# Title\n\n"
+        "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
+        "| Item | ID(s) | Status |\n"
+        "|------|-------|--------|\n"
+        "| a | ANTS-8000 | 📋 |\n\n"
+        "## 2026-05-20 — session\n\n"
+        "### finding\n\n- **What:** %2\n").arg(QString::fromUtf8(kClip), tail);
+    const QString p = writeFeedback(dir, "X_Ants_MCP_Feedback.md", body);
+    ASSERT_FALSE(p.isEmpty());
+
+    constexpr int kCap = 1001;
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p;
+    req["caller_cwd"] = dir.path();
+    req["max_bytes"] = kCap;
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_TRUE(env.value("truncated").toBool());
+    const QString delta = env.value("delta").toString();
+    const qsizetype bytes = delta.toUtf8().size();
+    EXPECT_LE(bytes, kCap);
+    EXPECT_GT(bytes, kCap - 4) << "stopped short of the cap: " << bytes;
+    EXPECT_FALSE(delta.contains(QChar::ReplacementCharacter));
+    EXPECT_FALSE(delta.back().isHighSurrogate()) << "half a surrogate pair at the end";
+}

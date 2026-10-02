@@ -4361,7 +4361,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`get_text lines=500` round-trip whenever the "
                         "context Claude needs is the same text the "
                         "user just selected. Returns {ok, "
-                        "has_selection, text, length, bytes}. When the "
+                        "has_selection, text, length, bytes, truncated}. When the "
                         "user has no active selection, `has_selection` "
                         "is false and `text` is the empty string. "
                         "Optional `tab` (explicit index), `caller_cwd` "
@@ -4383,6 +4383,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "Explicit tab index. Omit to use your own "
                             "tab (via caller_cwd) or the focused tab.");
                         props["tab"] = p;
+                    }
+                    {
+                        // ANTS-5098 — the same cap and trim as get_text.
+                        QJsonObject p; p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "Cap on the returned text in UTF-8 bytes, applied "
+                            "after secret redaction, as get_text's max_bytes. "
+                            "Past it the head is dropped behind a truncation "
+                            "sentinel and truncated is true.");
+                        props["max_bytes"] = p;
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;

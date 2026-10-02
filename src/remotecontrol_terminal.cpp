@@ -685,14 +685,28 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     // ANTS-5169 — length and bytes describe the text actually sent.
     const auto clean = RemoteControl::redactForClaude(
         target->selectedText(), Config().claudeMcpRedactSecrets());
-    const QString &text = clean.text;
-    const bool hasSelection = !text.isEmpty();
+    const bool hasSelection = !clean.text.isEmpty();
+
+    // ANTS-5098 — the same cap as get_text, applied after redaction so it
+    // bounds what is sent and never cuts a secret in half.
+    int maxBytes = RemoteControl::kGetTextDefaultBytesCap;
+    const QJsonValue maxBytesVal = req.value(QStringLiteral("max_bytes"));
+    if (maxBytesVal.isDouble() && maxBytesVal.toInt() > 0)
+        maxBytes = maxBytesVal.toInt();
+    const auto trim = RemoteControl::trimScrollbackForGetText(clean.text, maxBytes);
+    const QString &text = trim.text;
 
     out[QStringLiteral("ok")]            = true;
     out[QStringLiteral("has_selection")] = hasSelection;
     out[QStringLiteral("text")]          = text;
     out[QStringLiteral("length")]        = text.size();
     out[QStringLiteral("bytes")]         = text.toUtf8().size();
+    out[QStringLiteral("truncated")]     = trim.truncated;
+    if (trim.truncated) {
+        out[QStringLiteral("bytes_dropped")] = trim.bytesDropped;
+        out[QStringLiteral("lines_dropped")] = trim.linesDropped;
+    }
+    if (trim.capClamped) out[QStringLiteral("bytes_cap_clamped")] = true;
     if (clean.redacted > 0) out[QStringLiteral("redacted")] = clean.redacted;
     return QJsonDocument(out);
 }

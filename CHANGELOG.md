@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`feedback_query` trims to exactly its byte cap without splitting a character, and `last_selection` takes the same size cap as `get_text`.** (ANTS-5098)
+
 - **`git_state` says when a large repository's status or diff was cut short, and never returns a half path.** (ANTS-5098)
 
 - **`mutation_probe` puts back a source file that a killed probe left holding its mutant.** (ANTS-5096)
