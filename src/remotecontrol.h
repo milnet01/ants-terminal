@@ -829,8 +829,12 @@ public:
     // `index` and returns the number of files scanned. Deliberately APPENDS:
     // a basename that ends up with two paths takes the engine's existing
     // `ambiguous` arm rather than being resolved here by a guess.
+    // ANTS-5098 — `maxEntries` caps every directory entry the walk VISITS,
+    // not only the markdown it keeps, and `truncated` says when it bit.
     static int docCitationsMdScan(const QString &rootCanonical,
-                                  QHash<QString, QStringList> *index);
+                                  QHash<QString, QStringList> *index,
+                                  int maxEntries = 200000,
+                                  bool *truncated = nullptr);
     // ANTS-2161 — project_settings: detect a misplaced layout + create/update
     // .ants/project.json (ops detect / init / set) via ProjectSettings.
     QJsonDocument cmdProjectSettings(const QJsonObject &req);

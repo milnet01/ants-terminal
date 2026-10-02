@@ -330,6 +330,34 @@ TEST(DocCitationsVerb, Ants4728DuplicateBasenameIsLeftAmbiguous) {
            "producing confident wrong answers";
 }
 
+// ANTS-5098 — the cap bounds the entries the walk VISITS. It used to count
+// only the markdown it kept, so a tree of non-markdown files (a build
+// directory) was walked whole however large; and a cut says so.
+TEST(DocCitationsVerb, Ants5098MdScanCapsEntriesVisited) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    for (int i = 0; i < 100; ++i) {
+        ASSERT_TRUE(writeFile(root + QStringLiteral("/build/obj%1.o").arg(i),
+                              QByteArrayLiteral("x")));
+    }
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/guide.md"),
+                          QByteArrayLiteral("# Guide\n")));
+
+    QHash<QString, QStringList> capped;
+    bool cut = false;
+    RemoteControl::docCitationsMdScan(root, &capped, 20, &cut);
+    EXPECT_TRUE(cut) << "100 visited entries must trip a cap of 20";
+
+    QHash<QString, QStringList> whole;
+    bool wholeCut = true;
+    const int seen = RemoteControl::docCitationsMdScan(root, &whole, 1000,
+                                                       &wholeCut);
+    EXPECT_FALSE(wholeCut) << "a walk under its cap must not report a cut";
+    EXPECT_EQ(seen, 1);
+    EXPECT_TRUE(whole.contains(QStringLiteral("guide.md")));
+}
+
 TEST(DocCitationsVerb, Inv48CallerCwdRequired) {
     expect_reset();
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);

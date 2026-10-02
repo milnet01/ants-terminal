@@ -1599,8 +1599,10 @@ QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
     // even in large trees; the cap is a backstop, not a budget.
     bool mdScanUsed = false;
     int  mdScanFiles = 0;
+    bool mdScanTruncated = false;   // ANTS-5098
     if (opts.basenameIndex.isEmpty() || opts.basenameIndexTruncated) {
-        mdScanFiles = docCitationsMdScan(rootCanonical, &opts.basenameIndex);
+        mdScanFiles = docCitationsMdScan(rootCanonical, &opts.basenameIndex,
+                                         200000, &mdScanTruncated);
         mdScanUsed  = true;
     }
 
@@ -1618,6 +1620,9 @@ QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
     if (mdScanUsed && out.value(QStringLiteral("ok")).toBool()) {
         out[QStringLiteral("md_scan_used")]  = true;
         out[QStringLiteral("md_scan_files")] = mdScanFiles;
+        // ANTS-5098 — a cut walk may have missed a document; say so.
+        if (mdScanTruncated)
+            out[QStringLiteral("md_scan_truncated")] = true;
     }
     // etag injected centrally (isEtagSupportedTool).
     return QJsonDocument(out);
@@ -1677,16 +1682,32 @@ QJsonObject RemoteControl::docCitationsValidate(const QString &rootCanonical,
 // re-added because adding QDir::Hidden later would silently re-open the
 // recursion; the ANTS-4728 test is what holds that shut.
 int RemoteControl::docCitationsMdScan(const QString &rootCanonical,
-                                      QHash<QString, QStringList> *index) {
+                                      QHash<QString, QStringList> *index,
+                                      int maxEntries, bool *truncated) {
+    if (truncated) *truncated = false;
     if (!index) return 0;
     constexpr int kMdScanCap = 5000;
     const QDir rootDir(rootCanonical);
-    QDirIterator it(rootCanonical, QStringList{QStringLiteral("*.md")},
-                    QDir::Files | QDir::NoSymLinks,
+    // ANTS-5098 — no name filter: with "*.md" the iterator stepped through
+    // every other entry unseen, so the cap below bounded what was KEPT and
+    // nothing bounded the walk. Every entry is counted against `maxEntries`.
+    QDirIterator it(rootCanonical,
+                    QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot |
+                        QDir::NoSymLinks,
                     QDirIterator::Subdirectories);
     int seen = 0;
-    while (it.hasNext() && seen < kMdScanCap) {
-        const QString rel = rootDir.relativeFilePath(it.next());
+    int visited = 0;
+    while (it.hasNext()) {
+        if (visited >= maxEntries || seen >= kMdScanCap) {
+            if (truncated) *truncated = true;
+            break;
+        }
+        const QString path = it.next();
+        ++visited;
+        if (!it.fileInfo().isFile() ||
+            !path.endsWith(QLatin1String(".md"), Qt::CaseInsensitive))
+            continue;
+        const QString rel = rootDir.relativeFilePath(path);
         ++seen;
         (*index)[rel.section(QLatin1Char('/'), -1)].append(rel);
     }
