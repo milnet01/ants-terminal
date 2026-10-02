@@ -39156,7 +39156,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
-- 🚧 [ANTS-4065] **Define the markdown-to-store import mapping contract, so a roadmap can be imported without losing or inventing data.**
+- ✅ [ANTS-4065] **Define the markdown-to-store import mapping contract, so a roadmap can be imported without losing or inventing data.**
   **Phase E measurement, 2026-08-14 (dry run only — nothing was written).**
   The divergence between ROADMAP.md and the store was measured exactly, and
   it is NOT the shape the earlier bullets assumed:
@@ -39280,6 +39280,13 @@ against current source before filing.
   ✅ items — ANTS-4086 and ANTS-4063 on the import/render bullet, ANTS-4077
   and ANTS-4142 on their own. This umbrella item stays 🚧 until D4 and
   Phase E close, so a release section cannot claim it.
+  Resolved (2026-10-02). Phase E2 is done in practice: the live store
+  holds 26 projects, every one with its root set (read-only sqlite3 query
+  of project and item). D4's confirming re-run is covered by ANTS-3810's
+  round-trip oracle (07c53246), which asserts render -> load -> export
+  loses and invents nothing. D4's criterion amendment to
+  docs/plans/ANTS-4065-import-mapping-contract.md is not made: CLAUDE.md
+  marks docs/plans/ historical, and nothing is built from that plan now.
   **Layman:** Write down exactly how every field in the text roadmap turns into a database field, so importing stops quietly changing things.
   Kind: implement.
   Source: user-request-2026-08-08.
