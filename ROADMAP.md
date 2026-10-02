@@ -55949,7 +55949,7 @@ filed below.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol_roadmap_query, roadmapwrite.
 
-- 📋 [ANTS-4595] **1789 migrated items store a lifecycle word in the source column.**
+- ✅ [ANTS-4595] **1789 migrated items store a lifecycle word in the source column.**
   Found while measuring ANTS-4585, and out of that item's scope: it is neither a truncation nor a duplication.
 
   Measured read-only across the machine-global store: 1789 items in 6 projects have source = 'planned'. Vestige 989, Ants_Terminal 419, Music_Production 357 (every item it has), finbreak 16, Games_Hub 4, MAME_Curator 4. No other lifecycle word occurs.
@@ -55986,6 +55986,10 @@ filed below.
   whose body declares any other source. Tests INV-15..19. Still to do:
   after /mcp, dry_run on this project (expect 36 ids, ANTS-1060..1098,
   5 lines), then the real run, then flip.
+  Resolved (2026-10-02): ran on this project after /mcp. The dry run
+  listed exactly the 36 (ANTS-1060..1098) and 5 body lines; the real run
+  cleared them; a second dry run clears 0. ROADMAP.md lost the 36
+  rendered placeholder lines and nothing else. Other projects untouched.
   **Layman:** Nearly two thousand old roadmap entries record "planned" as the reason they exist, which says nothing about where they came from.
   Kind: fix.
   Source: ANTS-4585 phase 1 measurement, 2026-08-20.
@@ -83343,7 +83347,6 @@ a modern terminal" release.
   Alacritty's own data: 191 MB → 34 MB (20k-line scrollback).
   Layman: Use far less memory for scrollback by not reserving space for lines that are empty.
   Kind: refactor.
-  Source: planned.
   Parked (2026-09-07) behind ANTS-4921. Verified today: this item
   assumes a pre-allocated grid whose memory could be reclaimed, and
   scrollback is a deque grown on demand -- so the saving it describes
@@ -83356,14 +83359,12 @@ a modern terminal" release.
   future resolves. Big sixel frames stop blocking the prompt.
   **Layman:** Decode images in the background so a large image no longer freezes the prompt while it loads.
   Kind: refactor.
-  Source: planned.
 
 - 💭 [ANTS-1062] **BTree scrollback.**
   O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
   **Layman:** Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
-  Source: planned.
 
 - 📋 [ANTS-4921] **Re-measure the performance baseline before acting on any parked perf item.**
   Three perf items were verified 2026-09-07 and all three had lost their
@@ -83697,7 +83698,6 @@ a modern terminal" release.
   is closed; ship when there's a concrete remote-untrusted-network
   use case driving it.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1065] **Headless mux server with codec RPC.**
   WezTerm's architecture
@@ -83730,14 +83730,12 @@ a modern terminal" release.
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
   **Layman:** Open tabs straight inside Docker containers or Kubernetes pods, picked from a list.
   Kind: implement.
-  Source: planned.
 
 - 💭 [ANTS-1067] **Persistent workspaces.**
   Save/restore entire tab+split layout +
   scrollback to disk; one-click "resume yesterday's dev session."
   **Layman:** Save your whole layout of tabs and splits, scrollback included, and reopen it later.
   Kind: implement.
-  Source: planned.
 
 ### 🎨 Features — inline ghost-text completion
 
@@ -83798,7 +83796,6 @@ zero-click, purely suggestive. Proposed in two scopes:
   beyond 1.0 unless users ask.
   **Layman:** As you type, show a greyed-out suggestion from your command history that you can accept with one key.
   Kind: implement.
-  Source: planned.
 
 - 💭 [ANTS-1069] **Frequency-ranked completion source.**
   Either form benefits
@@ -83808,7 +83805,6 @@ zero-click, purely suggestive. Proposed in two scopes:
   mention but not a blocker for the initial implementation.
   **Layman:** Put the commands you use most at the top of the suggestion list, instead of sorting them alphabetically.
   Kind: implement.
-  Source: planned.
 
 ### 📦 Distribution readiness (H5–H7, H13)
 
@@ -83933,7 +83929,6 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   from "H5 + H6 unblock this" to "unblocked".
   Layman: Publish the app on Flathub so Linux users can install it in one click.
   Kind: chore.
-  Source: planned.
   Progress (2026-09-04). Read the body above as HISTORY, not as current state: it names `org.ants.Terminal` and `packaging/linux/org.ants.Terminal.metainfo.xml`, a path that has not existed since ANTS-3424 renamed the app ID to `za.co.antsprojectshub.AntsTerminal`, and its stated blocker is a v0.7.3 shakedown when the shipped release is 0.7.107.
 
   THE BLOCKER IS NOW A POLICY ONE, and it is not ours to work around. Flathub's Generative AI policy: "AI tools or agents must not open or automate Flathub submission pull requests, or generate their commit messages, descriptions, review comments, or replies." Penalty escalates to a permanent ban. The enforcing checkbox landed in flathub/flathub's PR template on 2026-09-03. So a person opens this PR, writes its body and answers its review. An agent may prepare and verify the packaging; that material is permitted and belongs in the template's SEPARATE disclosure checkbox, naming affected parts and extent. `packaging/flatpak/FLATHUB.md` carries the full corrected procedure and was rewritten today after it was found to describe three things that would each have cost a rejection: a subdirectory layout (carriers go at the fork's repo ROOT), the wrong base branch (`new-pr`), and a hand-written PR body (their bot auto-closed finbreak's PR 27 seconds after it opened for exactly that).
@@ -83959,7 +83954,6 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   ship from the same repo.
   **Layman:** Build a website with screenshots, installation instructions and a guide for plugin authors.
   Kind: chore.
-  Source: planned.
 
 - 🚫 [ANTS-1155] **True in-app self-update for the AppImage — no external `AppImageUpdate` dependency, no manual restart.**
   Today's "Update" click in `MainWindow::handleUpdateClicked`
@@ -84061,7 +84055,6 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   the GitHub stars + install metrics, not vanity.
   **Layman:** Ask the big Linux distributions to package the app, and write the posts announcing it.
   Kind: chore.
-  Source: planned.
 
 - ✅ [ANTS-2166] **Sandbox-aware shell spawning (flatpak-spawn --host).**
   Detect a Flatpak sandbox (FLATPAK_ID env / /.flatpak-info present) and route shell spawning through `flatpak-spawn --host` instead of forking a PTY directly against a sandboxed binary. Without it a Flatpak build can only run the few binaries inside the runtime — useless for a terminal. Model on Black Box / GNOME Console / Ptyxis. Requires the `--talk-name=org.freedesktop.Flatpak` finish-arg. First of the Flathub epic; gates the manifest item (ANTS-2168).
@@ -84206,7 +84199,6 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   against a project-maintained keyring + (optionally) user-added keys.
   **Layman:** Digitally sign plugins so you can tell a genuine one from a tampered one.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1074] **Public marketplace index.**
   Static JSON hosted on GitHub Pages
@@ -84214,14 +84206,12 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Settings → Plugins → Browse lists them with an install button.
   **Layman:** A browsable list of available plugins with an install button.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1075] **Plugin dependency resolution.**
   `manifest.json` `requires: [...]`
   field; install flow resolves transitively.
   **Layman:** Let a plugin say which other plugins it needs, and install those automatically.
   Kind: implement.
-  Source: planned.
 
 ### 🖥 Platform
 
@@ -87285,7 +87275,6 @@ here.)
   distinction matters for cross-platform press coverage.
   Layman: Make the app run on macOS as well as Linux.
   Kind: implement.
-  Source: planned.
   Cost note (2026-08-25), found while retracting [[ANTS-1087]]'s paid-audit
   wording. "sign+notarize the `.app`" is not free: Apple notarisation
   requires a paid Apple Developer Program membership, billed annually, and
@@ -87310,7 +87299,6 @@ here.)
   completing first.
   **Layman:** Make the app run on Windows.
   Kind: implement.
-  Source: planned.
 
 ### 🖥 Accessibility
 
@@ -87324,7 +87312,6 @@ here.)
   Without this, Orca reads nothing in the terminal. Ubuntu /
   Fedora accessibility review gates on this.
   Kind: implement.
-  Source: planned.
   In progress 2026-06-29: implementing the core H9 slice — QAccessibleInterface + QAccessibleTextInterface adapter for TerminalWidget (role Terminal, visible-viewport text, caret = cursor, debounced text-changed events gated on QAccessible::isActive()). Spec at docs/specs/ANTS-1078.md. Also closes ANTS-2205 (4). Remaining H9 refinements (per-character a11y text attributes, OSC-133-D-gated batch boundaries beyond the existing output debounce) tracked as follow-up.
   Shipped 2026-06-29 (core H9 slice): QAccessibleInterface + QAccessibleTextInterface adapter (src/terminalaccessible.{h,cpp}) registered via installTerminalAccessibilityFactory() in main.cpp; TerminalWidget gained accessibleText()/accessibleCaretOffset()/accessibleRectForOffset()/accessibleOffsetAt()/firstVisibleGlobalLine() + a throttled notifyAccessibilityChanged() slot gated on QAccessible::isActive(). Role Terminal, visible-viewport text, caret via effectiveCursorRow/Col, one QAccessibleTextCursorEvent per output throttle tick. Spec docs/specs/ANTS-1078.md (cold-eyes loops 1-5). Feature test tests/features/terminal_a11y/ (9 TEST blocks, INV-1..9) in test_chrome; suite 2349/2349. Remaining H9 refinements (rich text attributes, OSC-133-D-gated text-inserted batching, selection write-back, wide-cell exact rects) tracked by ANTS-3363.
 
@@ -87334,7 +87321,6 @@ here.)
   provide high-contrast theme variants.
   **Layman:** Make the display work properly with screen magnifiers and high-contrast colour schemes.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-3362] **Colourblind-safe theme presets (CVD-friendly ANSI palettes).**
   Ship a small set of colour-vision-deficiency (CVD) safe theme presets — covering deuteranopia/protanopia (red-green) and tritanopia (blue-yellow) — that remap the 16-colour ANSI palette (and the theme fg/bg/accent) to perceptually-distinct hues per the chosen deficiency. Palette lives on TerminalGrid (16+216+24 ANSI palette is set there per CLAUDE.md). Pairs with [[ANTS-1079]] (high-contrast variants) — same theme-preset surface, different goal (high-contrast = low vision; CVD-safe = colour discrimination). Design as its own cycle: pick/derive validated CVD-safe palettes (e.g. from the Wong/Okabe-Ito or IBM colourblind-safe sets adapted to a 16-colour terminal), wire as selectable themes in Settings, no new runtime deps. Distinct from screen-reader work in [[ANTS-1078]].
@@ -87358,7 +87344,6 @@ here.)
   distros gate review on this.
   Layman: Set the app up so it can be translated into other languages.
   Kind: implement.
-  Source: planned.
   User-requested again 2026-06-12 ("support for multiple languages") — confirms appetite for UI localisation. Scope stands: wrap UI strings in tr(), wire lupdate/lrelease, ship .qm under assets/i18n/, seed ES/FR/DE. (RTL text is the separate [[ANTS-1081]].)
   Status correction (2026-06-17): the "zero tr() usage" line is stale — src/ already has ~222 tr() call-sites (partial groundwork). What is genuinely absent is the RUNTIME machinery: no QTranslator / installTranslator wiring, no lupdate/lrelease step, and no shipped .qm files (assets/i18n/ does not exist), so the app still only renders English. Remaining scope: complete tr() coverage, wire QTranslator + a language setting, add lupdate/lrelease to the build, ship .qm for the ES/FR/DE seed. User re-confirmed appetite 2026-06-17 ("make Ants Terminal usable to as wide a base as possible").
   User-requested again (2026-09-15): "I want the terminal to be
@@ -87380,7 +87365,6 @@ here.)
   Non-trivial; defer until demand is concrete.
   **Layman:** Display right-to-left languages such as Arabic and Hebrew correctly.
   Kind: implement.
-  Source: planned.
 
 ### 📦 Distribution readiness (H11)
 
@@ -87394,7 +87378,6 @@ here.)
   our build system.
   **Layman:** Make builds byte-for-byte repeatable and publish a parts list, so anyone can verify what they installed.
   Kind: chore.
-  Source: planned.
 
 ### 🧰 Dev experience
 
@@ -87404,7 +87387,6 @@ here.)
   unit-testing plugins.
   **Layman:** A test harness that lets plugin authors check their plugin without running the whole terminal.
   Kind: implement.
-  Source: planned.
 
 ---
 
@@ -87500,7 +87482,6 @@ here.)
   `1.x` minor releases. Breaking changes queue for 2.0.
   **Layman:** Promise that plugins written for version 1.0 keep working across every 1.x update.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1085] **Performance regression suite.**
   CI benchmarks (grid throughput,
@@ -87541,7 +87522,6 @@ here.)
   screenshot + one animated demo. Rolls up into H7 (docs site).
   **Layman:** Give every feature at least one screenshot and one short demo.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1087] **External security audit.**
   `SECURITY.md` disclosure policy
@@ -87574,7 +87554,6 @@ here.)
   before 1.0 has the sequence backwards regardless of who pays.
   **Layman:** Check the riskiest parts of the code before 1.0 using free tools. Nobody is paying for a security review and nobody has promised to.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1088] **H14 — bus factor ≥ 2 + governance doc.**
   Second maintainer
@@ -87584,14 +87563,12 @@ here.)
   second maintainer clears the bar.
   **Layman:** Add a second maintainer and write down how decisions get made, so the project does not depend on one person.
   Kind: implement.
-  Source: planned.
 
 - 📋 [ANTS-1089] **Plugin migration guide.**
   for any manifest/API changes between
   0.9 and 1.0.
   **Layman:** Explain to plugin authors what changed between versions and how to update their plugins.
   Kind: implement.
-  Source: planned.
 
 ---
 
@@ -87610,7 +87587,6 @@ contributors don't duplicate research.
   is experimenting with a WASM-targeting VT library today.
   **Layman:** Let people write plugins in languages other than Lua, inside a stronger safety sandbox.
   Kind: implement.
-  Source: planned.
 
 - 💭 [ANTS-1091] **Inter-plugin pub/sub.**
   `ants.bus.publish(topic, data)` /
@@ -87618,7 +87594,6 @@ contributors don't duplicate research.
   modeling — a "read_bus: <topic>" capability.
   **Layman:** Let plugins send messages to each other through a channel you control with permissions.
   Kind: implement.
-  Source: planned.
 
 ### 🎨 Features
 
@@ -87628,7 +87603,6 @@ contributors don't duplicate research.
   Uses the existing OpenAI-compatible config; opt-in per invocation.
   **Layman:** Describe what you want in plain English and get a shell command back, with an explanation.
   Kind: implement.
-  Source: planned.
 
 - 💭 [ANTS-1093] **Collaborative sessions.**
   Real-time shared terminal with a
@@ -87636,14 +87610,12 @@ contributors don't duplicate research.
   terminal with a colleague" feature tmate popularized.
   **Layman:** Share a live terminal session with someone else, encrypted end to end.
   Kind: implement.
-  Source: planned.
 
 - 💭 [ANTS-1094] **Workspace sync.**
   Mirror `config.json`, plugins, and SSH
   bookmarks across devices via a user-configurable git remote.
   **Layman:** Keep your settings, plugins and saved connections in sync across your machines.
   Kind: implement.
-  Source: planned.
 
 - 💭 [ANTS-1223] **Tasks-chip semantics during in-progress-only work (revisit ANTS-1221).**
   User report 2026-05-10: in a Claude Code
@@ -88436,7 +88408,6 @@ reports are asked for separately, each time.
   concentrated in a small user set.
   **Layman:** Keep secrets you type inside a protected area of the processor, hidden from the rest of the system.
   Kind: fix.
-  Source: planned.
 
 ### ⚡ Performance
 
@@ -88447,7 +88418,6 @@ reports are asked for separately, each time.
   have.
   **Layman:** Make decorative font ligatures work on the faster graphics-card drawing path, not just the slower one.
   Kind: refactor.
-  Source: planned.
 
 ### 📦 Distribution & community (H15–H16)
 
@@ -88460,7 +88430,6 @@ reports are asked for separately, each time.
   conference the project is scope-ready for at the time.
   **Layman:** Give a talk at a Linux conference, where the people who package software for distributions gather.
   Kind: chore.
-  Source: planned.
 
 - 💭 [ANTS-1098] **H16 — sponsorship / funding model.**
   GitHub Sponsors + Open
@@ -88471,7 +88440,6 @@ reports are asked for separately, each time.
   ($250/mo with logo + priority issue triage).
   **Layman:** Set up recurring funding, so the project can credibly promise ongoing security response.
   Kind: chore.
-  Source: planned.
 
 ### 🧹 Code quality & maintenance (rolling)
 
