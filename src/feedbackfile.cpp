@@ -1197,8 +1197,12 @@ RetireResult retireTrackingHeadings(const QString &content,
     // Retiring it there destroys the thing it exists to preserve, however
     // shipped every id in it is. Inline ids win, exactly as ANTS-3744 states,
     // so one inline id anywhere makes the heading redundant and retirable.
-    const bool hasInlineIds =
-        content.contains(QStringLiteral("**Proposed ID:**"));
+    // ANTS-5108 — and only a slot that HOLDS an id counts: a finding filed
+    // with a blank `**Proposed ID:**` yields none, and treating its bare label
+    // as one let compact_resolved delete the heading anyway.
+    static const QRegularExpression inlineIdRe(
+        QStringLiteral("\\*\\*Proposed ID:\\*\\*[^\\n]*ANTS-[0-9]+"));
+    const bool hasInlineIds = inlineIdRe.match(content).hasMatch();
 
     QSet<int> dropLines;                      // 0-based
     for (const Boundary &b : scanBoundaries(lines)) {

@@ -886,3 +886,28 @@ TEST(FeedbackCompactResolved, Ants4646CondensedFileKeepsItsSoleIdRecord) {
     EXPECT_EQ(r.headings.at(0).code, QStringLiteral("sole_id_record"));
     EXPECT_EQ(r.newContent, condensed);
 }
+
+// ANTS-5108 — a finding with a BLANK Proposed ID slot is not an inline id.
+// The guard tested for the literal `**Proposed ID:**`, so appending one new,
+// untriaged finding to a condensed file made the tracking heading retirable,
+// and compact_resolved deleted the file's only record of its shipped ids.
+TEST(FeedbackCompactResolved, Ants5108BlankProposedIdIsNotAnInlineId) {
+    const QString condensed = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback TEST\n"
+        "\n"
+        "## Tracked in ROADMAP (detail + status there): ANTS-1525, ANTS-1579\n"
+        "\n"
+        "### 2026-10-02 \u2014 a new finding\n"
+        "\n"
+        "**Proposed ID:** \n"
+        "\n"
+        "Body of the new finding.\n");
+    const FeedbackFile::RetireResult r =
+        FeedbackFile::retireTrackingHeadings(condensed, stdOpts());
+    ASSERT_EQ(r.headings.size(), 1);
+    EXPECT_FALSE(r.headings.at(0).retired)
+        << "a blank id slot must not make the sole id record retirable";
+    EXPECT_EQ(r.headings.at(0).code, QStringLiteral("sole_id_record"));
+    EXPECT_EQ(r.newContent, condensed);
+}
