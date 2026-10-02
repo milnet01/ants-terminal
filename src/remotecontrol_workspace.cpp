@@ -252,8 +252,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // ANTS-4932 — the host's fallback; the provider marshals its own reads.
     } else if (m_roots) {
         rootCwd = m_roots->fallbackRoot();
+    } else {
+        // ANTS-5098 — only a null provider falls back to the process cwd; a
+        // provider's empty answer refuses bad_path (ANTS-2132 § 2.5).
+        rootCwd = QDir::currentPath();
     }
-    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     const QFileInfo rootInfo(rootCwd);
     const QString rootCanonical = rootInfo.canonicalFilePath();
     if (rootCanonical.isEmpty()) {
@@ -1277,8 +1280,11 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
     // ANTS-4932 — the host's fallback; the provider marshals its own reads.
     } else if (m_roots) {
         rootCwd = m_roots->fallbackRoot();
+    } else {
+        // ANTS-5098 — only a null provider falls back to the process cwd; a
+        // provider's empty answer refuses bad_path (ANTS-2132 § 2.5).
+        rootCwd = QDir::currentPath();
     }
-    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     const QString rootCanonical = QFileInfo(rootCwd).canonicalFilePath();
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(wsErr("bad_path",

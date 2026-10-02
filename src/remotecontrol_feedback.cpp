@@ -2225,8 +2225,11 @@ QString resolveRootCanonical(const ants::RootProvider *roots) {
     // than refusing, so every verb on this overload stays testable at the
     // handler layer. ANTS-4932 — the provider marshals its own reads, so this
     // is safe on the dispatch worker.
+    // ANTS-5098 — a provider that answers empty (a refused marshal at
+    // shutdown, or no focused tab) refuses via the caller's anchor-failure
+    // code; it never falls back to the process cwd (ANTS-2132 § 2.5).
     if (roots) rootCwd = roots->fallbackRoot();
-    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
+    else       rootCwd = QDir::currentPath();
     return QFileInfo(rootCwd).canonicalFilePath();
 }
 

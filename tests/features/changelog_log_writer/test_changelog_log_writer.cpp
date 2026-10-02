@@ -990,6 +990,38 @@ TEST(changelog_log_writer, Ants4360SummaryOverridesTheRoadmapHeadline) {
     EXPECT_TRUE(contains(md, "It now does the thing for you."));
 }
 
+// ANTS-5098 — the summary override takes op:"add"'s ANTS-4629 guard. Without
+// it a pre-rendered override was wrapped a second time and reported ok:true.
+TEST(changelog_log_writer, Ants5098SummaryOverrideRefusesAPreRenderedSummary) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapBody()));
+    const std::string before = readFileStd(clPath(tmp.path()));
+
+    const auto fromRoadmap = [&](const QString &summary) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add_from_roadmap");
+        req[QStringLiteral("id")]         = QStringLiteral("ANTS-0042");
+        req[QStringLiteral("summary")]    = summary;
+        return rc.cmdChangelogLog(req).object();
+    };
+
+    for (const QString &bad : {QStringLiteral("**Already bold.**"),
+                               QStringLiteral("Done now. (ANTS-0042)")}) {
+        const QJsonObject r = fromRoadmap(bad);
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool())
+            << bad.toStdString() << " was accepted";
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_summary"))
+            << bad.toStdString();
+        EXPECT_EQ(readFileStd(clPath(tmp.path())), before)
+            << "a refused override must write nothing: " << bad.toStdString();
+    }
+}
+
 // ANTS-4363 — op:"release" closes [Unreleased] into a version block.
 //
 // The verb covered every way of putting an entry IN and no way of closing, so

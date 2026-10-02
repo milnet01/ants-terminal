@@ -1121,6 +1121,17 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // prose be rewritten in changelog voice.
         const QString summaryOverride =
             req.value(QStringLiteral("summary")).toString().trimmed();
+        // ANTS-5098 — the override is caller prose, so it takes op:"add"'s
+        // ANTS-4629 guard; without it a pre-rendered override was wrapped a
+        // second time and reported ok:true.
+        if (!summaryOverride.isEmpty()) {
+            const QString why =
+                ChangelogLog::preRenderedSummaryReason(summaryOverride, id);
+            if (!why.isEmpty()) {
+                return clErr(QStringLiteral("bad_summary"),
+                    QStringLiteral("changelog_log: %1").arg(why));
+            }
+        }
         summary = summaryOverride.isEmpty()
             ? rcHeadlineOneline(
                   match->headlineFull.isEmpty() ? match->headline

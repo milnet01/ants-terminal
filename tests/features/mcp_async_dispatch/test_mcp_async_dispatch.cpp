@@ -30,6 +30,8 @@
 #include "claudeintegration.h"
 #include "guithread.h"
 #include "remotecontrol.h"
+#include "remotecontrol_internal.h"
+#include "rootprovider.h"
 
 using Lane = ClaudeIntegration::DispatchLane;
 
@@ -863,4 +865,54 @@ TEST(McpAsyncDispatch, Ants5086Inv21SharedAndExclusiveHoldsExclude) {
     RemoteControl::releaseRoadmapExclusive(root);
     EXPECT_TRUE(RemoteControl::tryHoldRoadmapShared(root));
     RemoteControl::releaseRoadmapShared(root);
+}
+
+// ANTS-5098 / ANTS-2132 § 2.5 — a host that answers "nothing" for the fallback
+// root (a refused marshal at shutdown, or no focused tab) must make the verb
+// refuse, never anchor it on the terminal process's own cwd. Only a NULL
+// provider (no host at all, the handler-test setup) keeps the process cwd.
+namespace {
+class EmptyRootProvider final : public ants::RootProvider {
+public:
+    QString fallbackRoot() const override { return QString(); }
+    QString fallbackRoadmapPath() const override { return QString(); }
+    std::optional<int> fallbackTab() const override { return std::nullopt; }
+    ants::ResolvedRoot::Source fallbackSource() const override {
+        return ants::ResolvedRoot::Source::EmptyFallback;
+    }
+    std::optional<int> tabForCwd(const QString &) const override {
+        return std::nullopt;
+    }
+};
+}  // namespace
+
+TEST(McpAsyncDispatch, Ants5098EmptyHostAnswerRefusesInsteadOfProcessCwd) {
+    const QString processCwd = QFileInfo(QDir::currentPath()).canonicalFilePath();
+    ASSERT_FALSE(processCwd.isEmpty());
+
+    EmptyRootProvider empty;
+    EXPECT_EQ(rcdetail::resolveRootCanonical(&empty), QString())
+        << "an empty host answer must not become the process cwd";
+    EXPECT_EQ(rcdetail::resolveRootCanonical(&empty, QJsonObject()), QString());
+    EXPECT_EQ(rcdetail::resolveRootCanonical(nullptr), processCwd)
+        << "a null provider keeps the process cwd (handler tests rely on it)";
+
+    RemoteControl rc(nullptr, nullptr, &empty);
+    QJsonObject req;
+    req[QStringLiteral("pattern")] = QStringLiteral("Ants5098Marker");
+    const QJsonObject ws = rc.cmdWorkspaceSearch(req).object();
+    ASSERT_TRUE(ws.value(QStringLiteral("ok")).isBool())
+        << QJsonDocument(ws).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_FALSE(ws.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ws).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_EQ(ws.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_path"));
+
+    QJsonObject cb;
+    cb[QStringLiteral("target")] = QStringLiteral("README.md");
+    const QJsonObject cited = rc.cmdCitedBy(cb).object();
+    ASSERT_TRUE(cited.value(QStringLiteral("ok")).isBool())
+        << QJsonDocument(cited).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_FALSE(cited.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(cited).toJson(QJsonDocument::Compact).toStdString();
 }

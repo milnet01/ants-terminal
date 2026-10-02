@@ -96,6 +96,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log op:"add_from_roadmap" refuses a summary override that is already rendered, as op:"add" does** (ANTS-5098)
+  An override such as `**Done.**` was bolded a second time and reported ok.
+
+- **Verbs refuse when the terminal has no project to offer, instead of searching the folder Ants was started from** (ANTS-5098)
+  With no focused tab, or while Ants shuts down, a verb called without
+  caller_cwd now refuses rather than quietly answering for the wrong
+  project.
+
 - **changelog_log op:"add_batch" routes each entry to the dated-topic form on a mixed Unreleased section, as op:"add" does** (ANTS-5098)
   A batch written to a section that leads with dated topics used to skip
   every entry. Each entry now lands at the top and is flagged
