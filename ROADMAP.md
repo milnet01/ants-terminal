@@ -85681,6 +85681,13 @@ here.)
   that cannot mean a different item.
   User decision 2026-10-02: go ahead; amend ANTS-3765 § 2.6 and run its
   review-contract gate before building.
+  Progress (2026-10-02): ANTS-3765 amended (§ 2.4 markIdParsed(), § 2.6
+  exception, INV-19) and gated, review-contract loops 10-11, capped,
+  calm. Ready to build. Tail filed, not reviewed further: § 2.4 does not
+  declare the ANTS-4500 store methods § 2.6.1 and § 2.8 name
+  (reassignItemId, maxSynthesisedId, maxAllocatedId, allocationFloor);
+  whether an id_origin entry in updatedItems carries a values record is
+  left to the builder.
   **Layman:** The database still says the computer made up five ID numbers that a person actually typed in.
   Kind: fix.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D2 re-run).
