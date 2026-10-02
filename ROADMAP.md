@@ -75583,6 +75583,24 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, spotted while fixing ANTS-4529.
   Lanes: docs, packaging.
 
+- 📋 [ANTS-5617] **Ship a stripped-down demoreel with Ants Terminal.**
+  User request 2026-10-02: bundle demoreel, as small as possible
+  ("a stripped down version that does what it needs to do"). Agreed with
+  the demoreel session (its DEMO-0163) as shape (a): one file, installed
+  outside PATH under libexec/ants-terminal/, pinned by tag and sha256,
+  produced by demoreel as a generated release asset, not a hand fork.
+  python3, Xvfb, xauth, ffmpeg and xdotool are optional dependencies; the
+  terminal installs and runs without them. Not in the Flatpak (the sandbox
+  cannot start host Xvfb). No MCP verb for now.
+  Proposed feature cut, awaiting demoreel's reply: record (Xvfb), check,
+  --version. Ants side: CMake install rule, per-package optional
+  dependency lines, a test that the installed copy runs --version.
+  Hot reload: nothing; a file installed with the package.
+  **Layman:** Ants Terminal will come with a small built-in tool for recording short demo videos of apps, without showing your real desktop.
+  Kind: package.
+  Source: user-request-2026-10-02 via demoreel session (DEMO-0163).
+  Lanes: packaging.
+
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
 
 Triage of the 13 `*_Ants_MCP_Feedback.md` files under /mnt/Games/Scripts/Linux.
