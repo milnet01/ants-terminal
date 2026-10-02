@@ -381,8 +381,16 @@ Result run(const QStringList &relDocs, const Options &opts) {
             r.skipped.append({rel, QStringLiteral("read_failed")});
             continue;  // one bad file must not fail a whole review pass
         }
-        const QString text = QString::fromUtf8(f.readAll());
+        // ANTS-5099 — read one byte past the cap, so a file that grew after
+        // the size check above is skipped rather than read without limit.
+        const QByteArray bytes = f.read(opts.walk.maxDocBytes + 1);
         f.close();
+        if (bytes.size() > opts.walk.maxDocBytes) {
+            r.skipped.append({rel, QStringLiteral("too_large")});
+            r.truncated = true;
+            continue;
+        }
+        const QString text = QString::fromUtf8(bytes);
         if (opts.probe) ++opts.probe->opens;
 
         r.checkedDocs << rel;

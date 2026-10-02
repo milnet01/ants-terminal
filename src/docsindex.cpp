@@ -100,11 +100,21 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
     bool        budgetHit  = false;   // the maxDocBytes break, distinguished from EOF
 
     while (!f.atEnd()) {
-        const QByteArray raw = f.readLine();
-        budget += raw.size();
+        // ANTS-5099 — bounded read: an unbounded readLine() allocated a whole
+        // line before either check could see it. An over-long line is drained
+        // in bounded chunks, and stops draining once the doc budget is spent.
+        QByteArray raw = f.readLine(kMaxLineBytes + 2);
+        qint64 lineBytes = raw.size();
+        const bool overlong = raw.size() > kMaxLineBytes;
+        while (overlong && !raw.endsWith('\n') && !f.atEnd()
+               && budget + lineBytes <= opts.maxDocBytes) {
+            raw = f.readLine(kMaxLineBytes + 2);
+            lineBytes += raw.size();
+        }
+        budget += lineBytes;
         if (budget > opts.maxDocBytes) { budgetHit = true; break; }  // INV-19
         ++lineNo;
-        if (raw.size() > kMaxLineBytes) continue;  // over-long line skip (INV-3)
+        if (overlong) continue;  // over-long line skip (INV-3)
 
         QString line = QString::fromUtf8(raw);
         while (line.endsWith(QLatin1Char('\n')) || line.endsWith(QLatin1Char('\r')))
