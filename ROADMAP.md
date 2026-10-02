@@ -10131,7 +10131,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).
   Lanes: mcp, search.
 
-- 📋 [ANTS-5104] **Performance pass findings for MCP spill, projection, token accounting and redaction (medium and low).**
+- ✅ [ANTS-5104] **Performance pass findings for MCP spill, projection, token accounting and redaction (medium and low).**
   Filed separately: ANTS-5072.
   Medium:
   - read_spill's byte paging never steps back to a UTF-8 boundary,
@@ -10196,6 +10196,14 @@ extends an existing item, that item carries it instead.
   The offload refuses with a hint to narrow the call, and no other spill
   is evicted for it. ANTS-2094 INV-7 stays as written; any wording that
   says an oversized body spills is corrected through rule 14's gate.
+  Resolved (2026-10-02): the last finding, per the user's 2026-09-14
+  decision. offloadBody refuses a body over kSpillMaxBytes with
+  result_too_large and a narrowing hint, writing and evicting nothing, so
+  ANTS-2094 INV-7 holds (McpResultOffload
+  Ants5104OversizedBodyIsRefusedNotSpilled, red first). ANTS-2094's cap
+  section and mcp-error-codes.md's result_too_large row now record it;
+  neither said an oversized body spills, so nothing needed correcting
+  through the gate.
   **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).

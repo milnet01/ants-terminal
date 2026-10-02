@@ -1360,3 +1360,29 @@ TEST_F(McpResultOffload, Ants5266HintDoesNotReadviseAppliedNarrowing) {
             << hint.toStdString();
     }
 }
+
+// ANTS-5104 — a body over kSpillMaxBytes is not spilled (user decision
+// 2026-09-14). evict() never removes the handle just written, so such a body
+// emptied the directory of every other spill and still left the byte cap
+// broken, against INV-7. offloadBody now refuses it with result_too_large and
+// a hint to narrow the call, writing and evicting nothing.
+TEST_F(McpResultOffload, Ants5104OversizedBodyIsRefusedNotSpilled) {
+    const QString small = QStringLiteral("keep-") + QString(3000, QLatin1Char('k'));
+    const QString keep = QJsonDocument::fromJson(
+        mcp::offloadBody(QStringLiteral("find_sources"), small).toUtf8())
+        .object().value("handle").toString();
+    ASSERT_FALSE(keep.isEmpty());
+
+    const QString huge(static_cast<qsizetype>(mcp::kSpillMaxBytes) + 1,
+                       QLatin1Char('x'));
+    const QJsonObject env = QJsonDocument::fromJson(
+        mcp::offloadBody(QStringLiteral("find_sources"), huge).toUtf8()).object();
+    EXPECT_FALSE(env.value("ok").toBool(true));
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("result_too_large"));
+    EXPECT_FALSE(env.value("hint").toString().isEmpty());
+
+    const QStringList files = QDir(spillDir()).entryList(
+        QStringList{QStringLiteral("*.json")}, QDir::Files);
+    EXPECT_EQ(files, QStringList{keep + QStringLiteral(".json")})
+        << "the oversized body must not be written, nor evict another spill";
+}

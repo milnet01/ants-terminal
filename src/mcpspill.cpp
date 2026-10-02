@@ -265,9 +265,28 @@ QString narrowedHint(const QStringList &applied, const QString &toolName,
 QString offloadBody(const QString &toolName, const QString &body,
                     const QJsonObject &args) {
     const QStringList applied = appliedNarrowing(args);
-    Q_UNUSED(toolName);
     const QByteArray utf8 = body.toUtf8();
     const qint64 total = utf8.size();
+
+    // ANTS-5104 — a body over the spill directory's whole byte cap is not
+    // spilled (user decision 2026-09-14). evict() spares the handle just
+    // written, so spilling it emptied the directory of every other body and
+    // still broke INV-7. Refuse instead, writing and evicting nothing.
+    if (total > kSpillMaxBytes) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = QStringLiteral("result_too_large");
+        o[QStringLiteral("error")] = QStringLiteral(
+            "%1's result is %2 bytes, over the %3-byte spill cap, so it can "
+            "be neither returned inline nor spilled").arg(toolName)
+                .arg(total).arg(kSpillMaxBytes);
+        o[QStringLiteral("bytes")] = total;
+        o[QStringLiteral("hint")]  = QStringLiteral(
+            "Narrow the call: most verbs take a filter (query, section, path) "
+            "and a size cap (limit, max_results or max_bytes).");
+        return QString::fromUtf8(
+            QJsonDocument(o).toJson(QJsonDocument::Compact));
+    }
 
     const QString handle =
         QString::fromLatin1(QCryptographicHash::hash(
