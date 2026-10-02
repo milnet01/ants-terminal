@@ -10505,6 +10505,15 @@ extends an existing item, that item carries it instead.
   JSON-escape line cost, the unlocked active mask, DebugLog's umask
   change, ANTS_LOG_ALWAYS with no category, two instances' rotation,
   read_log's wall-clock budget, and tool detection caching not-found.
+  Progress (2026-10-02): read_log's oversized first line was already
+  fixed (it reads at most max_bytes of a line and skips the rest, B-INV-11),
+  and DebugLog's active mask is already a std::atomic. DebugLog now opens
+  debug.log 0600 via open(2) with O_APPEND instead of a process-wide umask
+  (unproven: a cross-thread race). Still open (low): the build-log note
+  regex across blank lines and notes after the 50th error, read_log's
+  JSON-escape line cost and wall-clock budget, ANTS_LOG_ALWAYS with no
+  category active, two instances' rotation, and tool detection caching
+  not-found until restart.
   **Layman:** Smaller diagnostics fixes, including a debug log that can grow until the disk fills.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
