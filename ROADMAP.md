@@ -41530,7 +41530,7 @@ against current source before filing.
   Kind: investigate.
   Source: global-findings-2026-08-12 item 1 (CFG-0064), maintainer-verified 2026-08-18.
 
-- 📋 [ANTS-5244] **A headless restore command that rebuilds a project's roadmap from its claude-config export.**
+- ✅ [ANTS-5244] **A headless restore command that rebuilds a project's roadmap from its claude-config export.**
   ANTS-3794 ships the weekly export to claude-config but no way to use
   it. RoadmapExport::rebuildProject already reads an export into a
   store; nothing reaches it outside the tests. Needs an entry point
@@ -41538,6 +41538,13 @@ against current source before filing.
   already exists in the target store, and a documented recovery
   procedure. ANTS-3860 (an export written before a schema bump cannot
   be imported) bounds how far back a restore can reach.
+  Shipped (2026-10-02): `ants-terminal --import-roadmap <file> <root>`
+  (RoadmapExport::runImportCommand). Rule for an existing project: refuse,
+  exit 1, and name roadmap_migrate op:"deregister"; rebuildProject() now
+  binds the root in its own project insert, so the UNIQUE columns make
+  that atomic. Recovery procedure: the man page entry. A missing store is
+  created. Contract and tests: tests/features/roadmap_import_command/
+  (INV-1..4, all seen red first).
   **Layman:** A way to actually restore the roadmap from the weekly backup, not just take the backup.
   Kind: implement.
   Source: ANTS-3794 spec, out of scope (in-session-2026-09-19).

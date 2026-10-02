@@ -800,7 +800,8 @@ bool RoadmapExport::exportProject(RoadmapStore &store, const QString &exportSlug
     return true;
 }
 
-bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *error) {
+bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *error,
+                                   const QString &root) {
     if (!store.isOpen())
         return fail(error, QStringLiteral("store is not open"));
     QSqlDatabase db = RoadmapExport::StoreHandle::db(store);
@@ -848,8 +849,13 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
                                  .arg(RoadmapExport::kExportSchemaVersion));
             // root is NULL: it is store-local and deliberately unexported
             // (§ 2.3), which is why ANTS-3756 makes the column nullable.
+            // ANTS-5244 — a restore binds the caller's root here, in the same
+            // insert, so `root TEXT UNIQUE` refuses a root already held and
+            // the rollback leaves nothing half-restored.
             q.prepare(QStringLiteral(
-                "INSERT INTO project (root, name, export_slug, legend) VALUES (NULL, ?, ?, '{}')"));
+                "INSERT INTO project (root, name, export_slug, legend) VALUES (?, ?, ?, '{}')"));
+            q.addBindValue(root.isEmpty() ? QVariant(QMetaType(QMetaType::QString))
+                                          : QVariant(root));
             q.addBindValue(o.value(QStringLiteral("name")).toString());
             q.addBindValue(o.value(QStringLiteral("project")).toString());
             if (!q.exec())
@@ -1120,4 +1126,59 @@ int RoadmapExport::runExportCommand(const QString &storePath, const QString &dir
         out << "export-roadmaps: " << r.error << '\n';
     out.flush();
     return (r.error.isEmpty() && r.failed.isEmpty()) ? 0 : 1;
+}
+
+int RoadmapExport::runImportCommand(const QString &storePath, const QString &file,
+                                    const QString &root, QTextStream &out) {
+    const auto failWith = [&out](int code, const QString &msg) {
+        out << "import-roadmap: " << msg << '\n';
+        out.flush();
+        return code;
+    };
+
+    // INV-4 — both arguments are checked before open(), which creates a
+    // missing store.
+    QFile in(file);
+    if (!in.open(QIODevice::ReadOnly))
+        return failWith(2, QStringLiteral("cannot read %1: %2").arg(file, in.errorString()));
+    // The canonical form registerProject() stores, so projectIdForRoot() finds it.
+    const QFileInfo rootInfo(root);
+    const QString canonicalRoot = rootInfo.isDir() ? rootInfo.canonicalFilePath() : QString();
+    if (canonicalRoot.isEmpty())
+        return failWith(2, QStringLiteral("%1 is not an existing directory").arg(root));
+
+    // The export's slug, from its leading `meta` record (§ 2.4), so a refusal
+    // names the project. A malformed file is left to rebuildProject() to refuse.
+    const QString slug = QJsonDocument::fromJson(in.readLine())
+                             .object().value(QStringLiteral("project")).toString();
+    if (!in.seek(0))
+        return failWith(2, QStringLiteral("cannot rewind %1").arg(file));
+
+    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    if (!store.open(&err))
+        return failWith(2, QStringLiteral("cannot open %1: %2").arg(storePath, err));
+
+    // INV-3 — never overwrite. The UNIQUE columns would refuse either case
+    // inside rebuildProject(); checking first lets the message say what to do.
+    const QString remedy = QStringLiteral(
+        "; remove it first with roadmap_migrate op:\"deregister\" from its root, "
+        "or restore into another store");
+    if (store.projectIdForRoot(canonicalRoot, &err).has_value())
+        return failWith(1, QStringLiteral("%1 is already registered in %2%3")
+                               .arg(canonicalRoot, storePath, remedy));
+    if (!slug.isEmpty() && store.projectIdForSlug(slug, &err).has_value())
+        return failWith(1, QStringLiteral("project \"%1\" is already in %2%3")
+                               .arg(slug, storePath, remedy));
+
+    if (!rebuildProject(store, &in, &err, canonicalRoot))
+        return failWith(1, QStringLiteral("%1: %2").arg(file, err));
+
+    out << "restored " << slug << " from " << file << " into " << storePath
+        << ", tied to " << canonicalRoot << '\n'
+        << "next: run roadmap_log op:\"render\" from " << canonicalRoot
+        << " to rewrite its roadmap file\n";
+    out.flush();
+    return 0;
 }

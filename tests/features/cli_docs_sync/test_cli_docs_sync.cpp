@@ -14,7 +14,8 @@ namespace {
 std::string root() { return ANTS_CLI_DOCS_ROOT; }
 
 // Long option names main.cpp defines: the first name of each
-// QCommandLineOption("name" / {"name", ...}), plus the pre-parse flag.
+// QCommandLineOption("name" / {"name", ...}), plus each pre-parse flag that
+// main.cpp tests with qstrcmp(argv[i], "--name") before QApplication exists.
 std::set<std::string> optionsFromMain() {
     const std::string src = ants_test::slurpFile(root() + "/src/main.cpp");
     std::set<std::string> out;
@@ -24,8 +25,10 @@ std::set<std::string> optionsFromMain() {
         out.insert((*it)[1].str());
         if ((*it)[2].matched) out.insert((*it)[2].str());
     }
-    if (src.find("\"--export-roadmaps\"") != std::string::npos)
-        out.insert("export-roadmaps");
+    const std::regex pre(R"re(qstrcmp\(\s*argv\[\w+\]\s*,\s*"--([a-z][a-z0-9-]+)"\s*\))re");
+    for (auto it = std::sregex_iterator(src.begin(), src.end(), pre);
+         it != std::sregex_iterator(); ++it)
+        out.insert((*it)[1].str());
     return out;
 }
 

@@ -347,9 +347,9 @@ timer that is disabled or lost.
 
 ## 5. Out of scope
 
-- **Restoring from the export** — deferred, tracked by ANTS-5244.
-  `RoadmapExport::rebuildProject()` exists; nothing outside the tests
-  reaches it.
+- **Restoring from the export** — built by ANTS-5244 as
+  `ants-terminal --import-roadmap <file> <root>`, contract in
+  `tests/features/roadmap_import_command/spec.md`.
 - **An export older than a schema bump** — tracked by ANTS-3860.
 - **Syncing stores across machines** — a permanent exclusion. The store
   is per-machine; this spec only makes a second store's pushes visible

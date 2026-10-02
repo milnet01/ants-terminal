@@ -13,6 +13,7 @@ complete -c ants-terminal      -l quake    -d 'Run in Quake / drop-down mode'
 complete -c ants-terminal      -l dropdown -d 'Run in Quake / drop-down mode (alias of --quake)'
 complete -c ants-terminal      -l new-plugin -r -d 'Scaffold a new Lua plugin and exit' -x
 complete -c ants-terminal      -l export-roadmaps -r -a '(__fish_complete_directories)' -d 'Export every roadmap-store project as JSONL and exit'
+complete -c ants-terminal      -l import-roadmap -r -F -d 'Restore one project from its roadmap export and exit'
 complete -c ants-terminal      -l e2e      -d 'End-to-end test mode, for the tools/e2e harness'
 complete -c ants-terminal      -l remote   -x -d 'Send a remote-control command and exit'
 complete -c ants-terminal      -l remote-socket  -r -F -d 'Override the remote-control socket path'

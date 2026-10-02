@@ -3,8 +3,8 @@
 ## Invariants
 
 **INV-1 — every long option is documented everywhere.** Each long option
-`src/main.cpp` defines — through a `QCommandLineOption` or the
-`--export-roadmaps` pre-parse — appears in the man page
+`src/main.cpp` defines — through a `QCommandLineOption` or a pre-parse
+`qstrcmp(argv[i], "--name")` before `QApplication` exists — appears in the man page
 (`packaging/linux/ants-terminal.1`) and in the bash, zsh and fish completions
 (`packaging/completions/`).
 

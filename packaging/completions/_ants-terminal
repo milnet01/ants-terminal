@@ -16,6 +16,7 @@ _ants-terminal() {
         '(--quake --dropdown)'{--quake,--dropdown}'[Run in Quake / drop-down mode]'
         '--new-plugin[Scaffold a new Lua plugin and exit]:plugin name:'
         '--export-roadmaps[Export every roadmap-store project as JSONL and exit]:directory:_files -/'
+        '--import-roadmap[Restore one project from its roadmap export and exit]:export file:_files:project root:_files -/'
         '--e2e[End-to-end test mode, for the tools/e2e harness]'
         '--remote[Send a remote-control command and exit]:command:'
         '--remote-socket[Override the remote-control socket path]:socket:_files'

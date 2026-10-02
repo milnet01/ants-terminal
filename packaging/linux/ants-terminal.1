@@ -82,6 +82,25 @@ Export every project in the roadmap store to
 store, and exit. Runs without a display, so a service with no desktop
 session can use it.
 .TP
+.BI \-\-import\-roadmap " FILE ROOT"
+Restore one project from a
+.B \-\-export\-roadmaps
+file into the roadmap store, tie it to the project folder
+.IR ROOT ,
+and exit.
+It refuses a project or folder the store already holds; remove that one first with the
+.B roadmap_migrate
+MCP tool's
+.B deregister
+operation.
+Afterwards, run the
+.B roadmap_log
+tool's
+.B render
+operation from
+.I ROOT
+to rewrite the project's roadmap file.
+.TP
 .B \-\-e2e
 End-to-end test mode: forces the remote-control socket on and enables the
 synthetic input verbs (key and click injection, window resize, screenshot).

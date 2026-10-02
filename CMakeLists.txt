@@ -4067,6 +4067,9 @@ if(ANTS_TESTS)
                 # ANTS-3794 — exporting every project, and --export-roadmaps.
                 # INV-1 is a source scrape of main.cpp over ANTS_SRC_DIR.
                 tests/features/roadmap_export_all/test_roadmap_export_all.cpp
+                # ANTS-5244 — restoring one project with --import-roadmap.
+                # INV-1 is a source scrape of main.cpp over ANTS_SRC_DIR.
+                tests/features/roadmap_import_command/test_roadmap_import_command.cpp
                 # ANTS-3794 INV-11 — the backup health check.
                 tests/features/roadmap_backup_health/test_roadmap_backup_health.cpp
                 # ANTS-3764 step 2 — the BulletRecord widening ANTS-3757 needs.
@@ -4235,6 +4238,10 @@ if(ANTS_TESTS)
         # ANTS-3761 INV-19 — the RFC's own vectors, committed under the test dir.
         ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
         # ANTS-3761 INV-18 — the committed golden exports, likewise.
+        ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden")
+    # ANTS-5244 INV-2 — a restore re-exports byte for byte as that golden file.
+    set_property(SOURCE tests/features/roadmap_import_command/test_roadmap_import_command.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden")
     set_property(SOURCE tests/features/qt_version_guard/test_qt_version_guard.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS

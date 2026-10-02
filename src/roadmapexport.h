@@ -63,7 +63,11 @@ bool exportProject(RoadmapStore &store, const QString &exportSlug,
 // which must be open and must not already hold that project. Single pass — the
 // § 2.4 record order guarantees every reference is declared before it is used,
 // which is the reason `section` precedes `element` and `item` precedes both.
-bool rebuildProject(RoadmapStore &store, QIODevice *in, QString *error = nullptr);
+// ANTS-5244 — `root`, when given, is bound in the project row's own insert, so
+// a root the store already holds refuses the whole rebuild. Empty stores NULL,
+// as an export carries no root.
+bool rebuildProject(RoadmapStore &store, QIODevice *in, QString *error = nullptr,
+                    const QString &root = QString());
 
 // ANTS-3794 § 2.2 — export every project in the store into `dir`, one
 // `<export_slug>.jsonl` each. One project's failure does not stop the others.
@@ -82,5 +86,14 @@ ExportAllResult exportAllProjects(RoadmapStore &store, const QString &dir);
 // code: 2 when there is no store at `storePath` (never creating one) or it will
 // not open, 1 when any project failed, 0 otherwise.
 int runExportCommand(const QString &storePath, const QString &dir, QTextStream &out);
+
+// ANTS-5244 — the `--import-roadmap <file> <root>` command: restore one
+// project from its export into the store at `storePath`, creating the store if
+// it is missing, and tie it to `root`. Returns 2 when `file` cannot be read or
+// `root` is not an existing directory (both checked before any store is
+// created) or the store will not open; 1 when the rebuild fails, including on
+// a project or root the store already holds; 0 otherwise.
+int runImportCommand(const QString &storePath, const QString &file, const QString &root,
+                     QTextStream &out);
 
 }  // namespace RoadmapExport

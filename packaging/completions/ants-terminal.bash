@@ -21,6 +21,11 @@ _ants_terminal()
             COMPREPLY=()
             return 0
             ;;
+        --import-roadmap)
+            compopt -o filenames 2>/dev/null
+            mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
+            return 0
+            ;;
         --export-roadmaps|--remote-cwd)
             compopt -o filenames 2>/dev/null
             mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
@@ -34,7 +39,7 @@ _ants_terminal()
     esac
 
     local opts="-h --help -v --version --quake --dropdown --new-plugin
-        --export-roadmaps --e2e --remote --remote-socket --remote-tab
+        --export-roadmaps --import-roadmap --e2e --remote --remote-socket --remote-tab
         --remote-text --remote-cwd --remote-command --remote-title
         --remote-lines --remote-json"
     mapfile -t COMPREPLY < <(compgen -W "${opts}" -- "${cur}")

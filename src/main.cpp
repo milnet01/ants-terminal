@@ -167,6 +167,21 @@ int main(int argc, char *argv[]) {
         return RoadmapExport::runExportCommand(RoadmapStore::defaultPath(),
                                                QString::fromLocal8Bit(argv[i + 1]), out);
     }
+    // ANTS-5244 — --import-roadmap, its restore, needs no display either.
+    for (int i = 1; i < argc; ++i) {
+        if (qstrcmp(argv[i], "--import-roadmap") != 0)
+            continue;
+        QCoreApplication core(argc, argv);
+        if (i + 2 >= argc) {
+            std::fputs("usage: ants-terminal --import-roadmap <export.jsonl> <project-root>\n",
+                       stderr);
+            return 2;
+        }
+        QTextStream out(stdout);
+        return RoadmapExport::runImportCommand(RoadmapStore::defaultPath(),
+                                               QString::fromLocal8Bit(argv[i + 1]),
+                                               QString::fromLocal8Bit(argv[i + 2]), out);
+    }
 
     // Set default surface format with alpha for per-pixel transparency.
     // Do NOT set Core Profile here — it breaks QPainter's GL paint engine
@@ -401,10 +416,10 @@ int main(int argc, char *argv[]) {
                         "cannot read stdin\n");
                     return 1;
                 }
-                constexpr qint64 kMaxStdinBytes = 1 * 1024 * 1024;
+                constexpr qint64 kMaxStdinBytes = qint64{1} * 1024 * 1024;
                 QByteArray buf;
                 while (!in.atEnd()) {
-                    buf += in.read(64 * 1024);
+                    buf += in.read(qint64{64} * 1024);
                     if (buf.size() > kMaxStdinBytes) {
                         std::fprintf(stderr,
                             "ants-terminal --remote send-text: stdin "

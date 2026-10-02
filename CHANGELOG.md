@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`ants-terminal --import-roadmap <file> <root>` restores one project's roadmap from its weekly backup export.** (ANTS-5244)
+  It ties the restored project to its folder, refuses a project or
+  folder the store already holds, and needs no display. Afterwards,
+  run `roadmap_log op:"render"` from the folder to rewrite the roadmap
+  file.
+
 - **The status bar shows when the session in the current tab has unread messages from other Claude Code sessions** (ANTS-5620)
   A "✉ 3 unread" chip appears for the tab you are looking at, and its
   tooltip names who sent them. It disappears once the messages are read.
