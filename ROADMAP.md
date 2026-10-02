@@ -41506,6 +41506,37 @@ against current source before filing.
   Source: ANTS-3794 first real run (in-session-2026-09-19).
   Lanes: roadmap.
 
+- 📋 [ANTS-5616] **roadmap-data-model.md disagrees with the code and with roadmap-format.md in four places.**
+  Found by the 2026-10-02 review-contract gate on the ANTS-3824/4440
+  amendment, both lanes independently; outside that change, so filed
+  rather than looped on. Each was verified against the code.
+
+  1. [Q1] § 1 INV-3 (around "fails that function's closing `ants-v1`
+     test"), § 3.2 ("still splices markdown, renders nothing") and § 10
+     say a store-rowed pass-headings project is spliced, not rendered.
+     `storeServedDialects()` in src/roadmapsource.cpp returns ants-v1 AND
+     pass-headings (ANTS-4803), and the render has a passHeadings path
+     that skips the layman gate for format reasons. A conformer would
+     hand-edit such a file and lose the edit. mcp-behavioural-notes.md
+     (around its roadmap_log ANTS-3809 entry) states the old ants-v1-only
+     definition too; settle whether roadmap_log writes there splice.
+  2. [Q2] § 7.1 says the id_high_water row and the corpus floor "both
+     fold the prefix". roadmap-format.md § 3.10.4 says allocation
+     compares it exactly, and RoadmapStore::maxAllocatedId uses a
+     case-sensitive GLOB (`prefix-[0-9]*`), so the code matches § 3.10.4.
+  3. [Q2] § 7.1 says the per-machine counter "carries the first prefix
+     and the rest fall through to the corpus floor alone".
+     roadmap-format.md § 3.10.4: allocation is max(shared counter,
+     per-prefix corpus floor) + 1 for every prefix.
+  4. [Q2] § 8 lists the required bullet pieces as emoji, id, headline and
+     Kind, and files Source as optional. roadmap-format.md § 3.5 made
+     Source required in v1.2 (2026-09-09); the render omits a defaulted
+     source on purpose, which § 8 would need to state as an exception.
+  **Layman:** The written rules for how roadmap data is stored have fallen behind the code in four spots, so someone following them would build the wrong thing.
+  Kind: doc-fix.
+  Source: review-contract-2026-10-02 (roadmap-data-model gate, loop 1).
+  Lanes: roadmap, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

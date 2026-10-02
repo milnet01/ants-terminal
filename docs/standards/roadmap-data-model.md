@@ -907,7 +907,7 @@ met three further compounds (`feature/fix`, `design + implement`, `design + fix`
 and resolved them by correcting the four bullets that carried them, deliberately
 adding no rule.
 
-**`mappedKind()` (`src/roadmapmigrate.cpp`) implements all fifteen rows** — the
+**`mappedKind()` implements all fifteen rows** — the
 four ANTS-4065 § 2.1 added landed with that spec's Phase C on 2026-08-09. A
 value in neither the canonical enum nor this table still falls through the
 unmapped branch (`implement`, with `extras.source_kind` preserved and a
@@ -1102,8 +1102,9 @@ overridden:
   discards. **Rotation therefore becomes a store operation** — reassign the
   closed minor's sections to the archive path and re-render, which lands both
   files with content preserved and nothing snipped. That is a change to
-  `roadmap-format.md` § 3.9, and it is built: `roadmap_log
-  op:"rotate_minor"` (ANTS-4070). Not an open question in this model.
+  `roadmap-format.md` § 3.9, and its handler is built (`roadmap_log
+  op:"rotate_minor"`, ANTS-4070) but not yet routed: a call refuses until
+  ANTS-4081 wires it. Not an open question in this model.
 
 ---
 
