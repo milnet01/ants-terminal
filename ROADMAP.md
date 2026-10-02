@@ -9941,6 +9941,15 @@ extends an existing item, that item carries it instead.
   section ends, fences and bullet indentation included, is the
   definition. speclint adopts it, so the lint checks exactly the
   invariants the parser reads.
+  Progress (2026-10-02): SpecParse::invariantsSection is now the one
+  definition of the Invariants section; parseSpecBody and spec_lint both
+  use it, and the lint's anchor scan takes the parser's anchor shapes
+  (SpecLint Ants5100LintChecksOnlyTheInvariantsTheParserReads). The
+  id-gap scan walks gaps between ids, and a run over 50 numbers is one
+  finding (SpecLint Ants5100LongIdRunIsOneFinding). Both red first. Still
+  open (low): plan_template's size and caps, the source blob cap,
+  spec_conformance's whole-file read and malformed-row count, speclog's
+  duplicate guard and fences, and the three stale documents.
   **Layman:** Smaller spec-tool fixes, including a pattern check that passes when the pattern itself is broken.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
