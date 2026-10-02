@@ -168,7 +168,10 @@ void Config::save() {
 
     // ANTS-1183: stamp schema version on every save so the next load
     // can decide whether to migrate. Cheap; idempotent.
-    m_data[QStringLiteral("_schema")] = kSchemaVersion;
+    // ANTS-5106 — never LOWER it: an older build stamping its own version
+    // over a newer one made the newer build re-run its migrations.
+    m_data[QStringLiteral("_schema")] =
+        qMax(kSchemaVersion, m_data.value(QStringLiteral("_schema")).toInt(0));
 
     // Set restrictive umask before creating file to avoid brief world-readable window
     mode_t oldMask = ::umask(0077);

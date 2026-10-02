@@ -18,6 +18,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDevice>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
@@ -259,4 +261,25 @@ static int runMain() {
 
 TEST(ConfigParseFailureGuard, Main) {
     ASSERT_EQ(0, runMain());
+}
+
+// ANTS-5106 — an older build never lowers the schema stamp. save() wrote its
+// own kSchemaVersion over a newer one, so the newer build re-ran migrations it
+// had already applied the next time it loaded the file.
+TEST(ConfigParseFailureGuard, Ants5106SaveKeepsANewerSchemaStamp) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgConfigHomeGuard envGuard;
+    const QString antsDir =
+        setupSandbox(tmp, envGuard, R"({"_schema":99,"font_size":14})");
+    {
+        Config cfg;
+        cfg.setFontSize(15);   // triggers save()
+    }
+    QFile f(antsDir + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+    EXPECT_EQ(o.value(QStringLiteral("_schema")).toInt(), 99)
+        << "an older build must not stamp its own, lower schema version";
+    EXPECT_EQ(o.value(QStringLiteral("font_size")).toInt(), 15);
 }

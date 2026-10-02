@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An older Ants version saving the settings file no longer lowers its schema version, so a newer version does not redo its upgrades** (ANTS-5106)
+
 - **Cancelling an AI review round no longer lets its late answers appear in the next round** (ANTS-5105)
 
 - **The AI Assistant's Send button works again after a refused request or after the dialog is reopened mid-reply** (ANTS-5105)
