@@ -66431,7 +66431,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-09-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5241] **roadmap-format.md § 3.5.1 and roadmap-data-model.md § 8 still describe a corpus floor under the store's id high-water, which ANTS-4631 removed.**
+- ✅ [ANTS-5241] **roadmap-format.md § 3.5.1 and roadmap-data-model.md § 8 still describe a corpus floor under the store's id high-water, which ANTS-4631 removed.**
   Found by a cold lane while gating ANTS-4977's edit to roadmap-format.md.
   Code: RoadmapStore::allocationFloor is max(id_high_water row, the store's
   own highest item id for the prefix), with no corpus term. The ANTS-4631
@@ -66446,6 +66446,14 @@ than re-filed; everything else lands here.
   fix rewrites both consistently and runs both documents' review gates.
   Not fixed inside the ANTS-4977 gates because it is a separate, pre-existing
   design drift, and fixing one document alone would make them contradict.
+  Resolved (2026-10-02): ANTS-5609's rewrite (fe7fe103) and earlier
+  edits had fixed § 3.5.1's table and formula and data-model §§ 7.1 and
+  8. Two sentences remained and are fixed: data-model's id_hint
+  paragraph named a max() of the store row and the corpus, and
+  roadmap-format § 3.10.4 said § 3.5.1 states the max() shape for the
+  store-migrated row (it is the counter row's). Checked against
+  cmdRoadmapLogAppend: the store path compares id_hint to
+  rlStoreIdHighWater, with no corpus term.
   **Layman:** Two roadmap rulebooks describe how new item numbers are chosen in a way the code stopped using, so someone building to them would build the old way.
   Kind: doc-fix.
   Source: review-contract 2026-09-19 (roadmap-format gate loop 12, surfaced not fixed).

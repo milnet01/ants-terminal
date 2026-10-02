@@ -1211,8 +1211,8 @@ is *not* store-migrated has no **per-prefix** counter carrier: every
 prefix shares the one un-prefixed integer. It does **not** follow that
 the counter is skipped. Allocation is `max(shared counter, per-prefix
 corpus floor) + 1` — the counter supplies the candidate and
-`corpusHighWater()` only floors it, the same `max()` shape § 3.5.1
-states for the store-migrated row (`remotecontrol_roadmap_log_batch.cpp`,
+`corpusHighWater()` only floors it, the same `max()` shape § 3.5.1's
+counter row states (`remotecontrol_roadmap_log_batch.cpp`,
 `effCounter`). The consequence worth keeping is about the FLOOR, not
 the source: the shared counter tracks the dominant prefix's
 allocations, so a non-dominant prefix skips numbers and floors to

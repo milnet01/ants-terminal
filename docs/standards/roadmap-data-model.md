@@ -687,8 +687,9 @@ high-water. It is the one post-cutover write that carries a **complete, unalloca
 from outside, so § 4.1's "the store owns allocation" holds for every other
 write and names this as its exception. `id_hint` is the near case and not the
 same one: it pins the *number* an allocation will use, is refused `id_taken`
-when it sits at or below the allocation floor (§ 8 — the `max()` of the store
-row and the committed corpus, not either alone), and still runs through the
+when it sits at or below the allocation floor (on a store-migrated project the
+greater of the `id_high_water` row and the highest id a stored item holds, with
+no corpus term — `roadmap-format.md` § 3.5.1), and still runs through the
 allocator —
 so the id it produces is `synthesised` like any other allocation. Of the three `id_origin` values it is
 `synthesised`: `parsed` would claim the id matched the § 3.5.1 grammar *in

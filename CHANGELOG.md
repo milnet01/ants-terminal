@@ -31,6 +31,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap standards no longer say a store-backed project's new ids are floored to the committed files.** (ANTS-5241)
+
 - **A refused roadmap item move now says how to fix it: set the item's Layman line, then move again.** (ANTS-5589)
   Moving an open item with no Layman line is still refused. The refusal
   used to suggest adding the line in the same call, which a move cannot
