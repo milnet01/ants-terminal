@@ -573,7 +573,14 @@ bool SessionManager::writeBlob(const QString &path, const QString &tmpPath,
     // saveTabOrder or Config::save sets and restores it.
     const int fd = ::open(tmpPath.toLocal8Bit().constData(),
                           O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-    if (fd < 0) return false;
+    if (fd < 0) {
+        // ANTS-5106 — a failed temp open was silent; the save just did not
+        // happen.
+        qWarning("SessionManager::saveSession: could not open %s: %s — not "
+                 "saved, prior blob unchanged",
+                 qUtf8Printable(tmpPath), std::strerror(errno));
+        return false;
+    }
     QFile file;
     if (!file.open(fd, QIODevice::WriteOnly, QFileDevice::AutoCloseHandle)) {
         ::close(fd);
@@ -732,6 +739,11 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
                      errno, std::strerror(errno));
             QFile::remove(tmpPath);
         }
+    } else {
+        // ANTS-5106 — a failed temp open was silent.
+        qWarning("SessionManager::saveTabOrder: could not open %s (%s) — "
+                 "prior tab_order.txt unchanged",
+                 qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
     }
     ::umask(oldMask);
 }

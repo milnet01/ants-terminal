@@ -238,9 +238,17 @@ void Config::save() {
                 m_lastWrittenBytes = json;
             }
         } else {
+            // ANTS-5106 — a short write was dropped without a word.
+            qWarning("Config::save: write to %s failed (%s) — config.json "
+                     "unchanged", qUtf8Printable(tmpPath),
+                     qUtf8Printable(file.errorString()));
             file.close();
             QFile::remove(tmpPath);
         }
+    } else {
+        // ANTS-5106 — and so was a failed temp open.
+        qWarning("Config::save: could not open %s (%s) — config.json unchanged",
+                 qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
     }
     ::umask(oldMask);
 }
