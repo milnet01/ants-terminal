@@ -1353,3 +1353,20 @@ TEST(changelog_log_writer, Ants4888SchemaDoesNotCallSummaryIgnored) {
     EXPECT_NE(ci.find("it OVERRIDES the cited bullet's"), std::string::npos)
         << "the schema no longer states that `summary` overrides the headline";
 }
+
+// ANTS-5108 — a section holding only headings or a comment has nothing to
+// release. Any non-blank line counted, so a lone `### Added` or a placeholder
+// comment let release cut an empty version block, on both release paths.
+TEST(changelog_log_writer, Ants5108HeadingOnlySectionIsNothingToRelease) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Added\n\n<!-- placeholder -->\n\n"
+        "## [0.1.0] - 2026-01-01\n\n- old.\n");
+    const auto versioned = ChangelogLog::closeUnreleased(
+        md, QStringLiteral("0.2.0"), QStringLiteral("2026-10-02"));
+    EXPECT_FALSE(versioned.ok);
+    EXPECT_EQ(versioned.code, QStringLiteral("nothing_to_release"));
+    const auto dated = ChangelogLog::closeUnreleasedDated(
+        md, QStringLiteral("2026-10-02"));
+    EXPECT_FALSE(dated.ok);
+    EXPECT_EQ(dated.code, QStringLiteral("nothing_to_release"));
+}

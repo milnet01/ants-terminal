@@ -487,6 +487,17 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
 }
 
 // ANTS-4363 — see the header. Close [Unreleased] into a version block.
+// ANTS-5108 — a line that is a release ENTRY: not blank, not a heading
+// (`### Added` alone releases nothing) and not a one-line HTML comment (a
+// placeholder). Shared by both release paths.
+static bool isReleasableLine(const QString &line) {
+    const QString t = line.trimmed();
+    if (t.isEmpty() || t.startsWith(QLatin1Char('#'))) return false;
+    if (t.startsWith(QStringLiteral("<!--")) && t.endsWith(QStringLiteral("-->")))
+        return false;
+    return true;
+}
+
 ReleaseResult closeUnreleased(const QString &markdown,
                               const QString &version,
                               const QString &date) {
@@ -556,7 +567,7 @@ ReleaseResult closeUnreleased(const QString &markdown,
     // no release, and it is silently produced by cutting twice.
     bool hasContent = false;
     for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i) {
-        if (!lines.at(i).trimmed().isEmpty()) { hasContent = true; break; }
+        if (isReleasableLine(lines.at(i))) { hasContent = true; break; }
     }
     if (!hasContent) {
         r.code  = QStringLiteral("nothing_to_release");
@@ -637,7 +648,7 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
     QStringList body = lines.mid(unrel + 1, sectionEnd - unrel - 1);
     while (!body.isEmpty() && body.first().trimmed().isEmpty()) body.removeFirst();
     while (!body.isEmpty() && body.last().trimmed().isEmpty())  body.removeLast();
-    if (body.isEmpty()) {
+    if (std::none_of(body.cbegin(), body.cend(), isReleasableLine)) {
         r.code  = QStringLiteral("nothing_to_release");
         r.error = QStringLiteral(
             "changelog_log: `## [Unreleased]` is empty — there is nothing to "

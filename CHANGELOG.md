@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log release refuses an Unreleased section that holds only headings or a placeholder comment** (ANTS-5108)
+
 - **feedback_log compact_resolved keeps a condensed feedback file's only record of its shipped ids when a new finding has a blank id slot** (ANTS-5108)
 
 - **project_query's project.list stops after 200,000 entries and asks for a subdirectory, instead of walking a huge tree in full** (ANTS-5107)
