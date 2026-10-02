@@ -178,10 +178,13 @@ requirement: `write (open)`, `write (closed)` and `write (status shipped)` are
 **conditional** — the field is required only for items in that state; `write
 (store-populated)` is **unconditional but not author-supplied** — the field must
 be present on every item and the store is what puts it there, so a write path
-that rejects a call for omitting one has misread the row. One field carries a
-slash form, `write (open) / publish (open, public)` — `layman` is owed at both
+that rejects a call for omitting one has misread the row. Two fields carry a
+slash form. `layman`'s `write (open) / publish (open, public)` is owed at both
 tiers, for open items at write and for **public** open items at publish, since
-§ 7.5 keeps `internal` items out of the render the gate protects. **`write (migration-populated)`** is § 4.1.1's project-level
+§ 7.5 keeps `internal` items out of the render the gate protects. `body`'s
+`optional (open) / write (closed)` is required only once the item closes, for
+its closure note. **`unused`** marks a column no tier requires and no write
+verb sets. **`write (migration-populated)`** is § 4.1.1's project-level
 analogue of `store-populated`: migration is what supplies it, no author ever
 does, and a project that has never been migrated — created in the store after
 cutover — carries `''`, which § 4.1.1 defines as "not recorded" rather than as a
@@ -308,14 +311,13 @@ unrelated to the `planned` **status** of § 7.3) and records that the value was
 defaulted. Where no default exists — `layman`, `priority`, `resolution`, and any
 date not derivable from history — the field is left empty.
 
-**"No default" is not "never harvested", and `priority` is where the two get
-confused.** Leaving a field empty is what migration does when the *source* holds
-nothing for it; it is not licence to discard a value the source declares. Where
-an item carries a `Priority:` line, migration harvests it by § 7.5's rule — which
-is total, and states what an unreadable value does — and only an item carrying
-none is left empty. The same applies
-to any field this tier says has no default: no default means nothing is
-*invented*, never that a declared value is dropped.
+**"No default" is not "never harvested".** Leaving a field empty is what
+migration does when the *source* holds nothing for it; it is not licence to
+discard a value the source declares. No default means nothing is *invented*,
+never that a declared value is dropped. **`priority` is the one field whose
+source line is not harvested**: a `Priority:` line stays in the body as text for
+a reader (§ 7.5), so the column is empty on every migrated item and nothing is
+dropped.
 
 This is the only arrangement the corpus permits. Across the surveyed corpus,
 **two in five** items carry no `Kind:` (41%), and close to half carry no
@@ -329,11 +331,10 @@ Proportions and approximate counts are used on purpose: the corpus grows every
 time anyone files an item, so an exact count written into a standard is wrong
 within the day. Exact figures appear only where an argument turns on the
 exact value — § 7.1's three off-grammar IDs, § 7.4's `Kind:` tally, § 8's
-pass-headings counts among them — and the script prints most of them. **Two are
-derived rather than printed** and a re-runner must not expect to find them in
-its output: § 7.5's split of the 88 `Priority:` lines into 86 integers and two
-words, and § 7.3.1's eight-token tally of one project's status values. The
-script prints the totals those refine. Re-run it
+pass-headings counts among them — and the script prints most of them. **One is
+derived rather than printed** and a re-runner must not expect to find it in its
+output: § 7.3.1's eight-token tally of one project's status values. The script
+prints the total it refines. Re-run it
 rather than trusting a number in this file: per § 2 these measurements only evidence that a requirement is
 *satisfiable*.
 
@@ -368,9 +369,9 @@ this meaning.
 | `priority` | write (open) | § 7.5. Meaningless once closed. |
 | `created`, `last_modified` | write (store-populated) | § 7.6. The store stamps them; migration fills them per § 7.7 (`git-derived`, or `asserted` from a dated `Source:`). |
 | `shipped` | write (status `shipped`) | § 7.6. |
-| `resolution` | write (closed) | What was done and why, or why it was not. |
+| `resolution` | unused | No write verb sets it and the render emits nothing for it; the export and its restore carry whatever it holds. What was done and why goes in the body's closure note instead (below). The column stays in the schema. |
 | `section` | write | § 5. Where the item is filed — realised by the item's row in that section's element list, not by a second column on the item, for the same reason `sort_order` is not stored. |
-| `body` | optional | Free-form technical detail. Optional because many items are complete in one line, and a mandatory body produces filler that reads like content. |
+| `body` | optional (open) / write (closed) | Free-form technical detail. Optional on an open item because many are complete in one line, and a mandatory body produces filler that reads like content. A closed item carries its closure note here (below). |
 | `lanes`, `evidence` | optional | Subsystems touched; paths to screenshots, logs, repros. Both are already first-class in `roadmap-format.md` § 3.5, so neither is part of § 4.3's invented tail. |
 | `visibility` | optional | § 7.5. Defaults to `public`. |
 | `milestone` | optional | Target release, as the version string the project releases under (`0.7.55`, not a section heading). Distinct from `section`, which is where the item is *filed*. |
@@ -379,11 +380,15 @@ this meaning.
 | `extras` | optional | § 4.3. |
 | `provenance` | derived | § 7.7. Per field, never silently promoted to `asserted`. |
 
-`resolution` is required at close and `body` is not, because the institutional
-value sits in closed items: a shipped item with no resolution records that
-something happened and nothing about what. Specs do not substitute — this
-project holds a couple of hundred spec documents against nearly two thousand
-items, so for the large majority the item is the only technical record.
+**A closed item records what was done and why, or why it was not, as a closure
+note in its body** (`Resolved (<date>): …`). The institutional value sits in
+closed items: a shipped item with no closure note records that something
+happened and nothing about what. Specs do not substitute — this project holds a
+couple of hundred spec documents against nearly two thousand items, so for the
+large majority the item is the only technical record. The note lives in the
+body rather than the `resolution` column because the body round-trips through
+the published file and the column has no carrier there (user decision
+2026-10-02, ANTS-3824).
 
 ### 4.1.1 Project fields
 
@@ -814,10 +819,9 @@ decision (user decision, 2026-09-19, ANTS-4977).
 
 A pass-headings project writes status as a free-text `- **Status**:` line rather
 than an emoji, so its values must be mapped onto the five above. **The unit
-classified is the leading token, not the whole line** — the same shape § 7.5
-harvests `Priority:` with, for the same reason: the value is a word followed by a
-qualifying tail, and matching whole strings makes an ordinary vocabulary look
-unmappable.
+classified is the leading token, not the whole line**: the value is a word
+followed by a qualifying tail, and matching whole strings makes an ordinary
+vocabulary look unmappable.
 
 | Source word | Status | Provenance |
 |---|---|---|
@@ -915,68 +919,24 @@ and extends the table by amendment.
 
 ### 7.5 Priority and visibility
 
-> **The `Priority:` harvest described below is SPECIFIED, NOT IMPLEMENTED.**
-> Nothing reads a `Priority:` line: `Priority:` does not occur anywhere under
-> `src/`, and `roadmapmigrateload.cpp`'s reconciled field list deliberately
-> omits `priority` (INV-3 there — a re-run must never clear a value a human set
-> through `roadmap_log`). So on a migrated item `priority` is left empty
-> **whether or not the source carries the line**, and the mapping below states
-> what a harvest would mean rather than what one does.
->
-> **Do not build the harvest from this section alone.** Implementing it as
-> written re-derives `priority` on every re-run and overwrites values set
-> through `roadmap_log`, which is exactly what INV-3 exists to prevent — so an
-> implementation owes INV-3 a first-write-wins or source-vs-store rule that
-> neither document currently states. Tracked as ANTS-4440.
->
-> Note also that INV-3's own stated *reason* — "a source file cannot express
-> them" — is inaccurate for `priority` specifically: `roadmap-format.md`
-> § 3.5.2 defines the carrier. The behaviour it protects is right; the
-> rationale needs narrowing to the other four fields.
+**Position is priority** (`roadmap-format.md` § 3.5.2): an item's place in its
+section is the order it is worked in. **Nothing reads a `Priority:` body line.**
+Migration does not harvest it, and no write derives the column from it. The line
+is text for a reader, explaining a position choice, and an existing one stays in
+the body unparsed (user decision 2026-10-02, ANTS-4440).
 
 `priority` is `1` (highest) to `5` (lowest), required on open items **written
-after cutover**. On a migrated item § 3.3 leaves it empty **only where the
-source declares no `Priority:` line**; where one exists it is harvested by the
-rule below, exactly as any field with a source-side counterpart is. Five bands
-rather than ten: ten levels are not reliably distinguishable, so they collapse
-in practice to three with the rest defaulting to the middle, and the number
-stops carrying information. The prose severity vocabulary — CRITICAL, HIGH, MEDIUM, LOW — is
-the one `roadmap-format.md` § 3.8 puts in a finding's headline (its
-*Severity in the headline* rule), which enumerates all four itself — **that
-section owns the vocabulary and this one only maps it onto bands**, so a fifth
-severity word is added there and reflected here, never the reverse; and `INFO` has no band — an INFO finding is an
-observation rather than work, so it becomes an item only once someone gives it a
-priority;
-its § 3.5.2 is the carrier that puts one in a `Priority:` body line. The
-vocabulary maps CRITICAL → 1, HIGH → 2, MEDIUM → 3, LOW → 4. Band 5 is reserved
-for someday-maybe work that no severity word expresses.
+after cutover**, and empty on every migrated item (§ 3.3). Five bands rather
+than ten: ten levels are not reliably distinguishable, so they collapse in
+practice to three with the rest defaulting to the middle, and the number stops
+carrying information.
 
-**The `Priority:` line is the only carrier migration would read — see the
-not-implemented note at the top of this section. A severity word in the
-headline does not set `priority`.** § 3.8 requires that word on every
-fold-in finding, so harvesting it would assign a priority to a large class of
-items from a value *inherited* from whichever review raised them — where the
-`Priority:` line is one an author set deliberately. It would also be an
-inference from prose, which INV-5 refuses for relationships and this model
-refuses here for the same reason: the mapping above is what the four words
-*mean* when an author writes one into the field, not a second place to look for
-them. § 3.3 is therefore exact — an item with no `Priority:` line is left empty,
-however its headline reads.
-
-**The harvest rule is total, because most of the corpus does not write a
-severity word at all.** Of the 88 `Priority:` lines in the corpus, **86 already
-hold an integer**; the two that do not are `medium` and `LOW`, and `CRITICAL`
-and `HIGH` never appear in the field. So a rule matching only the four bare
-uppercase words would leave almost every declared priority empty. Reading a
-`Priority:` value:
-
-1. An integer 1–5 is taken as itself.
-2. Otherwise the **leading token** is matched **case-insensitively** against the
-   four severity words. `roadmap-format.md` § 3.5.2's shape is
-   `Priority: <value> — <reason>`, so whatever follows the leading token is a
-   comment and not part of the value.
-3. Anything else — an integer outside 1–5, an unrecognised word — leaves
-   `priority` empty and the raw string in `extras`. Nothing is guessed.
+**A severity word in the headline does not set `priority` either.**
+`roadmap-format.md` § 3.8 requires that word on every fold-in finding, so
+reading it would assign a priority to a large class of items from a value
+*inherited* from whichever review raised them. It would also be an inference
+from prose, which INV-5 refuses for relationships and this model refuses here
+for the same reason.
 
 `visibility` is `public` or `internal`. The published render includes only
 `public` items. Today everything is

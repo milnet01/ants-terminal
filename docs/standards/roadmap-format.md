@@ -493,10 +493,10 @@ inserted (e.g. a `/audit` finding):
 3. **Document the priority in the bullet body.** A line like
    `Priority: 1 — security blocker` makes the position choice
    auditable. The value is a band, `1` (highest) to `5`; the prose
-   after the dash is the reason, not the value. An older bullet
-   carrying a severity word instead (`Priority: CRITICAL`) is not
-   rewritten: `roadmap-data-model.md` § 7.5 states how the word maps
-   to a band.
+   after the dash is the reason, not the value. The line is for a
+   reader: nothing parses it (`roadmap-data-model.md` § 7.5). An
+   older bullet carrying a severity word instead
+   (`Priority: CRITICAL`) is not rewritten.
 
 This means a section's IDs may be **non-monotonic** in document
 order (e.g. `0003, 0017, 0004, 0012`). That is correct and
