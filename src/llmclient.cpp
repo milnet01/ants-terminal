@@ -31,6 +31,9 @@ QString scrubErrorString(const QString &s) {
 }
 }  // namespace
 
+// Lines parsed per event-loop tick, by drain() and the finish drain alike.
+constexpr int kMaxLinesPerTick = 256;
+
 LlmClient::LlmClient(QObject *parent) : QObject(parent) {
     // ANTS-5105 — the wall-clock deadline ends the transfer the same way the
     // byte cap does: abort, and let onFinished() report why.
@@ -332,7 +335,6 @@ void LlmClient::drain() {
     // and treats a mangled answer as whole (ANTS-1754).
     // Cap per-tick iterations + re-arm via singleShot(0) so a flood of
     // tiny SSE lines can't hold the event loop (UI freeze).
-    constexpr int kMaxLinesPerTick = 256;
     if (m_sseLineBuffer.size() > kMaxBytes) {
         m_sseLineBuffer.clear();
         if (!m_truncated) {
@@ -384,7 +386,13 @@ void LlmClient::onFinished() {
     // ANTS-5015 — drain() parses kMaxLinesPerTick lines and re-arms itself,
     // and the reply can finish before the re-armed call runs; that call then
     // returns on the null m_reply. Parse every complete line still buffered.
-    consumeLines(std::numeric_limits<int>::max());
+    // ANTS-5105 — at the same per-tick cap, re-arming this slot, so a large
+    // backlog is not parsed in one GUI-thread slot. m_reply stays set until
+    // the last tick; an abort() in between suppresses finished() as before.
+    if (consumeLines(kMaxLinesPerTick)) {
+        QTimer::singleShot(0, this, &LlmClient::onFinished);
+        return;
+    }
 
     LlmResult result;
     result.httpStatus =
