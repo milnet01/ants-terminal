@@ -10299,6 +10299,18 @@ extends an existing item, that item carries it instead.
   startup decoding, the GUI-thread umask window, the schema stamp by
   older builds, the ANTS-1430 budget, the 5 s lock waits, catastrophic
   id_format patterns, and silent temp-file open failures.
+  Progress (2026-10-02): ProjectSettings::detect also stops after
+  100,000 files visited (unproven: not observable on a small fixture).
+  Config::save keeps the larger schema stamp, so an older build no longer
+  makes a newer one re-run migrations (ConfigParseFailureGuard
+  Ants5106SaveKeepsANewerSchemaStamp, red first). Config::save and
+  saveTabOrder create their temp files 0600 through
+  secureio::openOwnerOnlyForWrite, with no process-wide umask window. A
+  failed temp open or short write now logs a warning. The id_format
+  pattern was already guarded: roadmapparse compiles it under a PCRE2
+  match limit. Still open (low): synchronous startup decoding of saved
+  tabs, the ANTS-1430 RAM budget and unbounded standards list, and the
+  5 s lock waits in session memory and Config::save.
   **Layman:** Smaller settings and session fixes, including two Ants windows corrupting each other's saved tabs.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
