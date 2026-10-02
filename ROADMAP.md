@@ -40630,6 +40630,17 @@ against current source before filing.
   maxAllocatedId() (the ids the items actually hold; roadmapstore.h). The
   work left here is doc-only: § 3.5.1's two contradictory passages, and the
   Priority band.
+  User decision 2026-10-02 (second): on a store-migrated project the id
+  floor is the store only (allocationFloor: id_high_water row + highest
+  stored id), NOT also the committed corpus. Supersedes the 'as well as
+  to the committed corpus' clause of decision (2) above, which the code
+  had already dropped in ANTS-4631. Standard text aligned in 6c26cea5.
+  Filed from the 2026-10-02 review-contract gate on 6c26cea5 (outside that change's radius, so filed, not fixed). All design choices; the global copy has already decided each.
+  (1) Q3, § 3.2: at 1.0, "the active phase and any above it" becomes the 1.0 block, but phase blocks cannot be rotated today, so closed phases are still in the file and get no stated fate; "above" is ambiguous where FP/DS blocks interleave. Global: every phase block still in the file merges, closed ones included (CFG-0321).
+  (2) Q2, § 3.2 vs § 3.7/§ 3.9: § 3.2 says pre-1.0 projects use phase blocks; the same document's examples (## 0.7.0, archives 0.5.md..0.7.md) use pre-1.0 release blocks. Global defaults to release blocks at every version (CFG-0321).
+  (3) Q2, § 3.7: a release block is "version + theme + target date", but § 3.2's example has no date and § 4.3 step 4 rewrites (target: YYYY-MM). Global makes the date optional.
+  (4) Q2, § 3.9: rotate_minor's archive path is relative to the "project root", the convention bullet says dir(ROADMAP.md). Diverge only when ROADMAP.md is not at the root.
+  (5) Open, § 3.5.1: a store-migrated project on a machine without the store falls to the counter + corpus, which cannot see internal ids. Global says such a project must refuse to allocate. Not decided here.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -42464,6 +42475,9 @@ in each bullet, not just the reporter's symptom.
   (a) recommended: rebuild the image inside the push, then test;
   (b) refuse the push until it is warmed by hand;
   (c) keep the fallback, perhaps with a louder warning.
+  User decision 2026-10-02: option (a) — a stale CI image is rebuilt
+  inside the push, then the job runs in it. No silent fallback to this
+  machine's Qt.
   **Layman:** The check before each upload can quietly test on the wrong system, so a problem only GitHub sees slips through.
   Kind: fix.
   Source: in-session-2026-10-02 (CI red on three pushes).

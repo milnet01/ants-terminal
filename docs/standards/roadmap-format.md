@@ -849,10 +849,9 @@ The convention:
   `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`. No leading `v`, no
   `roadmap-` prefix, no zero-padding (`0.7.md` not `00.07.md`), **no
   patch suffix** (`0.7.0.md` is rejected — archives are per-minor
-  only). The alternation is what rejects the padding: a plainer
-  `[0-9]+` accepts `00.07.md` and would leave the regex and the
-  sentence beside it disagreeing, with a reader loading an archive the
-  prose forbids.
+  only). Not every reader enforces the padding rule: the viewer's
+  `parseArchiveFilename` compiles `^(\d+)\.(\d+)\.md$` and loads
+  `00.07.md`.
 - Tooling that reads archives sorts numerically by the
   `(major, minor)` integer tuple, descending — lexical sort breaks
   on minor 10 (`0.10` < `0.9` lexically). Numeric sort is the
@@ -902,8 +901,11 @@ The convention:
 
   **No shipped reader accepts this name yet, and the failure is
   silent — so do not rotate a phase block by hand until they
-  widen.** The rule is specified and unimplemented. Four sites
-  enforce the version-only form: `parseArchiveFilename`
+  widen.** The rule is specified and unimplemented. Find the sites
+  that enforce the version-only form by searching `src/` for the
+  archive-name regex; this list is not exhaustive:
+  `RoadmapFoldIn::archivedIds` (`src/roadmapfoldin.cpp`), which answers
+  the query verb's `archived_ids`; `parseArchiveFilename`
   (`src/roadmapdialog.cpp`), which makes the viewer **skip** a
   non-conforming entry with no message; `archiveNameRx()`
   (`src/roadmapmigrate.cpp`); `isPlaceableSourcePath`
@@ -928,8 +930,10 @@ The convention:
 - **On a versioned roadmap** rotation happens at bump time on a
   minor or major bump only. Patch bumps don't rotate. On a
   hand-authored roadmap the bump recipe (`.claude/bump.json` on each
-  project) owns the snip-and-create step; on a store-migrated one,
-  `rotate_minor` below.
+  project) owns the snip-and-create step. On a store-migrated one
+  rotation is a store operation (`rotate_minor`, below) that cannot be
+  performed yet; until it can, a skipped rotation there is not a
+  breach.
 
   **A block belongs to the minor its heading names, not the minor its
   work shipped in.** The heading's release designator is `<M>.<N>`,
@@ -956,8 +960,11 @@ The convention:
 - The viewer (Ants Terminal's `RoadmapDialog`) reads archives only
   on demand — when the user picks the History preset or types in
   the search box. Default render stays cheap.
-- The `roadmap-query` IPC verb (Ants ANTS-1117) reads only the
-  current `ROADMAP.md`. Archives are dialog-only by contract.
+- The `roadmap-query` IPC verb (Ants ANTS-1117) returns bullets only
+  from the current `ROADMAP.md`. Archives are dialog-only by contract
+  **for the result set**: the verb does read `docs/roadmap/`, and
+  reports a requested id it finds there under `archived_ids`, with
+  `archived_sources` naming the file.
   **The contract survives cutover, carried differently.** On a
   store-migrated project there is no "current file" to read, so
   archive scope stops being a consequence of which file is parsed
@@ -1117,7 +1124,8 @@ GFM-task-list starting point converts in five passes:
    this step even on a project that already has a store row**, because
    the file does not yet classify `ants-v1` and § 3.5.1's table puts
    "a store row whose roadmap is not `ants-v1`" on the counter. The
-   carrier table hands over to `id_high_water` once step 0 lands, and
+   carrier table hands over to the store's floor (§ 3.5.1) once step 0
+   lands, and
    the counter goes unread from then on.
 3. Add `Kind:` and `Source:` lines under each bullet (§ 3.5.3).
 4. Add `Layman:` summaries (§ 3.5 Bullet structure).
@@ -1159,8 +1167,8 @@ This spec uses **one prefix per repo** (`ANTS-`, `VESTIGE-`,
 prefer **multi-prefix** schemes (`SH-`, `ED-`, `PHASE-`) for
 lane visibility. Multi-prefix is permitted. Mixed-case prefixes
 like `Sh-`, `Ed-`, `mame-curator-` parse, are fetched / flipped,
-**and** are allocated fine — id handling is case-insensitive on
-both the read and the write side. The one uppercase-only check in
+**and** are allocated — but allocation compares the prefix exactly,
+so spell each prefix one way. The one uppercase-only check in
 the tooling is a narrow `op:flip` anchor helper, not id handling:
 
 - **Id parsing — case-insensitive.** The `roadmap-query` parser
@@ -1170,7 +1178,10 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   id. Same regex family §3.5.1 documents — see the bullet-scan and
   `kIdIsh` patterns in `remotecontrol.cpp` and
   `RoadmapIndex::isCanonicalId`.
-- **Id allocation — also case-insensitive.** The `roadmap_log`
+- **Id allocation — any case accepted, compared exactly.** The
+  store's floor (`RoadmapStore::maxAllocatedId`) matches ids with
+  SQLite `GLOB`, which is case-sensitive, so `Sh-` and `SH-` ids do
+  not raise each other's floor. The `roadmap_log`
   `id_prefix` argument (the counter-prefix override for
   `op:append` / `op:append_batch`) is validated by the *same*
   letter-containing, case-insensitive grammar (`kIdPrefixShape` in
