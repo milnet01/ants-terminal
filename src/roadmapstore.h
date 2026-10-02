@@ -395,6 +395,13 @@ public:
     // store, with cross-project rows that name a filed item resolved to it.
     std::optional<QVector<QPair<qint64, qint64>>> edgesOfType(const QString &type,
                                                               QString *error = nullptr) const;
+    // ANTS-3810 § 2.2 — the rows of `type` with dst_project set that
+    // edgesOfType()'s cross-project branch does NOT return, on the same exact
+    // keys: the far project absent, or present with no item at dst_id_fold. So
+    // a row is walked or counted, never both and never neither. nullopt on an
+    // SQL error.
+    std::optional<int> unresolvedEdgeCount(const QString &type,
+                                           QString *error = nullptr) const;
     // ANTS-4079 § 2.6 — make one item's CONVERTED rows match `body`. Its
     // specified-by rows are replaced by the body's Spec: paths. A relates-to row
     // touching it is kept while either endpoint's body declares the pair and

@@ -487,7 +487,7 @@ CREATE TABLE relationship (
   ),
   CHECK ((dst_project IS NULL) = (dst_id_fold IS NULL)),
   -- No item relates to itself under any type. Distinct from the whole-store
-  -- acyclicity check ANTS-3758 owns: that one needs a graph walk, this is a
+  -- acyclicity check ANTS-3810 owns: that one needs a graph walk, this is a
   -- single-row property and so belongs in DDL, where it costs nothing.
   CHECK (dst_pk IS NULL OR dst_pk <> src_pk)
 );

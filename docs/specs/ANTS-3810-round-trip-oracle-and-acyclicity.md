@@ -1,8 +1,9 @@
 # ANTS-3810 — the round-trip oracle, and whole-store relationship acyclicity
 
-**Status:** **accepted, not implemented** — no case in § 6 exists (checked
-2026-10-02). ANTS-4135's 2026-08-15 change to `implemented` counted ANTS-3761's
-export round-trip tests, which use the same invariant numbers. Accepted (2026-08-04) — rule-14 gate run to its 3-loop cap, no
+**Status:** **implemented (2026-10-02)** — `tests/features/roadmap_round_trip/`,
+the four `RoadmapRoundTrip` cases, each shown red against its mutation. An
+earlier `implemented` (ANTS-4135, 2026-08-15) counted ANTS-3761's export
+round-trip tests, which use the same invariant numbers; nothing had been built. Accepted (2026-08-04) — rule-14 gate run to its 3-loop cap, no
 deferred tail. Two caveats a reader should have: **loop 3's own fixes were not
 themselves cold-read**, which is what the cap means; and collateral outran draft
 defects for two loops, so a further split is available and is the user's call.
@@ -238,16 +239,11 @@ the round trip as an intended property — *"Key order is the export's
 kStatusOrder, so two renders of one store agree (INV-7) and a re-load reproduces
 the same object (INV-1)"*.
 
-**With one exception, and the fixture must respect it: a `dropped` legend entry
-has no markdown form.** `renderLegend()` walks a fixed `kStatusOrder` of
-`planned`, `in-progress`, `shipped`, `considered` and skips `dropped` outright,
-because `roadmap-format.md` § 3.11 makes a fifth status emoji an anti-pattern.
-So a store whose legend carries a `dropped` wording renders four entries,
-re-loads four, and fails INV-1 on the fifth — a family-3-shaped loss at the
-legend level rather than the item level. The fixture's legend therefore covers
-**the four rendered statuses only**, and this is called out rather than left to
-be discovered, because it is the one field in the compared set whose loss is by
-design.
+**The legend carries a `dropped` line, and the fixture must hold one.** Since
+ANTS-4977 the render writes a `dropped` legend line whatever the store holds,
+and a re-load stores it. So a store without a `dropped` wording gains one on
+the round trip; the fixture's legend covers all five statuses. (Found at
+implementation, 2026-10-02: this paragraph said the render skipped `dropped`.)
 
 **`rel` records are COMPARED, not excluded (amended 2026-10-02).** Since
 ANTS-4079 all six types travel through markdown. The render writes each
@@ -396,8 +392,9 @@ Concretely the fixture carries:
 | element ordering | the second item inserted in an order that differs from its position |
 | section shape | a nested section, and one archive section with a `source_path` |
 | **element kinds** | one `narration` element **and one `table`**, the table carrying a cell with a literal `\|` — the kinds serialise by opposite rules (ANTS-3758 § 2.2, now pinned by its INV-15), and a fixture with narration alone cannot tell the render's table serialiser from the verbatim replay ANTS-3832 fixed. The pipe is the leg that matters: it is the one cell content whose spelling differs between store and file, so it is where a non-invertible escaping shows up as an INV-1 loss. Surrounding whitespace deliberately is **not** a fixture leg — both boundaries trim, so no supported write path can store it |
-| legend | a stored legend over the four rendered statuses (§ 2.1.1) |
-| **family 1** | one `visibility = 'internal'` item and one `status = 'dropped'` item, both filed in the section above |
+| legend | a stored legend over all five statuses (§ 2.1.1) |
+| file heads | each file's head intro as a migrated store holds it: the format marker and the render's generated-file notice (`RoadmapRender::generatedNotice()`), which a re-load keeps; and a synthetic root section for the archive file, as the live file has |
+| **family 1** | one `visibility = 'internal'` item and one `status = 'dropped'` item, filed LAST in the section above: a hidden item's position is not carried by markdown, so an element after it renumbers on re-load |
 | **family 3** | the first carried item also holds `resolution`, `priority`, `milestone` and a migration-shaped `extras` key (`source_kind`), so every projected item still carries every field INV-1 names |
 | **links** | one authored link line and one `Dependencies:` line between the two carried items, in the same project |
 
@@ -810,9 +807,10 @@ as **ANTS-3826**, which also carries the better remedy — give the rule a home 
 INV-1's mutation is named in § 2.1.2 and needs no new code: it is the
 `item.body` write `src/roadmapmigrate.cpp` performs today. INV-2's, INV-3's and
 INV-4's are run against the first implementation with the rule under test
-removed — the report replaced by a refusal inside `relateItems()`; the
-projection helper made to drop every line, so both sides compare equal and
-empty; and the walk scoped to one project.
+removed — the walk recording no cycle; the projection helper made to drop
+every line, so both sides compare equal and empty; and the walk keeping only
+same-project edges. (Built 2026-10-02 with these four, INV-1's included; each
+case went red and back to green.)
 
 **The fixtures are this directory's own**, not reached out of
 `tests/features/roadmap_migrate_archive_root/`, whose `spec.md` scopes it to
@@ -941,6 +939,7 @@ Which `Access` each store opens on is § 2.1's rule 1.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 5-impl | 2026-10-02 | none — implementation, not a review | — | **Implementation row, written by the implementer; no reviewer was dispatched.** `src/roadmapcheck.{h,cpp}`, `RoadmapStore::unresolvedEdgeCount()`, and `tests/features/roadmap_round_trip/` with the four `RoadmapRoundTrip` cases in `test_core`. Each case went red against one mutation and back to green: the pre-ANTS-3808 `item.body` write (INV-1), the walk recording no cycle (INV-2), the projection dropping every line (INV-3), the walk keeping only same-project edges (INV-4). **Three clauses the build proved false, folded back as records of what the code does** (no re-gate: nothing to come is built differently): § 2.1.1 said the render skips a `dropped` legend line — since ANTS-4977 it always writes one, so the fixture legend has five entries; the fixture table lacked what a migrated store holds — each file head carries the render's generated-file notice, and an archive file has its own synthetic root section; and a hidden item filed mid-section renumbers the elements after it on re-load, so family 1 is filed last. **The first INV-1 run reported four differences and none was a render defect** — each was the fixture missing a fact a real migrated store holds. INV-2 and INV-4 passed on their first run; the § 6 mutations for them were the walk's own rather than a refusal inside `relateItems()`, which would have needed the walk to exist inside the write path. |
 | 5 (cap) | 2026-10-02 | 2 cold `review-lane` via neutral-lane, packet rebuilt from disk with `writeLinks()` and the render's two link-line sites added, scrubbed copy rebuilt, line count re-measured; both lanes held every question | **Q1 1 · Q2 3 · Q3 1 · Q4 1** — verified 6, fixed 6, dismissed 0; 1 correction by deletion outside the tally | **Six verified, six fixed. CAP REACHED (2 for a spec); ships.** Q2 (both lanes): § 7 still said the test file *shipped as `roadmap_export_roundtrip/`*, against loop 4's § 6 correction; the aside is deleted. Q2 (both lanes): loop 4 required a link in INV-1's fixture, but § 2.1.2's fixture table and INV-3's record kinds carried none; a `links` row and `rel` added. Q2 (lane b): the family-3 fields sat on a third, sparse item that INV-3's every-field assertion would fail; they now ride the first carried item. Q1 (lane b, verified): `extras.unresolved_links` has a carrier since ANTS-4079 — the render writes those ids as link lines — so the projection drops only `source_kind` / `source_status`. Q3 (lane a): with `rel` compared, a link touching a family-1 item, or one crossing projects, had no stated projection; family 1 now drops `rel` lines naming an excluded item, and cross-project links are outside the fixture. Q4 (lane a): INV-3's red-proof mutation (*assertions deleted*) could not turn the case red; it is now the projection made to drop every line. Deletion, outside the tally: § 5 still described ANTS-3827's conversion as future. **These fixes are read by no lane**; implementation is their reader. **Final-loop own-fix share: 1 of 6** by anchor (the fixture sentence loop 4 wrote); three more are unpropagated consequences of loop 4's `rel` decision, which terminates — a CALM cap. **Whole-run span share: 4 of 11** findings sit in commit b9c60c01's changed lines. Noted, not filed: `roadmap_log op:"link"` refuses a same-type cycle at write time (ANTS-4079), which § 2.2's report-not-refuse rationale does not mention; no conformer builds differently. |
 | 4 | 2026-10-02 | 2 cold `review-lane` via neutral-lane, one shared-context file (brief-core + spec overlay + packet of 11 windows: the store's link readers, `ItemRef` / `listItems()`, `ProjectRow` / `listProjects()`, the `db()` friend block, the `relationship` DDL, `relateItems()` / `relateCrossProject()`, `edgesOfType()`, data-model § 6, the cross-project fixture), scrubbed copy; both lanes held every question | **Q1 1 · Q2 1 · Q3 3 · Q4 0** — verified 5, fixed 5, dismissed 0 | **Five verified, five fixed. First loop of a NEW run, gating the § 2.2 read-route amendment (commit b9c60c01).** Q2 (lane a): the Status said *implemented* and § 6 said the cases had landed as `RoadmapExportRoundtrip.*` — those suites test ANTS-3761's same-numbered invariants, and none of this spec's four cases exists (checked: no `roadmap_round_trip/`, no `RoadmapRoundTrip`, no `findRelationshipCycles`). Status and § 6 corrected. Q1 (lane b, verified in `writeLinks()` and the render's link lines): § 2.1.1's *the conversion does not exist* is false since ANTS-4079, which writes all six types through markdown — so the trigger fired and `rel` records move into the compared set, wider than the trigger foresaw. § 2.1.1, INV-1 (*Breaks when* and fixture), § 4's empty-edge-set claim and § 7 updated; the 2026-08-04 reasoning is kept, marked superseded. This is a direction change to the unbuilt oracle, fixed in the run because it is built next. Q3 (lane a): `unresolvedEdgeCount()` now uses `edgesOfType()`'s exact keys, so a row is walked or counted, never both and never neither. Q3 (orchestrator, from the lanes' open questions): the edge list is de-duplicated before the walk, since `edgesOfType()`'s `UNION ALL` can return a pair twice; and a `listProjects()` error fails the check, since it returns an empty list rather than `nullopt`. Open question left to the builder: what makes a store unopened for INV-2 leg (c). Lanes reported no git snapshot in context. |
 | 3 (cap) | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; same byte-stable packet, extended again with verified source facts — no review history) | 0 / 3 / 7 / 9 / 0 | **Converged by cap. 19 verified, 19 fixed, 1 dismissed, NO deferred tail.** Origin split: **8 draft defects, 11 fix collateral** — so collateral outran draft defects a second loop running, which is Phase 5's stop trigger fully fired, and the cap is where it lands. Dimension tally: dim 2×5, dim 5×4, dim 10×3, dim 6×3, dim 7×2, dim 4×1, dim 1×1, dim 9×1. **CRITICALs reached zero and both lanes led on the same HIGH**: the fixture populated only the families that *survive* the projection, so the exclusion arms were never executed — a helper that forgot family 1 entirely, or never stripped § 2.1.1's three family-3 additions, passed every case. That is the ANTS-3797 shape this spec cites against others, one level down, and it made § 2.1.1's own `visibility` argument untested. The fixture is now a table and carries an `internal` item, a `dropped` item and a family-3 item, with INV-3 asserting each exclusion fired. Two more draft defects came from questions the lanes could not settle and verification did: `findRoadmaps()` accepts only a **root-level file case-folding to `roadmap.md`** and discovers archives **only under `docs/roadmap/`**, and section slugs are derived (`slugifyHeading()` → `uniqueSlug()`, archive-prefixed) rather than carried — three fixture preconditions each of which silently empties side B. **One finding was dismissed on verification**: a lane read the packet's roadmap enumeration as evidence that ANTS-3827 was never filed; `roadmap_query` returns it. And one defect came from neither lane — checking their legend open question against `renderLegend()` showed it walks a fixed four-status `kStatusOrder` and **skips `dropped`**, so a `dropped` legend wording is a by-design loss inside the compared set; the fixture is now scoped to the four rendered statuses. Collateral was again loop-2's own: the stage-assertion list it introduced omitted `render()`-engaged and `writeProject()`-true, so an implementer following it literally dereferences a disengaged optional on a live failure path; and its § 5.5 argument declared the id→meaning mapping protected in the same breath as narrowing it. **The trend is what closes this run: draft defects 27 → 9 → 8, falling monotonically, while collateral sat flat at 0 → 11 → 11.** The reads are still finding real things; the fixes are generating as many. That is the shape the cap exists for. Doc 807 → 905 lines. Lane spend 131k / 118k cumulative across turns. |

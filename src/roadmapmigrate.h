@@ -161,7 +161,7 @@ struct Note {
     // subject is one field of that item. Set on `field_conflict` alone, whose
     // `detail` is then the bare column, so one column's conflicts collapse
     // into one row. Empty on every other note.
-    QString id;
+    QString id = QString();
 };
 
 // ANTS-3766 § 2.1 — one file of a project, and the unit `sourceIndex` indexes.

@@ -767,8 +767,9 @@ TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
 //
 // This case asserts the half that is provable without the migration loader in
 // the loop: every field the bullet is supposed to carry survives into the text.
-// The full render → load → export comparison is what ANTS-3793's cutover work
-// wires up, because it needs a second store and the loader's own options.
+// The full render → load → export comparison is ANTS-3810's oracle,
+// tests/features/roadmap_round_trip, because it needs a second store and the
+// loader's own options.
 TEST(RoadmapRender, Inv1ExportsMatch) {
     auto f = makeFixture();
     ASSERT_TRUE(f);

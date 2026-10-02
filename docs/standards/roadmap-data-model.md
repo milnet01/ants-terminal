@@ -604,6 +604,7 @@ that is what makes it safe rather than the database.
 holds in reverse names no current decision. Acyclicity is checked over the
 **full store only**: a partial checkout can break a cycle by not containing
 part of it, so checking there would report a pass that the whole store fails.
+ANTS-3810 § 2.2 implements the check (`RoadmapCheck::findRelationshipCycles()`).
 
 Three adjacent record types exist for one reason — each turns a question
 currently answered *outside* the model, by grepping prose or by reading git log,

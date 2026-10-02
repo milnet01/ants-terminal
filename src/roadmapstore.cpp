@@ -1550,6 +1550,25 @@ RoadmapStore::edgesOfType(const QString &type, QString *error) const {
     return edges;
 }
 
+std::optional<int> RoadmapStore::unresolvedEdgeCount(const QString &type,
+                                                     QString *error) const {
+    // The complement of edgesOfType()'s second branch, written as NOT EXISTS
+    // over the same two joins so the two can only disagree if one is edited.
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT COUNT(*) FROM relationship r "
+        "WHERE r.type = ? AND r.dst_project IS NOT NULL AND NOT EXISTS ("
+        "SELECT 1 FROM project p JOIN item i ON i.project_id = p.project_id "
+        "WHERE p.export_slug = r.dst_project AND i.id_fold = r.dst_id_fold)"));
+    q.addBindValue(type);
+    if (!q.exec() || !q.next()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    return q.value(0).toInt();
+}
+
 std::optional<qint64> RoadmapStore::historyBytes() const {
     // ANTS-5046 — begin()'s write lock means no other connection can change
     // `history`, so the first sum in a transaction serves the rest of it.

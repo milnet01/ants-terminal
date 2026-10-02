@@ -444,6 +444,10 @@ Listed only where behavior isn't obvious from the name.
   it lives under `XDG_DATA_HOME` (never a cache path), is created
   `synchronous=FULL` and mode 0600, and its only rebuild path is the
   export. Spec ANTS-3756.
+- `roadmapcheck` (`ants_roadmapstore_lib`) — store health checks. Today
+  one: whole-store relationship acyclicity over the four acyclic types,
+  reported rather than refused, read through the typed store surface.
+  No scheduled caller yet (ANTS-3794 owns cadence). Spec ANTS-3810 § 2.2.
 - `roadmaprender` (`ants_roadmapstore_lib`) — the inverse of the
   migration: generates `ROADMAP.md` from the store at full fidelity, every
   item in `roadmap-format.md` § 3.5 bullet form, so the generated file is

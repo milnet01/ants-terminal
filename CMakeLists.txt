@@ -815,6 +815,7 @@ add_library(ants_roadmapstore_lib STATIC
     src/roadmapbackuphealth.cpp  # ANTS-3794 — is the store still backed up?
     src/roadmaprender.cpp   # ANTS-3758 — the render: store → ROADMAP.md
     src/roadmaplinks.cpp    # ANTS-4079 — item links: key names, JSON, cycles
+    src/roadmapcheck.cpp    # ANTS-3810 — whole-store relationship acyclicity
     # ANTS-3793 — the read seam. Here and not in ants_core_lib for the same
     # reason the render is: it reads the store, and its records are defined as
     # what parseBullets() would make of roadmaprender.cpp's bulletText().
@@ -4053,6 +4054,10 @@ if(ANTS_TESTS)
                 # INV-9 holds the write lock and observes the abort. Separate
                 # directory, same bundle — no new binary (README.md's rule).
                 tests/features/roadmap_export_concurrency/test_roadmap_export_concurrency.cpp
+                # ANTS-3810 — render → load → export (ANTS-3758's INV-1) and
+                # whole-store relationship acyclicity. Not roadmap_export_roundtrip/,
+                # which is export → rebuild → re-export (ANTS-3761's INV-1).
+                tests/features/roadmap_round_trip/test_roadmap_round_trip.cpp
                 # ANTS-3794 — exporting every project, and --export-roadmaps.
                 # INV-1 is a source scrape of main.cpp over ANTS_SRC_DIR.
                 tests/features/roadmap_export_all/test_roadmap_export_all.cpp

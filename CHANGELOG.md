@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **A round-trip test now proves publishing the roadmap and reading it back loses nothing, and a store check finds relationship loops.** (ANTS-3810)
+  tests/features/roadmap_round_trip renders a store, loads the result into
+  a second store, and compares both exports line for line, links included.
+  RoadmapCheck::findRelationshipCycles() walks the four acyclic link types
+  across every project and reports each loop; it has no scheduled caller
+  yet. RoadmapStore gains unresolvedEdgeCount() for cross-project links the
+  store cannot see.
+
 - **Ants Terminal now ships demoreel, the tool that records short demo videos of an app on a private display.** (ANTS-5617)
   It installs to libexec/ants-terminal/demoreel, outside PATH, pinned to
   demoreel v0.3.1 by sha256 (the build stops if the file does not match).

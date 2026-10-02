@@ -164,6 +164,8 @@
         "src/passheadingwrite.h",
         "src/roadmapbackuphealth.cpp",
         "src/roadmapbackuphealth.h",
+        "src/roadmapcheck.cpp",
+        "src/roadmapcheck.h",
         "src/roadmapclock.cpp",
         "src/roadmapclock.h",
         "src/roadmapexport.cpp",

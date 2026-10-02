@@ -36893,7 +36893,7 @@ against current source before filing.
   Seam, eight ops, eight tests and the three doc rows are all in; CHANGELOG
   entry recorded at 7bbe0cc0.
 
-- 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
+- ✅ [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
   of the old spec and their INV-7 / INV-8. Nearly free-standing: it depends
   on the read seam only for a place to live.
@@ -36960,6 +36960,15 @@ against current source before filing.
   rule 14 gate.
   User decision 2026-10-02: go ahead; settle the db() route in the spec,
   gate it, then build.
+  Shipped (2026-10-02): db() route settled as the typed surface
+  (edgesOfType, listProjects + listItems, new unresolvedEdgeCount); spec
+  gated (review-contract loops 4-5, capped, calm). The gate also found the
+  whole spec unbuilt (ANTS-4135 had counted ANTS-3761's suites) and that
+  ANTS-4079 moved rel records into the compared set. Built:
+  src/roadmapcheck.{h,cpp}, tests/features/roadmap_round_trip (4 cases,
+  each red against its mutation). First INV-1 run's four differences were
+  fixture facts, not render defects; folded back. Full suite 5373/5373.
+  Left owed: ANTS-5618 (ANTS-3758 § 2.6 and ANTS-3756 § 5 amendments).
 
 - 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
   `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
@@ -87360,6 +87369,20 @@ here.)
   **Layman:** Every roadmap update touches the old archive files even when nothing in them changed.
   Kind: fix.
   Source: in-session-2026-09-10.
+
+- 📋 [ANTS-5618] **ANTS-3758 § 2.6 and ANTS-3756 § 5 still describe the round-trip projection and the acyclicity owner as they stood before ANTS-3810.**
+  ANTS-3810 § 7 owes these, and they were not done with its build because
+  each edits a spec and so needs that spec's review gate:
+  - ANTS-3758 § 2.6: family 2 loses `rel` (ANTS-4079 carries all six link
+    types through markdown) and spells the record kind `rel`; family 3
+    gains `resolution`, `priority` and `extras` minus `unresolved_links`.
+  - ANTS-3756 § 5: split the bullet - scheduling to ANTS-3794, the
+    acyclicity check to ANTS-3810, the INV-1 second-leg clause unowned.
+    (Its DDL comment's owner was corrected with the build.)
+  **Layman:** Two older design documents still describe the roadmap's round-trip check the old way.
+  Kind: doc-fix.
+  Source: in-session-2026-10-02 (ANTS-3810 § 7, owed after its build).
+  Lanes: roadmap-store.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
