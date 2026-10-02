@@ -405,6 +405,7 @@
       "sourcePaths": [
         "src/applyedits.cpp",
         "src/applyedits.h",
+        "src/boundedreadline.h",
         "src/cochangefamily.cpp",
         "src/cochangefamily.h",
         "src/codebaseindex.cpp",

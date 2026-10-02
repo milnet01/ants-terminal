@@ -1,6 +1,7 @@
 // ANTS-1249 — file_outline regex scanner. See fileoutline.h header.
 
 #include "fileoutline.h"
+#include "boundedreadline.h"
 
 #include "markdownscan.h"   // ANTS-4520 — shared blockquote strip
 
@@ -762,9 +763,12 @@ QJsonObject compute(const QString &absPath,
     bool htmlScriptIsJs = true;
 
     while (!f.atEnd()) {
-        const QByteArray rawLine = f.readLine();
+        // ANTS-5103 — bounded: 4 KiB covers the 2 KiB header_doc cap and
+        // the 1 KiB regex-skip test below; the byte count stays exact.
+        qint64 rawBytes = 0;
+        const QByteArray rawLine = BoundedReadLine::read(f, 4096, &rawBytes);
         if (withSizes) lineStart.append(totalBytes);
-        totalBytes += rawLine.size();
+        totalBytes += rawBytes;
         ++totalLines;
 
         // Strip CRLF / LF for matching but keep the raw byte count.

@@ -2,6 +2,7 @@
 // See symbolquery.h header.
 
 #include "symbolquery.h"
+#include "boundedreadline.h"
 
 #include <QDir>
 #include <QFile>
@@ -719,7 +720,9 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     const bool trackScope = lang == Lang::Cpp || lang == Lang::Glsl;
     CppScope scope;
     while (!f.atEnd()) {
-        QByteArray raw = f.readLine();
+        // ANTS-5103 — bounded: enough to tell a line over kMaxLineBytes,
+        // which is skipped below, without holding the whole of it.
+        QByteArray raw = BoundedReadLine::read(f, kMaxLineBytes + 2);
         ++lineNo;
         // ANTS-1786 — chop trailing CR/LF and length-check on the RAW
         // bytes before decoding. UTF-8 byte length is exactly what
