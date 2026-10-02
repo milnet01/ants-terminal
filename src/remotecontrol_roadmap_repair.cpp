@@ -16,6 +16,9 @@
 // ANTS-4507 — `strip_runs` adds the other half of that legacy state: the
 // trailer run a body stored before ANTS-4506 still ENDS in, removed only where
 // it repeats its own columns.
+//
+// ANTS-4595 — `clear_placeholder_source` blanks the `planned` placeholder the
+// ANTS-1129 backfill asserted as a source.
 
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
@@ -93,6 +96,48 @@ struct RlBodyWrite {
     QString before, after;
 };
 
+// ANTS-4595 — the 2026-04-30 backfill (ANTS-1129, commit 7e4edf92) wrote the
+// placeholder `Source: planned.` into bullets with no provenance, and migration
+// stored it as an ASSERTED source. The same word with `defaulted` provenance is
+// roadmap-format § 3.5.3's default and is left alone. `created` IS NULL
+// separates the backfill from an item filed since dates were stamped.
+bool rlIsPlaceholderSource(const RoadmapStore::ItemWrite &w) {
+    return w.source == QLatin1String("planned")
+           && w.provenance.value(QStringLiteral("source")).toString()
+                  == QLatin1String("asserted")
+           && w.created.isEmpty();
+}
+
+// Removes every body line declaring only the placeholder source. Left in, the
+// next body write re-derives the column from it (ANTS-4576). Returns nullopt
+// where the body declares any OTHER source: the column may be a truncation of
+// it, which the re-parse below recovers, and clearing would destroy that.
+// Keys are read with RoadmapParse::trailerValuesIn(), the one trailer grammar
+// (ANTS-3833 INV-2's scrape counts any other).
+std::optional<QString> rlWithoutPlaceholderLine(const QString &body, int *removed) {
+    QStringList kept;
+    int n = 0;
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    for (const QString &l : lines) {
+        const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(l);
+        if (tv.source.value.isEmpty()) {
+            kept.append(l);
+            continue;
+        }
+        QString v = tv.source.value.trimmed();
+        if (v.endsWith(QLatin1Char('.')))
+            v.chop(1);
+        const bool onlySource = tv.source.anchored && tv.layman.value.isEmpty()
+                                && tv.kind.value.isEmpty() && tv.lanes.value.isEmpty()
+                                && tv.evidence.value.isEmpty();
+        if (!onlySource || v != QLatin1String("planned"))
+            return std::nullopt;
+        ++n;
+    }
+    *removed = n;
+    return kept.join(QLatin1Char('\n'));
+}
+
 } // namespace
 
 QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req) {
@@ -119,6 +164,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     const qint64 projectId = target->projectId;
     const bool dryRun      = req.value(QStringLiteral("dry_run")).toBool();
     const bool stripRuns   = req.value(QStringLiteral("strip_runs")).toBool();
+    const bool clearPlaceholder =
+        req.value(QStringLiteral("clear_placeholder_source")).toBool();
 
     const auto rpErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -144,11 +191,35 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     int stripSkipped = 0;
     int repeatsStripped = 0;   // ANTS-4543 — the subset of bodyPlan that is repeats
     QStringList stripSkippedIds;
+    QVector<qint64> clearPlan;   // ANTS-4595
+    QStringList clearedIds;
+    int placeholderLines = 0, placeholderBodies = 0;
 
     for (auto it = items->constBegin(); it != items->constEnd(); ++it) {
         const qint64 pk = it.key();
         const RoadmapStore::ItemWrite &w = it.value();
         ++scanned;
+        // ANTS-4595 — decided before the empty-body skip: most of these items
+        // lost the line to migration's trailing strip and hold it only in the
+        // column. Readable from `w` alone because the passes below never touch
+        // a `planned` source: the re-parse of `Source: planned.` equals it.
+        bool bodyClaimed = false;
+        int removed = 0;
+        const auto cleared = clearPlaceholder && rlIsPlaceholderSource(w)
+                                 ? rlWithoutPlaceholderLine(w.body, &removed)
+                                 : std::nullopt;
+        if (cleared) {
+            clearPlan.push_back(pk);
+            clearedIds.append(w.id);
+            if (removed > 0) {
+                placeholderLines += removed;
+                ++placeholderBodies;
+                bodyPlan.push_back({pk, w.body, *cleared});
+                // The strip pass below judges the body as stored, and this
+                // write already replaces it.
+                bodyClaimed = true;
+            }
+        }
         if (w.body.trimmed().isEmpty())
             continue;
         const qsizetype planBefore = plan.size();
@@ -203,7 +274,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
         // says: listed, never written (user ruling, 2026-09-14). An item whose
         // columns this pass repairs or refuses is listed too, because the run is
         // judged against the columns as stored and the repair changes them.
-        if (stripRuns) {
+        if (stripRuns && !bodyClaimed) {
             bool conflict = false;
             const auto stripped = rlRedundantTrailerRunStripped(w, &conflict);
             if (conflict
@@ -233,7 +304,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     // the loader and the backfill are (ANTS-4501 spec, user ruling 2026-09-26).
     HistoryContext hist;
     hist.changedAt = rlHistoryStamp();
-    if (!dryRun && (!plan.isEmpty() || !bodyPlan.isEmpty())) {
+    if (!dryRun && (!plan.isEmpty() || !bodyPlan.isEmpty() || !clearPlan.isEmpty())) {
         if (!store.begin(&err))
             return rpErr(QStringLiteral("store_failed"), err);
         for (const RlRepairWrite &wr : plan) {
@@ -262,6 +333,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
             }
             hist.record(bw.pk, QStringLiteral("body"), bw.before, bw.after);
         }
+        for (const qint64 pk : clearPlan) {
+            // Blank, not the § 3.5.3 default: no source was ever recorded for
+            // these (user decision, 2026-10-02). `store-generated`, because no
+            // author supplied the empty value — `asserted` would claim one did.
+            // An empty source never renders. Empty, never null: a null QString
+            // binds as NULL and the column is NOT NULL.
+            if (!store.setItemField(pk, QStringLiteral("source"), QStringLiteral(""),
+                                    QStringLiteral("store-generated"), &err)) {
+                store.rollback(nullptr);
+                return rpErr(QStringLiteral("store_failed"), err);
+            }
+            hist.record(pk, QStringLiteral("source"), QStringLiteral("planned"), QString());
+        }
         if (!rlFlushHistory(store, hist, &err)) {
             store.rollback(nullptr);
             return rpErr(QStringLiteral("store_failed"), err);
@@ -285,7 +369,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     env[QStringLiteral("chars_recovered")]  = double(charsRecovered);
     env[QStringLiteral("skipped")]          = skipped;
     if (stripRuns) {
-        env[QStringLiteral("runs_stripped")] = int(bodyPlan.size()) - repeatsStripped;
+        env[QStringLiteral("runs_stripped")] =
+            int(bodyPlan.size()) - repeatsStripped - placeholderBodies;
         env[QStringLiteral("repeats_stripped")] = repeatsStripped;   // ANTS-4543
         env[QStringLiteral("strip_skipped")] = stripSkipped;
         // A far higher cap than skipped_ids': every id here is an item somebody
@@ -298,6 +383,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
         if (stripSkippedIds.size() > kStripSkipCap)
             env[QStringLiteral("strip_skipped_truncated")] = true;
         if (!dryRun)
+            rlAttachHistoryNote(env, store, hist);
+    }
+    if (clearPlaceholder) {
+        env[QStringLiteral("placeholder_sources_cleared")] = int(clearPlan.size());
+        env[QStringLiteral("placeholder_lines_removed")]   = placeholderLines;
+        // Uncapped: the population is bounded by one backfill.
+        env[QStringLiteral("placeholder_cleared_ids")] = QJsonArray::fromStringList(clearedIds);
+        if (!dryRun && !stripRuns)
             rlAttachHistoryNote(env, store, hist);
     }
     if (dryRun) env[QStringLiteral("dry_run")] = true;

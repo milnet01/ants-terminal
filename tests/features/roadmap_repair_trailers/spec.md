@@ -129,3 +129,37 @@ trailing runs.
 - **INV-14** — where removing the copies equal to the column would leave
   another value declared, nothing is removed and the item is listed in
   `strip_skipped_ids`.
+
+## Clearing the placeholder source — ANTS-4595
+
+**Status:** implemented (2026-10-02)
+
+The 2026-04-30 backfill (ANTS-1129, commit 7e4edf92) wrote
+`Source: planned.` into bullets that had no provenance, and migration
+stored it as an `asserted` source. No truer value was ever recorded.
+
+**`clear_placeholder_source: true` blanks the `source` column** of every
+item in the caller's project whose source is `planned`, whose source
+provenance is `asserted`, and whose `created` is NULL. The blank is
+written with `store-generated` provenance, since no author supplied it,
+and an empty source does not render. A `planned` source with
+`defaulted` provenance is `roadmap-format.md` § 3.5.3's default and is
+left alone (user decision, 2026-10-02).
+
+**A body line declaring only that source is removed too**, or the next
+body write re-derives the column from it. Both writes are recorded in
+history. The strip pass does not judge an item whose body this removes.
+
+- **INV-15** — a qualifying item's source becomes empty, a body line
+  declaring only `Source: planned.` is removed, and the rest of the body
+  and the other columns are unchanged. `placeholder_sources_cleared`,
+  `placeholder_lines_removed` and `placeholder_cleared_ids` report it.
+- **INV-16** — an item with a `created` date, or with `defaulted`
+  source provenance, is untouched.
+- **INV-17** — another project's qualifying items are untouched.
+- **INV-18** — `dry_run` writes nothing and reports the real run's
+  counts; without the flag none of the three fields is reported and
+  nothing is cleared; a second run clears nothing.
+- **INV-19** — an item whose body declares any other source is not
+  cleared, so a `planned` column truncated from a longer value is
+  repaired from its prose instead.

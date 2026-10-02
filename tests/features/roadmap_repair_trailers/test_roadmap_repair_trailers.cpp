@@ -585,3 +585,259 @@ TEST(RoadmapRepairTrailers, Inv14RepeatWhoseRemovalChangesTheValueIsSkipped) {
     EXPECT_TRUE(idListed(resp, "strip_skipped_ids", QStringLiteral("DEMO-0004")))
         << QJsonDocument(resp).toJson().toStdString();
 }
+
+// ------------------------------------------------------------ INV-15..18 --
+// ANTS-4595 — `clear_placeholder_source`. The 2026-04-30 backfill (ANTS-1129)
+// wrote `Source: planned.` into bullets that had no provenance, so migration
+// stored the lifecycle word as an ASSERTED source. These tests use a fixture of
+// their own so the counts the tests above pin do not move.
+
+namespace {
+
+QByteArray placeholderFixture(const char *prefix) {
+    const QByteArray p(prefix);
+    QByteArray b =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Placeholder \xE2\x80\x94 Roadmap\n"
+        "\n";
+    b += kPad;
+    b += "\n## Work\n\n";
+    // Mid-body: migration keeps the line, so the body must lose it too.
+    b += "- \xF0\x9F\x93\x8B [" + p + "-0010] **Placeholder kept in the body.**\n"
+         "  Kind: fix.\n"
+         "  Source: planned.\n"
+         "  A closing line, so the run above does not trail the body.\n"
+         "\n";
+    // Trailing: migration stripped the line, so only the column holds it.
+    b += "- \xF0\x9F\x93\x8B [" + p + "-0011] **Placeholder in the column only.**\n"
+         "  Some prose before the run.\n"
+         "  Kind: fix.\n"
+         "  Source: planned.\n"
+         "\n";
+    // Same shape as -0010; the test gives it a `created` date.
+    b += "- \xF0\x9F\x93\x8B [" + p + "-0012] **Dated, so not the backfill.**\n"
+         "  Kind: fix.\n"
+         "  Source: planned.\n"
+         "  A closing line, so the run above does not trail the body.\n"
+         "\n";
+    // A real source beginning with the word. INV-19 cuts the column back to
+    // `planned`, the shape a truncated migration left.
+    b += "- \xF0\x9F\x93\x8B [" + p + "-0014] **A real source that starts with the word.**\n"
+         "  Kind: fix.\n"
+         "  Source: planned for 0.8.\n"
+         "  A closing line, so the run above does not trail the body.\n"
+         "\n";
+    // No Source line: migration applies the default, provenance `defaulted`.
+    b += "- \xF0\x9F\x93\x8B [" + p + "-0013] **Defaulted, never asserted.**\n"
+         "  Just prose.\n"
+         "  Kind: fix.\n"
+         "\n";
+    return b;
+}
+
+QString seedPlaceholder(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
+                        const char *dir, const char *prefix, const QString &name,
+                        qint64 *projectId) {
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QString::fromLatin1(dir));
+    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), placeholderFixture(prefix)))
+        return QString();
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return QString();
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) { ADD_FAILURE() << "findRoadmaps: " << err.toStdString(); return QString(); }
+    const auto plan = RoadmapMigrate::planFrom(*disc, name, name.toLower());
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-08-05T10:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(*store, plan, opts);
+    if (!out.ok) { ADD_FAILURE() << "migration load: " << out.error.toStdString(); return QString(); }
+    *projectId = out.projectId;
+    return root;
+}
+
+QString sourceProvenanceOf(qint64 projectId, const QString &id) {
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    if (!store) return QString();
+    QString err;
+    const auto pk = store->findItem(projectId, id, &err);
+    if (!pk) { ADD_FAILURE() << "findItem " << id.toStdString(); return QString(); }
+    const auto it = store->readItem(*pk, &err);
+    if (!it) { ADD_FAILURE() << "readItem " << id.toStdString(); return QString(); }
+    return it->provenance.value(QStringLiteral("source")).toString();
+}
+
+QJsonObject clearPlaceholders(RemoteControl &rc, const QString &root, bool dryRun) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("repair_trailers");
+    req[QStringLiteral("clear_placeholder_source")] = true;
+    if (dryRun) req[QStringLiteral("dry_run")] = true;
+    return rc.cmdRoadmapLogRepairTrailersForTest(req).object();
+}
+
+// Seeds the fixture and checks the preconditions the guard keys on, so a
+// fixture that stops producing them fails here rather than passing vacuously.
+QString seedAndCheck(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
+                     qint64 *projectId) {
+    const QString root = seedPlaceholder(guard, tmp, "ph", "PH", QStringLiteral("Ph"),
+                                         projectId);
+    if (root.isEmpty()) return root;
+    if (!damage(*projectId, QStringLiteral("PH-0012"), QStringLiteral("created"),
+                QStringLiteral("2026-04-30")))
+        return QString();
+    for (const char *id : {"PH-0010", "PH-0011", "PH-0012"}) {
+        EXPECT_EQ(columnOf(*projectId, QString::fromLatin1(id), QStringLiteral("source")).toStdString(),
+                  std::string("planned")) << id;
+        EXPECT_EQ(sourceProvenanceOf(*projectId, QString::fromLatin1(id)).toStdString(),
+                  std::string("asserted")) << id;
+    }
+    EXPECT_EQ(columnOf(*projectId, QStringLiteral("PH-0013"), QStringLiteral("source")).toStdString(),
+              std::string("planned"));
+    EXPECT_EQ(sourceProvenanceOf(*projectId, QStringLiteral("PH-0013")).toStdString(),
+              std::string("defaulted"));
+    EXPECT_NE(columnOf(*projectId, QStringLiteral("PH-0010"), QStringLiteral("body"))
+                  .indexOf(QStringLiteral("Source: planned.")), -1)
+        << "the mid-body line did not survive migration";
+    EXPECT_EQ(columnOf(*projectId, QStringLiteral("PH-0011"), QStringLiteral("body"))
+                  .indexOf(QStringLiteral("Source:")), -1)
+        << "the trailing line was not stripped by migration";
+    return root;
+}
+
+}  // namespace
+
+TEST(RoadmapRepairTrailers, Inv15AssertedUndatedPlaceholderIsCleared) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedAndCheck(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = clearPlaceholders(rc, root, false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    EXPECT_EQ(resp.value(QStringLiteral("placeholder_sources_cleared")).toInt(), 2)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("placeholder_lines_removed")).toInt(), 1);
+    EXPECT_TRUE(idListed(resp, "placeholder_cleared_ids", QStringLiteral("PH-0010")));
+    EXPECT_TRUE(idListed(resp, "placeholder_cleared_ids", QStringLiteral("PH-0011")));
+
+    EXPECT_TRUE(columnOf(projectId, QStringLiteral("PH-0010"), QStringLiteral("source")).isEmpty());
+    EXPECT_TRUE(columnOf(projectId, QStringLiteral("PH-0011"), QStringLiteral("source")).isEmpty());
+    const QString body = columnOf(projectId, QStringLiteral("PH-0010"), QStringLiteral("body"));
+    EXPECT_EQ(body.indexOf(QStringLiteral("Source:")), -1) << body.toStdString();
+    EXPECT_NE(body.indexOf(QStringLiteral("Kind: fix.")), -1) << body.toStdString();
+    EXPECT_NE(body.indexOf(QStringLiteral("A closing line")), -1) << body.toStdString();
+    // The other trailer columns are not this op's business.
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0010"), QStringLiteral("kind")).toStdString(),
+              std::string("fix"));
+}
+
+TEST(RoadmapRepairTrailers, Inv16DatedOrDefaultedPlaceholderIsUntouched) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedAndCheck(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString datedBody =
+        columnOf(projectId, QStringLiteral("PH-0012"), QStringLiteral("body"));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = clearPlaceholders(rc, root, false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0012"), QStringLiteral("source")).toStdString(),
+              std::string("planned"));
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0012"), QStringLiteral("body")), datedBody);
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0013"), QStringLiteral("source")).toStdString(),
+              std::string("planned"));
+    EXPECT_EQ(sourceProvenanceOf(projectId, QStringLiteral("PH-0013")).toStdString(),
+              std::string("defaulted"));
+}
+
+TEST(RoadmapRepairTrailers, Inv17OtherProjectIsUntouched) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 otherId = 0;
+    const QString other = seedPlaceholder(guard, tmp, "other", "OT", QStringLiteral("Other"),
+                                          &otherId);
+    ASSERT_FALSE(other.isEmpty());
+    qint64 projectId = 0;
+    const QString root = seedAndCheck(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_NE(otherId, projectId);
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = clearPlaceholders(rc, root, false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("placeholder_sources_cleared")).toInt(), 2);
+
+    for (const char *id : {"OT-0010", "OT-0011"}) {
+        EXPECT_EQ(columnOf(otherId, QString::fromLatin1(id), QStringLiteral("source")).toStdString(),
+                  std::string("planned")) << id;
+    }
+    EXPECT_NE(columnOf(otherId, QStringLiteral("OT-0010"), QStringLiteral("body"))
+                  .indexOf(QStringLiteral("Source: planned.")), -1);
+}
+
+TEST(RoadmapRepairTrailers, Inv18DryRunPredictsAndSecondRunClearsNothing) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedAndCheck(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject dry = clearPlaceholders(rc, root, true);
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(dry.value(QStringLiteral("placeholder_sources_cleared")).toInt(), 2);
+    EXPECT_EQ(dry.value(QStringLiteral("placeholder_lines_removed")).toInt(), 1);
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0010"), QStringLiteral("source")).toStdString(),
+              std::string("planned")) << "dry_run wrote the column";
+
+    // Without the flag the op reports none of these fields and clears nothing.
+    const QJsonObject plain = repair(rc, root, false);
+    ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(plain.contains(QStringLiteral("placeholder_sources_cleared")));
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0010"), QStringLiteral("source")).toStdString(),
+              std::string("planned"));
+
+    const QJsonObject real = clearPlaceholders(rc, root, false);
+    EXPECT_EQ(real.value(QStringLiteral("placeholder_sources_cleared")).toInt(), 2);
+    const QJsonObject again = clearPlaceholders(rc, root, false);
+    EXPECT_EQ(again.value(QStringLiteral("placeholder_sources_cleared")).toInt(), 0);
+    EXPECT_EQ(again.value(QStringLiteral("placeholder_lines_removed")).toInt(), 0);
+}
+
+TEST(RoadmapRepairTrailers, Inv19TruncatedRealSourceIsRepairedNotCleared) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedAndCheck(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(damage(projectId, QStringLiteral("PH-0014"), QStringLiteral("source"),
+                       QStringLiteral("planned")));
+    ASSERT_EQ(sourceProvenanceOf(projectId, QStringLiteral("PH-0014")).toStdString(),
+              std::string("asserted"));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = clearPlaceholders(rc, root, false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(idListed(resp, "placeholder_cleared_ids", QStringLiteral("PH-0014")));
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("PH-0014"), QStringLiteral("source")).toStdString(),
+              std::string("planned for 0.8"));
+}

@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log repair_trailers takes clear_placeholder_source, which blanks the "planned" placeholder an old backfill recorded as an item's source** (ANTS-4595)
+  Only in the caller's project, and only where the value was asserted and
+  the item has no created date. A body line declaring only that source is
+  removed too. The format's own defaulted "planned" is left alone.
+
 - **roadmap_migrate takes only_ids, so a preview can answer whether one particular item still changes.** (ANTS-4992)
   The preview lists at most 200 changed items, so on a big roadmap the
   one you fixed could be cut off. only_ids reports just the items you

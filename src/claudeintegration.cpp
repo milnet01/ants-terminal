@@ -13303,6 +13303,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "is listed in strip_skipped_ids and never removed. "
                         "Default false.");
                     props["strip_runs"]    = stripRunsProp;   // ANTS-4507
+                    QJsonObject clearPlaceholderProp;
+                    clearPlaceholderProp["type"] = "boolean";
+                    clearPlaceholderProp["description"] = QStringLiteral(
+                        "op:\"repair_trailers\" — also blank a `source` of "
+                        "\"planned\" that is asserted and undated (the "
+                        "ANTS-1129 backfill), and remove a body line declaring "
+                        "only it. Caller's project only. Reports "
+                        "placeholder_sources_cleared, placeholder_lines_removed "
+                        "and placeholder_cleared_ids. Default false.");
+                    props["clear_placeholder_source"] = clearPlaceholderProp;   // ANTS-4595
                     QJsonObject acceptLossProp;
                     acceptLossProp["type"] = "boolean";
                     acceptLossProp["description"] = QStringLiteral(

@@ -763,6 +763,11 @@ which heading you expect it under.
   listed in `strip_skipped_ids`, because the render shows the run's value
   today; so does one on an item whose columns the same pass repairs. Each
   removed run is a history row, as `set_body` writes one.
+  **`clear_placeholder_source:true` (ANTS-4595)** blanks a `source` of
+  `planned` that is `asserted` and has no `created` date. That is the
+  placeholder the ANTS-1129 backfill wrote. It touches the caller's project
+  only, and also removes a body line declaring only that source. A
+  `defaulted` `planned` is the format's default and stays.
 - **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
   the project's git history and fills the `created` / `shipped` columns for
   the rows predating forward stamping. Not a `roadmap_query` mode, and
