@@ -67795,7 +67795,7 @@ parse, not that file.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5301] **Sub-bullet lead-ins inside a bullet list are parsed as items.**
+- 🚫 [ANTS-5301] **Sub-bullet lead-ins inside a bullet list are parsed as items.**
   Reported by the Vestige session against its own rendered roadmap.
   Fragments like `Topology`, `Transport` and `Scene operations:` — lead-ins
   nested inside a bullet — are read as actionable items.
@@ -67803,11 +67803,17 @@ parse, not that file.
   They then hold an id, count toward every total, and would be carried into
   a milestone regrouping as if they were work. Reproduce against Vestige's
   roadmap before changing the parse; the fixture belongs here, not there.
+  Closed (2026-10-02): not a parser defect. In Vestige's file before its
+  convert (git show 9905f92^:ROADMAP.md), Topology, Transport and
+  "Scene operations:" are top-level `- [ ]` checkboxes, so the
+  github-task-list dialect makes each one an item. The store is faithful
+  to the source. Folding them into their parent item is a cleanup of
+  Vestige's roadmap; the Vestige session was told.
   **Layman:** A heading word inside a list gets counted as a piece of work.
   Kind: fix.
   Source: vestige-via-claude-config-2026-09-21.
 
-- 📋 [ANTS-5302] **A bold lead-in is taken as the id and the headline field gets the body prose.**
+- 🚫 [ANTS-5302] **A bold lead-in is taken as the id and the headline field gets the body prose.**
   Reported by the Vestige session: around thirty rows in one section have
   the bold lead-in parsed as the id, so the id reads `Tile / chunked level
   streaming` while the headline field holds the prose that followed it.
@@ -67816,11 +67822,16 @@ parse, not that file.
   and it is what `id_origin` should have caught. Check whether these land
   as `parsed` rather than `quarantined` — if so the origin classifier is
   the defect and the transposition is its symptom.
+  Closed (2026-10-02): no longer reproduces; fixed by ANTS-4500's id
+  synthesis on convert. Live store: 0 ids containing a space across all
+  25 projects. The reported row is now 3D_E-S0940, id_origin
+  synthesised, with the full line as its headline.
   **Layman:** Some items have their name and their reference number swapped.
   Kind: fix.
   Source: vestige-via-claude-config-2026-09-21.
+  Duplicate-of: ANTS-4500.
 
-- 📋 [ANTS-5303] **Most rows in a migrated roadmap carry anchor slugs rather than citable ids.**
+- 🚫 [ANTS-5303] **Most rows in a migrated roadmap carry anchor slugs rather than citable ids.**
   Third of the three shapes the Vestige session reported. An anchor slug
   is not an id: nothing can cite it, so every downstream surface that joins
   on an id — a commit trailer, a spec's `Spec:` field, a relationship row,
@@ -67830,9 +67841,14 @@ parse, not that file.
   parse walking a list it should not, and fixing them separately risks
   three partial repairs. Measure first, on a copy of the live store, never
   in place.
+  Closed (2026-10-02): no longer reproduces; fixed by ANTS-4500. Every
+  id-less bullet now gets a citable `<prefix>-S<NNNN>` id instead of an
+  anchor slug. Vestige: 1033 synthesised, 114 parsed, 3 quarantined, no
+  slug ids.
   **Layman:** Items end up with a link fragment where their reference number should be.
   Kind: fix.
   Source: vestige-via-claude-config-2026-09-21.
+  Duplicate-of: ANTS-4500.
 
 - 📋 [ANTS-5323] **workspace_search that hits its time budget returns partial rows flagged only truncated:true, indistinguishable from the row cap.**
   Measured 2026-09-25: pattern ANTS-4392, default timeout_sec 5,
