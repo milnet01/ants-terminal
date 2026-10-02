@@ -96,6 +96,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **docs_index stays warm on a tree larger than its cache, instead of rewriting the cache on every call** (ANTS-5099)
+
+- **doc_lint and doc_symbols stop resolving names once the run's time limit is spent, rather than restarting it for every document** (ANTS-5099)
+
 - **doc_citations bounds its markdown scan by every entry it visits and reports a cut** (ANTS-5098)
   A large build directory no longer makes the scan walk the whole tree;
   md_scan_truncated:true says when the cap stopped it.

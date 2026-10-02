@@ -399,6 +399,11 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     // the engine is per-document, and a per-document cap would let a 100-doc
     // sweep spend 100× the walks § 4 costs.
     int budget = opts.maxSymbolsPerRun;
+    // ANTS-5099 — the resolve deadline is a run budget too; scan() restarts
+    // its own clock on every call.
+    const int runDeadlineMs = opts.resolveDeadlineMs;
+    QElapsedTimer runClock;
+    runClock.start();
     for (const QString &rel : std::as_const(relDocs)) {
         QFile f(QDir(rootCanonical).filePath(rel));
         if (f.size() > walk.maxDocBytes) continue;
@@ -408,6 +413,7 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
         checked << rel;
 
         opts.maxSymbolsPerRun = budget;
+        DocSymbols::applyRunDeadline(opts, runDeadlineMs, runClock.elapsed());
         const DocSymbols::ScanResult r = DocSymbols::scan(text, rel, opts);
         budget -= r.needlesResolved;
         symbols += r.symbols;

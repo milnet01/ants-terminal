@@ -92,6 +92,18 @@ struct Options {
     QString rootCanonical;
 };
 
+// ANTS-5099 — resolveDeadlineMs is per scan(), so a caller scanning many
+// documents spends it as a RUN budget, the way it already spends
+// maxSymbolsPerRun: pass the run's deadline and the time the run has used.
+// A spent deadline zeroes the needle budget rather than passing 0 ms, which
+// would mean "no deadline" here.
+inline void applyRunDeadline(Options &o, int runDeadlineMs, qint64 elapsedMs) {
+    if (runDeadlineMs <= 0) return;
+    const qint64 left = runDeadlineMs - elapsedMs;
+    if (left <= 0) o.maxSymbolsPerRun = 0;
+    else           o.resolveDeadlineMs = static_cast<int>(left);
+}
+
 struct ScanResult {
     QVector<Symbol>            symbols;   // ascending by docLine, then docCol
     QList<DocFinding::Finding> findings;  // one per UNRESOLVED occurrence

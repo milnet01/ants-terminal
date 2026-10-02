@@ -118,6 +118,34 @@ TEST(DocLint, Inv1SharedReadForNativeCheckers) {
     EXPECT_EQ(docs, r.checkedDocs);
 }
 
+// ANTS-5099 — the resolve deadline is RUN-wide, like the needle budget.
+// DocSymbols restarted it on every scan(), so a run over many documents had
+// no wall-clock bound at all (ANTS-3661 § 4). With a 1 ms run deadline, the
+// first document's tree walk over a few hundred source files uses it up, and
+// every later document's needles must come back NotChecked.
+TEST(DocLint, Ants5099SymbolDeadlineIsRunWide) {
+    Fixture fx;
+    for (int i = 0; i < 400; ++i)
+        fx.write(QStringLiteral("src/f%1.cpp").arg(i),
+                 "int filler() { return 0; }\nint more() { return 1; }\n");
+    fx.write(QStringLiteral("src/alpha.cpp"), "void AlphaThing::run() {}\n");
+    fx.write(QStringLiteral("src/beta.cpp"), "void BetaThing::run() {}\n");
+    const QStringList docs{QStringLiteral("docs/a.md"),
+                           QStringLiteral("docs/b.md"),
+                           QStringLiteral("docs/c.md")};
+    fx.write(docs.at(0), "# A\n\nSee `AlphaThing::run()` for it.\n");
+    fx.write(docs.at(1), "# B\n\nSee `BetaThing::run()` for it.\n");
+    fx.write(docs.at(2), "# C\n\nSee `GammaThing::run()` for it.\n");
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kSymbols};
+    o.symbols.resolveDeadlineMs = 1;
+
+    const DocLint::Result r = DocLint::run(docs, o);
+    EXPECT_GE(r.stats.symbolsNotChecked, 2) << render(r);
+    EXPECT_TRUE(r.stats.symbolsTruncated) << render(r);
+}
+
 // INV-3 — an ok citation is never a finding, INCLUDING one whose anchor moved.
 // The middle citation is the row that fails against an adapter treating the
 // advisory anchor flag as a status.

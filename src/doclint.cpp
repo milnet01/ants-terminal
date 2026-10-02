@@ -347,6 +347,9 @@ Result run(const QStringList &relDocs, const Options &opts) {
     // The run-wide needle budget doc_symbols' per-document Options cannot hold:
     // the engine is per document, the bound is per run, so the caller debits it.
     int symbolBudget = opts.symbols.maxSymbolsPerRun;
+    // ANTS-5099 — and the resolve deadline, which scan() restarts per call.
+    QElapsedTimer symbolClock;
+    symbolClock.start();
 
     // ---- Phase 1: one enumeration, one read, four native checkers -----------
     for (int i = 0; i < relDocs.size(); ++i) {
@@ -394,6 +397,8 @@ Result run(const QStringList &relDocs, const Options &opts) {
             symbolsRan = true;
             DocSymbols::Options so = opts.symbols;
             so.maxSymbolsPerRun = qMax(0, symbolBudget);
+            DocSymbols::applyRunDeadline(so, opts.symbols.resolveDeadlineMs,
+                                         symbolClock.elapsed());
             const DocSymbols::ScanResult sr = DocSymbols::scan(text, rel, so);
             symbolBudget -= sr.needlesResolved;
             r.findings.append(sr.findings);
