@@ -83,7 +83,7 @@ struct Counts {
 // ("100% tests passed, 0 tests failed out of 42"), and gtest's
 // ("[  PASSED  ] 5 tests." / "[  FAILED  ] 2 tests"). Anything else leaves
 // both at -1 rather than guessing.
-Counts parseCounts(const QString &output);
+[[nodiscard]] Counts parseCounts(const QString &output);
 
 // ANTS-4401 — what `require_green_baseline` decides, as a pure function of
 // what the baseline run reported.

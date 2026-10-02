@@ -80,7 +80,7 @@ struct PrePassPattern {
     // reported error_handling on Python's canonical `sys.exit(main())`. A file
     // whose language is not recognised matches no gated pattern at all: a gate
     // that admits the unknown case is not a gate.
-    QString languages;
+    QString languages = {};
 };
 const QVector<PrePassPattern> &prePassPatterns();
 
@@ -282,7 +282,7 @@ FoldInResult    foldIn(const FoldInRequest &req);
 // extension of it. That walk counts three finding shapes across a 64 KiB
 // window per chunk and is pinned by several tests; this needs the field
 // values, not the counts, and additive code cannot destabilise it.
-QJsonArray      parseActionableFindings(const QStringList &reports);
+[[nodiscard]] QJsonArray      parseActionableFindings(const QStringList &reports);
 
 // In-process partition cache so brief / synth can recover the
 // chunk layout for a given token without re-walking the tree.

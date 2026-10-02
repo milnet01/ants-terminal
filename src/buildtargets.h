@@ -50,7 +50,7 @@ struct Target {
 // Not resolved: a source named through a variable, a generator expression, or
 // `target_sources()`. None appears in this project's lists; a file reached only
 // that way is reported unowned rather than attributed to the wrong target.
-QList<Target> parse(const QString &cmakeText);
+[[nodiscard]] QList<Target> parse(const QString &cmakeText);
 
 // The targets whose SOURCES name `relPath`, in declaration order. A list
 // rather than one target: a test source compiled into two bundles is legal,
