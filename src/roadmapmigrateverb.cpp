@@ -20,6 +20,7 @@
 #include "projectsettings.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapparse.h"     // ANTS-4992: foldId
 #include "roadmaprender.h"   // ANTS-5330: isOpen()
 #include "roadmapsource.h"
 #include "roadmapstore.h"
@@ -248,10 +249,10 @@ void setOnlyIds(QJsonObject &env, const QStringList &onlyIds,
         return;
     QSet<QString> reported;
     for (const auto &u : out.updatedItems)
-        reported.insert(u.id.toLower());
+        reported.insert(RoadmapParse::foldId(u.id));
     QJsonArray notUpdated;
     for (const QString &id : onlyIds)
-        if (!reported.contains(id.trimmed().toLower()))
+        if (!reported.contains(RoadmapParse::foldId(id.trimmed())))
             notUpdated.append(id);
     env[QStringLiteral("only_ids")]             = QJsonArray::fromStringList(onlyIds);
     env[QStringLiteral("only_ids_not_updated")] = notUpdated;
@@ -620,7 +621,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     opts.projectRoot = req.projectRoot;
     opts.dryRun      = req.dryRun;
     for (const QString &id : req.onlyIds)   // ANTS-4992
-        opts.onlyIdFolds.insert(id.trimmed().toLower());
+        opts.onlyIdFolds.insert(RoadmapParse::foldId(id.trimmed()));
     opts.idFormat    = idFormat;      // ANTS-3771 § 2.3
     opts.acceptDeletions = req.acceptDeletions;   // ANTS-5287
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);

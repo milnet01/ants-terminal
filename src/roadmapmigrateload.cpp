@@ -970,7 +970,7 @@ bool Loader::updateMatched() {
             continue;
         // ANTS-4992 — a scoped report skips other ids before the cap, so the
         // cap can no longer hide the one the caller asked about.
-        if (!opts.onlyIdFolds.isEmpty() && !opts.onlyIdFolds.contains(chg.id.toLower()))
+        if (!opts.onlyIdFolds.isEmpty() && !opts.onlyIdFolds.contains(RoadmapParse::foldId(chg.id)))
             continue;
         if (out.updatedItems.size() < kMaxUpdatedItems)
             out.updatedItems.append({chg.id, chg.fields, chg.fieldsSuppressed,
