@@ -98,25 +98,25 @@ struct StaleSet {
 // (recursive), scan each, sort by path. Stops at maxIndexDocs OR when the
 // serialised index would exceed maxCacheBytes (whichever first), setting
 // docsTruncated. generatedAtMs passed in (no internal clock read).
-Index build(const QString &rootCanonical, qint64 generatedAtMs,
+[[nodiscard]] Index build(const QString &rootCanonical, qint64 generatedAtMs,
             const Options &opts = {});
 
-StaleSet staleDocs(const Index &prev, const QString &rootCanonical);
+[[nodiscard]] StaleSet staleDocs(const Index &prev, const QString &rootCanonical);
 
 // Re-scan only changed+added, drop removed, reuse prev's entries for untouched.
 // *refreshedOut = changed+added count.
-Index refresh(const Index &prev, const QString &rootCanonical,
+[[nodiscard]] Index refresh(const Index &prev, const QString &rootCanonical,
               qint64 generatedAtMs, const Options &opts, int *refreshedOut);
 
 // Build the response body (without the dispatcher-injected etag) for one
 // query. refreshedDocs + cachePath ride the meta block. ≥2 selectors →
 // bare {ok:false, code:bad_args}.
-QJsonObject query(const Index &idx, const QueryParams &params,
+[[nodiscard]] QJsonObject query(const Index &idx, const QueryParams &params,
                   int refreshedDocs, const QString &cachePath,
                   const Options &opts = {});
 
-QJsonObject toJson(const Index &idx);
-Index       fromJson(const QJsonObject &obj);
+[[nodiscard]] QJsonObject toJson(const Index &idx);
+[[nodiscard]] Index       fromJson(const QJsonObject &obj);
 
 // ~/.cache/ants-terminal/docs-index/<cwdHash(root)>.json.
 QString cachePathFor(const QString &rootCanonical);

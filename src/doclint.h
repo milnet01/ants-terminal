@@ -224,6 +224,6 @@ struct Result {
     bool truncated = false;
 };
 
-Result run(const QStringList &relDocs, const Options &opts);
+[[nodiscard]] Result run(const QStringList &relDocs, const Options &opts);
 
 }  // namespace DocLint

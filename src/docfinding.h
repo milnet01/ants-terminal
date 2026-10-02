@@ -70,8 +70,8 @@ struct Finding {
 //    array. It counts emissions within one run, so the same document reviewed
 //    with a different `checks[]` set yields different indices for identical
 //    findings — an unstable number that means nothing to a consumer.
-QJsonObject toJson(const Finding &f);
-QJsonArray  toJson(const QList<Finding> &fs);
+[[nodiscard]] QJsonObject toJson(const Finding &f);
+[[nodiscard]] QJsonArray  toJson(const QList<Finding> &fs);
 
 // counts[verb][kind] -> n, over the WHOLE list it is handed. A consumer that
 // caps or filters must call this BEFORE doing so, or its counts describe the

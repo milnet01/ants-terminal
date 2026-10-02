@@ -85,7 +85,7 @@ bool fenceCloses(const QString &line, QChar openChar, int openRun,
 // stateless `fenceOpenerChar` callers (feedbackfile, speclog, docsindex)
 // keep the top-level rule: container tracking needs state they do not carry,
 // and the files they scan fence at top level.
-QVector<bool> fenceMask(const QStringList &lines);
+[[nodiscard]] QVector<bool> fenceMask(const QStringList &lines);
 
 // ANTS-3649 — the same mask, plus the 1-based line of an unclosed fence
 // opener in `*unterminatedOpenerLine` (-1 when every fence closes; nullptr is

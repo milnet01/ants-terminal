@@ -46,6 +46,6 @@ struct Result {
     int verbCallsChecked     = 0;
 };
 
-Result check(const QString &text, const QString &relPath, const Options &opts);
+[[nodiscard]] Result check(const QString &text, const QString &relPath, const Options &opts);
 
 }  // namespace DocFacts

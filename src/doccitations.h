@@ -201,7 +201,7 @@ struct ScanResult {
     QVector<SymbolRef> symbolRefs;
 };
 
-ScanResult scan(const QStringList &lines, const Options &opts = {});
+[[nodiscard]] ScanResult scan(const QStringList &lines, const Options &opts = {});
 
 // ANTS-3636 — the read path. Reads `docAbsPath` ONCE, resolves every citation
 // `scan` found under `rootCanonical`, reads each target, and returns the
@@ -212,7 +212,7 @@ ScanResult scan(const QStringList &lines, const Options &opts = {});
 //
 // `path` comes back project-relative to `rootCanonical`; the handler overwrites
 // it with the caller's own string, which is what the request echo promises.
-QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
+[[nodiscard]] QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts = {});
 
 }  // namespace DocCitations

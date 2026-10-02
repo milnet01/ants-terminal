@@ -132,7 +132,7 @@ struct ScanResult {
 };
 
 // `text` is the document's content; `relPath` is only carried onto findings.
-ScanResult scan(const QString &text, const QString &relPath,
+[[nodiscard]] ScanResult scan(const QString &text, const QString &relPath,
                 const Options &opts = {});
 
 // ANTS-5313 — the locator reduction: one answer per DISTINCT symbol, for a
@@ -157,6 +157,6 @@ struct Locators {
 // root, because a checker engine takes text and never opens a file itself
 // (ANTS-3664 INV-5): the caller reads a project-relative path's lines.
 using SourceLines = std::function<QStringList(const QString &relPath)>;
-Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines = {});
+[[nodiscard]] Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines = {});
 
 }  // namespace DocSymbols
