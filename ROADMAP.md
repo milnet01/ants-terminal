@@ -41447,12 +41447,21 @@ against current source before filing.
   Nothing to build. Recording the mechanism because a fix credited to the
   wrong cause is one that gets "re-fixed" later, or reverted as dead code.
 
-- 📋 [ANTS-4438] **The first store-backed write re-wraps the whole roadmap file, producing a large diff unrelated to the edit.**
+- ✅ [ANTS-4438] **The first store-backed write re-wraps the whole roadmap file, producing a large diff unrelated to the edit.**
   Measured 2026-08-18 on a throwaway copy of finbreak: one `annotate` adding a single note line rewrote 1238 lines and shrank the file by 1455 bytes.
 
   Content is preserved — 275 ids in and 275 out, and a token-multiset comparison under a verified C-locale sort reported zero tokens lost, with a mutated control (200 lines deleted) correctly reporting 887. The churn is re-wrapping: hand-wrapped body paragraphs come back as single long lines.
 
   So it is safe but startling, and it lands on the first write after migration with no warning. A caller reviewing that diff cannot see their own edit in it. Worth either preserving the wrap on import, or saying up front that the first write normalises the file so it can be committed on its own.
+  Resolved (2026-10-02), already fixed by later work; no code change here.
+  Re-measured on build a1c82599: finbreak's last hand-written roadmap
+  (its commit 3b36e6d~1, 11,442 lines) migrated into a scratch store and
+  rendered with ants-mcpd --call roadmap_log op:"render". The diff is 48
+  lines, against 1,238 in the report: the generated-file notice, the
+  Dropped legend line, and Lanes / Source / Layman trailer lines moved
+  into canonical order. No body paragraph is re-flowed. Finbreak's own
+  first render (3b36e6d, 2026-09-21) was the same size. Which item fixed
+  the wrap was not traced.
   **Layman:** The first time the tools write your roadmap they also re-flow every paragraph, so a one-line change shows up as a thousand-line diff.
   Kind: enhancement.
   Source: finbreak-feedback-2026-08-18 (maintainer-measured).
@@ -52890,6 +52899,30 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: ANTS-4487 § 4.2, split out 2026-09-27.
   Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5621] **A migrate into a scratch store overwrites the real store's pre-migrate.sqlite.**
+  Happened 2026-10-02: ants-mcpd --call roadmap_migrate run with HOME,
+  XDG_CONFIG_HOME and XDG_DATA_HOME pointed at a scratch folder, but
+  XDG_STATE_HOME left as the real one. The store opened was the scratch
+  one, yet the reply said backup_path_source:"backup_record" and wrote
+  its snapshot to /mnt/Games/Backups/ants-roadmap-store/pre-migrate.sqlite,
+  replacing the real rolling snapshot with an empty scratch store. The
+  real one, taken before the last real migration, is lost; the dated
+  roadmap-*.sqlite files and the live store are intact.
+
+  Cause (src/roadmapbackuphealth.cpp snapshotDest, read by
+  src/roadmapmigrateverb.cpp): the folder comes from the backup job's
+  record under the state dir, which describes the default store only,
+  but is applied to whatever store the call opened. Fix candidate: use
+  the recorded folder only when the store path is the default store;
+  otherwise snapshot beside the store. A test should open a store at a
+  non-default path with a record present and assert the record's folder
+  is untouched. The isolation half (XDG_STATE_HOME also needs
+  redirecting) belongs in the ANTS-5506 spec's temporary-HOME note.
+  **Layman:** Testing a roadmap import on a throwaway copy can overwrite the real safety backup of your roadmap.
+  Kind: fix.
+  Source: in-session-2026-10-02 (ANTS-4438 re-measure).
+  Lanes: roadmap-store, mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
