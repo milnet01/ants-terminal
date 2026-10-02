@@ -52940,6 +52940,18 @@ are closed inline in the feedback files rather than filed here.
   non-default path with a record present and assert the record's folder
   is untouched. The isolation half (XDG_STATE_HOME also needs
   redirecting) belongs in the ANTS-5506 spec's temporary-HOME note.
+  Analysis (2026-10-02): the handler (remotecontrol_roadmap_migrate.cpp,
+  cmdRoadmapMigrate) always migrates RoadmapStore::defaultPath(), which
+  follows XDG_DATA_HOME, but reads the folder from
+  $XDG_STATE_HOME/ants-terminal/roadmap-backup-snapshot.state. That
+  record (tools/roadmap-backup-lib.sh) holds attempt, success, error and
+  dest, and nothing naming the store it backs up, so the C++ side cannot
+  tell the two apart. The fix needs the snapshot job to write a store=
+  line and snapshotDest() to use dest only when store= matches the store
+  being migrated. The record format is ANTS-3794 § 2.4's, so that is a
+  contract change and owes rule 14's gate first. It bites only a caller
+  that redirects some XDG dirs but not all. The config rung
+  (claude.roadmap_snapshot_dir) has the same blind spot.
   **Layman:** Testing a roadmap import on a throwaway copy can overwrite the real safety backup of your roadmap.
   Kind: fix.
   Source: in-session-2026-10-02 (ANTS-4438 re-measure).
