@@ -403,28 +403,35 @@ other.
 
 | Project | High-water carrier | `.roadmap-counter` |
 |---|---|---|
-| **Store-migrated** — store row *and* `ants-v1` | the store's `id_high_water` row, per `(project, prefix)`, **floored to the committed corpus exactly as above** | neither read nor written; a stale file is simply left behind |
+| **Store-migrated** — store row *and* `ants-v1` | the store, per `(project, prefix)`: the greater of the `id_high_water` row and the highest id any stored item holds. **Not** the committed corpus | neither read nor written; a stale file is simply left behind |
 | **Pass-headings** (§ 3.10.5), store row or not | derived from the heading, never allocated | neither read nor written |
 | **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that row's `id_high_water` for the prefix** (ANTS-4493) | read and written |
 
 On a store-migrated project an allocation is
-`max(idHighWater(project, prefix), corpusHighWater(root, prefix)) + 1`,
-followed by `raiseIdHighWater()`. An absent `id_high_water` row is *not* an
-error — it is the state of every project until its first store-side
-allocation, and is read as 0, exactly as an absent counter file is above.
+`RoadmapStore::allocationFloor(project, prefix) + 1`, followed by
+`raiseIdHighWater()`. The floor reads two columns because neither alone is
+complete. The `id_high_water` row remembers an id whose item was later
+deleted. The items hold every id migration wrote, and migration writes no
+row. **So an absent row is neither an error nor a 0**: it is the state of
+every project until its first store-side allocation, and the stored items
+still floor the next id. Items the render excludes (`internal`, below)
+count too: the query does not filter on visibility.
+
+**The committed corpus is not consulted on this path** (ANTS-4631). The
+rendered file is an output of the store's rows, and its prose cannot tell
+an allocated id from a documented example. Reading it once turned a sample
+id in a bullet body into the high-water mark and skipped about 5,370 ids.
 
 **Concurrent allocations are serialised by the store transaction, not by the
 flock above.** The read-modify-write runs inside the `BEGIN IMMEDIATE` the
 whole write op holds, so two sessions cannot interleave — the same guarantee
 the counter's flock gives, reached by a different mechanism.
 
-**This does not overturn ANTS-3450.** The store row is a second derived cache,
-not a second source: it lives outside the repo (under `GenericDataLocation`),
-so it is machine-local exactly as the gitignored counter is, and the corpus is
-still what either one is recovered from — which is why the `max()` above keeps
-the floor. Dropping it on the store path would re-open the very failure the
-rule above closes: a fresh clone reissuing an id the committed corpus already
-holds.
+**This does not overturn ANTS-3450.** That rule floors a counter a fresh
+clone can arrive without. On a store-migrated project the stored items are
+the record, so they are the floor. The store lives outside the repo (under
+`GenericDataLocation`), so a machine without it has no store row, and the
+project falls to the counter row of the table, floored to the corpus.
 
 `id_strategy: "stable_prefix"` (a caller-supplied string id such as
 `Ts20-SP6`) consults neither carrier and raises neither, on either path: a
@@ -436,19 +443,15 @@ malformed (`roadmap-data-model.md` § 7.1 states what it is worth instead).
 
 This is the **interim** rule, named as such because the cutover is not
 finished: [`roadmap-data-model.md`](roadmap-data-model.md) § 8 records that
-once the store's export is published on a cadence (ANTS-3794), the export —
-not the committed corpus — becomes the authoritative floor for a
-store-migrated project. Until then the committed corpus above is that floor
-for every project, store-migrated or not.
+once the store's export is published on a cadence (ANTS-3794), the export
+becomes the authoritative floor for a store-migrated project.
 
-**And on a store-migrated project that floor has a hole, which is why the
-interim is an interim.** `roadmap-data-model.md` § 7.5 keeps `internal`
-items off the render by policy, so their ids appear in **no**
-committed file — not `ROADMAP.md`, not an archive, not the CHANGELOG. A corpus
-scan cannot see them, so on such a project the corpus is not a sufficient floor
-on its own and an absent `id_high_water` row must **not** be treated as a safe
-0. Only the store row covers those ids today; the export (ANTS-3794) is not
-subject to that exclusion, which is the whole reason it supersedes both.
+**Why the interim is an interim: `internal` ids reach no committed file.**
+`roadmap-data-model.md` § 7.5 keeps `internal` items off the render by policy,
+so their ids appear in no `ROADMAP.md`, archive or CHANGELOG. The store's
+floor counts them; a corpus scan, on a machine without the store, cannot. The
+export (ANTS-3794) is not subject to that exclusion, which is why it
+supersedes both.
 
 **Illustrative only — this is NOT the allocation path.** It shows the
 counter's shape, not how an id is issued: real allocation goes through
@@ -486,8 +489,12 @@ inserted (e.g. a `/audit` finding):
    keep the section monotonic — that's the anti-pattern this
    sub-spec prevents.
 3. **Document the priority in the bullet body.** A line like
-   `Priority: CRITICAL — security blocker` makes the position
-   choice auditable.
+   `Priority: 1 — security blocker` makes the position choice
+   auditable. The value is a band, `1` (highest) to `5`; the prose
+   after the dash is the reason, not the value. An older bullet
+   carrying a severity word instead (`Priority: CRITICAL`) is not
+   rewritten: `roadmap-data-model.md` § 7.5 states how the word maps
+   to a band.
 
 This means a section's IDs may be **non-monotonic** in document
 order (e.g. `0003, 0017, 0004, 0012`). That is correct and
@@ -818,22 +825,20 @@ Conventions for any findings fold-in:
 
 ### 3.9 Archive rotation
 
-When a `ROADMAP.md` grows past ~150 KiB, split closed minors out
-into per-minor archive files.
+**On a versioned roadmap, every minor or major bump rotates**, whatever
+the file weighs. Nothing rotates within a minor: splitting an open minor
+would move bullets that are still being edited, and § 3.5.1's ID
+stability is worth more than the bytes. A phase-block roadmap's occasion
+is phase closure instead, owned by the phase bullet below. Every
+unqualified mention of a bump or `cut-release` in this section is the
+versioned rule.
 
-**The size figure is a review trigger, not a rotation event.** On a
-versioned roadmap the only rotation event is a minor or major bump
-(below) — a phase-block roadmap's occasion is phase closure instead,
-owned by the phase bullet, and every unqualified mention of `cut-release`
-in this section is the versioned rule. So a file
-that crosses 150 KiB part-way through a minor has nothing eligible
-to rotate — every section under the open minor stays put — and it
-stays over the threshold until that minor closes. Crossing it is
-therefore a signal to check that rotation is still happening at
-all, not a breach on its own. There is deliberately no within-minor
-rotation: splitting an open minor would move bullets that are still
-being edited, and § 3.6's ID stability is worth more than the
-bytes.
+Split **every** closed minor still in the file into its own archive file.
+A roadmap whose earlier bumps rotated nothing can hold several. **About
+150 KiB is a review trigger, not a gate.** A file past it is a sign that
+rotation is not happening, so find out why. A file past it while its
+current minor is still open has nothing eligible to rotate, and that is
+not a breach.
 
 The convention:
 
@@ -879,8 +884,8 @@ The convention:
   closed phase rotates except the highest-numbered one in the file,
   which always stays**: it is where new work is filed, and stating
   it that way also settles the all-closed file — no phase is active,
-  and rotation still has a referent. The size rule at the head of
-  this section applies unchanged.
+  and rotation still has a referent. The size figure does not gate
+  it either: a closed phase rotates whatever the file weighs.
 
   **`## FP<NN>` and `## DS<NN>` blocks do not rotate on their
   own.** They are § 3.8 fold-in subsections that some projects
@@ -921,13 +926,33 @@ The convention:
   > reusing the sort contract already stated. Decided here per
   > CFG-0069 and raised into the global copy (ANTS-4073).
 - **On a versioned roadmap** rotation happens at bump time on a
-  minor or major bump only. Patch bumps don't rotate. The bump recipe (`.claude/bump.json`
-  on each project) owns the snip-and-create step. Rotation is
-  content-preserving: every `## <closed>.<patch>` block of the closed
-  minor (`0.7.0`, `0.7.1`, …), with its sub-headings and bullets, moves
-  to `docs/roadmap/<closed>.md` byte-identical, then those blocks are
-  removed from `ROADMAP.md`. Moving `<closed>.0` alone would leave the
-  patch releases behind; `rotate_minor` (below) selects them all.
+  minor or major bump only. Patch bumps don't rotate. On a
+  hand-authored roadmap the bump recipe (`.claude/bump.json` on each
+  project) owns the snip-and-create step; on a store-migrated one,
+  `rotate_minor` below.
+
+  **A block belongs to the minor its heading names, not the minor its
+  work shipped in.** The heading's release designator is `<M>.<N>`,
+  optionally after a `v`, followed by the end of the title, a character
+  that is neither a digit nor a `.`, or a `.` and a digit. So
+  `## 0.7.0`, `## 0.7.12 — …` and `## 0.7.50–0.7.59 — …` are all
+  minor 0.7; `## 0.70.0` is not; and a signpost such as
+  `## 0.5.x and 0.6.x — archived` names no single minor and stays.
+
+  Rotation is content-preserving: every block of the closed minor, with
+  its sub-headings and bullets, moves to `docs/roadmap/<closed>.md`
+  byte-identical, whether or not the blocks are next to each other, and
+  is then removed from `ROADMAP.md`. **Patch blocks move too** —
+  moving `<closed>.0` alone would leave the patch releases behind.
+
+  **Open work moves forward first.** Before rotating, each bullet under
+  the closed minor that is neither ✅ nor 🚫 is re-filed into the new
+  minor's block, keeping its id (§ 3.5.1). On a store-migrated project
+  that is `roadmap_log op:"amend_field"` with `field:"section"`. This is
+  the one point where moving an open bullet is correct: the minor it was
+  filed under has ended. **Never archive an open bullet** — the archive
+  takes live work out of `roadmap-query`'s reach, which is why the phase
+  rule above excludes 💭 too.
 - The viewer (Ants Terminal's `RoadmapDialog`) reads archives only
   on demand — when the user picks the History preset or types in
   the search box. Default render stays cheap.
@@ -973,11 +998,8 @@ implementation detail:
   relative to the **project root**, so the naming regex above stays stated in
   one place. A caller-supplied path could name a file the migration's own
   archive discovery then refuses to read back.
-- **Sections are selected by TITLE, and only a release designator matches** —
-  `<M>.<N>` optionally preceded by `v`, followed by end-of-title, a character
-  that is neither a digit nor a `.`, or a `.` and a digit. That is what makes
-  `## 0.70.0` not part of minor 0.7, and what keeps a two-minor signpost like
-  `## 0.5.x and 0.6.x — archived` out of the archive it points at.
+- **Sections are selected by TITLE**, by the release-designator rule in
+  the versioned bullet above — the same rule a hand rotation follows.
 - **A moved section is re-slugged**, because the import prefixes every archive
   slug with its file's minor. Reassigning the path alone would leave the store
   holding a slug no re-import derives, and the next import would add a second
@@ -1229,9 +1251,10 @@ refuses `format_mismatch`. A `- **Status**:` of `dropped`, `abandoned`,
 - ❌ Reading or bumping `.roadmap-counter` on a store-migrated
   project (§ 3.5.1). Its carrier is the store's `id_high_water`
   row; the file is stale there by construction.
-- ❌ Allocating from that row **without** the committed-corpus
-  floor under it (§ 3.5.1). That is the silent drop which lets a
-  fresh clone reissue a live ID.
+- ❌ Allocating from that row **alone**, without the highest id the
+  stored items hold (§ 3.5.1). Migration writes no row, so a
+  migrated project that has never appended through the store would
+  reissue its own ids.
 
 
 ## 4. CHANGELOG.md format spec

@@ -736,12 +736,12 @@ per-prefix filename defined anywhere**, so on the multi-prefix projects
 `roadmap-format.md` § 3.10.4 permits it carries the first prefix and the rest
 fall through to the corpus floor alone. It
 is explicitly not the source of truth, with a floor recomputed by scanning the
-corpus so a wiped counter cannot reissue a live ID. A shared store moves the
-carrier but **not** the floor: its `id_high_water` row is still keyed per
-`(project, prefix)` and is still `max()`-ed against the recomputed corpus
-high-water, so neither the floor nor the per-prefix bookkeeping goes away
-(`roadmap-format.md` § 3.5.1). What the store removes is the *file* — a
-gitignored counter that a fresh clone can arrive without.
+corpus so a wiped counter cannot reissue a live ID. A shared store moves both
+the carrier and the floor: allocation reads the `id_high_water` row, keyed per
+`(project, prefix)`, and the highest id the stored items hold, and not the
+corpus (`roadmap-format.md` § 3.5.1). The per-prefix bookkeeping stays. What
+the store removes is the *file* — a gitignored counter that a fresh clone can
+arrive without.
 
 ### 7.2 Allocating IDs to items that have none
 
@@ -971,8 +971,8 @@ uppercase words would leave almost every declared priority empty. Reading a
 
 1. An integer 1–5 is taken as itself.
 2. Otherwise the **leading token** is matched **case-insensitively** against the
-   four severity words — `roadmap-format.md` § 3.5.2's own shape is
-   `Priority: CRITICAL — security blocker`, so whatever follows the word is a
+   four severity words. `roadmap-format.md` § 3.5.2's shape is
+   `Priority: <value> — <reason>`, so whatever follows the leading token is a
    comment and not part of the value.
 3. Anything else — an integer outside 1–5, an unrecognised word — leaves
    `priority` empty and the raw string in `extras`. Nothing is guessed.
@@ -988,8 +988,8 @@ shipped or dropped, is published.** Size is managed by rotating closed minors in
 curation this model offers. Omitting them would break two things at once —
 `roadmap-format.md` §§ 3.6.2–3.6.3 match CHANGELOG entries and commit subjects
 against bullet **headlines**, and a released item whose bullet left the corpus
-can no longer be matched; and § 8's committed-corpus ID floor would narrow while
-it is still the floor under the store's `id_high_water` row.
+can no longer be matched; and the committed-corpus ID floor (§ 8), which a
+machine without the store still allocates from, would narrow.
 
 ### 7.6 Dates
 
@@ -1091,16 +1091,14 @@ overridden:
   is the reason the corpus floor cannot stand alone after cutover: § 7.5 excludes
   them from the render by policy, so their IDs appear in no committed file, and a
   fresh clone — where the store is machine-local and may not exist — would
-  reissue a live ID from a corpus scan that cannot see them. The store's
-  `id_high_water` row covers them today (ANTS-3809), which is why § 3.5.1 keeps
-  the corpus as a floor *under* that row rather than as a substitute for it. The
-  export supersedes both as the authoritative floor, being subject to no
-  exclusion — which is what
-  § 3.5.1's definition needs amending to say for cut-over projects. **The
-  interim half of that amendment has landed** (ANTS-3809): § 3.5.1 now names the
-  store's `id_high_water` row as a cut-over project's carrier and keeps the
-  committed-corpus floor under it. What is still owed is the end state above —
-  the export as the floor — which waits on the publish cadence (ANTS-3794).
+  reissue a live ID from a corpus scan that cannot see them. The store covers
+  them today, because its floor reads every stored item whatever its
+  visibility. The export supersedes both as the authoritative floor, being
+  subject to no exclusion. **The interim half has landed**: § 3.5.1 names the
+  store as a cut-over project's carrier and floor (ANTS-3809), and since
+  ANTS-4631 the store path reads no corpus at all. What is still owed is the
+  end state — the export as the floor — which waits on the publish cadence
+  (ANTS-3794).
 - **Status vocabulary.** Its § 3.3 gives `dropped` the 🚫 marker (ANTS-4977),
   so all five statuses have a markdown form.
 - **Pass headings.** Its § 3.10.5 documents `#### Pass N.M` as a supported read
@@ -1244,7 +1242,7 @@ than a question.
 | INV-2 render fidelity | `tests/features/roadmap_render`, since ANTS-3758 shipped. `tests/features/roadmap_read_seam`'s `Inv2BackendsAgree` goes further on the shape half: it renders a migrated store back to markdown, parses that file, and compares record-for-record against the store read. **It is not the losslessness oracle § 1 says is still owed** — its equality is over the 20 fields of the *bullet* record, so a store column that record does not carry (`extras` and `provenance` among them) is never compared. ANTS-3810's oracle is the whole-row one. |
 | Read budgets — a whole-project store read stays under its item ceiling and its p95 | `tests/features/roadmap_read_seam` — `Inv3Ceiling` (default suite) and `Inv3Latency` (`perf` label). ANTS-3793's INV-3, not this document's numbering. A budget nothing measures is a comment: the p95 case is what forced the batched `RoadmapStore::readItems()`, the N+1 having been 83 of 101 ms. |
 | INV-3, the store-is-the-only-writer leg, over `roadmap_log`'s eight ops (`mcp-behavioural-notes.md` lists them) on a store-migrated project | `tests/features/roadmap_write_half` — ANTS-3809's `Inv1RenderFailureRollsBack` (a validating render that does not succeed, including one succeeding *with* gate failures, rolls the store write back) and `Inv2RenderIsTheOnlyWriter` (every op writes markdown only through `RoadmapRender::render()`). `InvN` here is ANTS-3809's numbering, not this document's. |
-| § 7.1's `stable_prefix` allocates nothing, and § 8's interim carrier rule | `tests/features/roadmap_write_half` — `Inv3Allocation`, which pins both the store-row floor and the committed-corpus floor under it |
+| § 7.1's `stable_prefix` allocates nothing, and § 8's interim carrier rule | `tests/features/roadmap_write_half` — `Inv3Allocation`, which pins the store floor and that `.roadmap-counter` is neither read nor written. Its fixture's highest id is also a stored item, so it cannot tell the store floor from a corpus floor |
 | INV-3 hand-edit detection | **nothing yet** — § 9's |
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |
