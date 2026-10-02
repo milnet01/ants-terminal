@@ -57,15 +57,15 @@ EditResult setStatus(const QString &content, const QString &newStatus,
                      bool preserveBody = false);
 
 // op:"append_loop" — append a `- **<label>** — <body>` bullet at the end
-// of the first `## …` section whose heading contains "Cold-eyes loop log"
-// (case-insensitive). Creates the section at EOF when absent (repaired,
-// not refused).
+// of the `## …` section whose heading contains "Cold-eyes loop log"
+// (case-insensitive); two such sections refuse `unrecognised_format`.
+// Creates the section at EOF when absent (repaired, not refused).
 // ANTS-4364 — `cells` is the TABLE form: one string per column, ordered to
 // match the table's own header. Where the section holds a table and `cells`
 // is empty the call REFUSES rather than writing a bullet into it — writing
 // bullet form into a table was the original defect, and it is silent.
-// Where the section holds bullets (or does not exist yet), `label` + `body`
-// render the bullet as before and `cells` is ignored.
+// Where the section holds bullets, `label` + `body` render the bullet, and
+// `cells` supplied anyway refuses rather than being dropped.
 //
 // The empty-section case deliberately still writes a BULLET rather than
 // synthesising a table: the column set belongs to the project's format
@@ -75,10 +75,12 @@ EditResult appendLoop(const QString &content, const QString &label,
                       const QStringList &cells = QStringList());
 
 // op:"append_inv" — append a `- **<invId>** — <body>.` bullet (plus
-// ` *Test:* <test>.` when test non-empty) at the end of the first `## …`
+// ` *Test:* <test>.` when test non-empty) at the end of the `## …`
 // section whose heading contains "Invariants" (case-insensitive). Never
-// renumbers. `bad_args` when `invId` already appears as an INV bullet;
-// `unrecognised_format` when there is no Invariants section.
+// renumbers. `bad_args` when `invId` is already an invariant — one the
+// parser reads in SpecParse::invariantsSection, or a table-row anchor there
+// (ANTS-5100); `unrecognised_format` when there is no Invariants section,
+// or more than one.
 EditResult appendInv(const QString &content, const QString &invId,
                      const QString &body, const QString &test);
 

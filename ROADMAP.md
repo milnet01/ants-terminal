@@ -9908,7 +9908,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-5100] **Performance pass findings for the spec engines (medium and low).**
+- ✅ [ANTS-5100] **Performance pass findings for the spec engines (medium and low).**
   Filed separately: ANTS-5067, 5068.
   Medium:
   - spec_conformance never checks isValid() on a fence's pattern, so a
@@ -9950,6 +9950,17 @@ extends an existing item, that item carries it instead.
   open (low): plan_template's size and caps, the source blob cap,
   spec_conformance's whole-file read and malformed-row count, speclog's
   duplicate guard and fences, and the three stale documents.
+  Resolved (2026-10-02): the lows shipped. spec_log's append_inv
+  duplicate guard reads the parser's section plus row anchors, and
+  append_loop's section scan skips fences (McpSpecLog Ants5100*).
+  spec_conformance reads at most 8 MiB and counts every examined row
+  against max_cases (spec_conformance Ants5100*). The drift source blob
+  has a 2 MiB per-file and 64 MiB total cap (FeatureCoverage
+  Ants5100SourceBlobIsBounded). All red first. Stale documents corrected:
+  featurecoverage.h's skip list, speclog.h's append_loop and append_inv
+  claims, and ANTS-3600 section 5's latency, now measured (0.96 s and
+  1.74 s warm, 22.7 M-character blob). plan_template: n/a, the verb was
+  removed in ANTS-5485. The blob's .gitignore half moved to ANTS-5623.
   **Layman:** Smaller spec-tool fixes, including a pattern check that passes when the pattern itself is broken.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
@@ -11751,6 +11762,11 @@ extends an existing item, that item carries it instead.
     recursively with no cap on entries visited or files kept. The review
     named two capped walks; only doc_citations' was found and fixed, so
     these are the nearest remaining shape.
+  Also (2026-10-02, from ANTS-5100): buildProjectSourceBlob in
+  src/featurecoverage.cpp ignores .gitignore. It now has per-file and
+  total caps (ANTS-5100), but an ignored generated tree outside
+  AuditEngine::excludedDirNames() is still read. Honouring .gitignore
+  needs git ls-files or a gitignore matcher, which is a design choice.
   **Layman:** Two leftover speed fixes: copying a huge selection can stall the window, and two document scans can walk a whole drive.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.

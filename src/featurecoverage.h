@@ -140,11 +140,12 @@ QString extractChangelogEntryId(const QString &bulletText);
 
 // Concatenate every source/config/doc file in the project tree (per the
 // canonical extension list) into one UTF-8 blob, separated by newlines.
-// Skips: build dirs (.git, .svn, build, build-*, dist, node_modules,
-// __pycache__, .venv, venv, .audit_cache, .pytest_cache, .mypy_cache,
-// .tox, target, .claude, vendor, third_party, external, .ccls-cache),
-// `spec.md` files (would self-match every spec token), and any file not
-// matching the extension list. Returns the empty string if projectPath
+// Skips: the directories in AuditEngine::excludedDirNames() plus build,
+// build-*, .svn, .hg, .ccls-cache and .indie-review; the bodies of
+// `spec.md` (would self-match every spec token), ROADMAP.md, CHANGELOG.md
+// and .ants_doc_drift_allow.txt; any file not matching the extension list;
+// and (ANTS-5100) a file over BlobOptions::maxFileBytes. Content stops at
+// BlobOptions::maxBlobBytes. Returns the empty string if projectPath
 // doesn't exist or contains no matching files.
 //
 // ANTS-2113 — the walk is deliberately whole-tree (NOT src/-only): a feature
