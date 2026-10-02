@@ -706,8 +706,8 @@ TEST(changelog_log_writer, Ants4563ClassifyUnreleasedReadsOrderNotPresence) {
 }
 
 // The flat insert must REFUSE a dated-led section rather than bury the entry in
-// its tail. Refused in the engine so no direct caller can bury one —
-// op:"add_batch" included, where it lands in skipped[] instead of the tail.
+// its tail. Refused in the engine so no direct caller can bury one; op:"add"
+// and op:"add_batch" both route a mixed section to the top instead.
 TEST(changelog_log_writer, Ants4563FlatInsertRefusesAMixedSection) {
     const auto mixed = ChangelogLog::insertUnreleasedEntry(
         QString::fromUtf8(kMixedChangelog), QStringLiteral("Fixed"),
@@ -770,6 +770,69 @@ TEST(changelog_log_writer, Ants4563AddRoutesAMixedSectionToTheTop) {
         QString::fromUtf8(md.c_str()));
     EXPECT_TRUE(after.datedLeads)
         << "the routed write must not put a flat heading above the topics";
+}
+
+// ANTS-5098 — op:"add_batch" routes a mixed section exactly as op:"add" does,
+// rather than skipping every entry as mixed_section. The batch still reads in
+// input order, and each routed entry says it changed shape.
+TEST(changelog_log_writer, Ants5098AddBatchRoutesAMixedSectionToTheTop) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kMixedChangelog)));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    QJsonArray entries;
+    {
+        QJsonObject first;
+        first[QStringLiteral("summary")]  = QStringLiteral("First routed.");
+        first[QStringLiteral("category")] = QStringLiteral("Fixed");
+        first[QStringLiteral("id")]       = QStringLiteral("ANTS-9001");
+        entries.append(first);
+        QJsonObject second;
+        second[QStringLiteral("summary")]  = QStringLiteral("Second routed.");
+        second[QStringLiteral("category")] = QStringLiteral("Added");
+        second[QStringLiteral("body")]     = QStringLiteral("Its prose.");
+        entries.append(second);
+    }
+    req[QStringLiteral("entries")] = entries;
+    const QJsonObject out = rc.cmdChangelogLog(req).object();
+    const std::string env =
+        QJsonDocument(out).toJson(QJsonDocument::Compact).toStdString();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << env;
+    EXPECT_EQ(out.value(QStringLiteral("applied_count")).toInt(), 2) << env;
+    EXPECT_TRUE(out.value(QStringLiteral("skipped")).toArray().isEmpty())
+        << "a mixed section must route, not skip: " << env;
+
+    const QJsonArray applied = out.value(QStringLiteral("applied")).toArray();
+    ASSERT_EQ(applied.size(), 2) << env;
+    for (const auto &v : applied) {
+        const QJsonValue routed =
+            v.toObject().value(QStringLiteral("routed_to_subsection"));
+        ASSERT_TRUE(routed.isBool()) << env;
+        EXPECT_TRUE(routed.toBool()) << env;
+    }
+
+    const std::string md = readFileStd(clPath(tmp.path()));
+    const size_t first  = md.find("First routed. (ANTS-9001)");
+    const size_t second = md.find("Second routed.");
+    const size_t dated  = md.find("### 2026-09-01 Fixed");
+    const size_t flatly = md.find("### Added");
+    ASSERT_NE(first, std::string::npos) << md;
+    ASSERT_NE(second, std::string::npos) << md;
+    ASSERT_NE(dated, std::string::npos) << md;
+    ASSERT_NE(flatly, std::string::npos) << md;
+    EXPECT_LT(first, second) << "the batch must read in input order\n" << md;
+    EXPECT_LT(second, dated)
+        << "both entries must land above the newest dated topic\n" << md;
+    EXPECT_LT(second, flatly) << md;
+    EXPECT_TRUE(contains(md, "Its prose.")) << md;
+
+    const auto after = ChangelogLog::classifyUnreleased(
+        QString::fromUtf8(md.c_str()));
+    EXPECT_TRUE(after.datedLeads)
+        << "the routed batch must not put a flat heading above the topics";
 }
 
 // ANTS-3416 — the handler propagates the refusal and leaves CHANGELOG.md

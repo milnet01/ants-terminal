@@ -102,11 +102,10 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
 //   mixed_section   — ANTS-4563: dated topics LEAD and a flat category tail
 //                     sits below them. A flat insert here lands in that tail,
 //                     which is the burial this refusal exists to stop. The
-//                     verb layer routes op:\"add\" to insertUnreleasedSubsection
-//                     instead, so a caller still gets a write — at the top.
-//                     Refused HERE as well so no direct caller can bury an
-//                     entry, op:\"add_batch\" included, where it lands in
-//                     skipped[] rather than in the tail.
+//                     verb layer routes op:\"add\" and each op:\"add_batch\"
+//                     entry to insertUnreleasedSubsection instead (ANTS-5098),
+//                     so a caller still gets a write — at the top. Refused
+//                     HERE as well so no direct caller can bury an entry.
 InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
                                    const QString &bulletBlock);

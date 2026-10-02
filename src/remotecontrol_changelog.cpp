@@ -77,6 +77,67 @@ ClTarget resolveChangelogTarget(const QJsonObject &req,
     return out;
 }
 
+// ANTS-4563 — a MIXED `## [Unreleased]` (dated topics leading, a legacy flat
+// tail below) routes to the dated-topic form at the TOP instead of appending
+// into that tail. Decided by the user 2026-09-07. Reporting the DISTANCE was
+// rejected — it buys a number and leaves the burial — and so was refusing
+// outright, because the previous remedy text pointed callers at op:add in the
+// first place and that loop is what buried two entries.
+//
+// Writing a FLAT heading at the top would have been the other reading, and it
+// is wrong: a flat heading above the topics flips the section to flat-led,
+// after which op:"add_subsection" refuses `flat_section` and the dated write
+// path is gone — the ANTS-4356 failure mirrored. Emitting the section's own
+// shape keeps both guards agreeing, which is the stated reason the decision
+// went this way.
+//
+// ANTS-5098 — op:"add" and every op:"add_batch" entry share this, so a batch
+// on a mixed section routes rather than skipping each entry. `echoLine` is
+// what was ACTUALLY written (ANTS-4629): on the routed arm no bullet is
+// written at all, so it is taken from the produced body rather than
+// re-derived, and cannot drift from the writer.
+struct ClRoutedInsert {
+    ChangelogLog::InsertResult res;
+    bool    routed = false;
+    QString echoLine;
+};
+
+ClRoutedInsert routeOrInsertUnreleased(const QString &markdown,
+                                       const QString &category,
+                                       const QString &summary,
+                                       const QString &body,
+                                       const QString &id,
+                                       const QString &bullet) {
+    ClRoutedInsert out;
+    out.echoLine = bullet;
+    const ChangelogLog::UnreleasedShape shape =
+        ChangelogLog::classifyUnreleased(markdown);
+    out.routed = shape.mixed && shape.datedLeads;
+    if (!out.routed) {
+        out.res = ChangelogLog::insertUnreleasedEntry(markdown, category, bullet);
+        return out;
+    }
+    // The id rides the headline, which is where op:"add_subsection" documents
+    // ids belonging; `body` becomes the topic's prose. No bullet is emitted,
+    // so the summary is written once, not twice.
+    const QString headline =
+        id.isEmpty() ? summary : QStringLiteral("%1 (%2)").arg(summary, id);
+    const auto sub = ChangelogLog::insertUnreleasedSubsection(
+        markdown, QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")),
+        category, headline, body, QStringList());
+    out.res.ok       = sub.ok;
+    out.res.code     = sub.code;
+    out.res.error    = sub.error;
+    out.res.markdown = sub.markdown;
+    out.res.line     = sub.line;
+    if (sub.ok && sub.line > 0) {
+        const QStringList produced = sub.markdown.split(QLatin1Char('\n'));
+        if (sub.line - 1 < produced.size())
+            out.echoLine = produced.at(sub.line - 1);
+    }
+    return out;
+}
+
 }  // namespace
 
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
@@ -1107,56 +1168,16 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     const QString clMarkdown = QString::fromUtf8(cf.readAll());
     cf.close();
 
-    // ANTS-4563 — a MIXED `## [Unreleased]` (dated topics leading, a legacy
-    // flat tail below) routes to the dated-topic form at the TOP instead of
-    // appending into that tail. Decided by the user 2026-09-07. Reporting the
-    // DISTANCE was rejected — it buys a number and leaves the burial — and so
-    // was refusing outright, because the previous remedy text pointed callers
-    // at op:add in the first place and that loop is what buried two entries.
-    //
-    // Writing a FLAT heading at the top would have been the other reading, and
-    // it is wrong: a flat heading above the topics flips the section to
-    // flat-led, after which op:"add_subsection" refuses `flat_section` and the
-    // dated write path is gone — the ANTS-4356 failure mirrored. Emitting the
-    // section's own shape keeps both guards agreeing, which is the stated
-    // reason the decision went this way.
-    const ChangelogLog::UnreleasedShape clShape =
-        ChangelogLog::classifyUnreleased(clMarkdown);
-    const bool routeToSubsection = clShape.mixed && clShape.datedLeads;
-    ChangelogLog::InsertResult res;
-    if (routeToSubsection) {
-        // The id rides the headline, which is where op:"add_subsection"
-        // documents ids belonging; `body` becomes the topic's prose. No bullet
-        // is emitted, so the summary is written once, not twice.
-        const QString headline =
-            id.isEmpty() ? summary
-                         : QStringLiteral("%1 (%2)").arg(summary, id);
-        const auto sub = ChangelogLog::insertUnreleasedSubsection(
-            clMarkdown,
-            QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")),
-            category, headline, body, QStringList());
-        res.ok       = sub.ok;
-        res.code     = sub.code;
-        res.error    = sub.error;
-        res.markdown = sub.markdown;
-        res.line     = sub.line;
-    } else {
-        res = ChangelogLog::insertUnreleasedEntry(clMarkdown, category, bullet);
-    }
+    // ANTS-4563 — a mixed section routes to the dated-topic form at the top;
+    // routeOrInsertUnreleased holds the decision and its reasons.
+    const ClRoutedInsert routedInsert = routeOrInsertUnreleased(
+        clMarkdown, category, summary, body, id, bullet);
+    const ChangelogLog::InsertResult &res = routedInsert.res;
+    const bool routeToSubsection = routedInsert.routed;
     if (!res.ok) {
         return clErr(res.code, res.error);
     }
-
-    // ANTS-4629 requires the echo to be what was ACTUALLY written, and on the
-    // routed arm no bullet is written at all — the entry is the dated heading
-    // plus its prose. Take the line from the produced body rather than
-    // re-deriving its format, so the echo cannot drift from the writer.
-    QString echoLine = bullet;
-    if (routeToSubsection && res.line > 0) {
-        const QStringList produced = res.markdown.split(QLatin1Char('\n'));
-        if (res.line - 1 < produced.size())
-            echoLine = produced.at(res.line - 1);
-    }
+    const QString &echoLine = routedInsert.echoLine;
 
     // ANTS-2136 — dry_run: return the resolved insert preview without
     // writing CHANGELOG.md. `bytes` is the would-be file size; `bullet`
@@ -1255,6 +1276,9 @@ struct ClBatchEntryResult {
     bool    ok = false;
     QString code, error;       // per-entry refusal iff !ok
     QString id, category, bullet;  // valid iff ok
+    // ANTS-5098 — the parts the bullet was rendered from, so a mixed section
+    // can route the entry to the dated-topic form as op:"add" does.
+    QString summary, body;
 };
 
 ClBatchEntryResult resolveClBatchEntry(
@@ -1350,6 +1374,8 @@ ClBatchEntryResult resolveClBatchEntry(
     r.ok       = true;
     r.id       = id;
     r.category = category;
+    r.summary  = summary;
+    r.body     = body;
     r.bullet   = ChangelogLog::formatBullet(summary, body, id);
     return r;
 }
@@ -1359,8 +1385,8 @@ ClBatchEntryResult resolveClBatchEntry(
 // atomic QSaveFile commit (parity with roadmap_log op:append_batch,
 // ANTS-1879). Each entry is resolved by resolveClBatchEntry above;
 // per-entry failures land in skipped[] while valid entries still apply.
-// Entries insert in input order, so the result is byte-identical to the
-// same N sequential single-op calls. m_main-independent.
+// Each entry routes or inserts exactly as op:"add" would (ANTS-5098), and
+// the file reads in input order (ANTS-4854). m_main-independent.
 QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     auto clErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -1516,8 +1542,12 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
             skipped.append(s);
             continue;
         }
-        const auto res = ChangelogLog::insertUnreleasedEntry(
-            markdown, er.category, er.bullet);
+        // ANTS-5098 — the same route-or-insert as op:"add", re-classified per
+        // entry against the accumulated body. A routed entry inserts at the
+        // top of [Unreleased], so the reverse loop still reads in input order.
+        const ClRoutedInsert routedInsert = routeOrInsertUnreleased(
+            markdown, er.category, er.summary, er.body, er.id, er.bullet);
+        const ChangelogLog::InsertResult &res = routedInsert.res;
         if (!res.ok) {
             QJsonObject s;
             s["index"] = i;
@@ -1549,13 +1579,15 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         // a single envelope-level flag cannot say which entry did what.
         a["created_category"] = res.created_category;
         if (res.created_category) anyCreatedCategory = true;
+        if (routedInsert.routed) a["routed_to_subsection"] = true;  // ANTS-5098
         // ANTS-4395 — stash the bullet so the line can be RE-RESOLVED against
         // the final markdown below. `res.line` is correct at insert time and
         // goes stale the moment a later entry lands in the same category:
         // insertion is at the category head, so entry 1 takes entry 0's line
         // and pushes it down. A two-entry batch therefore reported the same
         // line for both, and only the first could ever be right.
-        a["_bullet_head"] = er.bullet.split(QChar('\n')).value(0);
+        // ANTS-5098 — a routed entry wrote a dated heading, not the bullet.
+        a["_bullet_head"] = routedInsert.echoLine.split(QChar('\n')).value(0);
         // ANTS-4854 — hold by index; the loop runs backwards and `applied`
         // must come out in input order. Doing it here rather than sorting
         // afterwards also keeps the ANTS-4395 line-claiming below walking the

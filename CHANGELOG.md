@@ -96,6 +96,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log op:"add_batch" routes each entry to the dated-topic form on a mixed Unreleased section, as op:"add" does** (ANTS-5098)
+  A batch written to a section that leads with dated topics used to skip
+  every entry. Each entry now lands at the top and is flagged
+  routed_to_subsection.
+
 - **`feedback_query` trims to exactly its byte cap without splitting a character, and `last_selection` takes the same size cap as `get_text`.** (ANTS-5098)
 
 - **`git_state` says when a large repository's status or diff was cut short, and never returns a half path.** (ANTS-5098)
