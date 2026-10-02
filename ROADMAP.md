@@ -9827,6 +9827,19 @@ extends an existing item, that item carries it instead.
   not done. Still open: add_batch skipping ANTS-4563 routing, the
   add_from_roadmap summary guard, the two docs walks, and the marshal cwd
   fallback.
+  Design for the add_batch finding (2026-10-02, not built): in
+  src/remotecontrol_changelog.cpp, add summary and body to
+  ClBatchEntryResult (resolveClBatchEntry already holds both), and extract
+  cmdChangelogLog's ANTS-4563 route-or-insert block (classifyUnreleased ->
+  mixed && datedLeads -> insertUnreleasedSubsection with headline
+  "summary (id)", else insertUnreleasedEntry) into one helper that op:add
+  and the add_batch loop both call. Re-classify per entry against the
+  accumulated markdown. A routed entry reports routed_to_subsection, takes
+  its _bullet_head from the produced line (res.markdown at res.line), and
+  reverse-order insertion at the top still reads in input order. This
+  follows the user's 2026-09-07 op:add decision. The changelog_log_writer
+  test comment saying add_batch lands in skipped[] changes with it; copy
+  Ants4563AddRoutesAMixedSectionToTheTop for the red test.
   **Layman:** Smaller fixes to Ants' content tools, including a slow trimming loop and outputs cut short without saying so.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
@@ -65015,6 +65028,9 @@ than re-filed; everything else lands here.
   convert rehearsals and convert (expected restyling). So there is no
   recurrence since 2026-09-08 in 17 days of backups, and still no live
   lead. The repeating-discard pattern is filed as its own item.
+  Awaiting the user (asked 2026-10-02): close as not reproducible?
+  Recommended yes: four hypotheses eliminated, no recurrence in the
+  backups since 2026-09-08, and discarded_backup_paths protects callers.
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
