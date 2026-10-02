@@ -38744,7 +38744,7 @@ against current source before filing.
   Kind: perf.
   Source: in-session-2026-08-07, ANTS-3855 § 4.
 
-- 📋 [ANTS-3860] **An export written before a schema bump becomes unimportable, and the export is the store's only rebuild path.**
+- ✅ [ANTS-3860] **An export written before a schema bump becomes unimportable, and the export is the store's only rebuild path.**
   ANTS-3781 builds the upgrade path for a LIVE store: a file at an older
   user_version is climbed rung by rung when it is opened. It does not
   touch the other version discriminator. `RoadmapExport::rebuildProject()`
@@ -38776,6 +38776,12 @@ against current source before filing.
 
   Blocked by ANTS-3781 (the ladder the first option would reuse) and
   unobservable before ANTS-3855.
+  Resolved (2026-10-02): the export carries its own
+  RoadmapExport::kExportSchemaVersion (src/roadmapexport.h), and
+  rebuildProject checks that, not the store's version, so a store-side
+  bump no longer makes an export unimportable. Residual, not this item:
+  a future change to the export format itself would be refused with no
+  upgrade path.
   **Layman:** After we change the database layout, older backup files can no longer be restored — and the backup file is the only way to rebuild the database.
   Kind: implement.
   Source: ANTS-3781 spec § 5 (2026-08-07) — filed while scoping the store-side upgrade path.
@@ -84573,7 +84579,7 @@ here.)
 
 ---
 
-- 📋 [ANTS-1692] **`roadmap_log op:flip` should optionally take a `shipped_note` to append provenance in the same call.**
+- ✅ [ANTS-1692] **`roadmap_log op:flip` should optionally take a `shipped_note` to append provenance in the same call.**
   Observed while flipping ANTS-1303 to ✅ via `roadmap_log op:flip`:
   the flip cleanly toggles the status emoji (anchor_injected:false on
   the Ants-v1 bullet — works as intended), but every shipped item also
@@ -84588,6 +84594,11 @@ here.)
   read-after-flip dance. Short-form notes only; rich multi-paragraph
   ship notes (spec/test refs) stay a manual edit. Low risk — additive
   optional arg, no change to the default flip path.
+  Resolved (2026-10-02): already shipped as ANTS-1793. roadmap_log
+  op:"flip" takes an optional `note` and appends it in the same call
+  (src/remotecontrol_roadmap_log.cpp, step 1b). The note lands at the
+  end of the body rather than under the headline; the one-call goal is
+  met.
   **Layman:** When Claude marks a roadmap item done via the MCP tool, it should be able to add the "shipped in pull N" note in the same step instead of a second manual edit.
   Kind: enhancement.
   Source: in-session-2026-05-20 (dogfooding during pull 35 / ANTS-1303).
