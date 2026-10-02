@@ -58,6 +58,21 @@ scalar-only filter cannot ask "from any review" in one call.
   with `bad_args`. Each prefix is tested against every bullet, and a
   truncated filter would return a result that looks complete.
 
+## `mode:"sources"` — ANTS-4119 / ANTS-4993
+
+The prefix filter needs a prefix, and the column has no closed set, so a
+caller had to guess one. `mode:"sources"` lists the vocabulary.
+
+- **INV-9** — it returns `sources[]` of `{source, active_count,
+  shipped_count, total_count}`, busiest first, and no `bullets`. The
+  default `group` is `"stem"`: a value with its first date and everything
+  after it removed, so `indie-review-2026-05-13` and
+  `indie-review-2026-06-04` count as `indie-review`.
+- **INV-10** — `source_group:"exact"` keeps each distinct value, and the
+  `source` prefix filter narrows which items are counted.
+- **INV-11** — `section`, `id` and `ids` refuse `bad_mode_combo`; a
+  `source_group` other than `stem` or `exact` refuses `bad_args`.
+
 ## Test shape
 
 Drives `RemoteControl::cmdRoadmapQuery` against a seeded temp roadmap, the

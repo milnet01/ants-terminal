@@ -3649,6 +3649,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // ANTS-4501 — fifth mode value. One aggregate over the
                     // store: totals, lifecycle, and throughput per period.
                     modeEnum.append("report");
+                    // ANTS-4119 / ANTS-4993 — the provenance vocabulary.
+                    modeEnum.append("sources");
                     modeProp["enum"] = modeEnum;
                     modeProp["default"] = "bullets";
                     // ANTS-4501 — the report's gloss lives HERE and not in the
@@ -3962,6 +3964,23 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "and does not spill. Same filter, same drop rules, "
                             "same order — only the row shape changes.");
                         props["slugs_only"] = p;
+                    }
+                    {   // ANTS-4119 / ANTS-4993 — mode:"sources" grouping.
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["enum"] = QJsonArray{QStringLiteral("stem"), QStringLiteral("exact")};
+                        p["description"] = QStringLiteral(
+                            "mode:\"sources\" only. mode:\"sources\" lists the "
+                            "`Source:` values with active_count, shipped_count and "
+                            "total_count each, busiest first, so you can pick a "
+                            "`source` prefix instead of guessing one. \"stem\" "
+                            "(default) groups a value with its first date and "
+                            "everything after it removed; \"exact\" keeps each "
+                            "value. Counts the list `status`, `kind`, `source` and "
+                            "`query` select; capped at `limit` (default 200) with "
+                            "distinct_count and truncated. Refuses section, id and "
+                            "ids.");
+                        props["source_group"] = p;
                     }
                     {   // ANTS-4462 — opt-in file-vs-store staleness check.
                         QJsonObject p;

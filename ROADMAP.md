@@ -87167,7 +87167,7 @@ here.)
   Kind: enhancement.
   Source: in-session-2026-09-09.
 
-- 📋 [ANTS-4993] **No verb enumerates the distinct `Source:` values, so the new source filter's prefixes are guesswork.**
+- ✅ [ANTS-4993] **No verb enumerates the distinct `Source:` values, so the new source filter's prefixes are guesswork.**
   ANTS-4985 shipped a prefix filter over the provenance column. Choosing
   a prefix requires knowing the vocabulary, and the column is free text
   with no closed set — the argument's own description cites a distinct-value
@@ -87184,6 +87184,9 @@ here.)
   with its item count. `kind` needs no such thing — it has a store CHECK
   constraint and a published enum. This column has neither, which is
   exactly why it needs the facet.
+  Resolved (2026-10-02) with ANTS-4119: roadmap_query mode:"sources"
+  enumerates the distinct Source values (source_group:"exact") or their
+  stems (default), with item counts.
   **Layman:** You can filter roadmap items by where they came from, but nothing lists what the available origins actually are.
   Kind: enhancement.
   Source: in-session-2026-09-09.
@@ -88037,7 +88040,7 @@ contributors don't duplicate research.
   Kind: feature.
   Source: user-request-2026-08-06.
 
-- 📋 [ANTS-4119] **Roadmap store: make `Source:` a first-class queryable dimension, not a body substring.**
+- ✅ [ANTS-4119] **Roadmap store: make `Source:` a first-class queryable dimension, not a body substring.**
   Today the only way to list every open item that came from another
   CC session is `roadmap_query {status:"active", query:"cross-session-
   feedback"}` — a case-insensitive SUBSTRING scan over headline+body
@@ -88065,6 +88068,13 @@ contributors don't duplicate research.
   Note the migration hazard in ANTS-4065: the 2026-08-08 import
   silently rewrote 123 Kind values, so `Source` must be verified
   against the markdown before anything keys on the column.
+  Resolved (2026-10-02): the column and the prefix filter shipped
+  earlier (ANTS-4985). The remaining piece, the rollup, ships as
+  roadmap_query mode:"sources": {source, active_count, shipped_count,
+  total_count} per value or per date-stripped stem, busiest first, over
+  the list's status/kind/source/query filters. No separate
+  `source=<exact>` filter: a full value passed to the prefix filter
+  covers it. Tests: roadmap_query_source_filter INV-9..11.
   **Layman:** Ask "what is still open that another project asked for?" and get an answer grouped by who asked, instead of guessing at a keyword.
   Kind: feature.
   Source: user-request-2026-08-12.

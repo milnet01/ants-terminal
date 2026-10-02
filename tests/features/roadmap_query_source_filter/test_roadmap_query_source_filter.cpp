@@ -248,3 +248,79 @@ TEST(RoadmapQuerySourceFilter, Inv7AbsentSourceReportsEmptyNotTheDefault) {
            "the default value — that would make the filter answer a question "
            "about classification rather than about what is written.";
 }
+
+// ---------------------------------------------------------------- INV-9..11 --
+// ANTS-4119 / ANTS-4993 — mode:"sources" lists the provenance vocabulary with
+// counts, so a caller can choose a `source` prefix instead of guessing one.
+
+namespace {
+
+QJsonObject rowFor(const QJsonObject &resp, const QString &source) {
+    for (const auto &v : resp.value(QStringLiteral("sources")).toArray())
+        if (v.toObject().value(QStringLiteral("source")).toString() == source)
+            return v.toObject();
+    return QJsonObject();
+}
+
+}  // namespace
+
+// INV-9 — the default groups by the value with its date removed, and counts
+// open and shipped items per group.
+TEST(RoadmapQuerySourceFilter, Inv9SourcesModeGroupsByStemWithCounts) {
+    QTemporaryDir tmp; const QString root = seed(tmp);
+    QJsonObject req;
+    req[QStringLiteral("mode")] = QStringLiteral("sources");
+    const QJsonObject resp = queryWith(root, req);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("group")).toString(), QStringLiteral("stem"));
+
+    const QJsonObject indie = rowFor(resp, QStringLiteral("indie-review"));
+    EXPECT_EQ(indie.value(QStringLiteral("active_count")).toInt(), 2)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(indie.value(QStringLiteral("shipped_count")).toInt(), 1);
+    EXPECT_EQ(indie.value(QStringLiteral("total_count")).toInt(), 3);
+    EXPECT_EQ(rowFor(resp, QStringLiteral("code-quality-review"))
+                  .value(QStringLiteral("active_count")).toInt(), 1);
+    EXPECT_EQ(rowFor(resp, QStringLiteral("planned"))
+                  .value(QStringLiteral("total_count")).toInt(), 1);
+    // The busiest group comes first.
+    EXPECT_EQ(resp.value(QStringLiteral("sources")).toArray().first().toObject()
+                  .value(QStringLiteral("source")).toString(),
+              QStringLiteral("indie-review"));
+    EXPECT_FALSE(resp.contains(QStringLiteral("bullets")));
+}
+
+// INV-10 — source_group:"exact" keeps each distinct value, and the `source`
+// prefix filter narrows which values are counted.
+TEST(RoadmapQuerySourceFilter, Inv10SourcesModeExactAndPrefixFilter) {
+    QTemporaryDir tmp; const QString root = seed(tmp);
+    QJsonObject req;
+    req[QStringLiteral("mode")]         = QStringLiteral("sources");
+    req[QStringLiteral("source_group")] = QStringLiteral("exact");
+    req[QStringLiteral("source")]       = QStringLiteral("indie-review");
+    const QJsonObject resp = queryWith(root, req);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("sources")).toArray().size(), 2)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(rowFor(resp, QStringLiteral("indie-review-2026-05-13"))
+                  .value(QStringLiteral("total_count")).toInt(), 2);
+    EXPECT_EQ(rowFor(resp, QStringLiteral("indie-review-2026-06-04"))
+                  .value(QStringLiteral("active_count")).toInt(), 1);
+}
+
+// INV-11 — row selectors and a bad grouping are refused, never ignored.
+TEST(RoadmapQuerySourceFilter, Inv11SourcesModeRefusals) {
+    QTemporaryDir tmp; const QString root = seed(tmp);
+    QJsonObject withId;
+    withId[QStringLiteral("mode")] = QStringLiteral("sources");
+    withId[QStringLiteral("id")]   = QStringLiteral("ANTS-9101");
+    EXPECT_EQ(queryWith(root, withId).value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_mode_combo"));
+    QJsonObject badGroup;
+    badGroup[QStringLiteral("mode")]         = QStringLiteral("sources");
+    badGroup[QStringLiteral("source_group")] = QStringLiteral("month");
+    EXPECT_EQ(queryWith(root, badGroup).value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+}

@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query mode:"sources" lists where roadmap items came from, with open and shipped counts for each.** (ANTS-4119)
+  Filtering by origin needed you to guess its spelling. The new view lists
+  every origin, grouped by name without its date (or exactly, with
+  source_group:"exact"), busiest first, so "what is still open that
+  another session asked for?" is one call. Also closes ANTS-4993.
+
 - **roadmap_log op:"set_legend" changes the wording of a roadmap's status legend.** (ANTS-5615)
   The legend lines under a roadmap's preamble (such as "📋 Planned (next up
   for this phase)") could not be edited by any tool, and a hand edit was

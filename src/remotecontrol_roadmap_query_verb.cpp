@@ -20,6 +20,7 @@
 #include <QFile>
 #include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
 #include <QFileInfo>
+#include <QHash>       // ANTS-4119 — the sources rollup
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
 
 using namespace rcdetail;  // ANTS-3833
@@ -433,6 +434,70 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
     out["bundles"] = bundlesArr;
     return out;
 }
+
+// ------------------------------------------------------- ANTS-4119 / 4993 --
+// roadmap_query mode:"sources". The `source` prefix filter needs a prefix,
+// and the column is free text with no closed set, so a caller guessed one.
+// This lists the vocabulary: each value (or its stem, the value with the first
+// date and everything after it removed) with its open and shipped counts.
+namespace {
+
+QString rcSourceStem(const QString &source) {
+    static const QRegularExpression kDate(QStringLiteral("\\d{4}-\\d{2}-\\d{2}"));
+    const auto m = kDate.match(source);
+    QString stem = m.hasMatch() ? source.left(m.capturedStart()) : source;
+    while (!stem.isEmpty() && (stem.back().isSpace() || stem.back() == QLatin1Char('-')
+                               || stem.back() == QLatin1Char('(')))
+        stem.chop(1);
+    return stem;
+}
+
+void rcEmitSourcesRollup(QJsonObject &out, const QJsonArray &bullets,
+                         const QString &group, int limit) {
+    struct Counts { int active = 0, shipped = 0, total = 0; };
+    QHash<QString, Counts> by;
+    const QString planned    = QString::fromUtf8(RoadmapParse::kEmojiPlanned);
+    const QString inProgress = QString::fromUtf8(RoadmapParse::kEmojiInProgress);
+    const QString shipped    = QString::fromUtf8(RoadmapParse::kEmojiDone);
+    for (const auto &v : bullets) {
+        const QJsonObject b = v.toObject();
+        const QString src = b.value(QStringLiteral("source")).toString().trimmed();
+        Counts &c = by[group == QLatin1String("exact") ? src : rcSourceStem(src)];
+        const QString st = b.value(QStringLiteral("status")).toString();
+        if (st == planned || st == inProgress) ++c.active;
+        else if (st == shipped)                ++c.shipped;
+        ++c.total;
+    }
+    QStringList keys = by.keys();
+    std::sort(keys.begin(), keys.end(), [&by](const QString &a, const QString &b) {
+        const Counts &x = by[a], &y = by[b];
+        if (x.active != y.active) return x.active > y.active;
+        if (x.total != y.total)   return x.total > y.total;
+        return a < b;
+    });
+    // 200 by default: a whole-project exact listing runs to thousands of values,
+    // and the count beside it says how many were left out.
+    const int cap = limit > 0 ? limit : 200;
+    QJsonArray rows;
+    for (int i = 0; i < keys.size() && i < cap; ++i) {
+        const Counts &c = by[keys.at(i)];
+        QJsonObject r;
+        r[QStringLiteral("source")]        = keys.at(i);
+        r[QStringLiteral("active_count")]  = c.active;
+        r[QStringLiteral("shipped_count")] = c.shipped;
+        r[QStringLiteral("total_count")]   = c.total;
+        rows.append(r);
+    }
+    out[QStringLiteral("ok")]             = true;
+    out[QStringLiteral("mode")]           = QStringLiteral("sources");
+    out[QStringLiteral("group")]          = group;
+    out[QStringLiteral("sources")]        = rows;
+    out[QStringLiteral("distinct_count")] = int(keys.size());
+    out[QStringLiteral("items_counted")]  = int(bullets.size());
+    if (keys.size() > cap) out[QStringLiteral("truncated")] = true;
+}
+
+}  // namespace
 
 // ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
 // (cached on mtime; INV-10 rate-limit) into a structured bullet
@@ -1318,7 +1383,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                         QStringLiteral("section_index"),
                                         QStringLiteral("headline_only"),
                                         QStringLiteral("bundles"),   // ANTS-1922
-                                        QStringLiteral("report") };  // ANTS-4501
+                                        QStringLiteral("report"),    // ANTS-4501
+                                        QStringLiteral("sources") }; // ANTS-4119
     if (!kModes.contains(mode)) {
         QString verbatim = req.value(QStringLiteral("mode")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
@@ -1397,7 +1463,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         && (mode == QLatin1String("headline_only")
             || mode == QLatin1String("section_index")
             || mode == QLatin1String("bundles")
-            || mode == QLatin1String("report"))) {
+            || mode == QLatin1String("report")
+            || mode == QLatin1String("sources"))) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "bullet_fields does not combine with mode:\"%1\" — that mode owns "
@@ -1520,6 +1587,28 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
+    // ANTS-4119 / ANTS-4993 — sources is an aggregate like report: it counts
+    // the filtered list, so a row selector has nothing to count.
+    QString sourceGroup = QStringLiteral("stem");
+    if (mode == QLatin1String("sources")) {
+        if (!section.isEmpty() || !idArg.isEmpty() || !idsArg.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "sources mode does not accept section=, id or ids selectors");
+            out["code"] = QStringLiteral("bad_mode_combo");
+            return QJsonDocument(out);
+        }
+        if (req.contains(QStringLiteral("source_group")))
+            sourceGroup = req.value(QStringLiteral("source_group")).toString();
+        if (sourceGroup != QLatin1String("stem") && sourceGroup != QLatin1String("exact")) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "source_group must be \"stem\" (the value with its date "
+                "removed, the default) or \"exact\"");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+    }
     if (mode == QLatin1String("bundles") && !idsArg.isEmpty()) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
@@ -1564,6 +1653,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
          mode == QLatin1String("section_index") ||
          mode == QLatin1String("bundles") ||
          mode == QLatin1String("report") ||
+         mode == QLatin1String("sources") ||
          (req.contains(QStringLiteral("include_body")) &&
           !req.value(QStringLiteral("include_body")).toBool(true)))) {
         out["ok"] = false;
@@ -1596,7 +1686,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         else if (!idsArg.isEmpty())  why = QStringLiteral("ids");
         else if (mode == QLatin1String("section_index") ||
                  mode == QLatin1String("bundles") ||
-                 mode == QLatin1String("report"))
+                 mode == QLatin1String("report") ||
+                 mode == QLatin1String("sources"))
             why = QStringLiteral("mode:") + mode;
         if (!why.isEmpty()) {
             out["ok"] = false;
@@ -3684,6 +3775,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     applyQueryFilter(filtered);
     applyKindFilter(filtered);   // ANTS-4836
     applySourceFilter(filtered); // ANTS-4985
+
+    // ANTS-4119 / ANTS-4993 — the provenance vocabulary with counts, over the
+    // same filtered list a bullets query would page through.
+    if (mode == QLatin1String("sources")) {
+        rcEmitSourcesRollup(out, filtered, sourceGroup, limitArg);
+        out["path"]   = path;
+        out["filter"] = filterEcho;
+        if (!queryArg.isEmpty()) out["query"] = queryArg;
+        if (!kindArg.isEmpty())  out["kind"]  = kindArg;
+        if (!sourceArgs.isEmpty()) {
+            out["source"] = QJsonArray::fromStringList(sourceArgs);
+            out["source_filtered_out"] = sourceFilteredOut;
+        }
+        return QJsonDocument(out);
+    }
 
     // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
     // Second of two call sites (the other is in the section-mode
