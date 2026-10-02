@@ -114,8 +114,29 @@ CoverageMap loadCoverageMap(const QString &rootCanonical) {
     // turns that focused_test run into a hard ctest failure for every file
     // pointing at the bad entry. Fail loudly to `bad_pattern` instead — the
     // caller then falls back to the (escaped, always-valid) heuristic.
-    auto invalidPattern = [](const QString &p) {
-        return !QRegularExpression(p).isValid();
+    // ANTS-5102 — and for the dialect ctest -R really uses: CMake's regex has
+    // no `\d \w \s \b` classes, no `{n}` counts, no `(?` groups and no lazy
+    // quantifiers. Each compiles under PCRE, so a PCRE-only check passed a
+    // pattern that then selected the wrong tests, or none, without a word.
+    auto cmakeIncompatible = [](const QString &p) {
+        for (qsizetype i = 0; i < p.size(); ++i) {
+            const QChar c = p.at(i);
+            const QChar next = i + 1 < p.size() ? p.at(i + 1) : QChar();
+            if (c == QLatin1Char('\\')) {
+                if (QStringLiteral("dDwWsSbB").contains(next)) return true;
+                ++i;                       // an escaped char is literal
+                continue;
+            }
+            if (c == QLatin1Char('{')) return true;
+            if (c == QLatin1Char('(') && next == QLatin1Char('?')) return true;
+            if ((c == QLatin1Char('*') || c == QLatin1Char('+') ||
+                 c == QLatin1Char('?')) && next == QLatin1Char('?'))
+                return true;
+        }
+        return false;
+    };
+    auto invalidPattern = [&cmakeIncompatible](const QString &p) {
+        return !QRegularExpression(p).isValid() || cmakeIncompatible(p);
     };
     const QJsonObject mapObj =
         root.value(QStringLiteral("map")).toObject();

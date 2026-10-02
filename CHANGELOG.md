@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **focused_test refuses coverage-map patterns that CMake's test filter cannot read, such as \d, {2}, (?:…) and lazy quantifiers** (ANTS-5102)
+
 - **verify_changes keeps non-ASCII characters in build output intact when they arrive split across two reads** (ANTS-5102)
 
 - **A test-audit fold-in is dated by the local calendar, not UTC** (ANTS-5102)

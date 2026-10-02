@@ -281,3 +281,27 @@ TEST(McpFocusedTest, WiringContract) {
     GTEST_SKIP() << "source-path defines not provided";
 #endif
 }
+
+// ANTS-5102 — a map pattern is validated for the regex dialect ctest -R
+// actually uses (CMake's), not only as PCRE. `\d`, `{n}`, `(?:` and lazy
+// quantifiers compile under PCRE but mean something else, or nothing, to
+// CMake, so the run silently selected the wrong tests.
+TEST(McpFocusedTest, Ants5102PatternsAreCheckedForCMakeRegex) {
+    const auto load = [](const char *pattern) {
+        QTemporaryDir td;
+        writeFile(td.path() + "/tests/coverage-map.json",
+                  QStringLiteral(R"({"schema_version":1,"map":{"src/foo.cpp":["%1"]}})")
+                      .arg(QString::fromUtf8(pattern)).toUtf8());
+        return FT::loadCoverageMap(td.path());
+    };
+    for (const char *bad : {R"(Foo\\d+)", R"(Foo{2})", R"((?:Foo))", R"(Foo.*?Bar)",
+                            R"(\\bFoo)"}) {
+        const auto m = load(bad);
+        EXPECT_FALSE(m.valid) << bad << " was accepted";
+        EXPECT_EQ(m.error, QStringLiteral("bad_pattern")) << bad;
+    }
+    for (const char *good : {R"(Foo.*Bar)", R"(^(Foo|Bar)\\.)", R"([A-Z]+Test)"}) {
+        const auto m = load(good);
+        EXPECT_TRUE(m.valid) << good << " was refused: " << m.error.toStdString();
+    }
+}
