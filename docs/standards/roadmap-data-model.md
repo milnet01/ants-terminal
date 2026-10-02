@@ -2,8 +2,8 @@
 
 > **Status:** Adopted 2026-07-30; amended 2026-08-03
 > (§ 1 INV-2, §§ 3.3, 4.1, 5, 8) and 2026-08-05 (§ 1 INV-3, § 3.2, § 4.1,
-> § 7.1, § 8, § 9, § 10, *What checks this*) and 2026-10-02 (§§ 3.1, 3.3,
-> 4.1, 7.3.1, 7.5). **Partly
+> § 7.1, § 8, § 9, § 10, *What checks this*) and 2026-10-02 (§§ 3.1–3.3,
+> 4.1, 5, 7.3.1, 7.4, 7.5, 8). **Partly
 > implemented** — the store, the migration, the export and the published
 > render have shipped
 > ([ANTS-3756](../specs/ANTS-3756-roadmap-store-schema.md),
@@ -206,8 +206,8 @@ carries.** Requiring the full set on legacy data would reject the commonest
 operations there — a status flip, a headline correction, a body edit — for
 fields the item was never obliged to have. A status flip is the clearest case
 and is **not** a curating write at all; the rule above covers the rest, so an
-editor need not back-fill `priority` **on the item being edited** in order to
-fix a typo. (`layman` was named here too until 2026-08-24; the paragraph below
+editor need not back-fill a field the item lacks **on the item being edited**
+in order to fix a typo. (`layman` was named here too until 2026-08-24; the paragraph below
 now overrides it for a public, open item on a store-migrated project, and
 leaving it listed here meant a reader who stopped at this line built a write
 path that accepts the fix and is then surprised by `render_gate_unmet`.) An item *created* after cutover is at the full tier from
@@ -221,8 +221,7 @@ that gate; § 3.2 owns it and names the remedy.
 
 **So the tier exemption above does NOT extend to `layman` on a store-migrated
 project — for a PUBLIC, OPEN item.** An editor fixing a typo on such an item
-need not back-fill `priority`, but does have to give it a one-sentence
-`layman`, because the write puts it in the gate's scope. A closed item or an
+has to give it a one-sentence `layman`, because the write puts it in the gate's scope. A closed item or an
 `internal` one is never gated (§ 3.2), so the exemption holds there unchanged;
 demanding `layman` on a closed item is § 10's anti-pattern and this paragraph
 does not create an exception to it. The line can ride along in the same call
@@ -284,7 +283,7 @@ gate neither publishing nor migration.
 
 **Settled 2026-08-24, by scope rather than by exemption.** The question this
 paragraph carried was whether `layman` should get the "written after cutover"
-exemption § 7.5 gives `priority` — because § 3.3 leaves the field empty on
+exemption § 7.5 then gave `priority` — because § 3.3 leaves the field empty on
 every migrated item that did not declare one (a declared `Layman:` line is
 preserved, not dropped; § 3.3 measures the share), and read literally no
 project could publish until all of those were hand-curated. Neither answer was
@@ -367,7 +366,7 @@ this meaning.
 | `layman` | write (open) / publish (open, public) | One sentence, non-technical, for a non-programmer reader. **Not** the only published text — INV-2 publishes the full bullet; this is what a reader is shown first (`roadmap-format.md` § 3.5 puts it on the card face, the headline behind it). § 3.2 gates publish on it. |
 | `kind` | write | § 7.4. |
 | `source` | write | Where the item came from (`roadmap-format.md` § 3.5.3's `Source:`). "What did project X ask for" is a query on this field. Not to be confused with `provenance` (§ 7.7), which records how each field's *value* was obtained. |
-| `priority` | write (open) | § 7.5. Meaningless once closed. |
+| `priority` | unused | § 7.5. Position is priority, and no write verb sets it. The column stays in the schema. |
 | `created`, `last_modified` | write (store-populated) | § 7.6. The store stamps them; migration fills them per § 7.7 (`git-derived`, or `asserted` from a dated `Source:`). |
 | `shipped` | write (status `shipped`) | § 7.6. |
 | `resolution` | unused | No write verb sets it and the render emits nothing for it; the export and its restore carry whatever it holds. What was done and why goes in the body's closure note instead (below). The column stays in the schema. |
@@ -434,9 +433,7 @@ within its section is the current corpus's prioritisation, so that order is
 preserved exactly. (Below, `position` is a **section's** field — its place in
 the project's document order. The two orderings are different facts.)
 
-`priority` and `sort_order` are complementary. `sort_order` is an exact order
-**within a section**; `priority` is a coarse band comparable *across* projects,
-which position can never be. **The section's element list is where that order
+`sort_order` is an exact order **within a section**. **The section's element list is where that order
 lives, and it is the only place it lives** — `sort_order` is recomputed from the
 list rather than stored beside it (§ 4.1, `derived`). The two therefore cannot
 disagree, because there is nothing for the list to disagree with.
@@ -926,18 +923,8 @@ Migration does not harvest it, and no write derives the column from it. The line
 is text for a reader, explaining a position choice, and an existing one stays in
 the body unparsed (user decision 2026-10-02, ANTS-4440).
 
-`priority` is `1` (highest) to `5` (lowest), required on open items **written
-after cutover**, and empty on every migrated item (§ 3.3). Five bands rather
-than ten: ten levels are not reliably distinguishable, so they collapse in
-practice to three with the rest defaulting to the middle, and the number stops
-carrying information.
-
-**A severity word in the headline does not set `priority` either.**
-`roadmap-format.md` § 3.8 requires that word on every fold-in finding, so
-reading it would assign a priority to a large class of items from a value
-*inherited* from whichever review raised them. It would also be an inference
-from prose, which INV-5 refuses for relationships and this model refuses here
-for the same reason.
+**So the `priority` column is unused** (user decision 2026-10-02): no tier
+requires it and no write verb sets it.
 
 `visibility` is `public` or `internal`. The published render includes only
 `public` items. Today everything is
