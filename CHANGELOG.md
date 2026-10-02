@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The debt sweep checks the age of every TODO in a large file, not just those near the top** (ANTS-5101)
+
 - **The cold-eyes contracts lane no longer runs the document check over the multi-megabyte ROADMAP and CHANGELOG logs** (ANTS-5101)
 
 - **The debt sweep reports git_failed when git times out or crashes, instead of showing a clean result** (ANTS-5101)

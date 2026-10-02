@@ -1021,3 +1021,36 @@ TEST(DebtSweepEngine, Ants5101GitFailureIsNotAClean) {
     EXPECT_TRUE(sawFailure)
         << "a crashed git must be reported, not read as no findings";
 }
+
+// ANTS-5101 — a TODO deep in a large file is still checked. The detector
+// blamed the WHOLE file and capped the output at 4 MiB after buffering it,
+// so on a file whose full blame runs past the cap every later TODO was
+// silently skipped. A 60,000-line file blames to well over 4 MiB.
+TEST(DebtSweepEngine, Ants5101StaleTodoDeepInALargeFile) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    QString body;
+    body.reserve(60000 * 8);
+    for (int i = 0; i < 59999; ++i) body += QStringLiteral("int a;\n");
+    body += QStringLiteral("// TODO: deep debt\n");
+    writeFile(dir, "src/big.cpp", body.toUtf8());
+    ASSERT_EQ(runGitIn(dir, {"add", "src/big.cpp"}), 0);
+    ASSERT_EQ(runGitIn(dir,
+                       {"-c", "commit.gpgsign=false", "commit", "-q", "-m", "old"},
+                       {"GIT_AUTHOR_DATE=2020-01-01T12:00:00",
+                        "GIT_COMMITTER_DATE=2020-01-01T12:00:00"}), 0);
+
+    DebtSweepEngine::ScanOptions opt;
+    opt.staleTodoMaxAgeDays = 180;
+    bool sawDeep = false;
+    for (const auto &f : DebtSweepEngine::detectStaleTodos(dir, opt))
+        if (f.file == QLatin1String("src/big.cpp") && f.line == 60000)
+            sawDeep = true;
+    EXPECT_TRUE(sawDeep) << "the TODO on line 60000 must be blamed and flagged";
+}

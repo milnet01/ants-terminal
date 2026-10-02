@@ -459,28 +459,34 @@ const QRegularExpression &todoMarkerRe() {
 // Parse `git blame --line-porcelain` into final-line → committer-time
 // (epoch seconds). With --line-porcelain the commit headers repeat for
 // every line, so a single forward pass suffices.
+// ANTS-5101 — blames only `lines` (one `-L n,n` each, in chunks), not the
+// whole file: the whole-file output was capped at kGitLogCap after being
+// buffered, so on a large file every TODO past the cap went unchecked.
 QHash<int, qint64> blameCommitterTimes(const QString &projectPath,
-                                       const QString &relPath) {
-    const QString out = runGit(
-        projectPath,
-        {QStringLiteral("blame"), QStringLiteral("--line-porcelain"),
-         QStringLiteral("--"), relPath},
-        kGitLogCap);
+                                       const QString &relPath,
+                                       const QList<int> &lines) {
     QHash<int, qint64> times;
-    if (out.isEmpty()) return times;
     static const QRegularExpression headerRe(
         QStringLiteral(R"(^[0-9a-f]{40} \d+ (\d+))"));
-    int curLine = -1;
-    const QStringList lines = out.split('\n');
-    for (const QString &l : lines) {
-        const auto h = headerRe.match(l);
-        if (h.hasMatch()) {
-            curLine = h.captured(1).toInt();
-            continue;
-        }
-        if (curLine > 0 && l.startsWith(QStringLiteral("committer-time "))) {
-            times.insert(curLine,
-                         l.mid(15).trimmed().toLongLong());
+    constexpr int kRangesPerCall = 200;
+    for (qsizetype from = 0; from < lines.size(); from += kRangesPerCall) {
+        QStringList args = {QStringLiteral("blame"),
+                            QStringLiteral("--line-porcelain")};
+        for (qsizetype k = from;
+             k < lines.size() && k < from + kRangesPerCall; ++k)
+            args << QStringLiteral("-L%1,%1").arg(lines.at(k));
+        args << QStringLiteral("--") << relPath;
+        const QString out = runGit(projectPath, args, kGitLogCap);
+        int curLine = -1;
+        for (const QString &l : out.split('\n')) {
+            const auto h = headerRe.match(l);
+            if (h.hasMatch()) {
+                curLine = h.captured(1).toInt();
+                continue;
+            }
+            if (curLine > 0 && l.startsWith(QStringLiteral("committer-time "))) {
+                times.insert(curLine, l.mid(15).trimmed().toLongLong());
+            }
         }
     }
     return times;
@@ -516,7 +522,8 @@ QList<Finding> detectStaleTodos(
         }
         if (hitLines.isEmpty()) continue;
 
-        const QHash<int, qint64> times = blameCommitterTimes(projectPath, rel);
+        const QHash<int, qint64> times =
+            blameCommitterTimes(projectPath, rel, hitLines);
         if (times.isEmpty()) continue;  // non-git / blame failure → skip file
         for (int ln : std::as_const(hitLines)) {
             const auto it = times.constFind(ln);
