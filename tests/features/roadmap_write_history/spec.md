@@ -45,7 +45,11 @@ Numbering is the spec's.
 - **INV-6** — `append` / `append_batch` write no rows.
 - **INV-8** — a non-cap `appendHistory()` failure aborts the op.
 
-INV-7 (export round-trip) lives with the export suite, not here.
+- **INV-7** — a consumer-written row survives the export round trip: a
+  flip's `status` row is in the export, and a rebuild into a fresh store
+  re-exports byte-identically. Tested here rather than with the export
+  suite (ANTS-3822 § 6's choice) because only this bundle can drive
+  `roadmap_log` (ANTS-4416).
 
 ## Why the red run needs proving first
 

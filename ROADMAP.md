@@ -40746,7 +40746,7 @@ against current source before filing.
   Kind: ux.
   Source: user-request-2026-08-17.
 
-- 📋 [ANTS-4416] **ANTS-3822's two untested invariants — the export round-trip, and the branch that must ABORT a write.**
+- ✅ [ANTS-4416] **ANTS-3822's two untested invariants — the export round-trip, and the branch that must ABORT a write.**
   Filed 2026-08-17 as ANTS-3822 shipped, so the gap is a tracked item rather
   than a silence. Six of its eight invariants are tested and green; these two
   are not.
@@ -40788,6 +40788,14 @@ against current source before filing.
   real rlFlushHistory with an unresolvable item_pk, plus a control leg.
   Two mutants (swallow the failure; always-over-cap) both killed. INV-7
   (export round-trip) remains.
+  Resolved (2026-10-02): INV-7 locked by
+  RoadmapWriteHistory.Inv7ConsumerRowsSurviveTheExportRoundTrip, a real
+  flip then export, rebuild into a fresh store, re-export
+  byte-identical, with the flip's status row asserted in the export.
+  Mutant (export skips status history rows) turns it red. Lives in
+  roadmap_write_history because the export suite's bundle cannot drive
+  roadmap_log; ANTS-3822 § 6 and INV-7 updated to say so. Both
+  invariants this item named are now tested.
   **Layman:** Two of the eight rules in the roadmap-history feature shipped without a test; one of them guards the dangerous case.
   Kind: test.
   Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).

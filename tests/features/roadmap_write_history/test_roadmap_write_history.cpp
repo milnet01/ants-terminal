@@ -17,6 +17,7 @@
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapexport.h"
 #include "roadmapstore.h"
 #include "roadmaprender.h"
 #include "roadmapwrite.h"
@@ -24,6 +25,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QBuffer>
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
@@ -633,4 +635,68 @@ TEST(RoadmapWriteHistory, Inv8NonCapHistoryFailureAbortsTheWrite) {
     EXPECT_EQ(bodyOf(pk7), bodyBefore)
         << "the item column changed although its history row was refused";
     EXPECT_EQ(historyRowCount(), rowsBefore);
+}
+
+// ------------------------------------------------------------------ INV-7 ---
+// ANTS-4416 — a row a CONSUMER wrote (here a roadmap_log flip) survives the
+// export: it is in the export, a rebuild into a fresh store keeps it, and the
+// rebuilt store exports byte-identically. Lives here rather than in
+// roadmap_export_roundtrip because only this bundle can drive roadmap_log.
+TEST(RoadmapWriteHistory, Inv7ConsumerRowsSurviveTheExportRoundTrip) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_FIXTURE_HISTORY_VISIBLE();
+    ASSERT_TRUE(runFlip(root, QStringLiteral("DEMO-0007")).value(QStringLiteral("ok")).toBool());
+
+    QByteArray first;
+    {
+        auto store = openStore(RoadmapStore::Access::Bulk);
+        ASSERT_TRUE(store);
+        const auto row = store->readProject(projectId);
+        ASSERT_TRUE(row.has_value());
+        QBuffer buf(&first);
+        ASSERT_TRUE(buf.open(QIODevice::WriteOnly));
+        QString err;
+        ASSERT_TRUE(RoadmapExport::writeProject(*store, row->exportSlug, &buf, &err))
+            << err.toStdString();
+    }
+    // The flip's own row is in the export: a `history` record for the status.
+    bool sawFlip = false;
+    for (const QByteArray &line : first.split('\n')) {
+        const QJsonObject o = QJsonDocument::fromJson(line).object();
+        if (o.value(QStringLiteral("t")).toString() == QStringLiteral("history")
+            && o.value(QStringLiteral("field")).toString() == QStringLiteral("status")
+            && o.value(QStringLiteral("new")).toString() == QStringLiteral("shipped"))
+            sawFlip = true;
+    }
+    ASSERT_TRUE(sawFlip) << "the consumer-written history row is not in the export\n"
+                         << first.toStdString();
+
+    QTemporaryDir rebuiltDir;
+    ASSERT_TRUE(rebuiltDir.isValid());
+    RoadmapStore rebuilt(rebuiltDir.path() + QStringLiteral("/roadmap.sqlite"),
+                         RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(rebuilt.open(&err)) << err.toStdString();
+    {
+        QByteArray copy = first;
+        QBuffer in(&copy);
+        ASSERT_TRUE(in.open(QIODevice::ReadOnly));
+        ASSERT_TRUE(RoadmapExport::rebuildProject(rebuilt, &in, &err)) << err.toStdString();
+    }
+    QByteArray second;
+    {
+        QSqlQuery q(RoadmapStoreTestAccess::db(rebuilt));
+        ASSERT_TRUE(q.exec(QStringLiteral("SELECT export_slug FROM project")) && q.next());
+        QBuffer out(&second);
+        ASSERT_TRUE(out.open(QIODevice::WriteOnly));
+        ASSERT_TRUE(RoadmapExport::writeProject(rebuilt, q.value(0).toString(), &out, &err))
+            << err.toStdString();
+    }
+    EXPECT_EQ(second.toStdString(), first.toStdString())
+        << "consumer-written history did not round-trip byte-identically";
 }

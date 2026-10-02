@@ -1,6 +1,6 @@
 # ANTS-3822 — consumer writes append a history row
 
-**Status:** implemented (2026-08-17) — INV-1..6 and INV-8 tested and green (INV-8 since 2026-10-01); **INV-7 has no test** (see the `impl` loop-log row and ANTS-4416). Gated at review-contract's 2-loop cap, 18 verified findings fixed.
+**Status:** implemented (2026-08-17) — INV-1..8 tested and green (INV-8 since 2026-10-01, INV-7 since 2026-10-02, ANTS-4416). Gated at review-contract's 2-loop cap, 18 verified findings fixed.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3822 (in-session-2026-08-04, ANTS-3809 cold-eyes loop 1 lane A; picked up 2026-08-17 on user request after ANTS-4414 measured what its absence costs).
 **Blocked by:** none — ANTS-3809 shipped, which is the write path this hooks into.
@@ -381,9 +381,9 @@ UNIQUE constraint is satisfied without coordination between items.
 - **INV-6** — `append` and `append_batch` write no history rows. *Test:* same
   suite — append an item, assert zero rows for its `item_pk`.
 - **INV-7** — The export round-trips consumer-written rows unchanged. *Test:*
-  the existing `roadmap_export_roundtrip` suite, extended with an item carrying
-  a consumer-written revision; its byte-identity assertion is what fails if the
-  two producers disagree on row shape.
+  `roadmap_write_history`'s `Inv7ConsumerRowsSurviveTheExportRoundTrip`: a
+  real flip, then export, rebuild into a fresh store and re-export; the byte
+  comparison is what fails if the two producers disagree on row shape.
 - **INV-8** — A non-cap `appendHistory()` failure aborts the op. *Test:* same
   suite — call the § 2.3.1 write helper directly, inside a `commitAndRender()`
   whose `mutate` the test supplies, for an `item_pk` no `item` row has. That
@@ -474,8 +474,9 @@ verb, the envelope is built above it — so without the injectable cap it would
 have to split into two legs, and the envelope leg would have no way to reach a
 skip at all.
 
-INV-7 extends `tests/features/roadmap_export_roundtrip/` rather than adding a
-second round-trip harness.
+INV-7 lives in `tests/features/roadmap_write_history/`, not the export suite:
+that suite's bundle cannot drive `roadmap_log`, and a hand-written row would
+re-test the migration's producer rather than the consumer's (ANTS-4416).
 
 Assertions read the `history` table by direct `SELECT` rather than through a
 typed reader, which is the same choice `roadmap_store_schema`'s tests make and
