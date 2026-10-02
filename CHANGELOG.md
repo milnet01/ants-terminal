@@ -96,6 +96,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Settings offers to reinstall an outdated git-context hook instead of reporting it as installed** (ANTS-5109)
+
 - **changelog_log release refuses an Unreleased section that holds only headings or a placeholder comment** (ANTS-5108)
 
 - **feedback_log compact_resolved keeps a condensed feedback file's only record of its shipped ids when a new finding has a blank id slot** (ANTS-5108)

@@ -38,13 +38,13 @@ extracted="$tmp/claude-git-context.sh"
 python3 - <<EOF > "$extracted"
 import ast, re, sys
 text = open("$SRC_CLAUDESETUP_CPP").read()
-# ANTS-5558 — the installer moved to ants::claude_setup. Locate the
-# QStringLiteral script body inside installGitContextHook: everything between
-# writeScript's opening literal and the \`if (!wrote.ok)\` that follows it.
+# ANTS-5558 — the installer moved to ants::claude_setup. ANTS-5109 — the
+# script body moved into gitContextHookScript(), shared with the status
+# check: everything between its QStringLiteral( and the closing brace.
 m = re.search(
-    r'Outcome installGitContextHook\s*\(.*?'
-    r'writeScript\(scriptPath, QStringLiteral\(\s*\n'
-    r'(.*?)\n\s*if \(!wrote\.ok\)',
+    r'QString gitContextHookScript\(\)\s*\{.*?'
+    r'return QStringLiteral\(\s*\n'
+    r'(.*?)\n\}',
     text, re.S)
 if not m:
     sys.exit("ERROR: could not extract script block from SRC_CLAUDESETUP_CPP")

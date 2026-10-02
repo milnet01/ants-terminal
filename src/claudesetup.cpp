@@ -313,11 +313,27 @@ Outcome installStatusHooks() {
 // state without spending tokens on `git status`. Contract:
 // tests/features/claude_git_context_hook/spec.md.
 
+// ANTS-5109 — defined after installGitContextHook below; declared here for
+// the status check.
+QString gitContextHookScript();
+
 Status gitContextStatus() {
     const QString scriptPath = ConfigPaths::antsClaudeGitContextScript();
     const bool scriptPresent = QFile::exists(scriptPath);
     const bool hookWired = eventRuns(
         readHooks().value(QStringLiteral("UserPromptSubmit")).toArray(), scriptPath);
+    // ANTS-5109 — present is not current: compare the content, so an older
+    // script (pre-ANTS-4999) prompts a reinstall instead of reading as done.
+    bool scriptCurrent = false;
+    if (scriptPresent) {
+        QFile f(scriptPath);
+        scriptCurrent = f.open(QIODevice::ReadOnly)
+                        && f.readAll() == gitContextHookScript().toUtf8();
+    }
+    if (scriptPresent && hookWired && !scriptCurrent)
+        return {State::Partial,
+                QStringLiteral("An older version of the helper script is "
+                               "installed. Install again to update it.")};
     if (scriptPresent && hookWired)
         return {State::Installed,
                 QStringLiteral("✓ Installed globally. Every Claude Code prompt "
@@ -334,9 +350,38 @@ Status gitContextStatus() {
 
 Outcome installGitContextHook() {
     const QString scriptPath = ConfigPaths::antsClaudeGitContextScript();
+    Outcome wrote = writeScript(scriptPath, gitContextHookScript());
+    if (!wrote.ok) return wrote;
+
+    const QString settingsPath = claudeSettingsPath();
+    QJsonObject root;
+    Outcome read = readClaudeSettings(settingsPath, root);
+    if (!read.ok) return read;
+    QJsonObject hooks = root.value(QStringLiteral("hooks")).toObject();
+    QJsonArray existing = hooks.value(QStringLiteral("UserPromptSubmit")).toArray();
+    // Only append where our script is not already referenced, keeping the
+    // user's own UserPromptSubmit hooks intact alongside ours.
+    if (!eventRuns(existing, scriptPath)) {
+        existing.append(hookEntry(scriptPath, true));
+        hooks[QStringLiteral("UserPromptSubmit")] = existing;
+        root[QStringLiteral("hooks")] = hooks;
+        Outcome written = writeClaudeSettings(settingsPath, root);
+        if (!written.ok) return written;
+    }
+    return {true, QStringLiteral("Installed globally (applies to every project).\n\n"
+                                 "Script: %1\nSettings: %2\n\n"
+                                 "Effective for new Claude Code sessions. Claude "
+                                 "Code will see a <git-context> block on every "
+                                 "user prompt.")
+                      .arg(scriptPath, settingsPath)};
+}
+
+// ANTS-5109 — the script text, shared by the installer and the status check
+// so an outdated copy on disk reads as needing a reinstall.
+QString gitContextHookScript() {
     // Runs on every prompt: fast (<100 ms typical) and a silent no-op outside
     // a git repo, so non-repo projects get no chatter. Spec § 3.
-    Outcome wrote = writeScript(scriptPath, QStringLiteral(
+    return QStringLiteral(
         "#!/bin/bash\n"
         "# Ants Terminal — Claude Code UserPromptSubmit git-context hook.\n"
         "# Prints a <git-context> block so Claude sees repo state without\n"
@@ -385,30 +430,7 @@ Outcome installGitContextHook() {
         "printf 'Staged: %s file(s)\\n' \"$staged\"\n"
         "printf 'Unstaged: %s file(s)\\n' \"$unstaged\"\n"
         "printf 'Untracked: %s file(s)\\n' \"$untracked\"\n"
-        "printf '</git-context>\\n'\n"));
-    if (!wrote.ok) return wrote;
-
-    const QString settingsPath = claudeSettingsPath();
-    QJsonObject root;
-    Outcome read = readClaudeSettings(settingsPath, root);
-    if (!read.ok) return read;
-    QJsonObject hooks = root.value(QStringLiteral("hooks")).toObject();
-    QJsonArray existing = hooks.value(QStringLiteral("UserPromptSubmit")).toArray();
-    // Only append where our script is not already referenced, keeping the
-    // user's own UserPromptSubmit hooks intact alongside ours.
-    if (!eventRuns(existing, scriptPath)) {
-        existing.append(hookEntry(scriptPath, true));
-        hooks[QStringLiteral("UserPromptSubmit")] = existing;
-        root[QStringLiteral("hooks")] = hooks;
-        Outcome written = writeClaudeSettings(settingsPath, root);
-        if (!written.ok) return written;
-    }
-    return {true, QStringLiteral("Installed globally (applies to every project).\n\n"
-                                 "Script: %1\nSettings: %2\n\n"
-                                 "Effective for new Claude Code sessions. Claude "
-                                 "Code will see a <git-context> block on every "
-                                 "user prompt.")
-                      .arg(scriptPath, settingsPath)};
+        "printf '</git-context>\\n'\n");
 }
 
 // --- MCP registration -----------------------------------------------------

@@ -700,3 +700,25 @@ TEST(ClaudeSetup, ShellIntegrationBlocksAndKey) {
 
     ASSERT_EQ(0, expect_finish());
 }
+
+// ANTS-5109 — an outdated git-context script is not "Installed". The status
+// checked only that the script existed and was wired, never its content, so
+// a pre-ANTS-4999 script read as installed and its reinstall was never
+// prompted.
+TEST(ClaudeSetup, Ants5109OutdatedGitContextScriptIsNotInstalled) {
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    ASSERT_TRUE(installGitContextHook().ok);
+    ASSERT_EQ(gitContextStatus().state, State::Installed);
+
+    ASSERT_TRUE(writeFile(ConfigPaths::antsClaudeGitContextScript(),
+                          "#!/bin/bash\n# an older git-context hook\n"));
+    const Status st = gitContextStatus();
+    EXPECT_NE(st.state, State::Installed)
+        << "a script whose content differs from the current one must prompt "
+           "a reinstall; detail: " << st.detail.toStdString();
+
+    ASSERT_TRUE(installGitContextHook().ok);
+    EXPECT_EQ(gitContextStatus().state, State::Installed)
+        << "reinstalling must bring it back to Installed";
+}
