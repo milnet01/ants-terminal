@@ -8,6 +8,8 @@
 #include <QDate>
 #include <QHash>
 #include <QRegularExpression>
+#include <QMutexLocker>
+#include <QMutex>
 
 #include <algorithm>
 
@@ -71,16 +73,25 @@ bool isContinuation(const QString &l) {
 QStringList extractIds(const QString &text, const QString &idPrefix) {
     QStringList out;
     if (idPrefix.isEmpty()) return out;
+    // ANTS-5108 — locked, and the pattern is copied out (QRegularExpression
+    // is implicitly shared, so the copy is cheap): one thread reaches this
+    // today, and an unlocked QHash would not survive a second.
     static QHash<QString, QRegularExpression> cache;
-    auto it = cache.find(idPrefix);
-    if (it == cache.end()) {
-        it = cache.insert(
-            idPrefix,
-            QRegularExpression(QStringLiteral("\\b") +
-                               QRegularExpression::escape(idPrefix) +
-                               QStringLiteral("-\\d+\\b")));
+    static QMutex cacheMutex;
+    QRegularExpression rx;
+    {
+        QMutexLocker lock(&cacheMutex);
+        auto it = cache.find(idPrefix);
+        if (it == cache.end()) {
+            it = cache.insert(
+                idPrefix,
+                QRegularExpression(QStringLiteral("\\b") +
+                                   QRegularExpression::escape(idPrefix) +
+                                   QStringLiteral("-\\d+\\b")));
+        }
+        rx = *it;
     }
-    auto m = it->globalMatch(text);
+    auto m = rx.globalMatch(text);
     while (m.hasNext()) {
         const QString id = m.next().captured(0);
         if (!out.contains(id)) out.append(id);
