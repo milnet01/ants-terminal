@@ -2156,7 +2156,10 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         // extracted mcp::shouldOffload predicate (behaviourally
         // tested; offloadBody has no internal threshold guard).
         const qint64 bodyBytes = responseText.toUtf8().size();
-        if (mcp::shouldOffload(bodyBytes)) {
+        // ANTS-5364 — the threshold is per call: a sized roadmap_query
+        // raises it (mcp::offloadThresholdFor).
+        if (mcp::shouldOffload(
+                bodyBytes, mcp::offloadThresholdFor(toolName, argsObj))) {
             responseText = mcp::offloadBody(toolName, responseText, argsObj);
             // ANTS-4626 — offloadBody builds a FRESH head+pointer
             // envelope from its own keys, so the ANTS-2175
@@ -3448,8 +3451,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "its bodies are shortened with the elision marker until "
                         "it fits, and it carries `bodies_shrunk_to_fit` plus "
                         "`max_body_bytes_effective`. A single id asked for by "
-                        "size is exempt: it still spills, so read_spill reaches "
-                        "the middle.");
+                        "size is exempt. ANTS-5364 — this value also raises "
+                        "the spill threshold for the call, to itself plus "
+                        "4 KiB, at most 64 KiB; a larger reply still spills, "
+                        "so read_spill reaches the middle.");
                     props["max_body_bytes"] = maxBodyProp;
                     // ANTS-4904 — read a progress-log bullet's TAIL.
                     QJsonObject fromEndProp;

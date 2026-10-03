@@ -96,6 +96,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query returns a reply inline when the caller sized it with max_body_bytes, up to 64 KiB** (ANTS-5364)
+  An explicit max_body_bytes now raises the spill threshold for that call
+  to the value plus 4 KiB, at most 64 KiB, so a fetch sized to fit no
+  longer comes back as a side file. Larger replies still spill.
+
 - **Settings offers to reinstall an outdated git-context hook instead of reporting it as installed** (ANTS-5109)
 
 - **changelog_log release refuses an Unreleased section that holds only headings or a placeholder comment** (ANTS-5108)

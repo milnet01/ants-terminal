@@ -68799,13 +68799,18 @@ project. Reported causes are claims until checked in source.
   Source: feedback-finbreak-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5364] **An explicit max_body_bytes does not raise the spill threshold, so a one-item fetch under the cap still spills.**
+- ✅ [ANTS-5364] **An explicit max_body_bytes does not raise the spill threshold, so a one-item fetch under the cap still spills.**
   Reported by finbreak (FIBR-0159): max_body_bytes:20000 spilled a 19,617-
   byte reply. Suggested: let an explicit max_body_bytes raise the spill
   threshold for that call; failing that, say so in the hint and drop the
   duplicated head preview. Related: ANTS-4630, ANTS-4981.
   User decision 2026-10-03: an explicit max_body_bytes raises the spill
   threshold for that call, up to 64 KiB; larger still spills.
+  Resolved (2026-10-03): mcp::offloadThresholdFor raises the call's
+  spill threshold to max_body_bytes + 4 KiB, at most 64 KiB, for
+  roadmap_query; the dispatch gate and ANTS-5477's shrink-to-fit budget
+  both use it. Test McpResultOffload.Inv1ExplicitBodyCapRaisesThreshold;
+  ANTS-2094 INV-1 amended. Live after an ants-mcpd rebuild + /mcp.
   **Layman:** Asking for one roadmap item's full text can still take two calls even when a size was given.
   Kind: fix.
   Source: feedback-finbreak-2026-09-21.

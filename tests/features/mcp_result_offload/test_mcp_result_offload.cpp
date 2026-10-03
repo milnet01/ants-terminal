@@ -292,6 +292,40 @@ TEST_F(McpResultOffload, Inv1ShouldOffloadBoundary) {
     EXPECT_TRUE(mcp::shouldOffload(16385))  << "over both threshold and head: offload";
 }
 
+// ANTS-5364 — roadmap_query's explicit max_body_bytes raises the threshold
+// for that call, plus headroom for the envelope, up to a 64 KiB ceiling. It
+// never lowers the configured threshold, and no other verb is affected. The
+// reported case: max_body_bytes:20000 spilled a 19,617-byte reply.
+TEST_F(McpResultOffload, Inv1ExplicitBodyCapRaisesThreshold) {
+    mcp::setOffloadConfig(true, 16384, 2048);
+    const QString rq = QStringLiteral("roadmap_query");
+    auto sized = [](int n) {
+        return QJsonObject{{QStringLiteral("id"), QStringLiteral("X-1")},
+                           {QStringLiteral("max_body_bytes"), n}};
+    };
+    EXPECT_EQ(mcp::offloadThresholdFor(rq, sized(20000)),
+              20000 + mcp::kExplicitSizeHeadroomBytes);
+    EXPECT_FALSE(mcp::shouldOffload(19617,
+                                    mcp::offloadThresholdFor(rq, sized(20000))))
+        << "the reported 19,617-byte reply stays inline";
+    EXPECT_EQ(mcp::offloadThresholdFor(rq, sized(1048576)),
+              mcp::kExplicitSizeCeilingBytes) << "capped at 64 KiB";
+    EXPECT_EQ(mcp::offloadThresholdFor(
+                  rq, QJsonObject{{QStringLiteral("max_body_bytes"), 1e30}}),
+              mcp::kExplicitSizeCeilingBytes) << "an absurd cap clamps, no overflow";
+    EXPECT_EQ(mcp::offloadThresholdFor(rq, sized(400)), 16384)
+        << "a small cap never lowers the threshold";
+    EXPECT_EQ(mcp::offloadThresholdFor(rq, QJsonObject{}), 16384)
+        << "no max_body_bytes: the configured threshold";
+    EXPECT_EQ(mcp::offloadThresholdFor(QStringLiteral("changelog_log"),
+                                       sized(20000)), 16384)
+        << "other verbs keep the configured threshold";
+    mcp::setOffloadConfig(true, 100000, 2048);
+    EXPECT_EQ(mcp::offloadThresholdFor(rq, sized(20000)), 100000)
+        << "a configured threshold above the ceiling stands";
+    mcp::setOffloadConfig(true, 16384, 2048);
+}
+
 // INV-1 — offloadBody has NO threshold guard: handed a body BELOW the offload
 // threshold (yet still large enough that the head+pointer envelope saves
 // bytes), it spills anyway. The threshold is purely the dispatch's concern

@@ -65,6 +65,16 @@ bool offloadRequested(const QJsonObject &args);
 // AND bodyBytes > offloadHeadBytes().
 bool shouldOffload(qint64 bodyBytes);
 
+// ANTS-5364 — the threshold for ONE call. roadmap_query's explicit
+// max_body_bytes raises it to that size plus kExplicitSizeHeadroomBytes,
+// capped at kExplicitSizeCeilingBytes, so a caller who sized the reply gets
+// it inline. It never lowers the configured threshold; every other verb gets
+// offloadThresholdBytes(). The two-argument shouldOffload applies it.
+constexpr qint64 kExplicitSizeHeadroomBytes = 4096;
+constexpr qint64 kExplicitSizeCeilingBytes  = 64LL * 1024;
+qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args);
+bool shouldOffload(qint64 bodyBytes, qint64 thresholdBytes);
+
 // Spill `body` and return the head+pointer envelope JSON string. On ANY
 // write failure (dir unwritable, disk full, commit() false) returns `body`
 // unchanged — fail-open (INV-11). Caller must already have checked the

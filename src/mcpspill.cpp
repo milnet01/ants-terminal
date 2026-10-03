@@ -131,7 +131,22 @@ int  offloadHeadBytes()      { return g_offloadHead.load(std::memory_order_relax
 // when the head clamp meets or exceeds the threshold clamp (both ranges can
 // overlap — INV-12). See docs/specs/ANTS-2094.md § INV-1.
 bool shouldOffload(qint64 bodyBytes) {
-    return bodyBytes >= offloadThresholdBytes() && bodyBytes > offloadHeadBytes();
+    return shouldOffload(bodyBytes, offloadThresholdBytes());
+}
+
+bool shouldOffload(qint64 bodyBytes, qint64 thresholdBytes) {
+    return bodyBytes >= thresholdBytes && bodyBytes > offloadHeadBytes();
+}
+
+qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args) {
+    const qint64 base = offloadThresholdBytes();
+    const QJsonValue cap = args.value(QStringLiteral("max_body_bytes"));
+    if (toolName != QLatin1String("roadmap_query") || !cap.isDouble())
+        return base;
+    // Clamped as a double: casting an out-of-range double is undefined.
+    const double asked = qMin(cap.toDouble() + double(kExplicitSizeHeadroomBytes),
+                              double(kExplicitSizeCeilingBytes));
+    return qMax(base, qint64(asked));
 }
 
 bool offloadRequested(const QJsonObject &args) {

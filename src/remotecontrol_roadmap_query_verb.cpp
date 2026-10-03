@@ -710,11 +710,14 @@ bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
 // reply fits under the offload threshold; if it still does not fit at the
 // floor, leave it for the spill. Headroom covers what the dispatcher appends
 // after this (read hints, the etag nudge). Returns the cap applied, or 0.
+// ANTS-5364 — `threshold` is the call's own (mcp::offloadThresholdFor), so a
+// caller's max_body_bytes is not shrunk back under the default.
 constexpr int kFitHeadroomBytes = 1024;
 constexpr int kFitMinBodyCap    = 400;
 
-int rcShrinkBodiesToFit(QJsonObject &out, int cap, bool fromEnd) {
-    const qint64 budget = mcp::offloadThresholdBytes() - kFitHeadroomBytes;
+int rcShrinkBodiesToFit(QJsonObject &out, int cap, bool fromEnd,
+                        qint64 threshold) {
+    const qint64 budget = threshold - kFitHeadroomBytes;
     auto size = [&] {
         return qint64(QJsonDocument(out).toJson(QJsonDocument::Compact).size());
     };
@@ -1295,7 +1298,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (singleIdFetch && reqBodyCap > 0) return;
         const int cap = rcShrinkBodiesToFit(
             out, idBodyCap,
-            req.value(QStringLiteral("body_from_end")).toBool(false));
+            req.value(QStringLiteral("body_from_end")).toBool(false),
+            mcp::offloadThresholdFor(QStringLiteral("roadmap_query"), req));
         if (cap > 0) {
             out["bodies_shrunk_to_fit"]      = true;
             out["max_body_bytes_effective"] = cap;
