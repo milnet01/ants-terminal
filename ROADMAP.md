@@ -9774,6 +9774,8 @@ extends an existing item, that item carries it instead.
   decision, which replaced the same background-job plan for focused_test
   and mutation_probe on this premise; reopen if a background job is
   still wanted.
+  User decision 2026-10-03: no background job for verify_changes. The
+  2026-10-02 resolution stands; do not reopen.
   **Layman:** Smaller review-tool fixes, including a code check that can report a stale pass and a dry run that writes anyway.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-review-verbs).
@@ -10078,6 +10080,11 @@ extends an existing item, that item carries it instead.
   folders (AI output with no other copy; recommend keeping the newest 5).
   The mtime-recheck map is not evicted: entries are one token and one
   timestamp per brief request, so it is left as is.
+  User decisions 2026-10-03: (a) prune .audit_cache/test_audit_<token>
+  folders, keeping the newest 5 per project, deleting older ones only
+  when a new round writes its folder; (b) cap the GUI fold-in's
+  .roadmap-counter lock wait at about 1 s and show "roadmap busy, try
+  again" instead of freezing up to 5 s.
   **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
@@ -41241,6 +41248,9 @@ against current source before filing.
   that the remaining prize is smaller than it looked: 3.9 ms at site 1, and
   site 3's own full() is already free since ANTS-4431 memoised the body
   through one shared provider, leaving only buildIndex's 4.6 ms.
+  User decision 2026-10-03: one kSchemaVersion bump covers ANTS-5366,
+  ANTS-5483 and this item's render fingerprint; build the three
+  together.
   Source: in-session-2026-08-17 (ANTS-3863 implementation).
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
@@ -65133,7 +65143,7 @@ Triage of the un-triaged tails across the shared feedback corpus. Findings that
 confirm an already-shipped id are closed inline with an `n/a` closure rather
 than re-filed; everything else lands here.
 
-- 🚧 [ANTS-4947] **roadmap_log op:"annotate" discarded a note the same verb had written minutes earlier, and called it an external edit.**
+- 🚫 [ANTS-4947] **roadmap_log op:"annotate" discarded a note the same verb had written minutes earlier, and called it an external edit.**
   Three op:"annotate" calls against one id, one session, one
   caller_cwd, main checkout. All three returned ok:true,
   note_appended:true, write_path:"render". The third also returned
@@ -65235,6 +65245,8 @@ than re-filed; everything else lands here.
   Awaiting the user (asked 2026-10-02): close as not reproducible?
   Recommended yes: four hypotheses eliminated, no recurrence in the
   backups since 2026-09-08, and discarded_backup_paths protects callers.
+  User decision 2026-10-03: closed as not reproducible. Reopen with a
+  fresh repro if it recurs.
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -68792,6 +68804,8 @@ project. Reported causes are claims until checked in source.
   byte reply. Suggested: let an explicit max_body_bytes raise the spill
   threshold for that call; failing that, say so in the hint and drop the
   duplicated head preview. Related: ANTS-4630, ANTS-4981.
+  User decision 2026-10-03: an explicit max_body_bytes raises the spill
+  threshold for that call, up to 64 KiB; larger still spills.
   **Layman:** Asking for one roadmap item's full text can still take two calls even when a size was given.
   Kind: fix.
   Source: feedback-finbreak-2026-09-21.
@@ -68817,6 +68831,9 @@ project. Reported causes are claims until checked in source.
   kSchemaVersion bump, bundled with ANTS-5483 so older builds are locked
   out once. Until then a departed project's news goes to its feedback
   file.
+  User decision 2026-10-03: one kSchemaVersion bump covers ANTS-5366,
+  ANTS-5483 and ANTS-4426's render fingerprint; build the three
+  together.
   **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
   Kind: enhancement.
   Source: in-session-2026-09-25.
@@ -69452,6 +69469,9 @@ project. Reported causes are claims until checked in source.
   and deregisterProject deletes every per-project row. Harmless today,
   since nothing caches a project_id across a deregister.
   Blocked-by: the next kSchemaVersion bump.
+  User decision 2026-10-03: one kSchemaVersion bump covers ANTS-5366,
+  ANTS-5483 and ANTS-4426's render fingerprint; build the three
+  together.
   **Layman:** When a project is removed, its number is never handed to a new one.
   Kind: fix.
   Source: claude-config-feedback-2026-09-27.
