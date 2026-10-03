@@ -39,6 +39,27 @@ TEST(gfm_adapter_bold_id_multitoken, Inv1MultiTokenBold) {
     EXPECT_EQ(rec.format, QStringLiteral("github-task-list"));
 }
 
+// INV-4 (ANTS-5288) — a separator INSIDE the bold caption is not the
+// id/headline split. Vestige's `**FW W9 — cross-formula fit target.** The …`
+// split at the caption's own em-dash, so the headline began mid-caption and
+// kept the closing `**`. The id is the whole caption; the headline is the
+// prose after it and carries no bold marker.
+TEST(gfm_adapter_bold_id_multitoken, Inv4SeparatorInsideBoldIsNotTheSplit) {
+    const QString md = QString::fromUtf8(
+        "## Section\n"
+        "- [x] **FW W9 \xE2\x80\x94 cross-formula fit target.** The reference "
+        "harness fits a formula.\n");
+    const auto rec = parseOne(md);
+    EXPECT_EQ(rec.id, QString::fromUtf8(
+                          "FW W9 \xE2\x80\x94 cross-formula fit target"));
+    EXPECT_FALSE(rec.headline.contains(QStringLiteral("**")))
+        << rec.headline.toStdString();
+    EXPECT_FALSE(rec.headline.startsWith(QStringLiteral("cross-formula")))
+        << rec.headline.toStdString();
+    EXPECT_TRUE(rec.headline.startsWith(QStringLiteral("The reference harness")))
+        << rec.headline.toStdString();
+}
+
 // INV-2 — ants-style `**Sh4.**` still yields "Sh4" (trailing period
 // stripped). Back-compat with multi-prefix ants-style projects.
 TEST(gfm_adapter_bold_id_multitoken, Inv2TrailingPeriodStripped) {

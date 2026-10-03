@@ -23,9 +23,12 @@ the human-readable label.
   call extractBoldId in the GFM branch; rxBold-based headline
   extraction runs unchanged.
 - **INV-4 / em-dash separator splits headline from bold-ID.** When
-  `boldId` is non-empty AND `head` contains ` — ` (or ` -- ` /
-  ` - `), `rec.headline` is the trimmed text after the separator.
-  Source anchor: `ANTS-1438-INV-4`.
+  `boldId` is non-empty AND `head` contains ` — ` (or ` -- `) AFTER
+  the bold caption closes, `rec.headline` is the trimmed text after
+  the separator. A separator inside the caption is not the split
+  (ANTS-5288): the id is the whole caption and the headline carries no
+  `**`. ` - ` is not a separator (ANTS-1785). Source anchor:
+  `ANTS-1438-INV-4`.
 - **INV-5 / no separator falls back to existing behaviour.** A GFM
   bullet with bold-ID but no em-dash falls through to the existing
   rxBold-based headline derivation.

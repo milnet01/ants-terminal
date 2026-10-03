@@ -96,6 +96,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A bold caption carrying its own em-dash converts to one item: the caption is the id, the prose after it the headline** (ANTS-5288)
+  The id/headline separator is now looked for only after the bold
+  caption closes, so the headline no longer starts mid-caption with a
+  stray `**`. The convert op's description also says `in_file` is a
+  boolean.
+
 - **roadmap_query returns a reply inline when the caller sized it with max_body_bytes, up to 64 KiB** (ANTS-5364)
   An explicit max_body_bytes now raises the spill threshold for that call
   to the value plus 4 KiB, at most 64 KiB, so a fetch sized to fit no

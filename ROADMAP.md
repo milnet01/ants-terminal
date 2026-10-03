@@ -52965,7 +52965,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5288] **Promoting a bold caption splits it mid-sentence and leaves a stray marker.**
+- ✅ [ANTS-5288] **Promoting a bold caption splits it mid-sentence and leaves a stray marker.**
   Reported by vestige-5f, and it CORRECTS an acceptance test this project
   handed them, which makes it worth more than the test it invalidates.
 
@@ -52995,6 +52995,13 @@ are closed inline in the feedback files rather than filed here.
   FIX THE ACCEPTANCE TEST TOO, not just the code. "Surviving in place" is
   not checkable; "promoted to an item whose id is the full caption and
   whose headline carries no residual marker" is.
+  Resolved (2026-10-03): the em-dash split in fillBulletRecord searches
+  only after the bold caption closes, so `**FW W9 — cross-formula fit
+  target.** The …` yields id = whole caption, headline = the prose after
+  it, no `**`. Test
+  gfm_adapter_bold_id_multitoken.Inv4SeparatorInsideBoldIsNotTheSplit
+  (red before, green after); its spec.md INV-4 now states the checkable
+  outcome. convert's description says `in_file` is a boolean.
   **Layman:** Section-like headings in bold get turned into items, but the split lands in the middle of the sentence and leaves formatting characters behind.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.

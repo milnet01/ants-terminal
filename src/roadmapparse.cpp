@@ -1402,7 +1402,14 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     // separator prose; the rxBold-based fallback below stays
     // for INV-5 (no separator) and ants-v1 (no boldId).
     if (gfmHere && !boldId.isEmpty() && declaredRest.isEmpty()) {
-        const QString afterSep = splitOnEmDash(head);
+        // ANTS-5288 — the separator must FOLLOW the bold caption. A caption
+        // carrying its own em-dash (`**FW W9 — cross-formula fit target.**`)
+        // split inside the bold, so the headline began mid-caption and kept
+        // the closing `**`. Searching after the close leaves such a bullet to
+        // the bold-ID branch below, which takes the prose after the caption.
+        const int boldClose = head.indexOf(QLatin1String("**"), 2);
+        const QString afterSep =
+            splitOnEmDash(boldClose >= 0 ? head.mid(boldClose + 2) : head);
         if (!afterSep.isEmpty()) {
             QString h = afterSep;
             static const QRegularExpression rxTrailAnchor(
