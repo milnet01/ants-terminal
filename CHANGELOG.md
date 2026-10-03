@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **A test drives roadmap_log's return and dry_run replies on a store-backed project, for append, flip and both batch forms** (ANTS-4661)
+  Asked for, `post_bullets` is now pinned present on every one of those
+  paths, so a missing key means only that it was not asked for.
+
 - **`ants-terminal --import-roadmap <file> <root>` restores one project's roadmap from its weekly backup export.** (ANTS-5244)
   It ties the restored project to its folder, refuses a project or
   folder the store already holds, and needs no display. Afterwards,

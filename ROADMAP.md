@@ -57360,7 +57360,7 @@ filed below.
   Source: in-session-2026-08-25 (measured while fixing ANTS-4608).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-4661] **The documented return/dry_run surface is only tested against fresh counter-strategy fixtures, which is the path that already works.**
+- ✅ [ANTS-4661] **The documented return/dry_run surface is only tested against fresh counter-strategy fixtures, which is the path that already works.**
   ANTS-4570's second reporter made the observation worth keeping, and it
   outlived the sighting that prompted it. Two documented fields landed on one
   backend and not the other in the same week -- ANTS-4508's `would_be_id` on the
@@ -57384,6 +57384,16 @@ filed below.
   way ANTS-4463 did for dry_run's past-tense fields. A caller cannot currently
   tell "not supported on this path" from "nothing to report", and that ambiguity
   is why the original report could not isolate its variable.
+  Resolved (2026-10-03):
+  RoadmapWriteHalf.Ants4661ReturnSurfaceOnAMigratedProject drives
+  append, append_batch, flip and flip_batch on a migrated project,
+  preview and real, with return:"headline_only", and asserts
+  post_bullets is present with one row per touched id (would_be_id /
+  would_be_ids on the preview). Green on every path; removing the store
+  append_batch echo turns it red (checked, then restored). The absence
+  guard is met by that contract rather than a new field: asked for,
+  post_bullets is always present, so an absent key means only "not asked
+  for", and the test also pins that on a plain append.
   **Layman:** Two reported gaps both landed on the database-backed path, and no test exercises that path.
   Kind: test.
   Source: in-session-2026-08-25, split out of ANTS-4570 (reporter's own generalisation).

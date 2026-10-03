@@ -3366,3 +3366,130 @@ TEST(RoadmapWriteHalf, Ants5399LayoutDriftPointsAtRender) {
     EXPECT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool());
     EXPECT_FALSE(env.contains(QStringLiteral("drift_hint")));
 }
+
+// ------------------------------------------------------------- ANTS-4661 -----
+
+// The documented return/dry_run surface, driven against a MIGRATED project for
+// every op that documents it: append, append_batch, flip and flip_batch, each
+// as a preview and as a real write, each with return:"headline_only". Two
+// fields once landed on one backend and not the other (ANTS-4508's
+// `would_be_id`, ANTS-4570's `post_bullets`), and the fixtures that should have
+// caught them ran on a fresh counter-strategy project, the path that worked.
+//
+// The contract this pins: asked for, `post_bullets` is PRESENT and carries one
+// row per touched item, whose id is the one the reply names. So an absent key
+// means "not asked for" and nothing else.
+TEST(RoadmapWriteHalf, Ants4661ReturnSurfaceOnAMigratedProject) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    const auto dump = [](const QJsonObject &o) {
+        return QJsonDocument(o).toJson().toStdString();
+    };
+    const auto postIds = [](const QJsonObject &o) {
+        QStringList out;
+        for (const auto &v : o.value(QStringLiteral("post_bullets")).toArray())
+            out << v.toObject().value(QStringLiteral("id")).toString();
+        return out;
+    };
+    const auto strings = [](const QJsonValue &v) {
+        QStringList out;
+        for (const auto &e : v.toArray()) out << e.toString();
+        return out;
+    };
+
+    // append -------------------------------------------------------------
+    for (const bool dry : {true, false}) {
+        QJsonObject req = appendReq(root, QStringLiteral("Appended for 4661."));
+        req[QStringLiteral("return")] = QStringLiteral("headline_only");
+        if (dry) req[QStringLiteral("dry_run")] = true;
+        const QJsonObject r = rc.cmdRoadmapLogAppendForTest(req).object();
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+        const QString id = r.value(dry ? QStringLiteral("would_be_id")
+                                       : QStringLiteral("id")).toString();
+        EXPECT_FALSE(id.isEmpty()) << (dry ? "append preview: " : "append: ") << dump(r);
+        EXPECT_EQ(postIds(r), QStringList{id})
+            << (dry ? "append preview: " : "append: ") << dump(r);
+    }
+
+    // append_batch -------------------------------------------------------
+    QStringList batchIds;
+    for (const bool dry : {true, false}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("return")]     = QStringLiteral("headline_only");
+        if (dry) req[QStringLiteral("dry_run")] = true;
+        QJsonArray bullets;
+        for (const char *h : {"Batch one for 4661.", "Batch two for 4661."}) {
+            QJsonObject b;
+            b[QStringLiteral("headline")] = QString::fromUtf8(h);
+            b[QStringLiteral("status")]   = QStringLiteral("planned");
+            b[QStringLiteral("kind")]     = QStringLiteral("implement");
+            b[QStringLiteral("source")]   = QStringLiteral("test");
+            b[QStringLiteral("layman")]   = QStringLiteral("A new thing.");
+            bullets.append(b);
+        }
+        req[QStringLiteral("bullets")] = bullets;
+        const QJsonObject r = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+        const QStringList ids = strings(r.value(dry ? QStringLiteral("would_be_ids")
+                                                    : QStringLiteral("ids")));
+        EXPECT_EQ(ids.size(), 2) << (dry ? "append_batch preview: " : "append_batch: ")
+                                 << dump(r);
+        EXPECT_EQ(postIds(r), ids)
+            << (dry ? "append_batch preview: " : "append_batch: ") << dump(r);
+        if (!dry) batchIds = ids;
+    }
+    ASSERT_EQ(batchIds.size(), 2);
+
+    // flip ---------------------------------------------------------------
+    for (const bool dry : {true, false}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip");
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+        req[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+        req[QStringLiteral("return")]     = QStringLiteral("headline_only");
+        if (dry) req[QStringLiteral("dry_run")] = true;
+        const QJsonObject r = rc.cmdRoadmapLogFlipForTest(req).object();
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+        EXPECT_EQ(postIds(r), QStringList{QStringLiteral("DEMO-0007")})
+            << (dry ? "flip preview: " : "flip: ") << dump(r);
+    }
+
+    // flip_batch ---------------------------------------------------------
+    for (const bool dry : {true, false}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+        req[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+        req[QStringLiteral("return")]     = QStringLiteral("headline_only");
+        if (dry) req[QStringLiteral("dry_run")] = true;
+        QJsonArray locators;
+        for (const QString &id : batchIds)
+            locators.append(QJsonObject{{QStringLiteral("id"), id}});
+        req[QStringLiteral("locators")] = locators;
+        const QJsonObject r = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+        QStringList got = postIds(r);
+        got.sort();
+        QStringList want = batchIds;
+        want.sort();
+        EXPECT_EQ(got, want) << (dry ? "flip_batch preview: " : "flip_batch: ")
+                             << dump(r);
+    }
+
+    // Not asked for: absent. On append, the opt-in op, that is the whole
+    // meaning of an absent key.
+    const QJsonObject plain = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("Plain append for 4661."))).object();
+    ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dump(plain);
+    EXPECT_FALSE(plain.contains(QStringLiteral("post_bullets"))) << dump(plain);
+}
