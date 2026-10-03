@@ -10016,7 +10016,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
   Lanes: review.
 
-- 📋 [ANTS-5102] **Performance pass findings for test audit, focused tests, mutation probe and verify gates (medium and low).**
+- ✅ [ANTS-5102] **Performance pass findings for test audit, focused tests, mutation probe and verify gates (medium and low).**
   Filed separately: ANTS-5062, 5063, 5064, 5065.
   Medium:
   - The test-audit pre-pass reads each test file whole with no cap and
@@ -10094,6 +10094,10 @@ extends an existing item, that item carries it instead.
   always. Tests roadmap_fold_in INV-9 and test_audit_dialog INV-13, each
   red against the old behaviour. STILL OPEN: the store-backed fold-in
   write and the lows.
+  Resolved (2026-10-03): correction to the note above — nothing is left
+  here. The store-backed fold-in write is tracked as ANTS-5229, and the
+  lows were done on 2026-10-02 apart from the mtime-recheck map, which
+  was left as is on purpose.
   **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
