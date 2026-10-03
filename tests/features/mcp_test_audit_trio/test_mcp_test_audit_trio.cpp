@@ -36,7 +36,7 @@ TEST(mcp_test_audit_trio, Inv1PartitionNoShell) {
 TEST(mcp_test_audit_trio, Inv3FoldInBatchedDelegate) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
-    expect(contains(cpp, "RoadmapFoldIn::allocateIds(canon, n)"),
+    expect(contains(cpp, "RoadmapFoldIn::allocateIds(canon, n,"),
            "INV-3: single batched allocateIds(canon, n) call");
     expect(contains(cpp, "RoadmapFoldIn::insertBlock(canon"),
            "INV-3: insertBlock delegated call");

@@ -100,6 +100,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Folding findings into the roadmap from a dialog waits about 1 s for a busy roadmap, then says so, instead of freezing for 5 s** (ANTS-5102)
+  Applies to the test audit, code audit, debt sweep and AI review
+  dialogs. The code audit no longer blames a missing heading when the
+  real cause was another writer. Test-audit report folders are now kept
+  for the newest five rounds per project; the current round's folder is
+  always kept.
+
 - **A bold caption carrying its own em-dash converts to one item: the caption is the id, the prose after it the headline** (ANTS-5288)
   The id/headline separator is now looked for only after the bold
   caption closes, so the headline no longer starts mid-caption with a

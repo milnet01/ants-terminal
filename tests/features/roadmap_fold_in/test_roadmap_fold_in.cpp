@@ -13,6 +13,11 @@
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QElapsedTimer>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 #include "auditengine.h"
 #include "remotecontrolgate.h"
@@ -654,4 +659,54 @@ TEST(Ants5087SourceGrep, SystemicFlockBailsOutBeforeTheContentionBudget) {
         ants_test::slurpFile(std::string(SRC_ROADMAPFOLDIN_CPP_PATH)));
     EXPECT_NE(src.find("constexpr int kSystemicAttempts"), std::string::npos)
         << "kSystemicAttempts must be declared, not inlined as a literal";
+}
+
+// INV-9 (ANTS-5102) — a GUI-thread fold-in waits about 1 s for the counter
+// lock, not 5 s, and says the failure was another writer (`busy`), so the
+// dialog can say "roadmap busy, try again". Released, the same call succeeds
+// with busy false. The bound is loose on purpose: it separates ~1 s from the
+// 5 s Standard wait without timing a busy CI runner to the millisecond.
+TEST(RoadmapFoldIn, Inv9InteractiveWaitIsShortAndSaysBusy) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString root = QFileInfo(d.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("ROADMAP.md"),
+              QByteArrayLiteral("# R\n\n## 0.1.0 (target: 2026-10)\n"));
+    const QString counter = RoadmapFoldIn::counterFilePath(root);
+    ASSERT_FALSE(counter.isEmpty());
+    {
+        QFile c(counter);
+        ASSERT_TRUE(c.open(QIODevice::WriteOnly));
+        c.write("5\n");
+    }
+    const int holder = ::open(counter.toUtf8().constData(), O_RDWR);
+    ASSERT_GE(holder, 0);
+    ASSERT_EQ(::flock(holder, LOCK_EX | LOCK_NB), 0);
+
+    bool busy = false;
+    QElapsedTimer t;
+    t.start();
+    const QList<int> ids = RoadmapFoldIn::allocateIds(
+        root, 1, RoadmapFoldIn::LockWait::Interactive, &busy);
+    const qint64 allocMs = t.elapsed();
+    EXPECT_TRUE(ids.isEmpty());
+    EXPECT_TRUE(busy) << "a held lock is reported as busy";
+    EXPECT_LT(allocMs, 3000) << "Interactive waited " << allocMs << " ms";
+
+    busy = false;
+    t.restart();
+    EXPECT_FALSE(RoadmapFoldIn::insertBlock(
+        root, QStringLiteral("## 0.1.0 (target: 2026-10)"),
+        QStringLiteral("### block\n"), RoadmapFoldIn::LockWait::Interactive,
+        &busy));
+    EXPECT_TRUE(busy);
+    EXPECT_LT(t.elapsed(), 3000);
+
+    ::flock(holder, LOCK_UN);
+    ::close(holder);
+    busy = true;
+    const QList<int> after = RoadmapFoldIn::allocateIds(
+        root, 1, RoadmapFoldIn::LockWait::Interactive, &busy);
+    EXPECT_EQ(after.size(), 1);
+    EXPECT_FALSE(busy) << "success clears busy";
 }

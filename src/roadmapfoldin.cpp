@@ -85,6 +85,12 @@ bool roadmapStaysInProject(const QString &projectPath,
 // why the two budgets differ.
 constexpr int kSystemicAttempts = 3;
 
+// The lock polls every 50 ms. kLockAttempts is the 5 s budget a headless
+// caller waits; ANTS-5102 — kInteractiveLockAttempts is ~1 s, for a caller on
+// the GUI thread, which then reports the roadmap busy instead of freezing.
+constexpr int kLockAttempts            = 100;
+constexpr int kInteractiveLockAttempts = 20;
+
 // Acquire ::flock(LOCK_EX|LOCK_NB) on `path`, polling 50 ms × 100
 // (5 s budget). Returns the open fd on success, -1 on timeout / open
 // failure. Caller MUST close + flock(LOCK_UN).
@@ -107,14 +113,15 @@ constexpr int kSystemicAttempts = 3;
 // — and on the GUI thread, since AuditDialog and ReviewDialogBase call
 // allocateIds directly. A wait mixed with ANY contention errno keeps the
 // full budget: once a competitor is real, this is an ordinary lock wait.
-int lockExclusive(const QString &path, bool *flockBroken = nullptr) {
+int lockExclusive(const QString &path, bool *flockBroken = nullptr,
+                  int attempts = kLockAttempts) {
     const QByteArray utf8 = path.toUtf8();
     int fd = ::open(utf8.constData(), O_RDWR | O_CREAT, 0644);
     if (fd < 0) return -1;
     bool everSystemic = false;
     bool everContention = false;
     int systemicAttempts = 0;
-    for (int attempt = 0; attempt < 100; ++attempt) {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
         if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
             if (flockBroken) *flockBroken = false;
             return fd;
@@ -192,10 +199,11 @@ bool stealStaleRenameLock(const QString &lockPath) {
 // presence of the lock file is the lock. 5 s budget mirroring
 // lockExclusive. Returns true on success; caller MUST call
 // releaseRenameLock to remove the file.
-bool acquireRenameLock(const QString &counterPath_) {
+bool acquireRenameLock(const QString &counterPath_,
+                       int attempts = kLockAttempts) {
     const QString lockPath = counterPath_ + QStringLiteral(".lock");
     const QByteArray utf8 = lockPath.toUtf8();
-    for (int attempt = 0; attempt < 100; ++attempt) {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
         const int fd = ::open(utf8.constData(),
                               O_WRONLY | O_CREAT | O_EXCL, 0644);
         if (fd >= 0) { ::close(fd); return true; }
@@ -228,14 +236,29 @@ struct CounterLock {
     bool held() const { return fd >= 0; }
 };
 
-CounterLock acquireCounterLock(const QString &counterPath_) {
+// ANTS-5102 — `busy`, when given, is set when the lock was not taken because
+// another writer held it for the whole wait: the one failure a retry fixes.
+CounterLock acquireCounterLock(const QString &counterPath_, LockWait wait,
+                               bool *busy) {
+    const int attempts = wait == LockWait::Interactive ? kInteractiveLockAttempts
+                                                       : kLockAttempts;
+    if (busy) *busy = false;
     CounterLock lk;
     lk.path = counterPath_;
     bool flockBroken = false;
-    lk.fd = lockExclusive(counterPath_, &flockBroken);
+    lk.fd = lockExclusive(counterPath_, &flockBroken, attempts);
     if (lk.fd < 0) {
-        if (!flockBroken) return lk;  // contention timeout → not held
-        if (!acquireRenameLock(counterPath_)) return lk;
+        if (!flockBroken) {             // contention timeout → not held
+            if (busy) *busy = true;
+            return lk;
+        }
+        if (!acquireRenameLock(counterPath_, attempts)) {
+            // A live rename lock is another writer too; an absent one that
+            // could not be created is not, and stays a plain failure.
+            if (busy && QFileInfo::exists(counterPath_ + QStringLiteral(".lock")))
+                *busy = true;
+            return lk;
+        }
         lk.usingRenameLock = true;
         lk.fd = ::open(counterPath_.toUtf8().constData(),
                        O_RDWR | O_CREAT, 0644);
@@ -541,7 +564,9 @@ bool isValidIdPrefix(const QString &prefix) {
     return kShape.match(prefix).hasMatch();
 }
 
-QList<int> allocateIds(const QString &projectPath, int n) {
+QList<int> allocateIds(const QString &projectPath, int n, LockWait wait,
+                       bool *busy) {
+    if (busy) *busy = false;
     if (n <= 0) return {};
     const QString path = counterPath(projectPath);
 
@@ -552,7 +577,7 @@ QList<int> allocateIds(const QString &projectPath, int n) {
 
     // ANTS-1490 fallback to rename-based locking is folded into
     // acquireCounterLock (shared with insertBlock — ANTS-1742).
-    CounterLock lock = acquireCounterLock(path);
+    CounterLock lock = acquireCounterLock(path, wait, busy);
     if (!lock.held()) return {};
     auto cleanup = [&](){ releaseCounterLock(lock); };
 
@@ -680,7 +705,8 @@ QString findActiveReleaseHeading(const QString &projectPath) {
 
 bool insertBlock(const QString &projectPath,
                  const QString &releaseBlockHeading,
-                 const QString &block) {
+                 const QString &block, LockWait wait, bool *busy) {
+    if (busy) *busy = false;
     if (releaseBlockHeading.isEmpty() || block.isEmpty()) return false;
 
     const QString path = roadmapPath(projectPath);
@@ -695,7 +721,7 @@ bool insertBlock(const QString &projectPath,
     // orphaning its already-allocated IDs.
     const QString cpath = counterPath(projectPath);
     if (!counterStaysInProject(projectPath, cpath)) return false;
-    CounterLock lock = acquireCounterLock(cpath);
+    CounterLock lock = acquireCounterLock(cpath, wait, busy);
     if (!lock.held()) return false;
     const auto unlock = qScopeGuard([&]{ releaseCounterLock(lock); });
 

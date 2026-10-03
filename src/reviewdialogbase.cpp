@@ -368,8 +368,17 @@ QString ReviewDialogBase::activeReleaseHeading() {
 
 QList<int> ReviewDialogBase::allocateFoldInIds(int n) {
     m_lastFoldInError.clear();
-    QList<int> ids = RoadmapFoldIn::allocateIds(m_projectCwd, n);
+    // ANTS-5102 — ~1 s lock wait on the GUI thread, then say so.
+    bool busy = false;
+    QList<int> ids = RoadmapFoldIn::allocateIds(
+        m_projectCwd, n, RoadmapFoldIn::LockWait::Interactive, &busy);
     if (!ids.isEmpty()) return ids;
+    if (busy) {
+        m_lastFoldInError = tr("Roadmap busy — another fold-in is writing "
+                               "it. Try again.");
+        if (m_statusLabel) m_statusLabel->setText(m_lastFoldInError);
+        return {};
+    }
 
     // Surface a state-specific reason; write nothing.
     const auto insp = RoadmapFoldIn::inspectCounter(m_projectCwd);
@@ -400,7 +409,10 @@ QList<int> ReviewDialogBase::allocateFoldInIds(int n) {
 
 bool ReviewDialogBase::insertFoldInBlock(const QString &heading,
                                          const QString &block) {
-    const bool ok = RoadmapFoldIn::insertBlock(m_projectCwd, heading, block);
+    bool busy = false;
+    const bool ok = RoadmapFoldIn::insertBlock(
+        m_projectCwd, heading, block, RoadmapFoldIn::LockWait::Interactive,
+        &busy);
     // ANTS-1990 — a failed write (heading not found verbatim, disk full, lock
     // contention) must not silently look like success. The four performFoldIn
     // callsites previously discarded this bool, so the user pressed "Fold into
@@ -409,9 +421,11 @@ bool ReviewDialogBase::insertFoldInBlock(const QString &heading,
     if (!ok) {
         QMessageBox::warning(
             this, tr("Fold into ROADMAP"),
-            tr("Could not write the fold-in block to ROADMAP.md.\n"
-               "Check that the release heading exists verbatim:\n  %1")
-                .arg(heading));
+            busy ? tr("Roadmap busy — another fold-in is writing it. "
+                      "Try again.")
+                 : tr("Could not write the fold-in block to ROADMAP.md.\n"
+                      "Check that the release heading exists verbatim:\n  %1")
+                       .arg(heading));
     } else if (m_foldInBtn) {
         // ANTS-2011 — disable after a successful fold-in so a double-click
         // can't insert the same block twice (wasting roadmap IDs). Re-enabled

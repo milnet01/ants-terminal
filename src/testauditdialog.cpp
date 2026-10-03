@@ -352,6 +352,8 @@ void TestAuditDialog::onAllReportsCollected(
     // Write each verbatim report under .audit_cache/test_audit_<token>/.
     const QString absDir = projectCwd() + QChar('/') + reportsRelDir();
     QDir().mkpath(absDir);
+    // ANTS-5102 — keep the newest rounds' folders; this round's always stays.
+    TestAuditEngine::pruneReportDirs(projectCwd(), QFileInfo(absDir).fileName());
     // ANTS-1990 — a failed report write (disk full, permission) must not be
     // discarded silently: the synthesis below reads these files back, so a lost
     // write would corrupt the summary with no warning. Collect failures.
@@ -445,10 +447,12 @@ void TestAuditDialog::performFoldIn() {
     // The engine owns ID allocation + insert (testauditengine.h:21) — do
     // NOT call the base allocateFoldInIds / insertFoldInBlock helpers here
     // or the IDs would be double-allocated.
+    fr.interactive = true;   // ANTS-5102 — ~1 s lock wait on the GUI thread
     const auto res = TestAuditEngine::foldIn(fr);
     if (!res.ok && statusLabel())
-        statusLabel()->setText(tr("Fold-in failed (%1): %2")
-                                   .arg(res.code, res.error));
+        statusLabel()->setText(res.busy
+            ? tr("Roadmap busy — another fold-in is writing it. Try again.")
+            : tr("Fold-in failed (%1): %2").arg(res.code, res.error));
 }
 
 void TestAuditDialog::persistResumeState() {

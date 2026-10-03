@@ -42,7 +42,15 @@ namespace RoadmapFoldIn {
 // error. ANTS-1490: if flock returns ENOLCK / EBADF / EINVAL (typical
 // on networked or some FUSE filesystems), falls back to O_CREAT|O_EXCL
 // rename-based locking on a `.roadmap-counter.lock` sibling.
-QList<int> allocateIds(const QString &projectPath, int n);
+// ANTS-5102 — how long to wait for the counter lock. Standard is 5 s.
+// Interactive is about 1 s, for a caller on the GUI thread; `busy` (when
+// given) then says the lock was held by another writer, so the caller can
+// say "roadmap busy, try again" rather than freeze or blame the counter.
+enum class LockWait { Standard, Interactive };
+
+QList<int> allocateIds(const QString &projectPath, int n,
+                       LockWait wait = LockWait::Standard,
+                       bool *busy = nullptr);
 
 // ANTS-2227 — non-mutating peek of the next N ids allocateIds WOULD return,
 // WITHOUT bumping .roadmap-counter. For fold-in dry_run previews: same id math
@@ -169,10 +177,12 @@ struct CounterInspection {
 CounterInspection inspectCounter(const QString &projectPath);
 
 // Atomic insert per the doc-comment above. Returns true on success,
-// false on heading-not-found or IO error.
+// false on heading-not-found or IO error. `wait` and `busy` as allocateIds.
 bool insertBlock(const QString &projectPath,
                  const QString &releaseBlockHeading,
-                 const QString &block);
+                 const QString &block,
+                 LockWait wait = LockWait::Standard,
+                 bool *busy = nullptr);
 
 // Active-release heading lookup per the doc-comment above. Empty
 // string when no recognisable release block exists.

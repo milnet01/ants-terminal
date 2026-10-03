@@ -81,21 +81,26 @@ bool AuditDialog::debtFixInline(const DebtSweepEngine::Finding &f) {
 bool AuditDialog::debtDeferToRoadmap(
     const QList<DebtSweepEngine::Finding> &deferred,
     const QString &releaseHeading) {
+    m_foldBusy = false;
     if (deferred.isEmpty() || releaseHeading.isEmpty()) return false;
     QString needle = releaseHeading;
     while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
         needle.chop(1);
     if (!roadmapHeadingExists(needle)) return false;   // don't burn IDs
 
-    const QList<int> ids =
-        RoadmapFoldIn::allocateIds(m_projectPath, deferred.size());
+    // ANTS-5102 — ~1 s lock wait on the GUI thread.
+    const QList<int> ids = RoadmapFoldIn::allocateIds(
+        m_projectPath, deferred.size(), RoadmapFoldIn::LockWait::Interactive,
+        &m_foldBusy);
     if (ids.size() != deferred.size()) return false;
 
     // ANTS-3497 — stamp the project's own sniffed prefix (padded), not ANTS.
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
         deferred, ids, QDate::currentDate().toString(Qt::ISODate),
         RoadmapFoldIn::sniffIdPrefix(m_projectPath));
-    return RoadmapFoldIn::insertBlock(m_projectPath, needle, block);
+    return RoadmapFoldIn::insertBlock(m_projectPath, needle, block,
+                                      RoadmapFoldIn::LockWait::Interactive,
+                                      &m_foldBusy);
 }
 
 bool AuditDialog::debtAllow(const DebtSweepEngine::Finding &f,
@@ -174,9 +179,10 @@ void AuditDialog::buildDebtSweepTab() {
             m_debtFindings.clear();
             renderDebtResults();
         } else {
-            QMessageBox::warning(this, "Defer to ROADMAP",
-                "Could not insert the fold-in block — check the heading exists "
-                "verbatim in ROADMAP.md.");
+            QMessageBox::warning(this, "Defer to ROADMAP", m_foldBusy
+                ? foldBusyText()
+                : QStringLiteral("Could not insert the fold-in block — check "
+                                 "the heading exists verbatim in ROADMAP.md."));
         }
     });
     btnRow->addWidget(m_debtDeferAllBtn);
@@ -335,9 +341,10 @@ void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
             if (m_debtStatus) m_debtStatus->setFullText("Deferred into ROADMAP.md");
             renderDebtResults();
         } else {
-            QMessageBox::warning(this, "Defer to ROADMAP",
-                "Could not insert — check the heading exists verbatim in "
-                "ROADMAP.md.");
+            QMessageBox::warning(this, "Defer to ROADMAP", m_foldBusy
+                ? foldBusyText()
+                : QStringLiteral("Could not insert — check the heading exists "
+                                 "verbatim in ROADMAP.md."));
         }
         return;
     }

@@ -1236,6 +1236,7 @@ QList<Finding> AuditDialog::actionableFindings() const {
 // failure, or heading-not-found.
 bool AuditDialog::foldFindingsIntoRoadmap(const QList<Finding> &actionable,
                                           const QString &releaseHeading) {
+    m_foldBusy = false;
     if (actionable.isEmpty() || releaseHeading.isEmpty()) return false;
 
     // Pre-flight: confirm the heading exists before allocating IDs.
@@ -1247,15 +1248,24 @@ bool AuditDialog::foldFindingsIntoRoadmap(const QList<Finding> &actionable,
         needle.chop(1);
     if (!roadmapHeadingExists(needle)) return false;
 
-    const QList<int> ids =
-        RoadmapFoldIn::allocateIds(m_projectPath, actionable.size());
+    // ANTS-5102 — ~1 s lock wait on the GUI thread.
+    const QList<int> ids = RoadmapFoldIn::allocateIds(
+        m_projectPath, actionable.size(), RoadmapFoldIn::LockWait::Interactive,
+        &m_foldBusy);
     if (ids.size() != actionable.size()) return false;   // alloc failed
 
     const QString block = AuditEngine::templateRoadmapFoldInBlock(
         actionable, ids,
         QDate::currentDate().toString(Qt::ISODate));
 
-    return RoadmapFoldIn::insertBlock(m_projectPath, needle, block);
+    return RoadmapFoldIn::insertBlock(m_projectPath, needle, block,
+                                      RoadmapFoldIn::LockWait::Interactive,
+                                      &m_foldBusy);
+}
+
+QString AuditDialog::foldBusyText() {
+    return QStringLiteral("Roadmap busy — another fold-in is writing it. "
+                          "Try again.");
 }
 
 void AuditDialog::refreshFoldRoadmapButton() {
@@ -1297,10 +1307,11 @@ void AuditDialog::onFoldRoadmapClicked() {
                     .arg(actionable.size())
                     .arg(actionable.size() == 1 ? "" : "s"));
     } else {
-        QMessageBox::warning(this, "Fold into ROADMAP",
-            QString("Could not insert the fold-in block.\n\n"
-                    "Check that the heading exists verbatim in ROADMAP.md:\n  %1")
-                .arg(heading.trimmed()));
+        QMessageBox::warning(this, "Fold into ROADMAP", m_foldBusy
+            ? foldBusyText()
+            : QString("Could not insert the fold-in block.\n\n"
+                      "Check that the heading exists verbatim in ROADMAP.md:\n  %1")
+                  .arg(heading.trimmed()));
     }
 }
 

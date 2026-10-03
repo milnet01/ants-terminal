@@ -15,7 +15,7 @@ in v2 (ANTS-1450 follow-up).
 - **INV-2 / brief is path-only, never bodies.** Source-scrape:
   no `readAll` from chunk source files in `brief()`.
 - **INV-3 / fold-in delegates to RoadmapFoldIn.** Source-scrape:
-  `foldIn()` calls `RoadmapFoldIn::allocateIds(canon, n)` (ONE
+  `foldIn()` calls `RoadmapFoldIn::allocateIds(canon, n, …)` (ONE
   call with N) and `RoadmapFoldIn::insertBlock(...)` (ONE call).
   No `QSaveFile` / `.roadmap-counter` access in
   `testauditengine.cpp`.

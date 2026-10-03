@@ -10085,6 +10085,15 @@ extends an existing item, that item carries it instead.
   when a new round writes its folder; (b) cap the GUI fold-in's
   .roadmap-counter lock wait at about 1 s and show "roadmap busy, try
   again" instead of freezing up to 5 s.
+  Progress (2026-10-03): both 2026-10-03 decisions built.
+  RoadmapFoldIn::LockWait::Interactive (~1 s) plus a `busy` out-param on
+  allocateIds/insertBlock; the test audit, code audit, debt sweep and
+  review dialogs use it and say "Roadmap busy — another fold-in is
+  writing it. Try again." TestAuditEngine::pruneReportDirs keeps the
+  newest 5 .audit_cache/test_audit_* folders, the current round's
+  always. Tests roadmap_fold_in INV-9 and test_audit_dialog INV-13, each
+  red against the old behaviour. STILL OPEN: the store-backed fold-in
+  write and the lows.
   **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).

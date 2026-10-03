@@ -2004,8 +2004,28 @@ SynthResult synthesize(const SynthRequest &req) {
     return r;
 }
 
+int pruneReportDirs(const QString &projectRoot, const QString &currentDir,
+                    int keep) {
+    const QDir cache(QDir(projectRoot).filePath(QStringLiteral(".audit_cache")));
+    if (!cache.exists()) return 0;
+    // Newest first; real directories only, so a symlink is never followed.
+    const QFileInfoList dirs = cache.entryInfoList(
+        {QStringLiteral("test_audit_*")},
+        QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks, QDir::Time);
+    int kept = 1;   // the current round's folder, whatever its age
+    int removed = 0;
+    for (const QFileInfo &fi : dirs) {
+        if (fi.fileName() == currentDir) continue;
+        if (kept < keep) { ++kept; continue; }
+        if (QDir(fi.absoluteFilePath()).removeRecursively()) ++removed;
+    }
+    return removed;
+}
+
 FoldInResult foldIn(const FoldInRequest &req) {
     FoldInResult r;
+    const auto lockWait = req.interactive ? RoadmapFoldIn::LockWait::Interactive
+                                          : RoadmapFoldIn::LockWait::Standard;
     const QString canon = QFileInfo(req.callerCwd).canonicalFilePath();
     if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
         r.ok = false; r.code = QStringLiteral("bad_path");
@@ -2056,7 +2076,8 @@ FoldInResult foldIn(const FoldInRequest &req) {
         // would-be block so the caller can preview it.
         const bool wrote = req.dryRun
             ? true
-            : RoadmapFoldIn::insertBlock(canon, release, block);
+            : RoadmapFoldIn::insertBlock(canon, release, block, lockWait,
+                                         &r.busy);
         if (!wrote) {
             r.ok = false;
             r.code  = QStringLiteral("write_failed");
@@ -2133,7 +2154,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // allocateIds, so the size-mismatch refusal below still fires).
     const QList<int> allocatedInts = req.dryRun
         ? RoadmapFoldIn::peekIds(canon, n)
-        : RoadmapFoldIn::allocateIds(canon, n);
+        : RoadmapFoldIn::allocateIds(canon, n, lockWait, &r.busy);
     if (allocatedInts.size() != n) {
         // ANTS-1490 — surface the counter-file path in the error so the
         // caller can clear a stale `.lock` sibling or inspect the file.
@@ -2221,7 +2242,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // would-be IDs + rendered block so the caller can preview it.
     const bool wrote = req.dryRun
         ? true
-        : RoadmapFoldIn::insertBlock(canon, release, block);
+        : RoadmapFoldIn::insertBlock(canon, release, block, lockWait, &r.busy);
     if (!wrote) {
         r.ok = false;
         r.code  = QStringLiteral("write_failed");

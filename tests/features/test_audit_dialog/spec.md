@@ -53,6 +53,10 @@ smoke assertion.
   findings about files the chunk no longer covers (ANTS-1722 § 4). A token
   change alone cannot tell the two apart, which is why the rule compares the
   chunk's files and not the token.
+- **INV-13** (ANTS-5102) — when a round writes its report folder,
+  `pruneReportDirs` keeps the newest `kKeepReportDirs` (5) folders under
+  `.audit_cache/`, the current round's among them however old it is, and
+  deletes the rest. Nothing but a real `test_audit_*` directory is touched.
 
 Note: the spec names the cache-miss code `stale_token`; the engine
 actually returns `stale_partition` — the dialog (and this test) use the

@@ -160,6 +160,10 @@ protected:
     //   set, id-alloc failure, or heading-not-found. INV-14.
     bool foldFindingsIntoRoadmap(const QList<Finding> &actionable,
                                  const QString &releaseHeading);
+    // ANTS-5102 — the last fold failed because another writer held the
+    //   roadmap counter lock for the ~1 s GUI wait; set by both fold paths.
+    bool m_foldBusy = false;
+    static QString foldBusyText();
     // visibleSinceBaseline — INV-11 predicate: kept iff (file,line) is in
     //   `recentLines` AND dedupKey is NOT in `baselineFingerprints`. Unfiled
     //   findings (no file/line) pass the recent test. Pure + static so the

@@ -243,6 +243,9 @@ struct FoldInRequest {
     // the narrative and structured paths). The block is still rendered
     // so the caller can preview it.
     bool        dryRun = false;
+    // ANTS-5102 — set by a caller on the GUI thread: the counter lock is
+    // waited on for about 1 s instead of 5 s (RoadmapFoldIn::LockWait).
+    bool        interactive = false;
 };
 
 struct FoldInResult {
@@ -262,12 +265,24 @@ struct FoldInResult {
     // implicit `<path>.lock` sibling) without parsing the prose error
     // message. Empty on success / other failure modes.
     QString     counterPath;
+    // ANTS-5102 — the failure was another writer holding the counter lock
+    // for the whole wait; a retry is the remedy.
+    bool        busy = false;
 };
 
 PartitionResult partition(const PartitionRequest &req);
 BriefResult     brief(const BriefRequest &req);
 SynthResult     synthesize(const SynthRequest &req);
 FoldInResult    foldIn(const FoldInRequest &req);
+
+// ANTS-5102 — report folders (<root>/.audit_cache/test_audit_<token>) are
+// kept for the newest kKeepReportDirs rounds; older ones are deleted when a new
+// round writes its folder. `currentDir` (that round's folder name) is always
+// kept, whatever its age, since a resumed round reuses an old folder. Only
+// real directories named test_audit_* are touched. Returns how many went.
+constexpr int kKeepReportDirs = 5;
+int pruneReportDirs(const QString &projectRoot, const QString &currentDir,
+                    int keep = kKeepReportDirs);
 
 // ANTS-4445 — parse collected chunk reports into FoldInRequest::actionable.
 //

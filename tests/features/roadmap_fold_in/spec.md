@@ -44,3 +44,8 @@ and AuditEngine::templateRoadmapFoldInBlock.
 - INV-8b: `findActiveReleaseHeading` prefers `(target: …)` headings;
   falls back to most-recent shipped; returns "" when no recognisable
   release block exists.
+- INV-9 (ANTS-5102): `allocateIds` and `insertBlock` take a `LockWait`.
+  `Interactive`, for a caller on the GUI thread, gives up on a held
+  counter lock in about 1 s rather than `Standard`'s 5 s, and sets `busy`
+  so the dialog can say "roadmap busy, try again". Released, the call
+  succeeds and clears `busy`.

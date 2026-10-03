@@ -23,6 +23,8 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
+#include <sys/time.h>
+
 namespace {
 
 class Dlg : public TestAuditDialog {
@@ -381,4 +383,50 @@ TEST(TestAuditDialog, INV11_StaleTokenIgnoresPersistedCollection) {
     EXPECT_FALSE(dlg.statusLabel()->text().contains(QStringLiteral("resuming")))
         << "a token mismatch must NOT resume; got: "
         << dlg.statusLabel()->text().toStdString();
+}
+
+// INV-13 (ANTS-5102) — old report folders are pruned when a round writes its
+// own: the newest kKeepReportDirs survive, the current round's folder always
+// survives however old (a resumed round reuses it), and nothing that is not a
+// real test_audit_* directory is touched.
+TEST(TestAuditDialog, Inv13PrunesOldReportFolders) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString cache = d.path() + QStringLiteral("/.audit_cache");
+    ASSERT_TRUE(QDir().mkpath(cache));
+    const auto ageDir = [&](const QString &name, int ageSeconds) {
+        const QString p = cache + QChar('/') + name;
+        QDir().mkpath(p);
+        QFile f(p + QStringLiteral("/r.md"));
+        f.open(QIODevice::WriteOnly);
+        f.write("x");
+        f.close();
+        struct timeval tv[2];
+        ::gettimeofday(&tv[0], nullptr);
+        tv[0].tv_sec -= ageSeconds;
+        tv[1] = tv[0];
+        ::utimes(p.toUtf8().constData(), tv);
+    };
+    // Seven rounds, a..g, g newest; plus the CURRENT round, oldest of all.
+    const QStringList names{"a", "b", "c", "d", "e", "f", "g"};
+    for (int i = 0; i < names.size(); ++i)
+        ageDir(QStringLiteral("test_audit_") + names[i], (names.size() - i) * 100);
+    ageDir(QStringLiteral("test_audit_current"), 100000);
+    ageDir(QStringLiteral("other_dir"), 100000);
+    {
+        QFile stray(cache + QStringLiteral("/test_audit_file"));
+        ASSERT_TRUE(stray.open(QIODevice::WriteOnly));
+    }
+
+    const int removed = TestAuditEngine::pruneReportDirs(
+        d.path(), QStringLiteral("test_audit_current"));
+
+    QStringList left = QDir(cache).entryList(
+        QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+    EXPECT_EQ(removed, 3) << left.join(',').toStdString();
+    EXPECT_EQ(left, (QStringList{"other_dir", "test_audit_current",
+                                 "test_audit_d", "test_audit_e",
+                                 "test_audit_f", "test_audit_file",
+                                 "test_audit_g"}))
+        << left.join(',').toStdString();
 }
