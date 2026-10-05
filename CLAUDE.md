@@ -121,7 +121,9 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   push again. With no podman the job runs on this machine and the image leg is
   declared skipped. It also runs
   `build-asan` when `build-asan/` is warm, and the Qt 6.2 compile guard
-  `tools/qt62-guard.sh --warm-only`.
+  `tools/qt62-guard.sh --warm-only`. On a push with compilable source, a
+  cold Qt 6.2 cache blocks the push: run `tools/qt62-guard.sh` (about
+  11 min, through `cc-job`), then push again.
 - This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button
   test). Reproduce a CI-only failure with the `--run-job` command above.
 - A push that `ci.yml`'s `paths-ignore` treats as docs-only runs

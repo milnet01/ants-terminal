@@ -1593,14 +1593,14 @@ std::optional<QByteArray> RoadmapStore::contentDigest(qint64 projectId,
                 *error = lastErr(q);
             return std::nullopt;
         }
-        h.addData(QByteArrayView("T"));
+        h.addData(QByteArrayLiteral("T"));
         while (q.next()) {
             const int n = q.record().count();
-            h.addData(QByteArrayView("R"));
+            h.addData(QByteArrayLiteral("R"));
             for (int i = 0; i < n; ++i) {
                 const QVariant v = q.value(i);
                 if (v.isNull()) {
-                    h.addData(QByteArrayView("N"));
+                    h.addData(QByteArrayLiteral("N"));
                     continue;
                 }
                 const QByteArray b = v.toString().toUtf8();

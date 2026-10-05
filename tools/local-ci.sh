@@ -159,6 +159,40 @@ elif [[ -z "${ANTS_PREPUSH_NO_UBUNTU24:-}" && -n "${ANTS_GATE_SKIPPED:-}" ]]; th
     echo "build-test in CI's image (podman or tools/qt62-guard.sh missing)" \
         >> "$ANTS_GATE_SKIPPED"
 fi
+
+# Only a push that changes something COMPILABLE can break a container compile
+# guard, so a docs- or packaging-only push skips both guard legs below.
+# run_gate=1 means we could not compute a precise range, so we cannot rule
+# out a source change — run them rather than skip on uncertainty.
+compilable=""
+if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
+    # `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
+    # break the floor exactly as the generated file would.
+    compilable="$(grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$' \
+                  <<<"$changed" || true)"
+else
+    compilable="(range unknown)"
+fi
+
+# A cold Qt 6.2 cache BLOCKS the push, as a cold build-test image does above.
+# Skipping it let ANTS-5381's Qt 6.3-only QCryptographicHash::addData overload
+# through three CI-red pushes (2026-10-03 to 2026-10-05). Checked here, before
+# the long build-test job, so a cold cache costs seconds, not that job.
+if [[ -n "$compilable" && -z "${ANTS_PREPUSH_NO_QT62:-}" && -x tools/qt62-guard.sh ]]; then
+    if command -v podman >/dev/null 2>&1; then
+        if ! tools/qt62-guard.sh --check-warm; then
+            echo >&2
+            echo "pre-push: the Qt 6.2 floor cache is cold or interrupted — push blocked." >&2
+            echo "          Warm it (about 11 min), then push again:" >&2
+            echo "            tools/qt62-guard.sh" >&2
+            echo "          ('git push --no-verify' to override.)" >&2
+            exit 1
+        fi
+    elif [[ -n "${ANTS_GATE_SKIPPED:-}" ]]; then
+        echo "qt62-baseline compile guard (podman missing)" >> "$ANTS_GATE_SKIPPED"
+    fi
+fi
+
 if [[ "$job_in_image" == 1 ]]; then
     echo "pre-push: running ci.yml's build-test job in CI's image (tools/qt62-guard.sh --run-job)…"
     echo "          bypass with 'git push --no-verify'; every job: tools/ci-parity.sh --full"
@@ -345,24 +379,11 @@ fi
 # host 2026-08-12 a warm run is 5-7 s, with a floor violation rejected in ~1 s.
 # At that price it belongs here.
 #
-# Scope: only a push that changes something COMPILABLE can break the floor, so
-# a docs- or packaging-only push skips it. --warm-only guarantees the hook never
-# pays the ~11 min cold build; it skips loudly instead, naming the one command
-# that warms the caches.
+# Scope: `compilable`, computed above. --warm-only guarantees the hook never
+# pays the ~11 min cold build; a cold cache has already blocked the push above,
+# so here it can only skip when podman is missing.
 #
 # Opt out for one push with ANTS_PREPUSH_NO_QT62=1.
-#
-# run_gate=1 means we could not compute a precise range, so we cannot rule
-# out a source change — run it rather than skip on uncertainty.
-compilable=""
-if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
-    # `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
-    # break the floor exactly as the generated file would.
-    compilable="$(grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$' \
-                  <<<"$changed" || true)"
-else
-    compilable="(range unknown)"
-fi
 
 if [[ -n "${ANTS_PREPUSH_NO_QT62:-}" ]]; then
     echo "pre-push: qt62-baseline leg skipped (ANTS_PREPUSH_NO_QT62 set)."
