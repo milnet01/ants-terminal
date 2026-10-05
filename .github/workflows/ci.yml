@@ -100,14 +100,14 @@ jobs:
       CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - name: Check out source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # ANTS-4773 — no step in this workflow runs git, so the token has no
           # reason to persist into .git/config where an artifact could carry it.
           persist-credentials: false
 
       - name: Install Qt6 + build + packaging deps (cached)
-        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
         with:
           packages: >-
             build-essential cmake ninja-build pkg-config ccache mold
@@ -118,14 +118,9 @@ jobs:
           version: 1.0
 
       - name: Restore ccache (release)
-        # v5.0.5 is the latest actions/cache (checked 2026-06-15). Its bundled
-        # restore/save sub-actions still ship a Node-20 runtime, so a Node-20
-        # deprecation warning fires here until upstream cuts a Node-24 release;
-        # GitHub force-runs these on Node 24 from 2026-06-16, so it self-heals.
-        # Bump when actions/cache > v5.0.5 ships.
         # ANTS-5188 — restore/save SPLIT, as in build-asan: the combined action
         # saves from an implicit post-step that is skipped on cancellation.
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           # Exact key per-SHA → 100% hit on a re-run of the same commit;
@@ -164,7 +159,7 @@ jobs:
       - name: Save ccache (release)
         # always(): must survive the overrun it exists to prevent recurring.
         if: always()
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-release-${{ github.sha }}
@@ -305,13 +300,13 @@ jobs:
       CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - name: Check out source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # ANTS-4773 — nothing here runs git.
           persist-credentials: false
 
       - name: Install Qt6 + build deps (cached)
-        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
         with:
           packages: >-
             build-essential cmake ninja-build pkg-config ccache mold
@@ -327,7 +322,7 @@ jobs:
         # is skipped when the job is cancelled, so every timed-out run left the
         # cache frozen at the last run that completed. Saving explicitly right
         # after the build breaks that spiral.
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           # Separate key from release: different compile flags
@@ -368,7 +363,7 @@ jobs:
         # `always()` is the point of the split: this must survive the overrun
         # it exists to prevent recurring.
         if: always()
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-asan-${{ github.sha }}
@@ -468,7 +463,7 @@ jobs:
       CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - name: Check out source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # ANTS-4773 — nothing here runs git.
           persist-credentials: false
@@ -477,7 +472,7 @@ jobs:
       # uncached apt step. tools/qt62-guard.sh reads this step's package list
       # to build its container, and parses this `packages: >-` form as well.
       - name: Install Qt6 + build deps (release baseline)
-        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
         with:
           packages: >-
             ccache
@@ -496,7 +491,7 @@ jobs:
         # combined action saves from an implicit post-step that is SKIPPED on
         # cancellation, so a timed-out run leaves the cache frozen at the last
         # run that completed.
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-qt62-${{ github.sha }}
@@ -521,7 +516,7 @@ jobs:
       - name: Save ccache (qt62)
         # always(): must survive the overrun it exists to prevent recurring.
         if: always()
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-qt62-${{ github.sha }}
@@ -560,19 +555,19 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # ANTS-4773 — nothing here runs git.
           persist-credentials: false
 
       - name: Install cppcheck (cached)
-        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
         with:
           packages: cppcheck
           version: 1.0
 
       - name: Restore cppcheck analysis cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.cppcheck-build
           key: ${{ runner.os }}-cppcheck-${{ github.sha }}
@@ -610,7 +605,7 @@ jobs:
       - name: Save cppcheck analysis cache
         # always(): keep the analysis even when the guarded step overruns.
         if: always()
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ github.workspace }}/.cppcheck-build
           key: ${{ runner.os }}-cppcheck-${{ github.sha }}

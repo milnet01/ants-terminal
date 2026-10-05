@@ -21511,6 +21511,18 @@ indie-review finding.
   Source: in-session-2026-09-13.
   Lanes: ci.
 
+- 📋 [ANTS-5625] **Try Lua 5.5 for the plugin engine and the bundled Flatpak Lua.**
+  Lua 5.5.1 is on lua.org/ftp (checked 2026-10-05). The Flatpak bundles
+  5.4.9, the newest 5.4, and CMakeLists.txt looks for lua5.4 only.
+  dependencies.md section 4 calls 5.4 the current stable line, which is no
+  longer true. Build LuaEngine against 5.5, run the Lua bundle (test_lua)
+  and PLUGINS.md's examples, then either move the floor and the Flatpak
+  source to 5.5 or add a Downgrade Ledger row naming what 5.5 breaks.
+  **Layman:** A newer Lua (5.5) is out; check whether plugins still work on it, then move to it or record what breaks.
+  Kind: investigate.
+  Source: check-dependencies-2026-10-05.
+  Lanes: lua, packaging, dependencies.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

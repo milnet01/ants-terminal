@@ -105,11 +105,11 @@ boxes and the primary CI jobs use current versions). A floor exists for reach
 | Floor | Where | Why | Guard |
 |---|---|---|---|
 | Qt6 ≥ **6.2** | `find_package(Qt6 6.2 …)` in `CMakeLists.txt` | First LTS shipping the full component set we need — DBus stabilised in 6.2, OpenGLWidgets reached parity (the comment block above that `find_package`); 6.0/6.1 compile but silently drop DBus / trip shader edge cases | `ci.yml` `qt62-baseline` job (compiles on Ubuntu 22.04 / Qt 6.2.x); `tools/ci-parity.sh --qt62` mirrors it in a podman container |
-| Lua **5.4** _(optional)_ | `pkg_check_modules(LUA lua5.4)` / `find_package(Lua 5.4 QUIET)` | Current stable Lua line; when present the plugin ABI targets 5.4 | `find_package(Lua 5.4 QUIET)` — **not** REQUIRED; absent Lua compiles the plugin system out (no hard build floor), so this is a *conditional* floor |
+| Lua **5.4** _(optional)_ | `pkg_check_modules(LUA lua5.4)` / `find_package(Lua 5.4 QUIET)` | When present the plugin ABI targets 5.4; trying 5.5 is ANTS-5625 | `find_package(Lua 5.4 QUIET)` — **not** REQUIRED; absent Lua compiles the plugin system out (no hard build floor), so this is a *conditional* floor |
 | libsodium **1.0.18** _(optional)_ | `pkg_check_modules(SODIUM IMPORTED_TARGET libsodium)` | The version Ubuntu 22.04 ships (packages.ubuntu.com, jammy), the Qt 6.2 floor's image; used only for the AppImage self-updater (ANTS-5560) | `ci.yml` `qt62-baseline` compiles against it with `-DANTS_REQUIRE_SELF_UPDATE=ON`; absent libsodium compiles self-update out, so this is a *conditional* floor |
 | C++ **20** | `set(CMAKE_CXX_STANDARD 20)` | Language baseline for the codebase | compiler |
 | CMake ≥ **3.20** | `cmake_minimum_required` | Project-mandated build baseline (`set(CMAKE_OPTIMIZE_DEPENDENCIES ON)` needs ≥ 3.19; the mandate rounds up to 3.20) | `cmake_minimum_required` |
-| GoogleTest ≥ **1.13** | `find_package(GTest 1.13 QUIET)` | `gtest_discover_tests` `DISCOVERY_MODE PRE_TEST` semantics | system `find_package`; FetchContent `v1.15.2` fallback when no system pkg ≥ 1.13 (§7) |
+| GoogleTest ≥ **1.13** | `find_package(GTest 1.13 QUIET)` | `gtest_discover_tests` `DISCOVERY_MODE PRE_TEST` semantics | system `find_package`; FetchContent fallback (its `GIT_TAG`, §6) when no system pkg ≥ 1.13 |
 
 If a floor ever needs *raising* (e.g. dropping Qt 6.2 support), that is a
 deliberate decision with its own ROADMAP entry — not this ledger.
@@ -125,7 +125,7 @@ cycle**, and opportunistically when editing a manifest. Per dependency type:
 | Lua | upstream `lua.org` release line |
 | GoogleTest (the `FetchContent_Declare(googletest …)` `GIT_TAG`) | compare the pinned `GIT_TAG` against `github.com/google/googletest` releases |
 | CI actions (`.github/workflows/*.yml`) | `gh api repos/<owner>/<repo>/releases/latest -q .tag_name`; bump the pinned **SHA** *and* its `# vX.Y.Z` comment together (§6) |
-| CI runner images (`runs-on:`) | GitHub's runner-image release notes (`ubuntu-24.04` → next LTS). **Caveat:** the `qt62-baseline` job's `ubuntu-22.04` is *not* a stale pin — it mirrors the §4 Qt 6.2 floor. Do **not** bump it in the runner sweep; it moves only if the Qt 6.2 floor itself is deliberately raised. |
+| CI runner images (`runs-on:`) | GitHub's runner-image release notes (`ubuntu-24.04` → next LTS). **Caveat:** the `qt62-baseline` job's `ubuntu-22.04` is *not* a stale pin — it mirrors the §4 Qt 6.2 floor. Do **not** bump it in the runner sweep; it moves only if the Qt 6.2 floor itself is deliberately raised. `release.yml`'s `appimage` job's `ubuntu-22.04` is a floor too: it sets the AppImage's glibc 2.35 reach (that file's header). |
 | Container bases (`tools/qt62-guard.sh` `qt62_base`) | keep each in lockstep with the `runs-on:` Ubuntu version of the `ci.yml` job it mirrors. Its **apt set** needs no sweep — ANTS-4131 extracts that from `ci.yml` at run time |
 | LayerShellQt (`find_package(LayerShellQt CONFIG QUIET)`) | optional `CONFIG`-discovered dep, no version pin — sweep is present-or-absent only (nothing to bump) |
 
@@ -161,16 +161,10 @@ map.
   lockstep and nothing to sweep. A package added to `ci.yml` reaches the parity
   container automatically (and re-keys its cached image).
 
-## 7. Current sweep candidates (as of 2026-07-03)
+## 7. Current sweep candidates (as of 2026-10-05)
 
-Flagged during the 2026-07-03 adoption sweep; not yet actioned (each is its
-own change, gated on the suite staying green):
-
-- **GoogleTest `v1.15.2`** (the `FetchContent_Declare(googletest …)` `GIT_TAG`) — from 2024; verify against
-  the latest upstream release and bump the `GIT_TAG` if the suite stays green.
-- **`actions/cache@v5.0.5`** (`ci.yml:74`, `:191`) — the workflow already
-  carries an in-file "bump when actions/cache > v5.0.5 ships" note (Node-20 →
-  Node-24 runtime). Bump when a newer release lands.
+- **Lua 5.5** — ANTS-5625. The plugin ABI and the bundled Flatpak Lua are
+  on 5.4.
 
 These are **not** Downgrade Ledger rows — they are "behind latest, not yet
 swept", the ordinary state the sweep exists to close. A candidate only becomes
