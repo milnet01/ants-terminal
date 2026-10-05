@@ -9,12 +9,12 @@
 > **Source:** user standing rule 2026-07-03.
 
 This standard is the project-specific mechanism for the global
-`~/.claude/CLAUDE.md` §5 rules (use the latest external-library version +
-current idioms; §5a runtimes/CI tooling; §5b bump-and-update-callers
-together; §5c sweep posture). §5 states the philosophy; this file adds the
+`~/.claude/standards/dependencies.md` (§ 1 latest stable; § 2 what counts,
+runtimes and CI tooling included; § 5 check, don't wait; § 6 a bump updates
+its callers). That file states the policy; this one adds the
 **enforcement mechanism**: a documented ledger for any dependency we hold
 *below* latest, so a stale pin is visible in one place rather than buried in a
-manifest. Enforcement is **manual** (§5 sweep + code review) — no CI/audit
+manifest. Enforcement is **manual** (the §5 sweep + code review) — no CI/audit
 rule yet asserts every below-latest pin carries a ledger row, so the
 discipline rests on the author; automating that check is tracked as
 **ANTS-3428**.
@@ -34,10 +34,10 @@ enough to bump, independent of any feature need).
   1. **On add** — a new dependency enters at its latest stable version.
   2. **On manifest-adjacent work** — touching `CMakeLists.txt`, a CI workflow,
      or a container base in `tools/qt62-guard.sh` for any
-     reason means glancing at the version pins you pass (§5c "check on your
+     reason means glancing at the version pins you pass (global § 5, "check on your
      way past").
   3. **On the periodic sweep** (§5) — at the start of a release cycle.
-- A bump updates the calling code / idioms in the **same change** (global §5b).
+- A bump updates the calling code / idioms in the **same change** (global § 6).
   A patch-only bump with no caller change is fine — say so explicitly in the
   commit ("no caller changes — patch only").
 
@@ -116,7 +116,7 @@ deliberate decision with its own ROADMAP entry — not this ledger.
 
 ## 5. Sweep posture
 
-Check, don't wait for breakage (global §5c). Run at the **start of a release
+Check, don't wait for breakage (global § 5). Run at the **start of a release
 cycle**, and opportunistically when editing a manifest. Per dependency type:
 
 | Type | How to check latest |
@@ -129,7 +129,7 @@ cycle**, and opportunistically when editing a manifest. Per dependency type:
 | Container bases (`tools/qt62-guard.sh` `qt62_base`) | keep each in lockstep with the `runs-on:` Ubuntu version of the `ci.yml` job it mirrors. Its **apt set** needs no sweep — ANTS-4131 extracts that from `ci.yml` at run time |
 | LayerShellQt (`find_package(LayerShellQt CONFIG QUIET)`) | optional `CONFIG`-discovered dep, no version pin — sweep is present-or-absent only (nothing to bump) |
 
-On any bump: apply §5b (update callers/idioms in the same change) and re-run
+On any bump: apply global § 6 (update callers/idioms in the same change) and re-run
 `tools/ci-parity.sh --full` before pushing.
 
 ## 6. Where the versions live (map)
@@ -173,6 +173,6 @@ something (§2).
 
 ---
 
-**Cross-references:** global `~/.claude/CLAUDE.md` §5 / §5a / §5b / §5c;
+**Cross-references:** global `~/.claude/standards/dependencies.md`;
 [`commits.md`](commits.md) (the `chore:` dep-bump commit type, `commits.md:45`);
 the pinned-SHA supply-chain note at the top of `.github/workflows/ci.yml`.
