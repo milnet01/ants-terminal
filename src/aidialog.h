@@ -60,6 +60,7 @@ public:
 private slots:
     void onSend();
     void onLlmFinished(const LlmResult &result);
+    void onLlmChunk(const QString &delta);
 
 private:
     void appendMessage(const QString &role, const QString &text);
@@ -79,6 +80,9 @@ private:
     QString m_model;
     int m_contextLines = 50;
     QString m_lastResponse;   // Last complete AI response (for insert)
+    // ANTS-5105 — where the streamed reply's message starts in the chat
+    // document, so finished() can replace it; -1 when nothing is streaming.
+    int m_streamStart = -1;
     QString m_plaintextWarnedEndpoint;   // ANTS-5010 — endpoint last warned about
 
 public:

@@ -331,10 +331,10 @@ TEST(AiContextRedaction, Main) {
         if (pos == std::string::npos) {
             fail("INV-7a: AiDialog::sendRequest definition not found in source");
         } else {
-            // Look at the next ~3500 chars — covers the current function
-            // body comfortably; if a future refactor grows it past this,
-            // the grep bail-out message tells the reader what to fix.
-            const std::string body = src.substr(pos, 3500);
+            // The whole function body, not a byte window that a growing
+            // body slides past (ANTS-5105).
+            const std::string body = ants_test::slurpFunctionBody(
+                src, "void AiDialog::sendRequest(const QString &userMessage)");
             const std::string needleCtx  = "SecretRedact::scrub(m_terminalContext)";
             const std::string needleUser = "SecretRedact::scrub(userMessage)";
             if (body.find(needleCtx) == std::string::npos) {
@@ -369,7 +369,8 @@ TEST(AiContextRedaction, Main) {
         const std::string src = ants_test::slurpFile(SRC_AIDIALOG_CPP);
         const auto pos = src.find("AiDialog::sendRequest");
         if (pos != std::string::npos) {
-            const std::string body = src.substr(pos, 3500);
+            const std::string body = ants_test::slurpFunctionBody(
+                src, "void AiDialog::sendRequest(const QString &userMessage)");
             const bool hasAppendSystem = body.find("appendMessage(QStringLiteral(\"System\")") != std::string::npos
                                       || body.find("appendMessage(\"System\"") != std::string::npos;
             const bool gatedOnCount   = body.find("totalRedacted > 0") != std::string::npos

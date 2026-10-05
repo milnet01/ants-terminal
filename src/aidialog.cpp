@@ -4,6 +4,8 @@
 
 #include <QMessageBox>
 #include <QScrollBar>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <QUrl>
 
 AiDialog::~AiDialog() {
@@ -20,6 +22,7 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
 
     m_client = new LlmClient(this);
     connect(m_client, &LlmClient::finished, this, &AiDialog::onLlmFinished);
+    connect(m_client, &LlmClient::chunk, this, &AiDialog::onLlmChunk);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
     auto chrome = DialogChrome::install(this);
@@ -128,6 +131,7 @@ void AiDialog::resetTransient() {
     // reply was dropped rather than losing it without a word.
     if (m_client && m_client->busy()) {
         m_client->abort();
+        m_streamStart = -1;   // the partial reply stays as it was shown
         if (m_statusLabel)
             m_statusLabel->setText(tr("The previous request was cancelled."));
     }
@@ -209,6 +213,7 @@ void AiDialog::appendMessage(const QString &role, const QString &text) {
 
 void AiDialog::sendRequest(const QString &userMessage) {
     m_client->abort();
+    m_streamStart = -1;
     m_sendBtn->setEnabled(false);
 
     // OWASP LLM06: scrub well-known secret shapes out of both the
@@ -279,7 +284,31 @@ void AiDialog::sendRequest(const QString &userMessage) {
     m_client->send(req);
 }
 
+void AiDialog::onLlmChunk(const QString &delta) {
+    // ANTS-5105 — show the reply as it streams. The first chunk opens an
+    // "AI:" message; later ones are inserted as plain text at its end.
+    if (m_streamStart < 0) {
+        m_streamStart = m_chatHistory->document()->characterCount() - 1;
+        m_chatHistory->append(
+            QStringLiteral("<p><b style='color:#A6E3A1;'>AI:</b> </p>"));
+    }
+    QTextCursor cursor(m_chatHistory->document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(delta);
+    m_chatHistory->verticalScrollBar()->setValue(
+        m_chatHistory->verticalScrollBar()->maximum());
+}
+
 void AiDialog::onLlmFinished(const LlmResult &result) {
+    // ANTS-5105 — the finished text replaces the streamed message: it may
+    // differ (a plain JSON body streams nothing, an error adds a note).
+    if (m_streamStart >= 0) {
+        QTextCursor cursor(m_chatHistory->document());
+        cursor.setPosition(m_streamStart);
+        cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        m_streamStart = -1;
+    }
     if (!result.text.isEmpty()) {
         m_lastResponse = result.text;
         appendMessage("AI", result.text);

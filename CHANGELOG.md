@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The AI Assistant shows its answer as it arrives instead of waiting for the whole reply.** (ANTS-5105)
+
 - **Unread mail from other Claude Code sessions is now shown on your screen at start-up, and a working session is told when new mail arrives** (ANTS-5619)
   Claude is told to read the inbox before other work. The mid-session
   check runs after tool calls, at most every 30 seconds, and speaks only

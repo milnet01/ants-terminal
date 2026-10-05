@@ -232,3 +232,53 @@ TEST(PlaintextPromptWarning, Ants5105SendReenabledAfterRefusalAndReset) {
             << "Send must be usable after an in-flight request is reset";
     }
 }
+
+// ANTS-5105 — the reply streams into the chat as LlmClient emits chunk(),
+// and finished() replaces the streamed text rather than appending a copy.
+TEST(PlaintextPromptWarning, Ants5105ReplyStreamsIntoChat) {
+    AiDialog dlg;
+    dlg.setConfig(QStringLiteral("https://192.0.2.1/v1/chat/completions"),
+                  QString(), QStringLiteral("gpt-4"), 50);
+    auto *input  = dlg.findChild<QLineEdit *>();
+    auto *chat   = dlg.findChild<QTextEdit *>();
+    auto *client = dlg.findChild<LlmClient *>();
+    QPushButton *sendBtn = findButtonByText(&dlg, QStringLiteral("Send"));
+    ASSERT_TRUE(input && chat && client && sendBtn);
+    input->setText(QStringLiteral("question"));
+    sendBtn->click();
+    ASSERT_TRUE(client->busy()) << "fixture premise: a reply is in flight";
+
+    emit client->chunk(QStringLiteral("strea"));
+    emit client->chunk(QStringLiteral("med\nsecond line"));
+    const QString during = chat->toPlainText();
+    EXPECT_TRUE(during.contains(QStringLiteral("AI: streamed")))
+        << "the partial reply must show before finished(); chat was:\n"
+        << during.toStdString();
+    EXPECT_TRUE(during.contains(QStringLiteral("second line")));
+
+    client->abort();   // stop the real request; abort() emits no finished()
+    LlmResult done;
+    done.ok = true;
+    done.text = QStringLiteral("streamed\nsecond line");
+    emit client->finished(done);
+    const QString after = chat->toPlainText();
+    EXPECT_EQ(after.count(QStringLiteral("streamed")), 1)
+        << "finished() must replace the streamed text, not repeat it; chat was:\n"
+        << after.toStdString();
+    EXPECT_TRUE(after.contains(QStringLiteral("You: question")))
+        << "replacing the stream must not remove earlier messages";
+    EXPECT_TRUE(sendBtn->isEnabled());
+
+    // A second reply streams into its own message, leaving the first intact.
+    input->setText(QStringLiteral("again"));
+    sendBtn->click();
+    emit client->chunk(QStringLiteral("next"));
+    client->abort();
+    LlmResult done2;
+    done2.ok = true;
+    done2.text = QStringLiteral("next");
+    emit client->finished(done2);
+    const QString last = chat->toPlainText();
+    EXPECT_EQ(last.count(QStringLiteral("streamed")), 1) << last.toStdString();
+    EXPECT_EQ(last.count(QStringLiteral("AI: next")), 1) << last.toStdString();
+}

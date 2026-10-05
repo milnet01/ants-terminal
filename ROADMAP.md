@@ -10285,6 +10285,17 @@ extends an existing item, that item carries it instead.
   connects it (ANTS-1727 names the signal). Recommendation: wire it into
   AiDialog so answers appear as they stream; otherwise remove the signal
   and the spec line together.
+  Decided (user, 2026-10-05): wire chunk() into AiDialog for live
+  streaming, not delete it. Progress (2026-10-05): done. AiDialog shows
+  the reply as it streams and finished() replaces the streamed message
+  (plaintext_prompt_warning Ants5105ReplyStreamsIntoChat, red first).
+  ai_context_redaction's sendRequest scrapes now read the whole function
+  body instead of a 3500-byte window the new line slid past. Still open
+  (low): ANTS-1727 section 4's buffer budget, the 10 MiB HTML append on
+  the GUI thread, allFinished firing with pump frames on the stack, the
+  switch ledgers' 5 s lock (off by default), ANTS-1735 INV-2 and INV-3,
+  AI dialog strings outside tr(), and a runner that never calls done
+  (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
