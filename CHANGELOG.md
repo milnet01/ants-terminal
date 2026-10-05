@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **A daily check flags any GitHub action or FetchContent dependency that is behind its latest release with no Downgrade Ledger entry.** (ANTS-3428)
+  tools/check-dependency-pins.py runs in the daily release audit. It also
+  reports a ledger hold that is due for a retest, and an action whose
+  pinned commit is not the version its comment names.
+
 - **A test drives roadmap_log's return and dry_run replies on a store-backed project, for append, flip and both batch forms** (ANTS-4661)
   Asked for, `post_bullets` is now pinned present on every one of those
   paths, so a missing key means only that it was not asked for.

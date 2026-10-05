@@ -123,3 +123,30 @@ jobs:
             exit 0
           fi
           echo "Every published download matches release ${TAG}."
+
+  dependency-pins:
+    # ANTS-3428 — dependencies.md § 2: a pin behind its latest release needs a
+    # Downgrade Ledger row, and § 3: a held pin is retested once something
+    # newer ships. Daily rather than per push: it needs the network, and an
+    # upstream release must not block an unrelated push.
+    name: Is every dependency at latest, or held on record?
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check dependency pins against upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          python3 tools/check-dependency-pins.py
+          rc=$?
+          if [ "${rc}" -eq 2 ]; then
+            echo "::warning::some pins could not be checked (UNCHECKED lines above)"
+            exit 0
+          fi
+          exit "${rc}"

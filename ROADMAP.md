@@ -20747,8 +20747,16 @@ indie-review finding.
   Source: user-request-2026-07-03.
   Shipped 2026-07-03. docs/standards/dependencies.md written + registered in the project CLAUDE.md standards list. Codifies: latest-stable-by-default (features + security); a below-latest pin allowed only with a Downgrade Ledger row (breaking version + symptom + a re-test trigger keyed off the latest-tested version so it advances); minimum-supported floors (Qt 6.2, Lua 5.4 optional, C++20, CMake 3.20, GoogleTest 1.13) kept distinct from downgrades; sweep posture + a version-location map. Cold-eyes: 6 loops, ~14 verified findings fixed (2 HIGH, 6 MEDIUM, ~6 LOW), none recurred, core verified clean every pass. Automation of the "undocumented pin is a defect" check split out as ANTS-3428. Current sweep candidate flagged in §7: GoogleTest v1.15.2.
 
-- 📋 [ANTS-3428] **Audit rule: flag a below-latest dependency pin that carries no Downgrade Ledger row (automate dependencies.md §2).**
+- ✅ [ANTS-3428] **Audit rule: flag a below-latest dependency pin that carries no Downgrade Ledger row (automate dependencies.md §2).**
   docs/standards/dependencies.md §2 declares "an undocumented below-latest pin is a defect", but enforcement is manual today (the §5 sweep + code review). Add an audit/CI guard that asserts every dependency held below its latest release carries a Downgrade Ledger row — analogous to the existing packaging_version_drift gate (ci.yml). Scope: parse the pinned versions from CMakeLists.txt (Qt/Lua/GTest FetchContent tag), ci.yml (action SHAs + `# vX.Y.Z`), and tools/ci-parity.sh (container base); cross-check against latest-upstream (best-effort / cached) and against the ledger table. Non-trivial (needs an upstream-latest source); may start as a reminder-only lint. Follow-on to ANTS-3427.
+  Resolved (2026-10-05): tools/check-dependency-pins.py reads action SHAs
+  with their version comments and FetchContent GIT_TAGs, asks GitHub for
+  each latest release, and fails on a behind pin with no ledger row, a row
+  due for retest, a malformed row, or a SHA that is not its tag's commit.
+  It runs daily in release-audit.yml, not pre-push (network; an upstream
+  release must not block unrelated pushes). Test: dependency_pins, 16
+  cases, red first. Qt, Lua, runner images and the Flatpak runtime stay
+  with the manual sweep.
   **Layman:** Right now the rule "if you hold an old version, you must write down why" is only enforced by people remembering to check. This adds an automatic check so an undocumented old-version pin gets flagged, the way the packaging-version-drift check already works.
   Kind: audit-fix.
   Source: cold-eyes-2026-07-03 (ANTS-3427 dependencies.md review, INFO-1).

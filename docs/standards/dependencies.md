@@ -14,10 +14,11 @@ runtimes and CI tooling included; § 5 check, don't wait; § 6 a bump updates
 its callers). That file states the policy; this one adds the
 **enforcement mechanism**: a documented ledger for any dependency we hold
 *below* latest, so a stale pin is visible in one place rather than buried in a
-manifest. Enforcement is **manual** (the §5 sweep + code review) — no CI/audit
-rule yet asserts every below-latest pin carries a ledger row, so the
-discipline rests on the author; automating that check is tracked as
-**ANTS-3428**.
+manifest. `tools/check-dependency-pins.py` (ANTS-3428) enforces §§ 2-3 for
+GitHub action SHAs and FetchContent tags: a pin behind latest with no ledger
+row, a row due for retest, or a SHA that is not its tag's commit fails the
+daily `release-audit.yml` run. Every other pin — Qt, Lua, runner images,
+container bases, the Flatpak runtime — rests on the §5 sweep and code review.
 
 ---
 

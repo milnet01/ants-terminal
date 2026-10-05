@@ -1558,6 +1558,13 @@ if(ANTS_TESTS)
         TIMEOUT 60
         SKIP_RETURN_CODE 77)
 
+    # ANTS-3428 — a below-latest dependency pin needs a Downgrade Ledger row.
+    add_test(NAME dependency_pins
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/dependency_pins/test_dependency_pins.py")
+    set_tests_properties(dependency_pins PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60)
+
     # ANTS-3794 — the weekly export's publish script and the backup records,
     # over throwaway git repos with a stub binary; see
     # tests/features/roadmap_export_publish/spec.md. Exits 77 when git, flock
