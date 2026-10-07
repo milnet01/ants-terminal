@@ -32,6 +32,11 @@ void LlmDispatcher::cancelAll() {
 }
 
 void LlmDispatcher::pump() {
+    // ANTS-5105 — a runner that calls done before returning re-enters
+    // pump(). The nested call returns at once and the loop below carries
+    // on, so runner calls never nest however long the queue is.
+    if (m_pumping) return;
+    m_pumping = true;
     while (!m_cancelled && m_inFlight < m_max && !m_queue.isEmpty()) {
         const LlmJob job = m_queue.takeFirst();
         ++m_inFlight;
@@ -48,9 +53,11 @@ void LlmDispatcher::pump() {
         });
     }
 
-    // A runner that calls done before returning re-enters pump(), and every
-    // frame then sees the batch drained; only the first reports it
-    // (ANTS-5000). cancelAll() emptied the queue, so a cancelled batch ends
+    m_pumping = false;
+
+    // Only the outermost frame gets here, so allFinished is sent once
+    // (ANTS-5000) and is the last thing pump() does: a slot may delete the
+    // dispatcher. cancelAll() emptied the queue, so a cancelled batch ends
     // here too once in-flight drains.
     if (m_batchOpen && m_inFlight == 0 && m_queue.isEmpty()) {
         m_batchOpen = false;

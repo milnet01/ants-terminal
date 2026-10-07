@@ -10329,6 +10329,14 @@ extends an existing item, that item carries it instead.
   red first). Still open (low): allFinished firing with pump frames on the
   stack, the switch ledgers' 5 s lock (off by default), and a runner that
   never calls done (left to its owner per ANTS-5009).
+  Progress (2026-10-07): LlmDispatcher::pump() no longer recurses. A
+  nested call from a runner that calls done before returning returns at
+  once and the outer loop carries on, so runner calls never nest and
+  allFinished is the last thing the outermost frame does; an allFinished
+  slot may delete the dispatcher (llm_dispatcher INV-16,
+  Ants5105SynchronousRunnerIsNeverReentered red first at depth 50).
+  Still open (low): the switch ledgers' 5 s lock (off by default), and a
+  runner that never calls done (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).

@@ -27,6 +27,12 @@ testable without a network.
   was never queued. `ReviewDialogBase::startDispatch` relies on this so
   that dispatching with no lanes starts no round (see
   `tests/features/review_dialog_base/spec.md` INV-22).
+- **INV-16** (ANTS-5105) — a runner that calls `done` before it returns is
+  never re-entered: runner calls do not nest, and `allFinished` is emitted
+  with no runner call on the stack, so an `allFinished` slot may delete
+  the dispatcher. Tests: `Ants5105SynchronousRunnerIsNeverReentered`,
+  `Ants5105AllFinishedSlotMayDeleteTheDispatcher` (the second fails only
+  under ASan).
 
 ## Test notes
 

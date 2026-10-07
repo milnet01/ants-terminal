@@ -8,6 +8,7 @@
 //        INV-7 and INV-9 also hold under a synchronous runner (ANTS-5000).
 // INV-14 maxConcurrent clamped to [1, 4].
 // INV-15 enqueue({}) emits nothing (regression).
+// INV-16 a synchronous runner is never re-entered (ANTS-5105).
 
 #include "llmdispatcher.h"
 
@@ -260,4 +261,53 @@ TEST(LlmDispatcher, Ants5105CancelledBatchResultsDoNotLeakIntoTheNext) {
         << "a cancelled batch's result reached the next round";
     pending[2](r);
     EXPECT_EQ(forwarded, QStringList{QStringLiteral("fresh")});
+}
+
+// INV-16 (ANTS-5105) — a runner that calls done before returning is never
+// re-entered, and allFinished is sent with no runner call on the stack.
+// Pre-fix each completion re-entered pump(), so runner calls nested one
+// level per queued job and allFinished fired from the innermost frame.
+TEST(LlmDispatcher, Ants5105SynchronousRunnerIsNeverReentered) {
+    LlmDispatcher disp(1);
+    int depth = 0;
+    int maxDepth = 0;
+    disp.setRunner([&](const LlmJob &j, const std::function<void(const LlmResult &)> &done) {
+        ++depth;
+        maxDepth = std::max(maxDepth, depth);
+        runSynchronously(j, done);
+        --depth;
+    });
+    int jobFinished = 0;
+    int allFinished = 0;
+    int depthAtAllFinished = -1;
+    QObject::connect(&disp, &LlmDispatcher::jobFinished,
+                     [&](const QString &, const LlmResult &) { ++jobFinished; });
+    QObject::connect(&disp, &LlmDispatcher::allFinished, [&]() {
+        ++allFinished;
+        depthAtAllFinished = depth;
+    });
+
+    disp.enqueue(nJobs(50));
+
+    EXPECT_EQ(maxDepth, 1) << "runner calls nested";
+    EXPECT_EQ(depthAtAllFinished, 0) << "allFinished fired inside a runner call";
+    EXPECT_EQ(jobFinished, 50);
+    EXPECT_EQ(allFinished, 1);
+}
+
+// INV-16 (ANTS-5105) — an allFinished slot may delete the dispatcher.
+// Pre-fix the outer pump() frames then ran on freed memory, which the
+// ASan build reports.
+TEST(LlmDispatcher, Ants5105AllFinishedSlotMayDeleteTheDispatcher) {
+    auto *disp = new LlmDispatcher(1);
+    disp->setRunner(runSynchronously);
+    int allFinished = 0;
+    QObject::connect(disp, &LlmDispatcher::allFinished, [&]() {
+        ++allFinished;
+        delete disp;
+    });
+
+    disp->enqueue(nJobs(5));
+
+    EXPECT_EQ(allFinished, 1);
 }
