@@ -190,6 +190,24 @@ TEST(ModelAutoSwitch, Ants1939SentinelKeepsHardVetoFocusedState) {
     EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("focused_state_not_idle")));
 }
 
+// ANTS-1959 (spec INV-16(b)) — a tool call running for >= kLongToolUseMs
+// yields the focused_state_not_idle veto with no keystroke telemetry at all;
+// one millisecond short of it keeps the veto.
+TEST(ModelAutoSwitch, Ants1959LongToolUseYieldsFocusedState) {
+    Gate g = actingGate();
+    g.focusedState     = ClaudeState::ToolUse;
+    g.composerStaleMs  = -1;                // no human-idle signal
+    g.toolUseElapsedMs = ModelAutoSwitch::kLongToolUseMs;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(dec.act) << "a long tool call should yield the veto";
+    EXPECT_FALSE(dec.blockedBy.contains(QStringLiteral("focused_state_not_idle")));
+
+    g.toolUseElapsedMs = ModelAutoSwitch::kLongToolUseMs - 1;
+    const auto shortDec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(shortDec.act);
+    EXPECT_TRUE(shortDec.blockedBy.contains(QStringLiteral("focused_state_not_idle")));
+}
+
 // ANTS-1939 — composes with ANTS-1917 idle_end_of_session. The two gates
 // cover complementary cases: focused_state fires when NOT idle, idle gate
 // when idle. A human-idle agent-active window (state != Idle, idleElapsedMs

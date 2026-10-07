@@ -10305,6 +10305,15 @@ extends an existing item, that item carries it instead.
   with pump frames on the stack, the switch ledgers' 5 s lock (off by
   default), ANTS-1735 INV-2 and INV-3, and a runner that never calls
   done (left to its owner per ANTS-5009).
+  Progress (2026-10-07): ANTS-1735 INV-2 and INV-3 now record the
+  yields ANTS-1908, 1914, 1939, 1959 and 1973 added, and the test
+  contract points at them. The long tool-call yield on the state guard
+  had no test; ModelAutoSwitch.Ants1959LongToolUseYieldsFocusedState
+  covers it (red with the yield removed). Still open (low): ANTS-1727
+  section 4's buffer budget, the 10 MiB HTML append on the GUI thread,
+  allFinished firing with pump frames on the stack, the switch ledgers'
+  5 s lock (off by default), and a runner that never calls done (left
+  to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).

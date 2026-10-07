@@ -25,9 +25,12 @@ suppression — INV-14), the effectiveness ledger (INV-10..12), and the
 
 - **INV-1** — `decide` returns `act=false` when `enabled` is false, regardless
   of other fields.
-- **INV-2** — `act=false` when `focusedState != Idle`. One case per non-Idle
-  `ClaudeState` value (NotRunning, Thinking, ToolUse, Compacting).
-- **INV-3** — `act=false` when `composerEmpty` is false.
+- **INV-2** — `act=false` when `focusedState != Idle`, unless a yield in
+  `docs/specs/ANTS-1735.md` INV-2 applies. One case per non-Idle
+  `ClaudeState` value (NotRunning, Thinking, ToolUse, Compacting), with no
+  yield telemetry.
+- **INV-3** — `act=false` when `composerEmpty` is false, unless a yield in
+  `docs/specs/ANTS-1735.md` INV-3 applies.
 - **INV-4** — acts only when `clampToFloor(recommended, floor) != current`.
 - **INV-5** — requires `ticksTargetStable >= kStableTicks`, counted against the
   **clamped** target — a recommendation that clamps to current never
