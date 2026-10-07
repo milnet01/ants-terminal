@@ -70390,6 +70390,23 @@ project. Reported causes are claims until checked in source.
   Source: localwebservermanager-feedback-2026-10-02.
   Lanes: roadmap-store.
 
+### Ants MCP feedback from CC sessions — 2026-10-07 triage
+
+- 📋 [ANTS-5626] **doc_symbols reports a name in a language with no indexer, such as UnrealScript, as not checked rather than unresolved.**
+  doc_lint checks:["doc_symbols"] on UT_MonsterHunt's docs/specs/GAME-0190-test-playlist.md
+  returned 43 unresolved_symbol findings of 65; about 13 distinct names are real
+  symbols in unrealscript/**/*.uc. find_definition scans no .uc files either.
+  Two routes, pick at build time: (a) a .uc indexer — class, function, var and
+  const lines are regular (`class X extends`, `function X(`, `var config T X;`);
+  (b) where the project holds source in a language no indexer reads, report its
+  names as not_checked with a count, as workspace_search's
+  enclosing_symbol_unavailable does. (b) is the general fix; (a) is per language.
+  Siblings: ANTS-5357, ANTS-5387, ANTS-5470, ANTS-5544 (other false unresolved).
+  **Layman:** Spec checks on the Unreal game project stop flagging real game code names as missing just because the tool cannot read that language.
+  Kind: fix.
+  Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-10-06 (GAME-0190 spec).
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
