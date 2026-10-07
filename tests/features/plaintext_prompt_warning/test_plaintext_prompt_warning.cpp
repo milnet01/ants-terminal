@@ -282,3 +282,40 @@ TEST(PlaintextPromptWarning, Ants5105ReplyStreamsIntoChat) {
     EXPECT_EQ(last.count(QStringLiteral("streamed")), 1) << last.toStdString();
     EXPECT_EQ(last.count(QStringLiteral("AI: next")), 1) << last.toStdString();
 }
+
+// ANTS-5105 — INV-3: a reply far over AiDialog::kMaxShownReplyChars is
+// shortened for display while it streams and once it finishes, and the
+// chat says so. 'z' appears nowhere else in the chat.
+TEST(PlaintextPromptWarning, Ants5105LongReplyIsShortenedForDisplay) {
+    AiDialog dlg;
+    dlg.setConfig(QStringLiteral("https://192.0.2.1/v1/chat/completions"),
+                  QString(), QStringLiteral("gpt-4"), 50);
+    auto *input  = dlg.findChild<QLineEdit *>();
+    auto *chat   = dlg.findChild<QTextEdit *>();
+    auto *client = dlg.findChild<LlmClient *>();
+    QPushButton *sendBtn = findButtonByText(&dlg, QStringLiteral("Send"));
+    ASSERT_TRUE(input && chat && client && sendBtn);
+    input->setText(QStringLiteral("question"));
+    sendBtn->click();
+    ASSERT_TRUE(client->busy()) << "fixture premise: a reply is in flight";
+
+    const int cap = AiDialog::kMaxShownReplyChars;
+    // Not a divisor of the cap, so the second chunk straddles it.
+    const QString piece(cap / 2 + 7, QLatin1Char('z'));
+    for (int i = 0; i < 6; ++i) emit client->chunk(piece);
+    const qsizetype streamed = chat->toPlainText().count(QLatin1Char('z'));
+    EXPECT_GT(streamed, 0) << "the start of the reply must still stream";
+    EXPECT_LE(streamed, cap) << "streamed text must stop at the display cap";
+
+    client->abort();   // stop the real request; abort() emits no finished()
+    LlmResult done;
+    done.ok = true;
+    done.text = QString(qsizetype{3} * cap, QLatin1Char('z'));
+    emit client->finished(done);
+    const QString after = chat->toPlainText();
+    EXPECT_EQ(after.count(QLatin1Char('z')), cap)
+        << "the finished reply must show exactly its first kMaxShownReplyChars";
+    EXPECT_TRUE(after.contains(QStringLiteral("shortened")))
+        << "the chat must say the reply was shortened";
+    EXPECT_TRUE(sendBtn->isEnabled());
+}

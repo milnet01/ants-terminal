@@ -57,6 +57,12 @@ public:
     // codepoints on QChar), so the cap is a char count (ANTS-2205).
     static constexpr int kInsertCommandMaxChars = 4096;
 
+    // ANTS-5105 — the most of one reply the chat shows, in QString chars.
+    // A request asks for 1024 tokens, but a server may send up to
+    // LlmClient::kMaxBytes, and escaping and laying out that much at once
+    // stalls the GUI thread. m_lastResponse still keeps the whole reply.
+    static constexpr int kMaxShownReplyChars = 64 * 1024;
+
 private slots:
     void onSend();
     void onLlmFinished(const LlmResult &result);
@@ -83,6 +89,8 @@ private:
     // ANTS-5105 — where the streamed reply's message starts in the chat
     // document, so finished() can replace it; -1 when nothing is streaming.
     int m_streamStart = -1;
+    // ANTS-5105 — chars of the streaming reply inserted so far.
+    qsizetype m_streamShown = 0;
     QString m_plaintextWarnedEndpoint;   // ANTS-5010 — endpoint last warned about
 
 public:

@@ -107,6 +107,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AI assistant shows the first 64 Ki characters of an oversized reply and says it was shortened, instead of stalling the window while it lays out up to 10 MiB.** (ANTS-5105)
+
 - **Folding findings into the roadmap from a dialog waits about 1 s for a busy roadmap, then says so, instead of freezing for 5 s** (ANTS-5102)
   Applies to the test audit, code audit, debt sweep and AI review
   dialogs. The code audit no longer blames a missing heading when the

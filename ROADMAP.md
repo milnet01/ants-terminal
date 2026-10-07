@@ -10322,6 +10322,13 @@ extends an existing item, that item carries it instead.
   append on the GUI thread, allFinished firing with pump frames on the
   stack, the switch ledgers' 5 s lock (off by default), and a runner
   that never calls done (left to its owner per ANTS-5009).
+  Progress (2026-10-07): AiDialog shows at most kMaxShownReplyChars
+  (64 Ki chars) of one reply, while it streams and once it finishes, with
+  a "shortened" note; m_lastResponse keeps the whole reply for Insert
+  (plaintext_prompt_warning Ants5105LongReplyIsShortenedForDisplay, INV-3,
+  red first). Still open (low): allFinished firing with pump frames on the
+  stack, the switch ledgers' 5 s lock (off by default), and a runner that
+  never calls done (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).

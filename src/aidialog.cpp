@@ -8,6 +8,18 @@
 #include <QTextDocument>
 #include <QUrl>
 
+namespace {
+
+// The first `n` chars of `s`, one shorter where char n-1 would split a
+// surrogate pair.
+QString leftWhole(const QString &s, qsizetype n) {
+    if (n >= s.size()) return s;
+    if (n > 0 && s.at(n - 1).isHighSurrogate()) --n;
+    return s.left(n);
+}
+
+}  // namespace
+
 AiDialog::~AiDialog() {
     // m_client (a child QObject) aborts its in-flight reply in its own
     // destructor; abort explicitly first to close the narrow window where
@@ -204,8 +216,14 @@ void AiDialog::appendMessage(const QString &role, const QString &text) {
                    .arg(tr("You:"), text.toHtmlEscaped());
     } else if (role == "AI") {
         // Convert markdown code blocks to <pre>
-        QString formatted = text.toHtmlEscaped();
+        // ANTS-5105 — escaping and laying out a multi-MiB reply stalls the
+        // GUI thread, so the chat shows only its start.
+        const bool shortened = text.size() > kMaxShownReplyChars;
+        QString formatted = leftWhole(text, kMaxShownReplyChars).toHtmlEscaped();
         formatted.replace("\n", "<br>");
+        if (shortened)
+            formatted += QStringLiteral("<br><i>%1</i>")
+                             .arg(tr("[Reply shortened for display.]").toHtmlEscaped());
         html = QStringLiteral("<p><b style='color:#A6E3A1;'>%1</b> %2</p>")
                    .arg(tr("AI:"), formatted);
     } else {
@@ -295,12 +313,17 @@ void AiDialog::onLlmChunk(const QString &delta) {
     // "AI:" message; later ones are inserted as plain text at its end.
     if (m_streamStart < 0) {
         m_streamStart = m_chatHistory->document()->characterCount() - 1;
+        m_streamShown = 0;
         m_chatHistory->append(
             QStringLiteral("<p><b style='color:#A6E3A1;'>%1</b> </p>").arg(tr("AI:")));
     }
+    // ANTS-5105 — stop at the display cap; finished() adds the note.
+    const QString part = leftWhole(delta, kMaxShownReplyChars - m_streamShown);
+    if (part.isEmpty()) return;
+    m_streamShown += part.size();
     QTextCursor cursor(m_chatHistory->document());
     cursor.movePosition(QTextCursor::End);
-    cursor.insertText(delta);
+    cursor.insertText(part);
     m_chatHistory->verticalScrollBar()->setValue(
         m_chatHistory->verticalScrollBar()->maximum());
 }

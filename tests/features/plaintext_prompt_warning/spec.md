@@ -60,6 +60,12 @@ only where the owning spec § 2.1 states the text is stable enough to do so.
   reachable offscreen without a live AI server or a modal
   `QMessageBox::question` click, matching `docs/specs/ANTS-5010-plaintext-prompt-warning.md`
   § 7's own "Partial" note for this invariant.
+- **INV-3** (ANTS-5105) — `AiDialog` shows at most
+  `AiDialog::kMaxShownReplyChars` characters of one reply. While it
+  streams, the chat stops growing at the cap; once it finishes, the chat
+  shows exactly the reply's first `kMaxShownReplyChars` characters and a
+  note containing "shortened". A reply under the cap shows whole.
+  Test: `Ants5105LongReplyIsShortenedForDisplay`.
 
 ## Test notes
 
