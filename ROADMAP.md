@@ -10314,6 +10314,14 @@ extends an existing item, that item carries it instead.
   allFinished firing with pump frames on the stack, the switch ledgers'
   5 s lock (off by default), and a runner that never calls done (left
   to its owner per ANTS-5009).
+  Progress (2026-10-07): ANTS-1727 section 4 now counts LlmClient's three
+  buffers (raw body, SSE line buffer, answer text held as UTF-16) and
+  multiplies by the maximum of 4 in flight: up to ~160 MiB worst case.
+  The config comment and the concurrency test contract point at section 4
+  instead of repeating the figure. Still open (low): the 10 MiB HTML
+  append on the GUI thread, allFinished firing with pump frames on the
+  stack, the switch ledgers' 5 s lock (off by default), and a runner
+  that never calls done (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).

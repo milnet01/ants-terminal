@@ -5,7 +5,7 @@
 ANTS-1727 § 2.6 adds a config key controlling the review-dialog
 `LlmDispatcher`'s bounded concurrency. It must default to 2 and clamp to
 `[1, 4]` so a large partition can't open more sockets or exceed the
-~40 MiB transient RAM budget (spec § 4).
+transient RAM budget (spec § 4).
 
 ## Invariant under test
 
