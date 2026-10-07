@@ -10296,6 +10296,15 @@ extends an existing item, that item carries it instead.
   switch ledgers' 5 s lock (off by default), ANTS-1735 INV-2 and INV-3,
   AI dialog strings outside tr(), and a runner that never calls done
   (left to its owner per ANTS-5009).
+  Progress (2026-10-07): AI dialog strings are wrapped in tr(): the
+  window title, labels, placeholders, buttons, the insert-command
+  confirmation, the status lines and the chat notes. Markup stays out
+  of the translatable text; the role keys and the model's system prompt
+  stay untranslated. Still open (low): ANTS-1727 section 4's buffer
+  budget, the 10 MiB HTML append on the GUI thread, allFinished firing
+  with pump frames on the stack, the switch ledgers' 5 s lock (off by
+  default), ANTS-1735 INV-2 and INV-3, and a runner that never calls
+  done (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).

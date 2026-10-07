@@ -16,7 +16,7 @@ AiDialog::~AiDialog() {
 }
 
 AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle("AI Assistant");
+    setWindowTitle(tr("AI Assistant"));
     setMinimumSize(500, 400);
     resize(600, 500);
 
@@ -33,29 +33,29 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
     layout->setSpacing(6);
 
     // Status label
-    m_statusLabel = new QLabel("Configure AI endpoint in config.json", this);
+    m_statusLabel = new QLabel(tr("Configure AI endpoint in config.json"), this);
     m_statusLabel->setStyleSheet("color: gray; font-size: 11px;");
     layout->addWidget(m_statusLabel);
 
     // Chat history
     m_chatHistory = new QTextEdit(this);
     m_chatHistory->setReadOnly(true);
-    m_chatHistory->setPlaceholderText("Ask about terminal output, get command suggestions, or debug errors...");
+    m_chatHistory->setPlaceholderText(tr("Ask about terminal output, get command suggestions, or debug errors..."));
     layout->addWidget(m_chatHistory, 1);
 
     // Input row
     auto *inputLayout = new QHBoxLayout();
     m_input = new QLineEdit(this);
-    m_input->setPlaceholderText("Ask the AI assistant...");
+    m_input->setPlaceholderText(tr("Ask the AI assistant..."));
     connect(m_input, &QLineEdit::returnPressed, this, &AiDialog::onSend);
     inputLayout->addWidget(m_input, 1);
 
-    m_sendBtn = new QPushButton("Send", this);
+    m_sendBtn = new QPushButton(tr("Send"), this);
     connect(m_sendBtn, &QPushButton::clicked, this, &AiDialog::onSend);
     inputLayout->addWidget(m_sendBtn);
 
-    m_insertBtn = new QPushButton("Insert Cmd", this);
-    m_insertBtn->setToolTip("Insert the last suggested command into the terminal");
+    m_insertBtn = new QPushButton(tr("Insert Cmd"), this);
+    m_insertBtn->setToolTip(tr("Insert the last suggested command into the terminal"));
     m_insertBtn->setEnabled(false);
     connect(m_insertBtn, &QPushButton::clicked, this, [this]() {
         if (m_lastResponse.isEmpty()) return;
@@ -88,22 +88,24 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
         if (truncatedPreview) {
             preview += QStringLiteral("…");
         }
-        QString msg = QStringLiteral(
+        QString msg = tr(
             "The AI suggested this command. It will be typed into the "
-            "active terminal if you confirm.<br><br>"
+            "active terminal if you confirm.")
+            + QStringLiteral(
+            "<br><br>"
             "<pre style='background:#2b2b2b;color:#eee;padding:8px;"
             "border-radius:4px;white-space:pre-wrap;word-break:break-all;'>"
             "%1</pre>").arg(preview);
         if (truncatedPreview) {
-            msg += QStringLiteral(
-                "<br><b>⚠ Preview truncated — %1 additional byte(s) "
-                "will be executed but are not shown above.</b>"
-                ).arg(cmd.size() - kPreviewMax);
+            msg += QStringLiteral("<br><b>%1</b>").arg(tr(
+                "⚠ Preview truncated — %1 additional byte(s) "
+                "will be executed but are not shown above.")
+                .arg(cmd.size() - kPreviewMax));
         }
         if (stripped > 0) {
-            msg += QStringLiteral(
-                "<br><i>%1 byte(s) were filtered from this command "
-                "(control characters / length cap).</i>").arg(stripped);
+            msg += QStringLiteral("<br><i>%1</i>").arg(tr(
+                "%1 byte(s) were filtered from this command "
+                "(control characters / length cap).").arg(stripped));
         }
         auto reply = QMessageBox::question(
             this, tr("Insert AI-suggested command"), msg,
@@ -157,9 +159,9 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
             m_model = model;
             m_contextLines = contextLines;
             m_statusLabel->setText(
-                QStringLiteral("AI endpoint rejected — only http/https are "
-                               "permitted (got '%1'). Set ai_endpoint in "
-                               "config.json to a https://… URL.").arg(scheme));
+                tr("AI endpoint rejected — only http/https are "
+                   "permitted (got '%1'). Set ai_endpoint in "
+                   "config.json to a https://… URL.").arg(scheme));
             return;
         }
     }
@@ -170,7 +172,7 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
     m_contextLines = contextLines;
 
     if (m_endpoint.isEmpty()) {
-        m_statusLabel->setText("No AI endpoint configured. Set ai_endpoint in config.json");
+        m_statusLabel->setText(tr("No AI endpoint configured. Set ai_endpoint in config.json"));
     } else {
         // 0.6.22 — redact basic-auth credentials before displaying. A user
         // who pasted `https://user:password@host/v1` into ai_endpoint
@@ -182,7 +184,7 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
         const QString display = parsed.isValid()
             ? parsed.toString(QUrl::RemoveUserInfo | QUrl::PrettyDecoded)
             : m_endpoint;   // fall back to raw if parse failed
-        m_statusLabel->setText("Endpoint: " + display + " | Model: " + m_model);
+        m_statusLabel->setText(tr("Endpoint: %1 | Model: %2").arg(display, m_model));
     }
 }
 
@@ -198,12 +200,14 @@ void AiDialog::onSend() {
 void AiDialog::appendMessage(const QString &role, const QString &text) {
     QString html;
     if (role == "You") {
-        html = QString("<p><b style='color:#89B4FA;'>You:</b> %1</p>").arg(text.toHtmlEscaped());
+        html = QStringLiteral("<p><b style='color:#89B4FA;'>%1</b> %2</p>")
+                   .arg(tr("You:"), text.toHtmlEscaped());
     } else if (role == "AI") {
         // Convert markdown code blocks to <pre>
         QString formatted = text.toHtmlEscaped();
         formatted.replace("\n", "<br>");
-        html = QString("<p><b style='color:#A6E3A1;'>AI:</b> %1</p>").arg(formatted);
+        html = QStringLiteral("<p><b style='color:#A6E3A1;'>%1</b> %2</p>")
+                   .arg(tr("AI:"), formatted);
     } else {
         html = QString("<p><i style='color:#F38BA8;'>%1</i></p>").arg(text.toHtmlEscaped());
     }
@@ -242,10 +246,12 @@ void AiDialog::sendRequest(const QString &userMessage) {
         // terminal state. Singular/plural kept simple — this surface is
         // log-like, not copy-polished.
         appendMessage(QStringLiteral("System"),
-                      QString("Note: %1 secret%2 redacted from outbound request "
-                              "(OWASP LLM06 — see tests/features/ai_context_redaction/spec.md).")
-                          .arg(totalRedacted)
-                          .arg(totalRedacted == 1 ? "" : "s"));
+                      totalRedacted == 1
+                          ? tr("Note: 1 secret redacted from outbound request "
+                               "(OWASP LLM06 — see tests/features/ai_context_redaction/spec.md).")
+                          : tr("Note: %1 secrets redacted from outbound request "
+                               "(OWASP LLM06 — see tests/features/ai_context_redaction/spec.md).")
+                                .arg(totalRedacted));
     }
 
     // ANTS-2108 — refuse (not just warn) when an API key would travel in
@@ -254,9 +260,9 @@ void AiDialog::sendRequest(const QString &userMessage) {
     // instead of a generic refusal echoed back through onLlmFinished.
     // Localhost is exempt (Ollama/LM Studio default to http://127.0.0.1).
     if (!m_apiKey.isEmpty() && LlmClient::isPlaintextRemote(m_endpoint)) {
-        appendMessage("System", "Refused: endpoint is plaintext HTTP to a remote host — "
-                                "the API key would travel unencrypted. Use https:// "
-                                "(localhost is exempt).");
+        appendMessage("System", tr("Refused: endpoint is plaintext HTTP to a remote host — "
+                                   "the API key would travel unencrypted. Use https:// "
+                                   "(localhost is exempt)."));
         m_sendBtn->setEnabled(true);   // ANTS-5105 — nothing was sent
         return;
     }
@@ -290,7 +296,7 @@ void AiDialog::onLlmChunk(const QString &delta) {
     if (m_streamStart < 0) {
         m_streamStart = m_chatHistory->document()->characterCount() - 1;
         m_chatHistory->append(
-            QStringLiteral("<p><b style='color:#A6E3A1;'>AI:</b> </p>"));
+            QStringLiteral("<p><b style='color:#A6E3A1;'>%1</b> </p>").arg(tr("AI:")));
     }
     QTextCursor cursor(m_chatHistory->document());
     cursor.movePosition(QTextCursor::End);
