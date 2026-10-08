@@ -10498,6 +10498,15 @@ extends an existing item, that item carries it instead.
   Ants5107HealthTimesEachHandler, Ants5107HealthSeesAWedgedInitLua.
   ANTS-1750 section 2.5 records it. Still open: zombies per reload,
   plugin signal rate limits, broadcast fan-out, and the lows.
+  Progress (2026-10-08): two lows fixed, red first. Time blocked in
+  settings.get or settings.set no longer counts against the handler
+  budget (LuaThreading Ants5107SettingsWaitIsNotBudgetTime). Dev-mode
+  reload restarts one 150 ms timer per change, so a burst reloads once
+  (Ants5107DevReloadRunsOncePerBurst). Checked closed: handler timing
+  already uses the monotonic clock (pluginmanager.cpp monotonicMs), and
+  project.read already refuses a FIFO. Still open: the ANTS-2093 and
+  luaengine.h text, zombies per reload, signal rate limits, broadcast
+  fan-out.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).

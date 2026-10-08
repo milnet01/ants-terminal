@@ -285,7 +285,7 @@ void LuaEngine::instructionHook(lua_State *L, lua_Debug * /*ar*/) {
     // !isValid() == unarmed (startPcallBudget not yet called).
     const bool wallExpired =
         eng->m_pcallBudgetMs > 0 && eng->m_pcallTimer.isValid()
-        && eng->m_pcallTimer.elapsed() > eng->m_pcallBudgetMs;
+        && eng->m_pcallTimer.elapsed() - eng->m_pcallWaitedMs > eng->m_pcallBudgetMs;
     if (wallExpired) {
         eng->m_timedOut = true;
         eng->m_killed = true;
@@ -316,6 +316,7 @@ void LuaEngine::startPcallBudget() {
     // `setPcallBudgetMs()` for tests that exercise the kill path —
     // production callers never touch it.
     m_pcallTimer.start();  // ANTS-2205 — monotonic budget clock
+    m_pcallWaitedMs = 0;
 }
 
 int LuaEngine::timedPcall(int nargs, int nresults) {
@@ -814,8 +815,11 @@ int LuaEngine::lua_ants_settings_get(lua_State *L) {
         bool pushed = false;
         {
             QString out;
+            QElapsedTimer waited;
+            waited.start();
             emit engine->settingsGetRequested(engine->pluginName(),
                                                QString::fromUtf8(key), out);
+            engine->m_pcallWaitedMs += waited.elapsed();  // ANTS-5107
             isNull = out.isNull();
             if (!isNull) {
                 // ANTS-1802 — NUL-safe length-counted push
@@ -857,10 +861,13 @@ int LuaEngine::lua_ants_settings_set(lua_State *L) {
     char refusal[256] = {};
     {
         QString error;
+        QElapsedTimer waited;
+        waited.start();
         emit engine->settingsSetRequested(
             engine->pluginName(),
             QString::fromUtf8(key, static_cast<qsizetype>(keyLen)),
             QString::fromUtf8(value, static_cast<qsizetype>(valueLen)), error);
+        engine->m_pcallWaitedMs += waited.elapsed();  // ANTS-5107
         if (!error.isEmpty())
             qstrncpy(refusal, error.toUtf8().constData(), sizeof refusal);
     }

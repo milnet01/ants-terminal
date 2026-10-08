@@ -117,6 +117,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A plugin handler's 1.5 s time limit no longer counts the time it waits for `ants.settings.get` or `ants.settings.set` to answer** (ANTS-5107)
+  That wait is the terminal's time, not the plugin's. Reaches a running
+  terminal after a relaunch.
+
+- **With `ANTS_PLUGIN_DEV` set, several quick saves of a plugin reload it once, 150 ms after the last save** (ANTS-5107)
+  Reaches a running terminal after a relaunch.
+
 - **The plugin health check times each handler, and catches a plugin stuck while loading** (ANTS-5107)
   A plugin with several handlers that each finish in time is no longer
   switched off as unresponsive. A plugin that freezes while its init.lua

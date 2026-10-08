@@ -145,6 +145,7 @@ private:
     QMap<QString, LuaEngine *> m_engines;  // keyed by plugin name
     QMap<QString, QThread *> m_threads;    // worker per plugin (parallel key)
     QFileSystemWatcher *m_watcher = nullptr;
+    QTimer *m_devReloadTimer = nullptr;  // dev-mode reload debounce
     QStringList m_watchedEnabled;  // cached enabled list for hot-reload
 
     // ANTS-1750 — health bookkeeping. m_execStart: per-engine handler

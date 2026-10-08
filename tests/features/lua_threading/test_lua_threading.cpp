@@ -429,3 +429,70 @@ TEST(LuaThreading, Ants5107HealthSeesAWedgedInitLua) {
     });
     EXPECT_EQ(demoted, 1) << "a plugin stuck in init.lua was never demoted";
 }
+
+// Time a handler spends blocked in settings.get is the GUI thread's time,
+// not the plugin's, so it does not count against the 1.5 s handler budget.
+TEST(LuaThreading, Ants5107SettingsWaitIsNotBudgetTime) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("patient"),
+              "ants.on('command_finished', function()\n"
+              "  ants.settings.get('k')\n"
+              "  for i = 1, 200000 do end\n"
+              "  ants.log('finished')\n"
+              "end)\n",
+              true);
+    bool finished = false;
+    {
+        PluginManager pm;
+        pm.setGrantStore(
+            [](const QString &) { return QStringList{QStringLiteral("settings")}; },
+            [](const QString &, const QStringList &) {});
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&finished](const QString &m) {
+            if (m == QStringLiteral("finished")) finished = true;
+        });
+        QObject::connect(&pm, &PluginManager::settingsGetRequested,
+                         [](const QString &, const QString &, QString &) {
+            QThread::msleep(1700);
+        });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("patient")});
+        pump(300);
+        pm.fireEvent(PluginEvent::CommandFinished,
+                     QStringLiteral("exit_code=0&duration_ms=1"));
+        pump(2500);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_TRUE(finished) << "the handler was stopped for time it spent "
+                             "waiting on the GUI thread";
+}
+
+// Saving a plugin several times in quick succession reloads it once.
+TEST(LuaThreading, Ants5107DevReloadRunsOncePerBurst) {
+    qputenv("ANTS_PLUGIN_DEV", "1");
+    if (!PluginManager::devMode())
+        GTEST_SKIP() << "dev mode was read before this test could set it";
+    const QString dir = makeTeardownDir();
+    const QString pluginDir = dir + QStringLiteral("/plugins/edited");
+    addPlugin(dir, QStringLiteral("edited"), "ants.on('load', function() end)\n");
+    int reloads = 0;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::pluginsReloaded,
+                         [&reloads]() { ++reloads; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("edited")});
+        pump(300);
+        reloads = 0;
+        for (int i = 0; i < 4; ++i) {
+            writeTemp(pluginDir, QStringLiteral("init.lua"),
+                      "-- edit " + QByteArray::number(i)
+                          + "\nants.on('load', function() end)\n");
+            pump(50);
+        }
+        pump(1000);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_EQ(reloads, 1) << "four quick saves reloaded the plugin "
+                          << reloads << " times";
+}

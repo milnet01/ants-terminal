@@ -41,6 +41,14 @@ PluginManager::PluginManager(QObject *parent) : QObject(parent) {
     // Hot-reload watcher — only used when ANTS_PLUGIN_DEV=1. Idle cost is
     // zero because we never call watchPaths() in the non-dev path.
     m_watcher = new QFileSystemWatcher(this);
+    // Debounce: editors often write-truncate-write, and a save can touch
+    // several files. Each change restarts one timer, so a burst of changes
+    // reloads once, 150 ms after the last (ANTS-5107).
+    m_devReloadTimer = new QTimer(this);
+    m_devReloadTimer->setSingleShot(true);
+    m_devReloadTimer->setInterval(150);
+    connect(m_devReloadTimer, &QTimer::timeout, this,
+            [this]() { reloadAll(m_watchedEnabled); });
     connect(m_watcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &path) {
         // ANTS-1788 — never reload outside dev mode. Inert today (no
         // paths are watched in the non-dev path) but a future watch
@@ -48,13 +56,12 @@ PluginManager::PluginManager(QObject *parent) : QObject(parent) {
         // reloadAll teardown of live plugins.
         if (!devMode()) return;
         emit logMessage(QString("[plugin-dev] file changed: %1").arg(path));
-        // Debounce: editors often write-truncate-write which fires twice.
-        QTimer::singleShot(150, this, [this]() { reloadAll(m_watchedEnabled); });
+        m_devReloadTimer->start();
     });
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString &path) {
         if (!devMode()) return;  // ANTS-1788 — see fileChanged above
         emit logMessage(QString("[plugin-dev] dir changed: %1").arg(path));
-        QTimer::singleShot(150, this, [this]() { reloadAll(m_watchedEnabled); });
+        m_devReloadTimer->start();
     });
 
     // ANTS-1750 — self-owned 2 s health tick. Each plugin VM runs on its own

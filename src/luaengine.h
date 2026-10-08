@@ -269,6 +269,10 @@ private:
     // clock steps (NTP / manual set) that could otherwise fire or defer the
     // budget kill spuriously. Started in startPcallBudget(); !isValid() == unarmed.
     QElapsedTimer m_pcallTimer;
+    // ANTS-5107 — time this pcall spent blocked in settings.get / set,
+    // waiting on the GUI thread. It is not the plugin's time, so the hook
+    // subtracts it from the budget. Worker-only; reset in startPcallBudget().
+    qint64 m_pcallWaitedMs = 0;
     qint64 m_pcallBudgetMs   = 1500;  // Tunable via setPcallBudgetMs().
     QString m_recentOutput;
     QString m_cwd;
