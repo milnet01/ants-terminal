@@ -10537,7 +10537,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
   Lanes: changelog, feedback.
 
-- 📋 [ANTS-5109] **Performance pass findings for the diff viewer, settings, SSH dialog and helper (medium and low).**
+- ✅ [ANTS-5109] **Performance pass findings for the diff viewer, settings, SSH dialog and helper (medium and low).**
   Filed separately: ANTS-5059, 5060.
   Medium:
   - On every refresh the diff viewer reads each Status entry's file in
@@ -10644,6 +10644,13 @@ extends an existing item, that item carries it instead.
   concurrent_writer_lock Invariant 5 names installStatusHooks and
   installGitContextHook in src/claudesetup.cpp. Still open: dialog
   colours, a missing minimum size and an unparented QColorDialog.
+  Resolved (2026-10-08): Review Changes has a minimum size of 600x400;
+  its live-status label and Settings' portal status line take ANSI
+  green and yellow from the active theme instead of literals; Settings'
+  two colour pickers pass the dialog as parent
+  (dialog_standard_conformance INV-1 to INV-3, red first). The swatch
+  buttons' white text stays: it sits on the user's chosen colour, not a
+  theme surface. Every finding in this item is now closed.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).

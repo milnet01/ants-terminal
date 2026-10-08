@@ -117,6 +117,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Settings and Review Changes take their status colours from the theme, Review Changes cannot shrink below a usable size, and Settings' colour pickers open over Settings.** (ANTS-5109)
+
 - **`ants-terminal --help` names the main `--remote` commands instead of saying only `ls` works.** (ANTS-5109)
 
 - **The git-context hook prints `<` and `>` in a branch or upstream name as `_`, so the name can no longer end the block early.** (ANTS-5109)

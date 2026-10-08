@@ -609,16 +609,22 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     // session property that doesn't change while the app is running.
     auto *portalStatus = new QLabel(quakeGroup);
     portalStatus->setWordWrap(true);
+    // ANTS-5109 — status colours come from the theme (dialogs.md D1):
+    // ANSI green for active, ANSI yellow for unavailable.
+    const Theme &portalTheme = Themes::byName(
+        m_config ? m_config->theme() : DialogChrome::activeTheme());
     if (GlobalShortcutsPortal::isAvailable()) {
         portalStatus->setText(QStringLiteral(
-            "<span style='color:#4aa84a;'>&#x2713; Portal binding active</span> "
-            "&mdash; hotkey works when Ants is unfocused."));
+            "<span style='color:%1;'>&#x2713; Portal binding active</span> "
+            "&mdash; hotkey works when Ants is unfocused.")
+            .arg(portalTheme.ansi[2].name()));
     } else {
         portalStatus->setText(QStringLiteral(
-            "<span style='color:#c77a1a;'>&#9888; Portal unavailable</span> "
+            "<span style='color:%1;'>&#9888; Portal unavailable</span> "
             "&mdash; hotkey works only while Ants is focused "
             "(install <tt>xdg-desktop-portal-kde</tt> / "
-            "<tt>-hyprland</tt> / <tt>-wlr</tt> for out-of-focus support)."));
+            "<tt>-hyprland</tt> / <tt>-wlr</tt> for out-of-focus support).")
+            .arg(portalTheme.ansi[3].name()));
     }
     quakeLayout->addRow(portalStatus);
 
@@ -1027,8 +1033,8 @@ void SettingsDialog::addHighlightRow(const QString &pattern, const QString &fg,
     auto *fgBtn = new QPushButton(fg.isEmpty() ? "Default" : fg);
     if (!fg.isEmpty())
         fgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(fg));
-    connect(fgBtn, &QPushButton::clicked, this, [fgBtn]() {
-        QColor c = QColorDialog::getColor(QColor(fgBtn->text()), nullptr, "Foreground Color");
+    connect(fgBtn, &QPushButton::clicked, this, [this, fgBtn]() {
+        QColor c = QColorDialog::getColor(QColor(fgBtn->text()), this, "Foreground Color");
         if (c.isValid()) {
             fgBtn->setText(c.name());
             fgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(c.name()));
@@ -1040,8 +1046,8 @@ void SettingsDialog::addHighlightRow(const QString &pattern, const QString &fg,
     auto *bgBtn = new QPushButton(bg.isEmpty() ? "None" : bg);
     if (!bg.isEmpty())
         bgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(bg));
-    connect(bgBtn, &QPushButton::clicked, this, [bgBtn]() {
-        QColor c = QColorDialog::getColor(QColor(bgBtn->text()), nullptr, "Background Color");
+    connect(bgBtn, &QPushButton::clicked, this, [this, bgBtn]() {
+        QColor c = QColorDialog::getColor(QColor(bgBtn->text()), this, "Background Color");
         if (c.isValid()) {
             bgBtn->setText(c.name());
             bgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(c.name()));

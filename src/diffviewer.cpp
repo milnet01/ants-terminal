@@ -184,6 +184,7 @@ QDialog *show(QWidget *parent,
     auto *probeHost = new ProbeHost(dialog);
     dialog->setObjectName(QStringLiteral("reviewChangesDialog"));
     dialog->setWindowTitle("Review Changes");
+    dialog->setMinimumSize(600, 400);   // ANTS-5109 — dialogs.md D2
     dialog->resize(800, 600);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -393,8 +394,10 @@ QDialog *show(QWidget *parent,
         if (!dlgGuard) return;
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral("● refreshing…"));
+            // ANTS-5109 — theme colours, not literals (dialogs.md D1).
             liveStatusGuard->setStyleSheet(
-                "color: #e0a020; font-size: 11px;");
+                QStringLiteral("color: %1; font-size: 11px;")
+                    .arg(Themes::byName(themeName).ansi[3].name()));
         }
 
         auto state = std::make_shared<ProbeState>();
@@ -415,7 +418,8 @@ QDialog *show(QWidget *parent,
             liveStatusGuard->setText(QStringLiteral(
                 "● live — auto-refresh on git changes"));
             liveStatusGuard->setStyleSheet(
-                "color: #4aa84a; font-size: 11px;");
+                QStringLiteral("color: %1; font-size: 11px;")
+                    .arg(Themes::byName(themeName).ansi[2].name()));
         }
 
         // ANTS-5059 — bound what the GUI thread turns into HTML and lays out:
