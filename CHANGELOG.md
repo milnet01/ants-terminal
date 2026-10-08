@@ -86,6 +86,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Claude Code sessions start lighter: the roadmap and changelog writer tools now load on first use instead of at every session start**
+
 - **Restoring saved tabs at startup uses less memory** (ANTS-5106)
   Each saved tab's data is read in place instead of being copied first.
 

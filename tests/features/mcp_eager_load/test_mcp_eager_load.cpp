@@ -30,12 +30,20 @@ TEST(McpEagerLoad, AlwaysLoadMarkingWired) {
         << "eager-load _meta field missing from tools/list builder";
     EXPECT_TRUE(has(ci, "kEagerVerbs"));
 
-    // The curated high-frequency set (verbs that most directly replace
-    // always-loaded Bash grep / Read / Edit + ROADMAP/CHANGELOG edits).
-    for (const char *verb : {"workspace_search", "find_definition",
-                             "file_outline", "read_region",
-                             "roadmap_log", "changelog_log"}) {
-        // Each appears in the file (as a tool name); the set lists all six.
-        EXPECT_TRUE(has(ci, verb)) << "missing eager verb: " << verb;
+    // The curated set itself, read from its initializer: the grep / Read
+    // substitutes are in it, and the rarely called write verbs are not —
+    // each member costs context at every session start.
+    const auto open = ci.find("kEagerVerbs = {");
+    ASSERT_NE(open, std::string::npos);
+    const auto close = ci.find("};", open);
+    ASSERT_NE(close, std::string::npos);
+    const std::string set = ci.substr(open, close - open);
+    for (const char *verb : {"\"workspace_search\"", "\"find_definition\"",
+                             "\"file_outline\"", "\"read_region\""}) {
+        EXPECT_TRUE(has(set, verb)) << "missing eager verb: " << verb;
+    }
+    for (const char *verb : {"\"roadmap_log\"", "\"changelog_log\""}) {
+        EXPECT_FALSE(has(set, verb))
+            << "always-loaded but rarely called: " << verb;
     }
 }

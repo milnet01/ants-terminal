@@ -12,18 +12,19 @@ The fix is server-side: Claude Code (v2.1.121+) honours
 ignore the field (graceful). Verified against
 code.claude.com/docs/en/mcp.md (2026-06-24).
 
-A small, curated set is marked — each always-loaded tool costs context,
-so only the verbs that most directly replace always-loaded built-ins:
-`workspace_search`, `find_definition`, `file_outline`, `read_region`
-(grep / Read substitutes) and `roadmap_log` / `changelog_log`
-(ROADMAP/CHANGELOG Edit substitutes).
+A small, curated set is marked — each always-loaded tool costs context
+in every session, so only the verbs that most directly replace the
+always-loaded grep / Read: `workspace_search`, `find_definition`,
+`file_outline`, `read_region`. `roadmap_log` and `changelog_log` are
+deferred: most sessions call them rarely.
 
 ## Invariant
 
 - The `tools/list` builder (`src/claudeintegration.cpp`) marks each verb
   in the curated `kEagerVerbs` set with `"anthropic/alwaysLoad": true`
-  under its `_meta`. *Test:* source-grep for the field, the set name, and
-  the six verb names.
+  under its `_meta`. The set holds the four verbs above and neither
+  `roadmap_log` nor `changelog_log`. *Test:* source-grep for the field
+  and the set name, then membership read from the set's initializer.
 
 ## Pre-fix check
 

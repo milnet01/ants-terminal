@@ -227,11 +227,12 @@ Claude Code **v2.1.121+** honours (as of 2026-08) to keep those tools
 always-loaded
 (older clients ignore the field — graceful). The set
 (`kEagerVerbs` in `claudeintegration.cpp`) is deliberately small — each
-always-loaded tool costs context — and covers the verbs that most
-directly replace always-loaded built-ins: `workspace_search`,
-`find_definition`, `file_outline`, `read_region` (grep / Read
-substitutes) and `roadmap_log` / `changelog_log` (ROADMAP/CHANGELOG
-edit substitutes). There is **no** server-wide "eager-load the whole
+always-loaded tool costs context in every session — and covers the
+verbs that most directly replace the always-loaded grep / Read:
+`workspace_search`, `find_definition`, `file_outline`, `read_region`.
+`roadmap_log` and `changelog_log` are deferred like every other verb:
+most sessions call them rarely, and one `ToolSearch` loads them. There
+is **no** server-wide "eager-load the whole
 server" lever; the only other knob is the client-side per-server
 `"alwaysLoad": true` in `.mcp.json`, which a heavy user can set
 themselves. Deferral itself is a Claude Code architectural choice, not

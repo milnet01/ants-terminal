@@ -15550,17 +15550,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // grep/Read/Edit). Honoured by Claude Code v2.1.121+ via
                     // the tool's `_meta`; older clients ignore the field
                     // (graceful). The set is small on purpose — each
-                    // always-loaded tool costs context, so only the verbs
-                    // that most directly replace always-loaded built-ins
-                    // (Bash grep / Read / Edit, ROADMAP/CHANGELOG edits).
+                    // always-loaded tool costs context in every session, so
+                    // only the verbs that most directly replace the
+                    // always-loaded Bash grep / Read. The roadmap and
+                    // changelog writers are not in it: their schemas are
+                    // large and most sessions call them rarely.
                     // See docs/standards/mcp-behavioural-notes.md.
                     static const QSet<QString> kEagerVerbs = {
                         QStringLiteral("workspace_search"),
                         QStringLiteral("find_definition"),
                         QStringLiteral("file_outline"),
                         QStringLiteral("read_region"),
-                        QStringLiteral("roadmap_log"),
-                        QStringLiteral("changelog_log"),
                     };
                     if (kEagerVerbs.contains(
                             t.value(QStringLiteral("name")).toString())) {
