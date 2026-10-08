@@ -10591,6 +10591,14 @@ extends an existing item, that item carries it instead.
   reading before the lock, ants-helper list blocking on stdin, branch
   names in the hook prompt, dialog colours and sizes, ANTS-1145 INV-2a and
   the --remote help text.
+  Progress (2026-10-08): ants-helper reads stdin only for drift-check,
+  so `list` and an unknown name no longer wait on an open stdin. A
+  request body over 1 MiB (AntsHelper::kMaxRequestBytes) is refused
+  with request_too_large, exit 2 (local_subagent_framework INV-9 and
+  INV-10, red first). Still open: git ls-files on every change burst,
+  the installers reading before the lock, branch names in the hook
+  prompt, dialog colours and sizes, ANTS-1145 INV-2a and the --remote
+  help text.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).

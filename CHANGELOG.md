@@ -112,6 +112,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ants-helper list answers at once when stdin is left open, and a request body over 1 MiB is refused.** (ANTS-5109)
+
 - **Diagnostics: build-error notes stay with their own error, read_log counts JSON escapes and stops after 5 seconds with a resumable cursor, the debug log survives another instance's rotation, always-on log lines reach stderr when no category is on, and a tool installed mid-session is found within 30 seconds** (ANTS-5110)
 
 - **changelog_log files an entry under the right heading when a bullet contains an indented or fenced `###` line** (ANTS-5108)

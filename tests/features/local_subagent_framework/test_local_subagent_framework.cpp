@@ -8,6 +8,7 @@
 
 #include "antshelper.h"
 
+#include <QBuffer>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -186,6 +187,46 @@ static int runMain() {
             fail("INV-11", "data.subcommands must contain drift-check");
     }
 
+    // INV-9: only drift-check reads a request, so `list` and an unknown
+    // name never wait on an open stdin. ANTS-5109.
+    if (!AntsHelper::subcommandTakesRequest(QStringLiteral("drift-check")))
+        fail("INV-9", "drift-check must read a request");
+    if (AntsHelper::subcommandTakesRequest(QStringLiteral("list")))
+        fail("INV-9", "list must not read a request");
+    if (AntsHelper::subcommandTakesRequest(QStringLiteral("no-such-cmd")))
+        fail("INV-9", "an unknown subcommand must not read a request");
+
+    // INV-10: a request body is read up to kMaxRequestBytes and no
+    // further; more input sets tooLarge. ANTS-5109.
+    {
+        QByteArray small("{}");
+        QBuffer in(&small);
+        in.open(QIODevice::ReadOnly);
+        bool tooLarge = true;
+        if (AntsHelper::readRequest(in, &tooLarge) != small || tooLarge)
+            fail("INV-10", "a small request must read whole, not too large");
+    }
+    {
+        QByteArray big(AntsHelper::kMaxRequestBytes + 1, ' ');
+        QBuffer in(&big);
+        in.open(QIODevice::ReadOnly);
+        bool tooLarge = false;
+        const QByteArray got = AntsHelper::readRequest(in, &tooLarge);
+        if (!tooLarge)
+            fail("INV-10", "a request over the cap must set tooLarge");
+        if (got.size() > AntsHelper::kMaxRequestBytes)
+            fail("INV-10", "readRequest must keep at most kMaxRequestBytes");
+    }
+    {
+        QByteArray exact(AntsHelper::kMaxRequestBytes, ' ');
+        QBuffer in(&exact);
+        in.open(QIODevice::ReadOnly);
+        bool tooLarge = true;
+        if (AntsHelper::readRequest(in, &tooLarge).size() !=
+                AntsHelper::kMaxRequestBytes || tooLarge)
+            fail("INV-10", "a request exactly at the cap must be accepted");
+    }
+
     // INV-1 / INV-8: CMake gates the helper binary correctly.
     const std::string cmake = ants_test::slurpFile(SRC_CMAKELISTS);
     if (cmake.empty())
@@ -200,7 +241,7 @@ static int runMain() {
         fail("INV-8",
                     "ants-helper target must be gated on the option");
 
-    std::puts("OK local_subagent_framework: 9/9 invariants");
+    std::puts("OK local_subagent_framework: all invariants");
     return 0;
 }
 

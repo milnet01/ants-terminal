@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QIODevice>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
@@ -31,6 +32,24 @@ QJsonObject okObj(const QJsonObject &data) {
 QString jsonToCompactString(const QJsonObject &obj) {
     return QString::fromUtf8(
         QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+bool subcommandTakesRequest(const QString &cmd) {
+    return cmd == QStringLiteral("drift-check");
+}
+
+QByteArray readRequest(QIODevice &in, bool *tooLarge) {
+    // Read one byte past the cap: getting it means the body is too large.
+    QByteArray buf;
+    while (buf.size() <= kMaxRequestBytes) {
+        const QByteArray chunk = in.read(kMaxRequestBytes + 1 - buf.size());
+        if (chunk.isEmpty()) break;
+        buf.append(chunk);
+    }
+    const bool over = buf.size() > kMaxRequestBytes;
+    if (over) buf.truncate(kMaxRequestBytes);
+    if (tooLarge) *tooLarge = over;
+    return buf;
 }
 
 QJsonObject listSubcommands() {

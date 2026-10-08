@@ -42,10 +42,25 @@
 // user's own session, not setuid; an attacker with that UID has
 // already won. Surface noted here, not addressed.
 
+#include <QByteArray>
 #include <QJsonObject>
 #include <QString>
 
+class QIODevice;
+
 namespace AntsHelper {
+
+// A request body larger than this is a usage error (ANTS-5109).
+inline constexpr qint64 kMaxRequestBytes = 1 << 20;
+
+// Whether `cmd` reads a JSON request. `list` and unknown names take
+// none, so the dispatcher never waits on an open stdin for them
+// (ANTS-5109).
+bool subcommandTakesRequest(const QString &cmd);
+
+// Read `in` to EOF, keeping at most kMaxRequestBytes. Sets *tooLarge
+// when more input remained (ANTS-5109).
+QByteArray readRequest(QIODevice &in, bool *tooLarge);
 
 // drift-check: invoke `bash packaging/check-version-drift.sh` from
 // `repoRoot`. Returns the unified envelope. Sets `*exitCodeOut` to

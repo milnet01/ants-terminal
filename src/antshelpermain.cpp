@@ -62,19 +62,19 @@ QJsonObject parseRequest(const QString &raw, QString *errMsg) {
     return doc.object();
 }
 
-QString readStdin(bool *opened = nullptr) {
+QString readStdin(bool *opened, bool *tooLarge) {
+    *tooLarge = false;
     // If stdin is a TTY (interactive run, no pipe), reading would block
     // until the user hits Ctrl-D. The helper's INV-10 contract treats
     // "no piped input" the same as "empty {} input", so short-circuit.
     if (::isatty(fileno(stdin))) {
-        if (opened) *opened = false;
+        *opened = false;
         return {};
     }
     QFile f;
-    const bool ok = f.open(stdin, QIODevice::ReadOnly);
-    if (opened) *opened = ok;
-    if (!ok) return {};
-    return QString::fromUtf8(f.readAll());
+    *opened = f.open(stdin, QIODevice::ReadOnly);
+    if (!*opened) return {};
+    return QString::fromUtf8(AntsHelper::readRequest(f, tooLarge));
 }
 
 void printHelp() {
@@ -126,9 +126,28 @@ int main(int argc, char **argv) {
             jsonArg = args[i];
         }
     }
-    if (jsonArg == QStringLiteral("-") || jsonArg.isEmpty()) {
+    // ANTS-5109: only a subcommand that takes a request reads stdin, so
+    // `list` cannot wait on a caller's open, never-closed stdin.
+    const bool wantsStdin =
+        jsonArg == QStringLiteral("-") || jsonArg.isEmpty();
+    if (wantsStdin && !AntsHelper::subcommandTakesRequest(cmd)) {
+        jsonArg.clear();
+    } else if (wantsStdin) {
         bool stdinOpened = true;
-        jsonArg = readStdin(&stdinOpened);
+        bool tooLarge = false;
+        jsonArg = readStdin(&stdinOpened, &tooLarge);
+        if (tooLarge) {
+            const QString msg = QStringLiteral("request exceeds %1 bytes")
+                                    .arg(AntsHelper::kMaxRequestBytes);
+            QJsonObject err;
+            err.insert(QStringLiteral("ok"), false);
+            err.insert(QStringLiteral("error"), msg);
+            err.insert(QStringLiteral("code"),
+                       QStringLiteral("request_too_large"));
+            writeStdout(AntsHelper::jsonToCompactString(err));
+            writeStderr(msg);
+            return 2;
+        }
         // ANTS-1123 indie-review F7: a stdin open failure used to
         // silently produce empty input, masquerading as "no request
         // body." Surface it on the explicit `-` path (where the

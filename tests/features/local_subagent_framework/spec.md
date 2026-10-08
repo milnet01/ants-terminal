@@ -45,3 +45,9 @@ defaults OFF. See `docs/specs/ANTS-1116.md` for the full contract.
 - **INV-8** Source-grep INV-1 corollary: `CMakeLists.txt` declares
   `option(ANTS_ENABLE_HELPER_CLI ... OFF)` and gates an
   `add_executable(ants-helper ...)` block on that option.
+- **INV-9** `subcommandTakesRequest` is true for `drift-check` only.
+  So `list` or an unknown name never waits on an open stdin
+  (ANTS-5109).
+- **INV-10** `readRequest` keeps at most `kMaxRequestBytes` and sets
+  `tooLarge` when more input remains. A body exactly at the cap is
+  accepted (ANTS-5109).
