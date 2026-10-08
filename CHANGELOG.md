@@ -117,6 +117,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status-bar context meter comes back as soon as the Claude status does** (ANTS-5630)
+  After a brief moment where the Claude status was hidden, the meter
+  used to stay away until Claude's next reply, which could take a
+  minute or two. It now returns with the status. Reaches a running
+  terminal after a relaunch.
+
 - **Settings and Review Changes take their status colours from the theme, Review Changes cannot shrink below a usable size, and Settings' colour pickers open over Settings.** (ANTS-5109)
 
 - **`ants-terminal --help` names the main `--remote` commands instead of saying only `ls` works.** (ANTS-5109)

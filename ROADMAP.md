@@ -81190,7 +81190,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-10-01.
   Lanes: claude-integration.
 
-- 📋 [ANTS-5630] **The context meter vanishes after a brief state blip and is slow to appear.**
+- ✅ [ANTS-5630] **The context meter vanishes after a brief state blip and is slow to appear.**
   User report (2026-10-08): the meter takes a while to come up, and
   sometimes disappears and returns a minute or two later.
   Located (2026-10-08, locate-defect, not yet confirmed by a test):
@@ -81215,6 +81215,16 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   next prompt.
   Reload: a terminal binary change, so it reaches a running terminal on
   relaunch.
+  Resolved (2026-10-08): apply()'s visible path re-shows the meter when
+  contextTokens() > 0. Red first: Inv5ShownAgainAfterHidden failed on
+  the old code, passes on the fix. A live test would need a PTY-backed
+  terminal harness the repo lacks, so it is a source scrape like the
+  other status-bar wiring tests. Second suspect checked, no defect:
+  setShellPid zeroes tokens on purpose (stops tab A's figure showing on
+  tab B), then polls at once, and the poll parses the transcript in the
+  same call, so the meter returns on a tab switch without waiting. A
+  brand-new session shows no meter until its first reply, which is
+  expected.
   **Layman:** The context gauge in the status bar sometimes disappears for a minute or two, or takes a while to show up at all.
   Kind: fix.
   Source: user-request-2026-10-08.

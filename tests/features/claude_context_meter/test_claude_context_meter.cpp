@@ -113,6 +113,27 @@ TEST(ClaudeContextMeter, Inv5ShownOnTokensNotPercent) {
         << "a small session rounds to 0% and must still show";
 }
 
+// INV-5 — apply() hides the meter on Display::Hidden, so its visible path
+// must re-show it. Otherwise the meter stays gone after a brief state blip
+// until the next contextUpdated, which needs a new assistant reply
+// (ANTS-5630).
+TEST(ClaudeContextMeter, Inv5ShownAgainAfterHidden) {
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const size_t at = src.find("void ClaudeStatusBarController::apply() {");
+    ASSERT_NE(at, std::string::npos);
+    const std::string body = src.substr(at, src.find("\n}\n", at) - at);
+    const size_t hidden = body.find("if (d == claudestate::Display::Hidden)");
+    ASSERT_NE(hidden, std::string::npos);
+    const size_t visible = body.find("return;", hidden);
+    ASSERT_NE(visible, std::string::npos);
+    const std::string rest = body.substr(visible);
+    EXPECT_NE(rest.find("contextTokens() > 0"), std::string::npos)
+        << "the visible path must check for a known token count";
+    EXPECT_NE(rest.find("m_contextBar->show()"), std::string::npos)
+        << "the visible path must re-show the meter it hid";
+}
+
 // INV-6 — size, weight and outline.
 TEST(ClaudeContextMeter, Inv6ReadableMeter) {
     const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);

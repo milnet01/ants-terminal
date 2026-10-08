@@ -1381,6 +1381,11 @@ void ClaudeStatusBarController::apply() {
     // colour-only state encoding is no longer the sole signal.
     m_statusLabel->setAccessibleDescription(text);
     m_statusLabel->show();
+    // ANTS-5630 — the Hidden branch above hid the meter too. It keeps its
+    // last value and colour while hidden, so re-show it here rather than
+    // waiting for the next contextUpdated, which needs a new reply.
+    if (m_contextBar && m_integration && m_integration->contextTokens() > 0)
+        m_contextBar->show();
 }
 
 // ANTS-1226 — Passive model-tier recommender chip.

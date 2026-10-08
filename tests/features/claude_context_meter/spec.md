@@ -20,9 +20,10 @@ partially sighted, so the meter must be large and readable.
   percentage, with thousands separators, and advises `/compact` from 80%.
   *Test:* `Inv4TooltipNamesTheNumbers`.
 - **INV-5** — the meter is shown whenever the session has a non-zero token
-  count, even when the percentage rounds to 0. *Test:*
-  `Inv5ShownOnTokensNotPercent` (source scrape of the `contextUpdated`
-  handler).
+  count, even when the percentage rounds to 0, and again when the Claude
+  status returns from hidden. *Tests:* `Inv5ShownOnTokensNotPercent` (source
+  scrape of the `contextUpdated` handler) and `Inv5ShownAgainAfterHidden`
+  (source scrape of `apply()`'s visible path).
 - **INV-6** — the meter is readable: at least 150×22 px, bold text of at
   least 13 px reading `Context N%`, drawn with a dark outline so it contrasts
   with every fill colour. *Test:* `Inv6ReadableMeter` (source scrape).
