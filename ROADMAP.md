@@ -10229,7 +10229,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
   Lanes: mcp.
 
-- 📋 [ANTS-5105] **Performance pass findings for the AI dialog, LLM client and dispatcher (medium and low).**
+- ✅ [ANTS-5105] **Performance pass findings for the AI dialog, LLM client and dispatcher (medium and low).**
   Medium:
   - LlmClient returns ok with empty text for a 2xx reply that is
     neither SSE nor a known JSON shape, so the chat shows nothing and a
@@ -10344,6 +10344,12 @@ extends an existing item, that item carries it instead.
   lost-append-on-timeout half stays as designed: a timeout means another
   instance is hung. Still open (low): a runner that never calls done
   (left to its owner per ANTS-5009).
+  Resolved (2026-10-08): every point is done. The last one, a runner
+  that never calls done, is the owner's duty since ANTS-5009, and the
+  owner meets it: ReviewDialogBase's runner calls done from
+  LlmClient::finished, which fires on success, error, timeout and the
+  wall-clock deadline. Its only abort without done is in its destructor,
+  which disconnects and destroys the dispatcher with it.
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
