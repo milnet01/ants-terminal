@@ -10607,6 +10607,15 @@ extends an existing item, that item carries it instead.
   open: the installers reading before the lock, branch names in the
   hook prompt, dialog colours and sizes, ANTS-1145 INV-2a and the
   --remote help text.
+  Progress (2026-10-08): both hook installers and the Allowlist save now
+  hold ConfigWriteLock from before their read of settings.json to after
+  the write, so a writer landing in between is not overwritten;
+  writeClaudeSettings takes no lock of its own (concurrent_writer_lock
+  I6 and I7, red first). Found while there: that spec's Invariant 5
+  still names src/settingsdialog.cpp, though the installers moved to
+  src/claudesetup.cpp (ANTS-5558). Still open: branch names in the hook
+  prompt, dialog colours and sizes, ANTS-1145 INV-2a, the --remote help
+  text, and that Invariant 5 wording.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).

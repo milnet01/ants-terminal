@@ -117,6 +117,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Installing the Claude Code hooks, or saving the Allowlist, no longer overwrites a change another writer makes to settings.json at the same moment.** (ANTS-5109)
+
 - **Review Changes stays responsive while files are edited: it re-lists the whole tree only when a change could add a folder to watch.** (ANTS-5109)
 
 - **ants-helper list answers at once when stdin is left open, and a request body over 1 MiB is refused.** (ANTS-5109)

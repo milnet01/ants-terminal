@@ -272,6 +272,25 @@ bool ClaudeAllowlistDialog::saveSettings() {
     // other key the user had. Rotate the corrupt file aside first so
     // the user can hand-recover. 0.7.12 /indie-review fix — the same
     // silent-data-loss pattern Config::load had.
+
+    // Create .claude directory if needed; the lock file lives in it.
+    if (!QDir().mkpath(QFileInfo(m_settingsPath).absolutePath()))
+        return false;
+
+    // Serialize against concurrent writers. The hook installers in
+    // claudesetup.cpp write the same file; an Allowlist save racing a hook
+    // install could lose either the permissions block or the hooks block.
+    // Held from before the read (ANTS-5109), so a writer landing between
+    // this read and the write below is not overwritten.
+    ConfigWriteLock writeLock(m_settingsPath);
+    if (!writeLock.acquired()) {
+        ANTS_LOG(DebugLog::Claude,
+                 "allowlist saveSettings: could not acquire write lock on %s "
+                 "within 5 s — refusing to save (another writer is active)",
+                 qUtf8Printable(m_settingsPath));
+        return false;
+    }
+
     QJsonObject root;
     {
         QFile file(m_settingsPath);
@@ -325,24 +344,6 @@ bool ClaudeAllowlistDialog::saveSettings() {
     if (!deny.isEmpty()) perms["deny"] = deny;
     if (!ask.isEmpty()) perms["ask"] = ask;
     root["permissions"] = perms;
-
-    // Create .claude directory if needed
-    if (!QDir().mkpath(QFileInfo(m_settingsPath).absolutePath()))
-        return false;
-
-    // Serialize against concurrent writers. settings.local.json is the
-    // same path that SettingsDialog::installClaudeHooks /
-    // installClaudeGitContextHook write into; an Allowlist save racing
-    // a hook install previously could lose either the permissions
-    // block or the hooks block via QSaveFile last-rename-wins.
-    ConfigWriteLock writeLock(m_settingsPath);
-    if (!writeLock.acquired()) {
-        ANTS_LOG(DebugLog::Claude,
-                 "allowlist saveSettings: could not acquire write lock on %s "
-                 "within 5 s — refusing to save (another writer is active)",
-                 qUtf8Printable(m_settingsPath));
-        return false;
-    }
 
     // Atomic write with 0600 permissions.
     //

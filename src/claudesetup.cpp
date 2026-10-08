@@ -96,15 +96,18 @@ Outcome readClaudeSettings(const QString &settingsPath, QJsonObject &root) {
                                           : backup));
 }
 
-// Writes ~/.claude/settings.json under the shared writer lock, owner-only.
-// Serialised against concurrent writers (the Allowlist dialog, another
-// install, `jq -i` by the user): QSaveFile's last-rename-wins would otherwise
-// drop a sibling writer's permissions block.
+// The refusal when another writer (the Allowlist dialog, another install)
+// holds the settings.json lock.
+Outcome settingsLockBusy(const QString &settingsPath) {
+    return fail(QStringLiteral("Another writer holds the lock on %1 — try "
+                               "again in a moment.").arg(settingsPath));
+}
+
+// Writes ~/.claude/settings.json, owner-only. The caller holds
+// ConfigWriteLock on settingsPath from before its read (ANTS-5109): a lock
+// taken only here let a writer landing between the read and this write be
+// overwritten, and taking a second one here would time out against it.
 Outcome writeClaudeSettings(const QString &settingsPath, const QJsonObject &root) {
-    ConfigWriteLock writeLock(settingsPath);
-    if (!writeLock.acquired())
-        return fail(QStringLiteral("Another writer holds the lock on %1 — try "
-                                   "again in a moment.").arg(settingsPath));
     QSaveFile settingsOut(settingsPath);
     if (!settingsOut.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return fail(QStringLiteral("Could not write %1").arg(settingsPath));
@@ -279,6 +282,11 @@ Outcome installStatusHooks() {
     if (!wrote.ok) return wrote;
 
     const QString settingsPath = claudeSettingsPath();
+    // ANTS-5109 — one hold across read, merge and write. The lock file sits
+    // beside settings.json, so its directory must exist first.
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    ConfigWriteLock writeLock(settingsPath);
+    if (!writeLock.acquired()) return settingsLockBusy(settingsPath);
     QJsonObject root;
     Outcome read = readClaudeSettings(settingsPath, root);
     if (!read.ok) return read;
@@ -354,6 +362,10 @@ Outcome installGitContextHook() {
     if (!wrote.ok) return wrote;
 
     const QString settingsPath = claudeSettingsPath();
+    // ANTS-5109 — one hold across read, merge and write, as installStatusHooks.
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    ConfigWriteLock writeLock(settingsPath);
+    if (!writeLock.acquired()) return settingsLockBusy(settingsPath);
     QJsonObject root;
     Outcome read = readClaudeSettings(settingsPath, root);
     if (!read.ok) return read;

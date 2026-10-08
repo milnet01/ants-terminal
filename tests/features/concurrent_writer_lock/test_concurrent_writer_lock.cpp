@@ -16,6 +16,7 @@
 
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 #include <fcntl.h>
 #include <sys/file.h>
@@ -149,6 +150,13 @@ void sourceGrepTests() {
                "I4/allowlist-saveSettings-constructs-lock");
         expect(src.find("writeLock.acquired()") != std::string::npos,
                "I4/allowlist-checks-acquired");
+        // I7 (ANTS-5109) — the lock is held from before the read, so a
+        // writer landing between the read and the write is not overwritten.
+        const size_t lockIdx = src.find("ConfigWriteLock writeLock(m_settingsPath)");
+        const size_t readIdx = src.find("const QByteArray raw = file.readAll();");
+        expect(lockIdx != std::string::npos && readIdx != std::string::npos &&
+                   lockIdx < readIdx,
+               "I7/allowlist-lock-before-read");
     }
 
     {
@@ -172,6 +180,33 @@ void sourceGrepTests() {
                "got " + std::to_string(count("writeClaudeSettings(settingsPath, root)")));
         expect(src.find("writeLock.acquired()") != std::string::npos,
                "I5/claudesetup-checks-acquired");
+
+        // I6 (ANTS-5109) — each installer takes the lock before it reads, and
+        // holds it through the write; the writer helper takes none, since a
+        // second flock from this process would time out against the first.
+        auto positions = [&src](const std::string &needle) {
+            std::vector<size_t> at;
+            for (size_t pos = src.find(needle); pos != std::string::npos;
+                 pos = src.find(needle, pos + needle.size()))
+                at.push_back(pos);
+            return at;
+        };
+        const auto locks = positions("ConfigWriteLock writeLock(settingsPath)");
+        const auto reads = positions("readClaudeSettings(settingsPath, root)");
+        bool ordered = locks.size() == 2 && reads.size() == 2;
+        for (size_t k = 0; ordered && k < 2; ++k) {
+            ordered = locks[k] < reads[k] && (k == 0 || reads[k - 1] < locks[k]);
+        }
+        expect(ordered, "I6/claudesetup-installers-lock-before-read",
+               "locks " + std::to_string(locks.size()) + ", reads " +
+                   std::to_string(reads.size()));
+        const size_t writerDef = src.find("Outcome writeClaudeSettings(const QString");
+        const size_t writerEnd =
+            writerDef == std::string::npos ? writerDef : src.find("\n}\n", writerDef);
+        expect(writerDef != std::string::npos && writerEnd != std::string::npos &&
+                   src.substr(writerDef, writerEnd - writerDef)
+                           .find("ConfigWriteLock") == std::string::npos,
+               "I6/claudesetup-writer-takes-no-lock");
     }
 }
 

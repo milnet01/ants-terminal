@@ -85,6 +85,19 @@ guard.
 `installClaudeGitContextHook` must each construct a
 `ConfigWriteLock` on `settingsPath` before the QSaveFile commit.
 
+### Invariant 6 — the hook installers hold the lock from before the read
+
+In `src/claudesetup.cpp`, each of the two installers constructs
+`ConfigWriteLock writeLock(settingsPath)` before its
+`readClaudeSettings(settingsPath, root)` call and holds it through the
+write. `writeClaudeSettings` takes no lock of its own: a second `flock`
+from the same process would time out against the first (ANTS-5109).
+
+### Invariant 7 — the Allowlist save holds the lock from before the read
+
+In `src/claudeallowlist.cpp` `saveSettings`, the lock is constructed
+before the existing file is read (ANTS-5109).
+
 ## How this test anchors to reality
 
 Runtime portion:
@@ -99,7 +112,7 @@ Runtime portion:
    collapse; processes are the only honest test.)
 5. Destruct A. Construct C in the same path — assert C.acquired().
 
-Source-grep portion: I3, I4, I5 above.
+Source-grep portion: I3 to I7 above.
 
 ## Regression history
 
