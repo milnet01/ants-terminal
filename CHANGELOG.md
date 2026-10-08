@@ -120,8 +120,8 @@ for security-relevant changes.
 - **`ants-terminal --help` names the main `--remote` commands instead of saying only `ls` works.** (ANTS-5109)
 
 - **The git-context hook prints `<` and `>` in a branch or upstream name as `_`, so the name can no longer end the block early.** (ANTS-5109)
-  Existing installs show as an older version in Settings; Install again
-  picks up the fix with no relaunch.
+  After the terminal is updated and relaunched, Settings shows an
+  existing install as an older version; Install again picks up the fix.
 
 - **Installing the Claude Code hooks, or saving the Allowlist, no longer overwrites a change another writer makes to settings.json at the same moment.** (ANTS-5109)
 
