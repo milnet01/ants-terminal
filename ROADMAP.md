@@ -90880,6 +90880,17 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: in-session-2026-09-30 (handoff note).
 
+- 📋 [ANTS-5627] **Two test contracts omit tests their directories already run.**
+  tests/features/plaintext_prompt_warning/spec.md lists INV-1..3 but not
+  Ants5105SendReenabledAfterRefusalAndReset or Ants5105ReplyStreamsIntoChat.
+  tests/features/config_parse_failure_guard/spec.md has no invariant for
+  Ants5106SaveKeepsANewerSchemaStamp. Add one clause each, naming the test.
+  Found 2026-10-08 while adding INV-3 / Invariant 6 to those files.
+  **Layman:** Two test descriptions are missing entries for tests that already exist.
+  Kind: doc-fix.
+  Source: in-session-2026-10-08.
+  Lanes: tests.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
