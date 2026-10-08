@@ -35,10 +35,12 @@ QString cacheDirLocal(const QString &canonProject) {
 
 // path:line:col: (error|warning|note): message
 // Column is optional (some clang/make/ld lines omit it). Path matches
-// up to the first colon followed by a digit.
+// up to the first colon followed by a digit. ANTS-5110 — `[ \t]`, not `\s`:
+// `\s*$` ate the newline and a blank line after it, so a note after a blank
+// line read as adjacent and folded into the previous error.
 const QRegularExpression &gccLineRe() {
     static const QRegularExpression re(
-        QStringLiteral(R"(^([^:\n]+):(\d+)(?::(\d+))?:\s+(error|warning|note):\s*(.+?)\s*$)"),
+        QStringLiteral(R"(^([^:\n]+):(\d+)(?::(\d+))?:[ \t]+(error|warning|note):[ \t]*(.+?)[ \t]*$)"),
         QRegularExpression::MultilineOption);
     return re;
 }
@@ -63,6 +65,12 @@ void appendOrFoldError(QList<ParsedError> &errors,
         // lastSeverity remains "error" so a subsequent note also folds
         return;
     }
+    // ANTS-5110 — the notes of an error past kMaxErrors belong to that
+    // uncounted error, not to the last one kept.
+    if (candidate.severity == QLatin1String("note") &&
+        lastSeverity == QLatin1String("dropped-error")) {
+        return;
+    }
 
     if (candidate.severity == QLatin1String("error")) {
         ++errorsCount;
@@ -72,8 +80,10 @@ void appendOrFoldError(QList<ParsedError> &errors,
                 clipped.message.truncate(kMessageCharCap);
             }
             errors.append(clipped);
+            lastSeverity = QStringLiteral("error");
+        } else {
+            lastSeverity = QStringLiteral("dropped-error");
         }
-        lastSeverity = QStringLiteral("error");
     } else {
         ++warningsCount;
         lastSeverity = QStringLiteral("warning");
@@ -278,7 +288,7 @@ ParsedBuild fromJson(const QJsonObject &obj, bool *okOut) {
     }
     const QJsonArray errs =
         obj.value(QStringLiteral("errors")).toArray();
-    for (const QJsonValue &v2 : errs) {
+    for (const auto &v2 : errs) {
         const QJsonObject eo = v2.toObject();
         ParsedError e;
         e.file     = eo.value(QStringLiteral("file")).toString();

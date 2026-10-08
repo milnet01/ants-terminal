@@ -6,6 +6,7 @@
 #include "readlog.h"
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QRegularExpression>
@@ -17,10 +18,22 @@ namespace ReadLog {
 
 namespace {
 
-// Serialised contribution of one line to the JSON lines[] array:
-// the UTF-8 text + 2 quotes + 1 comma (escapes are rare in log text;
-// a small under-count keeps the soft cap soft, per the spec).
-int lineCost(const QByteArray &utf8) { return utf8.size() + 3; }
+// Serialised contribution of one line to the JSON lines[] array: the
+// UTF-8 text + 2 quotes + 1 comma + its JSON escapes (ANTS-5110 — a line
+// of quotes or control bytes serialises at up to six times its size).
+int lineCost(const QByteArray &utf8) {
+    int cost = utf8.size() + 3;
+    for (const char ch : utf8) {
+        const auto u = static_cast<unsigned char>(ch);
+        if (u == '"' || u == '\\' || u == '\b' || u == '\f' || u == '\n'
+            || u == '\r' || u == '\t') {
+            cost += 1;                 // \" \\ \b \f \n \r \t
+        } else if (u < 0x20) {
+            cost += 5;                 // \u00XX
+        }
+    }
+    return cost;
+}
 
 // The bracket-prefix value `since` compares against: the text between a
 // leading '[' and the next ']'. Returns false when the line has no such
@@ -102,7 +115,19 @@ QJsonObject filter(const QString &path, const Options &opts) {
     qint64 cursorPos = startOffset;  // advances past each COMPLETE line
     int oversizeSkipped = 0;         // lines longer than maxBytes (B-INV-11)
 
+    // ANTS-5110 — a wall-clock budget, so a huge log cannot hold the worker.
+    // Checked every 256 lines, between lines, so `cursor` resumes the scan.
+    const qint64 budgetMs = opts.timeBudgetMs > 0 ? opts.timeBudgetMs
+                                                  : kDefaultTimeBudgetMs;
+    QElapsedTimer clock;
+    clock.start();
+    bool budgetExhausted = false;
+
     while (!f.atEnd()) {
+        if (scanned > 0 && (scanned & 255) == 0 && clock.elapsed() > budgetMs) {
+            budgetExhausted = true;
+            break;
+        }
         const qint64 lineStart = f.pos();
         // Never hold more than maxBytes of one line: a longer line is
         // drained in maxBytes pieces and skipped whole.
@@ -167,6 +192,10 @@ QJsonObject filter(const QString &path, const Options &opts) {
     if (oversizeSkipped > 0) {
         env["truncated"] = true;
         env["lines_oversize_skipped"] = oversizeSkipped;
+    }
+    if (budgetExhausted) {
+        env["truncated"] = true;
+        env["time_budget_exhausted"] = true;
     }
     if (capClamped) env["bytes_cap_clamped"] = true;
     env["cursor"] = QString::number(cursorPos);

@@ -5,7 +5,7 @@
 
 GTest cases against the engine in isolation (no GUI, no QProcess).
 
-## Cases (TDE-1..TDE-8)
+## Cases (TDE-1..TDE-9)
 
 | # | Case | Asserts |
 |---|---|---|
@@ -16,6 +16,7 @@ GTest cases against the engine in isolation (no GUI, no QProcess).
 | TDE-5 | ResolveReturnsPath | `resolve("sh")` returns non-empty path; `exists("sh")` is true |
 | TDE-6 | ClearCacheResets | INV-11 — `clearCache()` → cacheSize == 0; next call repopulates |
 | TDE-7 | RepeatProbesAreFree | INV-1 — 1000 repeat `exists("sh")` complete in < 5 ms |
+| TDE-9 | MissExpiresSoInstalledToolIsFound | INV-3 (ANTS-5110) — with `setMissTtlMs(0)`, a tool created on PATH after a miss is found |
 | TDE-8 | AuditDialogToolExistsDelegates | source-grep INV-8 — `auditdialog.cpp`'s `toolExists` body calls `ToolDetectionEngine::exists` and contains no `QProcess` |
 
 ## Build wiring

@@ -18,6 +18,9 @@ namespace ReadLog {
 constexpr int kDefaultBytesCap = 512 * 1024;       // 512 KiB
 constexpr int kMaxBytesCeiling = 4 * 1024 * 1024;  // 4 MiB
 constexpr int kMaxTail         = 10000;
+// ANTS-5110 — wall-clock budget for one scan; past it the scan stops
+// between lines with time_budget_exhausted:true, resumable from `cursor`.
+constexpr int kDefaultTimeBudgetMs = 5000;
 
 struct Options {
     QString include;            // QRegularExpression; empty = no filter
@@ -28,12 +31,13 @@ struct Options {
     int     maxBytes = 0;       // <=0 = kDefaultBytesCap; clamped to ceiling
     bool    hasSinceCursor = false;
     QString sinceCursor;        // opaque byte-offset token (decimal)
+    int     timeBudgetMs = 0;   // <=0 = kDefaultTimeBudgetMs
 };
 
 // Filter the already-resolved file at `path`. Returns the read_log
 // response envelope:
 //   {ok:true, path, lines[], matched, scanned, returned, truncated,
-//    lines_dropped?, bytes_cap_clamped?, cursor,
+//    lines_dropped?, bytes_cap_clamped?, time_budget_exhausted?, cursor,
 //    cursor_stale?, stale_reason?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   not_found  — file cannot be opened.

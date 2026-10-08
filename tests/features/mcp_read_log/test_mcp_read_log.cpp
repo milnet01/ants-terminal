@@ -262,3 +262,53 @@ TEST(McpReadLog, OversizedLineIsSkippedNotHeld) {
     EXPECT_EQ(linesOf(e2), (QStringList{"first"}));
     EXPECT_EQ(e2.value("cursor").toString().toLongLong(), 6);
 }
+
+// ANTS-5110 — a line's cost counts its JSON escapes: two lines of 300
+// quotes are 606 bytes raw but 1206 serialised, so a 1000-byte cap keeps one.
+TEST(McpReadLog, ByteCapCountsJsonEscapes) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString quotes(300, QLatin1Char('"'));
+    const QString p = writeLog(d, "quotes.log", {quotes, quotes});
+    ReadLog::Options o; o.maxBytes = 1000;
+    const QJsonObject env = ReadLog::filter(p, o);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("returned").toInt(), 1);
+    EXPECT_EQ(env.value("lines_dropped").toInt(), 1);
+}
+
+// ANTS-5110 — past its wall-clock budget a scan stops between lines with
+// time_budget_exhausted:true, and its cursor resumes exactly where it stopped.
+TEST(McpReadLog, TimeBudgetStopsAtALineAndResumes) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    constexpr int kLines = 300000;
+    const QString p = d.path() + "/huge.log";
+    {
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        QByteArray chunk;
+        for (int i = 0; i < kLines; ++i) {
+            chunk += "line " + QByteArray::number(i) + '\n';
+        }
+        f.write(chunk);
+    }
+    ReadLog::Options o; o.timeBudgetMs = 1; o.tail = 1;
+    const QJsonObject first = ReadLog::filter(p, o);
+    ASSERT_TRUE(first.value("ok").toBool());
+    ASSERT_TRUE(first.value("time_budget_exhausted").toBool())
+        << "a 300000-line scan finished inside 1 ms, or no budget applies";
+    EXPECT_TRUE(first.value("truncated").toBool());
+    const int scanned1 = first.value("scanned").toInt();
+    EXPECT_LT(scanned1, kLines);
+
+    ReadLog::Options rest; rest.tail = 1;
+    rest.hasSinceCursor = true;
+    rest.sinceCursor = first.value("cursor").toString();
+    const QJsonObject second = ReadLog::filter(p, rest);
+    ASSERT_TRUE(second.value("ok").toBool());
+    EXPECT_FALSE(second.contains("time_budget_exhausted"));
+    EXPECT_EQ(scanned1 + second.value("scanned").toInt(), kLines)
+        << "the cursor lost or repeated lines";
+    EXPECT_EQ(linesOf(second), (QStringList{"line 299999"}));
+}

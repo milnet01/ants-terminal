@@ -10596,7 +10596,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).
   Lanes: diffviewer, settings.
 
-- 📋 [ANTS-5110] **Performance pass findings for the debug log, read_log, build cache and tool detection (medium and low).**
+- ✅ [ANTS-5110] **Performance pass findings for the debug log, read_log, build cache and tool detection (medium and low).**
   Filed separately: ANTS-5061.
   Medium:
   - DebugLog checks its size cap only when it opens the file, so a
@@ -10636,6 +10636,16 @@ extends an existing item, that item carries it instead.
   JSON-escape line cost and wall-clock budget, ANTS_LOG_ALWAYS with no
   category active, two instances' rotation, and tool detection caching
   not-found until restart.
+  Resolved (2026-10-08): the remaining lows are fixed. The build-log
+  regex no longer crosses a blank line, and notes of an error past the
+  50 cap are dropped. read_log's line cost counts JSON escapes, and a
+  scan stops after 5 s with time_budget_exhausted:true, resumable from
+  its cursor (ANTS-1855 INV-13). An ANTS_LOG_ALWAYS line with no
+  category on goes to stderr. DebugLog::write reopens its path when its
+  file was renamed away, so two instances' rotation no longer appends
+  to or deletes a live log. ToolDetectionEngine re-probes a miss after
+  30 s (ANTS-1286 INV-3). Seven new tests, each red against the old
+  code; full default preset 5452/5452.
   **Layman:** Smaller diagnostics fixes, including a debug log that can grow until the disk fills.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).

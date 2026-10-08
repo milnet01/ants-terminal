@@ -19,7 +19,21 @@ namespace {
 // any prior .1) before the new log is opened. One generation is enough
 // for typical "I just hit the bug, let me grab the log" workflows
 // without growing unboundedly across forgotten ANTS_DEBUG=all sessions.
-constexpr qint64 kMaxLogBytes = 10 * 1024 * 1024;
+constexpr qint64 kMaxLogBytes = qint64(10) * 1024 * 1024;
+
+// The path the open log was opened at. ANTS-5110 — another instance's
+// rotation renames that file to debug.log.1 under us; write() sees the path
+// no longer names our fd and reopens, so we never append to (and later
+// delete) a generation that has been rotated away.
+QByteArray g_openPath;
+
+bool fdStillAtPath(int fd, const QByteArray &path) {
+    struct stat atFd{};
+    struct stat atPath{};
+    if (fd < 0 || ::fstat(fd, &atFd) != 0) return false;
+    if (::stat(path.constData(), &atPath) != 0) return false;
+    return atFd.st_dev == atPath.st_dev && atFd.st_ino == atPath.st_ino;
+}
 } // namespace
 
 std::mutex DebugLog::s_mutex;
@@ -94,7 +108,8 @@ void DebugLog::openLogFileLocked() {
     // argument rather than umask(0077): the umask is process-wide, so files
     // other threads created while it was set took the wrong mode.
     // Append — don't truncate; user can clear() on demand.
-    const int fd = ::open(path.toLocal8Bit().constData(),
+    g_openPath = path.toLocal8Bit();
+    const int fd = ::open(g_openPath.constData(),
                           O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
     if (fd < 0 || !s_file.open(fd, QIODevice::WriteOnly | QIODevice::Append
                                        | QIODevice::Text,
@@ -172,6 +187,10 @@ void DebugLog::write(Category c, const QString &message) {
         .arg(escapeForLog(SecretRedact::scrub(message).text))
         .toUtf8();
 
+    if (s_file.isOpen() && !fdStillAtPath(s_file.handle(), g_openPath)) {
+        s_file.close();
+        openLogFileLocked();
+    }
     if (s_file.isOpen()) {
         s_file.write(line);
         s_file.flush();
@@ -183,7 +202,9 @@ void DebugLog::write(Category c, const QString &message) {
             openLogFileLocked();
         }
     }
-    if (s_alsoStderr) {
+    // ANTS-5110 — with no category on there is no log file, and an
+    // ANTS_LOG_ALWAYS line went nowhere; stderr is the sink left.
+    if (s_alsoStderr || (c == None && !s_file.isOpen())) {
         fwrite(line.constData(), 1, line.size(), stderr);
     }
 }

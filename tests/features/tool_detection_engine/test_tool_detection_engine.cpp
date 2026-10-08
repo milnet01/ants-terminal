@@ -8,7 +8,9 @@
 
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -119,6 +121,31 @@ TEST(ToolDetectionEngine, RepeatProbesAreFree) {
     EXPECT_LT(elapsedMs, 200)
         << "1000 cache-hit probes should complete well under 200 ms; got "
         << elapsedMs << " ms (INV-1)";
+}
+
+// TDE-9 — ANTS-5110: a cached miss expires, so a tool installed while the
+// terminal runs is found without a restart. A hit still never re-probes.
+TEST(ToolDetectionEngine, MissExpiresSoInstalledToolIsFound) {
+    QTemporaryDir bin;
+    ASSERT_TRUE(bin.isValid());
+    PathScope scope;
+    scope.set(bin.path().toLocal8Bit() + ":" + scope.saved);
+    TDE::clearCache();
+    TDE::setMissTtlMs(0);
+    const QString tool = QStringLiteral("ants-5110-installed-later");
+    EXPECT_FALSE(TDE::exists(tool));
+
+    QFile f(bin.path() + "/" + tool);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("#!/bin/sh\n");
+    f.close();
+    ASSERT_TRUE(f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                 | QFileDevice::ExeOwner));
+
+    const bool found = TDE::exists(tool);
+    TDE::setMissTtlMs(-1);
+    TDE::clearCache();
+    EXPECT_TRUE(found) << "a not-found result was cached for good";
 }
 
 // TDE-8 — INV-8 source-grep: AuditDialog::toolExists delegates.

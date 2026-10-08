@@ -37,6 +37,11 @@ dispatch are locked by source-scrape.
 - **B-INV-11** — a line longer than `max_bytes` is never held whole: it is
   skipped, counted in `lines_oversize_skipped` with `truncated:true`, and the
   cursor passes it; one with no newline yet holds the cursor at its first byte.
+- **B-INV-12** — a line's cost against `max_bytes` counts its JSON
+  escapes, not only its raw bytes (ANTS-5110).
+- **B-INV-13** — a scan past its wall-clock budget stops between lines with
+  `time_budget_exhausted:true`, and its `cursor` resumes the scan
+  (ANTS-1855 INV-13).
 - **B-not_found** — an unopenable path → `{ok:false, code:"not_found"}`.
 
 ## Test plan
