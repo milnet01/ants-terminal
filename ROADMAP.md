@@ -81255,6 +81255,22 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-10-08.
   Lanes: statusbar, claude.
 
+- 📋 [ANTS-5631] **The context meter keeps its pre-compact reading until Claude's next reply.**
+  Located 2026-10-08: parseTranscriptTail (src/claudeintegration.cpp)
+  takes the newest transcript entry carrying message.usage, and
+  parseTranscriptForState updates the meter only when that count is
+  above 0. The isCompactSummary entry is skipped and no code reads a
+  compact boundary, so the meter shows the last pre-compact reply's
+  figure until the first reply after the compact. Not yet checked:
+  whether Claude Code's compact boundary or summary entry carries a
+  token count. Fix: treat the compact boundary as the newest reading,
+  using its count if it has one, else hiding the meter until the next
+  reply. The claude_context_meter spec has no compaction invariant.
+  **Layman:** After a compact the context gauge still shows the old, high figure until Claude answers again.
+  Kind: fix.
+  Source: user-request-2026-10-08.
+  Lanes: statusbar, claude.
+
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
 Run several Claude Code sessions on one project at once: an orchestrator deals
