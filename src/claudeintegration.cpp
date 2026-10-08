@@ -14935,7 +14935,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "pkg/ (packaging/obs/, packaging/flatpak/ — the "
                         "multi-distro layout), and the legacy *.appdata.xml "
                         "spelling, which is probed after every *.metainfo.xml "
-                        "candidate so the current name always wins.");
+                        "candidate so the current name always wins. "
+                        "ANTS-5106: standards_files keeps a sorted prefix "
+                        "of 5 KiB of paths so the cache entry fits; a cut "
+                        "adds standards_files_truncated:true and "
+                        "standards_files_total.");
                     t["selection_hint"] = QStringLiteral(
                         "Use as first call when you need to locate "
                         "ROADMAP/CHANGELOG/specs/standards in an "

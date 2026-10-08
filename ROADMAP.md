@@ -10355,7 +10355,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
   Lanes: ai, llm.
 
-- 📋 [ANTS-5106] **Performance pass findings for config, sessions, project settings and session memory (medium and low).**
+- ✅ [ANTS-5106] **Performance pass findings for config, sessions, project settings and session memory (medium and low).**
   Filed separately: ANTS-5030, 5031.
   Medium:
   - ProjectSettings::detect counts only source files against its
@@ -10410,6 +10410,19 @@ extends an existing item, that item carries it instead.
   (config_parse_failure_guard Invariant 6, red first). Still open (low):
   synchronous startup decoding of saved tabs, and the ANTS-1430 RAM
   budget and unbounded standards list.
+  Progress (2026-10-08): SessionManager::restore() no longer copies an
+  enveloped file's payload; it reads it in place with
+  QByteArray::fromRawData (d6f4ecb4). The project_layout envelope's
+  standards_files keeps a sorted prefix within kMaxStandardsFilesBytes
+  (5 KiB) and announces a cut with standards_files_truncated and
+  standards_files_total, so the envelope fits session_memory's 16 KiB
+  value cap and stays cached (mcp_project_layout_scan INV-7, red
+  first). ANTS-1430's RAM budget section is rewritten to match.
+  Not done, by decision: moving startup decoding off the GUI thread.
+  Measured 2026-10-08 on this machine: 27 saved tabs, 16,566 bytes
+  compressed in total, so decoding them is not noticeable. Restoring
+  tabs lazily would let the 30-second save overwrite a tab not yet
+  restored. Reopen if a slow startup is measured.
   **Layman:** Smaller settings and session fixes, including two Ants windows corrupting each other's saved tabs.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).

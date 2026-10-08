@@ -359,7 +359,23 @@ int countLinesProbe(const QString &absPath) {
     return n;
 }
 
-void scanStandardsFallback(const QString &cwd, QStringList &out,
+// ANTS-5106 — append `rel` while the kept paths fit
+// kMaxStandardsFilesBytes, counting each as its JSON string plus a
+// comma. Once one does not fit, nothing more is kept, so the list stays
+// a sorted prefix; the caller still counts every file.
+bool keepWithinBudget(QStringList &out, int &usedBytes, const QString &rel) {
+    if (usedBytes < 0) return false;
+    const int cost = int(rel.toUtf8().size()) + 3;
+    if (usedBytes + cost > kMaxStandardsFilesBytes) {
+        usedBytes = -1;
+        return false;
+    }
+    usedBytes += cost;
+    out.append(rel);
+    return true;
+}
+
+void scanStandardsFallback(const QString &cwd, QStringList &out, int &total,
                            QStringList &probed, QStringList &discovered) {
     // Marker so isStale picks up future additions / standards-name renames.
     probed.append(QStringLiteral("docs/*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*.md"));
@@ -375,13 +391,15 @@ void scanStandardsFallback(const QString &cwd, QStringList &out,
         d.entryList(QStringList{QStringLiteral("*.md")},
                     QDir::Files | QDir::NoDotAndDotDot,
                     QDir::Name);
+    int usedBytes = 0;
     for (const QString &e : entries) {
         if (!rx.match(e).hasMatch()) continue;
         const QString rel = docsDir + QLatin1Char('/') + e;
         if (countLinesProbe(cwd + QLatin1Char('/') + rel)
             < kStandardsFallbackMinLines) continue;
-        out.append(rel);
-        discovered.append(rel);
+        ++total;
+        if (keepWithinBudget(out, usedBytes, rel))
+            discovered.append(rel);
     }
 }
 
@@ -391,15 +409,19 @@ void scanStandardsFallback(const QString &cwd, QStringList &out,
 // is a standard, so there's no name-regex / min-lines filter. Populates
 // standardsFiles only; the dir itself is already in discovered[] (scanDir).
 void scanStandardsDir(const QString &cwd, const QString &standardsRel,
-                      QStringList &out) {
+                      QStringList &out, int &total) {
     QDir d(cwd + QLatin1Char('/') + standardsRel);
     if (!d.exists()) return;
     const auto entries =
         d.entryList(QStringList{QStringLiteral("*.md")},
                     QDir::Files | QDir::NoDotAndDotDot,
                     QDir::Name);
+    total = int(entries.size());
+    int usedBytes = 0;
     for (const QString &e : entries)
-        out.append(standardsRel + QLatin1Char('/') + e);
+        if (!keepWithinBudget(out, usedBytes,
+                              standardsRel + QLatin1Char('/') + e))
+            break;
 }
 
 void scanAppStream(const QString &cwd, QString &out,
@@ -518,9 +540,11 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
     // net, not a substitute: a project shipping docs/standards/ keeps
     // standards_dir as the primary signal AND now lists the dir's *.md.
     if (!env.standardsDir.isEmpty()) {
-        scanStandardsDir(absoluteCwd, env.standardsDir, env.standardsFiles);
+        scanStandardsDir(absoluteCwd, env.standardsDir, env.standardsFiles,
+                         env.standardsFilesTotal);
     } else {
         scanStandardsFallback(absoluteCwd, env.standardsFiles,
+                              env.standardsFilesTotal,
                               env.probedPaths, env.discovered);
     }
     for (const QString &cand : kAdrCandidates) {
@@ -604,6 +628,11 @@ QJsonObject toJson(const LayoutEnvelope &env) {
     QJsonArray sfiles;
     for (const auto &p : env.standardsFiles) sfiles.append(p);
     root[QStringLiteral("standards_files")] = sfiles;
+    // ANTS-5106 — emitted only when kMaxStandardsFilesBytes cut the list.
+    if (env.standardsFilesTotal > env.standardsFiles.size()) {
+        root[QStringLiteral("standards_files_truncated")] = true;
+        root[QStringLiteral("standards_files_total")] = env.standardsFilesTotal;
+    }
     return root;
 }
 
@@ -659,6 +688,9 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
     const QJsonArray sfiles =
         obj.value(QStringLiteral("standards_files")).toArray();
     for (const auto &v : sfiles) env.standardsFiles.append(v.toString());
+    env.standardsFilesTotal =
+        obj.value(QStringLiteral("standards_files_total"))
+            .toInt(int(env.standardsFiles.size()));
     return env;
 }
 

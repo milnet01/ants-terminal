@@ -43,6 +43,13 @@ constexpr int kFormatSniffBytes = 4096;
 //   v7 = ANTS-4439 — the AppStream probe was single-level, so a project packaging for more than one distro (packaging/obs/, packaging/flatpak/) reported appstream_metainfo:"", indistinguishable from shipping no AppStream metadata at all. Widened to one level under packaging/ and pkg/, and to the legacy *.appdata.xml spelling (probed after every *.metainfo.xml candidate, so the current name still wins). Same widening-needs-a-bump case ANTS-1620 already paid for once on the ANTS-1493 set: without it, cached envelopes keep the empty answer and the narrow probed_paths[] echo until 7-day TTL expiry
 constexpr int kProbeSetVersion  = 7;
 
+// ANTS-5106 — the envelope is cached through session_memory, which
+// refuses a value over 16 KiB (SessionMemoryEngine::kMaxValueBytes).
+// standardsFiles keeps a sorted prefix whose paths fit this many bytes,
+// and toJson announces the cut. A fallback hit is also listed in
+// discovered[], so the list can cost twice this.
+constexpr int kMaxStandardsFilesBytes = 5 * 1024;
+
 // ANTS-1903 — per-branch trace of the format sniffer's decision.
 // Surfaces which branches scored a hit vs miss on each pass so a
 // failing project ("format:unknown" on a clearly-structured file)
@@ -104,7 +111,8 @@ struct LayoutEnvelope {
     // exclusive sources (canonical dir wins):
     //  - ANTS-2138 — when a canonical standards/ dir resolves
     //    (`standardsDir` non-empty), every *.md directly inside it is
-    //    enumerated here (sorted, no name/min-lines filter — every file
+    //    enumerated here, up to kMaxStandardsFilesBytes
+    //    (sorted, no name/min-lines filter — every file
     //    in a dedicated standards dir IS a standard). These are NOT
     //    re-added to `discovered[]` (the dir itself already is).
     //  - ANTS-1574 — when docs/standards/ is ABSENT, top-level docs/*.md
@@ -112,6 +120,9 @@ struct LayoutEnvelope {
     //    insensitive, >= 100 lines) populate this list as a fallback;
     //    those fallback hits ARE folded into `discovered[]` too.
     QStringList    standardsFiles;
+    // ANTS-5106 — how many standards files the scan found. Above
+    // standardsFiles.size() when kMaxStandardsFilesBytes cut the list.
+    int            standardsFilesTotal = 0;
     // ANTS-1620 — schema version of the probe set that produced
     // `probedPaths[]`. `isStale` returns true when this is less
     // than `kProbeSetVersion` so cached envelopes from before a

@@ -4,11 +4,14 @@
 #include <gtest/gtest.h>
 
 #include "projectlayoutengine.h"
+#include "sessionmemoryengine.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -485,4 +488,65 @@ TEST(ProjectLayoutEngine, StandardsDirEnumeratesMarkdownFiles) {
     };
     EXPECT_EQ(env.standardsFiles, expected)
         << "standards_files must enumerate the resolved dir's *.md, sorted";
+    // INV-7 — nothing was cut, so nothing is announced.
+    const QJsonObject j = PLE::toJson(env);
+    EXPECT_FALSE(j.contains(QStringLiteral("standards_files_truncated")));
+    EXPECT_FALSE(j.contains(QStringLiteral("standards_files_total")));
+}
+
+// ANTS-5106 / INV-7 — the envelope is cached through session_memory,
+// which refuses a value over kMaxValueBytes. An unbounded standards
+// list made a large project's envelope too big to store, so every call
+// rescanned. The list is bounded, a sorted prefix is kept, and the cut
+// is announced with the true total.
+TEST(ProjectLayoutEngine, Ants5106LargeStandardsDirStillFitsTheCache) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    constexpr int kFiles = 1000;
+    for (int i = 0; i < kFiles; ++i)
+        writeFile(td.path() + QStringLiteral(
+                      "/docs/standards/%1-a-fairly-long-standard-name.md")
+                      .arg(i, 4, 10, QLatin1Char('0')),
+                  "# S\n");
+
+    const auto env = PLE::scanLayout(td.path());
+    const QJsonObject j = PLE::toJson(env);
+    EXPECT_LE(SessionMemoryEngine::serializedSize(QJsonValue(j)),
+              SessionMemoryEngine::kMaxValueBytes)
+        << "the envelope must fit session_memory's per-value cap";
+    ASSERT_FALSE(env.standardsFiles.isEmpty());
+    EXPECT_LT(env.standardsFiles.size(), kFiles);
+    EXPECT_EQ(env.standardsFiles.first(),
+              QStringLiteral("docs/standards/0000-a-fairly-long-standard-name.md"));
+    EXPECT_TRUE(j.value(QStringLiteral("standards_files_truncated")).toBool());
+    EXPECT_EQ(j.value(QStringLiteral("standards_files_total")).toInt(), kFiles);
+    // The announcement survives the cache round trip.
+    const QJsonObject again = PLE::toJson(PLE::fromJson(j));
+    EXPECT_EQ(again.value(QStringLiteral("standards_files_total")).toInt(),
+              kFiles);
+}
+
+// ANTS-5106 / INV-7 — the docs/*STANDARD*.md fallback feeds both
+// standards_files and discovered[], so it is bounded the same way.
+TEST(ProjectLayoutEngine, Ants5106LargeStandardsFallbackStillFitsTheCache) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    QByteArray body;
+    for (int i = 0; i < 100; ++i) body.append("line\n");
+    constexpr int kFiles = 400;
+    for (int i = 0; i < kFiles; ++i)
+        writeFile(td.path() + QStringLiteral(
+                      "/docs/%1_A_FAIRLY_LONG_CODING_STANDARD.md")
+                      .arg(i, 4, 10, QLatin1Char('0')),
+                  body);
+
+    const auto env = PLE::scanLayout(td.path());
+    ASSERT_TRUE(env.standardsDir.isEmpty());
+    const QJsonObject j = PLE::toJson(env);
+    EXPECT_LE(SessionMemoryEngine::serializedSize(QJsonValue(j)),
+              SessionMemoryEngine::kMaxValueBytes)
+        << "the envelope must fit session_memory's per-value cap";
+    EXPECT_LT(env.standardsFiles.size(), kFiles);
+    EXPECT_TRUE(j.value(QStringLiteral("standards_files_truncated")).toBool());
+    EXPECT_EQ(j.value(QStringLiteral("standards_files_total")).toInt(), kFiles);
 }

@@ -29,6 +29,13 @@ The `ProjectLayoutEngine` surface:
   exactly the documented field set with snake_case keys.
 - **INV-6 / Round-trip fidelity.**
   `fromJson(toJson(env))` reproduces the envelope's data.
+- **INV-7 / The envelope fits the cache (ANTS-5106).** A standards
+  dir or `docs/*STANDARD*.md` fallback too large for
+  `kMaxStandardsFilesBytes` still yields an envelope within
+  `SessionMemoryEngine::kMaxValueBytes`. `standards_files` keeps a
+  sorted prefix, and `toJson` adds `standards_files_truncated:true`
+  and `standards_files_total`, which survive `fromJson`. A list
+  that was not cut carries neither key.
 
 ## Bundle
 

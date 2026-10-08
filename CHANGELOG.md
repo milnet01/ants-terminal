@@ -86,6 +86,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Restoring saved tabs at startup uses less memory** (ANTS-5106)
+  Each saved tab's data is read in place instead of being copied first.
+
 - **The AI Assistant shows its answer as it arrives instead of waiting for the whole reply.** (ANTS-5105)
 
 - **Unread mail from other Claude Code sessions is now shown on your screen at start-up, and a working session is told when new mail arrives** (ANTS-5619)
@@ -106,6 +109,10 @@ for security-relevant changes.
 - **roadmap_log's write reply reports `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview), which says only what was measured; `discarded_external_edits` stays one more release as a deprecated alias** (ANTS-4984)
 
 ### Fixed
+
+- **project_layout stays cached on a project with a very large standards folder** (ANTS-5106)
+  The standards list is trimmed to fit the cache, and the reply says
+  when it was trimmed and how many files there were.
 
 - **Ants no longer freezes for up to 5 seconds when another Ants window is stuck mid-save: settings, session memory and the model-switch logs wait at most a quarter-second, and a settings save that has to wait is retried shortly after (or on exit) instead of being dropped.** (ANTS-5106)
 
