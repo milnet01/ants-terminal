@@ -32,6 +32,7 @@
 #include <QFile>
 #include <QStandardPaths>
 #include <QString>
+#include <QThread>
 #include <QUuid>
 
 #include <gtest/gtest.h>
@@ -226,4 +227,124 @@ int runMain() {
 
 TEST(LuaThreading, Main) {
     ASSERT_EQ(0, runMain());
+}
+
+// ANTS-5107 — teardown (INV-4). Each case is its own TEST, so it runs in its
+// own process and a wedged worker from one cannot slow another.
+namespace {
+
+QString makeTeardownDir() {
+    const QString dir =
+        QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+        + QStringLiteral("/ants-lua-teardown-")
+        + QUuid::createUuid().toString(QUuid::Id128);
+    QDir().mkpath(dir + QStringLiteral("/plugins"));
+    return dir;
+}
+
+void addPlugin(const QString &dir, const QString &name, const QByteArray &init,
+               bool settingsPermission = false) {
+    const QString p = dir + QStringLiteral("/plugins/") + name;
+    writeTemp(p, QStringLiteral("init.lua"), init);
+    if (settingsPermission)
+        writeTemp(p, QStringLiteral("manifest.json"),
+                  R"({"permissions":["settings"]})");
+}
+
+struct TeardownResult {
+    qint64 ms = 0;
+    int detached = 0;
+    int settingsSets = 0;
+};
+
+// Loads `names`, fires `fires` CommandFinished events, then parks the GUI
+// thread for `parkMs` WITHOUT pumping its loop, so a worker blocked on a
+// call to this thread stays blocked. Then times the destructor.
+TeardownResult timeTeardown(const QString &dir, const QStringList &names,
+                            int fires, int parkMs) {
+    TeardownResult r;
+    QElapsedTimer t;
+    {
+        PluginManager pm;
+        pm.setGrantStore(
+            [](const QString &) { return QStringList{QStringLiteral("settings")}; },
+            [](const QString &, const QStringList &) {});
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&r](const QString &m) {
+            if (m.contains(QStringLiteral("detached"))) ++r.detached;
+        });
+        QObject::connect(&pm, &PluginManager::settingsSetRequested,
+                         [&r](const QString &, const QString &, const QString &,
+                              QString &) { ++r.settingsSets; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad(names);
+        QElapsedTimer warm; warm.start();
+        while (warm.elapsed() < 300)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        for (int i = 0; i < fires; ++i)
+            pm.fireEvent(PluginEvent::CommandFinished,
+                         QStringLiteral("exit_code=0&duration_ms=1"));
+        QThread::msleep(parkMs);
+        t.start();
+    }
+    r.ms = t.elapsed();
+    QDir(dir).removeRecursively();
+    return r;
+}
+
+}  // namespace
+
+// A worker already blocked in settings.get when teardown starts waits on the
+// GUI thread; teardown must answer it rather than sit out the deadline.
+TEST(LuaThreading, Ants5107TeardownAnswersAPendingSettingsGet) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("asker"),
+              "ants.on('command_finished', function() ants.settings.get('k') end)\n",
+              true);
+    const TeardownResult r =
+        timeTeardown(dir, {QStringLiteral("asker")}, 1, 300);
+    EXPECT_EQ(r.detached, 0) << "a healthy plugin was detached as a zombie";
+    EXPECT_LT(r.ms, 1000) << "teardown took " << r.ms << " ms";
+}
+
+// Unload is for saving state, so its settings.set must reach the store.
+TEST(LuaThreading, Ants5107UnloadSettingsSetIsSaved) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("saver"),
+              "ants.on('unload', function() ants.settings.set('k', 'v') end)\n",
+              true);
+    const TeardownResult r =
+        timeTeardown(dir, {QStringLiteral("saver")}, 0, 0);
+    EXPECT_EQ(r.settingsSets, 1) << "Unload's settings.set never arrived";
+    EXPECT_EQ(r.detached, 0) << "a healthy plugin was detached as a zombie";
+    EXPECT_LT(r.ms, 1000) << "teardown took " << r.ms << " ms";
+}
+
+// Queued events must not hold Unload back past the deadline. Each handler
+// is a runaway that the 1.5 s budget would end, so the plugin is healthy.
+TEST(LuaThreading, Ants5107BacklogDoesNotZombifyAHealthyPlugin) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("busy"),
+              "ants.on('command_finished', function() while true do end end)\n");
+    const TeardownResult r =
+        timeTeardown(dir, {QStringLiteral("busy")}, 3, 200);
+    EXPECT_EQ(r.detached, 0) << "a healthy plugin was detached as a zombie";
+    EXPECT_LT(r.ms, 1000) << "teardown took " << r.ms << " ms";
+}
+
+// Two workers stuck in one uninterruptible C call (a pattern match the
+// instruction hook cannot interrupt) share one deadline, not one each.
+TEST(LuaThreading, Ants5107WedgedWorkersShareOneDeadline) {
+    const QString dir = makeTeardownDir();
+    const QByteArray wedge =
+        "ants.on('command_finished', function()\n"
+        "  string.find(string.rep('a', 3000), '.-.-.-.-b')\n"
+        "end)\n";
+    addPlugin(dir, QStringLiteral("wedge1"), wedge);
+    addPlugin(dir, QStringLiteral("wedge2"), wedge);
+    const TeardownResult r = timeTeardown(
+        dir, {QStringLiteral("wedge1"), QStringLiteral("wedge2")}, 1, 300);
+    EXPECT_EQ(r.detached, 2) << "both stuck workers must be detached";
+    EXPECT_LT(r.ms, 2700) << "teardown took " << r.ms
+                          << " ms; the deadline is 2000 ms in total";
 }

@@ -11,6 +11,7 @@
 #include <QSet>
 #include <QJsonObject>
 
+class QDeadlineTimer;
 class QFileSystemWatcher;
 class QThread;
 class QTimer;
@@ -124,12 +125,19 @@ private:
     // ANTS-1750 — loaded engines minus the demoted set; the broadcast +
     // targeted dispatch filter.
     QList<LuaEngine *> healthyEngines() const;
-    // ANTS-1750 — quit + wait(kTeardownMs); on clean exit destroy the
-    // engine + thread, on timeout detach the pair into m_zombies. Keeps all
-    // lua_close on the worker (INV-12) and bounds teardown (INV-4).
+    // ANTS-1750 — posts Unload, shutdown and quit to the worker without
+    // waiting. finishTeardown then waits; on a clean exit it destroys the
+    // engine + thread, on timeout it detaches the pair into m_zombies. Keeps
+    // all lua_close on the worker (INV-12) and bounds teardown (INV-4).
     void teardownEngine(const QString &name, LuaEngine *engine, QThread *thread);
+    void finishTeardown(LuaEngine *engine, QThread *thread,
+                        const QDeadlineTimer &deadline);
+    // ANTS-5107 — waits for `thread`, delivering the blocking settings calls
+    // a worker makes to this object meanwhile. False once `deadline` passes.
+    bool waitServicingCalls(QThread *thread, const QDeadlineTimer &deadline);
 
     static constexpr int kTeardownMs = 2000;     // INV-4 teardown deadline
+    static constexpr int kServiceSliceMs = 10;   // wait between deliveries
     static constexpr qint64 kHealthGraceMs = 1000;  // budget + grace slack
 
     QString m_pluginDir;

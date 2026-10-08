@@ -23,6 +23,20 @@ responsive no matter what a plugin does.
   `fireEvent` runs within ~100 ms of the pre-fire timestamp, even though
   the handler busies a worker for far longer. Pre-fix (synchronous on the
   GUI thread) this callback is delayed by the full handler runtime.
+- **R2–R5 (INV-4, ANTS-5107) — teardown ends within one deadline and
+  detaches only stuck workers.** Each is its own test, so it runs in its
+  own process. Each parks the GUI thread without pumping its loop, then
+  times `~PluginManager`.
+  - `Ants5107TeardownAnswersAPendingSettingsGet`: a worker already blocked
+    in `ants.settings.get` is answered. Under 1 s, nothing detached.
+  - `Ants5107UnloadSettingsSetIsSaved`: an Unload handler's
+    `ants.settings.set` reaches `settingsSetRequested` once. Under 1 s,
+    nothing detached.
+  - `Ants5107BacklogDoesNotZombifyAHealthyPlugin`: three queued runaway
+    handlers do not hold Unload back. Under 1 s, nothing detached.
+  - `Ants5107WedgedWorkersShareOneDeadline`: two workers stuck in one
+    uninterruptible `string.find` are both detached in under 2.7 s, not
+    2 s each.
 
 ## Structural invariants (source)
 

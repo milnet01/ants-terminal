@@ -117,6 +117,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Unloading or reloading plugins finishes within two seconds and keeps healthy plugins** (ANTS-5107)
+  Plugin unload now waits once for all plugins rather than up to two
+  seconds each. A plugin waiting on a setting, or with events still
+  queued, unloads cleanly instead of being left behind as a stuck
+  worker. A setting saved while a plugin unloads is now kept. Reaches a
+  running terminal after a relaunch.
+
 - **The status-bar context meter comes back as soon as the Claude status does** (ANTS-5630)
   After a brief moment where the Claude status was hidden, the meter
   used to stay away until Claude's next reply, which could take a

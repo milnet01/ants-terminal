@@ -10473,6 +10473,20 @@ extends an existing item, that item carries it instead.
   queued Unload zombifying a healthy plugin, the settings.get teardown
   deadlock, init.lua wedge detection, per-handler budget timing, plugin
   signal rate limits, broadcast fan-out, zombies per reload, and the lows.
+  Progress (2026-10-08): teardown waits for every worker against one
+  shared kTeardownMs deadline; the wait delivers blocking settings.get
+  and settings.set calls, so neither deadlocks it; a teardown flag skips
+  a worker's queued backlog and ends its running handler. Red first:
+  LuaThreading Ants5107TeardownAnswersAPendingSettingsGet,
+  Ants5107UnloadSettingsSetIsSaved,
+  Ants5107BacklogDoesNotZombifyAHealthyPlugin,
+  Ants5107WedgedWorkersShareOneDeadline. ANTS-1750 section 2.5.1
+  records it. Decided no new spec: these were the code breaking
+  ANTS-1750 INV-4. The 2026-06-27 note on ANTS-1997 that FIFO drains a
+  pre-teardown settings.get was wrong; the first test shows it.
+  Still open: zombies per reload (needs the user's call on hot reload),
+  init.lua wedge detection, per-handler budget timing, plugin signal
+  rate limits, broadcast fan-out, and the lows.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).

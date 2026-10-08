@@ -69,9 +69,15 @@ public:
 
     // ANTS-1750 — the GUI controller (PluginManager) sets the abort flag
     // when it demotes a runaway plugin; instructionHook reads it and raises
-    // luaL_error at the next VM boundary. Atomic: the only LuaEngine state
-    // intentionally touched from a thread other than the worker. INV-5.
+    // luaL_error at the next VM boundary. Atomic: with m_tearingDown, the
+    // only LuaEngine state intentionally touched from a thread other than
+    // the worker. INV-5.
     void requestAbort() { m_abortRequested.store(true); }
+    // ANTS-5107 — set by the controller when it starts tearing this plugin
+    // down. dispatchEvent skips every queued event but Unload, and
+    // instructionHook ends a running handler, so a backlog cannot hold
+    // Unload past the teardown deadline.
+    void beginTeardown() { m_tearingDown.store(true); }
     // Per-pcall wall-clock budget (ms). Read by the controller's health tick
     // to derive the execution-time deadline (budget + grace). Set-once,
     // before the engine is threaded.
@@ -271,6 +277,10 @@ private:
     // instructionHook; never cleared — a demoted plugin is neutered for the
     // rest of the session and receives no further events.
     std::atomic<bool> m_abortRequested{false};
+    // ANTS-5107 — see beginTeardown(). m_inUnload is worker-only: true while
+    // the Unload handler runs, so instructionHook spares it.
+    std::atomic<bool> m_tearingDown{false};
+    bool m_inUnload = false;
     // ANTS-1750 — monotonic per-engine event sequence, worker-only. Tags
     // each eventStarted/eventCompleted pair (FIFO single-worker, so they
     // strictly alternate; the seq is for robustness + logging).

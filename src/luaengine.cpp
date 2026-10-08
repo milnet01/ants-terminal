@@ -262,6 +262,11 @@ void LuaEngine::instructionHook(lua_State *L, lua_Debug * /*ar*/) {
         luaL_error(L, "Plugin aborted by host (unresponsive handler)");
         return;
     }
+    // ANTS-5107 — teardown ends any running handler except Unload's.
+    if (!eng->m_inUnload && eng->m_tearingDown.load(std::memory_order_relaxed)) {
+        luaL_error(L, "Plugin is unloading");
+        return;
+    }
     // ANTS-1332 — sticky-kill latch. Once a wall-clock timeout has
     // fired for this pcall, every subsequent hook fire raises
     // luaL_error unconditionally. A Lua-level inner pcall in the
@@ -621,6 +626,10 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
 void LuaEngine::dispatchEvent(int event, const QString &data) {
     // INV-1 — Lua C API must only run on the owning worker thread.
     Q_ASSERT(thread() == QThread::currentThread());
+    const auto ev = static_cast<PluginEvent>(event);
+    // ANTS-5107 — once teardown has begun, only Unload still runs.
+    if (m_tearingDown.load(std::memory_order_relaxed) && ev != PluginEvent::Unload)
+        return;
     const quint64 seq = ++m_seq;
     // eventStarted/eventCompleted bracket the actual handler execution so
     // PluginManager's health tick measures handler runtime (not queue wait):
@@ -628,7 +637,9 @@ void LuaEngine::dispatchEvent(int event, const QString &data) {
     // never eventCompleted, ageing past budget + grace; a backed-up but
     // healthy worker keeps pairing them per event, so it is not demoted.
     emit eventStarted(seq);
-    fireEvent(static_cast<PluginEvent>(event), data);
+    m_inUnload = (ev == PluginEvent::Unload);
+    fireEvent(ev, data);
+    m_inUnload = false;
     emit eventCompleted(seq);
 }
 

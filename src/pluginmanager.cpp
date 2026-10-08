@@ -1,5 +1,7 @@
 #include "pluginmanager.h"
 
+#include <QCoreApplication>
+#include <QDeadlineTimer>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -12,6 +14,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 
@@ -77,7 +80,7 @@ void PluginManager::setPluginDir(const QString &dir) {
 
 void PluginManager::unloadAll() {
     // ANTS-1750 — tear down each worker. teardownEngine posts Unload +
-    // shutdown to the worker (FIFO), then quit + wait(kTeardownMs); a worker
+    // shutdown + quit to the worker (FIFO); finishTeardown waits; a worker
     // stuck in an uninterruptible C call is detached into m_zombies rather
     // than joined (INV-4) and every lua_close stays on the worker (INV-12).
     // The ANTS-1173 re-entrancy UAF is gone for free: an Unload handler now
@@ -88,6 +91,13 @@ void PluginManager::unloadAll() {
     for (const QString &name : names) {
         teardownEngine(name, m_engines.value(name, nullptr),
                        m_threads.value(name, nullptr));
+    }
+    // ANTS-5107 — one deadline for every worker, not kTeardownMs each, so
+    // N stuck plugins still end teardown within kTeardownMs (INV-4).
+    const QDeadlineTimer deadline(kTeardownMs);
+    for (const QString &name : names) {
+        finishTeardown(m_engines.value(name, nullptr),
+                       m_threads.value(name, nullptr), deadline);
     }
     m_engines.clear();
     m_threads.clear();
@@ -115,6 +125,9 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
         // connected slot, returns immediately, and Lua sees nil.
         QObject::disconnect(engine, &LuaEngine::settingsGetRequested,
                             this, nullptr);
+        // ANTS-5107 — skip the worker's queued backlog and end its running
+        // handler, so Unload is not held past the deadline.
+        engine->beginTeardown();
 
         // FIFO on the worker: run the Unload handler, then shutdown
         // (lua_close on the worker — INV-12), then quit the worker's own
@@ -131,8 +144,27 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
     } else {
         thread->quit();
     }
+}
 
-    if (thread->wait(kTeardownMs)) {
+bool PluginManager::waitServicingCalls(QThread *thread,
+                                       const QDeadlineTimer &deadline) {
+    // ANTS-5107 — a worker blocked in settings.get or settings.set waits on
+    // this thread. Deliver those calls between short waits, or the worker
+    // and this thread wait on each other until the deadline. Only calls
+    // addressed to this PluginManager are delivered; no other GUI work runs.
+    for (;;) {
+        QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
+        const qint64 slice =
+            std::min<qint64>(kServiceSliceMs, deadline.remainingTime());
+        if (thread->wait(QDeadlineTimer(slice))) return true;
+        if (deadline.hasExpired()) return false;
+    }
+}
+
+void PluginManager::finishTeardown(LuaEngine *engine, QThread *thread,
+                                   const QDeadlineTimer &deadline) {
+    if (!thread) return;      // teardownEngine already deleted the engine
+    if (waitServicingCalls(thread, deadline)) {
         // Clean exit — the worker drained Unload + shutdown (m_state now
         // null) and quit. Deleting the engine on the GUI thread is safe now
         // the worker has finished; ~LuaEngine's shutdown() is a no-op (no
