@@ -267,8 +267,11 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
             const qsizetype expectedSize = qsizetype(ENVELOPE_HEADER_SIZE)
                                          + qsizetype(payloadLen);
             if (input.size() != expectedSize) return false;
-            compressed = input.mid(ENVELOPE_HEADER_SIZE,
-                                   qsizetype(payloadLen));
+            // ANTS-5106 — a view into `input`, which outlives it, rather
+            // than mid()'s full copy of the payload.
+            compressed = QByteArray::fromRawData(
+                input.constData() + ENVELOPE_HEADER_SIZE,
+                qsizetype(payloadLen));
             // Verify SHA-256. Mismatch ⇒ payload was tampered with or
             // truncated mid-write; refuse to restore rather than feed
             // attacker-controlled bytes into the grid.
