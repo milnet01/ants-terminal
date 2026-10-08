@@ -368,6 +368,8 @@ cd ..
 %{_bindir}/ants-mcpd
 # ANTS-5428 — signs OSC 133 markers with the key read from a pipe.
 %{_bindir}/ants-osc133-sign
+# ANTS-5629 — runs a long command in its own systemd --user unit.
+%{_bindir}/cc-job
 %{_datadir}/applications/za.co.antsprojectshub.AntsTerminal.desktop
 %{_datadir}/metainfo/za.co.antsprojectshub.AntsTerminal.metainfo.xml
 %{_datadir}/icons/hicolor/16x16/apps/%{name}.png

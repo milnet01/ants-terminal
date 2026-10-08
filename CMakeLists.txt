@@ -1379,6 +1379,17 @@ if(ANTS_BUNDLE_DEMOREEL)
     endif()
 endif()
 
+# ANTS-5629 — cc-job runs a long command in its own systemd --user unit, so
+# relaunching Ants does not kill it. On PATH, because Claude Code sessions
+# call it by name. Needs systemd --user; Konsole for `watch` only. Off in the
+# Flatpak, whose sandbox cannot reach the host's user manager.
+option(ANTS_INSTALL_CC_JOB "Install the cc-job long-command runner" ON)
+if(ANTS_INSTALL_CC_JOB)
+    install(PROGRAMS packaging/cc-job/cc-job
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            COMPONENT cc-job)
+endif()
+
 # ---------------------------------------------------------------------------
 # Tests — audit rule fixtures (ctest)
 # ---------------------------------------------------------------------------
@@ -1634,6 +1645,16 @@ if(ANTS_TESTS)
             LABELS "features;fast"
             SKIP_RETURN_CODE 77
             TIMEOUT 60)
+    endif()
+
+    # ANTS-5629 — cc-job installs to the bin dir and runs from there.
+    if(ANTS_INSTALL_CC_JOB)
+        add_test(NAME cc_job_bundle
+                 COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/cc_job_bundle/test_cc_job_bundle.sh"
+                         "${CMAKE_BINARY_DIR}")
+        set_tests_properties(cc_job_bundle PROPERTIES
+            LABELS "features;fast"
+            TIMEOUT 30)
     endif()
 
     # tools/mcp-bridge.py: symlink-safe socket pick, sane timeouts, and a

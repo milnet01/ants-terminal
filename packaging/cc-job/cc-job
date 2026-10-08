@@ -1,0 +1,139 @@
+#!/bin/bash
+# cc-job — run a long command OUTSIDE Ants Terminal, so relaunching Ants does
+# not kill it, and read its output from any Claude Code session.
+#
+# Why this exists: everything Ants starts — Claude Code, its shell, anything
+# that shell launches, even with nohup or setsid — lives in Ants' own systemd
+# unit (app-ants-terminal@….service), and systemd stops that whole unit when
+# Ants exits. `systemd-run --user` gives the job a unit of its own, so it
+# survives. Output goes to a log file, which is what lets a later session read it.
+set -euo pipefail
+
+# Ships with Ants Terminal (ANTS-5629). A long job's log can grow without
+# bound, so where the system drive is small, point CC_JOB_DIR (or a symlink
+# at the default) at a data drive.
+STATE="${CC_JOB_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/cc-job}"
+mkdir -p "$STATE"
+
+usage() {
+    cat <<'EOF'
+cc-job start <name> [--watch] -- <command> [args...]
+                            run in the current directory; --watch also opens Konsole
+cc-job status [<name>]      running / finished with exit code / stopped (all jobs if no name)
+cc-job tail <name> [lines]  last lines of output (default 40)
+cc-job wait <name>          block until the job ends, then exit with its exit code
+cc-job watch <name>         open a Konsole window following the output live
+cc-job stop <name>          stop the job
+cc-job clean <name> [--force]
+                            delete a finished job's log and records; refused
+                            until `tail` has shown the log, unless --force
+
+A pipeline or shell syntax needs a shell:  cc-job start build -- bash -c 'make 2>&1 | tee out'
+Logs live in $XDG_STATE_HOME/cc-job/<name>.log (CC_JOB_DIR overrides)
+Needs systemd --user; watch also needs Konsole.
+EOF
+}
+
+die() { echo "cc-job: $*" >&2; exit 2; }
+unit() { printf 'cc-job-%s.service' "$1"; }
+checkname() {
+    [[ ${1:-} =~ ^[A-Za-z0-9_.-]+$ ]] || die "a job name is letters, digits, dot, underscore or dash"
+}
+running() { systemctl --user is-active --quiet "$(unit "$1")"; }
+
+watch_job() {
+    local name=$1 log="$STATE/$1.log"
+    [[ -f $log ]] || die "no job named '$name'"
+    command -v konsole >/dev/null ||
+        die "watch needs Konsole, which is not installed; 'cc-job tail $name' reads the log"
+    # Its own unit too, so the window outlives an Ants relaunch. Closing the
+    # window only stops the viewer, never the job.
+    systemd-run --user --quiet --collect --unit="cc-job-watch-$name-$$" \
+        konsole --hold -p tabtitle="cc-job: $name" -e tail -n +1 -F "$log"
+}
+
+start_job() {
+    local name=${1:-}; checkname "$name"; shift
+    local watch=0
+    if [[ ${1:-} == --watch ]]; then watch=1; shift; fi
+    if [[ ${1:-} == -- ]]; then shift; fi
+    (($#)) || die "start needs a command after --"
+    running "$name" && die "job '$name' is already running"
+    systemctl --user reset-failed "$(unit "$name")" 2>/dev/null || true
+
+    local log="$STATE/$name.log" rec="$STATE/$name.exit"
+    rm -f "$rec" "$STATE/$name.read"
+    : >"$log"
+    {
+        echo "cwd=$PWD"
+        echo "started=$(date -Is)"
+        echo "command=$(printf '%q ' "$@")"
+    } >"$STATE/$name.info"
+
+    # The user manager's environment, not this shell's, apart from PATH and
+    # LANG — so a job does not inherit Claude Code's or Ants' session variables.
+    # The inner script is single-quoted on purpose: $1, $2 and "$@" belong to
+    # that inner bash, which receives log, rec and the command as arguments.
+    # --expand-environment=no: otherwise systemd substitutes ${VAR} in the
+    # command itself, so `exit ${PIPESTATUS[0]}` ran as `exit` and reported 0.
+    # shellcheck disable=SC2016
+    systemd-run --user --quiet --collect --unit="$(unit "$name")" --expand-environment=no \
+        --working-directory="$PWD" --setenv=PATH="$PATH" --setenv=LANG="${LANG:-C.UTF-8}" \
+        /bin/bash -c 'log=$1 rec=$2; shift 2; "$@" >>"$log" 2>&1; rc=$?; echo "$rc" >"$rec"; exit "$rc"' \
+        cc-job "$log" "$rec" "$@"
+    echo "started '$name' — log: $log"
+    if ((watch)); then watch_job "$name"; fi
+}
+
+status_one() {
+    local name=$1 state
+    if running "$name"; then
+        state="running"
+    elif [[ -f $STATE/$name.exit ]]; then
+        state="finished, exit $(<"$STATE/$name.exit")"
+    elif [[ -f $STATE/$name.log ]]; then
+        state="stopped (ended before it could record an exit code)"
+    else
+        echo "$name: no such job"; return 1
+    fi
+    local started=""
+    [[ -f $STATE/$name.info ]] && started=$(sed -n 's/^started=//p' "$STATE/$name.info")
+    echo "$name: $state${started:+ — started $started} — log: $STATE/$name.log"
+}
+
+wait_job() {
+    local name=${1:-}; checkname "$name"
+    [[ -f $STATE/$name.log ]] || die "no job named '$name'"
+    while running "$name"; do sleep 2; done
+    status_one "$name"
+    [[ -f $STATE/$name.exit ]] || exit 1
+    exit "$(<"$STATE/$name.exit")"
+}
+
+cmd=${1:-}; shift || true
+case $cmd in
+    start)  start_job "$@" ;;
+    status)
+        if (($#)); then checkname "$1"; status_one "$1"
+        else
+            shopt -s nullglob; found=0
+            for f in "$STATE"/*.log; do found=1; status_one "$(basename "$f" .log)"; done
+            ((found)) || echo "no jobs"
+        fi ;;
+    tail)   checkname "${1:-}"; [[ -f $STATE/$1.log ]] || die "no job named '$1'"
+            tail -n "${2:-40}" "$STATE/$1.log"; : >"$STATE/$1.read" ;;
+    wait)   wait_job "$@" ;;
+    watch)  checkname "${1:-}"; watch_job "$1" ;;
+    stop)   checkname "${1:-}"; systemctl --user stop "$(unit "$1")" && status_one "$1" ;;
+    clean)  checkname "${1:-}"; running "$1" && die "job '$1' is still running — stop it first"
+            # The log is the only copy of the output (CFG-0729: a clean before
+            # reading it forced a re-run). Refuse until tail has shown it.
+            if [[ ${2:-} != --force && -s $STATE/$1.log && ! -e $STATE/$1.read ]]; then
+                die "job '$1' has output nobody has read — run 'cc-job tail $1' first, or clean --force"
+            fi
+            # Close any watch window first, or it reports the log vanishing.
+            systemctl --user stop "cc-job-watch-$1-*" 2>/dev/null || true
+            rm -f "$STATE/$1".{log,exit,info,read}; echo "removed '$1'" ;;
+    ""|-h|--help|help) usage ;;
+    *)      usage >&2; exit 2 ;;
+esac

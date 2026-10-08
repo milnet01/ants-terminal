@@ -76263,6 +76263,25 @@ assistant suggestions, accepted by the user for filing.
   Source: user-request-2026-10-02 via demoreel session (DEMO-0163).
   Lanes: packaging.
 
+- ✅ [ANTS-5629] **Ship cc-job with Ants Terminal, installed on PATH.**
+  cc-job lived only at /mnt/Games/Scripts/Linux/cc-jobs/cc-job, in no
+  repository. Track it as packaging/cc-job/cc-job and install it to the
+  bin dir under the name cc-job (option ANTS_INSTALL_CC_JOB, component
+  cc-job; off in the Flatpak, whose sandbox cannot reach systemd --user).
+  Default log dir: $XDG_STATE_HOME/cc-job; CC_JOB_DIR still overrides.
+  --help names its needs (systemd --user; Konsole for watch only), and
+  watch fails clearly without Konsole. Reload story: none needed; the
+  script is read afresh on every run.
+  Resolved (2026-10-08): packaging/cc-job/cc-job, installed by
+  ANTS_INSTALL_CC_JOB (component cc-job); RPM %files lists it; the Flatpak
+  passes OFF. Shebang is #!/bin/bash so rpmlint needs no filter.
+  tests/features/cc_job_bundle INV-2 to INV-4 red against the old script,
+  then green.
+  **Layman:** Anyone who installs Ants gets cc-job, which runs a long command so a terminal relaunch does not kill it.
+  Kind: feature.
+  Source: claude-config request 2026-10-08 (user asked).
+  Lanes: packaging.
+
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
 
 Triage of the 13 `*_Ants_MCP_Feedback.md` files under /mnt/Games/Scripts/Linux.

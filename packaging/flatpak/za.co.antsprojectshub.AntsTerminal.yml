@@ -132,6 +132,9 @@ modules:
       # demoreel (ANTS-5617) is left out: the sandbox cannot start the host's
       # Xvfb, so the recorder could not run here.
       - -DANTS_BUNDLE_DEMOREEL=OFF
+      # cc-job (ANTS-5629) is left out: the sandbox cannot reach the host's
+      # systemd --user, so it could not start a job here.
+      - -DANTS_INSTALL_CC_JOB=OFF
     sources:
       - type: dir
         # flatpak-builder invokes from this manifest's directory; the

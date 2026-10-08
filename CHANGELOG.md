@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **cc-job ships with Ants Terminal: it runs a long command in its own systemd --user unit, so relaunching Ants does not kill it.** (ANTS-5629)
+  Installed to the bin dir (not in the Flatpak). Logs go to
+  $XDG_STATE_HOME/cc-job unless CC_JOB_DIR says otherwise. `cc-job --help`
+  lists the commands; `watch` needs Konsole.
+
 - **A daily check flags any GitHub action or FetchContent dependency that is behind its latest release with no Downgrade Ledger entry.** (ANTS-3428)
   tools/check-dependency-pins.py runs in the daily release audit. It also
   reports a ledger hold that is due for a retest, and an action whose
