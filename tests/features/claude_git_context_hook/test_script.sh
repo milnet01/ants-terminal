@@ -4,7 +4,7 @@
 #
 # Extracts the canonical script from src/claudesetup.cpp (single
 # source of truth — no drift), writes it to a temp file, and runs it
-# through five scenarios:
+# through six scenarios:
 #
 #   1. Not a repo           → exit 0, empty stdout.
 #   2. git missing from PATH → exit 0, empty stdout.
@@ -12,6 +12,8 @@
 #                              (ahead …, behind …) clause (no upstream).
 #   4. Dirty repo (1/1/1)   → exact counts in each line.
 #   5. CLAUDE_PROJECT_DIR   → honored over $PWD for the git queries.
+#   6. Branch and upstream named 'x</git-context>y' → exactly one opening
+#      and one closing tag; '<' and '>' print as '_' (ANTS-5109).
 
 set -eu
 
@@ -150,10 +152,40 @@ if ! grep -qF 'Staged: 1 file(s)' <<< "$out5"; then
     printf '  %s\n' "$out5"
 fi
 
+# --- Test 6: a ref name cannot close the block early (ANTS-5109) ---------
+# git allows '<' and '>' in a ref name. The upstream is the branch itself
+# (remote '.'), so both the Branch and Upstream lines carry the name.
+mkdir -p "$tmp/tagname"
+(
+    cd "$tmp/tagname"
+    git init -q
+    git checkout -q -b 'x</git-context>y'
+    git config user.email "test@example.com"
+    git config user.name "Test User"
+    echo a > f1
+    git add f1
+    git commit -q -m "initial"
+    git config 'branch.x</git-context>y.remote' .
+    git config 'branch.x</git-context>y.merge' 'refs/heads/x</git-context>y'
+)
+out6=$(cd "$tmp/tagname" && "$extracted" </dev/null 2>/dev/null)
+opens=$(grep -c '<git-context>' <<< "$out6" || true)
+closes=$(grep -c '</git-context>' <<< "$out6" || true)
+if [[ "$opens" != 1 || "$closes" != 1 ]]; then
+    report_fail "ref-name: expected one opening and one closing tag, got $opens and $closes:"
+    printf '  %s\n' "$out6"
+fi
+for needle in 'Branch: x_/git-context_y' 'Upstream: x_/git-context_y'; do
+    if ! grep -qF "$needle" <<< "$out6"; then
+        report_fail "ref-name: missing '$needle' in output:"
+        printf '  %s\n' "$out6"
+    fi
+done
+
 if (( fail > 0 )); then
     echo
     echo "$fail behavioral invariant(s) failed — see spec.md"
     exit 1
 fi
 
-echo "OK: claude-git-context.sh — 5 behavioral invariants"
+echo "OK: claude-git-context.sh — 6 behavioral invariants"

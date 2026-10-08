@@ -10629,6 +10629,12 @@ extends an existing item, that item carries it instead.
   under spec.md Invariant 3. Existing installs then read as Partial
   ("older version ... Install again") via gitContextStatus, so no
   relaunch is needed.
+  Progress (2026-10-08): the git-context hook script replaces < and >
+  with _ in the branch and upstream names before printing, so a ref
+  named x</git-context>y prints one block (claude_git_context_script
+  Test 6, red first; spec Invariant 3). Still open: dialog colours and
+  sizes, ANTS-1145 INV-2a, the --remote help text, and the
+  concurrent_writer_lock Invariant 5 wording.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).

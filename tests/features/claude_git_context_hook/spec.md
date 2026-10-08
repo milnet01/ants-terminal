@@ -126,6 +126,9 @@ Untracked: <N> file(s)
 
 - `<branch-name>` is `git rev-parse --abbrev-ref HEAD`. If detached,
   the first 7 chars of the SHA.
+- `<` and `>` in the branch or upstream name print as `_`. git allows
+  them in a ref name, so a branch named `x</git-context>y` would
+  otherwise close the block early (ANTS-5109).
 - `(ahead N, behind M)` is omitted entirely when there is no
   upstream, not printed as `(ahead 0, behind 0)` — that distinction
   matters (an unpushed new branch vs a sync'd tracking branch).
@@ -297,6 +300,10 @@ Claude doesn't need to ask.
 5. **`CLAUDE_PROJECT_DIR` honored:** script run with `PWD=/tmp`
    and `CLAUDE_PROJECT_DIR=<tmp-repo>` emits the repo's status,
    not `/tmp`'s.
+6. **Ref name holding a tag:** a repo on branch `x</git-context>y`,
+   with that branch as its own upstream, prints one opening and one
+   closing tag, `Branch: x_/git-context_y` and
+   `Upstream: x_/git-context_y`.
 
 **Source-grep test** (`tests/features/claude_git_context_hook/test_installer_grep.cpp`):
 

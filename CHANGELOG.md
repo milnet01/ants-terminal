@@ -117,6 +117,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The git-context hook prints `<` and `>` in a branch or upstream name as `_`, so the name can no longer end the block early.** (ANTS-5109)
+  Existing installs show as an older version in Settings; Install again
+  picks up the fix with no relaunch.
+
 - **Installing the Claude Code hooks, or saving the Allowlist, no longer overwrites a change another writer makes to settings.json at the same moment.** (ANTS-5109)
 
 - **Review Changes stays responsive while files are edited: it re-lists the whole tree only when a change could add a folder to watch.** (ANTS-5109)
