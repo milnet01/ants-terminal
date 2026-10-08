@@ -110,6 +110,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log files an entry under the right heading when a bullet contains an indented or fenced `###` line** (ANTS-5108)
+
+- **A feedback tracking row whose text contains `|` reads back unchanged** (ANTS-5108)
+
 - **project_layout stays cached on a project with a very large standards folder** (ANTS-5106)
   The standards list is trimmed to fit the cache, and the reply says
   when it was trimmed and how many files there were.

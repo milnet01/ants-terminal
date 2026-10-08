@@ -558,6 +558,27 @@ TEST(McpFeedbackQuery, TrackingRowsExtracted) {
     EXPECT_EQ(r.trackingRows.at(2).notes, "Shipped 2026-05-20.");
 }
 
+// ANTS-5108 — renderTrackingBlock escapes a `|` in a cell as `\|` (ANTS-3469);
+// parse() split on every `|`, so the escape broke the row into extra cells
+// and the status and notes columns read the wrong text. A row the writer
+// emits must read back unchanged.
+TEST(McpFeedbackQuery, Ants5108EscapedPipeRoundTrips) {
+    FeedbackFile::TrackingRow row;
+    row.item   = QStringLiteral("Match a|b in one call");
+    row.ids    = {QStringLiteral("ANTS-1000")};
+    row.status = QString::fromUtf8(kClip);
+    row.notes  = QStringLiteral("The pattern `x|y` is literal.");
+    const QString block = FeedbackFile::renderTrackingBlock(
+        QStringLiteral("2026-10-08"), QString(), {row}, false);
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QStringLiteral("# Title\n\n") + block);
+    ASSERT_EQ(r.trackingRows.size(), 1);
+    EXPECT_EQ(r.trackingRows.at(0).item, row.item);
+    EXPECT_EQ(r.trackingRows.at(0).ids, row.ids);
+    EXPECT_EQ(r.trackingRows.at(0).status, row.status);
+    EXPECT_EQ(r.trackingRows.at(0).notes, row.notes);
+}
+
 // ANTS-3371 — include_tracking surfaces the rows in the envelope; absent
 // flag keeps the lean envelope (no `tracking` key).
 TEST(McpFeedbackQuery, IncludeTrackingEnvelope) {

@@ -167,3 +167,15 @@ on an empty section, and `merge_unsupported` when a merge meets text outside
 a category block. The verb takes it as `op:"release"` with `dated:true`,
 which refuses `bad_args` alongside a `version`. *Tests:*
 `Ants5484DatedCloseAndSameDayMerge`, `Ants5484DatedReleaseThroughTheVerb`.
+
+### ANTS-5108 — a `### ` heading is read as the reader reads it
+
+The writer treats a line as a category heading only at column 0 and
+outside a code fence, as `ChangelogQuery::parse` does. An indented or
+fenced `### Added` inside a bullet is not an insert target, a normalize
+boundary, or a block in a same-day dated merge. The reader is the
+oracle: an inserted entry parses under the category it was written to.
+*Tests:* `Ants5108IndentedHeadingIsNotAnInsertTarget`,
+`Ants5108FencedHeadingIsNotAnInsertTarget`,
+`Ants5108NormalizeKeepsAnIndentedHeadingInItsBullet`,
+`Ants5108DatedMergeIgnoresAnIndentedHeading`.

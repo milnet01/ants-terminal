@@ -163,6 +163,29 @@ const QRegularExpression &bulletArmRe() {
     return re;
 }
 
+// ANTS-5108 — split a tracking-table row on its unescaped `|` and turn each
+// `\|` back into `|`, the inverse of escapeTrackingCell. Splitting on every
+// `|` broke a written row into extra cells, shifting status and notes.
+QStringList splitTrackingRow(const QString &row) {
+    QStringList cells;
+    QString cell;
+    for (int i = 0; i < row.size(); ++i) {
+        const QChar c = row.at(i);
+        if (c == QLatin1Char('\\') && i + 1 < row.size() &&
+            row.at(i + 1) == QLatin1Char('|')) {
+            cell += QLatin1Char('|');
+            ++i;
+        } else if (c == QLatin1Char('|')) {
+            cells.append(cell);
+            cell.clear();
+        } else {
+            cell += c;
+        }
+    }
+    cells.append(cell);
+    return cells;
+}
+
 }  // namespace
 
 int markerVersion(const QString &content) {
@@ -269,7 +292,7 @@ ParseResult parse(const QString &fileContent) {
             // cells, skip the header (`Item …`) and `|---|` separator.
             const QString trimmed = row.trimmed();
             if (!trimmed.startsWith(QLatin1Char('|'))) continue;
-            QStringList cells = trimmed.split(QLatin1Char('|'));
+            QStringList cells = splitTrackingRow(trimmed);
             if (!cells.isEmpty() && cells.first().trimmed().isEmpty())
                 cells.removeFirst();
             if (!cells.isEmpty() && cells.last().trimmed().isEmpty())

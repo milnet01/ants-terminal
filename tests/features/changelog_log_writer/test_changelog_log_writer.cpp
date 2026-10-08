@@ -5,6 +5,7 @@
 
 #include "../../_support/expect.h"
 #include "changeloglog.h"
+#include "changelogquery.h"
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
@@ -1369,4 +1370,73 @@ TEST(changelog_log_writer, Ants5108HeadingOnlySectionIsNothingToRelease) {
         md, QStringLiteral("2026-10-02"));
     EXPECT_FALSE(dated.ok);
     EXPECT_EQ(dated.code, QStringLiteral("nothing_to_release"));
+}
+
+// ANTS-5108 — the writer finds a `### ` heading the way the reader does:
+// at column 0 and outside a code fence (ChangelogQuery::parse). It used to
+// match a trimmed line and ignore fences, so an indented or fenced
+// `### Added` inside a bullet became an insert target. The reader is the
+// oracle: the new entry must parse under the category it was written to.
+namespace {
+QString categoryOfEntry(const QString &md, const QString &needle) {
+    const auto parsed = ChangelogQuery::parse(md, QStringLiteral("ANTS"));
+    for (const auto &e : parsed.entries)
+        if (e.text.contains(needle)) return e.category;
+    return QStringLiteral("<not found>");
+}
+}  // namespace
+
+TEST(changelog_log_writer, Ants5108IndentedHeadingIsNotAnInsertTarget) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n"
+        "- **A fix.** (ANTS-0002)\n  ### Added\n\n"
+        "## [0.1.0] - 2026-01-01\n\n- old.\n");
+    const auto r = ChangelogLog::insertUnreleasedEntry(
+        md, QStringLiteral("Added"),
+        QStringLiteral("- **New added entry.** (ANTS-0009)"));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_TRUE(r.created_category);
+    EXPECT_EQ(categoryOfEntry(r.markdown, QStringLiteral("New added entry")),
+              QStringLiteral("Added"));
+}
+
+TEST(changelog_log_writer, Ants5108FencedHeadingIsNotAnInsertTarget) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n"
+        "- **A fix.** (ANTS-0002)\n\n```text\n### Added\n```\n\n"
+        "## [0.1.0] - 2026-01-01\n\n- old.\n");
+    const auto r = ChangelogLog::insertUnreleasedEntry(
+        md, QStringLiteral("Added"),
+        QStringLiteral("- **New added entry.** (ANTS-0009)"));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_TRUE(r.created_category);
+    EXPECT_EQ(categoryOfEntry(r.markdown, QStringLiteral("New added entry")),
+              QStringLiteral("Added"));
+    // Fenced lines belong to the bullet above them, as the reader has it.
+    EXPECT_FALSE(r.malformed_section);
+}
+
+TEST(changelog_log_writer, Ants5108NormalizeKeepsAnIndentedHeadingInItsBullet) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n"
+        "- **A fix.** (ANTS-0002)\n  ### Notes\n\n"
+        "### Added\n\n- **An addition.** (ANTS-0003)\n\n"
+        "## [0.1.0] - 2026-01-01\n\n- old.\n");
+    const auto r = ChangelogLog::normalizeUnreleased(md);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_EQ(r.order_before,
+              (QStringList{QStringLiteral("Fixed"), QStringLiteral("Added")}));
+    EXPECT_TRUE(r.markdown.contains(
+        QStringLiteral("- **A fix.** (ANTS-0002)\n  ### Notes\n")));
+}
+
+TEST(changelog_log_writer, Ants5108DatedMergeIgnoresAnIndentedHeading) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n"
+        "- **A fix.** (ANTS-0002)\n  ### Notes\n\n"
+        "## 2026-10-02\n\n### Fixed\n\n- **Old fix.** (ANTS-0001)\n");
+    const auto r = ChangelogLog::closeUnreleasedDated(
+        md, QStringLiteral("2026-10-02"));
+    ASSERT_TRUE(r.ok) << r.code.toStdString() << ": " << r.error.toStdString();
+    EXPECT_TRUE(r.merged);
 }

@@ -1,6 +1,7 @@
 // ANTS-1548: see changeloglog.h.
 
 #include "changeloglog.h"
+#include "markdownscan.h"       // ANTS-5108
 #include <QRegularExpression>   // ANTS-4629
 #include <QDate>
 
@@ -53,6 +54,46 @@ bool isValidCategory(const QString &category) {
 }
 
 namespace {
+// ANTS-5108 — a `### ` heading as ChangelogQuery::parse reads one: at column
+// 0, on a line fencedLines() does not mark. The writer used to match a
+// trimmed line and ignore fences, so an indented or fenced `### Added`
+// inside a bullet became an insert target and a normalize boundary.
+bool isCategoryHeading(const QString &line) {
+    return line.startsWith(QStringLiteral("### "));
+}
+
+// ANTS-5108 — marks each line in [from, to) that sits inside a code fence,
+// fence markers included, by the reader's rules: a top-level fence opens
+// and closes per MarkdownScan, and a column-0 `## [` ends one left open.
+// Fence state starts closed at `from`, which is always just below a `## `
+// heading. Indexed like `lines`.
+QVector<bool> fencedLines(const QStringList &lines, int from, int to) {
+    QVector<bool> fenced(lines.size(), false);
+    bool inFence = false;
+    QChar fenceChar;
+    int fenceRun = 0;
+    for (int i = from; i < to && i < lines.size(); ++i) {
+        const QString &line = lines.at(i);
+        int run = 0;
+        const QChar c = MarkdownScan::fenceOpenerChar(line, 3, &run);
+        if (!c.isNull()) {
+            if (!inFence) {
+                inFence = true;
+                fenceChar = c;
+                fenceRun = run;
+            } else if (MarkdownScan::fenceCloses(line, fenceChar, fenceRun)) {
+                inFence = false;
+            }
+            fenced[i] = true;
+            continue;
+        }
+        if (inFence && line.startsWith(QStringLiteral("## [")))
+            inFence = false;
+        fenced[i] = inFence;
+    }
+    return fenced;
+}
+
 // ANTS-2125 — scan the Unreleased section [sectionStart, sectionEnd) for
 // non-heading prose wedged between `###` category blocks. Returns the
 // 1-based line of the first offending line, or -1 if the section is
@@ -97,7 +138,9 @@ QVector<InterleavedProse> collectInterleavedProse(const QStringList &lines,
     bool sawBulletInBlock = false;   // ANTS-4103 — reset at each `### `
     bool insideComment   = false;    // ANTS-4103
     int  lastBullet      = -1;       // ANTS-3381 — fold target
+    const QVector<bool> fenced = fencedLines(lines, sectionStart, sectionEnd);
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
+        if (fenced.at(i)) continue;                 // ANTS-5108 — code, not prose
         const QString &raw = lines.at(i);
         const QString t = raw.trimmed();
         if (insideComment) {                        // ANTS-4103
@@ -109,8 +152,9 @@ QVector<InterleavedProse> collectInterleavedProse(const QStringList &lines,
             continue;
         }
         if (t.isEmpty()) continue;                  // blank spacer
-        if (t.startsWith(QLatin1Char('#'))) {       // any heading line
-            if (t.startsWith(QStringLiteral("### "))) {
+        // ANTS-5108 — column 0 only; an indented `#` line is a continuation.
+        if (raw.startsWith(QLatin1Char('#'))) {     // any heading line
+            if (isCategoryHeading(raw)) {
                 sawCategory      = true;
                 sawBulletInBlock = false;           // ANTS-4103 — new block
             }
@@ -168,9 +212,11 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
     int firstTopic = -1;
     int headingCount = 0;
     bool sawBoldRun = false;
+    const QVector<bool> fenced = fencedLines(lines, sectionStart, sectionEnd);
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
+        if (fenced.at(i)) continue;                 // ANTS-5108
         const QString t = lines.at(i).trimmed();
-        if (t.startsWith(QStringLiteral("### "))) {
+        if (isCategoryHeading(lines.at(i))) {
             ++headingCount;
             const QString name = t.mid(4).trimmed();
             if (canonicalCategories().contains(name, Qt::CaseInsensitive))
@@ -212,9 +258,10 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
         return QDate::fromString(t.mid(4, 10),
                                  QStringLiteral("yyyy-MM-dd")).isValid();
     };
+    const QVector<bool> fenced = fencedLines(lines, sectionStart, sectionEnd);
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
+        if (fenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
         const QString t = lines.at(i).trimmed();
-        if (!t.startsWith(QStringLiteral("### "))) continue;
         if (canonicalCategories().contains(t.mid(4).trimmed(),
                                            Qt::CaseInsensitive)) {
             ++s.flatCount;
@@ -440,10 +487,10 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     const int wantOrder = canonicalCategories().indexOf(category);
     int catHeading = -1;
     int laterHeading = -1;  // first ### whose order > wantOrder
+    const QVector<bool> fenced = fencedLines(lines, unrel + 1, sectionEnd);
     for (int i = unrel + 1; i < sectionEnd; ++i) {
-        const QString t = lines.at(i).trimmed();
-        if (!t.startsWith(QStringLiteral("### "))) continue;
-        const QString name = t.mid(4).trimmed();
+        if (fenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
+        const QString name = lines.at(i).trimmed().mid(4).trimmed();
         if (name.compare(category, Qt::CaseInsensitive) == 0) {
             catHeading = i;
             break;
@@ -676,9 +723,11 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
 
     // Same day: split [Unreleased] into its `### <Category>` blocks.
     QList<QPair<QString, QStringList>> blocks;
-    for (const QString &line : std::as_const(body)) {
+    const QVector<bool> bodyFenced = fencedLines(body, 0, int(body.size()));
+    for (int k = 0; k < body.size(); ++k) {
+        const QString &line = body.at(k);
         const QString t = line.trimmed();
-        if (t.startsWith(QStringLiteral("### "))) {
+        if (!bodyFenced.at(k) && isCategoryHeading(line)) {  // ANTS-5108
             const QString name = t.mid(4).trimmed();
             const int ord = canonicalCategories().indexOf(name);
             if (ord < 0) {
@@ -719,10 +768,10 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
         }
         const int wantOrder = canonicalCategories().indexOf(blk.first);
         int catHeading = -1, laterHeading = -1;
+        const QVector<bool> dayFenced = fencedLines(lines, day + 1, dayEnd);
         for (int i = day + 1; i < dayEnd; ++i) {
-            const QString t = lines.at(i).trimmed();
-            if (!t.startsWith(QStringLiteral("### "))) continue;
-            const QString name = t.mid(4).trimmed();
+            if (dayFenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
+            const QString name = lines.at(i).trimmed().mid(4).trimmed();
             if (name.compare(blk.first, Qt::CaseInsensitive) == 0) { catHeading = i; break; }
             if (canonicalCategories().indexOf(name) > wantOrder && laterHeading < 0)
                 laterHeading = i;
@@ -984,8 +1033,11 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
     // 4. Find the first `### ` heading. Everything from [unrel+1, firstCat)
     //    is preamble (kept untouched); no heading ⇒ nothing to reorder.
     int firstCat = -1;
+    // ANTS-5108 — computed once: 4b's fold re-indents unfenced prose only,
+    // so no line's fence status moves.
+    const QVector<bool> fenced = fencedLines(lines, unrel + 1, sectionEnd);
     for (int i = unrel + 1; i < sectionEnd; ++i) {
-        if (lines.at(i).trimmed().startsWith(QStringLiteral("### "))) {
+        if (!fenced.at(i) && isCategoryHeading(lines.at(i))) {
             firstCat = i;
             break;
         }
@@ -1024,7 +1076,7 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
         const QString name = lines.at(i).trimmed().mid(4).trimmed();
         int j = i + 1;
         while (j < sectionEnd &&
-               !lines.at(j).trimmed().startsWith(QStringLiteral("### ")))
+               (fenced.at(j) || !isCategoryHeading(lines.at(j))))
             ++j;
         Block b;
         const int ci = canonicalIndexCI(name);

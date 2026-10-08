@@ -10478,7 +10478,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
   Lanes: lua, plugins.
 
-- 📋 [ANTS-5108] **Performance pass findings for the changelog writer and feedback-file engine (medium and low).**
+- ✅ [ANTS-5108] **Performance pass findings for the changelog writer and feedback-file engine (medium and low).**
   Filed separately: ANTS-5071; the feedback_query trim loop and the
   uncapped add_batch are in the content-verbs findings.
   Medium:
@@ -10522,6 +10522,16 @@ extends an existing item, that item carries it instead.
   src/changeloglog.cpp test `trimmed().startsWith("### ")` and ignore
   fences while the reader requires column 0. That wants one pass over all
   eight, with tests for an indented line and a fenced heading.
+  Progress (2026-10-08): the changelog writer reads a `### ` heading as
+  ChangelogQuery::parse does, at column 0 and outside a code fence. All
+  eight sites in src/changeloglog.cpp use isCategoryHeading() and a
+  fencedLines() mask, so an indented or fenced heading inside a bullet
+  is no longer an insert target, a normalize boundary or a dated-merge
+  block (changelog_log_writer Ants5108IndentedHeading..., FencedHeading...,
+  NormalizeKeeps..., DatedMergeIgnores..., red first). FeedbackFile::parse
+  splits a tracking row on unescaped `|` only and restores `\|`, so a row
+  renderTrackingBlock writes reads back unchanged (McpFeedbackQuery
+  Ants5108EscapedPipeRoundTrips, red first).
   **Layman:** Smaller changelog and feedback-file fixes, including one that can delete a project's only record of which fixes shipped.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
