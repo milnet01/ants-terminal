@@ -75,91 +75,24 @@ cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --outpu
   4 or below on this host). Narrow with `-R <regex>`, `-L features`, or build
   one `--target <bundle>`.
 
-### Faster loops
+### The pre-push gate
 
-- `cmake --build build --target ants-terminal` skips the test binaries.
-- `-DANTS_CCACHE=ON` (default). Keep the cache large: `ccache -M 20G` once;
-  `ccache -s` to check.
-- `-DANTS_USE_MOLD=ON` (default when `mold` is on PATH).
-- `-DANTS_UNITY_BUILD=ON`: cold full builds only.
-- `cmake --preset=fast`: isolated `build-fast/`, parallel test-bundle linking.
-
-### CMake presets
-
-Each: `cmake --preset=X && cmake --build --preset=X && ctest --preset=X`.
-
-| Preset | Use |
-|---|---|
-| `default` | Release + Ninja in `build/`. |
-| `workstation` | Release in `build-workstation/`, capped `-j3`. |
-| `debug` | Debug + ASan/UBSan in `build-asan/`, serial tests. |
-| `fast` | Release in `build-fast/` for hot iteration. |
-
-### Backstop: `tools/safe-build.sh`
-
-Wraps `cmake --build` in a memory-capped systemd scope. Use it after kernel
-or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
-
-### Local CI and the pre-push hook
-
-- **`tools/ci-parity.sh --full` is this project's local CI.** It executes
-  `.github/workflows/ci.yml`'s jobs through `tools/ci_workflow.py`. There is
-  no second script. `--stress` adds CPU load.
-- Hunt a flaky test with `ctest --test-dir build --repeat until-fail:5 -R <test>`.
-- **Run `tools/setup-git-hooks.sh` once per clone.** It sets
-  `core.hooksPath=tools/hooks`. How the push hook runs the gate is committed
-  in `.ants/gate.conf`.
-- `tools/hooks/pre-push` hands off to the machine-wide hook
-  (`~/.claude/githooks/pre-push`). That hook runs the secret scan, works out
-  what the push changes, and runs `tools/local-ci.sh` in the real checkout.
-  It refuses a push from a tree with uncommitted or untracked files, or of a
-  commit that is not HEAD.
-- `tools/local-ci.sh` runs `ci.yml`'s `build-test` job in CI's own image
-  (ubuntu:24.04: its GCC, mold and Qt 6.4) through
-  `tools/qt62-guard.sh --job build-test --run-job`. A cold or stale image
-  blocks the push: run that command (about 20 min, through `cc-job`), then
-  push again. With no podman the job runs on this machine and the image leg is
-  declared skipped. It also runs
-  `build-asan` when `build-asan/` is warm, and the Qt 6.2 compile guard
-  `tools/qt62-guard.sh --warm-only`. On a push with compilable source, a
-  cold Qt 6.2 cache blocks the push: run `tools/qt62-guard.sh` (about
-  11 min, through `cc-job`), then push again.
-- This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button
-  test). Reproduce a CI-only failure with the `--run-job` command above.
-- A push that `ci.yml`'s `paths-ignore` treats as docs-only runs
-  `tools/local-ci.sh --docs`: no build, no suite. It runs the document checks
-  for what the push touches: the README claim check, `check-roadmap.sh`, the
-  standards checks, and the tests that read `CLAUDE.md`'s text, against the
-  existing `build/`.
-- `tools/ci-parity.sh --full` runs every job, including those the hook
-  leaves to GitHub.
-- A tool the GitHub runner lacks cannot be caught locally.
-  `tests/features/ci_workflow_deps` checks the recipes statically. **A new
-  carrier that runs `ctest` must be added to that test.**
-- Escape hatches: `SKIP_LOCAL_CI=1` (skips the gate, keeps the secret
-  scan) and `git push --no-verify` both need the user (`commits.md` § 2.3);
-  `ANTS_PREPUSH_NO_ASAN=1`,
-  `ANTS_PREPUSH_NO_QT62=1`, `ANTS_PREPUSH_NO_UBUNTU24=1` (runs the job on
-  this machine, with no ubuntu:24.04 leg at all). The ASan leg's
-  contract: `tests/features/prepush_asan_gate/spec.md`.
+- **`tools/ci-parity.sh --full` is this project's local CI.** Run
+  `tools/setup-git-hooks.sh` once per clone.
+- The push hook runs `tools/local-ci.sh`. It refuses a tree with uncommitted
+  or untracked files. A cold CI image or Qt 6.2 cache blocks the push: run
+  the command it names through `cc-job`, then push again.
+- `SKIP_LOCAL_CI=1`, `git push --no-verify` and the `ANTS_PREPUSH_NO_*`
+  switches all need the user (`commits.md` § 2.3).
+- Faster loops, presets, `tools/safe-build.sh` and the gate in full:
+  [`docs/build-and-ci.md`](docs/build-and-ci.md).
 
 ## Test harnesses
 
-- **`audit_rule_fixtures`** — `tests/audit_self_test.sh` matches rule regexes
-  against `tests/audit_fixtures/<rule>/{bad,good}.*`. Count-based.
-- **Feature-conformance** (`tests/features/*`, label `features`) — each subdir
-  pairs `spec.md` with a test compiled into a shared bundle
-  (`tests/features/README.md`). To add one: write `spec.md` first and surface
-  it for sign-off; write `test_<feature>.cpp`; add it to a bundle's `SOURCES`
-  (never `add_executable`); verify it fails against pre-fix code.
-  **Then build that bundle's target and check `ctest -N -R <name>` moved** —
-  building the wrong target passes silently. `build_target_for` names the
-  bundle; it is not guessable from the path.
-- **Perf** (`tools/perf-report.sh`, label `perf`) — not in the presets or CI.
-  See [`docs/qa/perf-harness.md`](docs/qa/perf-harness.md).
-- **E2E** (`tools/e2e/`, label `e2e`) — `ctest -L e2e`. See
-  [`docs/qa/e2e/README.md`](docs/qa/e2e/README.md) and
-  [`docs/qa/e2e/cases.md`](docs/qa/e2e/cases.md).
+Audit fixtures, feature-conformance, perf and e2e:
+[`.claude/rules/test-harnesses.md`](.claude/rules/test-harnesses.md), which
+loads when a file under `tests/` is read. **A new feature test's bundle comes
+from `build_target_for`; check `ctest -N -R <name>` moved after building it.**
 
 ## Hot reload is the design default (user standing rule)
 
@@ -190,16 +123,9 @@ Retrofitting is a roadmap item, never an obligation. Models to copy:
 - Signals/slots for cross-component comms.
 - Config at `~/.config/ants-terminal/config.json`, mode 0600.
 - **The roadmap store is machine-global**
-  (`~/.local/share/ants-terminal/roadmap.sqlite`, mode 0600):
-  - `roadmap_migrate` refuses a root under the system temp dir. The guard is
-    in the handler, not in `RoadmapMigrateVerb::run()`.
-  - There is no `ON DELETE CASCADE`. Deleting a project means deleting
-    element → history → feedback_ref → relationship → citation → message →
-    item → section → id_prefix → project, in that order, with
-    `PRAGMA foreign_keys = ON`. `relationship` and `message` clear both ends.
-  - Back it up with sqlite3 `.backup`, never `cp`.
-  - A `kSchemaVersion` bump locks every older build out of every project.
-    Ask first whether the value can be derived instead.
+  (`~/.local/share/ants-terminal/roadmap.sqlite`, mode 0600). Its rules
+  (deleting a project, backups, `kSchemaVersion`):
+  [`.claude/rules/roadmap-store.md`](.claude/rules/roadmap-store.md).
 - Per-project layout: optional `<root>/.ants/project.json` (`source_roots`,
   `test_roots`, `docs_dir`, `roadmap`, `changelog`, `specs_dir`).
   World-readable, no secrets. Edited by `project_settings`.
@@ -238,65 +164,20 @@ Global rule 18's `append_finding`-only bullet is for other sessions.
 
 ## Project standards
 
-- **The shared standards are owned at `~/.claude/standards/`.**
-  `coding.md`, `documentation.md`, `testing.md` and `commits.md` in
-  `docs/standards/` are deltas: project rules first, then a verbatim mirror of
-  the owner below a divider. `security.md` is the mirror alone.
-- **Never edit a mirrored half.** Fix the owner, then run
-  `tools/check-standard-mirrors.sh --write`. `tools/hooks/pre-commit` refuses a
-  drifted mirror.
-- **Check the owner is committed before `--write`:**
-  `git -C ~/.claude status --porcelain`. If it is dirty, leave the mirror and
-  commit with `ANTS_PRECOMMIT_NO_MIRRORS=1`, saying so in the message.
-- **In the drift diff, `<` is the owner and `>` is the mirror.** Never push
-  mirror text upstream.
-- Two files are not deltas. `roadmap-format.md`: this project is upstream of
-  the global copy, and this one governs. `specs.md`: a full standard owning a
-  spec's shape; global `spec-format.md` § 1 owns whether a spec is needed.
-- `docs/standards/` is the roster: every file there binds unless it marks
-  itself superseded. `mcp-error-codes.md` is the refusal taxonomy
-  (`mcp-errors.md` is superseded). `dependencies.md`: a below-latest pin needs
-  a Downgrade Ledger row.
+- **The shared standards are owned at `~/.claude/standards/`.** Files in
+  `docs/standards/` are deltas over a verbatim mirror. **Never edit a mirrored
+  half.** How to fix and re-mirror one, and which files are not deltas:
+  [`.claude/rules/project-standards.md`](.claude/rules/project-standards.md).
 - Do not cite a delta file's section number from memory. Open the file.
 - ADRs: `docs/decisions/` (Nygard). Specs: `docs/specs/`. Phase outcomes:
   `docs/journal/`. `docs/plans/` is historical only.
 
 ## Versioning & release
 
-- SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
-  source of truth.** Never hardcode a version in `.cpp` / `.h`.
-- Bump with `cut-release --bump-only`: it touches `CMakeLists.txt`, the
-  `Version <strong>X.Y.Z</strong>` banner in `README.md`, and the packaging
-  files in `.claude/bump.json`. Re-check README's prose each cycle, and change
-  it only where a user-visible claim has drifted.
-  `tools/check-readme-claims.sh` runs pre-push.
-- CHANGELOG bullets under `[Unreleased]` are written as work lands. The
-  version heading is written and dated by `packaging/release.sh release`,
-  never by the bump.
-- Update `PLUGINS.md` in the same commit as any `ants.*` Lua surface change.
-- **Every release is a full public release, made when there is something
-  meaningful to ship.** No release candidates and no cadence. The tag is
-  `vX.Y.Z`; "rc" appears in no tag, title or file name.
-- Flow: `cut-release --bump-only`, then `packaging/release.sh release --push`.
-  Without `--push` it rehearses: it still builds and runs the feature tests
-  (unless `--skip-build`), prints what the rest would do, and writes no file,
-  commit or tag. With `--push` it merges `[Unreleased]`
-  into the dated version section, commits, builds and tests, and pushes main.
-  It then builds that commit on every distro in the OBS staging project,
-  which publishes nothing, and waits for GitHub CI on it. It tags only if
-  both are green. `release.yml`
-  creates the GitHub release with its files attached. `release.sh status`
-  shows where things stand.
-- Before releasing, put a `**Theme:**` line at the top of `[Unreleased]`: a
-  plain-language summary of what is new. `release` refuses without one. It
-  becomes the GitHub release text, which the project website shows.
-- `release` builds, and with `--push` also waits on OBS and GitHub: run it
-  through `cc-job`, never under a short timeout, with or without `--push`. It
-  is safe to re-run after a failure. After a killed ninja, run
-  `ninja -C build -n` and `-t recompact` first.
-- Before `release`, run `bash tools/check-shipped-coverage.sh`. It lists shipped
-  items no CHANGELOG bullet cites and bullets that copy a headline, and exits
-  non-zero on either, so keep it out of a `set -e` chain. Review each hit.
+- **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single source of
+  truth.** Bumping, the release flow and its checks:
+  [`.claude/rules/release.md`](.claude/rules/release.md).
+- CHANGELOG bullets under `[Unreleased]` are written as work lands.
 - **A CHANGELOG entry states what shipped, never the defect.** Do not copy a
   roadmap headline that states a problem. Prefer `changelog_log op:"add"` with
   an authored summary: `add_from_roadmap`, and an id-only `add_batch` entry,
@@ -304,26 +185,9 @@ Global rule 18's `append_finding`-only bullet is for other sessions.
 
 ## Key design decisions (non-obvious)
 
-- Custom VT100 parser, no pyte/libvterm. Qt6 is the only runtime dep.
-- Delayed-wrap (xterm-style) line wrapping.
-- Alt-screen 1049 supported.
-- Combining chars in a per-line side table.
-- Image paste saves the image and inserts its path.
-- Lua sandbox strips dangerous globals and has an instruction-count timeout.
-- Session persistence via `QDataStream` + `qCompress`.
-- `opacity` drives per-pixel terminal-area alpha only; chrome paints opaque.
-  No `setWindowOpacity()`.
-- Audit: the rule pack is JSON (`audit_rules.json` appends/overrides; hardcoded
-  checks stay in C++). `clazy-standalone` for Qt-aware checks.
-  `.audit_suppress` is JSONL v2. Calibration reads existing project configs;
-  `.audit_allowlist.json` is only for custom grep rules. The audit test
-  harness is shell-based against fixture dirs.
-- Audit confidence (0–100): floor +10, severity×15, +20 cross-tool, +10
-  external AST tool, −5 short grep finding, −20 test path. AI triage caps:
-  FALSE_POSITIVE ≤ 30, TRUE_POSITIVE ≥ 80.
-- SARIF exports carry `contextRegion` (±3 lines) and `properties.blame`.
-  Generated files are skipped.
-- Roadmap-query IPC caches parsed bullets with mtime and a 100 ms TTL.
+Parser, wrapping, sandbox, opacity and audit scoring:
+[`.claude/rules/design-decisions.md`](.claude/rules/design-decisions.md),
+which loads when a file under `src/` is read.
 
 ---
 

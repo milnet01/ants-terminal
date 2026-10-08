@@ -70504,6 +70504,19 @@ project. Reported causes are claims until checked in source.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-10-06 (GAME-0190 spec).
   Lanes: mcp.
 
+- 📋 [ANTS-5628] **Shorten the schemas of the four always-loaded verbs, which every session pays for at start.**
+  workspace_search, file_outline, read_region and find_definition stay in
+  kEagerVerbs. Measured 2026-10-08 with `claude -p "/context"` in an empty
+  directory: 4.8k, 3.2k, 3k and 0.9k tokens. Most of it is per-parameter
+  prose: ANTS-#### history and edge cases. Move that detail where
+  tool_info {name:...} serves it on demand; keep a short purpose and a
+  one-line summary per argument. Re-measure before and after; tell the
+  claude-config session the result.
+  **Layman:** Every Claude Code session on the machine starts by loading four Ants tools in full; trimming their wording makes every session start lighter.
+  Kind: perf.
+  Source: claude-config request 2026-10-08.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no

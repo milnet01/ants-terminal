@@ -49,10 +49,13 @@ desktop.ini
 #   bump.json       — recipe consumed by the user-level /bump skill
 #   agents/*.md     — project-level domain-expert subagents
 #   skills/*/SKILL.md — project-level slash skills
+#   rules/*.md      — project rules that load when a matching file is read
 !.claude/settings.json
 !.claude/bump.json
 !.claude/agents/
 !.claude/agents/*.md
+!.claude/rules/
+!.claude/rules/*.md
 !.claude/skills/
 !.claude/skills/**
 
