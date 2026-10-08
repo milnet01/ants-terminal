@@ -135,6 +135,9 @@ private:
     // ANTS-5107 — waits for `thread`, delivering the blocking settings calls
     // a worker makes to this object meanwhile. False once `deadline` passes.
     bool waitServicingCalls(QThread *thread, const QDeadlineTimer &deadline);
+    // ANTS-5107 — true while `info`'s files are those its abandoned worker
+    // was loaded from. A change clears the record, so the plugin loads.
+    bool stillWedged(const PluginInfo &info);
 
     static constexpr int kTeardownMs = 2000;     // INV-4 teardown deadline
     static constexpr int kServiceSliceMs = 10;   // wait between deliveries
@@ -159,6 +162,12 @@ private:
     struct Zombie { QThread *thread; LuaEngine *engine; };
     QList<Zombie> m_zombies;
     QTimer *m_healthTimer = nullptr;
+    // ANTS-5107 — plugin name -> fingerprint of its files: m_loadedFiles as
+    // each loaded plugin was loaded, m_wedgedFiles for each plugin whose
+    // worker became a zombie. m_wedgedFiles outlives reloads; an entry is
+    // dropped when the plugin's files no longer match it.
+    QHash<QString, QString> m_loadedFiles;
+    QHash<QString, QString> m_wedgedFiles;
 
     PermissionPrompt m_permissionPrompt;
     GrantStore m_grantLoad;

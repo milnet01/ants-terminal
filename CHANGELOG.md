@@ -117,6 +117,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A plugin that stopped responding is not loaded again on reload until one of its files changes** (ANTS-5107)
+  Each reload used to leave behind another stuck background thread.
+  Reaches a running terminal after a relaunch.
+
 - **A plugin handler's 1.5 s time limit no longer counts the time it waits for `ants.settings.get` or `ants.settings.set` to answer** (ANTS-5107)
   That wait is the terminal's time, not the plugin's. Reaches a running
   terminal after a relaunch.

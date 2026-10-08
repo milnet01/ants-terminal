@@ -496,3 +496,38 @@ TEST(LuaThreading, Ants5107DevReloadRunsOncePerBurst) {
     EXPECT_EQ(reloads, 1) << "four quick saves reloaded the plugin "
                           << reloads << " times";
 }
+
+// A plugin whose worker had to be abandoned is not loaded again until its
+// files change, so reloading does not leave another stuck worker each time.
+TEST(LuaThreading, Ants5107WedgedPluginReloadsOnlyWhenChanged) {
+    const QString dir = makeTeardownDir();
+    const QString pluginDir = dir + QStringLiteral("/plugins/stuck");
+    addPlugin(dir, QStringLiteral("stuck"),
+              "string.find(string.rep('a', 3000), '.-.-.-.-b')\n");
+    const QStringList enabled{QStringLiteral("stuck")};
+    int detached = 0;
+    bool reloadedUnchanged = false;
+    bool fixedRan = false;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&](const QString &m) {
+            if (m.contains(QStringLiteral("detached"))) ++detached;
+            if (m == QStringLiteral("fixed")) fixedRan = true;
+        });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad(enabled);
+        pump(500);
+        pm.reloadAll(enabled);
+        reloadedUnchanged = pm.engineFor(QStringLiteral("stuck")) != nullptr;
+        pump(500);  // long enough for a reloaded copy to wedge again
+        pm.reloadAll(enabled);
+        writeTemp(pluginDir, QStringLiteral("init.lua"), "ants.log('fixed')\n");
+        pm.reloadAll(enabled);
+        pump(300);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_FALSE(reloadedUnchanged) << "an unchanged wedged plugin was loaded again";
+    EXPECT_EQ(detached, 1) << "each reload left another stuck worker";
+    EXPECT_TRUE(fixedRan) << "the plugin was not loaded after its files changed";
+}

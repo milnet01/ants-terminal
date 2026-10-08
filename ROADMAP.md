@@ -10507,6 +10507,13 @@ extends an existing item, that item carries it instead.
   project.read already refuses a FIFO. Still open: the ANTS-2093 and
   luaengine.h text, zombies per reload, signal rate limits, broadcast
   fan-out.
+  Progress (2026-10-08): zombies per reload fixed as the user decided,
+  red first. A plugin whose worker was detached is reloaded only once
+  its files differ from those it was loaded from (fingerprint taken at
+  load, so a dev-mode edit that triggers the reload still loads it).
+  LuaThreading Ants5107WedgedPluginReloadsOnlyWhenChanged. ANTS-1750
+  section 4 and PLUGINS.md record it. Still open: the ANTS-2093 and
+  luaengine.h text, signal rate limits, broadcast fan-out.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).

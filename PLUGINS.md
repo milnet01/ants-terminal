@@ -415,7 +415,9 @@ UI and not other plugins. Keeping handler bodies quick (well under a few
 ms) is still good manners, but it is no longer a hard UI rule. A plugin
 that wedges a handler for too long (e.g. a single pathological
 `string.gsub`) is automatically demoted to observe-only and stops
-receiving events, while the terminal stays responsive.
+receiving events, while the terminal stays responsive. If it is still
+stuck when the plugins reload, it is not loaded again until you edit one
+of its files.
 
 `ants.get_output()` / `ants.get_cwd()` are *designed* to return a best-effort
 recent snapshot pushed across from the UI thread. **Note (0.7.95):** the host

@@ -2,8 +2,10 @@
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
@@ -25,6 +27,24 @@ namespace {
 qint64 monotonicMs() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+// ANTS-5107 — the name, size and modification time of every file under a
+// plugin's directory. Two equal results mean its files have not changed.
+QString filesFingerprint(const QString &dir) {
+    QStringList entries;
+    QDirIterator it(dir, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo fi = it.fileInfo();
+        entries << QStringLiteral("%1\t%2\t%3")
+                       .arg(fi.filePath())
+                       .arg(fi.size())
+                       .arg(fi.lastModified().toMSecsSinceEpoch());
+    }
+    entries.sort();
+    return entries.join(QLatin1Char('\n'));
 }
 }  // namespace
 
@@ -110,6 +130,7 @@ void PluginManager::unloadAll() {
     m_threads.clear();
     m_execStart.clear();
     m_demoted.clear();
+    m_loadedFiles.clear();
 }
 
 void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
@@ -197,6 +218,13 @@ void PluginManager::finishTeardown(LuaEngine *engine, QThread *thread,
         m_demoted.remove(engine);
         m_execStart.remove(engine);
         m_zombies.append(Zombie{thread, engine});
+        // ANTS-5107 — scanAndLoad loads this plugin again only once its
+        // files differ from the ones it was loaded from, so a plugin that
+        // wedges does not leave a new zombie on every reload.
+        if (engine) {
+            const QString &name = engine->pluginName();
+            m_wedgedFiles.insert(name, m_loadedFiles.value(name));
+        }
         // ANTS-2194 — include the running zombie count so a wedge-loop (a plugin
         // class that reliably hangs on teardown) is observable as a climbing
         // number rather than a silent per-event leak.
@@ -471,7 +499,14 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
         m_plugins.append(info);
 
         if (info.enabled) {
-            loadPlugin(info);
+            if (stillWedged(info)) {
+                emit logMessage(QString("Plugin %1 not reloaded: it stopped "
+                                        "responding, and its files have not "
+                                        "changed since. Edit them to load it.")
+                                    .arg(info.name));
+            } else {
+                loadPlugin(info);
+            }
             if (devMode() && m_watcher) {
                 // Watch init.lua + manifest.json for edits
                 m_watcher->addPath(initLua);
@@ -486,6 +521,14 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
 
 void PluginManager::reloadAll(const QStringList &enabledList) {
     scanAndLoad(enabledList);
+}
+
+bool PluginManager::stillWedged(const PluginInfo &info) {
+    const auto it = m_wedgedFiles.find(info.name);
+    if (it == m_wedgedFiles.end()) return false;
+    if (it.value() == filesFingerprint(info.path)) return true;
+    m_wedgedFiles.erase(it);
+    return false;
 }
 
 void PluginManager::loadPlugin(const PluginInfo &info) {
@@ -548,6 +591,7 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
     // QObject) moved onto its own worker QThread. Lifetime is managed
     // explicitly: teardownEngine() deletes it worker-side on a clean unload,
     // or detaches it into m_zombies if its worker is wedged. INV-11.
+    m_loadedFiles.insert(info.name, filesFingerprint(info.path));
     auto *engine = new LuaEngine(nullptr);
     engine->setPluginName(info.name);
     engine->setPermissions(granted);
