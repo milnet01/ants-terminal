@@ -541,12 +541,19 @@ bool LuaEngine::loadScript(const QString &path) {
         shutdown();
         return false;
     }
+    // ANTS-5107 — init.lua has registered its handlers; from now on a
+    // broadcast reaches this plugin only for events it handles.
+    quint32 handled = 0;
+    for (auto it = m_handlers.cbegin(); it != m_handlers.cend(); ++it)
+        handled |= eventBit(it.key());
+    m_handledEvents.store(handled, std::memory_order_relaxed);
     return true;
 }
 
 void LuaEngine::shutdown() {
     if (m_state) {
         m_handlers.clear();
+        m_handledEvents.store(0, std::memory_order_relaxed);  // ANTS-5107
         // Clear the instruction-count hook before lua_close runs.
         // lua_close executes every __gc metamethod in dependency order;
         // metamethods can run arbitrary Lua code, which the count hook
@@ -671,10 +678,35 @@ int LuaEngine::lua_ants_notify(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     const char *title = luaL_checkstring(L, 1);
     const char *message = luaL_optstring(L, 2, "");
-    if (engine) {
+    if (engine && engine->admitMessage(engine->m_notificationsInWindow,
+                                       kMaxNotificationsPerSecond,
+                                       engine->m_droppedNotifications)) {
         emit engine->showNotification(QString::fromUtf8(title), QString::fromUtf8(message));
     }
     return 0;
+}
+
+bool LuaEngine::admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped) {
+    if (!m_messageWindow.isValid() || m_messageWindow.elapsed() >= 1000) {
+        m_messageWindow.start();
+        m_logsInWindow = 0;
+        m_notificationsInWindow = 0;
+    }
+    if (++sentInWindow <= cap) return true;
+    dropped.fetch_add(1, std::memory_order_relaxed);
+    return false;
+}
+
+template <class Update>
+void LuaEngine::postUiUpdate(Update update) {
+    bool wasEmpty = false;
+    {
+        QMutexLocker lock(&m_ui->mutex);
+        update(*m_ui);
+        wasEmpty = !m_ui->pending;
+        m_ui->pending = true;
+    }
+    if (wasEmpty) emit uiUpdatesPending();
 }
 
 // ANTS-1802 — push a QString as a length-counted Lua string. lua_pushstring
@@ -724,7 +756,10 @@ int LuaEngine::lua_ants_set_status(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     const char *text = luaL_checkstring(L, 1);
     if (engine) {
-        emit engine->setStatusText(QString::fromUtf8(text));
+        engine->postUiUpdate([text](UiUpdates &ui) {
+            ui.status = QString::fromUtf8(text);
+            ui.hasStatus = true;
+        });
     }
     return 0;
 }
@@ -752,6 +787,7 @@ int LuaEngine::lua_ants_on(lua_State *L) {
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
         handlers.push_back(ref);
+        engine->m_handledEvents.fetch_or(eventBit(event), std::memory_order_relaxed);
     }
     return 0;
 }
@@ -759,7 +795,8 @@ int LuaEngine::lua_ants_on(lua_State *L) {
 int LuaEngine::lua_ants_log(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     const char *msg = luaL_checkstring(L, 1);
-    if (engine) {
+    if (engine && engine->admitMessage(engine->m_logsInWindow, kMaxLogsPerSecond,
+                                       engine->m_droppedLogs)) {
         emit engine->logMessage(QString::fromUtf8(msg));
     }
     return 0;
@@ -778,7 +815,9 @@ int LuaEngine::lua_ants_warn(lua_State *L) {
             return 0;  // control message — ignore
     }
     LuaEngine *engine = getEngine(L);
-    if (!engine) return 0;
+    if (!engine || !engine->admitMessage(engine->m_logsInWindow, kMaxLogsPerSecond,
+                                         engine->m_droppedLogs))
+        return 0;
     // ANTS-5070 — join the arguments on the Lua side. luaL_tolstring
     // allocates and so can raise, and a raise must find no C++ object alive
     // in this frame; the message becomes a QString only after the last call
@@ -896,11 +935,17 @@ int LuaEngine::lua_ants_palette_register(lua_State *L) {
     }
 
     if (engine) {
-        emit engine->paletteEntryRegistered(
-            engine->pluginName(),
-            QString::fromUtf8(title),
-            QString::fromUtf8(action),
-            hotkey ? QString::fromUtf8(hotkey) : QString());
+        PaletteEntry entry{QString::fromUtf8(title), QString::fromUtf8(action),
+                           hotkey ? QString::fromUtf8(hotkey) : QString()};
+        engine->postUiUpdate([&entry](UiUpdates &ui) {
+            for (PaletteEntry &e : ui.palette) {
+                if (e.title == entry.title && e.action == entry.action) {
+                    e = std::move(entry);
+                    return;
+                }
+            }
+            ui.palette.append(std::move(entry));
+        });
     }
     lua_pop(L, 3);
     return 0;

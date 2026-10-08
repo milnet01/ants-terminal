@@ -10514,6 +10514,20 @@ extends an existing item, that item carries it instead.
   LuaThreading Ants5107WedgedPluginReloadsOnlyWhenChanged. ANTS-1750
   section 4 and PLUGINS.md record it. Still open: the ANTS-2093 and
   luaengine.h text, signal rate limits, broadcast fan-out.
+  Progress (2026-10-08): signal rate limits (as the user decided) and
+  broadcast fan-out fixed, red first. ants.log/print/warn capped at 100
+  and ants.notify at 5 per second per plugin; healthTick logs one
+  "dropped N" line per plugin. Status and palette go through a
+  latest-only box (LuaEngine::UiUpdates) with one queued wake-up.
+  fireEvent skips a plugin with no handler (LuaEngine::handlesEvent;
+  every event until init.lua has run). Tests: LuaThreading
+  Ants5107LogAndNotifyFloodsAreCapped,
+  Ants5107StatusAndPaletteKeepTheLatest,
+  Ants5107BroadcastSkipsPluginsWithoutAHandler. ANTS-1750 sections
+  2.1, 2.2, 2.5 and PLUGINS.md record it. Still open: the last low,
+  ANTS-2093 sections 2.4 and 4 plus the runQueryThreaded comment in
+  luaengine.h still describe a join on the GUI thread and zombies kept
+  until exit, false since ANTS-4682 and the 2026-09-14 reaping.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).

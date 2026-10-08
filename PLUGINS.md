@@ -203,6 +203,9 @@ or falls back to the status bar.
 ants.notify("Build finished", "Exit 0 · 1m 14s")
 ```
 
+At most 5 notifications per second reach the terminal from one plugin.
+The rest are dropped, and the terminal logs how many.
+
 ### `ants.get_output(n)`
 
 Returns the last `n` lines of visible scrollback as a single newline-joined
@@ -239,6 +242,8 @@ Displays `text` in the status bar as a **5-second timed message**
 5000)`). After the 5 s window the status bar returns to its normal
 content — this is not a persistent override. Calling `ants.set_status("")`
 shows a blank message for 5 seconds, not an immediate restore.
+If a plugin sets the status faster than the terminal shows it, only the
+latest text is shown.
 
 ```lua
 ants.set_status("indexing…")
@@ -251,6 +256,9 @@ Displays as a **3-second timed status-bar message** prepended with
 Use for debugging; not a substitute for `ants.set_status()` for
 user-facing messages. Note: `print()` inside a plugin is also
 redirected here.
+At most 100 messages per second from one plugin reach the log,
+counting `print()` and `warn()`. The rest are dropped, and the terminal
+logs how many.
 
 ```lua
 ants.log("plugin foo: loaded config from " .. cfg_path)
@@ -312,7 +320,9 @@ end
 palette. No permission required — the entry is opt-in (the user has to
 open the palette and pick it). When a `hotkey` is provided, it is also
 registered as a global QShortcut so the entry can be triggered without
-opening the palette.
+opening the palette. Registering the same `title` and `action` again
+replaces the entry; if that happens faster than the terminal applies it,
+only the latest is applied.
 
 ```lua
 ants.palette.register({

@@ -13,12 +13,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QMutexLocker>
 #include <QThread>
 #include <QTimer>
 
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <utility>
 
 namespace {
 // Handler execution time is measured on the monotonic clock: a wall-clock
@@ -114,6 +116,7 @@ void PluginManager::unloadAll() {
     // runs on the worker and can only signal the GUI via queued connections,
     // so it cannot synchronously re-enter fireEvent against a half-torn-down
     // m_engines.
+    reportDroppedMessages();
     const auto names = m_engines.keys();
     for (const QString &name : names) {
         teardownEngine(name, m_engines.value(name, nullptr),
@@ -242,8 +245,26 @@ void PluginManager::wireEngine(LuaEngine *engine) {
     // need no change beyond the engine's affinity.
     connect(engine, &LuaEngine::sendToTerminal, this, &PluginManager::sendToTerminal);
     connect(engine, &LuaEngine::showNotification, this, &PluginManager::showNotification);
-    connect(engine, &LuaEngine::setStatusText, this, &PluginManager::statusMessage);
     connect(engine, &LuaEngine::logMessage, this, &PluginManager::logMessage);
+    // ANTS-5107 — status text and palette entries arrive latest-only: one
+    // queued call takes whatever is waiting when it runs. The lambda holds
+    // the box, not the engine, so it is safe however late it runs.
+    connect(engine, &LuaEngine::uiUpdatesPending, this,
+            [this, ui = engine->uiUpdates(), name = engine->pluginName()]() {
+        bool hasStatus = false;
+        QString status;
+        QList<LuaEngine::PaletteEntry> palette;
+        {
+            QMutexLocker lock(&ui->mutex);
+            ui->pending = false;
+            hasStatus = std::exchange(ui->hasStatus, false);
+            status.swap(ui->status);
+            palette.swap(ui->palette);
+        }
+        if (hasStatus) emit statusMessage(status);
+        for (const auto &e : palette)
+            emit paletteEntryRegistered(name, e.title, e.action, e.hotkey);
+    });
     connect(engine, &LuaEngine::clipboardWriteRequested,
             this, &PluginManager::clipboardWriteRequested);
     // ANTS-1750 § 2.3 — settings.get is the one synchronous worker→GUI read.
@@ -263,8 +284,6 @@ void PluginManager::wireEngine(LuaEngine *engine) {
     connect(engine, &LuaEngine::settingsSetRequested,
             this, &PluginManager::settingsSetRequested,
             Qt::BlockingQueuedConnection);
-    connect(engine, &LuaEngine::paletteEntryRegistered,
-            this, &PluginManager::paletteEntryRegistered);
     // ANTS-1750 — execution-time bracketing for healthTick(). These slots
     // run on the GUI thread (queued from the worker); m_execStart is touched
     // only here and in healthTick(). INV-3.
@@ -299,7 +318,21 @@ QList<LuaEngine *> PluginManager::healthyEngines() const {
     return out;
 }
 
+void PluginManager::reportDroppedMessages() {
+    for (auto *engine : std::as_const(m_engines)) {
+        if (!engine) continue;
+        const LuaEngine::DroppedMessages d = engine->takeDroppedMessages();
+        if (d.logs == 0 && d.notifications == 0) continue;
+        emit logMessage(QString("Plugin %1 sent messages too fast: dropped %2 log "
+                                "and %3 notification messages")
+                            .arg(engine->pluginName())
+                            .arg(d.logs)
+                            .arg(d.notifications));
+    }
+}
+
 void PluginManager::healthTick() {
+    reportDroppedMessages();
     if (m_execStart.isEmpty()) return;
     const qint64 now = monotonicMs();
     // Collect first so demotion doesn't mutate m_execStart mid-iteration.
@@ -636,8 +669,10 @@ bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
     // ANTS-1750 — non-blocking broadcast: post to each healthy worker and
     // return to the GUI event loop immediately (INV-2). No veto for async
     // events — every event fired today is fire-and-forget; the synchronous-
-    // veto path is ANTS-1736 (§ 2.6).
+    // veto path is ANTS-1736 (§ 2.6). ANTS-5107 — a plugin with no handler
+    // for the event is not sent it.
     for (auto *engine : healthyEngines()) {
+        if (!engine->handlesEvent(event)) continue;
         QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
                                   Q_ARG(int, int(event)), Q_ARG(QString, data));
     }

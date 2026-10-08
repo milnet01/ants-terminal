@@ -91,6 +91,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Terminal events are sent only to the plugins that handle them** (ANTS-5107)
+  Reaches a running terminal after a relaunch.
+
 - **Claude Code sessions start lighter: the roadmap and changelog writer tools now load on first use instead of at every session start**
 
 - **Restoring saved tabs at startup uses less memory** (ANTS-5106)
@@ -116,6 +119,11 @@ for security-relevant changes.
 - **roadmap_log's write reply reports `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview), which says only what was measured; `discarded_external_edits` stays one more release as a deprecated alias** (ANTS-4984)
 
 ### Fixed
+
+- **A plugin can no longer flood the terminal: at most 100 log lines and 5 notifications a second each, with one line saying how many were dropped** (ANTS-5107)
+  Status text and palette entries a plugin sends faster than the
+  terminal shows them collapse to the latest. Reaches a running
+  terminal after a relaunch.
 
 - **A plugin that stopped responding is not loaded again on reload until one of its files changes** (ANTS-5107)
   Each reload used to leave behind another stuck background thread.

@@ -531,3 +531,132 @@ TEST(LuaThreading, Ants5107WedgedPluginReloadsOnlyWhenChanged) {
     EXPECT_EQ(detached, 1) << "each reload left another stuck worker";
     EXPECT_TRUE(fixedRan) << "the plugin was not loaded after its files changed";
 }
+
+// ANTS-5107 — what a plugin sends the GUI thread. Logs and notifications
+// past a per-second cap are dropped and reported once; status text and
+// palette entries keep only the latest; a broadcast skips a plugin with no
+// handler for it.
+TEST(LuaThreading, Ants5107LogAndNotifyFloodsAreCapped) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("chatty"),
+              "ants.on('load', function()\n"
+              "  for i = 1, 1000 do ants.log('flood') end\n"
+              "  for i = 1, 50 do ants.notify('t', 'm') end\n"
+              "end)\n");
+    int logs = 0;
+    int notes = 0;
+    QStringList reports;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&](const QString &m) {
+            if (m == QStringLiteral("flood")) ++logs;
+            if (m.contains(QStringLiteral("dropped"))) reports << m;
+        });
+        QObject::connect(&pm, &PluginManager::showNotification,
+                         [&notes](const QString &, const QString &) { ++notes; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("chatty")});
+        pump(500);
+        runHealthTick(pm);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_LE(logs, 2 * LuaEngine::kMaxLogsPerSecond) << logs << " logs reached the GUI";
+    EXPECT_LE(notes, 2 * LuaEngine::kMaxNotificationsPerSecond)
+        << notes << " notifications reached the GUI";
+    ASSERT_EQ(reports.size(), 1) << "expected one report of what was dropped";
+    EXPECT_TRUE(reports.first().contains(
+        QStringLiteral("dropped %1 log and %2 notification")
+            .arg(1000 - logs).arg(50 - notes)))
+        << qPrintable(reports.first());
+}
+
+TEST(LuaThreading, Ants5107StatusAndPaletteKeepTheLatest) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("busybar"),
+              "ants.on('load', function()\n"
+              "  for i = 1, 1000 do\n"
+              "    ants.set_status('s' .. i)\n"
+              "    ants.palette.register({title = 'T', action = 'a',\n"
+              "                           hotkey = 'F' .. (i % 12 + 1)})\n"
+              "  end\n"
+              "end)\n");
+    QStringList statuses;
+    QStringList hotkeys;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::statusMessage,
+                         [&statuses](const QString &s) { statuses << s; });
+        QObject::connect(&pm, &PluginManager::paletteEntryRegistered,
+                         [&hotkeys](const QString &, const QString &,
+                                    const QString &, const QString &h) { hotkeys << h; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("busybar")});
+        // The GUI thread does not run its loop while the plugin floods, so
+        // everything the plugin sent is waiting when it next does.
+        QThread::msleep(500);
+        pump(300);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_EQ(statuses.size(), 1) << statuses.size() << " status updates reached the GUI";
+    EXPECT_EQ(hotkeys.size(), 1) << hotkeys.size() << " palette updates reached the GUI";
+    ASSERT_FALSE(statuses.isEmpty());
+    ASSERT_FALSE(hotkeys.isEmpty());
+    EXPECT_EQ(statuses.last(), QStringLiteral("s1000"));
+    EXPECT_EQ(hotkeys.last(), QStringLiteral("F5"));  // 1000 % 12 + 1
+}
+
+namespace {
+
+// Counts the queued calls delivered to the object it filters.
+class MetaCallCounter : public QObject {
+public:
+    int calls = 0;
+
+    bool eventFilter(QObject *, QEvent *e) override {
+        if (e->type() == QEvent::MetaCall) ++calls;
+        return false;
+    }
+};
+
+}  // namespace
+
+TEST(LuaThreading, Ants5107BroadcastSkipsPluginsWithoutAHandler) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("quiet"), "ants.on('load', function() end)\n");
+    addPlugin(dir, QStringLiteral("listener"),
+              "ants.on('theme_changed', function(t) ants.log('theme:' .. t) end)\n");
+    int quietCalls = -1;
+    bool heardEarly = false;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&heardEarly](const QString &m) {
+            if (m == QStringLiteral("theme:early")) heardEarly = true;
+        });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("quiet"), QStringLiteral("listener")});
+        // Fired before either init.lua has run, so it must still arrive.
+        pm.fireEvent(PluginEvent::ThemeChanged, QStringLiteral("early"));
+        pump(300);
+        LuaEngine *quiet = pm.engineFor(QStringLiteral("quiet"));
+        ASSERT_NE(quiet, nullptr);
+        auto *counter = new MetaCallCounter;
+        counter->moveToThread(quiet->thread());
+        QMetaObject::invokeMethod(quiet, [quiet, counter]() {
+            quiet->installEventFilter(counter);
+        }, Qt::BlockingQueuedConnection);
+        for (int i = 0; i < 100; ++i)
+            pm.fireEvent(PluginEvent::ThemeChanged, QStringLiteral("x"));
+        // This call is itself one queued call, so a clean result is 1.
+        QMetaObject::invokeMethod(quiet, [quiet, counter, &quietCalls]() {
+            quiet->removeEventFilter(counter);
+            quietCalls = counter->calls;
+            delete counter;
+        }, Qt::BlockingQueuedConnection);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_EQ(quietCalls, 1) << "a plugin with no theme_changed handler was "
+                                "sent " << quietCalls - 1 << " of them";
+    EXPECT_TRUE(heardEarly) << "an event fired while the plugin loaded was lost";
+}

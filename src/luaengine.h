@@ -7,7 +7,10 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QElapsedTimer>
+#include <QList>
+#include <QMutex>
 #include <atomic>
+#include <memory>
 #include <vector>
 
 // Forward declare Lua state + activation record
@@ -68,9 +71,9 @@ public:
 
     // ANTS-1750 — the GUI controller (PluginManager) sets the abort flag
     // when it demotes a runaway plugin; instructionHook reads it and raises
-    // luaL_error at the next VM boundary. Atomic: with m_tearingDown, the
-    // only LuaEngine state intentionally touched from a thread other than
-    // the worker. INV-5.
+    // luaL_error at the next VM boundary. Atomic, like the other state the
+    // GUI thread touches: m_tearingDown, the dropped-message counts,
+    // m_handledEvents, and uiUpdates() under its mutex. INV-5.
     void requestAbort() { m_abortRequested.store(true); }
     // ANTS-5107 — set by the controller when it starts tearing this plugin
     // down. dispatchEvent skips every queued event but Unload, and
@@ -90,6 +93,40 @@ public:
     // `startPcallBudget()` (i.e. the next outer pcall launched by
     // `loadScript` or an event firing).
     void setPcallBudgetMs(qint64 ms) { m_pcallBudgetMs = ms; }
+
+    // ANTS-5107 — per-plugin caps on what reaches the GUI thread, per
+    // one-second window: ants.log (with print and warn) and ants.notify.
+    // Past a cap the message is dropped and counted; the GUI controller
+    // collects the counts with takeDroppedMessages() and reports them.
+    static constexpr int kMaxLogsPerSecond = 100;
+    static constexpr int kMaxNotificationsPerSecond = 5;
+    struct DroppedMessages { int logs = 0; int notifications = 0; };
+    DroppedMessages takeDroppedMessages() {
+        return {m_droppedLogs.exchange(0), m_droppedNotifications.exchange(0)};
+    }
+
+    // ANTS-5107 — status text and palette entries wait here until the GUI
+    // thread takes them, keeping only the latest status and the latest of
+    // each palette entry (MainWindow keys entries by title and action). The
+    // worker emits uiUpdatesPending only when the box goes from empty to
+    // pending, so a flood queues one call, not one per update. Shared
+    // between the worker and the GUI thread, under `mutex`.
+    struct PaletteEntry { QString title; QString action; QString hotkey; };
+    struct UiUpdates {
+        QMutex mutex;
+        bool pending = false;
+        bool hasStatus = false;
+        QString status;
+        QList<PaletteEntry> palette;
+    };
+    std::shared_ptr<UiUpdates> uiUpdates() const { return m_ui; }
+
+    // ANTS-5107 — whether `event` reaches a handler, so a broadcast can skip
+    // a plugin with none. True for every event until init.lua has run, so
+    // an event fired while the plugin loads still arrives.
+    bool handlesEvent(PluginEvent event) const {
+        return (m_handledEvents.load(std::memory_order_relaxed) & eventBit(event)) != 0;
+    }
 
     // ===================================================================
     // ANTS-2093 — project_query: run an agent-supplied READ-ONLY Lua
@@ -173,7 +210,9 @@ public slots:
 signals:
     void sendToTerminal(const QString &text);
     void showNotification(const QString &title, const QString &message);
-    void setStatusText(const QString &text);
+    // ANTS-5107 — ants.set_status / ants.palette.register left something in
+    // uiUpdates(). Emitted once per empty-to-pending change.
+    void uiUpdatesPending();
     void logMessage(const QString &msg);
     // Emitted when a permissioned API is called. Handlers can perform the
     // privileged work (e.g. write the system clipboard for clipboard.write).
@@ -183,12 +222,6 @@ signals:
     void settingsGetRequested(const QString &pluginName, const QString &key, QString &outValue);
     void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value,
                               QString &error);
-    // ants.palette.register({title, action, hotkey}) — appends a Ctrl+Shift+P
-    // entry. PluginManager forwards to MainWindow which rebuilds the palette
-    // and (when hotkey is non-empty) wires a global QShortcut. action is the
-    // payload echoed back via PaletteAction event when the entry fires.
-    void paletteEntryRegistered(const QString &pluginName, const QString &title,
-                                const QString &action, const QString &hotkey);
     // ANTS-1750 — execution-time bracketing for the single-uninterruptible-
     // C-call health check. Emitted by timedPcall() around each handler and
     // around init.lua (ANTS-5107: per handler, because the budget restarts
@@ -252,6 +285,18 @@ private:
     // the budget times: one handler, or init.lua.
     int timedPcall(int nargs, int nresults);
 
+    // ANTS-5107 — counts one message against `sentInWindow` and its cap;
+    // false (and one more in `dropped`) once the cap is reached this second.
+    bool admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped);
+    // ANTS-5107 — applies `update` to uiUpdates() under its mutex, emitting
+    // uiUpdatesPending if nothing was pending before.
+    template <class Update> void postUiUpdate(Update update);
+    static quint32 eventBit(PluginEvent event) {
+        return 1u << static_cast<int>(event);
+    }
+    static_assert(static_cast<int>(PluginEvent::PaletteAction) < 32,
+                  "m_handledEvents holds one bit per PluginEvent");
+
     QString m_pluginName;
     QStringList m_permissions;
     lua_State *m_state = nullptr;
@@ -288,6 +333,18 @@ private:
     // the Unload handler runs, so instructionHook spares it.
     std::atomic<bool> m_tearingDown{false};
     bool m_inUnload = false;
+
+    // ANTS-5107 — what this plugin sends the GUI thread. The window and its
+    // counts are worker-only; the dropped counts are taken by the GUI.
+    QElapsedTimer m_messageWindow;
+    int m_logsInWindow = 0;
+    int m_notificationsInWindow = 0;
+    std::atomic<int> m_droppedLogs{0};
+    std::atomic<int> m_droppedNotifications{0};
+    std::shared_ptr<UiUpdates> m_ui = std::make_shared<UiUpdates>();
+    // ANTS-5107 — one bit per PluginEvent with a handler; all set until
+    // loadScript has run init.lua. Written on the worker, read by the GUI.
+    std::atomic<quint32> m_handledEvents{~0u};
     // ANTS-1750 — monotonic per-engine event sequence, worker-only. Tags
     // each eventStarted/eventCompleted pair (FIFO single-worker, so they
     // strictly alternate; the seq is for robustness + logging).

@@ -116,6 +116,7 @@ private slots:
     // Demotes any plugin whose currently-executing handler has run past
     // budget + grace (single-uninterruptible-C-call detection): sets the
     // engine's abort flag, drops it from healthyEngines(), logs it. INV-3.
+    // ANTS-5107 — also reports the messages each plugin had dropped.
     void healthTick();
 
 private:
@@ -138,6 +139,9 @@ private:
     // ANTS-5107 — true while `info`'s files are those its abandoned worker
     // was loaded from. A change clears the record, so the plugin loads.
     bool stillWedged(const PluginInfo &info);
+    // ANTS-5107 — one log line per plugin that dropped log or notify
+    // messages over its rate cap since the last report.
+    void reportDroppedMessages();
 
     static constexpr int kTeardownMs = 2000;     // INV-4 teardown deadline
     static constexpr int kServiceSliceMs = 10;   // wait between deliveries
