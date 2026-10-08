@@ -155,8 +155,11 @@ shared hook gets all four checks without restating them.
 that only execs it is not a hook of its own (§ 6.2), and neither is one that
 refuses before the exec, for instance until a setup script has run. **It binds from
 2026-09-28.** A hook written before then is not in breach for its past. Its
-next edit owes the missing checks. They may land over several commits, each
-dropping none, with those still missing filed on the roadmap. `ci-gate` reports a hook of its own that
+first edit that changes what it runs owes the missing checks; a comment-only
+edit owes nothing. They may land over several commits: each edit that changes
+what the hook runs lands at least one and drops none, and those still missing
+are filed on the roadmap. An item met only in part, such as a scan that runs
+here but not in other people's clones, is still missing. `ci-gate` reports a hook of its own that
 neither hands off nor runs a secret scan. **Nothing checks items 2–4
 mechanically**; whether a hook's documentation mode keeps the checks the
 pipeline needs is a judgement only the project can make (§ 6).
