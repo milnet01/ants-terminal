@@ -20,9 +20,11 @@ Two cross-cutting persistence bugs flagged by indie-review #7 (2026-06-04):
   (ANTS-1821): each missing component is born 0700, a pre-existing 0755 leaf
   is tightened.
 - Wrap the read-modify-write cycles in `configbackup.h ConfigWriteLock`
-  (advisory `flock(2)` on `<path>.lock`, 5 s deadline). On timeout the write
-  proceeds best-effort — a 5 s wait implies a hung/stale holder (the RMW is
-  microseconds), so dropping the record would be the worse outcome.
+  (advisory `flock(2)` on `<path>.lock`). The model ledgers run on the GUI
+  thread, so they wait `ConfigWriteLock::kGuiTimeoutMs` (ANTS-5105); the
+  others keep the 5 s default. On timeout the write proceeds best-effort:
+  the RMW takes microseconds, so a timeout means a hung holder, and dropping
+  the record would be the worse outcome.
 
 ## Surface
 
@@ -52,3 +54,7 @@ Two cross-cutting persistence bugs flagged by indie-review #7 (2026-06-04):
   sequence lives in `jsonlfile.cpp`), so the grep asserts each ledger calls the
   shared helper rather than re-implementing the 0700 dance.
 - **INV-5** — wiring: every cited RMW site holds a `ConfigWriteLock`.
+- **INV-6** (ANTS-5105) — with `<path>.lock` held by another holder,
+  `ModelSwitchLedger::appendRecord`, `ModelSwitchLedger::writeRecords` and
+  `ModelNearMissLedger::appendRecord` each return within 1 s and still
+  write their records. Test: `Ants5105HeldLockDelaysWritesOnlyBriefly`.

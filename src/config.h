@@ -6,12 +6,18 @@
 #include <QList>
 #include <QSize>
 
+#include <memory>
+
 // Forward declare
+class QObject;
 struct SshBookmark;
 
 class Config {
 public:
     Config();
+    ~Config();   // ANTS-5106 — writes a save still deferred by a held lock
+    Config(const Config &) = default;
+    Config &operator=(const Config &) = default;
 
     // Absolute path to config.json (~/.config/ants-terminal/config.json).
     // Public so callers can stat the file for change-detection without
@@ -593,6 +599,26 @@ private:
     // short-circuit a no-op save() — the primary defense against the
     // inotify-loop class of bug (see MainWindow::onConfigFileChanged).
     bool storeIfChanged(const QString &key, const QJsonValue &value);
+
+    // ANTS-5106 — save() waits only briefly for a lock another process
+    // holds. A save it could not make stays pending and is retried shortly
+    // after; ~Config writes one still pending, with the full wait.
+    // A copy starts with nothing pending and no timer: the timer belongs to
+    // the object that scheduled it, and MainWindow's hot reload assigns a
+    // fresh Config over the old one, whose on-disk file then wins.
+    struct SaveRetry {
+        bool pending = false;
+        bool scheduled = false;
+        bool fullWait = false;
+        int  retries = 0;   // consecutive; reset by a save that gets the lock
+        std::unique_ptr<QObject> context;   // owns the retry timer
+        SaveRetry();
+        SaveRetry(const SaveRetry &);
+        SaveRetry &operator=(const SaveRetry &);
+        ~SaveRetry();
+    };
+    void scheduleSaveRetry();
+    SaveRetry m_saveRetry;
 
     QJsonObject m_data;
     QByteArray m_lastWrittenBytes;  // bytes of the last successful save() — self-write detection

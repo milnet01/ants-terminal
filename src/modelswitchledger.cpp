@@ -129,10 +129,11 @@ bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
     // ANTS-1989 — serialize the read-modify-write against a concurrent Ants
     // instance. Without the lock, two processes both read the file, both append
     // their record, and the last atomic rename silently drops the other's row.
-    // ConfigWriteLock polls flock(2) for up to 5 s; a timeout means a hung/stale
-    // holder (the RMW itself is microseconds), so we proceed best-effort rather
-    // than drop the record — a vanishingly rare race beats losing trust-signal data.
-    ConfigWriteLock lock(path);
+    // This runs on the GUI thread, so it waits only kGuiTimeoutMs (ANTS-5105).
+    // A timeout means a hung/stale holder (the RMW itself is microseconds), so
+    // we proceed best-effort rather than drop the record — a vanishingly rare
+    // race beats losing trust-signal data.
+    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
     QList<QByteArray> lines = JsonlFile::readLines(path);
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);
@@ -153,7 +154,7 @@ QList<Record> readRecords(const QString &path) {
 bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capBytes) {
     // ANTS-1989 — same lock as appendRecord so a full rewrite (outcome backfill)
     // can't interleave with a concurrent append's read-modify-write.
-    ConfigWriteLock lock(path);
+    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
     QList<QByteArray> lines;
     lines.reserve(recs.size());
     for (const Record &r : recs) lines.append(serialize(r));

@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QTemporaryDir>
 
@@ -17,7 +18,10 @@
 
 #include <string>
 
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #ifndef SRC_MODELSWITCHLEDGER_CPP_PATH
 #error "SRC_MODELSWITCHLEDGER_CPP_PATH compile definition required"
@@ -53,6 +57,24 @@ int dirMode(const QString &path) {
     return st.st_mode & 0777;
 }
 
+// Holds an exclusive flock on <path>.lock, as another Ants process would.
+// flock(2) treats each open() separately, so it contends in-process too.
+struct HeldFlock {
+    int fd = -1;
+    explicit HeldFlock(const QString &path) {
+        fd = ::open((path + QStringLiteral(".lock")).toLocal8Bit().constData(),
+                    O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+        if (fd >= 0 && ::flock(fd, LOCK_EX | LOCK_NB) != 0) {
+            ::close(fd);
+            fd = -1;
+        }
+    }
+    ~HeldFlock() {
+        if (fd >= 0) ::close(fd);
+    }
+    HeldFlock(const HeldFlock &) = delete;
+    HeldFlock &operator=(const HeldFlock &) = delete;
+};
 
 }  // namespace
 
@@ -153,8 +175,50 @@ TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
     EXPECT_NE(ad.find("ensurePrivateDir(m_projectPath"), std::string::npos);
 
     // INV-5 — ConfigWriteLock wired at each RMW site.
-    EXPECT_NE(msl.find("ConfigWriteLock lock(path)"), std::string::npos);
-    EXPECT_NE(nml.find("ConfigWriteLock lock(path)"), std::string::npos);
+    // The ledgers pass a timeout after `path` (ANTS-5105), so match the
+    // construction, not its closing bracket.
+    EXPECT_NE(msl.find("ConfigWriteLock lock(path"), std::string::npos);
+    EXPECT_NE(nml.find("ConfigWriteLock lock(path"), std::string::npos);
     EXPECT_NE(fp.find("ConfigWriteLock lock(path)"), std::string::npos);
     EXPECT_NE(ad.find("ConfigWriteLock lock(trendPath())"), std::string::npos);
+}
+
+// INV-6 (ANTS-5105) — the ledgers write on the GUI thread, so a lock another
+// process holds delays a write only briefly, and the record is still written.
+TEST(LedgerWriteSafety, Ants5105HeldLockDelaysWritesOnlyBriefly) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString sw = tmp.path() + QStringLiteral("/switch.jsonl");
+    const QString nm = tmp.path() + QStringLiteral("/nearmiss.jsonl");
+    HeldFlock swLock(sw);
+    HeldFlock nmLock(nm);
+    ASSERT_GE(swLock.fd, 0);
+    ASSERT_GE(nmLock.fd, 0);
+
+    ModelSwitchLedger::Record r;
+    r.ts       = QStringLiteral("2026-10-08T10:00:00Z");
+    r.project  = QStringLiteral("/mnt/proj");
+    r.fromTier = QStringLiteral("opus");
+    r.toTier   = QStringLiteral("haiku");
+    ModelNearMissLedger::Record n;
+    n.ts              = QStringLiteral("2026-10-08T10:00:00Z");
+    n.project         = QStringLiteral("/mnt/proj");
+    n.currentTier     = QStringLiteral("opus");
+    n.recommendedTier = QStringLiteral("haiku");
+    n.blockedBy       = {QStringLiteral("composer_not_empty")};
+
+    QElapsedTimer t;
+    t.start();
+    ASSERT_TRUE(ModelSwitchLedger::appendRecord(sw, r));
+    const qint64 appendMs = t.restart();
+    ASSERT_TRUE(ModelSwitchLedger::writeRecords(sw, {r, r}));
+    const qint64 rewriteMs = t.restart();
+    ASSERT_TRUE(ModelNearMissLedger::appendRecord(nm, n));
+    const qint64 nearMissMs = t.elapsed();
+
+    EXPECT_LT(appendMs, 1000) << "firing-ledger append waited " << appendMs << " ms";
+    EXPECT_LT(rewriteMs, 1000) << "firing-ledger rewrite waited " << rewriteMs << " ms";
+    EXPECT_LT(nearMissMs, 1000) << "near-miss append waited " << nearMissMs << " ms";
+    EXPECT_EQ(ModelSwitchLedger::readRecords(sw).size(), 2);
+    EXPECT_EQ(ModelNearMissLedger::readRecords(nm).size(), 1);
 }

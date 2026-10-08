@@ -107,6 +107,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants no longer freezes for up to 5 seconds when another Ants window is stuck mid-save: settings, session memory and the model-switch logs wait at most a quarter-second, and a settings save that has to wait is retried shortly after (or on exit) instead of being dropped.** (ANTS-5106)
+
 - **The AI assistant shows the first 64 Ki characters of an oversized reply and says it was shortened, instead of stalling the window while it lays out up to 10 MiB.** (ANTS-5105)
 
 - **Folding findings into the roadmap from a dialog waits about 1 s for a busy roadmap, then says so, instead of freezing for 5 s** (ANTS-5102)

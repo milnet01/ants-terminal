@@ -13,7 +13,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QObject>
 #include <QStandardPaths>
+#include <QTimer>
 
 #include <cerrno>      // errno — report rename() failure causes
 #include <cstdio>      // std::rename — atomic POSIX rename (overwrites dest)
@@ -134,6 +136,45 @@ void Config::load() {
     }
 }
 
+namespace {
+// ANTS-5106 — a deferred save is retried this long after, at most this many
+// times in a row; after that the next save() or ~Config writes it.
+constexpr int kSaveRetryDelayMs = 1000;
+constexpr int kMaxSaveRetries = 5;
+}  // namespace
+
+Config::SaveRetry::SaveRetry() = default;
+Config::SaveRetry::SaveRetry(const SaveRetry &) {}
+Config::SaveRetry &Config::SaveRetry::operator=(const SaveRetry &other) {
+    if (this == &other) return *this;
+    // Drop any pending save; deleting the context cancels its timer.
+    pending = scheduled = fullWait = false;
+    retries = 0;
+    context.reset();
+    return *this;
+}
+Config::SaveRetry::~SaveRetry() = default;
+
+Config::~Config() {
+    // A short stall while Ants closes beats losing the setting.
+    if (m_saveRetry.pending) {
+        m_saveRetry.fullWait = true;
+        save();
+    }
+}
+
+void Config::scheduleSaveRetry() {
+    SaveRetry &r = m_saveRetry;
+    if (r.fullWait || r.scheduled || r.retries >= kMaxSaveRetries) return;
+    if (!r.context) r.context = std::make_unique<QObject>();
+    r.scheduled = true;
+    ++r.retries;
+    QTimer::singleShot(kSaveRetryDelayMs, r.context.get(), [this] {
+        m_saveRetry.scheduled = false;
+        if (m_saveRetry.pending) save();
+    });
+}
+
 void Config::save() {
     // Refuse to save when load() latched a parse failure — otherwise a
     // setter-triggered save would overwrite the user's (corrupt but
@@ -157,14 +198,22 @@ void Config::save() {
     // shared `.tmp` file and last-rename-wins silently drops one
     // process's keystrokes/settings/profile changes. flock(2) on a
     // sibling .lock file is advisory but covers cooperating callers.
-    ConfigWriteLock writeLock(path);
+    // ANTS-5106 — save() runs on the GUI thread, so it waits only briefly;
+    // the write takes microseconds, so a longer wait means a hung holder.
+    ConfigWriteLock writeLock(path, m_saveRetry.fullWait
+                                        ? ConfigWriteLock::kDefaultTimeoutMs
+                                        : ConfigWriteLock::kGuiTimeoutMs);
     if (!writeLock.acquired()) {
         ANTS_LOG(DebugLog::Config,
-                 "save() skipped — could not acquire write lock on %s "
-                 "within 5 s (another Ants process likely mid-save)",
+                 "save() deferred — could not acquire write lock on %s "
+                 "(another Ants process likely mid-save); will retry",
                  qUtf8Printable(path));
+        m_saveRetry.pending = true;
+        scheduleSaveRetry();
         return;
     }
+    m_saveRetry.pending = false;
+    m_saveRetry.retries = 0;
 
     // ANTS-1183: stamp schema version on every save so the next load
     // can decide whether to migrate. Cheap; idempotent.

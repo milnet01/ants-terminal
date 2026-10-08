@@ -65,12 +65,13 @@ properly on close — a stale-lock regression would manifest here.
 
 ### Invariant 3 — Config::save acquires the lock before write
 
-`src/config.cpp` `Config::save()` body must contain
-`ConfigWriteLock writeLock(path)` and an `acquired()` check, with
-an early return if the lock could not be acquired. The lock must
-be in scope for the write+rename window — i.e. declared before the
-`QFile file(tmpPath)` block, so the destructor releases AFTER the
-rename completes.
+`src/config.cpp` `Config::save()` body must construct
+`ConfigWriteLock writeLock(path, …)` and check `acquired()`, with
+an early return if the lock could not be acquired (ANTS-5106: that
+return schedules a retry). The lock must be in scope for the
+write+rename window — i.e. declared before the temp file's
+`openOwnerOnlyForWrite(file, tmpPath)`, so the destructor releases
+AFTER the rename completes.
 
 ### Invariant 4 — ClaudeAllowlistDialog::saveSettings acquires the lock
 

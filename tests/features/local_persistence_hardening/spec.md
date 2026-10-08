@@ -56,3 +56,6 @@ by the indie-review #6 sweep:
   `session_*.dat.tmp` / `tab_order.txt.tmp`; the workflow_state set routes
   through `mutateLocked`; the JSONL appenders write a single `record + '\n'`
   buffer; `writeReport` uses `QSaveFile` + `setOwnerOnlyPerms`.
+- **INV-9** (ANTS-5106) — with the store's `.lock` held elsewhere,
+  `mutateLocked` returns within 1 s and the operation still succeeds. Test:
+  `Ants5106HeldLockDelaysMutateOnlyBriefly`.

@@ -2,6 +2,7 @@
 
 #include "sessionmemoryengine.h"
 
+#include "configbackup.h"   // ConfigWriteLock::kGuiTimeoutMs
 #include "secureio.h"
 
 #include <QCryptographicHash>
@@ -162,7 +163,9 @@ OpResult mutateLocked(const QString &path,
     // wins, the tool never wedges.
     QLockFile lock(path + QStringLiteral(".lock"));
     lock.setStaleLockTime(30 * 1000);   // 30 s — generous for a JSON RMW
-    (void)lock.tryLock(5000);           // 5 s budget; ignore the result
+    // ANTS-5106 — callers include the GUI thread, so the wait is short;
+    // ignore the result.
+    (void)lock.tryLock(ConfigWriteLock::kGuiTimeoutMs);
 
     QJsonObject store = loadStore(path);
     const bool needWrite = mutator(store);

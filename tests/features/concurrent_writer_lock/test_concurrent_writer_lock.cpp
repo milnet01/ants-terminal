@@ -124,13 +124,15 @@ void runtimeTests() {
 void sourceGrepTests() {
     {
         const std::string src = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
-        expect(src.find("ConfigWriteLock writeLock(path)") != std::string::npos,
+        // save() passes a timeout after `path` (ANTS-5106), so match the
+        // construction, not its closing bracket.
+        expect(src.find("ConfigWriteLock writeLock(path") != std::string::npos,
                "I3/config-save-constructs-lock");
         // Lock construction must precede the actual write so the
         // lock covers the whole rename window. We anchor on the temp
         // file's open (ANTS-5106: openOwnerOnlyForWrite replaced the
         // QFile(tmpPath) construction this used to anchor on).
-        const size_t lockIdx = src.find("ConfigWriteLock writeLock(path)");
+        const size_t lockIdx = src.find("ConfigWriteLock writeLock(path");
         const size_t writeIdx = src.find("openOwnerOnlyForWrite(file, tmpPath)");
         expect(lockIdx != std::string::npos &&
                    writeIdx != std::string::npos &&

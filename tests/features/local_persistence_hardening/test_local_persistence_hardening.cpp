@@ -11,8 +11,11 @@
 
 #include <QByteArray>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QJsonValue>
 #include <QString>
 #include <QTemporaryDir>
@@ -230,3 +233,25 @@ int runMain() {
 }  // namespace
 
 TEST(LocalPersistenceHardening, Main) { ASSERT_EQ(0, runMain()); }
+
+// INV-9 (ANTS-5106) — mutateLocked's callers include the GUI thread, so a
+// store lock held elsewhere delays it only briefly; it then runs unlocked,
+// as it always has after its wait.
+TEST(LocalPersistenceHardening, Ants5106HeldLockDelaysMutateOnlyBriefly) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = SME::storePathFor("/cwd", tmp.path());
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(path).absolutePath()));
+    QLockFile held(path + QStringLiteral(".lock"));
+    ASSERT_TRUE(held.tryLock(0)) << "fixture premise: the lock is free";
+
+    QElapsedTimer t;
+    t.start();
+    const auto r = SME::mutateLocked(path, [](QJsonObject &s) {
+        s[QStringLiteral("a")] = QStringLiteral("1");
+        return true;
+    });
+    const qint64 ms = t.elapsed();
+    EXPECT_LT(ms, 1000) << "mutateLocked waited " << ms << " ms for the lock";
+    EXPECT_TRUE(r.ok);
+}

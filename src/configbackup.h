@@ -84,7 +84,10 @@ inline QString rotateCorruptFileAside(const QString &path) {
 // file, 0600). RAII: scope-bound, releases on destruction.
 //
 // Behavior:
-//   - Polls flock(2) with LOCK_EX | LOCK_NB up to 100 × 50 ms = 5 s.
+//   - Polls flock(2) with LOCK_EX | LOCK_NB every 50 ms for up to
+//     `timeoutMs` (default 5 s). GUI-thread callers pass kGuiTimeoutMs
+//     (ANTS-5105/5106): the guarded write takes microseconds, so a longer
+//     wait only means a hung holder, and the window freezes meanwhile.
 //   - On timeout, `acquired()` returns false; caller decides whether
 //     to skip the save or proceed unprotected (prefer skip).
 //   - flock is *advisory* — only cooperating processes that also call
@@ -92,15 +95,20 @@ inline QString rotateCorruptFileAside(const QString &path) {
 //     external editors (vim, jq, sed -i) bypass the lock by design.
 class ConfigWriteLock {
 public:
-    explicit ConfigWriteLock(const QString &targetPath) {
+    static constexpr int kDefaultTimeoutMs = 5000;
+    static constexpr int kGuiTimeoutMs = 250;
+
+    explicit ConfigWriteLock(const QString &targetPath,
+                             int timeoutMs = kDefaultTimeoutMs) {
         const QString lockPath = targetPath + QStringLiteral(".lock");
         m_fd = ::open(lockPath.toLocal8Bit().constData(),
                       O_RDWR | O_CREAT | O_CLOEXEC, 0600);
         if (m_fd < 0) return;
         struct timespec ts;
         ts.tv_sec = 0;
-        ts.tv_nsec = 50 * 1000 * 1000;  // 50 ms
-        for (int i = 0; i < 100; ++i) {  // 100 × 50ms = 5 s deadline
+        ts.tv_nsec = 50L * 1000 * 1000;  // 50 ms
+        const int attempts = timeoutMs > 50 ? timeoutMs / 50 : 1;
+        for (int i = 0; i < attempts; ++i) {  // 50 ms apart
             if (::flock(m_fd, LOCK_EX | LOCK_NB) == 0) {
                 m_held = true;
                 return;

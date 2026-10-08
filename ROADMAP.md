@@ -10337,6 +10337,13 @@ extends an existing item, that item carries it instead.
   Ants5105SynchronousRunnerIsNeverReentered red first at depth 50).
   Still open (low): the switch ledgers' 5 s lock (off by default), and a
   runner that never calls done (left to its owner per ANTS-5009).
+  Decided (user, 2026-10-08): shorten the lock waits rather than move
+  writes off the GUI thread. Progress (2026-10-08): both switch ledgers
+  wait ConfigWriteLock::kGuiTimeoutMs (250 ms), then write best-effort as
+  before (ledger_write_safety INV-6, red first at 5 s per write). The
+  lost-append-on-timeout half stays as designed: a timeout means another
+  instance is hung. Still open (low): a runner that never calls done
+  (left to its owner per ANTS-5009).
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
@@ -10387,6 +10394,16 @@ extends an existing item, that item carries it instead.
   match limit. Still open (low): synchronous startup decoding of saved
   tabs, the ANTS-1430 RAM budget and unbounded standards list, and the
   5 s lock waits in session memory and Config::save.
+  Decided (user, 2026-10-08): shorten the lock waits; for settings,
+  shorten and retry instead of dropping the save. Progress (2026-10-08):
+  ConfigWriteLock takes a timeout (kGuiTimeoutMs = 250 ms).
+  SessionMemoryEngine::mutateLocked waits 250 ms (local_persistence_
+  hardening INV-9). Config::save waits 250 ms, keeps a deferred save
+  pending, retries it every second up to five times in a row, and
+  ~Config writes one still pending with the full wait
+  (config_parse_failure_guard Invariant 6, red first). Still open (low):
+  synchronous startup decoding of saved tabs, and the ANTS-1430 RAM
+  budget and unbounded standards list.
   **Layman:** Smaller settings and session fixes, including two Ants windows corrupting each other's saved tabs.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).

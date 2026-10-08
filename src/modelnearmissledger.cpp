@@ -115,7 +115,7 @@ bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
     // ANTS-1989 — same read-modify-write race as the firing ledger: two Ants
     // instances both append and the last rename drops one near-miss record.
     // Best-effort lock (see ModelSwitchLedger::appendRecord for the rationale).
-    ConfigWriteLock lock(path);
+    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
     QList<QByteArray> lines = JsonlFile::readLines(path);
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);

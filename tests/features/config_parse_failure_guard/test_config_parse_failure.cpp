@@ -16,12 +16,21 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileDevice>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QThread>
+
+#include <memory>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 ANTS_TEST_SCOPE();
@@ -76,6 +85,34 @@ QString setupSandbox(QTemporaryDir &tmp, XdgConfigHomeGuard &guard,
     }
 
     return antsDir;
+}
+
+// Holds an exclusive flock on <path>.lock, as another Ants process would.
+// flock(2) treats each open() separately, so it contends in-process too.
+struct HeldFlock {
+    int fd = -1;
+    explicit HeldFlock(const QString &path) {
+        fd = ::open((path + QStringLiteral(".lock")).toLocal8Bit().constData(),
+                    O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+        if (fd >= 0 && ::flock(fd, LOCK_EX | LOCK_NB) != 0) {
+            ::close(fd);
+            fd = -1;
+        }
+    }
+    void release() {
+        if (fd >= 0) ::close(fd);
+        fd = -1;
+    }
+    ~HeldFlock() { release(); }
+    HeldFlock(const HeldFlock &) = delete;
+    HeldFlock &operator=(const HeldFlock &) = delete;
+};
+
+int fontSizeOnDisk(const QString &cfgPath) {
+    QFile f(cfgPath);
+    if (!f.open(QIODevice::ReadOnly)) return -1;
+    return QJsonDocument::fromJson(f.readAll())
+        .object().value(QStringLiteral("font_size")).toInt(-1);
 }
 
 void testFreshRun() {
@@ -282,4 +319,50 @@ TEST(ConfigParseFailureGuard, Ants5106SaveKeepsANewerSchemaStamp) {
     EXPECT_EQ(o.value(QStringLiteral("_schema")).toInt(), 99)
         << "an older build must not stamp its own, lower schema version";
     EXPECT_EQ(o.value(QStringLiteral("font_size")).toInt(), 15);
+}
+
+// ANTS-5106 — Invariant 6: a save that meets a lock another process holds
+// waits only briefly, keeps the change, and retries once the lock is free.
+TEST(ConfigParseFailureGuard, Ants5106LockedSaveIsRetried) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgConfigHomeGuard envGuard;
+    const QString cfgPath =
+        setupSandbox(tmp, envGuard, R"({"font_size":14})") + "/config.json";
+    HeldFlock held(cfgPath);
+    ASSERT_GE(held.fd, 0);
+
+    Config cfg;
+    QElapsedTimer t;
+    t.start();
+    cfg.setFontSize(15);   // triggers save()
+    const qint64 ms = t.elapsed();
+    EXPECT_LT(ms, 1000) << "save() waited " << ms << " ms for the lock";
+    EXPECT_EQ(fontSizeOnDisk(cfgPath), 14) << "premise: the locked save wrote nothing";
+
+    held.release();
+    t.restart();
+    while (fontSizeOnDisk(cfgPath) != 15 && t.elapsed() < 5000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        QThread::msleep(10);
+    }
+    EXPECT_EQ(fontSizeOnDisk(cfgPath), 15) << "the deferred save was never retried";
+}
+
+// ANTS-5106 — Invariant 6: a save still deferred when the Config goes away
+// is written then. No event loop runs here, so only ~Config can write it.
+TEST(ConfigParseFailureGuard, Ants5106DeferredSaveIsWrittenOnDestruction) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgConfigHomeGuard envGuard;
+    const QString cfgPath =
+        setupSandbox(tmp, envGuard, R"({"font_size":14})") + "/config.json";
+    HeldFlock held(cfgPath);
+    ASSERT_GE(held.fd, 0);
+
+    auto cfg = std::make_unique<Config>();
+    cfg->setFontSize(15);
+    held.release();
+    cfg.reset();
+    EXPECT_EQ(fontSizeOnDisk(cfgPath), 15) << "the deferred save was lost";
 }
