@@ -81190,6 +81190,36 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-10-01.
   Lanes: claude-integration.
 
+- 📋 [ANTS-5630] **The context meter vanishes after a brief state blip and is slow to appear.**
+  User report (2026-10-08): the meter takes a while to come up, and
+  sometimes disappears and returns a minute or two later.
+  Located (2026-10-08, locate-defect, not yet confirmed by a test):
+  ClaudeStatusBarController::apply (src/claudestatuswidgets.cpp) hides
+  the label and m_contextBar on Display::Hidden, but its visible path
+  re-shows only the label. The meter returns only on the next
+  contextUpdated with tokens > 0, which needs a new assistant reply in
+  the transcript tail. Breaks claude_context_meter INV-5 ("shown
+  whenever the session has a non-zero token count"); that test scrapes
+  only the contextUpdated handler, so it cannot see this.
+  Plan: write-code. Red first: a test that drives Hidden then a visible
+  state with contextTokens() > 0 and no new contextUpdated, and expects
+  the meter visible. Fix: apply()'s visible path shows the meter when
+  m_integration->contextTokens() > 0. Then check the second suspect:
+  setShellPid zeroes m_contextTokens on a tab switch, so the meter waits
+  for a transcript parse that finds a usage event in the 32 KB tail.
+  Accuracy checked (2026-10-08), no change needed: tokens are input +
+  cache_creation + cache_read of the latest non-sidechain event; the
+  window default 1,000,000 matches `claude -p "/context"` (1m for
+  claude-opus-5-5); this session's transcript gave 279,420 tokens = 27%.
+  Percent floors, and the last reply's output tokens count only from the
+  next prompt.
+  Reload: a terminal binary change, so it reaches a running terminal on
+  relaunch.
+  **Layman:** The context gauge in the status bar sometimes disappears for a minute or two, or takes a while to show up at all.
+  Kind: fix.
+  Source: user-request-2026-10-08.
+  Lanes: statusbar, claude.
+
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
 Run several Claude Code sessions on one project at once: an orchestrator deals
