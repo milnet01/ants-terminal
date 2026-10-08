@@ -63,8 +63,7 @@ public:
     // Fire events to all registered handlers. Returns false if any handler
     // requests cancellation (the dormant keypress veto — ANTS-1736). Runs
     // the lua_pcall loop on the owning thread; dispatchEvent() is the queued
-    // worker-side wrapper that brackets it with eventStarted/eventCompleted
-    // for the controller's health check.
+    // worker-side wrapper. Each handler runs inside timedPcall().
     bool fireEvent(PluginEvent event, const QString &data = QString());
 
     // ANTS-1750 — the GUI controller (PluginManager) sets the abort flag
@@ -163,9 +162,8 @@ public slots:
     bool loadScript(const QString &path);
     void shutdown();
     // Run the handlers for `event` (a PluginEvent cast to int for the
-    // queued-call metatype) on the worker. Brackets the run with
-    // eventStarted/eventCompleted so the controller can measure handler
-    // execution time. Async — any veto return is ignored (§ 2.6).
+    // queued-call metatype) on the worker. Async — any veto return is
+    // ignored (§ 2.6).
     void dispatchEvent(int event, const QString &data);
     // Context setters — queued so m_recentOutput / m_cwd are mutated on the
     // worker thread only (no GUI-write / worker-read race). INV-6.
@@ -192,10 +190,11 @@ signals:
     void paletteEntryRegistered(const QString &pluginName, const QString &title,
                                 const QString &action, const QString &hotkey);
     // ANTS-1750 — execution-time bracketing for the single-uninterruptible-
-    // C-call health check. Emitted by dispatchEvent at the top (before the
-    // lua_pcall loop) and after it; PluginManager records the execution
-    // start time from eventStarted and clears it on eventCompleted, so the
-    // health tick measures handler execution time, not queue wait.
+    // C-call health check. Emitted by timedPcall() around each handler and
+    // around init.lua (ANTS-5107: per handler, because the budget restarts
+    // per handler); PluginManager records the execution start time from
+    // eventStarted and clears it on eventCompleted, so the health tick
+    // measures one handler's execution time, not queue wait.
     void eventStarted(quint64 seq);
     void eventCompleted(quint64 seq);
 
@@ -248,6 +247,10 @@ private:
     // the next bytecode boundary is the closest we can get to
     // bounded-duration termination on the main thread.
     void startPcallBudget();
+    // ANTS-5107 — startPcallBudget() + lua_pcall, bracketed by
+    // eventStarted/eventCompleted so the health tick times exactly what
+    // the budget times: one handler, or init.lua.
+    int timedPcall(int nargs, int nresults);
 
     QString m_pluginName;
     QStringList m_permissions;

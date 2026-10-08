@@ -117,6 +117,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The plugin health check times each handler, and catches a plugin stuck while loading** (ANTS-5107)
+  A plugin with several handlers that each finish in time is no longer
+  switched off as unresponsive. A plugin that freezes while its init.lua
+  runs is now switched off like one that freezes in a handler. Reaches
+  a running terminal after a relaunch.
+
 - **Unloading or reloading plugins finishes within two seconds and keeps healthy plugins** (ANTS-5107)
   Plugin unload now waits once for all plugins rather than up to two
   seconds each. A plugin waiting on a setting, or with events still

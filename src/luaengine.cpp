@@ -318,6 +318,21 @@ void LuaEngine::startPcallBudget() {
     m_pcallTimer.start();  // ANTS-2205 — monotonic budget clock
 }
 
+int LuaEngine::timedPcall(int nargs, int nresults) {
+    // eventStarted/eventCompleted bracket one budgeted pcall so
+    // PluginManager's health tick measures what the budget measures (not
+    // queue wait, and not a whole multi-handler event): a worker stuck in
+    // one uninterruptible C call emits eventStarted then never
+    // eventCompleted, ageing past budget + grace; a healthy worker pairs
+    // them per handler, so it is not demoted. ANTS-5107.
+    const quint64 seq = ++m_seq;
+    emit eventStarted(seq);
+    startPcallBudget();
+    const int result = lua_pcall(m_state, nargs, nresults, 0);
+    emit eventCompleted(seq);
+    return result;
+}
+
 void LuaEngine::registerApi() {
     // Create 'ants' table
     lua_newtable(m_state);
@@ -510,10 +525,8 @@ bool LuaEngine::loadScript(const QString &path) {
     // future refactor that drops the peek still gets a rejection here.
     const QByteArray pathUtf8 = path.toUtf8();
     int result = luaL_loadfilex(m_state, pathUtf8.constData(), "t");
-    if (result == LUA_OK) {
-        startPcallBudget();
-        result = lua_pcall(m_state, 0, LUA_MULTRET, 0);
-    }
+    if (result == LUA_OK)
+        result = timedPcall(0, LUA_MULTRET);
     if (result != LUA_OK) {
         const char *err = lua_tostring(m_state, -1);
         emit logMessage(QString("Lua error in %1: %2").arg(path, err ? err : "unknown"));
@@ -591,8 +604,7 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
             continue;
         }
 
-        startPcallBudget();
-        if (lua_pcall(m_state, 1, 1, 0) != LUA_OK) {
+        if (timedPcall(1, 1) != LUA_OK) {
             const char *err = lua_tostring(m_state, -1);
             emit logMessage(QString("Plugin error: %1").arg(err ? err : "unknown"));
             lua_pop(m_state, 1);
@@ -630,17 +642,9 @@ void LuaEngine::dispatchEvent(int event, const QString &data) {
     // ANTS-5107 — once teardown has begun, only Unload still runs.
     if (m_tearingDown.load(std::memory_order_relaxed) && ev != PluginEvent::Unload)
         return;
-    const quint64 seq = ++m_seq;
-    // eventStarted/eventCompleted bracket the actual handler execution so
-    // PluginManager's health tick measures handler runtime (not queue wait):
-    // a worker stuck in one uninterruptible C call emits eventStarted then
-    // never eventCompleted, ageing past budget + grace; a backed-up but
-    // healthy worker keeps pairing them per event, so it is not demoted.
-    emit eventStarted(seq);
     m_inUnload = (ev == PluginEvent::Unload);
     fireEvent(ev, data);
     m_inUnload = false;
-    emit eventCompleted(seq);
 }
 
 void LuaEngine::setRecentOutput(const QString &output) {

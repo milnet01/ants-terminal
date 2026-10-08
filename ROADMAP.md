@@ -10487,6 +10487,17 @@ extends an existing item, that item carries it instead.
   Still open: zombies per reload (needs the user's call on hot reload),
   init.lua wedge detection, per-handler budget timing, plugin signal
   rate limits, broadcast fan-out, and the lows.
+  Decided by the user (2026-10-08): (1) zombies per reload: a wedged
+  plugin is reloaded only when its files changed since it wedged, so
+  a fixed plugin still hot-reloads. (2) signal rate limits: status
+  and palette updates keep only the latest; log and notify are capped,
+  with one "N dropped" message.
+  Progress (2026-10-08): the health check now times each handler's
+  pcall, and init.lua's, through LuaEngine::timedPcall, so it measures
+  what the budget measures. Red first: LuaThreading
+  Ants5107HealthTimesEachHandler, Ants5107HealthSeesAWedgedInitLua.
+  ANTS-1750 section 2.5 records it. Still open: zombies per reload,
+  plugin signal rate limits, broadcast fan-out, and the lows.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).

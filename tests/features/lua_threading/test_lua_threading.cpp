@@ -348,3 +348,84 @@ TEST(LuaThreading, Ants5107WedgedWorkersShareOneDeadline) {
     EXPECT_LT(r.ms, 2700) << "teardown took " << r.ms
                           << " ms; the deadline is 2000 ms in total";
 }
+
+// ANTS-5107 — the health check (INV-3). Tests call healthTick by name rather
+// than wait on its 2 s timer.
+namespace {
+
+void pump(int ms) {
+    QElapsedTimer t; t.start();
+    while (t.elapsed() < ms)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+}
+
+void runHealthTick(PluginManager &pm) {
+    QMetaObject::invokeMethod(&pm, "healthTick", Qt::DirectConnection);
+}
+
+// Loads `name` from `dir`, hands the manager to `drive`, and returns how many
+// demotions the manager logged.
+template <class Drive>
+int countDemotions(const QString &dir, const QString &name, Drive drive) {
+    int demoted = 0;
+    {
+        PluginManager pm;
+        pm.setGrantStore(
+            [](const QString &) { return QStringList{QStringLiteral("settings")}; },
+            [](const QString &, const QStringList &) {});
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&demoted](const QString &m) {
+            if (m.contains(QStringLiteral("demoted"))) ++demoted;
+        });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({name});
+        drive(pm);
+    }
+    QDir(dir).removeRecursively();
+    return demoted;
+}
+
+}  // namespace
+
+// The engine's budget restarts for each handler, so the health check must
+// time each handler, not the whole event. Each of three handlers blocks
+// 900 ms in settings.get, and the check runs while it is blocked: on the
+// third, about 2.7 s into the event and past budget + grace (2.5 s).
+TEST(LuaThreading, Ants5107HealthTimesEachHandler) {
+    const QString dir = makeTeardownDir();
+    QByteArray init;
+    for (int i = 0; i < 3; ++i)
+        init += "ants.on('command_finished', function() ants.settings.get('k') end)\n";
+    addPlugin(dir, QStringLiteral("threeslow"), init, true);
+    const int demoted = countDemotions(dir, QStringLiteral("threeslow"),
+                                       [](PluginManager &pm) {
+        QObject::connect(&pm, &PluginManager::settingsGetRequested,
+                         [&pm](const QString &, const QString &, QString &) {
+            QThread::msleep(900);
+            runHealthTick(pm);
+        });
+        pump(300);
+        pm.fireEvent(PluginEvent::CommandFinished,
+                     QStringLiteral("exit_code=0&duration_ms=1"));
+        pump(3500);
+    });
+    EXPECT_EQ(demoted, 0) << "a plugin whose handlers each finish in budget "
+                             "was demoted";
+}
+
+// A plugin stuck in one uninterruptible C call while init.lua runs is as
+// unresponsive as one stuck in a handler, so the health check demotes it.
+TEST(LuaThreading, Ants5107HealthSeesAWedgedInitLua) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("wedgedinit"),
+              "string.find(string.rep('a', 3000), '.-.-.-.-b')\n");
+    const int demoted = countDemotions(dir, QStringLiteral("wedgedinit"),
+                                       [](PluginManager &pm) {
+        QElapsedTimer t; t.start();
+        while (t.elapsed() < 3200) {
+            pump(100);
+            runHealthTick(pm);
+        }
+    });
+    EXPECT_EQ(demoted, 1) << "a plugin stuck in init.lua was never demoted";
+}

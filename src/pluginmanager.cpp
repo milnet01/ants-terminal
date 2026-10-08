@@ -273,7 +273,7 @@ void PluginManager::healthTick() {
         LuaEngine *engine = it.key();
         if (!engine || m_demoted.contains(engine)) continue;
         // Execution time, not queue wait: a backed-up but healthy worker
-        // re-arms eventStarted per event so each stays short; a worker stuck
+        // re-arms eventStarted per handler so each stays short; a worker stuck
         // in one C call emits eventStarted then never eventCompleted, so its
         // execution time ages past the deadline. INV-3.
         if (now - it.value() > engine->pcallBudgetMs() + kHealthGraceMs)
