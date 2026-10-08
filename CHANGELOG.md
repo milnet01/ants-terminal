@@ -117,6 +117,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review Changes stays responsive while files are edited: it re-lists the whole tree only when a change could add a folder to watch.** (ANTS-5109)
+
 - **ants-helper list answers at once when stdin is left open, and a request body over 1 MiB is refused.** (ANTS-5109)
 
 - **Diagnostics: build-error notes stay with their own error, read_log counts JSON escapes and stops after 5 seconds with a resumable cursor, the debug log survives another instance's rotation, always-on log lines reach stderr when no category is on, and a tool installed mid-session is found within 30 seconds** (ANTS-5110)

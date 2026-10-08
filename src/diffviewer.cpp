@@ -878,8 +878,8 @@ QDialog *show(QWidget *parent,
     // Enumerate the (gitignore-aware) working-tree directory set and top up the
     // watch set. `git ls-files --exclude-standard` already omits ignored trees
     // (build/, node_modules/, …), so they are excluded by construction — never
-    // handed to the watcher. Re-run on every change so new non-ignored dirs
-    // start being watched (ignored ones never appear here).
+    // handed to the watcher. Re-run when a change could add a directory, so
+    // new non-ignored dirs start being watched (ignored ones never appear).
     auto enumerate = [dialog, probeHost, gitEnv, watcherGuard](
                                                     const QString &topLevel) {
         if (!watcherGuard || topLevel.isEmpty()) return;
@@ -904,8 +904,8 @@ QDialog *show(QWidget *parent,
     };
 
     // Re-seed: resolve the git paths once (then cache), watch the .git
-    // metadata dirs once, and (re)enumerate the working tree. Called at open
-    // and on every change burst.
+    // metadata dirs once, and (re)enumerate the working tree. Called at open,
+    // on Refresh, and on a change burst that may have widened the tree.
     auto reseed = [dialog, probeHost, cwd, gitEnv, gp, watcherGuard,
                    enumerate]() {
         if (gp->resolved) { enumerate(gp->topLevel); return; }
@@ -945,11 +945,19 @@ QDialog *show(QWidget *parent,
         HostExec::start(*rp);
     };
 
-    // Any watched change → re-probe (and re-seed to pick up new dirs). No
+    // Any watched change → re-probe. Re-seed only when the burst may have
+    // widened the tree (ANTS-5109): `git ls-files` lists the whole tree and
+    // its output is parsed on the GUI thread, so a plain edit skips it.
+    // `.gitignore` and `index` can widen the set with no new directory. No
     // feedback loop: our probes are read-only (GIT_OPTIONAL_LOCKS=0 above), so
     // they never rewrite a watched path.
+    watcher->setRescanNames({QStringLiteral(".gitignore"),
+                             QStringLiteral("index")});
     QObject::connect(watcher, &DirTreeWatcher::changed, dialog,
-                     [runProbes, reseed]() { reseed(); runProbes(); });
+                     [runProbes, reseed, watcher]() {
+                         if (watcher->takeTreeMayHaveGrown()) reseed();
+                         runProbes();
+                     });
 
     // Manual Refresh — immediate re-probe + re-seed; also the fallback path if
     // inotify could not initialise (watcher->ok() == false).

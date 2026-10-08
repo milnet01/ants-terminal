@@ -73,6 +73,58 @@ TEST(DirTreeWatcher, NewFileFires) {
         << "new file in a watched dir did not fire changed()";
 }
 
+// INV-7 — a content edit fires changed() but cannot have widened the
+// directory set, so the caller need not re-run git ls-files (ANTS-5109).
+TEST(DirTreeWatcher, ContentEditDoesNotGrowTree) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString file = tmp.path() + "/existing.txt";
+    ASSERT_TRUE(writeFile(file, "v1\n"));
+
+    DirTreeWatcher w;
+    ASSERT_TRUE(w.ok());
+    int fired = 0;
+    QObject::connect(&w, &DirTreeWatcher::changed, [&fired] { ++fired; });
+    ASSERT_EQ(w.addDirs({tmp.path()}), 1);
+
+    ASSERT_TRUE(writeFile(file, "v2 edited\n"));
+    ASSERT_TRUE(pumpUntil([&fired] { return fired > 0; }, 3000));
+    EXPECT_FALSE(w.takeTreeMayHaveGrown())
+        << "a plain file edit flagged the tree as possibly grown";
+}
+
+// INV-7 — a new directory flags growth once; taking the flag clears it.
+TEST(DirTreeWatcher, NewDirGrowsTreeOnce) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    DirTreeWatcher w;
+    ASSERT_TRUE(w.ok());
+    int fired = 0;
+    QObject::connect(&w, &DirTreeWatcher::changed, [&fired] { ++fired; });
+    ASSERT_EQ(w.addDirs({tmp.path()}), 1);
+
+    ASSERT_TRUE(QDir(tmp.path()).mkdir("sub"));
+    ASSERT_TRUE(pumpUntil([&fired] { return fired > 0; }, 3000));
+    EXPECT_TRUE(w.takeTreeMayHaveGrown()) << "a new directory was not flagged";
+    EXPECT_FALSE(w.takeTreeMayHaveGrown()) << "taking the flag did not clear it";
+}
+
+// INV-7 — a change to a rescan name flags growth although it is a file.
+TEST(DirTreeWatcher, RescanNameGrowsTree) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    DirTreeWatcher w;
+    ASSERT_TRUE(w.ok());
+    w.setRescanNames({QStringLiteral(".gitignore")});
+    int fired = 0;
+    QObject::connect(&w, &DirTreeWatcher::changed, [&fired] { ++fired; });
+    ASSERT_EQ(w.addDirs({tmp.path()}), 1);
+
+    ASSERT_TRUE(writeFile(tmp.path() + "/.gitignore", "build/\n"));
+    ASSERT_TRUE(pumpUntil([&fired] { return fired > 0; }, 3000));
+    EXPECT_TRUE(w.takeTreeMayHaveGrown()) << "a .gitignore change was not flagged";
+}
+
 // INV-4 — addDirs is idempotent (re-adding does not grow the watch count) and
 // a non-existent path is skipped, not fatal.
 TEST(DirTreeWatcher, AddDirsIdempotentAndSafe) {

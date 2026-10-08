@@ -26,6 +26,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -51,6 +52,18 @@ public:
     // False when inotify_init failed (no fd) — the caller may fall back.
     bool ok() const { return m_fd >= 0; }
 
+    // Entry names whose change means the caller's directory set may change
+    // although no directory was added — for a git tree, `.gitignore` and
+    // `index` (ANTS-5109). Matched on the entry name in any watched dir.
+    void setRescanNames(const QStringList &names);
+
+    // True when an event since the last call could have widened the
+    // directory set: a directory created or moved in, a watched directory
+    // lost, a kernel queue overflow, or a change to a rescan name. Clears
+    // the flag, so a caller re-seeds only then rather than on every edit
+    // (ANTS-5109).
+    bool takeTreeMayHaveGrown();
+
     // Pure helper (static, testable): given the NUL-separated output of
     // `git ls-files -z …` and the working-tree root, return the sorted,
     // de-duplicated set of absolute directories that contain those files.
@@ -73,6 +86,8 @@ private:
     QTimer *m_debounce = nullptr;
     QHash<int, QString> m_wdToPath;   // inotify watch-descriptor → dir path
     QHash<QString, int> m_pathToWd;   // reverse, for O(1) de-dup
+    QSet<QString> m_rescanNames;
+    bool m_treeMayHaveGrown = false;
     int m_maxWatches = 20000;         // safety cap (≈20 MB kernel worst case;
                                       // fs.inotify.max_user_watches is 65 k+)
 };

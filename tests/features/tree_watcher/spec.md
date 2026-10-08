@@ -35,6 +35,12 @@ tracked path) both catches edits and uses ≈4× fewer watches.
   `git ls-files … --exclude-standard`, and runs its git probes with
   `GIT_OPTIONAL_LOCKS=0` so a read-only `status` can't rewrite `.git/index` and
   trigger a re-probe loop.
+- **INV-7 (growth flag)** — `takeTreeMayHaveGrown()` returns true, once, after
+  a burst that could widen the directory set: a directory created or moved in,
+  a watched directory lost, a kernel queue overflow, or a change to a name
+  passed to `setRescanNames`. A plain file edit leaves it false.
+  `diffviewer.cpp` re-runs `git ls-files` on a change only when it is true;
+  Refresh always does (ANTS-5109).
 
 ## Pass / fail
 

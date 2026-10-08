@@ -10599,6 +10599,14 @@ extends an existing item, that item carries it instead.
   the installers reading before the lock, branch names in the hook
   prompt, dialog colours and sizes, ANTS-1145 INV-2a and the --remote
   help text.
+  Progress (2026-10-08): Review Changes re-runs git ls-files only when a
+  change burst could widen the watched set: a directory created or
+  moved in, a watched directory lost, an inotify overflow, or a change
+  to .gitignore or index (DirTreeWatcher::takeTreeMayHaveGrown,
+  tree_watcher INV-7, red first). A plain edit only re-probes. Still
+  open: the installers reading before the lock, branch names in the
+  hook prompt, dialog colours and sizes, ANTS-1145 INV-2a and the
+  --remote help text.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).
@@ -14578,6 +14586,9 @@ class; the deferrals below cover the rest.
 
   Action (3) needs no work: the JOB_POOLS caps are in CMakeLists.txt and apply
   under Ninja, which is the documented build path.
+  Seen again (2026-10-08): a full build warned `cc1plus: warning:
+  ./CMakeFiles/ants_mcpcore_lib.dir/cmake_pch.hxx.gch: created by a
+  different GCC executable [-Winvalid-pch]`. The build still succeeded.
 
 - ✅ [ANTS-2108] **Indie-review 2026-06-11: cleartext Bearer API-key egress on the review-dialog family (auditdialog batch path + coldeyesdialog) — add isPlaintextRemote refusal to LlmClient::send.**
   auditdialog.cpp:5742/5747 requestAiTriageBatch and the v2 review dialogs (coldeyesdialog via ReviewDialogBase->LlmClient::send) gate only on scheme + SSRF host-block, never on cleartext http to a public remote. The single-finding path (auditdialog.cpp:5467, ANTS-1826) and aidialog.cpp:236 already guard via LlmClient::isPlaintextRemote; the v2 refactor didn't carry it. Fix once in LlmClient::send so all egress is covered. Detail: .indie-review/reports-2026-06-11/{auditdialog,coldeyesdialog}.md.

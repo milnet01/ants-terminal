@@ -119,11 +119,14 @@ TEST(ReviewChangesBranches, Main) {
     expect(contains(src, "DirTreeWatcher::changed"),
            "I7/connect-changed");
 
-    // I8 (ANTS-3509) — re-probe + re-seed on any change; and probes run with
-    // GIT_OPTIONAL_LOCKS=0 so a read-only status can't rewrite .git/index and
-    // self-trigger a loop against the now-reliable inotify watch.
+    // I8 (ANTS-3509) — re-probe on any change, re-seeding only when the
+    // watcher says the tree may have grown (ANTS-5109); Refresh always does
+    // both. Probes run with GIT_OPTIONAL_LOCKS=0 so a read-only status can't
+    // rewrite .git/index and self-trigger a loop against the inotify watch.
+    expect(contains(src, "if (watcher->takeTreeMayHaveGrown()) reseed();"),
+           "I8/change-reseeds-only-when-tree-may-have-grown");
     expect(contains(src, "reseed(); runProbes();"),
-           "I8/change-reseeds-and-reprobes");
+           "I8/refresh-reseeds-and-reprobes");
     expect(contains(src, "GIT_OPTIONAL_LOCKS"),
            "I8/probes-disable-optional-index-locks");
 

@@ -10,6 +10,8 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
+#include <utility>
+
 namespace {
 // Directory-watch mask: content edits of children (IN_MODIFY), new/removed
 // entries (IN_CREATE/IN_DELETE), renames (IN_MOVED_FROM/TO), and the watched
@@ -72,14 +74,32 @@ void DirTreeWatcher::onActivated() {
             // so watchCount stays honest and a re-seed can re-add it.
             if (ev->mask & (IN_IGNORED | IN_DELETE_SELF | IN_MOVE_SELF)) {
                 const QString gone = m_wdToPath.take(ev->wd);
-                if (!gone.isEmpty()) m_pathToWd.remove(gone);
+                if (!gone.isEmpty()) {
+                    m_pathToWd.remove(gone);
+                    m_treeMayHaveGrown = true;
+                }
             }
-            // IN_Q_OVERFLOW (kernel dropped events) needs no special handling
-            // beyond firing changed() below — a full re-probe recovers.
+            // ANTS-5109: only these can widen the caller's directory set, so
+            // only these make it re-seed. IN_Q_OVERFLOW (kernel dropped
+            // events) counts, since what it dropped is unknown.
+            if (((ev->mask & IN_ISDIR) && (ev->mask & (IN_CREATE | IN_MOVED_TO))) ||
+                (ev->mask & IN_Q_OVERFLOW) ||
+                (ev->len > 0 &&
+                 m_rescanNames.contains(QString::fromUtf8(ev->name)))) {
+                m_treeMayHaveGrown = true;
+            }
             p += sizeof(struct inotify_event) + ev->len;
         }
     }
     if (any) m_debounce->start();
+}
+
+void DirTreeWatcher::setRescanNames(const QStringList &names) {
+    m_rescanNames = QSet<QString>(names.begin(), names.end());
+}
+
+bool DirTreeWatcher::takeTreeMayHaveGrown() {
+    return std::exchange(m_treeMayHaveGrown, false);
 }
 
 QStringList DirTreeWatcher::directoriesContaining(const QString &topLevel,
