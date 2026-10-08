@@ -154,8 +154,9 @@ shared hook gets all four checks without restating them.
 **Scope: a `pre-push` that does not hand off to the shared hook.** A shim
 that only execs it is not a hook of its own (§ 6.2), and neither is one that
 refuses before the exec, for instance until a setup script has run. **It binds from
-2026-09-28.** A hook written before then is not in breach for its past, but
-its next edit brings it into line. `ci-gate` reports a hook of its own that
+2026-09-28.** A hook written before then is not in breach for its past. Its
+next edit owes the missing checks. They may land over several commits, each
+dropping none, with those still missing filed on the roadmap. `ci-gate` reports a hook of its own that
 neither hands off nor runs a secret scan. **Nothing checks items 2–4
 mechanically**; whether a hook's documentation mode keeps the checks the
 pipeline needs is a judgement only the project can make (§ 6).
