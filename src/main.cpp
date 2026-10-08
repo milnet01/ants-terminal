@@ -288,7 +288,9 @@ int main(int argc, char *argv[]) {
     // command per invocation; scriptable via shell.
     QCommandLineOption remoteOpt("remote",
         "Send a remote-control command to the running Ants Terminal and "
-        "exit. Currently supported: `ls`. Socket path: $ANTS_REMOTE_SOCKET "
+        "exit. Commands include `ls`, `tab-list`, `new-tab`, `send-text` "
+        "and `get-text`; an unknown one is answered with an error. "
+        "Socket path: $ANTS_REMOTE_SOCKET "
         "or $XDG_RUNTIME_DIR/ants-terminal.sock.",
         "cmd");
     parser.addOption(remoteOpt);

@@ -117,6 +117,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`ants-terminal --help` names the main `--remote` commands instead of saying only `ls` works.** (ANTS-5109)
+
 - **The git-context hook prints `<` and `>` in a branch or upstream name as `_`, so the name can no longer end the block early.** (ANTS-5109)
   Existing installs show as an older version in Settings; Install again
   picks up the fix with no relaunch.

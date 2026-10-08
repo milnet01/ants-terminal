@@ -383,7 +383,7 @@ QDialog *show(QWidget *parent,
 
     // 0.7.32 (live updates) — runProbes spawns the five async git
     // probes and fires-and-forgets. Called once on dialog open, then
-    // again every time the QFileSystemWatcher debounce timer fires
+    // again every time the DirTreeWatcher debounce timer fires
     // OR the user clicks Refresh. Each call constructs a fresh
     // ProbeState so concurrent in-flight probes from a previous
     // refresh can't poison the new render.

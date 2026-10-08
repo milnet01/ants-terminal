@@ -15,8 +15,9 @@ asserts.
   "minor cleanup" PR can't silently reorder them.
 - **INV-2a** `src/diffviewer.cpp` contains the structural markers:
   `reviewChangesDialog` objectName, `struct ProbeState`,
-  `pending = 5`, `for-each-ref` git probe, `QFileSystemWatcher`,
-  `runProbes` lambda name, `lastHtml` shared cache.
+  `pending = 5`, `for-each-ref` git probe, `DirTreeWatcher` (it
+  replaced `QFileSystemWatcher` under ANTS-3509), `runProbes` lambda
+  name, `lastHtml` shared cache.
 - **INV-2b** `src/diffviewer.cpp` contains every user-visible
   string byte-identical to the pre-extraction code: window title,
   button labels (Refresh / Close / Copy Diff), live-status texts,

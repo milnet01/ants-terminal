@@ -1118,9 +1118,8 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // Remote-control server (first slice of the 0.8.0 Kitty-style
     // rc_protocol item). Listens on
     // `$ANTS_REMOTE_SOCKET` / `$XDG_RUNTIME_DIR/ants-terminal.sock`
-    // and currently handles only `{"cmd":"ls"}`; the socket +
-    // envelope infrastructure is in place for the next commands to
-    // land one-by-one. Failure to bind (another Ants instance
+    // and answers the commands RemoteControl::dispatch handles
+    // (src/remotecontrol_terminal.cpp). Failure to bind (another Ants instance
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
     //

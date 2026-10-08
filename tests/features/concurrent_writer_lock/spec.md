@@ -79,11 +79,14 @@ AFTER the rename completes.
 `ConfigWriteLock writeLock(m_settingsPath)` and an `acquired()`
 guard.
 
-### Invariant 5 — SettingsDialog hook installers acquire the lock
+### Invariant 5 — the hook installers acquire the lock
 
-`src/settingsdialog.cpp` `installClaudeHooks` and
-`installClaudeGitContextHook` must each construct a
-`ConfigWriteLock` on `settingsPath` before the QSaveFile commit.
+In `src/claudesetup.cpp`, `installStatusHooks` and
+`installGitContextHook` each construct
+`ConfigWriteLock writeLock(settingsPath)`, return early unless
+`writeLock.acquired()`, and write through
+`writeClaudeSettings(settingsPath, root)`. ANTS-5558 moved them there
+from `src/settingsdialog.cpp`.
 
 ### Invariant 6 — the hook installers hold the lock from before the read
 
