@@ -28,6 +28,7 @@
       "name": "terminal-widget",
       "summary": "QPainter/QTextLayout renderer, ligature shaping, mouse and focus reporting, accessibility.",
       "sourcePaths": [
+        "src/selectiontail.h",
         "src/shapedruncache.cpp",
         "src/shapedruncache.h",
         "src/stickycommandtext.h",
