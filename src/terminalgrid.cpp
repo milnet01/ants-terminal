@@ -11,9 +11,12 @@
 #include <QCryptographicHash>
 
 #include <algorithm>
+#include <clocale>
 #include <cwchar>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <langinfo.h>
 
 // ANTS-1792 — C++20 __VA_OPT__ instead of the GNU `, ##__VA_ARGS__`
 // comma-elision extension (clang -Wgnu-zero-variadic-macro-arguments).
@@ -80,6 +83,20 @@ void TerminalGrid::initPalette() {
         int v = 8 + i * 10;
         s_palette256[232 + i] = QColor(v, v, v);
     }
+}
+
+bool TerminalGrid::ensureUtf8CType() {
+    const auto isUtf8 = [] {
+        const char *cs = nl_langinfo(CODESET);
+        return cs && (std::strcmp(cs, "UTF-8") == 0 || std::strcmp(cs, "utf8") == 0);
+    };
+    if (isUtf8()) return true;
+    // C.UTF-8 is built into glibc 2.35+; the others cover older or
+    // non-glibc systems that ship it as a locale package.
+    for (const char *name : {"C.UTF-8", "C.utf8", "en_US.UTF-8"}) {
+        if (std::setlocale(LC_CTYPE, name) && isUtf8()) return true;
+    }
+    return false;
 }
 
 static std::vector<Cell> makeRow(int cols, const QColor &fg, const QColor &bg) {

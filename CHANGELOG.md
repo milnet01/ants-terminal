@@ -128,6 +128,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Chinese, Japanese and Korean characters stay two cells wide, and accents stay on their letter, when the terminal is started with LC_ALL=C.** (ANTS-3792)
+  The terminal now switches its character type to a UTF-8 locale
+  (C.UTF-8 first) when the environment gives it none.
+
 - **A project_query that timed out and later finished now frees all of its memory** (ANTS-5632)
   Cleaning up a finished stuck query now also frees the result it was
   holding, which could be as large as the query result cap.

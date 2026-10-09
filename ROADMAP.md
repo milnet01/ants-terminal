@@ -821,7 +821,7 @@ SSH key registered there.
   Kind: test.
   Source: in-session-2026-08-02 (second instance of the same break in four days).
 
-- 📋 [ANTS-3792] **CJK and combining-char width depend on the ambient locale, in the app as well as the tests.**
+- ✅ [ANTS-3792] **CJK and combining-char width depend on the ambient locale, in the app as well as the tests.**
   `src/terminalgrid.cpp:418` calls the system `wcwidth()`. That function
   answers from the process's LC_CTYPE locale, so the grid's notion of
   "this glyph occupies two cells" is inherited from the environment
@@ -863,6 +863,13 @@ SSH key registered there.
 
   Whichever is chosen, add a test that runs the grid under LC_ALL=C, since
   that is the case with no coverage at all right now.
+  Resolved 2026-10-09: took the second option. TerminalGrid::ensureUtf8CType()
+  switches LC_CTYPE to C.UTF-8 (then C.utf8, en_US.UTF-8) when it is not
+  UTF-8; main() calls it after QApplication, whose constructor resets the
+  locale. The built-in width table was not chosen: it is a much larger
+  change and would move emoji widths for every user. Locked by
+  tests/features/cjk_width_c_locale (runs the grid under LC_ALL=C; red
+  before the fix, 3 of 3 failing).
   **Layman:** How wide a Chinese or Japanese character is drawn is decided by a system setting rather than by us; if that setting is missing, the terminal cannot tell those characters apart from ordinary ones.
   Kind: fix.
   Source: in-session-2026-08-02 (Mageia_10 build, first run to reach the suite).

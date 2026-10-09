@@ -128,6 +128,13 @@ public:
 
     TerminalGrid(int rows, int cols);
 
+    // ANTS-3792 — handlePrint() measures glyph width with wcwidth(), which
+    // answers from LC_CTYPE: under C/POSIX it calls CJK and combining marks
+    // unprintable. Switches LC_CTYPE to a UTF-8 locale when it is not one
+    // already. Call after QApplication is constructed, which resets the
+    // locale from the environment. Returns whether LC_CTYPE is UTF-8 after.
+    static bool ensureUtf8CType();
+
     void processAction(const VtAction &action);
     void resize(int rows, int cols);
 

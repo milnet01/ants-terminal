@@ -2025,6 +2025,7 @@ if(ANTS_TESTS)
                 tests/features/decstr_soft_reset/test_decstr_soft_reset.cpp
                 tests/features/osc9_progress_disambiguator/test_osc9_progress.cpp
                 tests/features/wide_char_resize/test_wide_char_resize.cpp
+                tests/features/cjk_width_c_locale/test_cjk_width_c_locale.cpp
                 tests/features/sgr_attribute_reset/test_sgr_reset.cpp
                 tests/features/vtparser_simd_scan/test_vtparser_simd.cpp
                 tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
@@ -2127,6 +2128,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/scrollback_export_streaming/test_scrollback_export_streaming.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_TERMINALWIDGET_H_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.h")
+    set_property(SOURCE tests/features/cjk_width_c_locale/test_cjk_width_c_locale.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
 
     # ----------------------------------------------------------------------
     # ANTS-1217 Phase 3 — test_chrome bundle.

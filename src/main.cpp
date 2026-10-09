@@ -5,6 +5,7 @@
 #include "dialogshowtracer.h"
 #include "roadmapexport.h"
 #include "roadmapstore.h"
+#include "terminalgrid.h"  // ANTS-3792 — ensureUtf8CType
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -204,6 +205,12 @@ int main(int argc, char *argv[]) {
     }
 
     QApplication app(argc, argv);
+    // ANTS-3792 — QApplication just re-read the locale from the environment;
+    // under LC_ALL=C that leaves wcwidth() unable to size CJK or combining
+    // marks. Must run after the line above.
+    if (!TerminalGrid::ensureUtf8CType())
+        std::fprintf(stderr, "ants-terminal: no UTF-8 locale available; "
+                             "wide and combining characters may misalign\n");
     app.setApplicationName("Ants Terminal");
     app.setApplicationVersion(ANTS_VERSION);
     // ANTS-1078 — register the screen-reader adapter for every TerminalWidget.
