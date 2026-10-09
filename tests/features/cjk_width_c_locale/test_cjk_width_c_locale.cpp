@@ -43,6 +43,7 @@ TEST_F(CjkWidthCLocale, WideCharIsTwoCells) {
 }
 
 TEST_F(CjkWidthCLocale, CombiningMarkJoinsPreviousCell) {
+    EXPECT_TRUE(ok) << "ensureUtf8CType found no UTF-8 locale";
     Harness h(5, 20);
     h.feed("e\xcc\x81");  // e + U+0301
     EXPECT_EQ(h.grid.cursorCol(), 1) << "INV-2: combining mark took a cell";
@@ -56,7 +57,16 @@ TEST(CjkWidthCLocaleSource, MainCallsItAfterQApplication) {
     const std::string src = ants_test::slurpFile(SRC_MAIN_CPP_PATH);
     ASSERT_FALSE(src.empty()) << "cannot read " << SRC_MAIN_CPP_PATH;
     const auto app = src.find("QApplication app(");
-    const auto call = src.find("TerminalGrid::ensureUtf8CType()");
+    // First mention on a line that is not a // comment, so a commented-out
+    // call does not count as a call.
+    std::size_t call = std::string::npos;
+    for (auto pos = src.find("TerminalGrid::ensureUtf8CType()");
+         pos != std::string::npos;
+         pos = src.find("TerminalGrid::ensureUtf8CType()", pos + 1)) {
+        const auto lineStart = src.rfind('\n', pos) + 1;  // npos + 1 == 0
+        const auto first = src.find_first_not_of(" \t", lineStart);
+        if (src.compare(first, 2, "//") != 0) { call = pos; break; }
+    }
     ASSERT_NE(app, std::string::npos);
     ASSERT_NE(call, std::string::npos) << "INV-3: main.cpp never calls it";
     EXPECT_GT(call, app) << "INV-3: called before QApplication resets the locale";

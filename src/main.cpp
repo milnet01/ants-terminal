@@ -207,7 +207,8 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     // ANTS-3792 — QApplication just re-read the locale from the environment;
     // under LC_ALL=C that leaves wcwidth() unable to size CJK or combining
-    // marks. Must run after the line above.
+    // marks. Must run after the line above. setlocale() is not thread-safe,
+    // so keep it here, ahead of anything that starts a thread.
     if (!TerminalGrid::ensureUtf8CType())
         std::fprintf(stderr, "ants-terminal: no UTF-8 locale available; "
                              "wide and combining characters may misalign\n");
