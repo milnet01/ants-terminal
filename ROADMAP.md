@@ -68585,6 +68585,12 @@ parse, not that file.
   returns the rows gathered so far as a success. The fix is to make the
   second path take the first path's refusal, or at least say
   truncated_reason:"timeout".
+  Progress (2026-10-09): third report, from the Dante's Inferno recomp
+  session (hells-gate-recomp). Two calls with respect_gitignore:false
+  hit the 5 s default: elapsed_ms 5002, truncated:true, next_offset set,
+  no hint. The tree holds a large git-ignored thirdparty SDK and
+  generated C++. The session asked for a hint naming timeout_sec, and
+  ideally which subtree used the budget.
   **Layman:** A code search that runs out of time quietly returns only some results, and nothing says the rest were lost to the time limit.
   Kind: fix.
   Source: in-session-2026-09-25.
