@@ -12178,7 +12178,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines), split from ANTS-5101.
   Lanes: review.
 
-- 📋 [ANTS-5632] **Reaping a finished project_query zombie also frees its result slot.**
+- ✅ [ANTS-5632] **Reaping a finished project_query zombie also frees its result slot.**
   Found 2026-10-09 while correcting the ANTS-2093 text (ANTS-5107).
   LuaEngine::runQueryThreaded deletes a finished zombie QThread, but the
   heap QueryResult slot the worker wrote is never deleted on the detach
@@ -12187,6 +12187,9 @@ extends an existing item, that item carries it instead.
   process. Fix: keep the slot beside its worker in g_queryZombies and
   delete both when reaping. Test: extend Ants5107FinishedZombiesAreReaped
   or an ASan run of it.
+  Resolved (2026-10-09): g_queryZombies holds {worker, slot}; reaping a
+  finished zombie deletes both. Ants5107FinishedZombiesAreReaped
+  extended, red first. ANTS-2093 § 2.4 names the slot.
   **Layman:** A query that timed out but later finished leaves a small piece of memory behind for good; it should be cleaned up with the rest.
   Kind: fix.
   Source: in-session-2026-10-09.

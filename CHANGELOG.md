@@ -120,6 +120,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A project_query that timed out and later finished now frees all of its memory** (ANTS-5632)
+  Cleaning up a finished stuck query now also frees the result it was
+  holding, which could be as large as the query result cap.
+
 - **The spec-drift and debt checks skip files .gitignore excludes** (ANTS-5623)
   In a git project they read only the files git lists: committed files,
   plus new ones .gitignore does not exclude. A generated folder that is

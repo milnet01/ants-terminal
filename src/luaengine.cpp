@@ -1152,7 +1152,13 @@ QByteArray serializeJsonValue(const QJsonValue &v) {
 // single-threaded MCP dispatch thread, so no lock is needed — the only
 // theoretical race is re-entrancy via a nested-loop dispatch, which this path
 // never triggers (ANTS-2194).
-QVector<QThread *> g_queryZombies;
+// ANTS-5632 — each zombie keeps the heap result slot its worker writes, so
+// reaping frees both; the slot can hold a result up to result_cap_bytes.
+struct QueryZombie {
+    QThread *worker;
+    LuaEngine::QueryResult *slot;
+};
+QVector<QueryZombie> g_queryZombies;
 // ANTS-2194 — hard ceiling on wedged query workers. A worker can't be reaped
 // while it is wedged, so an unbounded wedge-loop would leak ~512 KiB/thread. Past
 // this cap runQueryThreaded refuses new threaded queries (and logs the count) so
@@ -1436,8 +1442,9 @@ LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QS
     // wedged. Never removed, finished workers filled the cap and every later
     // query was refused for the life of the process.
     for (auto it = g_queryZombies.begin(); it != g_queryZombies.end();) {
-        if ((*it)->isFinished()) {
-            delete *it;
+        if (it->worker->isFinished()) {
+            delete it->worker;
+            delete it->slot;
             it = g_queryZombies.erase(it);
         } else {
             ++it;
@@ -1481,7 +1488,7 @@ LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QS
     // Detached — the snippet is stuck in an uninterruptible C call past the
     // join deadline. Keep worker + slot alive (the worker still writes the
     // slot); the dispatch worker resumes now with query_timeout.
-    g_queryZombies.append(worker);
+    g_queryZombies.append({worker, slot});
     // ANTS-2194 — log the running zombie count so a wedge-loop is observable
     // (a steadily climbing number is the signal a snippet class reliably hangs).
     qWarning("project_query: detached wedged worker; %d now leaked (cap %d)",

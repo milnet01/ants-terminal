@@ -546,4 +546,10 @@ TEST(ProjectQuery, Ants5107FinishedZombiesAreReaped) {
     ASSERT_NE(cap, std::string::npos);
     ASSERT_NE(reap, std::string::npos) << "finished workers are never removed";
     EXPECT_LT(reap, cap);
+    // ANTS-5632 — the result slot the detached worker wrote is freed with it.
+    const std::string reapBlock = src.substr(reap, cap - reap);
+    EXPECT_NE(reapBlock.find("delete it->slot;"), std::string::npos)
+        << "reaping a finished zombie must free its result slot";
+    EXPECT_NE(src.find("g_queryZombies.append({worker, slot})", fn), std::string::npos)
+        << "the slot must be kept beside its worker on the detach path";
 }
