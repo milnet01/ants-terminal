@@ -23742,7 +23742,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: user-report-2026-05-26.
   Resolved 2026-05-29: untracked-only worktree now enables the button. Predicate extracted to ants::parseReviewPorcelain (src/reviewbuttonstate.h); the obsolete `?? ` skip-branch removed. Behavioural test added (ReviewButtonUntracked.Main, test #123). ANTS-1886 made untracked files reviewable — this was the missing companion fix.
 
-- 📋 [ANTS-1875] **Visual artifacts in the diff viewer's left gutter (red blobs / smudges in margins).**
+- 🚫 [ANTS-1875] **Visual artifacts in the diff viewer's left gutter (red blobs / smudges in margins).**
   User-flagged 2026-05-26 via Screenshot_20260526_092142.png. The
   Review Changes diff viewer (DiffViewerDialog) shows red marks /
   smudges in the left margin at several positions in the diff list.
@@ -23767,6 +23767,8 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   ghost or overdraw on adjacent rows; the per-pixel terminal-area
   fillRect alpha (opacity config) interacting with the cell BG fill.
   Lane = terminalwidget, not diffviewerdialog.
+  User 2026-10-09: the smudges are gone. Closed as no longer
+  reproducible; no code change made under this item.
 
 - 📋 [ANTS-3355] **Add runtime coverage for diffviewer::show and the `// audit: drop` inline-suppress alias (currently grep-only).**
   Surfaced while verifying ANTS-1381 (which found these two source-grep tests are the SOLE guard for their behaviour): (1) diffviewer::show (src/diffviewer.cpp, the extracted Review Changes dialog) has no runtime test — only production (mainwindow.cpp:6966) calls it; diffviewer_extraction + review_changes_* are all source-grep. Add a test that constructs the dialog with a synthetic diff and asserts rendered rows / nav behaviour. (2) The `// audit: drop` inline-suppress alias (AuditDialog::commentSuppresses / inlineSuppressed, auditdialog.cpp ~2026/2092) is functionally untested — tests/audit_self_test.sh's SUPPRESS_RE doesn't even contain the token. Add a runtime test that feeds a finding annotated with `// audit: drop` through the suppression path and asserts it is dropped. Once these land, diffviewer_extraction and audit_drop_alias can be retired (the original ANTS-1381 goal).
@@ -81829,6 +81831,8 @@ merit whether or not the rest is built.
   Kind: fix. Source: user-2026-05-08.
   Lanes: terminalgrid (`scrollUp` / scrollback push,
   suppression window), terminalwidget.
+  User 2026-10-09: will take the VT capture (spec.md § 3) while Claude
+  spins. Blocked on that capture.
   Source: user-2026-05-08.
 
 ### 🐛 Crash on app exit — Pty thread races MainWindow destruction (user report 2026-05-08)
@@ -83104,7 +83108,7 @@ protocol.
   Kind: fix. Source: user-2026-05-10.
   Source: user-2026-05-10.
 
-- 📋 [ANTS-1220] **Scrollback duplication while terminal was idle / user away — content re-rendered without input.**
+- 💭 [ANTS-1220] **Scrollback duplication while terminal was idle / user away — content re-rendered without input.**
   User report
   2026-05-10 (screenshot: a Claude Code response with a horizontal
   underscore band partway down, beneath which an *earlier* portion
@@ -83144,6 +83148,9 @@ protocol.
   figure out which layer (shell, terminal, or Claude itself) is
   re-emitting content on idle.
   Kind: fix. Source: user-2026-05-10.
+  User 2026-10-09: not seen since the single occurrence in May. Kept as
+  considered with the four hypotheses above; reopen if it recurs, with a
+  screenshot plus an ANTS_PTY_DUMP capture.
   Source: user-2026-05-10.
 
 - ✅ [ANTS-1221] **Tasks chip stays visible when only an `in_progress` task remains (no `pending`) — refinement of ANTS-1216 contract.**
