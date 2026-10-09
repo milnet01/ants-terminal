@@ -108,10 +108,13 @@ TEST(FlatpakHostTools, TerminalWindowsUseTheHelper) {
         QString::fromUtf8(R"re(setProgram\(\s*(QStringLiteral\()?"(git|gh)")re"));
     for (const char *rel : files) {
         QString text;
+        // ANTS-1677 INV-3 — a split class spans its source list.
         if (QString::fromUtf8(rel) == QLatin1String("src/mainwindow.cpp")) {
-            // ANTS-1677 INV-3 — MainWindow spans its source list.
             text = QString::fromStdString(
                 ants_test::slurpSourceList(ANTS_MAINWINDOW_SOURCES));
+        } else if (QString::fromUtf8(rel) == QLatin1String("src/auditdialog.cpp")) {
+            text = QString::fromStdString(
+                ants_test::slurpSourceList(ANTS_AUDITDIALOG_SOURCES));
         } else {
             QFile f(QStringLiteral(ANTS_SOURCE_DIR "/") + QString::fromUtf8(rel));
             ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << rel;
