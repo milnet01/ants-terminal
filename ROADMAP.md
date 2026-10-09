@@ -81775,7 +81775,7 @@ merit whether or not the rest is built.
 
 ### 🐛 Claude Code spinner duplicates in scrollback (user report 2026-05-08)
 
-- 📋 [ANTS-1188] **Claude Code's `Tempering…`/`Sublimating…` status-spinner lines pile up in scrollback instead of overwriting in place.**
+- 💭 [ANTS-1188] **Claude Code's `Tempering…`/`Sublimating…` status-spinner lines pile up in scrollback instead of overwriting in place.**
   User report 2026-05-08 (screenshot
   captured): the same spinner status appears 5+ times in
   succession in scrollback as Claude Code updates its
@@ -81833,6 +81833,15 @@ merit whether or not the rest is built.
   suppression window), terminalwidget.
   User 2026-10-09: will take the VT capture (spec.md § 3) while Claude
   spins. Blocked on that capture.
+  Capture taken 2026-10-09 (Session Logging, Claude Code 2.1.295, one tab,
+  20 s of spinner, 63 KB). The user's Claude Code runs with "tui":
+  "fullscreen", which redraws by absolute positioning (CSI H, CSI nB,
+  CSI 60;1H) with mouse tracking on and emits no line feed at all, so
+  nothing reaches scrollback and the hypothesis in
+  tests/features/scrollback_spinner_dedup/spec.md § 2 cannot fire.
+  Parked as considered (user decision 2026-10-09). Reopen on a sighting
+  with Claude Code in its inline style; take the § 3 capture in that
+  style. The raw capture was not kept: it holds conversation text.
   Source: user-2026-05-08.
 
 ### 🐛 Crash on app exit — Pty thread races MainWindow destruction (user report 2026-05-08)
