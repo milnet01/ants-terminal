@@ -3,6 +3,7 @@
 #include "featurecoverage.h"
 
 #include "auditengine.h"
+#include "gitwrap.h"   // ANTS-5623 — git ls-files for .gitignore
 #include "markdownscan.h"
 
 #include <QByteArrayMatcher>
@@ -335,6 +336,51 @@ bool bulletMatchesAnyTitle(const QString &bulletText,
 // File-I/O runners
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// ANTS-5623 — the files git lists under projectPath (tracked, plus untracked
+// ones .gitignore does not exclude), project-relative, and every directory
+// holding one. ok is false outside a git work tree, when git fails, when
+// the list was cut at its cap, or when it is empty — the caller then walks
+// unfiltered. A
+// submodule is listed as one path, not a directory, so its files are not
+// read.
+struct GitListing {
+    bool ok = false;
+    QSet<QString> files;
+    QSet<QString> dirs;
+};
+
+GitListing gitListedFiles(const QString &projectPath) {
+    GitListing g;
+    const QString canon = QFileInfo(projectPath).canonicalFilePath();
+    if (canon.isEmpty()) return g;
+    constexpr int kListCapBytes = 64 * 1024 * 1024;
+    const GitWrap::Result r = GitWrap::run(
+        canon,
+        {QStringLiteral("ls-files"), QStringLiteral("-z"),
+         QStringLiteral("--cached"), QStringLiteral("--others"),
+         QStringLiteral("--exclude-standard")},
+        kListCapBytes);
+    if (!r.started || r.hardKilled || r.crashed || r.exitCode != 0 ||
+        r.stdoutTruncated)
+        return g;
+    for (const QByteArray &rel : r.stdoutBytes.split('\0')) {
+        if (rel.isEmpty()) continue;
+        const QString path = QString::fromUtf8(rel);
+        g.files.insert(path);
+        for (qsizetype i = path.lastIndexOf(QLatin1Char('/')); i > 0;
+             i = path.lastIndexOf(QLatin1Char('/'), i - 1))
+            g.dirs.insert(path.left(i));
+    }
+    // An empty list means a project git ignores whole (say, inside an
+    // ignored directory of an enclosing repo); walking reads it as before.
+    g.ok = !g.files.isEmpty();
+    return g;
+}
+
+}  // namespace
+
 QString buildProjectSourceBlob(const QString &projectPath,
                                const BlobOptions &opts) {
     // Build the existence index ONCE. The blob spans the WHOLE project
@@ -394,6 +440,10 @@ QString buildProjectSourceBlob(const QString &projectPath,
     // relativeFilePath() computation.
     QString pathManifest;
     const QDir rootDir(projectPath);
+    // ANTS-5623 — in a git project, read only what git lists, so an ignored
+    // generated tree outside kSkipTopDirs is neither read nor named in the
+    // manifest. Outside git the walk is unfiltered, as before.
+    const GitListing git = gitListedFiles(projectPath);
     // Walk the project tree manually so we can skip heavy dirs
     // without relying on QDirIterator's limited filtering.
     std::function<void(const QString &)> walk = [&](const QString &dir) {
@@ -408,17 +458,22 @@ QString buildProjectSourceBlob(const QString &projectPath,
                 // ANTS-2007 — don't follow directory symlinks: a cyclic link
                 // would recurse unboundedly and crash the walk.
                 if (fi.isSymLink()) continue;
+                if (git.ok && !git.dirs.contains(
+                                  rootDir.relativeFilePath(fi.filePath())))
+                    continue;   // ANTS-5623 — git lists nothing under it
                 walk(fi.filePath());
                 continue;
             }
             // File.
             const QString name = fi.fileName();
+            const QString rel = rootDir.relativeFilePath(fi.filePath());
+            if (git.ok && !git.files.contains(rel)) continue;   // ANTS-5623
             // ANTS-3600 phase 1 — record the rel-path UNCONDITIONALLY, before
             // any content gate below, so a doc-cited filename resolves via the
             // manifest even when the file is name-excluded / off-kExts / a
             // markdown body (docs/specs/ANTS-3600.md § 2.3).
             if (opts.appendPathManifest) {
-                pathManifest += rootDir.relativeFilePath(fi.filePath());
+                pathManifest += rel;
                 pathManifest += '\n';
             }
             // Phase 2 — content-concatenation gates.

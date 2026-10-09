@@ -7,6 +7,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -517,4 +519,39 @@ TEST(FeatureCoverage, Ants5100SourceBlobIsBounded) {
     const QString small = FeatureCoverage::buildProjectSourceBlob(root, tight);
     EXPECT_TRUE(cut) << "a blob that hits its total cap must say so";
     EXPECT_LE(small.toUtf8().size(), 64);
+}
+
+// ANTS-5623 — in a git project the blob honours .gitignore: it reads the
+// files git lists (tracked, plus untracked ones not ignored), so an ignored
+// generated tree outside AuditEngine::excludedDirNames() is not read and its
+// paths do not enter the manifest. Outside git the walk is unchanged.
+TEST(FeatureCoverage, Ants5623SourceBlobHonoursGitignore) {
+    if (QStandardPaths::findExecutable(QStringLiteral("git")).isEmpty())
+        GTEST_SKIP() << "git not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(writeFile(root + "/.gitignore", "gen/\n"));
+    ASSERT_TRUE(writeFile(root + "/src/kept.cpp", "int KeptToken = 1;\n"));
+    ASSERT_TRUE(writeFile(root + "/src/fresh.cpp", "int FreshToken = 1;\n"));
+    ASSERT_TRUE(writeFile(root + "/gen/out.cpp", "int IgnoredToken = 1;\n"));
+    auto git = [&](const QStringList &args) {
+        QProcess p;
+        p.setWorkingDirectory(root);
+        p.start(QStringLiteral("git"), args);
+        return p.waitForFinished(10000) && p.exitCode() == 0;
+    };
+    ASSERT_TRUE(git({QStringLiteral("init"), QStringLiteral("-q")}));
+    ASSERT_TRUE(git({QStringLiteral("add"), QStringLiteral("src/kept.cpp")}));
+
+    FeatureCoverage::BlobOptions o;
+    o.appendPathManifest = true;
+    const QString blob = FeatureCoverage::buildProjectSourceBlob(root, o);
+    EXPECT_TRUE(blob.contains(QStringLiteral("KeptToken")));
+    EXPECT_TRUE(blob.contains(QStringLiteral("FreshToken")))
+        << "an untracked file git does not ignore is still read";
+    EXPECT_FALSE(blob.contains(QStringLiteral("IgnoredToken")))
+        << "a file under a .gitignore'd directory must not be read";
+    EXPECT_FALSE(blob.contains(QStringLiteral("gen/out.cpp")))
+        << "nor listed in the path manifest";
 }

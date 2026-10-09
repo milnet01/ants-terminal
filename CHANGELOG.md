@@ -120,6 +120,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The spec-drift and debt checks skip files .gitignore excludes** (ANTS-5623)
+  In a git project they read only the files git lists: committed files,
+  plus new ones .gitignore does not exclude. A generated folder that is
+  ignored is no longer read or named. Outside git, or if git fails or
+  lists nothing, they walk the folder as before.
+
 - **last_selection reads a huge selection without stalling the window** (ANTS-5623)
   The terminal now builds only the end of the selection that the reply
   can carry, instead of the whole selection and then trimming it. When

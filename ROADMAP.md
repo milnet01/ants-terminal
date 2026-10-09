@@ -12115,7 +12115,7 @@ extends an existing item, that item carries it instead.
   Source: ANTS-5236 spec § 5 deferral (2026-10-01).
   Lanes: claude, mcp.
 
-- 📋 [ANTS-5623] **last_selection builds its text on the GUI thread uncapped, and two docs walks have no cap at all.**
+- ✅ [ANTS-5623] **last_selection builds its text on the GUI thread uncapped, and two docs walks have no cap at all.**
   Left over when ANTS-5098 closed (2026-10-02).
   - last_selection trims after redaction now, but the text is still built
     by TerminalWidget::selectedText on the GUI thread with no cap. Capping
@@ -12147,6 +12147,13 @@ extends an existing item, that item carries it instead.
   cap; cmdLastSelection passes its byte cap. Test
   Ants5623SelectionBuildStopsAtCap, red first. Still open:
   buildProjectSourceBlob and .gitignore.
+  Resolved (2026-10-09): buildProjectSourceBlob honours .gitignore. In a
+  git project it reads only what `git ls-files -z --cached --others
+  --exclude-standard` lists, and skips directories holding none of
+  them; outside git, on a git failure, a cut list or an empty list it
+  walks as before. Untracked files git does not ignore are kept, so a
+  new source file is not invisible until committed. Test
+  Ants5623SourceBlobHonoursGitignore, red first.
   **Layman:** Two leftover speed fixes: copying a huge selection can stall the window, and two document scans can walk a whole drive.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.
