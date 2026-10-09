@@ -247,4 +247,23 @@ inline Result scrub(const QString &input)
     return out;
 }
 
+// ANTS-5623 — text whose head was cut off can start inside a private-key
+// block: the END marker survived, the BEGIN did not, and scrub()'s PEM rule
+// needs both. Replace everything from the start through the first END
+// marker when no BEGIN marker precedes it. Call it only on text whose head
+// was cut. Returns the number of blocks replaced (0 or 1).
+inline int scrubCutPemHead(QString &text)
+{
+    static const QRegularExpression kEnd(
+        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY-----"));
+    static const QRegularExpression kBegin(
+        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
+    const QRegularExpressionMatch end = kEnd.match(text);
+    if (!end.hasMatch()) return 0;
+    if (kBegin.match(QStringView(text).left(end.capturedStart())).hasMatch())
+        return 0;   // a whole block: scrub() matches it
+    text.replace(0, end.capturedEnd(), QStringLiteral("[REDACTED:private_key]"));
+    return 1;
+}
+
 } // namespace SecretRedact

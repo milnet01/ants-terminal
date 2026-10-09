@@ -541,7 +541,11 @@ TEST(FeatureCoverage, Ants5623SourceBlobHonoursGitignore) {
         p.start(QStringLiteral("git"), args);
         return p.waitForFinished(10000) && p.exitCode() == 0;
     };
+    // A nested repo (not a submodule): git lists it as one "libs/inner/" entry.
+    ASSERT_TRUE(writeFile(root + "/libs/inner/nested.cpp", "int NestedToken = 1;\n"));
     ASSERT_TRUE(git({QStringLiteral("init"), QStringLiteral("-q")}));
+    ASSERT_TRUE(git({QStringLiteral("-C"), QStringLiteral("libs/inner"),
+                     QStringLiteral("init"), QStringLiteral("-q")}));
     ASSERT_TRUE(git({QStringLiteral("add"), QStringLiteral("src/kept.cpp")}));
 
     FeatureCoverage::BlobOptions o;
@@ -554,4 +558,6 @@ TEST(FeatureCoverage, Ants5623SourceBlobHonoursGitignore) {
         << "a file under a .gitignore'd directory must not be read";
     EXPECT_FALSE(blob.contains(QStringLiteral("gen/out.cpp")))
         << "nor listed in the path manifest";
+    EXPECT_TRUE(blob.contains(QStringLiteral("NestedToken")))
+        << "a nested repo's files are walked as before, not dropped";
 }

@@ -343,12 +343,13 @@ namespace {
 // holding one. ok is false outside a git work tree, when git fails, when
 // the list was cut at its cap, or when it is empty — the caller then walks
 // unfiltered. A
-// submodule is listed as one path, not a directory, so its files are not
-// read.
+// nested repo is listed as one "dir/" entry and a submodule as one path, so
+// those land in `open` and their trees are walked unfiltered, as before.
 struct GitListing {
     bool ok = false;
     QSet<QString> files;
     QSet<QString> dirs;
+    QSet<QString> open;   // directory entries git did not descend into
 };
 
 GitListing gitListedFiles(const QString &projectPath) {
@@ -367,8 +368,13 @@ GitListing gitListedFiles(const QString &projectPath) {
         return g;
     for (const QByteArray &rel : r.stdoutBytes.split('\0')) {
         if (rel.isEmpty()) continue;
-        const QString path = QString::fromUtf8(rel);
-        g.files.insert(path);
+        QString path = QString::fromUtf8(rel);
+        if (path.endsWith(QLatin1Char('/'))) {
+            path.chop(1);
+            g.open.insert(path);
+        } else {
+            g.files.insert(path);   // a submodule path too; see the walk
+        }
         for (qsizetype i = path.lastIndexOf(QLatin1Char('/')); i > 0;
              i = path.lastIndexOf(QLatin1Char('/'), i - 1))
             g.dirs.insert(path.left(i));
@@ -446,7 +452,9 @@ QString buildProjectSourceBlob(const QString &projectPath,
     const GitListing git = gitListedFiles(projectPath);
     // Walk the project tree manually so we can skip heavy dirs
     // without relying on QDirIterator's limited filtering.
-    std::function<void(const QString &)> walk = [&](const QString &dir) {
+    // `filtered` is false inside a tree git listed as one entry.
+    std::function<void(const QString &, bool)> walk = [&](const QString &dir,
+                                                          bool filtered) {
         QDir d(dir);
         const QFileInfoList entries = d.entryInfoList(
             QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
@@ -458,16 +466,24 @@ QString buildProjectSourceBlob(const QString &projectPath,
                 // ANTS-2007 — don't follow directory symlinks: a cyclic link
                 // would recurse unboundedly and crash the walk.
                 if (fi.isSymLink()) continue;
-                if (git.ok && !git.dirs.contains(
-                                  rootDir.relativeFilePath(fi.filePath())))
-                    continue;   // ANTS-5623 — git lists nothing under it
-                walk(fi.filePath());
+                // ANTS-5623 — enter only directories git lists files under;
+                // a nested repo or submodule git names whole is walked
+                // unfiltered.
+                bool sub = filtered;
+                if (filtered) {
+                    const QString rel = rootDir.relativeFilePath(fi.filePath());
+                    if (git.open.contains(rel) || git.files.contains(rel))
+                        sub = false;
+                    else if (!git.dirs.contains(rel))
+                        continue;
+                }
+                walk(fi.filePath(), sub);
                 continue;
             }
             // File.
             const QString name = fi.fileName();
             const QString rel = rootDir.relativeFilePath(fi.filePath());
-            if (git.ok && !git.files.contains(rel)) continue;   // ANTS-5623
+            if (filtered && !git.files.contains(rel)) continue;   // ANTS-5623
             // ANTS-3600 phase 1 — record the rel-path UNCONDITIONALLY, before
             // any content gate below, so a doc-cited filename resolves via the
             // manifest even when the file is name-excluded / off-kExts / a
@@ -523,7 +539,7 @@ QString buildProjectSourceBlob(const QString &projectPath,
             }
         }
     };
-    walk(projectPath);
+    walk(projectPath, git.ok);
     // ANTS-3600 — the manifest (every walked rel-path) is appended AFTER the
     // content half so a quoted filename literal resolves via existsInSource's
     // substring containment without pulling any doc's prose into the blob.

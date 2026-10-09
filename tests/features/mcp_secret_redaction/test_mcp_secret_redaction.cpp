@@ -151,6 +151,38 @@ TEST(McpSecretRedaction, Ants5623SelectionBuildStopsAtCap) {
     EXPECT_TRUE(has(body, "->selectedText(cap, &selLinesSkipped)"));
 }
 
+// ANTS-5623 — a cap that cuts a private key between its BEGIN and END lines
+// leaves an END with no BEGIN, which scrub() cannot match. The cut head is
+// redacted through that END line, so no key line is sent.
+TEST(McpSecretRedaction, Ants5623CutPrivateKeyIsRedacted) {
+    // The markers are joined at run time so the source holds no key shape
+    // for the pre-push secret scan to flag; the body is filler.
+    const QString kind = QStringLiteral("RSA PRIVATE") + QStringLiteral(" KEY-----");
+    QStringList sel{QStringLiteral("$ cat id_rsa"), QStringLiteral("-----BEGIN ") + kind};
+    for (int i = 0; i < 40; ++i)
+        sel << QString(64, QLatin1Char('A' + i % 26));
+    sel << QStringLiteral("-----END ") + kind << QStringLiteral("$ ls");
+    const auto tail = assembleSelectionTail(0, int(sel.size()) - 1,
+        [&](int gl) { return sel.at(gl); }, 1000);
+    ASSERT_GT(tail.linesSkipped, 2) << "the cut must fall inside the key";
+
+    QString text = tail.text;
+    EXPECT_EQ(SecretRedact::scrubCutPemHead(text), 1);
+    EXPECT_EQ(text, QStringLiteral("[REDACTED:private_key]\n$ ls"));
+
+    // A whole block is left to scrub(), and text with no END is untouched.
+    QString whole = sel.join(QLatin1Char('\n'));
+    const QString wholeBefore = whole;
+    EXPECT_EQ(SecretRedact::scrubCutPemHead(whole), 0);
+    EXPECT_EQ(whole, wholeBefore);
+    QString plain = QStringLiteral("abc\ndef");
+    EXPECT_EQ(SecretRedact::scrubCutPemHead(plain), 0);
+    EXPECT_EQ(plain, QStringLiteral("abc\ndef"));
+
+    const std::string body = verbBody("cmdLastSelection");
+    EXPECT_TRUE(before(body, "scrubCutPemHead(", "redactForClaude("));
+}
+
 // INV-5
 TEST(McpSecretRedaction, Inv5SecretFileNames) {
     for (const char *p : {".env", "/proj/.env.local", "/etc/ssl/server.pem",

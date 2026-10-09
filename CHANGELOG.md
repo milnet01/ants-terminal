@@ -127,14 +127,16 @@ for security-relevant changes.
 - **The spec-drift and debt checks skip files .gitignore excludes** (ANTS-5623)
   In a git project they read only the files git lists: committed files,
   plus new ones .gitignore does not exclude. A generated folder that is
-  ignored is no longer read or named. Outside git, or if git fails or
+  ignored is no longer read or named. A nested repository or submodule
+  inside the project is read as before. Outside git, or if git fails or
   lists nothing, they walk the folder as before.
 
 - **last_selection reads a huge selection without stalling the window** (ANTS-5623)
   The terminal now builds only the end of the selection that the reply
   can carry, instead of the whole selection and then trimming it. When
   lines were skipped this way, the reply reports lines_dropped and leaves
-  out bytes_dropped, because the skipped lines were never measured.
+  out bytes_dropped, because the skipped lines were never measured. A
+  private key whose first line was cut off this way is still hidden.
 
 - **The doc verbs' markdown walks stop after a bounded number of entries, and say so.** (ANTS-5623)
   doc_integrity, doc_lint, doc_symbols, doc_dedup, spec_lint and docs_index

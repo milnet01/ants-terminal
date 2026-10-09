@@ -694,10 +694,15 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     // byte, so the trim below still has `cap` bytes to cut from.
     const int cap = std::min(maxBytes, RemoteControl::kGetTextMaxBytesCeiling);
     int selLinesSkipped = 0;
+    QString raw = target->selectedText(cap, &selLinesSkipped);
+    const bool redact = Config().claudeMcpRedactSecrets();
+    // A cut head can start inside a private-key block, whose BEGIN line was
+    // never built and which redactForClaude therefore cannot match.
+    const int cutKeys = (redact && selLinesSkipped > 0)
+                            ? SecretRedact::scrubCutPemHead(raw) : 0;
     // ANTS-5169 — length and bytes describe the text actually sent.
-    const auto clean = RemoteControl::redactForClaude(
-        target->selectedText(cap, &selLinesSkipped),
-        Config().claudeMcpRedactSecrets());
+    auto clean = RemoteControl::redactForClaude(raw, redact);
+    clean.redacted += cutKeys;
     const bool hasSelection = !clean.text.isEmpty();
     const auto trim = RemoteControl::trimScrollbackForGetText(clean.text, maxBytes);
     QString text = trim.text;
