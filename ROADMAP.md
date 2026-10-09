@@ -10428,7 +10428,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
   Lanes: config, session.
 
-- 📋 [ANTS-5107] **Performance pass findings for the Lua plugin manager and project_query engine (medium and low).**
+- ✅ [ANTS-5107] **Performance pass findings for the Lua plugin manager and project_query engine (medium and low).**
   Filed separately: ANTS-5069, 5070.
   Medium:
   - g_queryZombies never drops finished workers, so after 64 slow
@@ -10528,6 +10528,10 @@ extends an existing item, that item carries it instead.
   ANTS-2093 sections 2.4 and 4 plus the runQueryThreaded comment in
   luaengine.h still describe a join on the GUI thread and zombies kept
   until exit, false since ANTS-4682 and the 2026-09-14 reaping.
+  Resolved (2026-10-09): ANTS-2093 sections 2.4, 2.5, 3 (INV-4) and 4,
+  and the runQueryThreaded comments in luaengine.h and luaengine.cpp, now
+  say the join runs on the MCP dispatch worker, finished zombies are
+  reaped, and at most 64 may run at once. Every finding is closed.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
@@ -12149,6 +12153,20 @@ extends an existing item, that item carries it instead.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines), split from ANTS-5101.
   Lanes: review.
+
+- 📋 [ANTS-5632] **Reaping a finished project_query zombie also frees its result slot.**
+  Found 2026-10-09 while correcting the ANTS-2093 text (ANTS-5107).
+  LuaEngine::runQueryThreaded deletes a finished zombie QThread, but the
+  heap QueryResult slot the worker wrote is never deleted on the detach
+  path. The slot can hold a result up to result_cap_bytes, so each
+  timed-out-then-finished query leaks up to that much for the life of the
+  process. Fix: keep the slot beside its worker in g_queryZombies and
+  delete both when reaping. Test: extend Ants5107FinishedZombiesAreReaped
+  or an ASan run of it.
+  **Layman:** A query that timed out but later finished leaves a small piece of memory behind for good; it should be cleaned up with the rest.
+  Kind: fix.
+  Source: in-session-2026-10-09.
+  Lanes: lua.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

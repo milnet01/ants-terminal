@@ -164,9 +164,11 @@ public:
     // thread with a BOUNDED join (timeout + 250 ms grace). A snippet stuck
     // in an uninterruptible C call (which the hook can't preempt) is
     // DETACHED at the deadline — the call returns query_timeout and the
-    // caller's thread resumes; the worker is held as a zombie until process
-    // exit (its lua_State is owned by the stuck C frame). Safe to call from
-    // the GUI/dispatch thread.
+    // caller's thread resumes; the worker is kept as a zombie while it runs
+    // (its lua_State is owned by the stuck C frame). Each call first deletes
+    // zombies that have finished, and refuses while kMaxQueryZombies are
+    // still running. Called on the MCP dispatch worker (ANTS-4682); the
+    // zombie list assumes one calling thread.
     static QueryResult runQueryThreaded(const QString &code,
                                         const QString &root,
                                         qint64 timeoutMs, int resultCapBytes);

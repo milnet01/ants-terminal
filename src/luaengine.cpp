@@ -1145,16 +1145,16 @@ QByteArray serializeJsonValue(const QJsonValue &v) {
     return wrapped.mid(1, wrapped.size() - 2);  // strip "[" … "]"
 }
 
-// §2.4 — detached query workers held until process exit. A worker stuck in
-// an uninterruptible C call owns its lua_State frame and can't be safely
-// joined or freed, so the thread (and its captured heap result slot) leaks
-// by design (RAM consequence in spec §4). Appended ONLY from the
+// §2.4 — detached query workers. A worker stuck in an uninterruptible C call
+// owns its lua_State frame and can't be safely joined or freed while it runs;
+// runQueryThreaded deletes it once its thread has finished (ANTS-5107). RAM
+// consequence in spec §4. Read and written ONLY from the
 // single-threaded MCP dispatch thread, so no lock is needed — the only
 // theoretical race is re-entrancy via a nested-loop dispatch, which this path
 // never triggers (ANTS-2194).
 QVector<QThread *> g_queryZombies;
-// ANTS-2194 — hard ceiling on leaked query workers. A wedged worker can never be
-// reaped, so an unbounded wedge-loop would leak ~512 KiB/thread until OOM. Past
+// ANTS-2194 — hard ceiling on wedged query workers. A worker can't be reaped
+// while it is wedged, so an unbounded wedge-loop would leak ~512 KiB/thread. Past
 // this cap runQueryThreaded refuses new threaded queries (and logs the count) so
 // the leak is bounded and the pathology observable rather than silent. 64 ×
 // 512 KiB ≈ 32 MiB — well past any healthy steady state, short of run-away.
@@ -1479,8 +1479,8 @@ LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QS
     }
 
     // Detached — the snippet is stuck in an uninterruptible C call past the
-    // join deadline. Leak worker + slot (the worker still owns them); the
-    // GUI/dispatch thread resumes now with query_timeout.
+    // join deadline. Keep worker + slot alive (the worker still writes the
+    // slot); the dispatch worker resumes now with query_timeout.
     g_queryZombies.append(worker);
     // ANTS-2194 — log the running zombie count so a wedge-loop is observable
     // (a steadily climbing number is the signal a snippet class reliably hangs).
