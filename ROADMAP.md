@@ -91215,6 +91215,23 @@ reports are asked for separately, each time.
   Source: in-session-2026-10-09 (ANTS-1043 window audit).
   Lanes: tests, mcp.
 
+- 📋 [ANTS-5634] **slurpSourceList and slurpRemoteControl read an unopenable path as empty text, so a wrong list silently shrinks what a scrape covers.**
+  Verified by reading tests/_support/srcgrep.h: both helpers append
+  slurpFile()'s "" for a path that cannot be opened and say nothing. An
+  "X is absent" assertion then passes over a fraction of the class. Safe
+  today, because each list is the one that compiles the class and
+  split_sources (INV-2) checks it against src/. The silence is
+  deliberate: ANTS-2060 removed a hard exit that killed every sibling
+  test in the shared bundle. So the fix must fail the ONE calling test,
+  not abort: for example, return "" for the whole list when any entry
+  is unreadable, so each caller's existing non-empty assertion fires,
+  plus a recorded check that every caller has one. Red first: a list
+  with one bogus path must turn a caller red.
+  **Layman:** A test helper that reads the program's own source files quietly skips any file it cannot open, so some checks could pass while reading less than they should.
+  Kind: fix.
+  Source: cold-read 2026-10-09 by the RetroArch session (ANTS-1043).
+  Lanes: tests.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
