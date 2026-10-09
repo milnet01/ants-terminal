@@ -27,6 +27,10 @@ namespace mainwindowdetail {
 // The MCP "remote control unavailable" envelope, defined in mainwindow.cpp.
 extern const char *const kRcUnavailable;
 
+// ANTS-5560 — Restart now's relaunch flag, defined in mainwindow.cpp. Set by
+// the update path, cleared when a window refuses to close.
+extern bool g_relaunchOnQuit;
+
 // Defined in mainwindow.cpp.
 QString firstNonShellDescendant(pid_t shellPid);
 TerminalWidget *activeTerminalInTab(QWidget *root);

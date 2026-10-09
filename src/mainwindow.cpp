@@ -158,12 +158,12 @@ void sweepKwinScriptOrphansOnce();
 #include <LayerShellQt/Window>
 #endif
 
-namespace {
+namespace mainwindowdetail {
 // ANTS-5560 — set by Restart now, cleared if a window refuses to close; read
 // once the quit is committed. Process-wide because Restart now closes every
 // window.
 bool g_relaunchOnQuit = false;
-}  // namespace
+}  // namespace mainwindowdetail
 
 namespace mainwindowdetail {
 // Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
