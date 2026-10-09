@@ -5,6 +5,7 @@
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
@@ -194,7 +195,8 @@ TEST(SessionSaveWorker, Inv6DurabilityOrderUnchanged) {
 
 // INV-7
 TEST(SessionSaveWorker, Inv7ForcedSaveStaysSynchronous) {
-    const QString b = body(source("mainwindow.cpp"),
+    // ANTS-1677 INV-3 — MainWindow spans its source list, not one file.
+    const QString b = body(QString::fromStdString(ants_test::slurpMainWindow()),
                            QStringLiteral("void MainWindow::saveAllSessions("));
     ASSERT_FALSE(b.isEmpty());
     const int branch = b.indexOf(QStringLiteral("if (force || overshot)"));

@@ -75,7 +75,10 @@ static int runMain() {
     if (uttPos == std::string::npos) {
         fail("INV-6a: MainWindow::updateTabTitles definition missing");
     } else {
-        std::string body = mwc.substr(uttPos, 1500);
+        // ANTS-1043 — bounded to the function body: a fixed byte window ran
+        // on into whatever followed updateTabTitles after the cut.
+        std::string body = ants_test::slurpFunctionBody(
+            mwc, "void MainWindow::updateTabTitles");
         if (body.find("m_tabTitlePins.contains") == std::string::npos) {
             fail("INV-6b: updateTabTitles must skip pinned tabs — without the "
                  "guard the 2 s tick wipes the pin");

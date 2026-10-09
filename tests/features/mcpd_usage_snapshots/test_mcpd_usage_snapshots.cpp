@@ -5,6 +5,7 @@
 // flock treats two open() calls in one process as two holders, so a test
 // "holding" a writer's lock is an honest stand-in for a live ants-mcpd.
 
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
 #include "claudeintegration.h"
@@ -310,9 +311,8 @@ TEST(McpdUsageSnapshots, ForwardedCallNotInSnapshot) {
 // INV-9 — a regression guard: holds before ANTS-5311 (prove red by adding a
 // second m_config.save()).
 TEST(McpdUsageSnapshots, SingleConfigSave) {
-    QFile mw(QStringLiteral(ANTS_SOURCE_DIR "/src/mainwindow.cpp"));
-    ASSERT_TRUE(mw.open(QIODevice::ReadOnly));
-    const QString src = QString::fromUtf8(mw.readAll());
+    // ANTS-1677 INV-3 — MainWindow spans its source list.
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     const qsizetype at = src.indexOf(QStringLiteral("void MainWindow::foldTokenSavingsIntoConfig() {"));
     ASSERT_GE(at, 0);
     const qsizetype end = src.indexOf(QStringLiteral("\n}\n"), at);

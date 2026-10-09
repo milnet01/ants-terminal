@@ -47,6 +47,12 @@ Listed only where behavior isn't obvious from the name.
   per-pixel bg alpha. (Was QOpenGLWidget pre-0.7.4; glyph-atlas
   `GlRenderer` retired in 0.7.44.)
 - `ptyhandler` — forkpty + QSocketNotifier.
+- `mainwindow` (`ants_chrome_lib`) — the window: tabs, panes, menus,
+  sessions, quake mode, the MCP providers that read tab state. Its
+  implementation is `src/mainwindow.cpp` plus the `src/mainwindow_*.cpp`
+  pieces named in `ANTS_MAINWINDOW_SOURCES_REL`, each named for its
+  concern, with shared helpers in `src/mainwindow_internal.h` (ANTS-1043,
+  ANTS-1677).
 - `auditdialog` — static-analysis panel. Filter→enrich→render pipeline:
   parse → drop/suppress/dedup → comment-string + mypy fold → cap →
   enrichment (snippet ±3, git blame, confidence 0-100) → trend →

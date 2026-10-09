@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../../_support/srcgrep.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -148,9 +150,10 @@ TEST(StandaloneMcpServer, Inv2OneEnumerationOfTheProjectScopedSet) {
         EXPECT_FALSE(terminal.contains(n)) << n.toStdString()
             << " is registered by the shared list but is terminal-scoped";
 
-    QFile mw(QStringLiteral(ANTS_SOURCE_DIR "/src/mainwindow.cpp"));
-    ASSERT_TRUE(mw.open(QIODevice::ReadOnly));
-    const QString src = QString::fromUtf8(mw.readAll());
+    // ANTS-1677 INV-3 — MainWindow's own source list, without the registry
+    // that slurpMainWindow() appends.
+    const QString src = QString::fromStdString(
+        ants_test::slurpSourceList(ANTS_MAINWINDOW_SOURCES));
     static const QRegularExpression rx(QStringLiteral(R"RX(registerToolProvider\(\s*"([^"]+)")RX"));
     int seen = 0;
     for (auto it = rx.globalMatch(src); it.hasNext(); ++seen) {

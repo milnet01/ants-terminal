@@ -5,6 +5,8 @@
 
 #include "hostexec.h"
 
+#include "../../_support/srcgrep.h"
+
 #include <gtest/gtest.h>
 
 #include <QFile>
@@ -105,9 +107,17 @@ TEST(FlatpakHostTools, TerminalWindowsUseTheHelper) {
     static const QRegularExpression setProg(
         QString::fromUtf8(R"re(setProgram\(\s*(QStringLiteral\()?"(git|gh)")re"));
     for (const char *rel : files) {
-        QFile f(QStringLiteral(ANTS_SOURCE_DIR "/") + QString::fromUtf8(rel));
-        ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << rel;
-        const QString text = QString::fromUtf8(f.readAll());
+        QString text;
+        if (QString::fromUtf8(rel) == QLatin1String("src/mainwindow.cpp")) {
+            // ANTS-1677 INV-3 — MainWindow spans its source list.
+            text = QString::fromStdString(
+                ants_test::slurpSourceList(ANTS_MAINWINDOW_SOURCES));
+        } else {
+            QFile f(QStringLiteral(ANTS_SOURCE_DIR "/") + QString::fromUtf8(rel));
+            ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << rel;
+            text = QString::fromUtf8(f.readAll());
+        }
+        ASSERT_FALSE(text.isEmpty()) << rel;
         EXPECT_FALSE(bare.match(text).hasMatch()) << rel << " starts a bare git/gh";
         int programs = 0;
         for (auto it = setProg.globalMatch(text); it.hasNext(); it.next()) ++programs;

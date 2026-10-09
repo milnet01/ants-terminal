@@ -318,8 +318,9 @@ TEST(McpDispatchForwardCompleteness, EveryPropReadInLambda) {
 // forwards that list, so a verb moved between halves with only one side
 // updated is either served twice or reachable from neither host.
 TEST(McpDispatchForwardCompleteness, Inv4TerminalScopedSetMatchesMainWindow) {
-    const std::string mw =
-        ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/mainwindow.cpp");
+    // ANTS-1677 INV-3 — MainWindow's own source list, without the registry
+    // that slurpMainWindow() appends.
+    const std::string mw = ants_test::slurpSourceList(ANTS_MAINWINDOW_SOURCES);
     ASSERT_FALSE(mw.empty());
     std::set<std::string> registered{"get_session_info"};
     const std::string needle = "registerToolProvider(\"";

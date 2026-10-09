@@ -43,6 +43,13 @@
       "summary": "The main window: tab lifecycle, menu and action wiring, paste pipeline, quake mode.",
       "sourcePaths": [
         "src/mainwindow.cpp",
+        "src/mainwindow_menus.cpp",
+        "src/mainwindow_tabs.cpp",
+        "src/mainwindow_sessions.cpp",
+        "src/mainwindow_mcp.cpp",
+        "src/mainwindow_quake.cpp",
+        "src/mainwindow_tabcolors.cpp",
+        "src/mainwindow_repo.cpp",
         "src/mainwindow.h",
         "src/mainwindow_internal.h"
       ]

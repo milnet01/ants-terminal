@@ -858,6 +858,13 @@ set_target_properties(ants_vt_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Python readers read the src/mainwindow.cpp src/mainwindow_*.cpp glob.
 set(ANTS_MAINWINDOW_SOURCES_REL
     src/mainwindow.cpp
+    src/mainwindow_menus.cpp
+    src/mainwindow_tabs.cpp
+    src/mainwindow_sessions.cpp
+    src/mainwindow_mcp.cpp
+    src/mainwindow_quake.cpp
+    src/mainwindow_tabcolors.cpp
+    src/mainwindow_repo.cpp
 )
 list(TRANSFORM ANTS_MAINWINDOW_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_mainwindow_abs)
