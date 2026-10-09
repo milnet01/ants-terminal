@@ -3955,7 +3955,7 @@ in each named file carry the original indie-review citation.
 
 ### 🏗 Tier 3 — structural
 
-- 📋 [ANTS-1043] **`mainwindow.cpp` decomposition (6162 LoC).**
+- ✅ [ANTS-1043] **`mainwindow.cpp` decomposition (6162 LoC).**
   Extract
   `RepoStatusController` (git/origin/visibility/update helpers,
   ~280 LoC), diff-viewer dialog (`showDiffViewer` and friends,
@@ -3989,6 +3989,17 @@ in each named file carry the original indie-review citation.
   Spec (2026-09-14): governed by
   docs/specs/ANTS-1677-large-file-decomposition.md (accepted). Third in
   order; the line counts quoted above are stale.
+  Shipped (2026-10-09) under
+  docs/specs/ANTS-1677-large-file-decomposition.md: a promotion commit
+  (g_relaunchOnQuit into mainwindowdetail), then one kind A cut into
+  src/mainwindow_menus, _tabs, _sessions, _mcp, _quake, _tabcolors and
+  _repo.cpp. src/mainwindow.cpp is 3431 lines; split_sources caps the
+  class. The seam plan was revised from the groundwork commit's: ANTS-4932
+  had already moved the registration families, so the planned kind B
+  carve was dropped, and sessions and quake became pieces to keep the
+  main file clear of the cap. Five literal-path test readers added after
+  the groundwork now read the class (INV-3). The line counts in the
+  headline and body above are stale.
 
 - ✅ [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
   `populateChecks`
@@ -24371,6 +24382,9 @@ gets one CHANGELOG section + one drift cycle + one push.
   tools/split-motion-check.py) is in place for ANTS-1043 and ANTS-4919.
   The INV-6 capture harness waits for ANTS-4919 (user ruling). Next:
   ANTS-1043, mainwindow.cpp.
+  Progress (2026-10-09): ANTS-1043 shipped, the second item under the
+  spec; mainwindow is split and capped. Next: ANTS-4919,
+  claudeintegration.cpp, which needs the INV-6 capture harness first.
   **Layman:** Three oversized source files account for most of the project's changes; split them up.
   Kind: implement.
 
@@ -91182,6 +91196,24 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-10-08.
   Lanes: tests.
+
+- 📋 [ANTS-5633] **mcp_verb_offthread_guard INV-11 scans the rcDelegate factory for the last registration, not that verb's handler.**
+  Found by reading during the ANTS-1043 window audit; not yet reproduced
+  by a failing run. registrationBounds() segments slurpMainWindow(),
+  which appends src/mcptoolregistry.cpp. The last terminal registration,
+  token_usage, has no following registration in MainWindow's files, so
+  its segment runs into the registry, where seg.find("RcHandler{") hits
+  the rcDelegate factory. The comment above the loop says the bounds
+  exclude that factory's RcHandler{; they do not. INV-11 therefore
+  counts token_usage in `seen` and scans the factory, not a token_usage
+  handler body. No verdict is wrong today, because the factory holds no
+  m_ member reads. Fix: end each segment at the end of MainWindow's own
+  text, or at the factory, and make the comment true. Red first: a
+  member read added to the token_usage handler must fail INV-11.
+  **Layman:** One automated check meant to guard a tool's code reads the wrong stretch of code for the last tool in the list.
+  Kind: fix.
+  Source: in-session-2026-10-09 (ANTS-1043 window audit).
+  Lanes: tests, mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

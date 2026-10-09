@@ -91,6 +91,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **The main window's source is split into eight files, each under 4,000 lines** (ANTS-1043)
+  No visible change. src/mainwindow.cpp keeps the constructor, events,
+  status bar and theme; menus, tabs, sessions, MCP providers, quake
+  mode, tab colours and repository state move unchanged into
+  src/mainwindow_*.cpp. Parallel sessions can now edit neighbouring
+  features without touching the same file, and the largest file's
+  compile needs about 30% less memory.
+
 - **Terminal events are sent only to the plugins that handle them** (ANTS-5107)
   Reaches a running terminal after a relaunch.
 
