@@ -22588,7 +22588,7 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Source: indie-review-8 2026-06-26 pty M1.
   Resolved 2026-06-26: HOME is now resolved pre-fork into homeBytesPre (alongside shellBytesPre/workDirBytesPre); the child chdir-fallback reads that buffer instead of calling async-signal-unsafe getenv() between fork and exec.
 
-- 📋 [ANTS-2205] **LOW cluster (security/observability): byte-vs-UTF16 caps, ignored chmod returns, wall-clock hot-path timer, terminal a11y, unbounded per-root caches.**
+- ✅ [ANTS-2205] **LOW cluster (security/observability): byte-vs-UTF16 caps, ignored chmod returns, wall-clock hot-path timer, terminal a11y, unbounded per-root caches.**
   (1) clipboardguard kUntrustedMaxBytes + aidialog kInsertCommandMaxBytes measure QString UTF-16 units not bytes (2-4× looser) — consistency follow-up to ANTS-1846; measure toUtf8().size() or rename …MaxChars. (2) claudeallowlist.cpp:345/352 ignore setOwnerOnlyPerms() return — log on failure (world-readable token risk on FAT/SMB). (3) luaengine.cpp:205 instructionHook uses QDateTime::currentMSecsSinceEpoch per hook → QElapsedTimer (monotonic, cheaper, skew-immune). (4) terminalwidget sets no QAccessible name/role — screen readers can't read terminal content (known terminal-emulator gap). (5) codebaseindex/docsindex/sessionmemory/testrescache never evict per-root cache files (mcp-caches.md names eviction). (6) review dialogs duplicate cap constants + the `-6`-byte fence-close-reserve truncation tail — extract BriefDispatch::clipToCapClosingFence + promote constants to ReviewDialogBase. (7) mainwindow refreshClaudeHooksStatus checks 3 of the 5 events installClaudeHooks writes (green status can lie); KWin-script ~50-line dup (mainwindow.cpp:3422/3500); SSH dialog + hook-installer strings bypass tr() (i18n, latent).
   **Layman:** A handful of small tidy-ups: two size caps labelled 'bytes' actually count characters (so 2–4× looser for non-English text); a couple of permission-set failures are silently ignored; a hot loop reads wall-clock time when a cheaper monotonic timer would do; the terminal has no screen-reader support; some caches never get cleaned up.
   Kind: fix.
@@ -22597,6 +22597,11 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Progress 2026-06-28: 2 more sub-items fixed (5 of 7 now done). (1) clipboardguard kUntrustedMaxBytes -> kUntrustedMaxChars and aidialog kInsertCommandMaxBytes -> kInsertCommandMaxChars: the caps measure QString length units (UTF-16 chars), not bytes -- renamed for honesty rather than made byte-accurate. The aidialog sanitizer is codepoint-oriented by design (strips C1/Unicode-attack codepoints on QChar), so a char cap is consistent with its own model; clipboardguard's is a loose defence-in-depth memory bound where a char cap still holds. (Contrast ANTS-1846, which went byte-accurate -- that was a streamed-accumulator memory ceiling where O(delta) UTF-8 conversion was natural.) Comments + 2 feature tests + 2 specs updated. (6) Extracted BriefDispatch::clipToCapClosingFence (+ kFenceCloseReserveBytes=6) -- the clip-to-cap + fence-close truncation tail triplicated across the indiereview/coldeyes/testaudit composeBrief paths -- and promoted kPromptCapBytes (200 KiB) to ReviewDialogBase (was duplicated in all three dialog headers; the inherited static still resolves <Dialog>::kPromptCapBytes in the tests). New INV-2205 feature test in brief_dispatch_fence. Suite 2325/2325. Still open under this cluster: (4) terminal QAccessible name/role [a11y feature -- own item], (5) per-root cache eviction [needs an eviction-policy + RAM-budget design], (7b) KWin-script ~50-line dup (mainwindow.cpp:3422/3500), (7c) SSH-dialog + hook-installer tr() i18n [latent -- no translation pipeline yet].
   Progress 2026-06-29: (7b) fixed — extracted MainWindow::runKWinScript(kwinJs, tag) from moveViaKWin / centerWindow (was ~35 duplicated lines each: the write-tempfile → loadScript → start → unloadScript → remove dbus chain). The two callers now build only their KWin JS body and call the helper with a tag ("move"/"center") that drives both the tempfile prefix (kwin_<tag>_ants_*) and the registered script name (ants_terminal_<tag>) — exact prior behaviour preserved. mainwindow.cpp −22 lines net. Suite 2340/2340. Now 6 of 7 done. Still open (all deferred-class, not surgical): (4) terminal QAccessible name/role [a11y feature — own item], (5) per-root cache eviction [needs eviction-policy + RAM-budget design], (7c) SSH-dialog + hook-installer tr() i18n [latent — no translation pipeline yet].
   Resolved 2026-06-29: (4) terminal QAccessible name/role — done as its own item ANTS-1078 (terminal screen-reader accessibility, core H9 slice). The terminal now exposes role Terminal + a QAccessibleTextInterface (viewport text + caret) to AT. Still open under this cluster: (5) per-root cache eviction, (7c) SSH-dialog + hook-installer tr() i18n.
+  Closed 2026-10-09. Five parts shipped here and (4) shipped as
+  ANTS-1078. The two left have owners: (5) per-root cache files is
+  ANTS-5635, considered, because docs/standards/mcp-caches.md defers
+  that sweep until a symptom is reported; (7c) tr() wrapping moved to
+  ANTS-1080, the translation scaffolding item.
 
 - ✅ [ANTS-3364] **Stale m_claudeDetectTimer comment: terminalwidget.cpp:4792 still says "single-shot trailing-edge".**
   The comment in clearClaudeQuestionPrompt() (terminalwidget.cpp:4792-4793) calls m_claudeDetectTimer a "single-shot trailing-edge timer ... during active output the scan never runs" — the pre-ANTS-1862 behaviour. The actual code (terminalwidget.cpp:2442-2443, `if (!m_claudeDetectTimer.isActive()) start()`) and the authoritative comment at :2430-2441 make it a LEADING-edge ~300 ms throttle that DOES fire during continuous output. One-line comment fix to match reality; no code change. Surfaced during the ANTS-1078 terminal-a11y spec cold-eyes loop (the spec's §2.5 relies on the correct leading-edge reading).
@@ -82944,6 +82949,22 @@ that extend an earlier perf-pass bundle name it.
   Source: memory-perf-pass-2026-09-14.
   Lanes: chrome, dialogs, claude.
 
+- 💭 [ANTS-5635] **The per-project cache files under ~/.cache/ants-terminal are never removed once their project is gone.**
+  Moved out of ANTS-2205 part (5). codebase-index, docs-index,
+  mcp-state and the test-results cache keep one file per project
+  root and never delete one. docs/standards/mcp-caches.md
+  § Future work defers this sweep "until a symptom is reported",
+  so this stays considered, not planned.
+  Measured 2026-10-09: codebase-index 6.5M, docs-index 1.5M,
+  mcp-state 512K. Promote when a user reports the size, or when
+  any one of them passes 50 MB. The fix shape is the "Stale-entry
+  GC" bullet in that section: a session-start sweep of files not
+  touched for N days.
+  **Layman:** Small index files for old or moved projects stay on disk forever; today they add up to a few megabytes.
+  Kind: chore.
+  Source: indie-review-8 2026-06-26 (LOW cluster, part 5 of ANTS-2205).
+  Lanes: codebaseindex, docsindex, sessionmemory, testrescache.
+
 ## 0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — shipped 2026-05-10 → 2026-05-11
 
 **Theme:** rolling sweep of small high-signal user-experience fixes
@@ -88377,6 +88398,12 @@ here.)
   names and descriptions in tr(). That ran ahead of the 2026-09-15
   decision to leave tr() wraps to this item; the strings need no further
   wrapping here.
+  Absorbed 2026-10-09 from ANTS-2205 part (7c): src/sshdialog.cpp
+  builds its labels, buttons and message boxes from bare string
+  literals with no tr(), and so does the Claude hook installer in
+  src/settingsdialog.cpp. Wrap them when the translation pipeline
+  lands; with no .ts files in the tree, wrapping now changes nothing
+  a user sees.
 
 - 💭 [ANTS-1081] **Right-to-left text support.**
   Bidirectional text in the grid.
