@@ -222,14 +222,29 @@ DocEntry scanToEntry(const QString &rootCanonical, const QString &rel,
 
 // Deterministic candidate list: <root>/*.md (sorted) then <root>/docs/**/*.md
 // (sorted), project-relative paths, .md only, no symlinks.
-QStringList walkDocs(const QString &rootCanonical) {
+// ANTS-5623 — both walks share one budget: `maxEntries` entries visited
+// (files and directories alike) and kMaxWalkDocs markdown files kept. A cut
+// walk sets *truncated; the caller turns it into docsTruncated.
+QStringList walkDocs(const QString &rootCanonical,
+                     int maxEntries = kMaxWalkEntries,
+                     bool *truncated = nullptr) {
+    if (truncated) *truncated = false;
     QStringList rootMd, docsMd;
     const int prefix = rootCanonical.size() + 1;  // strip "<root>/"
+    int visited = 0;
+    const auto overBudget = [&]() {
+        if (visited < maxEntries && rootMd.size() + docsMd.size() < kMaxWalkDocs)
+            return false;
+        if (truncated) *truncated = true;
+        return true;
+    };
 
     {
         QDirIterator it(rootCanonical, QDir::Files | QDir::NoSymLinks);
         while (it.hasNext()) {
+            if (overBudget()) break;
             it.next();
+            ++visited;
             if (it.fileInfo().suffix().toLower() == QLatin1String("md"))
                 rootMd << it.filePath().mid(prefix);
         }
@@ -248,11 +263,17 @@ QStringList walkDocs(const QString &rootCanonical) {
     }
     const QString docsBase = rootCanonical + QLatin1Char('/') + docsRel;
     if (QDir(docsBase).exists()) {
-        QDirIterator it(docsBase, QDir::Files | QDir::NoSymLinks,
+        // Dirs are listed so they count against the budget; only files kept.
+        QDirIterator it(docsBase,
+                        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot |
+                            QDir::NoSymLinks,
                         QDirIterator::Subdirectories);
         while (it.hasNext()) {
+            if (overBudget()) break;
             it.next();
-            if (it.fileInfo().suffix().toLower() == QLatin1String("md"))
+            ++visited;
+            if (it.fileInfo().isFile() &&
+                it.fileInfo().suffix().toLower() == QLatin1String("md"))
                 docsMd << it.filePath().mid(prefix);
         }
     }
@@ -297,8 +318,12 @@ Index build(const QString &rootCanonical, qint64 generatedAtMs,
     idx.rootCanonical = rootCanonical;
     idx.generatedAtMs = generatedAtMs;
 
+    bool walkCut = false;
+    const QStringList docs =
+        walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
+    idx.docsTruncated = walkCut;
     qint64 budget = 0;
-    for (const QString &rel : walkDocs(rootCanonical)) {
+    for (const QString &rel : docs) {
         if (idx.docs.size() >= opts.maxIndexDocs) { idx.docsTruncated = true; break; }
         DocEntry de = scanToEntry(rootCanonical, rel, opts);
         const qint64 est = estimateEntryBytes(de);
@@ -395,10 +420,14 @@ Index refresh(const Index &prev, const QString &rootCanonical,
     // Standalone (test) entry: compute the doc list + stale set once, then
     // delegate. The hot serve() path computes these once itself and calls
     // refreshWith directly, so walkDocs() runs once per serve (ANTS-2198).
-    const QStringList docs = walkDocs(rootCanonical);
+    bool walkCut = false;
+    const QStringList docs =
+        walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
     const StaleSet ss = staleDocsWith(prev, rootCanonical, docs);
-    return refreshWith(prev, rootCanonical, generatedAtMs, opts,
+    Index idx = refreshWith(prev, rootCanonical, generatedAtMs, opts,
                        refreshedOut, ss, docs);
+    if (walkCut) idx.docsTruncated = true;  // ANTS-5623
+    return idx;
 }
 
 QJsonObject query(const Index &idx, const QueryParams &params,
@@ -660,10 +689,13 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
         // ANTS-2198 — walkDocs() (loads .ants/project.json) + the stale set are
         // computed ONCE and threaded into refreshWith, instead of staleDocs +
         // refresh each re-walking the docs tree.
-        const QStringList docs = walkDocs(rootCanonical);
+        bool walkCut = false;
+        const QStringList docs =
+            walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
         const StaleSet ss = staleDocsWith(prev, rootCanonical, docs);
         if (ss.any()) {
             idx = refreshWith(prev, rootCanonical, nowMs, opts, &refreshed, ss, docs);
+            if (walkCut) idx.docsTruncated = true;  // ANTS-5623
             needWrite = true;
         } else {
             idx = prev;  // fully warm — no write, generated_at_ms preserved

@@ -120,6 +120,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The doc verbs' markdown walks stop after a bounded number of entries, and say so.** (ANTS-5623)
+  doc_integrity, doc_lint, doc_symbols, doc_dedup, spec_lint and docs_index
+  stop walking after 200,000 entries or 5,000 markdown files. A cut walk
+  adds walk_truncated:true to the reply (docs_index sets docs_truncated).
+
 - **A plugin can no longer flood the terminal: at most 100 log lines and 5 notifications a second each, with one line saying how many were dropped** (ANTS-5107)
   Status text and palette entries a plugin sends faster than the
   terminal shows them collapse to the latest. Reaches a running

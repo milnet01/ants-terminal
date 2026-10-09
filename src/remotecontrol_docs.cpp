@@ -158,10 +158,12 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
 
     const QString docsDir =
         ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    bool walkCut = false;
     QStringList relDocs =
         rawPaths.isEmpty()
-            ? docIntegrityEnumerate(rootCanonical, rawPath, docsDir)
-            : docIntegrityEnumerateMany(rootCanonical, rawPaths, docsDir);
+            ? docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut)
+            : docIntegrityEnumerateMany(rootCanonical, rawPaths, docsDir,
+                                        &walkCut);
 
     DocIntegrity::Options opts;
     if (relDocs.size() > opts.maxDocsPerRun)
@@ -193,19 +195,39 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     out[QStringLiteral("heading_sequence_suppressed")] = headingSup;
     out[QStringLiteral("broken_link_suppressed")]      = suppressed.quotedLinks;
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    // ANTS-5623 — a cut walk may have missed a document; say so.
+    if (walkCut) out[QStringLiteral("walk_truncated")] = true;
     return QJsonDocument(out);
 }
 
 // ANTS-3601 — pure: a validated `rawPath` → sorted project-relative doc set.
 QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
                                                  const QString &rawPath,
-                                                 const QString &docsDirDefault) {
+                                                 const QString &docsDirDefault,
+                                                 bool *truncated,
+                                                 int maxEntries) {
+    if (truncated) *truncated = false;
     const QDir rootDir(rootCanonical);
     const auto collectMd = [&](const QString &dirAbs) {
         QStringList out;
-        QDirIterator it(dirAbs, {QStringLiteral("*.md")}, QDir::Files,
+        // ANTS-5623 — no name filter: with "*.md" the iterator stepped through
+        // every other entry unseen, so nothing bounded the walk. Every entry
+        // counts against `maxEntries`, as in docCitationsMdScan (ANTS-5098).
+        QDirIterator it(dirAbs, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
                         QDirIterator::Subdirectories);
-        while (it.hasNext()) out << rootDir.relativeFilePath(it.next());
+        int visited = 0;
+        while (it.hasNext()) {
+            if (visited >= maxEntries || out.size() >= kDocWalkMaxDocs) {
+                if (truncated) *truncated = true;
+                break;
+            }
+            const QString path = it.next();
+            ++visited;
+            if (!it.fileInfo().isFile() ||
+                !path.endsWith(QLatin1String(".md"), Qt::CaseInsensitive))
+                continue;
+            out << rootDir.relativeFilePath(path);
+        }
         out.sort();
         return out;
     };
@@ -224,12 +246,15 @@ QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
 // a document into two findings.
 QStringList RemoteControl::docIntegrityEnumerateMany(
     const QString &rootCanonical, const QStringList &rawPaths,
-    const QString &docsDirDefault) {
+    const QString &docsDirDefault, bool *truncated) {
+    if (truncated) *truncated = false;
     QSet<QString> seen;
     QStringList out;
     for (const QString &p : rawPaths) {
+        bool cut = false;
         const QStringList part =
-            docIntegrityEnumerate(rootCanonical, p, docsDirDefault);
+            docIntegrityEnumerate(rootCanonical, p, docsDirDefault, &cut);
+        if (cut && truncated) *truncated = true;
         for (const QString &d : part)
             if (!seen.contains(d)) { seen.insert(d); out << d; }
     }
@@ -342,7 +367,9 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     }
     const QString docsDir =
         ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
-    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+    bool walkCut = false;
+    QStringList relDocs =
+        docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
 
     const DocIntegrity::Options walk;  // shared caps: the two doc walks cost the same
     if (relDocs.size() > walk.maxDocsPerRun)
@@ -436,6 +463,8 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
               truncated, checked)
         : docSymbolsBuildResponse(symbols, findings, truncated, checked, only);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    // ANTS-5623 — a cut walk may have missed a document; say so.
+    if (walkCut) out[QStringLiteral("walk_truncated")] = true;
     return QJsonDocument(out);
 }
 
@@ -909,7 +938,9 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const QString specsDir =
         ProjectSettings::load(rootCanonical).specsDir.value_or(
             QStringLiteral("docs/specs"));
-    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, specsDir);
+    bool walkCut = false;
+    QStringList relDocs =
+        docIntegrityEnumerate(rootCanonical, rawPath, specsDir, &walkCut);
 
     const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
     if (relDocs.size() > walk.maxDocsPerRun)
@@ -961,8 +992,10 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // Anchored on the specs dir alone, and independent of `path`, so linting one
     // file answers the same way linting the tree does.
     {
+        bool corpusCut = false;
         QStringList corpus =
-            docIntegrityEnumerate(rootCanonical, QString(), specsDir);
+            docIntegrityEnumerate(rootCanonical, QString(), specsDir, &corpusCut);
+        if (corpusCut) walkCut = true;
         if (corpus.size() > walk.maxDocsPerRun)
             corpus = corpus.mid(0, walk.maxDocsPerRun);
         QHash<int, int> ownersByNumber;
@@ -1136,6 +1169,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // one spec is a claim about whether its code exists, which needs the code
     // checked and cannot be decided here.
     out[QStringLiteral("status_missing")] = statusMissing;
+    // ANTS-5623 — a cut walk may have missed a document; say so.
+    if (walkCut) out[QStringLiteral("walk_truncated")] = true;
     return QJsonDocument(out);
 }
 
@@ -1427,7 +1462,9 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     }
     const QString docsDir =
         ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
-    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+    bool walkCut = false;
+    QStringList relDocs =
+        docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
 
     const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
     if (relDocs.size() > walk.maxDocsPerRun)
@@ -1471,6 +1508,8 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     // 304s `unchanged` for a question it never answered. The three sibling doc
     // verbs fold the set fingerprint in for this reason; this one now does too.
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    // ANTS-5623 — a cut walk may have missed a document; say so.
+    if (walkCut) out[QStringLiteral("walk_truncated")] = true;
     return QJsonDocument(out);
 }
 
@@ -2169,8 +2208,9 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
     const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
     const QString specsDir = layout.specsDir.value_or(QStringLiteral("docs/specs"));
+    bool walkCut = false;
     const QStringList relDocs =
-        docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+        docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
 
     DocLint::Options opts;
     opts.rootCanonical = rootCanonical;
@@ -2214,8 +2254,11 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
 
     const int maxFindings =
         qBound(1, req.value(QStringLiteral("max_findings")).toInt(500), 5000);
-    return QJsonDocument(docLintBuildResponse(DocLint::run(relDocs, opts),
-                                              maxFindings, wantFix, dryRun));
+    QJsonObject out = docLintBuildResponse(DocLint::run(relDocs, opts),
+                                           maxFindings, wantFix, dryRun);
+    // ANTS-5623 — a cut walk may have missed a document; say so.
+    if (walkCut) out[QStringLiteral("walk_truncated")] = true;
+    return QJsonDocument(out);
 }
 
 // ANTS-3663 — pure: engine output → the response object.

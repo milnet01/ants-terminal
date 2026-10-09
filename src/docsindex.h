@@ -37,6 +37,12 @@ constexpr int    kMaxLineBytes      = 1024;            // INV-3 fixed regex-skip
 // other: the cost bounded here is the QStringList held, not the bytes streamed.
 constexpr int    kMaxHeaderBlockLines = 256;
 constexpr qint64 kMaxDocBytes       = 4 * 1024 * 1024; // INV-19 per-doc read budget (ROADMAP/CHANGELOG can be MB-scale)
+// ANTS-5623 — the walk itself is bounded: entries visited (files and
+// directories alike) and markdown files kept. The kept cap sits above
+// kMaxIndexDocs so INV-12's sorted truncation is unchanged below it; a cut
+// walk sets docsTruncated. Same values as doc_citations' scan (ANTS-5098).
+constexpr int    kMaxWalkEntries    = 200000;
+constexpr int    kMaxWalkDocs       = 5000;
 
 struct Heading {
     int     level = 0;   // 1..6 = ATX '#' count
@@ -74,6 +80,7 @@ struct Options {                       // all overridable for tests
     int    maxLinkedFrom     = kMaxLinkedFrom;
     qint64 maxDocBytes       = kMaxDocBytes;
     int    maxHeaderBlockLines = kMaxHeaderBlockLines;   // ANTS-3786 INV-4
+    int    maxWalkEntries    = kMaxWalkEntries;          // ANTS-5623
 };
 
 // One query's selectors (§ 2.5): at most one member non-empty. The handler

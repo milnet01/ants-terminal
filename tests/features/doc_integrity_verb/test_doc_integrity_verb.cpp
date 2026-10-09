@@ -71,6 +71,28 @@ TEST(DocIntegrityVerb, EnumerateScoping) {
 }
 
 // INV-18 — the `kinds` filter narrows both findings AND counts.
+// ANTS-5623 — the directory walk is bounded by entries VISITED, files and
+// directories alike, and says when it stopped. Under the cap it reports no cut.
+TEST(DocIntegrityVerb, Ants5623WalkCapReportsCut) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    for (int i = 0; i < 30; ++i)
+        ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/d%1/f.md").arg(i), "# H\n"));
+
+    bool cut = false;
+    const QStringList capped =
+        RemoteControl::docIntegrityEnumerate(root, "", "docs", &cut, 10);
+    EXPECT_TRUE(cut) << "60 entries visited must trip a cap of 10";
+    EXPECT_LE(capped.size(), 10);
+
+    bool wholeCut = true;
+    const QStringList whole =
+        RemoteControl::docIntegrityEnumerate(root, "", "docs", &wholeCut);
+    EXPECT_FALSE(wholeCut) << "a walk under its cap must not report a cut";
+    EXPECT_EQ(whole.size(), 30);
+}
+
 TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
     using DocIntegrity::Finding;
     using DocIntegrity::Kind;

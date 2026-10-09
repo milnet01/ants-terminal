@@ -616,16 +616,25 @@ public:
     // project-relative doc set (dir → recursive *.md; file → one; empty → the
     // docsDirDefault walk; non-existent → empty). `docIntegrityBuildResponse`
     // filters findings + counts by `kinds` (empty = all).
+    // ANTS-5623 — a directory walk stops after `maxEntries` entries visited
+    // (files and directories alike) or kDocWalkMaxDocs markdown files kept,
+    // and sets *truncated. Both sit above DocIntegrity's maxDocsPerRun, so
+    // the sorted-then-capped doc set is unchanged below them.
+    static constexpr int kDocWalkMaxEntries = 200000;
+    static constexpr int kDocWalkMaxDocs    = 5000;
     static QStringList docIntegrityEnumerate(const QString &rootCanonical,
                                              const QString &rawPath,
-                                             const QString &docsDirDefault);
+                                             const QString &docsDirDefault,
+                                             bool *truncated = nullptr,
+                                             int maxEntries = kDocWalkMaxEntries);
     // ANTS-4106 — the `paths:[…]` form: the de-duplicated, sorted union of
     // each entry's enumeration. An empty list yields an empty set (the caller
     // falls back to the single-`path` walk), so "no paths given" and "paths
     // matched nothing" stay distinguishable at the call site.
     static QStringList docIntegrityEnumerateMany(const QString &rootCanonical,
                                                  const QStringList &rawPaths,
-                                                 const QString &docsDirDefault);
+                                                 const QString &docsDirDefault,
+                                                 bool *truncated = nullptr);
     static QJsonObject docIntegrityBuildResponse(
         const QList<DocIntegrity::Finding> &findings,
         const QSet<QString> &kinds, const QStringList &checkedDocs);

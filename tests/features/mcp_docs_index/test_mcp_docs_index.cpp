@@ -365,6 +365,23 @@ TEST(DocsIndex, DocCountCeiling) {
     EXPECT_EQ(idx.docs[1].path, QStringLiteral("r2.md"));  // docs/d1.md dropped
 }
 
+// ANTS-5623 — the walk is bounded by entries visited, files and directories
+// alike, and a cut walk sets docs_truncated (INV-12's flag).
+TEST(DocsIndex, Ants5623WalkCapSetsTruncated) {
+    QTemporaryDir dir;
+    for (int i = 0; i < 30; ++i)
+        writeFile(dir.path() + QStringLiteral("/docs/d%1/f.md").arg(i),
+                  QStringLiteral("# D\n"));
+    Options o; o.maxWalkEntries = 10;
+    const Index capped = build(dir.path(), 1000, o);
+    EXPECT_TRUE(capped.docsTruncated) << "60 entries visited must trip a cap of 10";
+    EXPECT_LE(capped.docs.size(), 10);
+
+    const Index whole = build(dir.path(), 1000, Options{});
+    EXPECT_FALSE(whole.docsTruncated);
+    EXPECT_EQ(whole.docs.size(), 30);
+}
+
 // ANTS-5099 — past the ceiling, the uncached tail is not "added". It was, so
 // every query on a capped tree refreshed and rewrote the whole cache, which
 // INV-10's warm query forbids. A new doc INSIDE the cached prefix still counts.

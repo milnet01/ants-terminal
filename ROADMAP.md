@@ -12130,6 +12130,13 @@ extends an existing item, that item carries it instead.
   total caps (ANTS-5100), but an ignored generated tree outside
   AuditEngine::excludedDirNames() is still read. Honouring .gitignore
   needs git ls-files or a gitignore matcher, which is a design choice.
+  Progress (2026-10-09): the two docs walks are capped. docIntegrityEnumerate
+  and walkDocs count every entry visited (200,000) and markdown files kept
+  (5,000), and a cut walk reports walk_truncated (docs_index: docs_truncated).
+  Tests Ants5623WalkCapReportsCut and Ants5623WalkCapSetsTruncated, red
+  first. Still open: last_selection's uncapped selectedText (needs a widget
+  change) and buildProjectSourceBlob ignoring .gitignore (a design choice:
+  git ls-files or a matcher).
   **Layman:** Two leftover speed fixes: copying a huge selection can stall the window, and two document scans can walk a whole drive.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.
