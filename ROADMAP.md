@@ -91144,12 +91144,14 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: in-session-2026-09-30 (handoff note).
 
-- 📋 [ANTS-5627] **Two test contracts omit tests their directories already run.**
+- ✅ [ANTS-5627] **Two test contracts omit tests their directories already run.**
   tests/features/plaintext_prompt_warning/spec.md lists INV-1..3 but not
   Ants5105SendReenabledAfterRefusalAndReset or Ants5105ReplyStreamsIntoChat.
   tests/features/config_parse_failure_guard/spec.md has no invariant for
   Ants5106SaveKeepsANewerSchemaStamp. Add one clause each, naming the test.
   Found 2026-10-08 while adding INV-3 / Invariant 6 to those files.
+  Resolved (2026-10-09): plaintext_prompt_warning gains INV-4 and INV-5, and
+  config_parse_failure_guard gains Invariant 7, each naming its test.
   **Layman:** Two test descriptions are missing entries for tests that already exist.
   Kind: doc-fix.
   Source: in-session-2026-10-08.

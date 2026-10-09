@@ -66,6 +66,14 @@ only where the owning spec § 2.1 states the text is stable enough to do so.
   shows exactly the reply's first `kMaxShownReplyChars` characters and a
   note containing "shortened". A reply under the cap shows whole.
   Test: `Ants5105LongReplyIsShortenedForDisplay`.
+- **INV-4** (ANTS-5105) — Send is enabled again after a request that
+  never reaches `LlmClient::finished()`: one refused for an API key over
+  remote plain http, and one in flight when `resetTransient()` runs.
+  Test: `Ants5105SendReenabledAfterRefusalAndReset`.
+- **INV-5** (ANTS-5105) — a reply shows in the chat as `chunk()` arrives.
+  `finished()` replaces the streamed text rather than adding a copy, and
+  keeps earlier messages. A second reply streams into its own message and
+  leaves the first intact. Test: `Ants5105ReplyStreamsIntoChat`.
 
 ## Test notes
 

@@ -90,6 +90,12 @@ change reaches disk without another setter call. A save still deferred
 when the `Config` is destroyed is written by the destructor. Tests:
 `Ants5106LockedSaveIsRetried`, `Ants5106DeferredSaveIsWrittenOnDestruction`.
 
+### Invariant 7 — save() never lowers the schema stamp (ANTS-5106)
+
+When `config.json` carries a `_schema` newer than this build's
+`kSchemaVersion`, a setter's `save()` writes the change and keeps the
+newer `_schema`. Test: `Ants5106SaveKeepsANewerSchemaStamp`.
+
 ## How this test anchors to reality
 
 The test constructs a `Config` against an isolated `XDG_CONFIG_HOME`,
