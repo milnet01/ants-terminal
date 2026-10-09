@@ -28,9 +28,9 @@ scrollback to re-find it.
   `recent_errors`).
 - **INV-7** — `claudeintegration.cpp`'s `callerCwdContractFor` returns
   `C::TabSpecific` for `last_selection`.
-- **INV-8** — `cmdLastSelection` calls `TerminalWidget::selectedText()`
-  (the existing selection accessor) — sole source of truth, no
-  reimplementation.
+- **INV-8** — `cmdLastSelection` calls `TerminalWidget::selectedText`
+  (the existing selection accessor; since ANTS-5623 its tail-capped
+  overload) — sole source of truth, no reimplementation.
 
 **Response envelope shape** (verified by inspection of the
 `cmdLastSelection` body — no live runner needed):

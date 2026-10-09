@@ -410,6 +410,10 @@ public:
     // read-only accessor; promoted from private (where it sat by
     // default) so RemoteControl can delegate without a wrapper.
     QString selectedText() const;
+    // ANTS-5623 — the selection's tail, built only until it holds maxChars
+    // characters (maxChars < 0 = whole selection). *linesSkipped receives
+    // the count of leading lines left unbuilt.
+    QString selectedText(qsizetype maxChars, int *linesSkipped) const;
 
 private:
     void copySelection();

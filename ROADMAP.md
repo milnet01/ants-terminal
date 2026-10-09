@@ -12141,6 +12141,12 @@ extends an existing item, that item carries it instead.
   TerminalWidget builds it, so a huge selection never stalls the GUI.
   (2) buildProjectSourceBlob: honour .gitignore by asking git for its
   tracked files (git ls-files); outside a git project, keep today's walk.
+  Progress (2026-10-09): last_selection is capped where the text is
+  built. TerminalWidget::selectedText(maxChars, linesSkipped) assembles
+  from the last line backwards (src/selectiontail.h) and stops at the
+  cap; cmdLastSelection passes its byte cap. Test
+  Ants5623SelectionBuildStopsAtCap, red first. Still open:
+  buildProjectSourceBlob and .gitignore.
   **Layman:** Two leftover speed fixes: copying a huge selection can stall the window, and two document scans can walk a whole drive.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.

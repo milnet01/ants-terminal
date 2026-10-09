@@ -4,6 +4,7 @@
 #include "debuglog.h"
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
 #include "secureio.h"        // ANTS-4456 — ensurePrivateDir / setOwnerOnlyPerms
+#include "selectiontail.h"   // ANTS-5623 — tail-capped selection assembly
 #include "shellutils.h"      // ANTS-3828 — shellQuote() for pasted file paths
 #include "stickycommandtext.h" // ANTS-5027 — sticky-header command text
 
@@ -3922,41 +3923,34 @@ bool TerminalWidget::isCellSelected(int globalLine, int col) const {
 }
 
 QString TerminalWidget::selectedText() const {
+    return selectedText(-1, nullptr);
+}
+
+// ANTS-5623 — maxChars >= 0 keeps the selection's tail and builds only
+// enough lines to hold that many characters (assembleSelectionTail), so a
+// selection over the whole scrollback does not stall the GUI thread.
+QString TerminalWidget::selectedText(qsizetype maxChars, int *linesSkipped) const {
+    if (linesSkipped) *linesSkipped = 0;
     if (!m_hasSelection) return {};
 
     QPoint s = m_selStart, e = m_selEnd;
     if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
         std::swap(s, e);
 
-    int cols = m_grid->cols();
-    QString result;
+    const int cols = m_grid->cols();
+    // Rectangular selection: same column range on every line.
+    const int minCol = std::min(m_selStart.y(), m_selEnd.y());
+    const int maxCol = std::max(m_selStart.y(), m_selEnd.y());
 
-    if (m_rectSelection) {
-        // Rectangular selection: same column range on every line
-        int minCol = std::min(m_selStart.y(), m_selEnd.y());
-        int maxCol = std::max(m_selStart.y(), m_selEnd.y());
-        for (int gl = s.x(); gl <= e.x(); ++gl) {
-            QString line;
-            for (int c = minCol; c <= maxCol && c < cols; ++c) {
-                uint32_t cp = cellAtGlobal(gl, c).codepoint;
-                if (cp == 0) cp = ' ';
-                line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
-                if (auto *comb = combiningAt(gl, c)) {
-                    for (uint32_t combCp : *comb)
-                        line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
-                }
-            }
-            while (line.endsWith(' ')) line.chop(1);
-            result += line;
-            if (gl < e.x()) result += '\n';
+    auto lineAt = [&](int gl) {
+        int startCol, endCol;
+        if (m_rectSelection) {
+            startCol = minCol;
+            endCol = std::min(maxCol, cols - 1);
+        } else {
+            startCol = (gl == s.x()) ? s.y() : 0;
+            endCol = (gl == e.x()) ? e.y() : cols - 1;
         }
-        return result;
-    }
-
-    for (int gl = s.x(); gl <= e.x(); ++gl) {
-        int startCol = (gl == s.x()) ? s.y() : 0;
-        int endCol = (gl == e.x()) ? e.y() : cols - 1;
-
         QString line;
         for (int c = startCol; c <= endCol; ++c) {
             uint32_t cp = cellAtGlobal(gl, c).codepoint;
@@ -3967,13 +3961,13 @@ QString TerminalWidget::selectedText() const {
                     line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
             }
         }
-
         while (line.endsWith(' ')) line.chop(1);
-        result += line;
-        if (gl < e.x()) result += '\n';
-    }
+        return line;
+    };
 
-    return result;
+    const SelectionTail tail = assembleSelectionTail(s.x(), e.x(), lineAt, maxChars);
+    if (linesSkipped) *linesSkipped = tail.linesSkipped;
+    return tail.text;
 }
 
 // --- Accessibility (ANTS-1078) ---

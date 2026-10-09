@@ -120,6 +120,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **last_selection reads a huge selection without stalling the window** (ANTS-5623)
+  The terminal now builds only the end of the selection that the reply
+  can carry, instead of the whole selection and then trimming it. When
+  lines were skipped this way, the reply reports lines_dropped and leaves
+  out bytes_dropped, because the skipped lines were never measured.
+
 - **The doc verbs' markdown walks stop after a bounded number of entries, and say so.** (ANTS-5623)
   doc_integrity, doc_lint, doc_symbols, doc_dedup, spec_lint and docs_index
   stop walking after 200,000 entries or 5,000 markdown files. A cut walk

@@ -75,7 +75,8 @@ TEST(McpLastSelection, WiringContract) {
 
     // INV-8 — delegates to TerminalWidget::selectedText (single source
     //         of truth, no reimplementation in cmdLastSelection).
-    expect(contains(rcCpp, "->selectedText()"),
+    // ANTS-5623 — through the tail-capped overload, so no empty brackets.
+    expect(contains(rcCpp, "->selectedText("),
            "INV-8: cmdLastSelection calls selectedText() somewhere "
            "in remotecontrol.cpp");
 

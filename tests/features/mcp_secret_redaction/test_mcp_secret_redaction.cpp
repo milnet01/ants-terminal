@@ -2,6 +2,7 @@
 
 #include "remotecontrol.h"
 #include "claudeintegration.h"
+#include "selectiontail.h"
 #include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
@@ -115,6 +116,39 @@ TEST(McpSecretRedaction, Ants5098LastSelectionTrimsAfterRedacting) {
     EXPECT_TRUE(before(body, "redactForClaude(", "trimScrollbackForGetText("));
     EXPECT_TRUE(has(body, "\"max_bytes\""));
     EXPECT_TRUE(has(body, "\"truncated\""));
+}
+
+// ANTS-5623 — the cap now applies where the selection is BUILT, on the GUI
+// thread: assembly runs from the last line backwards and stops once the cap
+// is held, so a selection over the whole scrollback builds a few lines.
+TEST(McpSecretRedaction, Ants5623SelectionBuildStopsAtCap) {
+    constexpr int kLines = 1000000;
+    int built = 0;
+    const auto tail = assembleSelectionTail(0, kLines - 1, [&](int gl) {
+        ++built;
+        return QStringLiteral("line %1").arg(gl);
+    }, 100);
+    EXPECT_LT(built, 50);
+    EXPECT_GE(tail.text.size(), 100);
+    EXPECT_TRUE(tail.text.endsWith(QStringLiteral("\nline 999999")))
+        << tail.text.right(40).toStdString();
+    EXPECT_EQ(tail.linesSkipped, kLines - built);
+
+    // Uncapped, the join is the one selectedText() always produced.
+    const auto all = assembleSelectionTail(0, 2, [](int gl) {
+        return QString::number(gl);
+    }, -1);
+    EXPECT_EQ(all.text, QStringLiteral("0\n1\n2"));
+    EXPECT_EQ(all.linesSkipped, 0);
+
+    // The widget builds through it, and last_selection passes its cap.
+    const std::string tw = ants_test::stripComments(
+        ants_test::slurpFile(ANTS_SOURCE_DIR "/src/terminalwidget.cpp"));
+    EXPECT_TRUE(has(between(tw, "QString TerminalWidget::selectedText(qsizetype",
+                            "\n}\n"),
+                    "assembleSelectionTail("));
+    const std::string body = verbBody("cmdLastSelection");
+    EXPECT_TRUE(has(body, "->selectedText(cap, &selLinesSkipped)"));
 }
 
 // INV-5

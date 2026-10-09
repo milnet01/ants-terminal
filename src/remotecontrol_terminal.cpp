@@ -682,29 +682,46 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
-    // ANTS-5169 — length and bytes describe the text actually sent.
-    const auto clean = RemoteControl::redactForClaude(
-        target->selectedText(), Config().claudeMcpRedactSecrets());
-    const bool hasSelection = !clean.text.isEmpty();
-
     // ANTS-5098 — the same cap as get_text, applied after redaction so it
     // bounds what is sent and never cuts a secret in half.
     int maxBytes = RemoteControl::kGetTextDefaultBytesCap;
     const QJsonValue maxBytesVal = req.value(QStringLiteral("max_bytes"));
     if (maxBytesVal.isDouble() && maxBytesVal.toInt() > 0)
         maxBytes = maxBytesVal.toInt();
+
+    // ANTS-5623 — the widget builds only the selection's tail, whole lines
+    // holding at least `cap` characters. A character is at least one UTF-8
+    // byte, so the trim below still has `cap` bytes to cut from.
+    const int cap = std::min(maxBytes, RemoteControl::kGetTextMaxBytesCeiling);
+    int selLinesSkipped = 0;
+    // ANTS-5169 — length and bytes describe the text actually sent.
+    const auto clean = RemoteControl::redactForClaude(
+        target->selectedText(cap, &selLinesSkipped),
+        Config().claudeMcpRedactSecrets());
+    const bool hasSelection = !clean.text.isEmpty();
     const auto trim = RemoteControl::trimScrollbackForGetText(clean.text, maxBytes);
-    const QString &text = trim.text;
+    QString text = trim.text;
+    bool truncated = trim.truncated;
+    int linesDropped = trim.linesDropped;
+    if (selLinesSkipped > 0) {
+        // Lines the widget never built have no measured size: report the
+        // lines dropped, not the bytes, and say so in the marker line.
+        if (trim.truncated) text = text.mid(text.indexOf(QLatin1Char('\n')) + 1);
+        linesDropped += selLinesSkipped;
+        text = QStringLiteral("<truncated %1 lines>\n").arg(linesDropped) + text;
+        truncated = true;
+    }
 
     out[QStringLiteral("ok")]            = true;
     out[QStringLiteral("has_selection")] = hasSelection;
     out[QStringLiteral("text")]          = text;
     out[QStringLiteral("length")]        = text.size();
     out[QStringLiteral("bytes")]         = text.toUtf8().size();
-    out[QStringLiteral("truncated")]     = trim.truncated;
-    if (trim.truncated) {
-        out[QStringLiteral("bytes_dropped")] = trim.bytesDropped;
-        out[QStringLiteral("lines_dropped")] = trim.linesDropped;
+    out[QStringLiteral("truncated")]     = truncated;
+    if (truncated) {
+        if (selLinesSkipped == 0)
+            out[QStringLiteral("bytes_dropped")] = trim.bytesDropped;
+        out[QStringLiteral("lines_dropped")] = linesDropped;
     }
     if (trim.capClamped) out[QStringLiteral("bytes_cap_clamped")] = true;
     if (clean.redacted > 0) out[QStringLiteral("redacted")] = clean.redacted;
