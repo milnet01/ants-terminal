@@ -12137,6 +12137,10 @@ extends an existing item, that item carries it instead.
   first. Still open: last_selection's uncapped selectedText (needs a widget
   change) and buildProjectSourceBlob ignoring .gitignore (a design choice:
   git ls-files or a matcher).
+  Decided by the user (2026-10-09): (1) last_selection: cap the text where
+  TerminalWidget builds it, so a huge selection never stalls the GUI.
+  (2) buildProjectSourceBlob: honour .gitignore by asking git for its
+  tracked files (git ls-files); outside a git project, keep today's walk.
   **Layman:** Two leftover speed fixes: copying a huge selection can stall the window, and two document scans can walk a whole drive.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs), split from ANTS-5098.
