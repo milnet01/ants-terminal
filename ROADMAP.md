@@ -84999,6 +84999,21 @@ a modern terminal" release.
   **Layman:** Save your whole layout of tabs and splits, scrollback included, and reopen it later.
   Kind: implement.
 
+- 📋 [ANTS-5642] **On a recording display, a new split pane opens narrow and the first pane's text clears.**
+  Seen 2026-10-10 filming trailer clips with demoreel (1920x1080 private
+  X display, no window manager, demo HOME, font_size 22). After
+  ./build.sh printed output, Split > Split Horizontal left one wide pane
+  showing only a fresh prompt and a narrow right pane; the build output
+  was gone. A second split (Split Vertical) gave no visible top/bottom
+  split. Not yet reproduced on the real desktop, so it may be specific to
+  a display with no window manager. First step: reproduce with demoreel
+  shot and with a normal session, and compare.
+  **Layman:** When you split the window while recording a demo, the new pane comes out thin and the old pane's text vanishes.
+  Kind: investigate.
+  Source: in-session-2026-10-10 (trailer footage for ants-projects-hub-website).
+  Lanes: terminalwidget, mainwindow.
+  Evidence: /mnt/Games/Trailers/incoming/ants-terminal/clip2-split-panes.mp4
+
 ### 🎨 Features — inline ghost-text completion
 
 Claude Code's "as-you-type" completion pattern — you begin typing a
