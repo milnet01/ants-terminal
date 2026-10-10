@@ -349,21 +349,32 @@ else
             echo "          $asan_dir. Harmless (it rebuilds more, not less);"
             echo "          'cmake --build $asan_dir --clean-first' clears it."
         fi
-        # If the caller's timeout kills us anyway, mark the tree so the NEXT
-        # run refuses to trust an incremental build over a killed ninja.
-        trap 'touch "$asan_marker"
-              echo >&2
-              echo "pre-push: interrupted during the sanitizer build — $asan_dir" >&2
-              echo "          marked untrusted; the next run will say how to heal it." >&2
-              exit 143' TERM INT
-        if ! ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
-            echo >&2
-            echo "pre-push: ci.yml's build-asan job FAILED locally — push blocked." >&2
-            echo "          This is the class that reached CI as run 30587366963." >&2
-            echo "          ('git push --no-verify' to override.)" >&2
-            exit 1
+        # tools/asan-nightly.sh builds this tree overnight; two ninjas in one
+        # tree corrupt it, so both hold this lock and the second steps aside.
+        exec 9>"$asan_dir/.ants-build.lock"
+        if ! flock -n 9; then
+            echo "pre-push: ⊘ build-asan gate SKIPPED — $asan_dir is being"
+            echo "          built by something else (tools/asan-nightly.sh?)."
+            echo "          CI's nightly build-asan run still covers this push."
+        else
+            # If the caller's timeout kills us anyway, mark the tree so the
+            # NEXT run refuses to trust an incremental build over a killed
+            # ninja.
+            trap 'touch "$asan_marker"
+                  echo >&2
+                  echo "pre-push: interrupted during the sanitizer build — $asan_dir" >&2
+                  echo "          marked untrusted; the next run will say how to heal it." >&2
+                  exit 143' TERM INT
+            if ! ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
+                echo >&2
+                echo "pre-push: ci.yml's build-asan job FAILED locally — push blocked." >&2
+                echo "          This is the class that reached CI as run 30587366963." >&2
+                echo "          ('git push --no-verify' to override.)" >&2
+                exit 1
+            fi
+            trap - TERM INT
         fi
-        trap - TERM INT
+        exec 9>&-
     fi
 fi
 

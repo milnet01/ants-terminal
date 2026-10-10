@@ -259,6 +259,55 @@ git -C "$repo" checkout -q -- .github/workflows/ci.yml 2>/dev/null \
     || sed -i 's/^        run: false$/        run: ctest -j2 --output-on-failure --timeout 300/' \
            "$repo/.github/workflows/ci.yml"
 
+echo "INV-11 — a tree another builder holds is skipped, not built (asan-nightly)"
+# One process holds the lock, so killing it releases the lock (a `flock cmd`
+# holder leaves its child holding it after the kill).
+bash -c 'exec 8>"$1"; flock 8; exec sleep 60' _ "$repo/build-asan/.ants-build.lock" &
+holder=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    flock -n "$repo/build-asan/.ants-build.lock" true 2>/dev/null || break
+    sleep 0.1
+done
+run_hook 3
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+check "exit 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+check "cmake --build was NOT run while the tree was held" \
+      "$(grep -q -- '--build build-asan' <<<"$calls" && echo 1 || echo 0)"
+check "the skip names the busy tree" \
+      "$(grep -q 'being' <<<"$out" && echo 0 || echo 1)"
+
+echo "INV-12 — tools/asan-nightly.sh builds the tree, healing a marked one"
+nightly="$(dirname "$PREPUSH_HOOK")/asan-nightly.sh"
+run_nightly() {
+    : > "$tmp/cmake-calls"
+    out=$(PATH="$tmp/bin:$PATH" CMAKE_CALL_LOG="$tmp/cmake-calls" \
+          ANTS_ASAN_DIR="$repo/build-asan" bash "$nightly" </dev/null 2>&1)
+    rc=$?
+    calls=$(cat "$tmp/cmake-calls")
+}
+run_nightly
+check "a warm tree: exit 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+check "a warm tree is built incrementally" \
+      "$(grep -qx "cmake --build $repo/build-asan" <<<"$calls" && echo 0 || echo 1)"
+touch "$repo/build-asan/.ants-prepush-interrupted"
+run_nightly
+check "a marked tree is rebuilt with --clean-first" \
+      "$(grep -q -- '--clean-first' <<<"$calls" && echo 0 || echo 1)"
+check "the marker is cleared after a good build" \
+      "$([[ ! -e "$repo/build-asan/.ants-prepush-interrupted" ]] && echo 0 || echo 1)"
+# One process holds the lock, so killing it releases the lock (a `flock cmd`
+# holder leaves its child holding it after the kill).
+bash -c 'exec 8>"$1"; flock 8; exec sleep 60' _ "$repo/build-asan/.ants-build.lock" &
+holder=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    flock -n "$repo/build-asan/.ants-build.lock" true 2>/dev/null || break
+    sleep 0.1
+done
+run_nightly
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+check "a held tree: exit 0 and nothing built" \
+      "$([[ $rc -eq 0 && -z "$calls" ]] && echo 0 || echo 1)"
+
 if [[ $failures -gt 0 ]]; then
     echo "FAILED: $failures assertion(s)"
     exit 1

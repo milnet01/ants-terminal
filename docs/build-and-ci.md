@@ -51,6 +51,10 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   `tools/qt62-guard.sh --warm-only`. On a push with compilable source, a
   cold Qt 6.2 cache blocks the push: run `tools/qt62-guard.sh` (about
   11 min, through `cc-job`), then push again.
+- `tools/asan-nightly.sh` builds `build-asan/` each night, so its push leg
+  stays warm enough to run. Install the 03:30 timer once per machine with
+  `tools/asan-nightly.sh --install`; `--remove` takes it out. It builds
+  only, and steps aside while the push gate holds the tree.
 - This box's newer Qt can pass a test CI's Qt fails (ANTS-5479's button
   test). Reproduce a CI-only failure with the `--run-job` command above.
 - A push that `ci.yml`'s `paths-ignore` treats as docs-only runs

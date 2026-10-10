@@ -123,6 +123,16 @@ tools; the case turns one step into `false` to take the failing arm. Red
 against the hook before ANTS-5322, which ran its own `ctest` over an unbuilt
 tree and read no `ci.yml`.
 
+**INV-11** — the leg holds `build-asan/.ants-build.lock`. While another
+process holds it, the leg is skipped with a message naming the busy tree,
+and the tree is not built. Two ninjas in one tree corrupt it. Red against
+the gate before 2026-10-10, which built the held tree.
+
+**INV-12** — `tools/asan-nightly.sh` builds the tree incrementally; a tree
+carrying the interrupted marker is rebuilt with `--clean-first` and the
+marker cleared; a held tree is left alone and the script exits 0. Red before
+2026-10-10 only because the script did not exist.
+
 The suite exits 77 (skipped) when python3 or PyYAML is missing, because the
 hook itself refuses without them.
 
