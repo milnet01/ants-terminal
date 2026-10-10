@@ -41348,6 +41348,12 @@ against current source before filing.
   discuss how a store is reproduced on another machine first (the file
   is a render of the store; Ants Terminal is the only thing that builds
   a store). Leave § 3.5.1's line on it as an open question in the gate.
+  Owed to the user (2026-10-10), before item (5) is decided: check
+  whether ROADMAP.md plus its docs/roadmap/ archives carry every id the
+  store has allocated (deleted or moved items, internal ids). If they do,
+  the third option is to rebuild the store from the files before
+  allocating; if not, a rebuilt store could reissue an id. Report the
+  answer to the user with a recommendation.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -84301,6 +84307,18 @@ a modern terminal" release.
   Kind: feature.
   Source: user-request-2026-10-10.
   Lanes: terminalwidget, config.
+
+- 📋 [ANTS-5637] **The push gate's container compile guards run on a push that changes only ci.yml.**
+  tools/local-ci.sh runs the Qt 6.2 floor guard and the build-test
+  toolchain leg only when the push changes a "compilable" path (C/C++
+  sources, CMakeLists.txt, *.cmake). A push touching only
+  .github/workflows/ci.yml (a configure flag, a package) skips both, while
+  GitHub builds it. Add ci.yml to that filter and extend
+  tests/features/prepush_range to lock it.
+  **Layman:** A change to the CI settings alone gets the same Qt 6.2 build check locally that GitHub gives it.
+  Kind: fix.
+  Source: in-session-2026-10-10 (CI parity review).
+  Lanes: tools.
 
 ### 🐛 Carried over from 0.7.x
 

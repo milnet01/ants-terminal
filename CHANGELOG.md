@@ -91,6 +91,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **The local pre-push checks match GitHub CI more closely**
+  The Qt 6.2 compile guard now configures exactly as ci.yml does, and a
+  test fails if the two drift. A nightly timer (tools/asan-nightly.sh
+  --install) keeps the sanitizer build warm, so the push gate's ASan leg
+  runs instead of being skipped. With no machine-wide hook, the push hook
+  runs the full local gate rather than nothing.
+
 - **The main window's source is split into eight files, each under 4,000 lines** (ANTS-1043)
   No visible change. src/mainwindow.cpp keeps the constructor, events,
   status bar and theme; menus, tabs, sessions, MCP providers, quake

@@ -483,7 +483,8 @@ repository, where such a skip had reported green since April.
   there is no behaviour to regress; `security.md` § 9 points here for it.
 - **Refactors get no new tests.** They must keep the existing ones
   passing; that is what makes them refactors. If a refactor reveals
-  untested behaviour, that is its own tracked item.
+  untested behaviour, that is its own tracked item. **A refactor that fixes
+  a review finding carries that finding's test**: the finding bullet wins.
 
 **Coverage percentage is not a target.** It measures which lines ran, not
 whether anything was checked — a suite can execute every line and assert
