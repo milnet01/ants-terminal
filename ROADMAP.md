@@ -41354,6 +41354,18 @@ against current source before filing.
   the third option is to rebuild the store from the files before
   allocating; if not, a rebuilt store could reissue an id. Report the
   answer to the user with a recommendation.
+  Checked 2026-10-10: the files carry every allocated id. The store
+  holds 3272 items, all public; ROADMAP.md plus docs/roadmap/0.6.md
+  carry 3272 item heads; id_high_water and the highest held id are both
+  ANTS-5637, which is in ROADMAP.md. Two paths could break this later:
+  an internal item is not rendered (isRenderable, roadmaprender.cpp),
+  and a re-migration deletes an item gone from the file
+  (roadmapmigrateload.cpp), leaving the high-water mark above the files.
+  User decision 2026-10-10, item (5): a store-migrated project opened
+  with no store rebuilds the store from the files before allocating, and
+  the render records the id high-water mark in the roadmap file's header
+  so the rebuild floors to it. § 3.5.1 states this in the gate; the
+  header line and the rebuild are a code item filed after the gate.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
