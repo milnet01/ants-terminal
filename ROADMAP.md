@@ -85008,6 +85008,11 @@ a modern terminal" release.
   split. Not yet reproduced on the real desktop, so it may be specific to
   a display with no window manager. First step: reproduce with demoreel
   shot and with a normal session, and compare.
+  Request (2026-10-10, ants-projects-hub-website): the trailer left the
+  split-panes clip out because it reads as broken on camera. Once this
+  is fixed and released, re-shoot a split-panes clip and send it to that
+  session. The trailer crops the window to x 0-880, y 38-533, so keep
+  the action in the top-left area.
   **Layman:** When you split the window while recording a demo, the new pane comes out thin and the old pane's text vanishes.
   Kind: investigate.
   Source: in-session-2026-10-10 (trailer footage for ants-projects-hub-website).
