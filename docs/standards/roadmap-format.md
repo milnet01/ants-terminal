@@ -767,7 +767,8 @@ matched is *at most* five subjects and is usually smaller; after a
 release, or after a merge-heavy stretch, it can be empty, and the signal
 then says nothing rather than reaching further back. The survivors are
 fuzzy-matched against bullet headlines; a match adds the highlight.
-(`readRecentCommitSubjects`, `src/roadmapdialog.cpp`.)
+(`recentCommitSubjectsFrom`, run by `refreshRecentCommitsIfStale`,
+`src/roadmapdialog.cpp`.)
 
 Useful for "I just committed this; mark it as in-progress before
 I write the changelog" workflows.
