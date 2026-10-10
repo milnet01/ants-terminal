@@ -41341,6 +41341,13 @@ against current source before filing.
   required or optional; § 3.10.4 vs roadmap-data-model.md § 7.1;
   store-migrated project without a store) are read from the code or
   surfaced to the user, not guessed.
+  User decisions 2026-10-10: (6) the `Layman:` line is REQUIRED, as in
+  the global copy; § 3.5 says so. Scope: this gate closes every finding in
+  this body, taking the global copy's answer where it has one. (5) the
+  store-migrated project with no store is NOT decided: the user wants to
+  discuss how a store is reproduced on another machine first (the file
+  is a render of the store; Ants Terminal is the only thing that builds
+  a store). Leave § 3.5.1's line on it as an open question in the gate.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -84279,6 +84286,21 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 **Theme:** big new capabilities. This is the "features you'd expect from
 a modern terminal" release.
+
+- 📋 [ANTS-5636] **Session Logging deletes its log files once they are older than a set age, 30 days by default.**
+  Session Logging writes to ~/.local/share/ants-terminal/logs
+  (src/terminalwidget.cpp), on the system drive, whose capacity is
+  limited. Nothing deletes those files today. Add a config key for the
+  age (default 30 days; 0 keeps everything) and a sweep that deletes
+  files older than it, run at startup and once a day.
+  Reload: the key is read from config.json on each sweep, so a change
+  reaches a running terminal without a relaunch.
+  Open: whether the log directory should also move off the system
+  drive. Ask the user.
+  **Layman:** Old session logs clear themselves out after 30 days, so they stop filling the system drive.
+  Kind: feature.
+  Source: user-request-2026-10-10.
+  Lanes: terminalwidget, config.
 
 ### 🐛 Carried over from 0.7.x
 
