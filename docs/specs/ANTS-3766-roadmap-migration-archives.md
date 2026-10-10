@@ -381,6 +381,10 @@ then, for an archive <M>.<N> only, the result is prefixed:
     any other heading            -> "<M>-<N>-" + <that source's unique slug>
 ```
 
+**A phase archive (`P07.5.md`) is prefixed by the same rule, with
+`roadmap-format.md` § 3.9's phase prefix (`p07-5`) in place of `<M>-<N>`.**
+§ 3.9 is where that prefix is defined; ANTS-4073 builds it.
+
 **The `h<ordinal>` substitution is archive-only, and the live file keeps
 today's behaviour exactly.** This is not a detail: applying it at index 0 would
 change a live section's slug from `""` to `h<n>` on any project with an

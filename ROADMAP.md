@@ -42280,6 +42280,24 @@ against current source before filing.
   Source: review-contract-2026-10-02 (roadmap-data-model gate, loop 1).
   Lanes: roadmap, roadmap-store.
 
+- 📋 [ANTS-5638] **A store-migrated roadmap opened on a machine with no store rebuilds the store from its files before it allocates an id.**
+  Decided by the user 2026-10-10 on ANTS-4140 item (5). Two parts:
+  (1) the render writes each prefix's id high-water mark into the
+  roadmap file's header, so the floor survives even when the top item
+  is internal or was deleted by a re-migration; (2) on a machine with
+  no store row, a project whose file is the store's render rebuilds the
+  store from ROADMAP.md plus docs/roadmap/*.md before allocating, and
+  the rebuild floors id_high_water to the header's mark. Until this
+  ships, that machine falls to the counter row of roadmap-format.md
+  § 3.5.1's table. Measured 2026-10-10: on this project the files carry
+  every allocated id (3272 items; high water ANTS-5637 is in the file).
+  Reload: the header line is data in the rendered file; the rebuild
+  runs on the next roadmap_log write, with no relaunch.
+  **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
+  Kind: implement.
+  Source: user-request-2026-10-10.
+  Lanes: roadmapstore, roadmaprender, roadmapmigrate.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

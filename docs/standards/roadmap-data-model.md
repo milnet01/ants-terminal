@@ -738,8 +738,8 @@ malformed.
 The store owns allocation. Each project currently keeps a gitignored per-machine
 counter — **one file, holding one integer, with no per-prefix form and no
 per-prefix filename defined anywhere**, so on the multi-prefix projects
-`roadmap-format.md` § 3.10.4 permits it carries the first prefix and the rest
-fall through to the corpus floor alone. It
+`roadmap-format.md` § 3.10.4 permits every prefix shares that integer, floored
+to its own corpus mark (`effCounter`, `remotecontrol_roadmap_log_batch.cpp`). It
 is explicitly not the source of truth, with a floor recomputed by scanning the
 corpus so a wiped counter cannot reissue a live ID. A shared store moves both
 the carrier and the floor: allocation reads the `id_high_water` row, keyed per
@@ -1019,10 +1019,10 @@ overridden:
   A conformance check (§ 9's) must therefore read the quarantine set before
   reporting, or it will fail a render that is behaving exactly as specified.
 
-- **Optional fields.** Its § 3.5 files `Layman:` and `Source:` as optional and
-  § 3.5.3 gives defaults for absent `Kind:` / `Source:`. This document does not
-  change that for markdown; § 3.3 *adopts* those defaults, and § 3.1's stricter
-  obligations apply only to writes through the store.
+- **Required fields on markdown.** Its § 3.5 requires `Layman:` and `Source:`,
+  and § 3.5.3 gives a reader's defaults for an absent `Kind:` / `Source:`. On
+  markdown nothing enforces either requirement; § 3.3 *adopts* those defaults,
+  and § 3.1's enforced obligations apply only to writes through the store.
 - **ID allocation.** Its § 3.5.1 keeps a `.roadmap-counter` under a flock, but
   is explicit that the counter is a derived per-machine cache and **not**
   source: the true high-water mark is the highest ID across the committed

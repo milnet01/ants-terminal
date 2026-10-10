@@ -69,7 +69,7 @@ badge in the Roadmap dialog footer.
 | Level | Use | Example |
 |-------|-----|---------|
 | `#` | File title (one per file) | `# MyProject — Roadmap` |
-| `##` | Release block (post-1.0), phase block (pre-1.0), or a § 3.8 fold-in hoisted from `###` | `## 0.7.0 — shell integration` / `## P01 — Bootstrap` / `## FP03 — review fold-in` |
+| `##` | Release block; or a phase block where the project cannot yet say which release an item lands in; or a § 3.8 fold-in hoisted from `###` | `## 0.7.0 — shell integration` / `## P01 — Bootstrap` / `## FP03 — review fold-in` |
 | `###` | Theme group within a release/phase | `### 🎨 Features` |
 | `####` | Optional subgroup | `#### Tier 1 — ship-this-week` |
 
@@ -82,21 +82,38 @@ second release takes the release as a suffix:
 a repeated slug (`slug_collision`). A repeated heading written by hand
 imports with a numeric suffix instead (`performance-2`), so the release
 suffix is the convention to follow.
-Pre-1.0 projects use phase blocks (`## P01 — Bootstrap`) since
-there's no real version to anchor to yet. The designator is `P`
+
+**A release block is the default at every version, pre-1.0 included.**
+Name the version the work will ship in — `## 0.1.0 — Bake and render` —
+so the roadmap answers *what is still needed for the next release*. A
+phase number cannot answer that.
+
+**A phase block (`## P01 — Bootstrap`) stays available, and readers
+keep accepting it**, for a project that cannot yet place its items in a
+release. Choosing it costs rotation for now: § 3.9 defines phase
+rotation, but the migration does not yet read a phase archive, so
+§ 3.9 forbids rotating one until ANTS-4073 widens it. The designator is `P`
 followed by digits, optionally with a `.<sub>` for a phase inserted
 after the sequence was set (`P07.5`, live in one corpus project).
 § 3.9 names archives after it verbatim and § 3.5.4 step 2 selects
 the active phase by its number, so the designator is load-bearing,
 not decoration.
 
-**At 1.0, whatever phase work is still in `ROADMAP.md` becomes the
-body of `## 1.0.0 — initial release`** — the active phase and any
-above it. Phases § 3.9 has already rotated stay archived under
-their phase names: they are not renamed, and a reader keeps
-accepting the phase archive form after 1.0. Do not promote *early*
-to obtain rotation — § 3.9's closing note is why that is a
-different organising axis rather than a rename.
+**Where a file carries both shapes, the version blocks win.** Its phase
+blocks are worked as extra themes of the active release, and § 3.5.4
+step 2 falls through to them only where no version block qualifies.
+§ 3.9's phase-archive class applies only to a file with no version `##`
+block at all.
+
+**At 1.0, every phase block still in `ROADMAP.md` merges into the
+file's `## 1.0.0` block** — closed ones included, since a closed phase
+left in the file would otherwise have no stated fate. Where the file
+has no `## 1.0.0` block, create it as `## 1.0.0 — initial release`;
+where it already names one, keep that title. Phases § 3.9 has already
+rotated stay archived under their phase names: they are not renamed,
+and a reader keeps accepting the phase archive form after 1.0. Do not
+promote *early* to obtain rotation — § 3.9's closing note is why that
+is a different organising axis rather than a rename.
 
 **A `## FP<NN>` or `## DS<NN>` block is neither a release nor a
 phase.** It is a § 3.8 fold-in hoisted from `###`, which one corpus
@@ -165,6 +182,7 @@ filter panel surfaces any emoji it sees in any `###` heading.
 - 📋 [PROJ-0123] **One-line headline ending with a period.** Body
   spanning as many lines as needed; lines wrapped to roughly 70
   columns. Cite `file:line` in backticks when relevant.
+  Layman: One sentence a non-programmer can read.
   Kind: implement.
   Source: planned.
   Lanes: SubsystemA, SubsystemB.
@@ -213,7 +231,6 @@ Required pieces:
   its label is case-sensitive. They are stated on `Kind:` because that is
   the field whose parser they were settled against (ANTS-4065 § 2.2).
 
-
   Two guards limit what un-anchoring admits. Both hold for all five keys.
 
   - **A label inside an inline code span declares nothing** (a bullet
@@ -242,18 +259,19 @@ Required pieces:
     trailers imported the illustration's values. (`matchLastIn()` for
     all five — `src/roadmapparse.cpp`.)
 
-Optional pieces:
-
-- **Body prose** — free-form, after the bold headline.
-- **`Lanes: X, Y, Z`** — declares ownership; helps subagents
-  find test files.
-- **`Layman: <one-sentence summary>.`** — a non-technical
-  one-line summary, written for a vibe-coder / non-programmer
-  reader. When present, the Ants Roadmap dialog (ANTS-1154)
-  shows this on the card face instead of the bold headline; the
-  headline still appears when the card is expanded. Falls back
-  to the bold headline if absent. Sits after the body prose,
-  before `Kind:` / `Lanes:` / `Source:`. Case-insensitive label.
+- **`Layman: <one-sentence summary>.`** — a one-line summary in plain
+  language, for a reader who does not write code. **Required**
+  (2026-10-10, ANTS-4140), as in the global copy. The Ants Roadmap
+  dialog (ANTS-1154) shows it on the card face and the bold headline
+  only when the card is expanded, so a bullet without one shows that
+  reader a sentence written for somebody else. Falling back to the
+  headline is display behaviour for older bullets, not a licence to omit
+  the line. On a markdown roadmap the obligation is authorial: nothing
+  refuses a bullet without one, and `roadmap_log`'s `layman` argument is
+  optional. On a store-backed one the publish gate asks for it on every
+  item a write touches (`roadmap-data-model.md` § 3.2). Sits after the
+  body prose, before `Kind:` / `Lanes:` / `Source:`. Case-insensitive
+  label.
   **Stored without its closing full stop; the render writes one back**
   (ANTS-4955). Every route that takes the value from a caller or a
   markdown file, an import and `roadmap_log` alike, drops ONE trailing
@@ -270,6 +288,12 @@ Optional pieces:
   `roadmap_migrate` does it and is safe to repeat, because the import drops
   the stop. A pass dropping a `.` from every stored value is not, since a
   stored `..` is legitimate, so it runs exactly once.
+
+Optional pieces:
+
+- **Body prose** — free-form, after the bold headline.
+- **`Lanes: X, Y, Z`** — declares ownership; helps subagents
+  find test files.
 - **`Evidence: <path1>, <path2>`** — optional file paths (screenshots,
   logs, repros) that evidence the item — e.g. a bug diagnosed from a
   screenshot. Comma-separated; a comma or newline *inside* a path is
@@ -286,6 +310,10 @@ Optional pieces:
   `src/roadmapparse.cpp`. `Kind:`, `Lanes:` and `Source:` are the
   case-SENSITIVE ones — the opposite grouping to what both this file and
   the global copy previously implied.
+  **This is the one label that does not accept bold.** `Kind:`, `Lanes:`,
+  `Source:` and `Layman:` each also read `**Label:**`; `rxEvidence()`
+  does not, so `**Evidence:** shot.png` declares nothing, with no warning,
+  and the bullet reads as one with no evidence. Write the label plain.
 - **Link lines: `Splits-from:`, `Blocked-by:`, `Duplicate-of:`,
   `Supersedes:`** — the ids this item has that relationship to.
   `roadmap-data-model.md` § 6 defines the four types. Each line is a
@@ -430,9 +458,20 @@ the counter's flock gives, reached by a different mechanism.
 
 **This does not overturn ANTS-3450.** That rule floors a counter a fresh
 clone can arrive without. On a store-migrated project the stored items are
-the record, so they are the floor. The store lives outside the repo (under
-`GenericDataLocation`), so a machine without it has no store row, and the
-project falls to the counter row of the table, floored to the corpus.
+the record, so they are the floor.
+
+**On a machine with no store, a store-migrated project rebuilds its store
+from its files before it allocates** (decided 2026-10-10, ANTS-4140). The
+store lives outside the repo (under `GenericDataLocation`), so another
+machine can open the project with no store row; the generated-file notice
+in the roadmap's header says the file is the store's render. That render,
+`ROADMAP.md` plus `docs/roadmap/*.md`, carries every public item. It also
+records each prefix's high-water mark in the header, and the rebuild floors
+`id_high_water` to that mark. The mark is what covers an id the files no
+longer show: an `internal` item, or one a re-migration deleted. **Not built
+yet** (ANTS-5638): until it ships, such a machine falls to the counter row
+of the table, floored to the corpus, and can reissue an id the files do not
+carry.
 
 `id_strategy: "stable_prefix"` (a caller-supplied string id such as
 `Ts20-SP6`) consults neither carrier and raises neither, on either path: a
@@ -450,7 +489,8 @@ becomes the authoritative floor for a store-migrated project.
 **Why the interim is an interim: `internal` ids reach no committed file.**
 `roadmap-data-model.md` § 7.5 keeps `internal` items off the render by policy,
 so their ids appear in no `ROADMAP.md`, archive or CHANGELOG. The store's
-floor counts them; a corpus scan, on a machine without the store, cannot. The
+floor counts them; a corpus scan, on a machine without the store, cannot.
+The header mark above carries their floor once ANTS-5638 ships. The
 export (ANTS-3794) is not subject to that exclusion, which is why it
 supersedes both.
 
@@ -658,8 +698,16 @@ roadmap"*, it MUST:
 1. Read the file top-to-bottom.
 2. Skip past `##` release blocks until it finds the **active
    release** (the lowest version `##` that contains any 📋 or 🚧
-   items) — or, on a pre-1.0 phase-block file (§ 3.2), the
-   **lowest-numbered `## P<NN>` block** containing any.
+   items) — or, on a file with **no version `##` block at all**
+   (§ 3.2), the **lowest-numbered `## P<NN>` block** containing any.
+   **On a file carrying both shapes** the version blocks win (§ 3.2):
+   its phase blocks are worked as extra theme sections of the active
+   release, after that release's own themes. Where no version block
+   qualifies, fall through to the phase blocks rather than stopping.
+   **Stop only when no block of either shape qualifies** — none holds a
+   📋 or 🚧 — and report that there is no workable item. Do not
+   advance to a later release and do not promote a 💭: each invents
+   work the file does not offer.
    **Numbered, not first in document order.** Live phase roadmaps
    interleave `## FP<NN>` fold-in and `## DS<NN>` debt-sweep blocks
    above and below the phase sequence — one corpus project opens
@@ -726,8 +774,8 @@ I write the changelog" workflows.
 
 ### 3.7 Release blocks
 
-A release block is a `##` heading naming a version + theme +
-target date:
+A release block is a `##` heading naming a version, optionally followed
+by a theme and a target date:
 
 ```markdown
 ## 0.7.0 — shell integration (target: 2026-06)
@@ -736,10 +784,14 @@ target date:
 ```
 
 The `**Theme:**` line is optional but recommended — it gives
-the filter dialog one-line context per release.
+the filter dialog one-line context per release. **The target date is
+optional too**, and § 3.2's example omits it: add `(target: YYYY-MM)`
+once there is a date worth stating.
 
 Released versions move from `(target: YYYY-MM)` to
-`shipped (YYYY-MM-DD)`. The viewer treats released blocks as
+`shipped (YYYY-MM-DD)`. **A block that never carried a target date has
+no substring to replace: append `— shipped (YYYY-MM-DD)` to the heading
+instead.** Either way the heading then reads `shipped`. The viewer treats released blocks as
 read-only: items under them are expected to be ✅ or 🚫 and
 don't appear in the 📋/🚧/💭 filters.
 
@@ -867,6 +919,12 @@ The convention:
   `^P[0-9]+(\.[0-9]+)?\.md$`. Verbatim is what keeps one name per
   block: the zero-padding width is the project's business, and
   copying it means `P01` can never also archive as `P1`.
+  **On a store-migrated project an archive's section slugs carry a
+  prefix taken from its file name** (ANTS-3766 § 2.3): `<M>-<N>` for a
+  version archive (`0.6.md` → `0-6`), and for a phase archive the
+  designator lower-cased with `.` written as `-` (`P01.md` → `p01`,
+  `P07.5.md` → `p07-5`). A phase prefix starts with a letter and a
+  version prefix with a digit, so the two classes never share a prefix.
   **Phase archives sort as a separate, strictly older class** —
   every version archive first, descending by `(major, minor)`, then
   every phase archive, descending by `(phase, sub)` with an absent
@@ -908,7 +966,8 @@ The convention:
   (`src/roadmapdialog.cpp`), the viewer. The migration does not:
   `archiveNameRx()` (`src/roadmapmigrate.cpp`) and
   `isPlaceableSourcePath` (`src/roadmapmigrateload.cpp`) still take
-  the version form only, so a `P01.md` never reaches the store.
+  the version form only, so a `P01.md` never reaches the store, and
+  `planFrom()` builds only the `<M>-<N>` slug prefix.
   Nor does `rotate_minor`'s `kMinorRx`
   (`src/remotecontrol_roadmap_log_batch.cpp`). ANTS-4073 owns
   widening them.
@@ -1001,12 +1060,14 @@ implementation detail:
 
 - **The archive path is derived, never passed** — `docs/roadmap/<M>.<N>.md`,
   relative to the **project root**, so the naming regex above stays stated in
-  one place. A caller-supplied path could name a file the migration's own
+  one place. The convention above places archives under `dir(ROADMAP.md)`;
+  the two are the same folder except where `ROADMAP.md` is not at the
+  project root, and there `rotate_minor` writes under the root. A caller-supplied path could name a file the migration's own
   archive discovery then refuses to read back.
 - **Sections are selected by TITLE**, by the release-designator rule in
   the versioned bullet above — the same rule a hand rotation follows.
 - **A moved section is re-slugged**, because the import prefixes every archive
-  slug with its file's minor. Reassigning the path alone would leave the store
+  slug with its file's prefix (the phase bullet above states both forms). Reassigning the path alone would leave the store
   holding a slug no re-import derives, and the next import would add a second
   section beside the first.
 
@@ -1040,8 +1101,8 @@ extensions are the parts that GFM doesn't model:
 - A five-state taxonomy (✅ 🚧 📋 💭 🚫) instead of the GFM
   two-state checkbox (`[x]` / `[ ]`).
 - Stable IDs (`[PROJ-NNNN]`) for cross-doc reference.
-- Required `Kind:` and `Source:` metadata lines per bullet (§ 3.5);
-  optional `Layman:` metadata for non-technical readers.
+- Required `Kind:`, `Source:` and `Layman:` metadata lines per bullet
+  (§ 3.5).
 
 #### 3.10.1 Semantic equivalence
 
@@ -1110,7 +1171,10 @@ version-controlled file that moves a counter other documents cite.
 #### 3.10.3 Migration
 
 A project that wants the full emoji-bullet format from a
-GFM-task-list starting point converts in five passes:
+GFM-task-list starting point converts through the numbered passes below,
+in order — **except on a project that already has a store row, where
+step 0 runs after steps 1–4 and before step 5** (the ordering rule below
+explains why):
 
 0. Add the § 3.1 format marker `<!-- ants-roadmap-format: 1 -->`, so
    the result classifies `ants-v1` deterministically rather than by
@@ -1118,14 +1182,19 @@ GFM-task-list starting point converts in five passes:
 1. Replace a checkbox followed by a status emoji with that emoji
    alone (`- [x] 🚫` → `- 🚫`, `- [ ] 🚧` → `- 🚧`), then
    `- [x]` with `- ✅` and `- [ ]` with `- 📋`.
-2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up against a fresh
-   `.roadmap-counter` (§ 3.5.1). **The counter is the carrier for
-   this step even on a project that already has a store row**, because
-   the file does not yet classify `ants-v1` and § 3.5.1's table puts
-   "a store row whose roadmap is not `ants-v1`" on the counter. The
-   carrier table hands over to the store's floor (§ 3.5.1) once step 0
-   lands, and
-   the counter goes unread from then on.
+2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up, **by hand, numbering
+   upward from the floor § 3.5.1's counter row states** — the committed
+   corpus per prefix and, where a store row exists, that row's
+   `id_high_water`. Not by reading `.roadmap-counter` and adding one:
+   that is the form § 3.5.1 measures as reissuing live ids on a fresh
+   clone, which a fresh counter is by definition. Not through
+   `roadmap_log` either, because the ordering rule below forbids any
+   `roadmap_log` op inside this window. Write the counter afterwards to
+   match, as a cache. **This is a rule of the migration, not a reading
+   of § 3.5.1's table**: by this step, step 1 may already have made the
+   file classify `ants-v1` by best-effort parse, so the table cannot be
+   relied on to name the carrier. It hands over to the store's floor
+   once step 0 lands and the conversion is complete.
 3. Add `Kind:` and `Source:` lines under each bullet (§ 3.5.3).
 4. Add `Layman:` summaries (§ 3.5 Bullet structure).
 5. **On a project with a store row, re-run the store migration**, so
@@ -1137,7 +1206,8 @@ GFM-task-list starting point converts in five passes:
    behind the store's back.
 
 **On a project that already has a store row, do the whole conversion
-in one uncommitted working-tree edit and add the marker last.** Store
+in one uncommitted working-tree edit and add the marker after the hand
+edits.** Store
 row plus `ants-v1` is the definition of store-migrated (§ 3.5.1), so
 the moment the file classifies `ants-v1` the store owns it: from
 there steps 1–4 are hand edits to a generated file, which
@@ -1145,15 +1215,21 @@ there steps 1–4 are hand edits to a generated file, which
 silently — while the store path is unusable too, its publish gate
 being unmet until step 4 fills the `Layman:` lines in.
 
-**Adding the marker last reduces that window but does not close
+**Deferring the marker reduces that window but does not close
 it**, because the marker is not the only route to `ants-v1`: the
 detector falls back to a best-effort parse, and step 1 alone —
 replacing `- [x]` / `- [ ]` with emoji bullets — can be enough for
 that parse to classify the file. So the ordering rule is necessary
 and not sufficient; what makes it safe is that no render runs against
 a half-converted tree. Do not commit, and do not invoke a store write
-or any `roadmap_log` op, between step 1 and step 0. A project with no
-store row has no such window and may keep step 0 first.
+or any `roadmap_log` op, between step 1 and step 0.
+
+**Step 5 is outside that window, deliberately.** It is the first store
+operation after the marker lands, on a tree that is no longer
+half-converted. Run before step 0, it would re-record `github-task-list`
+against a file step 1 has already made classifiable as `ants-v1`, which
+is the mismatch step 5 exists to clear. A project with no store row has
+no window and no step 5, and may keep step 0 first.
 
 The migration is reversible — write `[x]` / `[ ]` back (and
 `[x] 🚫`, `[ ] 🚧`, `[ ] 💭` for the other three), drop the metadata,
@@ -1184,7 +1260,9 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   `id_prefix` argument (the counter-prefix override for
   `op:append` / `op:append_batch`) is validated by the *same*
   letter-containing, case-insensitive grammar (`kIdPrefixShape` in
-  `remotecontrol.cpp`), which is deliberately looser than the
+  `remotecontrol.cpp`), **additionally capped at 16 characters** — a
+  longer prefix parses and flips but cannot be allocated. It is
+  deliberately looser than the
   helper below so a repo can pin a lowercase / mixed-case prefix
   (e.g. `mame-curator`). So a repo can mint new `Sh-` / `Ed-` ids
   directly.
@@ -1338,7 +1416,8 @@ When a release ships:
    empty-state hint or just the heading).
 3. ROADMAP bullets that were 🚧 flip to ✅.
 4. Released ROADMAP block changes from `(target: YYYY-MM)` to
-   `shipped (YYYY-MM-DD)`.
+   `shipped (YYYY-MM-DD)`, or gains `— shipped (YYYY-MM-DD)` where it
+   carried no target date (§ 3.7).
 
 The `cut-release` skill automates steps 1–4.
 
