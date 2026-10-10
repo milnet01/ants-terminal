@@ -2693,10 +2693,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             QString storeErr;
             if (const auto row =
                     store->readProjectByRoot(projectRootDir, &storeErr)) {
+                // ANTS-5639 — allocationFloor(), as op:"append" takes it.
                 QString hwErr;
-                if (const auto hw =
-                        store->idHighWater(row->projectId, counterPfx, &hwErr))
-                    maxFileId = std::max(maxFileId, *hw);
+                maxFileId = std::max(maxFileId, store->allocationFloor(
+                                                    row->projectId, counterPfx, &hwErr));
             }
         }
     }

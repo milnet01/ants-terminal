@@ -458,6 +458,94 @@ TEST(RoadmapAllocStoreFloor, Inv6AppendBatchFloorsToTheStoreFromASubdirectory) {
            "row, and did not apply";
 }
 
+// ----------------------------------------------------------------- INV-7 ----
+//
+// ANTS-5639 item (1). The store floor is allocationFloor(): the id_high_water
+// row AND the highest id a stored item holds. Both markdown-path allocators
+// read the row alone, so a stored id above the row was invisible to them.
+// The fixture migrates a file holding DEMO-0005, then drops that line from the
+// file: the store keeps DEMO-0005, and no append raised the row to it.
+
+namespace {
+bool migrateThenDropTheHighItem(const QString &root) {
+    const QString path = root + QStringLiteral("/ROADMAP.md");
+    const QByteArray withHigh = QByteArray(kMixedRoadmap)
+        + "- \xF0\x9F\x93\x8B [DEMO-0005] **Stored, then dropped from the file.**\n"
+          "  Kind: chore.\n"
+          "  Source: seed.\n";
+    if (!writeFile(path, withHigh))
+        return false;
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store)
+        return false;
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) {
+        ADD_FAILURE() << "findRoadmaps: " << err.toStdString();
+        return false;
+    }
+    const auto plan = RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"),
+                                               QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-10-10T10:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(*store, plan, opts);
+    if (!out.ok) {
+        ADD_FAILURE() << "migration load: " << out.error.toStdString();
+        return false;
+    }
+    // Precondition: the row must sit below the stored item, or this case
+    // cannot tell allocationFloor() from idHighWater().
+    const auto proj = store->readProjectByRoot(root, &err);
+    if (!proj) {
+        ADD_FAILURE() << "readProjectByRoot: " << err.toStdString();
+        return false;
+    }
+    const auto hw = store->idHighWater(proj->projectId, QStringLiteral("DEMO"), &err);
+    if (hw && *hw >= 5) {
+        ADD_FAILURE() << "id_high_water already reaches DEMO-0005";
+        return false;
+    }
+    return writeFile(path, QByteArray(kMixedRoadmap));
+}
+}  // namespace
+
+TEST(RoadmapAllocStoreFloor, Inv7AppendFloorsToTheHighestStoredId) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrateThenDropTheHighItem(root));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(appendReq(root)).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("id")).toString(),
+              QStringLiteral("DEMO-0006"))
+        << "append floored to the id_high_water row alone, below DEMO-0005";
+}
+
+TEST(RoadmapAllocStoreFloor, Inv7AppendBatchFloorsToTheHighestStoredId) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrateThenDropTheHighItem(root));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapLogAppendBatchForTest(appendBatchReq(root)).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(ids.at(0).toString(), QStringLiteral("DEMO-0006"))
+        << "append_batch floored to the id_high_water row alone, below DEMO-0005";
+}
+
 // ------------------------------------------------------------- ANTS-5087 ----
 //
 // The SAME class, one allocator further out. RoadmapFoldIn::allocateIds is the

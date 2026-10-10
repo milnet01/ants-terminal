@@ -1052,9 +1052,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             QString storeErr;
             if (const auto row =
                     store->readProjectByRoot(projectRootDir, &storeErr)) {
+                // ANTS-5639 — allocationFloor(), not idHighWater(): the row
+                // alone misses a stored id that no append raised it to.
                 QString hwErr;
-                if (const auto hw = store->idHighWater(row->projectId, pfx, &hwErr))
-                    maxFileId = std::max(maxFileId, *hw);
+                maxFileId = std::max(
+                    maxFileId, store->allocationFloor(row->projectId, pfx, &hwErr));
             }
         }
         if (req.contains(QStringLiteral("id_hint"))) {

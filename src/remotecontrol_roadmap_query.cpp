@@ -2152,9 +2152,10 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
 //
 // Both columns, because neither alone is complete. idHighWater() is the
 // allocator's own counter and remembers an id whose item was later deleted —
-// but migration never writes that row, only an id-allocating append does, so a
-// migrated-but-never-appended project reports nullopt while holding thousands
-// of ids. maxAllocatedId() reads those ids straight off the items. nullopt from
+// but only an id-allocating append advances it. Migration writes it at 0 when
+// it invents ids (writeTail, roadmapmigrateload.cpp) and otherwise not at all,
+// so a migrated-but-never-appended project reports 0 or nullopt while holding
+// thousands of ids. maxAllocatedId() reads those ids straight off the items. nullopt from
 // either is NOT an error; it is the ordinary state of a project that has not
 // reached that half yet.
 //

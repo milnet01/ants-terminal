@@ -77,3 +77,9 @@ file is in.
   project carrying a `.git`; each new id is `DEMO-0004`. *Breaks when:* the
   floor is looked up by `caller_cwd` — both ops then issue `DEMO-0002`,
   which is INV-1's reported collision.
+- **INV-7** — Both allocating ops floor to
+  `RoadmapStore::allocationFloor()`: the `id_high_water` row and the
+  highest id a stored item holds (ANTS-5639 item 1). *Test:* migrate
+  INV-1's fixture plus a `DEMO-0005` bullet, assert the row sits below 5,
+  then drop that bullet from the file; each op's new id is `DEMO-0006`.
+  *Breaks when:* an op reads the row alone — it then issues `DEMO-0002`.

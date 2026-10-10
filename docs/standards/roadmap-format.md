@@ -444,7 +444,7 @@ other.
 |---|---|---|
 | **Store-migrated** — store row *and* `ants-v1` | the store, per `(project, prefix)`: the greater of the `id_high_water` row and the highest id any stored item holds. **Not** the committed corpus | neither read nor written; a stale file is simply left behind |
 | **Pass-headings** (§ 3.10.5), store row or not | derived from the heading, never allocated | neither read nor written |
-| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that project's `RoadmapStore::allocationFloor` for the prefix** — the row and the highest id a stored item holds (ANTS-4493). The batch append still floors to the row alone (ANTS-5639) | read and written |
+| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that project's `RoadmapStore::allocationFloor` for the prefix** — the row and the highest id a stored item holds (ANTS-4493, ANTS-5639) | read and written |
 
 On a store-migrated project an allocation is
 `RoadmapStore::allocationFloor(project, prefix) + 1`, followed by
