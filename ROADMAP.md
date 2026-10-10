@@ -70868,6 +70868,21 @@ project. Reported causes are claims until checked in source.
   Source: Slipcase_Ants_MCP_Feedback.md 2026-10-10.
   Lanes: mcp-review-verbs.
 
+- 🚧 [ANTS-5641] **roadmap_log writes append, amend_body, set_body and amend_headline through the store on a store-backed pass-headings roadmap.**
+  RetroDB (store-backed, `#### Pass N.M`): op:append and op:amend_body
+  refuse unsupported_format and name the hand-edit-then-roadmap_migrate
+  route (ANTS-5396). Only flip and annotate have a store route
+  (ANTS-5334). Each new item or body edit costs Read + Edit + migrate +
+  check_sync. Build a store route for append / append_batch,
+  amend_body / set_body and amend_headline on that dialect: the id is
+  PASS-N-M from `pass`, the render is formatPassBlock. Markdown-served
+  pass projects keep today's behaviour. RetroDB offered to dry-run a
+  build against its roadmap.
+  **Layman:** Lets sessions on Pass-style roadmaps add and edit items in one step instead of a hand edit plus a re-import.
+  Kind: feature.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-10-10.
+  Lanes: roadmap-store, remotecontrol_roadmap_log.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
