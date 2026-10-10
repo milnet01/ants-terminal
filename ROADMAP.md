@@ -42360,6 +42360,12 @@ against current source before filing.
   roadmapmigrateload.cpp); roadmap-format.md § 3.5.1 now says so.
   Correct the comment. Items (2) and (3) were re-found by both lanes of
   loops 2 and 3.
+  Progress (2026-10-10, cb98c375): items (1) and (7) done. Item (1)'s
+  premise was half wrong: the single append also read the row alone,
+  so both markdown-path allocators now take allocationFloor()
+  (RoadmapAllocStoreFloor INV-7). Open: (2) and (3) need a direction
+  decision; (4) moot until a phase-only roadmap exists; (5) needs a
+  home named for retirement records; (6) waits on rotate_minor.
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.
@@ -70534,12 +70540,16 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-10-01 (roadmap-format field pass for claude-config).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5594] **session_message refuses a caller_cwd that is a subdirectory of a registered root.**
+- ✅ [ANTS-5594] **session_message refuses a caller_cwd that is a subdirectory of a registered root.**
   `ants-mcpd --call session_message` with caller_cwd
   /mnt/Games/Scripts/Linux/Ants_Terminal/src refused no_project while the
   root answered. ants-inbox-notice.sh works around it with git's top
   level. Resolve the containing registered root, as the file-backed
   verbs do.
+  Resolved (2026-10-10, 9e70e46e): the handler resolves the caller
+  with RoadmapStore::projectIdContaining(), so a caller_cwd below a
+  registered root reaches that root's mailbox. Test:
+  SessionMessage.Ants5594SubdirectoryCallerFindsItsProject.
   **Layman:** Checking messages from inside a project's subfolder says the project is unknown.
   Kind: fix.
   Source: in-session-2026-10-01 (found building ANTS-5553).

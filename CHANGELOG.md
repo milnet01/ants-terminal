@@ -144,6 +144,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **session_message works from a project subfolder** (ANTS-5594)
+  A caller_cwd below a registered project root now reaches that
+  project's mailbox instead of being refused no_project.
+
+- **roadmap_log's append and append_batch never issue an id below one the store holds** (ANTS-5639)
+  On a project migrated but not served from the store, both now
+  floor new ids to the highest id the store holds, not only to its
+  counter row.
+
 - **The Roadmap viewer and roadmap_query's archived-id lookup read phase archives (P01.md, P07.5.md)** (ANTS-4073)
   Archived phases now appear in the viewer's history, after every
   version archive, and an id rotated into one resolves as archived.
