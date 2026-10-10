@@ -68148,6 +68148,24 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Lanes: packaging.
   Blocked-by: ANTS-1070.
 
+- 📋 [ANTS-5643] **A store too new for a running ants-mcpd tells the session to type /mcp.**
+  Seen 2026-10-10 after ANTS-5366 moved the store to schema 4 (65a1641f).
+  Every session runs build/ants-mcpd in place, so the rebuild swapped the
+  file; the first ants-mcpd started after it climbed the store, and every
+  older running one then refused with "store schema 4 is newer than this
+  build's 3" (io_error). UT_MonsterHunt reported it on session_message.
+  The remedy is /mcp, but the refusal does not say so, and the bumping
+  session had to message each peer by hand. Fix: createSchema()'s
+  `version > kSchemaVersion` refusal names the remedy (restart the MCP
+  client, /mcp; the terminal itself needs a relaunch). Optionally, the
+  bump commit's session sends one session_message broadcast. Only a
+  future bump benefits: the v3 binaries keep their old text.
+  Reload: the message ships in the next ants-mcpd build; no relaunch.
+  **Layman:** When the roadmap database is upgraded, older Claude sessions get an error that tells them the one-step fix.
+  Kind: ux.
+  Source: in-session-2026-10-10 (ut-monsterhunt report after ANTS-5366).
+  Lanes: roadmapstore, mcp.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
