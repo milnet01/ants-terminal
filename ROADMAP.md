@@ -40598,6 +40598,16 @@ against current source before filing.
   § 3.9 and ANTS-3766 § 2.3 before building. rotate_minor's kMinorRx
   stays sequenced after ANTS-4081. The § 3.2 edit (version blocks the
   default, decided 2026-09-07) still owes its review-contract gate.
+  User decision 2026-10-10: the migration half is PARKED. A field pass
+  by finbreak and LocalWebServerManager showed no corpus roadmap is
+  phase-only any more (finbreak and LWSM moved to version blocks;
+  Games_Hub and Ants_Projects_Hub_Website carry both shapes), and
+  roadmap-format.md § 3.2 applies the phase-archive class only to a file
+  with no version block. The standard keeps the rule (§ 3.9: P07.5.md ->
+  slug prefix p07-5). Build the migration half (archiveNameRx,
+  isPlaceableSourcePath, planFrom's prefix, the render split) only when
+  a phase-only roadmap appears. The § 3.2 version-default edit landed in
+  b26bea58 and passed its gate's loop 1 (loop log row 16).
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -41366,6 +41376,9 @@ against current source before filing.
   the render records the id high-water mark in the roadmap file's header
   so the rebuild floors to it. § 3.5.1 states this in the gate; the
   header line and the rebuild are a code item filed after the gate.
+  Gate loop 1 ran 2026-10-10 over the batch (b26bea58): 15 verified, 12
+  fixed, 3 filed as ANTS-5639. Loop 2 (a cold re-read) is still owed
+  before this item closes; the standard's cap is 3 loops.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -42297,6 +42310,44 @@ against current source before filing.
   Kind: implement.
   Source: user-request-2026-10-10.
   Lanes: roadmapstore, roadmaprender, roadmapmigrate.
+
+- 📋 [ANTS-5639] **Five findings from the 2026-10-10 roadmap-format.md gate lie outside its change and are fixed here.**
+  Filed by the review-contract gate on the ANTS-4073/ANTS-4140 batch
+  (b26bea58), outside that change's radius. Each was verified 2026-10-10.
+  (1) Code: the batch append's ANTS-4493 floor reads only
+  store->idHighWater (remotecontrol_roadmap_log_batch.cpp, before
+  effCounter); the single append uses storeAllocationFloor ->
+  allocationFloor (row and highest stored id). Make the batch path use
+  allocationFloor. roadmap-format.md § 3.5.1's counter row states the
+  allocationFloor rule and names this gap.
+  (2) Q2, both lanes: § 3.10.4 says allocation compares the prefix
+  exactly (true: idHighWater uses prefix = ?, maxAllocatedId uses GLOB),
+  while roadmap-data-model.md § 7.1 says the prefix is folded wherever it
+  is a key. Decide which; the global copy calls the unfolded key a live
+  hazard.
+  (3) Q2, both lanes: the global copy's § 3.5.4 carries rules this
+  governing copy lacks: review-fix/audit-fix/doc-fix first, skip a block
+  whose heading reads shipped, skip a Waiting-on: 🚧 (undefined here),
+  skip an item whose Blocked-by: target is open, and integer comparison.
+  Adopt them here or have the global copy drop them.
+  (4) Field pass, LocalWebServerManager: § 3.9 tells a project to move a
+  hoisted fold-in back into the block it was raised against, which
+  reopens a closed phase. LWSM filed each item into the release that
+  ships it instead. Moot until a phase-only roadmap exists (ANTS-4073's
+  migration half is parked).
+  (5) Field pass, LocalWebServerManager: a retirement record kept under
+  docs/roadmap/ (phase-sections-2026-09-25.md) is skipped by the
+  migration with an archive_unrecognised note. The standard names no
+  home for such a file.
+  (6) Added by the same gate, user decision 2026-10-10: a `<M>.<N>.x`
+  heading names minor M.N (roadmap-format.md § 3.9). rotate_minor's
+  titleRx (remotecontrol_roadmap_log_batch.cpp) does not take `.x` yet;
+  widen it when rotate_minor is wired (sequenced after ANTS-4081). A
+  heading naming two minors stays a signpost.
+  **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
+  Kind: review-fix.
+  Source: cold-eyes-2026-10-10.
+  Lanes: roadmapstore, remotecontrol_roadmap_log, docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

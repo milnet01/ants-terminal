@@ -94,7 +94,7 @@ release. Choosing it costs rotation for now: § 3.9 defines phase
 rotation, but the migration does not yet read a phase archive, so
 § 3.9 forbids rotating one until ANTS-4073 widens it. The designator is `P`
 followed by digits, optionally with a `.<sub>` for a phase inserted
-after the sequence was set (`P07.5`, live in one corpus project).
+after the sequence was set (`P07.5`).
 § 3.9 names archives after it verbatim and § 3.5.4 step 2 selects
 the active phase by its number, so the designator is load-bearing,
 not decoration.
@@ -105,19 +105,29 @@ step 2 falls through to them only where no version block qualifies.
 § 3.9's phase-archive class applies only to a file with no version `##`
 block at all.
 
-**At 1.0, every phase block still in `ROADMAP.md` merges into the
-file's `## 1.0.0` block** — closed ones included, since a closed phase
-left in the file would otherwise have no stated fate. Where the file
-has no `## 1.0.0` block, create it as `## 1.0.0 — initial release`;
-where it already names one, keep that title. Phases § 3.9 has already
+**A version block is a `##` whose title STARTS with a version** —
+`<M>.<N>`, optionally after a `v` — which is how `roadmap_query`'s
+`version` argument reads it. A phase block's title starts with its
+designator. **Any other `##`, except a hoisted fold-in (below), is
+neither** — `## After 1.0.0`,
+`## Unscheduled`, a block of prose — and § 3.5.4 never selects it, the
+1.0 merge below never takes it, and § 3.9 never rotates it. Its items
+are worked when a person moves them into a block or names them.
+
+**At 1.0, every open phase block still in `ROADMAP.md` merges into the
+file's `## 1.0.0` block.** A closed phase may merge too, or be split
+into the release blocks whose tags shipped its items, which keeps the
+release history true. Where the file has no `## 1.0.0` block, create it
+as `## 1.0.0 — initial release`; where it already names one, keep that
+title. Phases § 3.9 has already
 rotated stay archived under their phase names: they are not renamed,
 and a reader keeps accepting the phase archive form after 1.0. Do not
 promote *early* to obtain rotation — § 3.9's closing note is why that
 is a different organising axis rather than a rename.
 
 **A `## FP<NN>` or `## DS<NN>` block is neither a release nor a
-phase.** It is a § 3.8 fold-in hoisted from `###`, which one corpus
-project does; § 3.5.4 step 2 and § 3.9 both give the shape defined
+phase.** It is a § 3.8 fold-in hoisted from `###`; § 3.5.4 step 2 and
+§ 3.9 both give the shape defined
 behaviour, so a parser must accept it, but § 3.8 is still where a
 new fold-in goes.
 
@@ -269,7 +279,7 @@ Required pieces:
   the line. On a markdown roadmap the obligation is authorial: nothing
   refuses a bullet without one, and `roadmap_log`'s `layman` argument is
   optional. On a store-backed one the publish gate asks for it on every
-  item a write touches (`roadmap-data-model.md` § 3.2). Sits after the
+  public, open item a write touches (`roadmap-data-model.md` § 3.2). Sits after the
   body prose, before `Kind:` / `Lanes:` / `Source:`. Case-insensitive
   label.
   **Stored without its closing full stop; the render writes one back**
@@ -353,7 +363,7 @@ The ID is a project-prefixed monotonic integer:
   letter-free prefix (`2026`) is NOT an ID — that keeps a date/version
   bracket like `[2026-07]` from being mistaken for one. Multi-prefix repos
   (e.g. `Sh-`, `Ed-`, `Phase-`) are permitted under § 3.10.4; the
-  `\[(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\d+\]` regex
+  `\[(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\d+\]` regex
   accepts any letter-containing, dash-then-digit token.
 - **Number** — zero-padded to 4 digits minimum (`0001`, `0042`,
   `1234`). Pad wider once a project crosses 9999.
@@ -434,7 +444,7 @@ other.
 |---|---|---|
 | **Store-migrated** — store row *and* `ants-v1` | the store, per `(project, prefix)`: the greater of the `id_high_water` row and the highest id any stored item holds. **Not** the committed corpus | neither read nor written; a stale file is simply left behind |
 | **Pass-headings** (§ 3.10.5), store row or not | derived from the heading, never allocated | neither read nor written |
-| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that row's `id_high_water` for the prefix** (ANTS-4493) | read and written |
+| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that project's `RoadmapStore::allocationFloor` for the prefix** — the row and the highest id a stored item holds (ANTS-4493). The batch append still floors to the row alone (ANTS-5639) | read and written |
 
 On a store-migrated project an allocation is
 `RoadmapStore::allocationFloor(project, prefix) + 1`, followed by
@@ -465,13 +475,13 @@ from its files before it allocates** (decided 2026-10-10, ANTS-4140). The
 store lives outside the repo (under `GenericDataLocation`), so another
 machine can open the project with no store row; the generated-file notice
 in the roadmap's header says the file is the store's render. That render,
-`ROADMAP.md` plus `docs/roadmap/*.md`, carries every public item. It also
-records each prefix's high-water mark in the header, and the rebuild floors
-`id_high_water` to that mark. The mark is what covers an id the files no
-longer show: an `internal` item, or one a re-migration deleted. **Not built
-yet** (ANTS-5638): until it ships, such a machine falls to the counter row
-of the table, floored to the corpus, and can reissue an id the files do not
-carry.
+`ROADMAP.md` plus `docs/roadmap/*.md`, carries every public item. The
+render is to record each prefix's high-water mark in the header too, and
+the rebuild to floor `id_high_water` to that mark. The mark is what covers
+an id the files no longer show: an `internal` item, or one a re-migration
+deleted. **Neither half is built yet** (ANTS-5638): until it ships, such a
+machine falls to the counter row of the table, floored to the corpus, and
+can reissue an id the files do not carry.
 
 `id_strategy: "stable_prefix"` (a caller-supplied string id such as
 `Ts20-SP6`) consults neither carrier and raises neither, on either path: a
@@ -708,12 +718,11 @@ roadmap"*, it MUST:
    📋 or 🚧 — and report that there is no workable item. Do not
    advance to a later release and do not promote a 💭: each invents
    work the file does not offer.
-   **Numbered, not first in document order.** Live phase roadmaps
+   **Numbered, not first in document order.** A phase roadmap may
    interleave `## FP<NN>` fold-in and `## DS<NN>` debt-sweep blocks
-   above and below the phase sequence — one corpus project opens
-   with `FP03 FP04 FP05 FP06 FP01` and closes with `DS01 FP02`,
-   wrapping `P01`…`P10` — so position does not track the sequence
-   and reading top-to-bottom selects a fold-in as the active phase.
+   above and below the phase sequence, so position does not track the
+   sequence and reading top-to-bottom selects a fold-in as the active
+   phase.
    Those blocks carry no phase number and are never selected: they
    are § 3.8 fold-ins hoisted to `##`, so treat each as an extra
    theme section of the active phase, worked in step 3 after that
@@ -889,7 +898,8 @@ unqualified mention of a bump or `cut-release` in this section is the
 versioned rule.
 
 Split **every** closed minor still in the file into its own archive file.
-A roadmap whose earlier bumps rotated nothing can hold several. **About
+A minor is closed when every item under it is ✅ or 🚫, whether or not a
+release was ever tagged from it. A roadmap whose earlier bumps rotated nothing can hold several. **About
 150 KiB is a review trigger, not a gate.** A file past it is a sign that
 rotation is not happening, so find out why. A file past it while its
 current minor is still open has nothing eligible to rotate, and that is
@@ -897,9 +907,12 @@ not a breach.
 
 The convention:
 
-- Archives live at `<dir(ROADMAP.md)>/docs/roadmap/<MAJOR>.<MINOR>.md`
+- Archives live at `<project root>/docs/roadmap/<MAJOR>.<MINOR>.md`
   — one file per closed minor version, named verbatim
-  (`0.5.md`, `0.6.md`, `0.7.md`).
+  (`0.5.md`, `0.6.md`, `0.7.md`). `ROADMAP.md` sits at the project root
+  too: the migration and the id floor read `<root>/ROADMAP.md` and
+  `<root>/docs/roadmap/` (`findRoadmaps`, `corpusHighWater`), and the
+  viewer looks beside `ROADMAP.md`, which is then the same folder.
 - File names follow the **case-sensitive regex**
   `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`. No leading `v`, no
   `roadmap-` prefix, no zero-padding (`0.7.md` not `00.07.md`), **no
@@ -914,7 +927,7 @@ The convention:
 - **A pre-1.0 roadmap using phase blocks (`## P01 — …`, § 3.2)
   rotates on a closed *phase*, exactly as a versioned one rotates
   on a closed minor.** Archives live at
-  `<dir(ROADMAP.md)>/docs/roadmap/<designator>.md` with the
+  `<project root>/docs/roadmap/<designator>.md` with the
   designator copied **verbatim** from the heading — `P01.md`,
   `P07.5.md` — under the case-sensitive regex
   `^P[0-9]+(\.[0-9]+)?\.md$`. Verbatim is what keeps one name per
@@ -956,9 +969,7 @@ The convention:
   **A project already carrying hoisted `##` fold-ins moves them back
   in order to archive them** — the heading's date and source (§ 3.8)
   say which block each was raised against. Until moved they stay in
-  `ROADMAP.md`, which is a real cost rather than a formality:
-  LocalWebServerManager carries seven in that shape, of seventeen
-  `##` blocks.
+  `ROADMAP.md`.
 
   **Do not rotate a phase block by hand until every reader
   widens.** Two readers accept the phase name:
@@ -997,10 +1008,12 @@ The convention:
   **A block belongs to the minor its heading names, not the minor its
   work shipped in.** The heading's release designator is `<M>.<N>`,
   optionally after a `v`, followed by the end of the title, a character
-  that is neither a digit nor a `.`, or a `.` and a digit. So
-  `## 0.7.0`, `## 0.7.12 — …` and `## 0.7.50–0.7.59 — …` are all
-  minor 0.7; `## 0.70.0` is not; and a signpost such as
-  `## 0.5.x and 0.6.x — archived` names no single minor and stays.
+  that is neither a digit nor a `.`, a `.` and a digit, or `.x` (a patch
+  stream). So `## 0.7.0`, `## 0.7.12 — …`, `## 0.7.50–0.7.59 — …` and
+  `## v0.7.x — patch stream` are all minor 0.7; `## 0.70.0` is not; and a
+  signpost naming two minors, such as `## 0.5.x and 0.6.x — archived`,
+  names no single minor and stays. `rotate_minor`'s title match does not
+  take `.x` yet (ANTS-5639).
 
   Rotation is content-preserving: every block of the closed minor, with
   its sub-headings and bullets, moves to `docs/roadmap/<closed>.md`
@@ -1061,9 +1074,7 @@ implementation detail:
 
 - **The archive path is derived, never passed** — `docs/roadmap/<M>.<N>.md`,
   relative to the **project root**, so the naming regex above stays stated in
-  one place. The convention above places archives under `dir(ROADMAP.md)`;
-  the two are the same folder except where `ROADMAP.md` is not at the
-  project root, and there `rotate_minor` writes under the root. A caller-supplied path could name a file the migration's own
+  one place. A caller-supplied path could name a file the migration's own
   archive discovery then refuses to read back.
 - **Sections are selected by TITLE**, by the release-designator rule in
   the versioned bullet above — the same rule a hand rotation follows.
@@ -1184,9 +1195,7 @@ explains why):
    alone (`- [x] 🚫` → `- 🚫`, `- [ ] 🚧` → `- 🚧`), then
    `- [x]` with `- ✅` and `- [ ]` with `- 📋`.
 2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up, **by hand, numbering
-   upward from the floor § 3.5.1's counter row states** — the committed
-   corpus per prefix and, where a store row exists, that row's
-   `id_high_water`. Not by reading `.roadmap-counter` and adding one:
+   upward from the floor § 3.5.1's counter row states**. Not by reading `.roadmap-counter` and adding one:
    that is the form § 3.5.1 measures as reissuing live ids on a fresh
    clone, which a fresh counter is by definition. Not through
    `roadmap_log` either, because the ordering rule below forbids any
@@ -1232,9 +1241,19 @@ against a file step 1 has already made classifiable as `ants-v1`, which
 is the mismatch step 5 exists to clear. A project with no store row has
 no window and no step 5, and may keep step 0 first.
 
-The migration is reversible — write `[x]` / `[ ]` back (and
-`[x] 🚫`, `[ ] 🚧`, `[ ] 💭` for the other three), drop the metadata,
-and the file is GFM again.
+The migration is reversible: **undo every numbered step, with step 5
+undone last.** Write `[x]` / `[ ]` back (and `[x] 🚫`, `[ ] 🚧`, `[ ] 💭`
+for the other three), drop the trailers and the ids (steps 4 to 1), and
+remove the § 3.1 marker (step 0). On a project with a store row, then
+re-run the store migration so `source_format` returns to
+`github-task-list` (step 5). Undone first, step 5 would record `ants-v1`
+against a file being converted away from it. Leave the marker, and the
+file still classifies `ants-v1`, so the store still owns it and the next
+render overwrites the reverted text. Remove it without step 5, and the
+stored dialect disagrees with the file, so every later store write
+refuses (`roadmap-data-model.md` § 4.1.1).
+The forward window binds the reversal too: no commit, store write or
+`roadmap_log` op between the first undo and step 0.
 
 #### 3.10.4 Prefix conventions
 
@@ -1249,7 +1268,7 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
 
 - **Id parsing — case-insensitive.** The `roadmap-query` parser
   accepts any letter-containing, dash-then-digit token
-  (`(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\d+`), so
+  (`(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\d+`), so
   mixed-case prefixes **do** parse and can be fetched / flipped by
   id. Same regex family §3.5.1 documents — see the bullet-scan and
   `kIdIsh` patterns in `remotecontrol.cpp` and

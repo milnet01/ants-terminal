@@ -138,8 +138,8 @@ grounds that the migration's archive discovery "looks beside the live file". It
 does not** — both mechanisms above are anchored on the root, and a
 `sub/docs/roadmap/0.7.md` is refused by the first and never seen by the second.
 
-**§ 3.9 anchors archives at `<dir(ROADMAP.md)>/docs/roadmap/…`, and the two
-coincide because the migration requires the roadmap at the root anyway.**
+**§ 3.9 anchors archives at `<project root>/docs/roadmap/…`, where the
+migration requires the roadmap to sit anyway.**
 `findRoadmaps()` accepts a live roadmap only as a file lying **directly in the
 project root** whose name case-folds to `roadmap.md` — its own comment notes
 that a `docs/ROADMAP.md` "is not a candidate". So a project whose
