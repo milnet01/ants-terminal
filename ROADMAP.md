@@ -69348,6 +69348,9 @@ project. Reported causes are claims until checked in source.
   project row with a deregistered marker, so its mailbox keeps
   receiving. This item's spec also carries ANTS-5483. ANTS-4426 left
   the bundle (no schema change needed).
+  Spec: docs/specs/ANTS-5366-deregistered-project-tombstone.md, accepted
+  2026-10-10 at review-contract's cap (2 loops, calm cap). Next: build it
+  with write-code.
   **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
   Kind: enhancement.
   Source: in-session-2026-09-25.
@@ -69990,6 +69993,8 @@ project. Reported causes are claims until checked in source.
   change of its own. ANTS-5366 keeps a deregistered project's row, so
   no project row is deleted and SQLite never reuses its rowid. The
   invariant lives in ANTS-5366's spec.
+  Spec: docs/specs/ANTS-5366-deregistered-project-tombstone.md (covers
+  this item; INV-5), accepted 2026-10-10.
   **Layman:** When a project is removed, its number is never handed to a new one.
   Kind: fix.
   Source: claude-config-feedback-2026-09-27.
