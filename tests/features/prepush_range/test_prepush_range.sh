@@ -55,9 +55,11 @@ run_hook() {  # stdin lines -> combined output
 
 # INV-5 — with no machine-wide hook, the shim runs the project's gate in
 # full and its exit status decides the push. Needs no machine-wide hook.
+# ANTS_PUSH_CHANGED is cleared: this test runs inside the push gate, which
+# exports it, and the shim's own fallback never sets it.
 NOHOOKS="$(mktemp -d -t ants-prepush-nohooks.XXXXXX)"
-out="$(cd "$T" && ANTS_GLOBAL_HOOKS="$NOHOOKS" bash tools/hooks/pre-push origin url </dev/null 2>&1)"; rc=$?
-out_red="$(cd "$T" && STUB_GATE_RC=1 ANTS_GLOBAL_HOOKS="$NOHOOKS" bash tools/hooks/pre-push origin url </dev/null 2>&1)"; rc_red=$?
+out="$(cd "$T" && env -u ANTS_PUSH_CHANGED ANTS_GLOBAL_HOOKS="$NOHOOKS" bash tools/hooks/pre-push origin url </dev/null 2>&1)"; rc=$?
+out_red="$(cd "$T" && env -u ANTS_PUSH_CHANGED STUB_GATE_RC=1 ANTS_GLOBAL_HOOKS="$NOHOOKS" bash tools/hooks/pre-push origin url </dev/null 2>&1)"; rc_red=$?
 rmdir "$NOHOOKS"
 if grep -q 'GATE-RAN mode=full changed=<unset>' <<<"$out" && [[ $rc -eq 0 ]] \
    && grep -q 'GATE-RAN' <<<"$out_red" && [[ $rc_red -ne 0 ]]; then
