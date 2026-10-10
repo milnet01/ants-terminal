@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log append, append_batch, amend_body, set_body and amend_headline write through the store on a store-backed `#### Pass N.M` roadmap** (ANTS-5641)
+  One call instead of a hand edit plus roadmap_migrate. The stored row is
+  the one a re-import of the rendered file produces, and a body edit that
+  would change a pass's Status line is refused in favour of op:flip.
+
 - **cc-job ships with Ants Terminal: it runs a long command in its own systemd --user unit, so relaunching Ants does not kill it.** (ANTS-5629)
   Installed to the bin dir (not in the Flatpak). Logs go to
   $XDG_STATE_HOME/cc-job unless CC_JOB_DIR says otherwise. `cc-job --help`

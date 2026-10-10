@@ -166,6 +166,13 @@ QJsonDocument cmdRoadmapLogPassFlipBatch(const QJsonObject &req, const QString &
 // store-served pass-headings project. op:flip and op:annotate have one; the
 // pass file writers above must not run there, or they write behind the store.
 QJsonDocument rcPassStoreWriteUnsupported(const QString &op);
+// ANTS-5641 — op:append (batch=false) / op:append_batch (batch=true) through
+// the store on a store-served pass-headings project.
+QJsonDocument rlPassStoreAppend(const QJsonObject &req, bool batch,
+                                RoadmapStore &store, qint64 projectId,
+                                const QString &callerCanonical,
+                                const QString &roadmapPath,
+                                const QString &markdown);
 bool rcRoadmapIdLess(const QString &a, const QString &b);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);

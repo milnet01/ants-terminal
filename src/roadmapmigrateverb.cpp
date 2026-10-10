@@ -1156,3 +1156,14 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     env[QStringLiteral("id_prefixes")]   = counts.idPrefixes;
     return env;
 }
+
+RoadmapMigrate::MigrationPlan RoadmapMigrateVerb::planPassText(const QString &path,
+                                                               const QString &markdown) {
+    RoadmapMigrate::Source src;
+    src.path     = path;
+    src.markdown = markdown;
+    src.format   = QStringLiteral("pass-headings");
+    RoadmapMigrate::Discovery disc;
+    disc.sources.append(src);
+    return RoadmapMigrate::planFrom(disc, QString(), QString());
+}

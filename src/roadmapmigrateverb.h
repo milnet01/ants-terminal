@@ -31,6 +31,8 @@
 
 #pragma once
 
+#include "roadmapmigrate.h"   // ANTS-5641 — planPassText() returns a MigrationPlan
+
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -255,5 +257,11 @@ bool isTransientRoot(const QString &canonicalRoot);
 // skeleton would be unappendable by either route, which is the state this op
 // exists to escape.
 QString initSkeleton(const QString &projectName);
+
+// ANTS-5641 — plan one pass-headings text the way roadmap_migrate plans a file,
+// so a store append on a pass-headings roadmap stores exactly the row a later
+// re-import of the rendered file produces. Pure: no store, no filesystem. Here
+// because INV-1 keeps every production planFrom() call in this TU.
+RoadmapMigrate::MigrationPlan planPassText(const QString &path, const QString &markdown);
 
 }  // namespace RoadmapMigrateVerb

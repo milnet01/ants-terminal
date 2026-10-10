@@ -268,24 +268,6 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
     const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
     const QString bodyBefore = itemOf(QStringLiteral("PASS-44-1"), projectId)->body;
 
-    QJsonObject append = req(root, QStringLiteral("append"));
-    append[QStringLiteral("section")]  = QStringLiteral("phase-5");
-    append[QStringLiteral("status")]   = QStringLiteral("planned");
-    append[QStringLiteral("pass")]     = QStringLiteral("44.2");
-    append[QStringLiteral("headline")] = QStringLiteral("A new pass.");
-    append[QStringLiteral("kind")]     = QStringLiteral("implement");
-    append[QStringLiteral("source")]   = QStringLiteral("test");
-
-    QJsonObject appendBatch = req(root, QStringLiteral("append_batch"));
-    appendBatch[QStringLiteral("section")] = QStringLiteral("phase-5");
-    QJsonObject b;
-    b[QStringLiteral("status")]   = QStringLiteral("planned");
-    b[QStringLiteral("pass")]     = QStringLiteral("44.2");
-    b[QStringLiteral("headline")] = QStringLiteral("A new pass.");
-    b[QStringLiteral("kind")]     = QStringLiteral("implement");
-    b[QStringLiteral("source")]   = QStringLiteral("test");
-    appendBatch[QStringLiteral("bullets")] = QJsonArray{b};
-
     QJsonObject loc;
     loc[QStringLiteral("id")]   = QStringLiteral("PASS-43-5-B");
     loc[QStringLiteral("note")] = QStringLiteral("A batch note.");
@@ -297,18 +279,10 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
     annotateLoc[QStringLiteral("id")] = QStringLiteral("PASS-44-1");
     annotateBatch[QStringLiteral("locators")] = QJsonArray{annotateLoc};
 
-    // ANTS-5396 — amend_body refuses on this format too, through its own
-    // message; RetroDB reached it first.
-    QJsonObject amend = req(root, QStringLiteral("amend_body"));
-    amend[QStringLiteral("id")]       = QStringLiteral("PASS-44-1");
-    amend[QStringLiteral("old_text")] = QStringLiteral("x");
-    amend[QStringLiteral("new_text")] = QStringLiteral("y");
-
+    // ANTS-5641 — append, append_batch and amend_body gained a store route;
+    // the two batch status ops are what is left.
     RemoteControl rc(nullptr);
     const struct { const char *op; QJsonObject resp; } cases[] = {
-        {"amend_body",     rc.cmdRoadmapLogAmendBodyForTest(amend).object()},
-        {"append",         rc.cmdRoadmapLogAppendForTest(append).object()},
-        {"append_batch",   rc.cmdRoadmapLogAppendBatchForTest(appendBatch).object()},
         {"flip_batch",     rc.cmdRoadmapLogFlipBatchForTest(flipBatch).object()},
         {"annotate_batch", rc.cmdRoadmapLogFlipBatchForTest(annotateBatch).object()},
     };
@@ -325,7 +299,6 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
     }
     EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before)
         << "a refused op wrote the file behind the store";
-    EXPECT_FALSE(itemOf(QStringLiteral("PASS-44-2"), projectId).has_value());
     EXPECT_EQ(itemOf(QStringLiteral("PASS-43-5-B"), projectId)->status,
               QStringLiteral("planned"));
     EXPECT_EQ(itemOf(QStringLiteral("PASS-44-1"), projectId)->body, bodyBefore);
@@ -540,4 +513,267 @@ TEST(RoadmapPassStoreWrite, Ants5407StatusLineLanesReachTheStore) {
                     .value(QStringLiteral("ok")).toBool());
     const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
     EXPECT_EQ(file.count(QStringLiteral("Lanes: launch, docs")), 1) << file.toStdString();
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-5641 — append, append_batch, amend_body, set_body and amend_headline
+// write through the store on a store-served pass-headings roadmap.
+// ---------------------------------------------------------------------------
+namespace {
+
+// RetroDB's section shape: `---` between passes, none after the section's last.
+const char *kOpenEnd =
+    "# Demo — Roadmap\n"
+    "\n"
+    "## Phase 59\n"
+    "\n"
+    "#### Pass 59.41 Close the cache on shutdown.\n"
+    "- **Status**: planned (2026-09-01). Lanes: cache, shutdown.\n"
+    "The cache is flushed but never closed.\n"
+    "\n"
+    "---\n"
+    "\n"
+    "#### Pass 59.42 Log the close.\n"
+    "- **Status**: planned (2026-09-01). Lanes: logging.\n"
+    "\n"
+    "## Done index\n"
+    "\n"
+    "Nothing yet.\n";
+
+// Re-import the rendered file into the same store. A store write that put the
+// row a re-import would produce leaves nothing for it to change.
+RoadmapMigrateLoad::Outcome reimport(const QString &root) {
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return {};
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) { ADD_FAILURE() << "findRoadmaps: " << err.toStdString(); return {}; }
+    const auto plan =
+        RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"), QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-10-10T10:00:00Z");
+    opts.projectRoot = root;
+    return RoadmapMigrateLoad::load(*store, plan, opts);
+}
+
+void expectReimportIsANoOp(const QString &root) {
+    const auto out = reimport(root);
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+    EXPECT_EQ(out.itemsInserted, 0) << "the file holds an item the store did not";
+    EXPECT_EQ(out.itemsUpdated, 0) << "a re-import would rewrite a field the write stored";
+    EXPECT_EQ(out.itemsDeleted, 0);
+}
+
+QJsonObject passAppend(const QString &root, const QString &section,
+                       const QString &pass, const QString &headline) {
+    QJsonObject r = req(root, QStringLiteral("append"));
+    r[QStringLiteral("section")]  = section;
+    r[QStringLiteral("status")]   = QStringLiteral("planned");
+    r[QStringLiteral("pass")]     = pass;
+    r[QStringLiteral("headline")] = headline;
+    r[QStringLiteral("body")]     = QStringLiteral("- **Target**: `a.py`.");
+    return r;
+}
+
+}  // namespace
+
+// INV-8
+TEST(RoadmapPassStoreWrite, Ants5641AppendWritesThroughTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
+
+    QJsonObject r = passAppend(root, QStringLiteral("phase-5"), QStringLiteral("44.2"),
+                               QStringLiteral("A new pass."));
+    RemoteControl rc(nullptr);
+    QJsonObject dry = r;
+    dry[QStringLiteral("dry_run")] = true;
+    const QJsonObject preview = rc.cmdRoadmapLogAppendForTest(dry).object();
+    ASSERT_TRUE(preview.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(preview).toJson().toStdString();
+    EXPECT_EQ(preview.value(QStringLiteral("would_be_id")).toString(),
+              QStringLiteral("PASS-44-2"));
+    EXPECT_FALSE(itemOf(QStringLiteral("PASS-44-2"), projectId).has_value());
+    EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("id")).toString(), QStringLiteral("PASS-44-2"));
+    EXPECT_EQ(resp.value(QStringLiteral("format")).toString(), QStringLiteral("pass-headings"));
+    const auto item = itemOf(QStringLiteral("PASS-44-2"), projectId);
+    ASSERT_TRUE(item.has_value()) << "the append did not reach the store";
+    EXPECT_EQ(item->status, QStringLiteral("planned"));
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(QStringLiteral(
+        "#### Pass 44.2 A new pass.\n- **Status**: todo\n- **Target**: `a.py`.")))
+        << file.toStdString();
+    expectReimportIsANoOp(root);
+
+    // One designator names one item.
+    const QJsonObject again = rc.cmdRoadmapLogAppendForTest(r).object();
+    EXPECT_EQ(again.value(QStringLiteral("code")).toString(), QStringLiteral("id_taken"))
+        << QJsonDocument(again).toJson().toStdString();
+}
+
+// INV-9
+TEST(RoadmapPassStoreWrite, Ants5641AppendMovesTheSeparatorOntoThePreviousPass) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId, kOpenEnd);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(
+        passAppend(root, QStringLiteral("phase-59"), QStringLiteral("59.43"),
+                   QStringLiteral("Test the close."))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("separator_added_to")).toString(),
+              QStringLiteral("PASS-59-42"));
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(QStringLiteral(
+        "Lanes: logging.\n\n---\n\n#### Pass 59.43 Test the close.")))
+        << file.toStdString();
+    EXPECT_FALSE(itemOf(QStringLiteral("PASS-59-43"), projectId)->body
+                     .contains(QStringLiteral("---")))
+        << "the section's new last pass carries no separator";
+    expectReimportIsANoOp(root);
+}
+
+// INV-10
+TEST(RoadmapPassStoreWrite, Ants5641AppendBatchWritesThroughTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId, kOpenEnd);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject r = req(root, QStringLiteral("append_batch"));
+    r[QStringLiteral("section")] = QStringLiteral("phase-59");
+    QJsonArray bullets;
+    for (const char *pass : {"59.43", "59.44", "59.41"}) {
+        QJsonObject b;
+        b[QStringLiteral("status")]   = QStringLiteral("planned");
+        b[QStringLiteral("pass")]     = QString::fromLatin1(pass);
+        b[QStringLiteral("headline")] = QStringLiteral("Batch pass %1.").arg(pass);
+        bullets.append(b);
+    }
+    r[QStringLiteral("bullets")] = bullets;
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendBatchForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 2);
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 1)
+        << "59.41 already exists and is skipped, not duplicated";
+    EXPECT_TRUE(itemOf(QStringLiteral("PASS-59-43"), projectId).has_value());
+    EXPECT_TRUE(itemOf(QStringLiteral("PASS-59-44"), projectId).has_value());
+    expectReimportIsANoOp(root);
+}
+
+// INV-11
+TEST(RoadmapPassStoreWrite, Ants5641BodyAndHeadlineEditsWriteThroughTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    QJsonObject amend = req(root, QStringLiteral("amend_body"));
+    amend[QStringLiteral("id")]       = QStringLiteral("PASS-44-1");
+    amend[QStringLiteral("old_text")] = QStringLiteral("Blocked on");
+    amend[QStringLiteral("new_text")] = QStringLiteral("Was blocked on");
+    const QJsonObject a = rc.cmdRoadmapLogAmendBodyForTest(amend).object();
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+    EXPECT_EQ(a.value(QStringLiteral("format")).toString(), QStringLiteral("pass-headings"));
+    EXPECT_TRUE(itemOf(QStringLiteral("PASS-44-1"), projectId)->body
+                    .contains(QStringLiteral("Was blocked on the 43.5 follow-up.")));
+
+    QJsonObject head = req(root, QStringLiteral("amend_headline"));
+    head[QStringLiteral("id")]       = QStringLiteral("PASS-44-1");
+    head[QStringLiteral("old_text")] = QStringLiteral("legacy");
+    head[QStringLiteral("new_text")] = QStringLiteral("old");
+    const QJsonObject h = rc.cmdRoadmapLogAmendHeadlineForTest(head).object();
+    ASSERT_TRUE(h.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(h).toJson().toStdString();
+
+    QJsonObject set = req(root, QStringLiteral("set_body"));
+    set[QStringLiteral("id")]       = QStringLiteral("PASS-43-5-B");
+    set[QStringLiteral("new_text")] =
+        QStringLiteral("- **Status**: todo\n  Scoped to the reply path only.");
+    const QJsonObject s = rc.cmdRoadmapLogSetBodyForTest(set).object();
+    ASSERT_TRUE(s.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(s).toJson().toStdString();
+
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(QStringLiteral(
+        "#### Pass 44.1 Retire the old transport.\n- **Status**: in-progress\n"
+        "  Was blocked on the 43.5 follow-up.")))
+        << file.toStdString();
+    EXPECT_TRUE(file.contains(QStringLiteral("  Scoped to the reply path only.")))
+        << file.toStdString();
+    expectReimportIsANoOp(root);
+}
+
+// INV-12
+TEST(RoadmapPassStoreWrite, Ants5641BodyEditCannotMoveTheStatus) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
+
+    QJsonObject amend = req(root, QStringLiteral("amend_body"));
+    amend[QStringLiteral("id")]       = QStringLiteral("PASS-44-1");
+    amend[QStringLiteral("old_text")] = QStringLiteral("in-progress");
+    amend[QStringLiteral("new_text")] = QStringLiteral("done");
+    RemoteControl rc(nullptr);
+    const QJsonObject a = rc.cmdRoadmapLogAmendBodyForTest(amend).object();
+    EXPECT_EQ(a.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(a).toJson().toStdString();
+    EXPECT_TRUE(a.value(QStringLiteral("error")).toString()
+                    .contains(QStringLiteral("op:\"flip\"")));
+    EXPECT_EQ(itemOf(QStringLiteral("PASS-44-1"), projectId)->status,
+              QStringLiteral("in-progress"));
+    EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+}
+
+// INV-13 — the boundary: a pass project the store does not serve keeps the
+// file writer for append and the refusal for amend_body.
+TEST(RoadmapPassStoreWrite, Ants5641UnservedPassProjectKeepsTheFileRoutes) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, /*migrate=*/false);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(
+        passAppend(root, QStringLiteral("phase-5"), QStringLiteral("44.2"),
+                   QStringLiteral("A new pass."))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.contains(QStringLiteral("bytes_written")))
+        << "the file writer, not the store, served it";
+
+    QJsonObject amend = req(root, QStringLiteral("amend_body"));
+    amend[QStringLiteral("id")]       = QStringLiteral("PASS-44-1");
+    amend[QStringLiteral("old_text")] = QStringLiteral("Blocked on");
+    amend[QStringLiteral("new_text")] = QStringLiteral("Was blocked on");
+    EXPECT_EQ(rc.cmdRoadmapLogAmendBodyForTest(amend).object()
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("unsupported_format"));
 }

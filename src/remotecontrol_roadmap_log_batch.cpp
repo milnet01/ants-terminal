@@ -2312,16 +2312,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
                 if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
-                    // ANTS-5334 — no store route for a pass append yet.
-                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-                    QString seamErr;
-                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
-                    const auto target = roadmapWriteTarget(cc, seamText, &why, &seamErr);
-                    QJsonObject refusal;
-                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
-                        return QJsonDocument(refusal);
-                    if (target)
-                        return rcPassStoreWriteUnsupported(QStringLiteral("append_batch"));
                     // ANTS-5344 — the pass writer files the batch under one
                     // section; a per-bullet one would be ignored silently.
                     const QString callSection =
@@ -2335,6 +2325,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                                                "not supported on a pass-headings "
                                                "roadmap — make one call per section"));
                     }
+                    // ANTS-5641 — a store-served pass project appends through
+                    // the store; the file writer would write behind it.
+                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+                    QString seamErr;
+                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
+                    const auto target = roadmapWriteTarget(cc, seamText, &why, &seamErr);
+                    QJsonObject refusal;
+                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
+                        return QJsonDocument(refusal);
+                    if (target)
+                        return rlPassStoreAppend(req, /*batch=*/true, *target->store,
+                                                 target->projectId, cc, rp, md);
                     return cmdRoadmapLogPassAppendBatch(req, rp, md);
                 }
             }

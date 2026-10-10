@@ -70868,7 +70868,7 @@ project. Reported causes are claims until checked in source.
   Source: Slipcase_Ants_MCP_Feedback.md 2026-10-10.
   Lanes: mcp-review-verbs.
 
-- 🚧 [ANTS-5641] **roadmap_log writes append, amend_body, set_body and amend_headline through the store on a store-backed pass-headings roadmap.**
+- ✅ [ANTS-5641] **roadmap_log writes append, amend_body, set_body and amend_headline through the store on a store-backed pass-headings roadmap.**
   RetroDB (store-backed, `#### Pass N.M`): op:append and op:amend_body
   refuse unsupported_format and name the hand-edit-then-roadmap_migrate
   route (ANTS-5396). Only flip and annotate have a store route
@@ -70878,6 +70878,16 @@ project. Reported causes are claims until checked in source.
   PASS-N-M from `pass`, the render is formatPassBlock. Markdown-served
   pass projects keep today's behaviour. RetroDB offered to dry-run a
   build against its roadmap.
+  Resolved 2026-10-10: append and append_batch plan each block through
+  RoadmapMigrateVerb::planPassText (INV-1 keeps planFrom in that TU), so
+  the stored row equals a re-import; a `---` rule moves onto the
+  section's previous last pass (separator_added_to). amend_body,
+  set_body and amend_headline reuse the ants-v1 store branch; a body
+  edit that moves the Status line refuses bad_args naming op:flip.
+  flip_batch and annotate_batch still refuse. Tests:
+  roadmap_pass_store_write INV-8..13, INV-8..12 proven red against the
+  pre-fix code; full preset 5487/5487. RetroDB acceptance (dry runs on
+  its roadmap after /mcp reconnect) is RetroDB's to run.
   **Layman:** Lets sessions on Pass-style roadmaps add and edit items in one step instead of a hand edit plus a re-import.
   Kind: feature.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-10-10.

@@ -179,7 +179,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
                 if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
-                    // ANTS-5334 — no store route for a pass append yet.
+                    // ANTS-5641 — a store-served pass project appends through
+                    // the store; the file writer would write behind it.
                     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
                     QString seamErr;
                     auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
@@ -188,7 +189,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                     if (rcRoadmapSourceRefused(refusal, why, seamErr))
                         return QJsonDocument(refusal);
                     if (target)
-                        return rcPassStoreWriteUnsupported(QStringLiteral("append"));
+                        return rlPassStoreAppend(req, /*batch=*/false, *target->store,
+                                                 target->projectId, cc, rp, md);
                     return cmdRoadmapLogPassAppend(req, rp, md);
                 }
             }
@@ -1332,8 +1334,10 @@ QJsonDocument rcdetail::rcPassStoreWriteUnsupported(const QString &op) {
         "roadmap_log: op:\"%1\" has no store route on a pass-headings roadmap "
         "the store serves, so it writes nothing. The file writer would put the "
         "file behind the store, and the next render would discard the edit. "
-        "op:\"flip\" and op:\"annotate\" do write through the store here "
-        "(ANTS-5334). For anything else, edit the roadmap file by hand and "
+        "op:\"flip\", op:\"annotate\", op:\"append\", op:\"append_batch\", "
+        "op:\"amend_body\", op:\"set_body\" and op:\"amend_headline\" do write "
+        "through the store here (ANTS-5334, ANTS-5641): call op:\"flip\" or "
+        "op:\"annotate\" once per item, or edit the roadmap file by hand and "
         "then run roadmap_migrate to re-import it (ANTS-5396).").arg(op);
     return QJsonDocument(env);
 }
@@ -3047,16 +3051,26 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // Pass-headings roadmaps store bodies under #### Pass headings, not
     // indented bullet continuation lines — refuse clearly rather than
     // mis-edit (parity with the ANTS-2031 format gate).
-    if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical))) {
-        return rlErr(QStringLiteral("unsupported_format"),
-            // ANTS-5396 — name the whole remedy. On a store-served project a
-            // hand edit alone is discarded by the next render; re-importing it
-            // with roadmap_migrate is what keeps it (RetroDB, 2026-09-26).
-            QStringLiteral("roadmap_log: op:\"%1\" is not supported on "
-                           "pass-headings roadmaps. Edit the roadmap file by "
-                           "hand; if the store serves this project, then run "
-                           "roadmap_migrate to re-import it, or the next render "
-                           "discards the edit").arg(opName));
+    // ANTS-5641 — except where the store serves the project: then the pass is
+    // located by the pass writer's own rule and edited through the store path
+    // below, exactly as op:flip does (ANTS-5334).
+    const bool passHeadings =
+        rcBulletsArePassHeadings(rlParse(markdown, callerCanonical));
+    std::optional<RoadmapWriteTarget> passStoreTarget;
+    if (passHeadings) {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
+        passStoreTarget = roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (!passStoreTarget)
+            return rlErr(QStringLiteral("unsupported_format"),
+                // ANTS-5396 — name the whole remedy.
+                QStringLiteral("roadmap_log: op:\"%1\" is not supported on a "
+                               "pass-headings roadmap the store does not serve. "
+                               "Edit the roadmap file by hand").arg(opName));
     }
 
     QStringList lines = markdown.split(QChar('\n'));
@@ -3076,7 +3090,30 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // in the STORE, so an item absent from the file is still editable. The
     // store branch below needs only the id, headline and format.
     bool storeLocated = false;
-    if (locAnchor.isEmpty() &&
+    if (passStoreTarget) {
+        if (lineRangeOnly)   // ANTS-4485 INV-6
+            return rlErr(QStringLiteral("locator_unsupported"),
+                QStringLiteral("roadmap_log: line_range cannot be served by "
+                               "this project's roadmap store — locate by id "
+                               "or headline"));
+        if (!locAnchor.isEmpty())
+            return rlErr(QStringLiteral("bad_op_combo"),
+                QStringLiteral("roadmap_log: a pass-headings roadmap has no "
+                               "anchors — address the pass by `id` (PASS-N-M) "
+                               "or `headline`"));
+        // Only the locate is used; the markdown it computes is discarded.
+        const PassHeadingWrite::WriteResult located =
+            PassHeadingWrite::flipPassStatus(markdown, locId, locHeadline,
+                PassHeadingWrite::passStatusKeyword(QStringLiteral("planned")));
+        if (!located.ok)
+            return rlErr(located.code.isEmpty() ? QStringLiteral("bullet_not_found")
+                                                : located.code,
+                QStringLiteral("roadmap_log: no pass matched the locator"));
+        matchedId       = located.matchedId;
+        matchedHeadline = located.matchedHeadline;
+        format          = QStringLiteral("pass-headings");
+        storeLocated    = true;
+    } else if (locAnchor.isEmpty() &&
         RoadmapParse::detectRoadmapFormat(lines) == QStringLiteral("ants-v1")) {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
@@ -3270,7 +3307,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // occurrence was in the head line stops being ambiguous. Both refusals stay
     // loud; neither silently edits the wrong text. The residual is also the
     // right target, because it is what the render writes back.
-    if (format == QStringLiteral("ants-v1")) {
+    // ANTS-5641 — and a store-served pass-headings roadmap, located above.
+    const bool passStore = format == QStringLiteral("pass-headings");
+    if (format == QStringLiteral("ants-v1") || passStore) {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
         // ANTS-3863 — fromMemory: `markdown` is already read and this op needs
@@ -3296,6 +3335,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             const auto before = store.readItem(*itemPk, &seamErr);
             if (!before)
                 return rlErr(QStringLiteral("store_failed"), seamErr);
+            // ANTS-5641 — the envelope names the dialect and the file actually
+            // resolved (RetroDB's is lowercase `roadmap.md`, ANTS-4116).
+            const QString envFile = passStore ? QFileInfo(roadmapPath).fileName()
+                                              : QStringLiteral("ROADMAP.md");
+            // ANTS-5641 — a pass's status is its column, and the render rewrites
+            // the body's Status line to match it. So an edit that moves the
+            // status that line declares would be reverted in silence; refuse it
+            // and name the op that changes status.
+            const auto passStatusOf = [&](const QString &body) {
+                QStringList block = body.split(QChar('\n'));
+                block.prepend(QStringLiteral("#### Pass %1").arg(
+                    PassHeadingWrite::designatorFromPassId(matchedId)));
+                const auto rec = RoadmapParse::parsePassHeadingBlock(block);
+                return rec ? rec->status : QString();
+            };
+            const auto passStatusMoved = [&](const QString &newBody) {
+                return passStore && passStatusOf(newBody) != passStatusOf(before->body);
+            };
+            const auto passStatusRefusal = [&] {
+                return rlErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: that edit changes the status the "
+                                   "pass's `- **Status**:` line declares. The "
+                                   "status is the item's own field and the render "
+                                   "would put the line back; use op:\"flip\" to "
+                                   "change it"));
+            };
 
             // ANTS-4668 / ANTS-4683 — headline mode writes the store COLUMN.
             // The refusal this replaces reasoned about markdown: patching a
@@ -3379,8 +3444,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
 
                 env[QStringLiteral("ok")]       = true;
                 env[QStringLiteral("op")]       = opName;
-                env[QStringLiteral("format")]   = QStringLiteral("ants-v1");
-                env[QStringLiteral("file")]     = QStringLiteral("ROADMAP.md");
+                env[QStringLiteral("format")]   = format;
+                env[QStringLiteral("file")]     = envFile;
                 env[QStringLiteral("amended")]  = true;
                 // Echoed so the caller can read the joint result without a
                 // re-query — the amend_body path's `body_paragraph` rationale.
@@ -3404,9 +3469,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             // after the new text is decided is shared, which is the point of
             // it being a mode rather than its own handler.
             if (setBodyMode) {
-                return rlSetBodyStore(store, projectId, *itemPk, *before,
+                if (passStatusMoved(newText))
+                    return passStatusRefusal();
+                QJsonObject sb = rlSetBodyStore(store, projectId, *itemPk, *before,
                                       newText, callerCanonical, roadmapPath,
-                                      matchedId, dryRun, newTextScrubbedNames);
+                                      matchedId, dryRun, newTextScrubbedNames).object();
+                if (sb.value(QStringLiteral("ok")).toBool()) {
+                    sb[QStringLiteral("format")] = format;
+                    sb[QStringLiteral("file")]   = envFile;
+                }
+                return QJsonDocument(sb);
             }
             // ANTS-4550 — the same seam amendBodyExact() runs, so the two
             // paths cannot answer one old_text differently. Indent::None:
@@ -3516,6 +3588,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             }
             const QString newBody =
                 patch.wrapped ? rlRewrapLine(patch.text, patch.line) : patch.text;
+            if (passStatusMoved(newBody))
+                return passStatusRefusal();
             // ANTS-4097 — echo the paragraph the edit landed in.
             const QString amendedPara =
                 rcAmendedParagraph(newBody.split(QChar('\n')), patch.line);
@@ -3560,8 +3634,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
 
             env[QStringLiteral("ok")]      = true;
             env[QStringLiteral("op")]      = opName;
-            env[QStringLiteral("format")]  = QStringLiteral("ants-v1");
-            env[QStringLiteral("file")]    = QStringLiteral("ROADMAP.md");
+            env[QStringLiteral("format")]  = format;
+            env[QStringLiteral("file")]    = envFile;
             env[QStringLiteral("amended")] = true;
             if (!amendedPara.isEmpty())
                 env[QStringLiteral("body_paragraph")] = amendedPara;

@@ -17,11 +17,17 @@ On a pass-headings project the store serves:
   sequence (`rlStoreFlipOrAnnotate`, shared with ants-v1), and the render
   publishes the file. The pass is located by the pass writer's own rule: its
   `PASS-N-M` id or its heading tail.
-- `op:"append"`, `op:"append_batch"`, `op:"flip_batch"` and
-  `op:"annotate_batch"` have no store route yet. They refuse
-  `unsupported_format` and write nothing.
+- `op:"append"` and `op:"append_batch"` write each new pass through the
+  store (ANTS-5641). The block is rendered as the file writer renders it and
+  planned by `RoadmapMigrate::planFrom`, so the stored row is the one a
+  re-import of the rendered file produces.
+- `op:"amend_body"`, `op:"set_body"` and `op:"amend_headline"` edit the
+  pass through the store path ants-v1 uses (ANTS-5641).
+- `op:"flip_batch"` and `op:"annotate_batch"` have no store route yet. They
+  refuse `unsupported_format` and write nothing.
 
-A pass-headings project the store does not serve keeps every file writer.
+A pass-headings project the store does not serve keeps every file writer,
+and `op:"amend_body"` there still refuses.
 
 ## Invariants
 
@@ -35,10 +41,10 @@ A pass-headings project the store does not serve keeps every file writer.
 - **INV-3** — `op:"annotate"` appends its note to the item's stored body and
   leaves its status alone.
   *Test:* `Inv3AnnotateAppendsToTheStoredBody`.
-- **INV-4** — each of the four ops with no store route refuses
+- **INV-4** — each of the two ops with no store route refuses
   `unsupported_format`, and the file and the store's items are unchanged.
-  So does `op:"amend_body"`. Every such refusal names `roadmap_migrate` as the
-  route that works: edit the file by hand, then re-import it (ANTS-5396).
+  Every such refusal names `roadmap_migrate` as a route that works: edit the
+  file by hand, then re-import it (ANTS-5396).
   *Test:* `Inv4OpsWithNoStoreRouteRefuse`.
 - **INV-5** — on a pass-headings project the store does not serve,
   `op:"flip"` still writes the file directly. A boundary pin: it holds before
@@ -64,7 +70,33 @@ A pass-headings project the store does not serve keeps every file writer.
   `Ants5404AnnotateNoteIsAProgressBullet`,
   `Ants5404FileAnnotateNoteIsABullet`.
 
-INV-1 to INV-4 fail against the pre-fix code.
+- **INV-8** — `op:"append"` puts the new pass in the store and the rendered
+  file, a `dry_run` reports `would_be_id` and writes nothing, and a second
+  append of the same designator refuses `id_taken`. Re-importing the rendered
+  file inserts, updates and deletes nothing.
+  *Test:* `Ants5641AppendWritesThroughTheStore`.
+- **INV-9** — where the file closes its blocks with `---`, an append adds the
+  rule to the section's previous last pass (reported as
+  `separator_added_to`) and the new last pass carries none, which is how a
+  re-import stores them. The re-import is a no-op.
+  *Test:* `Ants5641AppendMovesTheSeparatorOntoThePreviousPass`.
+- **INV-10** — `op:"append_batch"` writes every valid pass, skips one whose
+  designator already exists, and the re-import is a no-op.
+  *Test:* `Ants5641AppendBatchWritesThroughTheStore`.
+- **INV-11** — `op:"amend_body"`, `op:"amend_headline"` and `op:"set_body"`
+  change the stored pass and the rendered file, and the re-import is a no-op.
+  *Test:* `Ants5641BodyAndHeadlineEditsWriteThroughTheStore`.
+- **INV-12** — a body edit that changes the status its `- **Status**:` line
+  declares refuses `bad_args`, names `op:"flip"`, and writes nothing: the
+  status is the item's field, and the render would put the line back.
+  *Test:* `Ants5641BodyEditCannotMoveTheStatus`.
+- **INV-13** — on a pass project the store does not serve, `op:"append"`
+  keeps the file writer and `op:"amend_body"` keeps its refusal. A boundary
+  pin: it holds before and after ANTS-5641.
+  *Test:* `Ants5641UnservedPassProjectKeepsTheFileRoutes`.
+
+INV-1 to INV-4 fail against the pre-ANTS-5334 code; INV-8 to INV-12 fail
+against the pre-ANTS-5641 code.
 
 ## Build
 

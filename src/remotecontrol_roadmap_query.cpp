@@ -14,6 +14,7 @@
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the report reads "today" through the seam
 #include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include "passheadingwrite.h"   // ANTS-2126 — the pass-headings writer (moved from TU 2)
+#include "roadmapmigrateverb.h" // ANTS-5641 — planPassText, so a store append matches a re-import
 #include <QDateTime>
 #include <QFile>
 #include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
@@ -389,6 +390,240 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
         return QJsonDocument(e);
     }
     return envelope(static_cast<qint64>(combined.toUtf8().size()));
+}
+
+// ANTS-5641 — op:"append" / op:"append_batch" on a pass-headings roadmap the
+// STORE serves. Each block is rendered exactly as the file writer above renders
+// it, then planned by RoadmapMigrate::planFrom — the planner roadmap_migrate
+// runs — so the stored row, provenance included, is the one a re-import of the
+// rendered file would produce. Where the file closes its blocks with `---`, the
+// store holds that rule at the END of the previous block's body (RetroDB's
+// PASS-59-89 ends "\n\n---", the last block of its section has none), so the
+// section's last item gains one and every new block but the last carries one.
+QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
+                                          RoadmapStore &store, qint64 projectId,
+                                          const QString &callerCanonical,
+                                          const QString &roadmapPath,
+                                          const QString &markdown) {
+    const QString opName = batch ? QStringLiteral("append_batch")
+                                 : QStringLiteral("append");
+    auto err = [&](const QString &code, const QString &message) {
+        QJsonObject e;
+        e["ok"]     = false;
+        e["code"]   = code;
+        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": %2").arg(opName, message);
+        e["format"] = QStringLiteral("pass-headings");
+        return QJsonDocument(e);
+    };
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    const QString section = req.value(QStringLiteral("section")).toString();
+    QString seamErr;
+    const auto sectionId = store.findSection(projectId, section, &seamErr);
+    if (!sectionId)
+        return err(QStringLiteral("section_not_found"),
+            QStringLiteral("section \"%1\" is not in the roadmap store").arg(section));
+    const auto elements = store.listElements(*sectionId, &seamErr);
+    if (!elements)
+        return err(QStringLiteral("store_failed"), seamErr);
+    int maxPos = -1;
+    qint64 lastItemPk = 0;
+    for (const RoadmapStore::ElementRow &e : *elements) {
+        if (e.position > maxPos) {
+            maxPos = e.position;
+            lastItemPk = e.kind == QLatin1String("item") ? e.itemPk : 0;
+        }
+    }
+
+    QJsonArray inputs;
+    if (batch)
+        inputs = req.value(QStringLiteral("bullets")).toArray();
+    else
+        inputs.append(req);
+    const QString fallbackPass =
+        batch ? req.value(QStringLiteral("pass")).toString() : QString();
+
+    struct Planned {
+        int index = 0;
+        QString block;
+        RoadmapStore::ItemWrite w;
+    };
+    QVector<Planned> planned;
+    QJsonArray skipped;
+    QSet<QString> seen;
+    for (int i = 0; i < inputs.size(); ++i) {
+        QString code, message;
+        const PassAppendItem it = rcRenderPassBullet(inputs.at(i).toObject(), fallbackPass);
+        RoadmapMigrate::MigrationPlan plan;
+        if (!it.ok) {
+            code = it.code;
+            message = it.error;
+        } else if (seen.contains(it.synthId) || store.findItem(projectId, it.synthId)) {
+            code = QStringLiteral("id_taken");
+            message = QStringLiteral("%1 already exists; a pass designator names "
+                                     "one item").arg(it.synthId);
+        } else {
+            // The parser classifies a file as pass-headings only on two Pass
+            // headings and two Status lines (detectRoadmapFormat's 2+2 rule),
+            // so a lone block plans as nothing. A throw-away block ahead of it
+            // meets the rule; only the item carrying this id is kept.
+            const QString filler = it.synthId == QLatin1String("PASS-0-0")
+                ? QStringLiteral("#### Pass 0.1 x\n- **Status**: todo\n\n")
+                : QStringLiteral("#### Pass 0.0 x\n- **Status**: todo\n\n");
+            plan = RoadmapMigrateVerb::planPassText(roadmapPath, filler + it.block);
+            plan.items.removeIf([&](const RoadmapMigrate::PlannedItem &p) {
+                return p.id != it.synthId;
+            });
+            if (plan.items.size() != 1) {
+                code = QStringLiteral("plan_failed");
+                message = QStringLiteral("the block did not plan as the one item %1 "
+                                         "(planned %2 item(s), first id \"%3\")")
+                              .arg(it.synthId).arg(plan.items.size())
+                              .arg(plan.items.isEmpty() ? QString()
+                                                        : plan.items.first().id);
+            } else if (!plan.items.first().links.isEmpty()) {
+                // The load turns link lines into relationship rows; this route
+                // writes none, so taking them would drop them in silence.
+                code = QStringLiteral("bad_args");
+                message = QStringLiteral("link lines (`- **Blocked-by**:` and kin) "
+                                         "are not written by a store append yet; "
+                                         "append without them, then use op:\"link\"");
+            }
+        }
+        if (!code.isEmpty()) {
+            if (!batch)
+                return err(code, message);
+            QJsonObject s;
+            s["bullet_index"] = i;
+            s["code"]         = code;
+            s["error"]        = message;
+            skipped.append(s);
+            continue;
+        }
+        seen.insert(it.synthId);
+
+        // Loader::itemWriteFor's field mapping, so the row is the re-import's.
+        const RoadmapMigrate::PlannedItem &pi = plan.items.first();
+        RoadmapStore::ItemWrite w;
+        w.projectId  = projectId;
+        w.id         = it.synthId;
+        w.idOrigin   = pi.idOrigin.isEmpty() ? QStringLiteral("synthesised") : pi.idOrigin;
+        w.status     = pi.status;
+        w.headline   = pi.headline;
+        w.kind       = pi.kind;
+        w.source     = pi.source;
+        w.layman     = pi.layman;
+        w.body       = pi.body;
+        w.lanes      = pi.lanes;
+        w.evidence   = pi.evidence;
+        w.extras     = pi.extras;
+        w.provenance = pi.provenance;
+        w.sectionId  = *sectionId;
+        // ANTS-4501 § 2.2 — dated at insert, as the ants-v1 store append does.
+        w.created      = rlStampToday();
+        w.lastModified = w.created;
+        if (w.status == QLatin1String("shipped"))
+            w.shipped = w.created;
+        w.provenance.insert(QStringLiteral("created"), QStringLiteral("store-generated"));
+        w.provenance.insert(QStringLiteral("last_modified"),
+                            QStringLiteral("store-generated"));
+        if (!w.shipped.isEmpty())
+            w.provenance.insert(QStringLiteral("shipped"), QStringLiteral("store-generated"));
+        planned.append({i, it.block, w});
+    }
+
+    // An all-refused batch writes nothing, as the file writer's INV-14 does.
+    if (planned.isEmpty()) {
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = opName;
+        out["format"]        = QStringLiteral("pass-headings");
+        out["file"]          = QFileInfo(roadmapPath).fileName();
+        out["applied"]       = QJsonArray();
+        out["applied_count"] = 0;
+        out["skipped"]       = skipped;
+        out["skipped_count"] = skipped.size();
+        if (dryRun) out["dry_run"] = true;
+        return QJsonDocument(out);
+    }
+
+    const bool useSeparator = rcPassBlocksUseSeparator(markdown);
+    for (qsizetype k = 0; k < planned.size(); ++k) {
+        planned[k].w.position = maxPos + 1 + int(k);
+        if (useSeparator && k + 1 < planned.size())
+            planned[k].w.body += QStringLiteral("\n\n---");
+    }
+    QString prevId, prevBody, prevNewBody;
+    if (useSeparator && lastItemPk) {
+        const auto prev = store.readItem(lastItemPk, &seamErr);
+        if (!prev)
+            return err(QStringLiteral("store_failed"), seamErr);
+        if (!prev->body.trimmed().endsWith(QStringLiteral("---"))) {
+            prevId      = prev->id;
+            prevBody    = prev->body;
+            prevNewBody = prev->body + QStringLiteral("\n\n---");
+        }
+    }
+
+    HistoryContext hist;   // ANTS-3822 — the separator is an edit; the inserts are not
+    hist.changedAt = rlHistoryStamp();
+    const auto mutate = [&](QString *e) -> bool {
+        if (!prevNewBody.isEmpty()) {
+            if (!store.setItemField(lastItemPk, QStringLiteral("body"), prevNewBody,
+                                    QStringLiteral("store-generated"), e))
+                return false;
+            hist.record(lastItemPk, QStringLiteral("body"), prevBody, prevNewBody);
+        }
+        for (const Planned &p : std::as_const(planned))
+            if (!store.putItem(p.w, e))
+                return false;
+        return rlFlushHistory(store, hist, e);
+    };
+
+    QStringList ids;
+    for (const Planned &p : std::as_const(planned))
+        ids << p.w.id;
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun,
+        mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome,
+                              dryRun ? ids : QStringList{}))
+        return QJsonDocument(env);
+    rlAttachHistoryNote(env, store, hist);
+
+    const QString idKey = dryRun ? QStringLiteral("would_be_id") : QStringLiteral("id");
+    env["ok"]     = true;
+    env["op"]     = opName;
+    env["format"] = QStringLiteral("pass-headings");
+    env["file"]   = QFileInfo(roadmapPath).fileName();   // ANTS-4116
+    if (batch) {
+        QJsonArray applied;
+        for (const Planned &p : std::as_const(planned)) {
+            QJsonObject a;
+            a["bullet_index"] = p.index;
+            a[idKey]          = p.w.id;
+            a["bullet"]       = p.block;   // ANTS-4117
+            applied.append(a);
+        }
+        env["applied"]       = applied;
+        env["applied_count"] = applied.size();
+        env["skipped"]       = skipped;
+        env["skipped_count"] = skipped.size();
+    } else {
+        env[idKey]    = planned.first().w.id;
+        env["bullet"] = planned.first().block;   // ANTS-4117
+        const QJsonArray ignored = rcPassIgnoredFields(req);
+        if (!ignored.isEmpty()) env["ignored_fields"] = ignored;   // ANTS-4357
+    }
+    // Reported because it edits an item the caller did not name.
+    if (!prevId.isEmpty())
+        env["separator_added_to"] = prevId;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    if (dryRun)
+        env["dry_run"] = true;
+    return QJsonDocument(env);
 }
 
 // Serves op:"flip" AND op:"annotate" (the member gate routes both here,
