@@ -302,7 +302,9 @@ TEST(McpReadLog, TimeBudgetStopsAtALineAndResumes) {
     const int scanned1 = first.value("scanned").toInt();
     EXPECT_LT(scanned1, kLines);
 
-    ReadLog::Options rest; rest.tail = 1;
+    // The resume must finish in one call, so it gets a budget no runner
+    // reaches: under ASan on CI the 5 s default ran out part-way.
+    ReadLog::Options rest; rest.tail = 1; rest.timeBudgetMs = 600000;
     rest.hasSinceCursor = true;
     rest.sinceCursor = first.value("cursor").toString();
     const QJsonObject second = ReadLog::filter(p, rest);
