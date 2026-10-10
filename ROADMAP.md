@@ -41246,7 +41246,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 1, lane 1).
 
-- 📋 [ANTS-4140] **This copy of roadmap-format.md has never been gated against the global one, and carries seven undeclared divergences.**
+- ✅ [ANTS-4140] **This copy of roadmap-format.md has never been gated against the global one, and carries seven undeclared divergences.**
   Found by widening ANTS-4073's loop 2 to review both copies as a
   pair. None is that edit's collateral; all are pre-existing, and
   they are filed rather than fixed because closing them is a gate of
@@ -41379,6 +41379,11 @@ against current source before filing.
   Gate loop 1 ran 2026-10-10 over the batch (b26bea58): 15 verified, 12
   fixed, 3 filed as ANTS-5639. Loop 2 (a cold re-read) is still owed
   before this item closes; the standard's cap is 3 loops.
+  Resolved 2026-10-10: the review-contract --genre standard gate on the
+  batch b26bea58 ran three loops (log rows 16-18) and converged on the
+  change at the cap. Loop 1 fixed 12, loop 2 fixed 4, loop 3 found
+  nothing new. Out-of-radius findings are on ANTS-5639; the no-store
+  rebuild is ANTS-5638.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -42306,6 +42311,10 @@ against current source before filing.
   every allocated id (3272 items; high water ANTS-5637 is in the file).
   Reload: the header line is data in the rendered file; the rebuild
   runs on the next roadmap_log write, with no relaunch.
+  From the roadmap-format.md gate, loop 3 (2026-10-10): § 3.5.1 names
+  the header high-water mark but not its format. The render writes it
+  and the rebuild reads it, so this item defines the exact form, in the
+  standard, before either is built.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
@@ -42344,6 +42353,13 @@ against current source before filing.
   titleRx (remotecontrol_roadmap_log_batch.cpp) does not take `.x` yet;
   widen it when rotate_minor is wired (sequenced after ANTS-4081). A
   heading naming two minors stays a signpost.
+  (7) Added by gate loop 3, 2026-10-10: the comment above
+  rlStoreIdHighWater in src/remotecontrol_roadmap_query.cpp says
+  migration never writes the prefix's id_high_water row. Migration
+  writes it at 0 when it invents ids (writeTail,
+  roadmapmigrateload.cpp); roadmap-format.md § 3.5.1 now says so.
+  Correct the comment. Items (2) and (3) were re-found by both lanes of
+  loops 2 and 3.
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.

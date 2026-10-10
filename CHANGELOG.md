@@ -91,6 +91,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap format standard now matches the global copy and the store code, and says release blocks are the default at every version** (ANTS-4140)
+  Reviewed cold over three loops. It also names the phase-archive
+  section prefix (`P07.5.md` → `p07-5`) and makes `Layman:` required.
+
 - **The local pre-push checks match GitHub CI more closely**
   The Qt 6.2 compile guard now configures exactly as ci.yml does, and a
   test fails if the two drift. A nightly timer (tools/asan-nightly.sh
