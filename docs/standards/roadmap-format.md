@@ -450,8 +450,9 @@ On a store-migrated project an allocation is
 `RoadmapStore::allocationFloor(project, prefix) + 1`, followed by
 `raiseIdHighWater()`. The floor reads two columns because neither alone is
 complete. The `id_high_water` row remembers an id whose item was later
-deleted. The items hold every id migration wrote, and migration writes no
-row. **So an absent row is neither an error nor a 0**: it is the state of
+deleted. The items hold every id migration wrote; migration writes the
+prefix's row only when it invents ids, and then at 0. **So an absent or
+zero row is neither an error nor the floor**: it is the state of
 every project until its first store-side allocation, and the stored items
 still floor the next id. Items the render excludes (`internal`, below)
 count too: the query does not filter on visibility.
@@ -725,8 +726,8 @@ roadmap"*, it MUST:
    phase.
    Those blocks carry no phase number and are never selected: they
    are § 3.8 fold-ins hoisted to `##`, so treat each as an extra
-   theme section of the active phase, worked in step 3 after that
-   phase's own themes.
+   theme section of the active block, release or phase, worked in
+   step 3 after that block's own themes.
 3. Within the active release, find the first 🚧 bullet under each
    `###` theme section, else the first 📋. ✅ and 🚫 are closed and are
    never worked, and 💭 is not queued.
@@ -910,8 +911,9 @@ The convention:
 - Archives live at `<project root>/docs/roadmap/<MAJOR>.<MINOR>.md`
   — one file per closed minor version, named verbatim
   (`0.5.md`, `0.6.md`, `0.7.md`). `ROADMAP.md` sits at the project root
-  too: the migration and the id floor read `<root>/ROADMAP.md` and
-  `<root>/docs/roadmap/` (`findRoadmaps`, `corpusHighWater`), and the
+  too: the id floor reads `<root>/ROADMAP.md` and `<root>/docs/roadmap/`
+  (`corpusHighWater`), the migration reads the same archive folder
+  (`findRoadmaps`), and the
   viewer looks beside `ROADMAP.md`, which is then the same folder.
 - File names follow the **case-sensitive regex**
   `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`. No leading `v`, no
@@ -1288,7 +1290,8 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   directly.
 - **The lone uppercase-only rule — `op:flip`'s `prefix_hint`.**
   That argument is validated `^[A-Z][A-Z0-9_-]{0,15}$` (`rxPrefix`
-  in `remotecontrol_roadmap_log.cpp`), but it is used *only* when injecting a
+  in `remotecontrol_roadmap_log.cpp`, and again for `flip_batch` in
+  `remotecontrol_roadmap_log_batch.cpp`), but it is used *only* when injecting a
   caret anchor onto a GFM bullet that has no id — it never
   constrains id allocation.
 
@@ -1359,7 +1362,7 @@ refuses `format_mismatch`. A `- **Status**:` of `dropped`, `abandoned`,
   project (§ 3.5.1). Its carrier is the store's `id_high_water`
   row; the file is stale there by construction.
 - ❌ Allocating from that row **alone**, without the highest id the
-  stored items hold (§ 3.5.1). Migration writes no row, so a
+  stored items hold (§ 3.5.1). Migration leaves that row absent or at 0, so a
   migrated project that has never appended through the store would
   reissue its own ids.
 
