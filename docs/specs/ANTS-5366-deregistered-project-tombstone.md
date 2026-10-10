@@ -1,6 +1,6 @@
 # ANTS-5366 — keep a deregistered project's row, so its mail still arrives and its id is never reused
 
-**Status:** spec draft (2026-10-10).
+**Status:** accepted (2026-10-10).
 **Kind:** enhancement.
 **Source:** ROADMAP.md ANTS-5366 (in-session-2026-09-25; route decided by the
 user 2026-09-27; bundle slimmed by the user 2026-10-10).
@@ -103,6 +103,8 @@ own root, because the inbox resolves the caller by root.
 `Visibility::IncludeDeregistered`. A revived
 project keeps its stored slug and name under the same rules a live one does;
 each refusal carries `deregistered:true` when the row it names is deregistered.
+For a deregistered owner, the fields `withOwner()` adds say `store_backed:false`,
+and the message says the root is deregistered rather than already migrated.
 
 ### 2.5 A departed project's slug stays taken
 
@@ -121,7 +123,11 @@ deregistered row holding **both** the root and the slug being restored is the
 same project returning: the restore writes into that row (clears
 `deregistered_at`, sets name and legend from the export) instead of inserting.
 Any other overlap refuses with today's message, plus ` (deregistered)` after
-the holder when its row is deregistered.
+the holder when its row is deregistered. Its "remove it first with
+roadmap_migrate op:"deregister"" remedy is offered only where the holder holds
+both the root and the slug being restored, the one case where deregistering
+then restoring revives the row. Elsewhere the remedy is "restore into another
+store" alone, since deregistering frees neither root nor slug (§ 2.2).
 
 ### 2.7 Reaching a running terminal
 
