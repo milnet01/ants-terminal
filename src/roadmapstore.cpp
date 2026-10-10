@@ -68,7 +68,9 @@ constexpr const char *kMessageTableDdl = R"(CREATE TABLE message (
 
 // Two indexes, not one, for the reason the FK block below states: SQLite does
 // not auto-index foreign keys. `to_project_id` leads the inbox index;
-// `from_project_id` leads nothing and deregisterProject() deletes on it.
+// `from_project_id` leads nothing, and deregisterProject() deleted on it until
+// ANTS-5366 § 2.2 made deregistering keep mail; the index stays, as shipped
+// schema.
 // `relationship` is the precedent — idx_rel_src AND idx_rel_dst, both ends,
 // exactly as its delete is both ends.
 constexpr const char *kMessageInboxIdxDdl =
@@ -439,6 +441,13 @@ const QVector<RoadmapStore::Upgrade> &RoadmapStore::upgradeLadder() {
         Upgrade{3, {QString::fromUtf8(kMessageTableDdl),
                     QString::fromUtf8(kMessageInboxIdxDdl),
                     QString::fromUtf8(kMessageFromIdxDdl)}},
+        // ANTS-5366 § 2.1 — back to the first rung's shape: a column, so an
+        // ALTER carrying the DDL's column text. No default is needed, unlike
+        // rung 2, because the column is nullable.
+        Upgrade{4, {QStringLiteral(
+            "ALTER TABLE project ADD COLUMN deregistered_at TEXT "
+            "CHECK (deregistered_at IS NULL OR deregistered_at GLOB "
+            "'[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')")}},
     };
     return ladder;
 }
@@ -647,6 +656,15 @@ bool RoadmapStore::createSchema(QString *error) {
     // scheduled that sentence for correction in place; it cannot be corrected in
     // place, because it lives inside SQL that shipped at version 1. This
     // paragraph is the correction.
+    //
+    // ANTS-5366 § 2.1 — `project.deregistered_at`, appended last at version 4.
+    // NULL means registered. deregisterProject() sets it instead of deleting
+    // the row, so a departed project keeps its mailbox and its project_id is
+    // never handed to another (ANTS-5483: `INTEGER PRIMARY KEY` without
+    // AUTOINCREMENT reuses the highest deleted rowid, and AUTOINCREMENT cannot
+    // be added to a shipped table). Nullable with no default, so the rung's
+    // ALTER succeeds on a table that has rows. The GLOB is
+    // `message.created_at`'s, character for character.
     const QString ddl[] = {
         QStringLiteral(R"(CREATE TABLE project (
   project_id   INTEGER PRIMARY KEY,
@@ -657,7 +675,9 @@ bool RoadmapStore::createSchema(QString *error) {
                     AND export_slug NOT GLOB '*[^a-z0-9-]*'),
   legend       TEXT NOT NULL DEFAULT '{}',
   source_format TEXT NOT NULL DEFAULT ''
-                 CHECK (source_format IN ('', 'ants-v1', 'github-task-list', 'pass-headings'))
+                 CHECK (source_format IN ('', 'ants-v1', 'github-task-list', 'pass-headings')),
+  deregistered_at TEXT
+                 CHECK (deregistered_at IS NULL OR deregistered_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')
 ))"),
         QStringLiteral(R"(CREATE TABLE id_prefix (
   project_id   INTEGER NOT NULL REFERENCES project(project_id),
@@ -860,10 +880,27 @@ std::optional<qint64> RoadmapStore::registerProject(const QString &root,
     // 3.35, and this spec's floor is 3.31 (generated columns, § 2.3). Using it
     // would raise the project's floor by four releases to save one round trip.
     QSqlQuery sel(m_db);
-    sel.prepare(QStringLiteral("SELECT project_id FROM project WHERE root = ?"));
+    sel.prepare(QStringLiteral(
+        "SELECT project_id, deregistered_at IS NOT NULL FROM project WHERE root = ?"));
     sel.addBindValue(canonical);
-    if (sel.exec() && sel.next())
-        return sel.value(0).toLongLong();
+    if (sel.exec() && sel.next()) {
+        const qint64 id = sel.value(0).toLongLong();
+        // ANTS-5366 § 2.4 — a deregistered root is revived in place: the same
+        // project_id comes back, so its mail and its id survive the round trip.
+        // An INSERT here would be refused by `root TEXT UNIQUE` anyway.
+        if (sel.value(1).toBool()) {
+            QSqlQuery up(m_db);
+            up.prepare(QStringLiteral(
+                "UPDATE project SET deregistered_at = NULL WHERE project_id = ?"));
+            up.addBindValue(id);
+            if (!up.exec()) {
+                if (error)
+                    *error = lastErr(up);
+                return std::nullopt;
+            }
+        }
+        return id;
+    }
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
@@ -2041,7 +2078,7 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
     return true;
 }
 
-bool RoadmapStore::deregisterProject(qint64 projectId,
+bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregisteredAt,
                                      DeregisterCounts *counts, QString *error) {
     // The child scopes, resolved through the project rather than by joining at
     // delete time: an item row is gone by the time `history` would need it.
@@ -2055,8 +2092,9 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
     if (!counts) counts = &local;
     *counts = DeregisterCounts{};
 
-    // FK order, children first. `project` is last and is the row whose absence
-    // makes the project gone; everything above it would otherwise dangle.
+    // FK order, children first. ANTS-5366 § 2.2 — the `project` row is not in
+    // this list: it is kept and stamped below, and `message` rows hang off it
+    // at both ends, so they stay too.
     const QVector<QPair<QString, int *>> steps = {
         {QStringLiteral("DELETE FROM element WHERE section_id IN (") + kSections
              + QStringLiteral(")"), &counts->elements},
@@ -2071,17 +2109,9 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
          &counts->relationships},
         {QStringLiteral("DELETE FROM citation WHERE project_id = ? OR item_pk IN (")
              + kItems + QStringLiteral(")"), &counts->citations},
-        // ANTS-4622 § 2.5 — both ends, like `relationship` above and for the
-        // same reason: a message names a sender AND a recipient, so mail in
-        // ANOTHER project's inbox points into this one and would dangle. This
-        // step binds the id twice.
-        {QStringLiteral("DELETE FROM message WHERE from_project_id = ? "
-                        "OR to_project_id = ?"),
-         &counts->messages},
         {QStringLiteral("DELETE FROM item WHERE project_id = ?"), &counts->items},
         {QStringLiteral("DELETE FROM section WHERE project_id = ?"), &counts->sections},
         {QStringLiteral("DELETE FROM id_prefix WHERE project_id = ?"), &counts->idPrefixes},
-        {QStringLiteral("DELETE FROM project WHERE project_id = ?"), nullptr},
     };
 
     const bool ownTransaction = !m_inTransaction;
@@ -2111,6 +2141,18 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
             return false;
         }
         if (step.second) *step.second = q.numRowsAffected();
+    }
+
+    QSqlQuery stamp(m_db);
+    stamp.prepare(QStringLiteral(
+        "UPDATE project SET deregistered_at = ? WHERE project_id = ?"));
+    stamp.addBindValue(deregisteredAt);
+    stamp.addBindValue(projectId);
+    if (!stamp.exec()) {
+        if (error) *error = lastErr(stamp);
+        restore();
+        if (ownTransaction) rollback(nullptr);
+        return false;
     }
 
     if (ownTransaction && !commit(error)) {
@@ -3279,7 +3321,15 @@ namespace {
 // lives once. A second copy would be the drift these readers exist to remove,
 // one level down. Column order is kProjectColumns'.
 const QString kProjectColumns = QStringLiteral(
-    "project_id, name, export_slug, legend, root, source_format");
+    "project_id, name, export_slug, legend, root, source_format, deregistered_at");
+
+// ANTS-5366 § 2.3 — the clause every project reader ANDs on, so a deregistered
+// row is hidden unless the caller asked for it.
+QString visibilityClause(RoadmapStore::Visibility v) {
+    return v == RoadmapStore::Visibility::IncludeDeregistered
+               ? QString()
+               : QStringLiteral(" AND deregistered_at IS NULL");
+}
 
 RoadmapStore::ProjectRow projectRowFrom(const QSqlQuery &q) {
     RoadmapStore::ProjectRow p;
@@ -3289,16 +3339,18 @@ RoadmapStore::ProjectRow projectRowFrom(const QSqlQuery &q) {
     p.legendText = q.value(3).toString();
     p.root = q.value(4).toString();
     p.sourceFormat = q.value(5).toString();
+    p.deregisteredAt = q.value(6).toString();
     return p;
 }
 
 std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
                                                          const QString &column,
                                                          const QVariant &key,
+                                                         RoadmapStore::Visibility v,
                                                          QString *error) {
     QSqlQuery q(const_cast<QSqlDatabase &>(db));
-    q.prepare(QStringLiteral("SELECT %1 FROM project WHERE %2 = ?")
-                  .arg(kProjectColumns, column));
+    q.prepare(QStringLiteral("SELECT %1 FROM project WHERE %2 = ?%3")
+                  .arg(kProjectColumns, column, visibilityClause(v)));
     q.addBindValue(key);
     if (!q.exec()) {
         if (error)
@@ -3312,18 +3364,21 @@ std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
 } // namespace
 
 std::optional<RoadmapStore::ProjectRow>
-RoadmapStore::readProject(qint64 projectId, QString *error) const {
-    return readProjectWhere(m_db, QStringLiteral("project_id"), projectId, error);
+RoadmapStore::readProject(qint64 projectId, QString *error, Visibility visibility) const {
+    return readProjectWhere(m_db, QStringLiteral("project_id"), projectId, visibility, error);
 }
 
 std::optional<RoadmapStore::ProjectRow>
-RoadmapStore::readProjectBySlug(const QString &exportSlug, QString *error) const {
-    return readProjectWhere(m_db, QStringLiteral("export_slug"), exportSlug, error);
+RoadmapStore::readProjectBySlug(const QString &exportSlug, QString *error,
+                                Visibility visibility) const {
+    return readProjectWhere(m_db, QStringLiteral("export_slug"), exportSlug, visibility,
+                            error);
 }
 
 std::optional<RoadmapStore::ProjectRow>
-RoadmapStore::readProjectByRoot(const QString &canonicalRoot, QString *error) const {
-    return readProjectWhere(m_db, QStringLiteral("root"), canonicalRoot, error);
+RoadmapStore::readProjectByRoot(const QString &canonicalRoot, QString *error,
+                                Visibility visibility) const {
+    return readProjectWhere(m_db, QStringLiteral("root"), canonicalRoot, visibility, error);
 }
 
 QStringList RoadmapStore::slugCandidates(const QString &wantSlug, QString *error) const {
@@ -3339,7 +3394,7 @@ QStringList RoadmapStore::slugCandidates(const QString &wantSlug, QString *error
 
     struct Scored { int score; QString slug; };
     QVector<Scored> scored;
-    for (const ProjectRow &p : listProjects(error)) {
+    for (const ProjectRow &p : listProjects(error, Visibility::IncludeDeregistered)) {
         if (p.exportSlug.isEmpty()) continue;
         const QString have = norm(p.exportSlug);
         int score = (have == want) ? 1000 : 0;
@@ -3357,11 +3412,12 @@ QStringList RoadmapStore::slugCandidates(const QString &wantSlug, QString *error
     return out;
 }
 
-QVector<RoadmapStore::ProjectRow> RoadmapStore::listProjects(QString *error) const {
+QVector<RoadmapStore::ProjectRow> RoadmapStore::listProjects(QString *error,
+                                                             Visibility visibility) const {
     QVector<ProjectRow> out;
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
-    if (!q.exec(QStringLiteral("SELECT %1 FROM project ORDER BY export_slug")
-                    .arg(kProjectColumns))) {
+    if (!q.exec(QStringLiteral("SELECT %1 FROM project WHERE 1%2 ORDER BY export_slug")
+                    .arg(kProjectColumns, visibilityClause(visibility)))) {
         if (error)
             *error = lastErr(q);
         return out;

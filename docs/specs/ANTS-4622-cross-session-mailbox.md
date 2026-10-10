@@ -236,6 +236,9 @@ paragraphs above.
 
 ### 2.5 Deregistration — both ends, or the mail dangles
 
+> **Superseded** by [ANTS-5366](ANTS-5366-deregistered-project-tombstone.md)
+> § 2.2: deregistering keeps the `project` row and deletes no `message` row.
+
 The schema declares `REFERENCES` and **no** `ON DELETE CASCADE` (measured:
 `grep -c "ON DELETE CASCADE" src/roadmapstore.cpp` → 0), so every delete is
 written out by hand. `RoadmapStore::deregisterProject()` walks nine tables in
@@ -304,8 +307,8 @@ message is indistinguishable from one never sent.
   working direction predicate from a block that failed to render at all, which
   would also leave A empty. The message is unacked, so an ack filter cannot
   account for A either.
-- **INV-5** — Deregistering a project removes its mail from both ends and no
-  further. *Test:* A and B exchange messages and B also holds an unrelated
+- **INV-5** — *Withdrawn by ANTS-5366 INV-2.* Deregistering a project removes
+  its mail from both ends and no further. *Test:* A and B exchange messages and B also holds an unrelated
   message from C; deregister A; no `message` row referencing A survives, and
   B's message from C is untouched. The surviving row is what distinguishes a
   scoped delete from a table truncate.

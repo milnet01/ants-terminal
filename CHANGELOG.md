@@ -96,6 +96,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **A project removed from the roadmap store keeps a marked placeholder, so other sessions can still leave it notes and its number is never given to a new project.** (ANTS-5366)
+  `roadmap_migrate op:"deregister"` now keeps the project row, stamped
+  with `deregistered_at`, and keeps its mail. Its slug stays taken;
+  migrating or restoring the same root revives the same row. The store
+  moves to schema version 4, so an older build refuses it. Also closes
+  ANTS-5483: a project id is never reused.
+
 - **The roadmap format standard now matches the global copy and the store code, and says release blocks are the default at every version** (ANTS-4140)
   Reviewed cold over three loops. It also names the phase-archive
   section prefix (`P07.5.md` → `p07-5`) and makes `Layman:` required.

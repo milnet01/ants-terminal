@@ -90,7 +90,9 @@ TEST(RoadmapImportCommand, Inv2RestoreIsFaithfulAndFindable) {
 }
 
 // INV-3 — the export's project already present, or the root already held by
-// another project: exit 1, the deregister route named, the store unchanged.
+// another project: exit 1, the store unchanged. The deregister route is named
+// only where one row holds both the root and the slug (ANTS-5366 § 2.6):
+// deregistering frees neither, so elsewhere it would lead nowhere.
 TEST(RoadmapImportCommand, Inv3RestoreNeverOverwrites) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -104,6 +106,13 @@ TEST(RoadmapImportCommand, Inv3RestoreNeverOverwrites) {
     // Same project again, at a fresh root.
     QString printed;
     EXPECT_EQ(runImport(storePath, goldenAlpha(), rootB, &printed), 1);
+    EXPECT_FALSE(printed.contains(QStringLiteral("op:\"deregister\""))) << printed.toStdString();
+    EXPECT_TRUE(printed.contains(QStringLiteral("restore into another store")))
+        << printed.toStdString();
+
+    // Same project again, at its own root: one row holds both, so deregistering
+    // then restoring is a real route and is named.
+    EXPECT_EQ(runImport(storePath, goldenAlpha(), rootA, &printed), 1);
     EXPECT_TRUE(printed.contains(QStringLiteral("op:\"deregister\""))) << printed.toStdString();
 
     // A different project at a root the store already holds.
@@ -126,7 +135,7 @@ TEST(RoadmapImportCommand, Inv3RestoreNeverOverwrites) {
         f.write(body);
     }
     EXPECT_EQ(runImport(storePath, renamed, rootB, &printed), 1);
-    EXPECT_TRUE(printed.contains(QStringLiteral("op:\"deregister\""))) << printed.toStdString();
+    EXPECT_FALSE(printed.contains(QStringLiteral("op:\"deregister\""))) << printed.toStdString();
 
     RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
                        RoadmapStore::Access::Bulk);

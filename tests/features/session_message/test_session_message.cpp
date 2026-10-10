@@ -206,10 +206,10 @@ TEST(SessionMessage, AckOnAnotherProjectsMessageIsNotFound) {
     EXPECT_EQ(code, QStringLiteral("not_found"));
 }
 
-// INV-5 — deregistering removes a project's mail from BOTH ends and no
-// further. The surviving row is what distinguishes a scoped delete from a
-// table truncate.
-TEST(SessionMessage, Inv5DeregisterClearsBothEndsAndSparesSiblings) {
+// INV-5 — deregistering KEEPS a project's mail at both ends (ANTS-5366 § 2.2,
+// which withdrew the old clear-both-ends rule): the project row stays, so the
+// mail it sent and the mail sent to it both still have a row to point at.
+TEST(SessionMessage, Inv5DeregisterKeepsMailAtBothEnds) {
     Fixture f;
     ASSERT_TRUE(f.init());
     const qint64 a = f.addProject(QStringLiteral("alpha"));
@@ -227,16 +227,19 @@ TEST(SessionMessage, Inv5DeregisterClearsBothEndsAndSparesSiblings) {
     ASSERT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 3);
 
     RoadmapStore::DeregisterCounts counts;
-    ASSERT_TRUE(f.store->deregisterProject(a, &counts, &err)) << err.toStdString();
+    ASSERT_TRUE(f.store->deregisterProject(a, QString::fromLatin1(kNew), &counts, &err))
+        << err.toStdString();
 
-    // Both of alpha's rows go — the one it SENT and the one it RECEIVED.
-    EXPECT_EQ(counts.messages, 2);
-    // charlie's message to bravo is untouched: this is a scoped delete.
-    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 1);
+    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 3)
+        << "deregistering deleted mail";
+    // The mail alpha SENT is still in bravo's inbox, sender intact.
     QVector<RoadmapStore::Message> got;
     ASSERT_TRUE(f.store->inboxFor(b, true, 0, 0, &got, nullptr, &err));
+    ASSERT_EQ(got.size(), 2);
+    // And the mail alpha RECEIVED is still in its own.
+    ASSERT_TRUE(f.store->inboxFor(a, true, 0, 0, &got, nullptr, &err));
     ASSERT_EQ(got.size(), 1);
-    EXPECT_EQ(got[0].body, QStringLiteral("c->b"));
+    EXPECT_EQ(got[0].body, QStringLiteral("b->a"));
 }
 
 // INV-8 — the prune removes acked mail past the TTL and unacked mail at NO

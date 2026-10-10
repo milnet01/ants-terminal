@@ -47,7 +47,16 @@ public:
     // approximates them — kMessageTableDdl and its two index constants live in
     // roadmapstore.cpp's anonymous namespace and are shared by both call sites,
     // which makes ANTS-3781 INV-8 hold by construction and not by discipline.
-    static constexpr int kSchemaVersion = 3;
+    //
+    // 3 → 4 by ANTS-5366 § 2.1, which appends project.deregistered_at so a
+    // deregistered project keeps its row: its mailbox stays reachable and
+    // SQLite never reuses its project_id (ANTS-5483).
+    static constexpr int kSchemaVersion = 4;
+
+    // ANTS-5366 § 2.3 — whether a project reader returns a DEREGISTERED row.
+    // The default hides it, so a reader added later fails closed: a departed
+    // project has a mailbox and no roadmap.
+    enum class Visibility : std::uint8_t { Registered, IncludeDeregistered };
 
 
     // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
@@ -251,6 +260,9 @@ public:
     // canonicalised is REFUSED, never stored: QFileInfo::canonicalFilePath()
     // returns an empty string for a non-existent path, and '' under
     // `root TEXT UNIQUE` would fuse every such project into one.
+    //
+    // ANTS-5366 § 2.4 — a root whose row is deregistered is revived: its
+    // deregistered_at is cleared and the same project_id returned.
     std::optional<qint64> registerProject(const QString &root, const QString &name,
                                           const QString &exportSlug,
                                           QString *error = nullptr);
@@ -919,15 +931,21 @@ public:
         // what keeps '' an unambiguous pre-bump sentinel rather than a value the
         // drift check in migratedProject() would have to guess about.
         QString sourceFormat;
+        // ANTS-5366 § 2.3 — when the project was deregistered; empty means
+        // registered. Only a reader passed Visibility::IncludeDeregistered can
+        // return a row where it is set.
+        QString deregisteredAt;
     };
     // Two lookups because the two callers key differently, and one of them is
     // the refit: the render holds a projectId; the export does NOT — writeMeta()
     // resolves WHERE export_slug = ? and OBTAINS the id as an output. A
     // projectId-only reader could not serve it, which would leave ANTS-3758
     // INV-11's `FROM project` clause unsatisfiable.
-    std::optional<ProjectRow> readProject(qint64 projectId, QString *error = nullptr) const;
+    std::optional<ProjectRow> readProject(qint64 projectId, QString *error = nullptr,
+                                          Visibility visibility = Visibility::Registered) const;
     std::optional<ProjectRow> readProjectBySlug(const QString &exportSlug,
-                                                QString *error = nullptr) const;
+                                                QString *error = nullptr,
+                                                Visibility visibility = Visibility::Registered) const;
 
     // ANTS-3793 § 2.2 — the third key, and the one the read seam's dispatch
     // marker needs: "has this project been migrated?" is asked of a project
@@ -943,18 +961,22 @@ public:
     // ANTS-3793 INV-1 exists to forbid. RoadmapSource::migratedProject() does
     // the canonicalisation and refuses the empty result outright.
     std::optional<ProjectRow> readProjectByRoot(const QString &canonicalRoot,
-                                                QString *error = nullptr) const;
+                                                QString *error = nullptr,
+                                                Visibility visibility = Visibility::Registered) const;
 
     // ANTS-3794 § 2.2 — every project row, ordered by export_slug. The export
     // of the whole store walks this; an empty result on a store that has
     // projects is what a failed query must never look like, so a query error
     // sets `error` rather than returning an empty list silently.
-    QVector<ProjectRow> listProjects(QString *error = nullptr) const;
+    QVector<ProjectRow> listProjects(QString *error = nullptr,
+                                     Visibility visibility = Visibility::Registered) const;
 
     // ANTS-5473 — the registered export slugs nearest `wantSlug`, best first,
     // for an `unknown_project` refusal to offer. Case is folded and `_` and
     // spaces read as `-`: an exact match that way ranks first, then slugs
     // sharing a `-`-separated word. A slug sharing nothing is left out.
+    // ANTS-5366 — deregistered slugs are offered too, since mail may still be
+    // sent to one.
     QStringList slugCandidates(const QString &wantSlug, QString *error = nullptr) const;
 
     // ANTS-4617 — the inverse of registerProject(), and the store had none.
@@ -977,17 +999,17 @@ public:
     // pointing INTO this one would otherwise dangle, which is the one way this
     // delete could corrupt a project it was not aimed at.
     //
-    // ANTS-4622 § 2.5 — `message` is cleared from both ends for exactly that
-    // reason, and it is the second table to need it: a message names a sender
-    // AND a recipient, so a project's mail hangs off two foreign keys rather
-    // than one.
+    // ANTS-5366 § 2.2 — the `project` row itself is KEPT, stamped with
+    // `deregisteredAt` (a caller-supplied timestamp, appendHistory()'s
+    // convention), and no `message` row is deleted. The kept row is what keeps
+    // the project's mailbox reachable and stops SQLite reusing its project_id
+    // (ANTS-5483); every roadmap reader hides it by default (Visibility).
     struct DeregisterCounts {
         int elements = 0, history = 0, feedbackRefs = 0, relationships = 0;
         int citations = 0, items = 0, sections = 0, idPrefixes = 0;
-        int messages = 0;
     };
-    bool deregisterProject(qint64 projectId, DeregisterCounts *counts,
-                           QString *error = nullptr);
+    bool deregisterProject(qint64 projectId, const QString &deregisteredAt,
+                           DeregisterCounts *counts, QString *error = nullptr);
 
     // ---- ANTS-4622: the cross-session mailbox -----------------------------
     //

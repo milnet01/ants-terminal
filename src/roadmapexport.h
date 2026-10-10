@@ -66,8 +66,12 @@ bool exportProject(RoadmapStore &store, const QString &exportSlug,
 // ANTS-5244 — `root`, when given, is bound in the project row's own insert, so
 // a root the store already holds refuses the whole rebuild. Empty stores NULL,
 // as an export carries no root.
+// ANTS-5366 § 2.6 — `reviveProjectId`, when non-zero, names a DEREGISTERED row
+// already holding this root and the export's slug. The rebuild writes into it
+// (clearing deregistered_at, taking the export's name and legend) instead of
+// inserting, so the project keeps its id and its mail.
 bool rebuildProject(RoadmapStore &store, QIODevice *in, QString *error = nullptr,
-                    const QString &root = QString());
+                    const QString &root = QString(), qint64 reviveProjectId = 0);
 
 // ANTS-3794 § 2.2 — export every project in the store into `dir`, one
 // `<export_slug>.jsonl` each. One project's failure does not stop the others.

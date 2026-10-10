@@ -69320,7 +69320,7 @@ project. Reported causes are claims until checked in source.
   Source: feedback-finbreak-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5366] **session_message cannot reach a project that is not registered in the store, so a project waiting unregistered on a fix cannot be told it landed.**
+- ✅ [ANTS-5366] **session_message cannot reach a project that is not registered in the store, so a project waiting unregistered on a fix cannot be told it landed.**
   Seen 2026-09-25 shipping ANTS-5334: RetroDB de-registered while it
   waited for that fix, and op:"send" to:"retrodb" refused
   unknown_project. The note went into its feedback file instead.
@@ -69351,6 +69351,11 @@ project. Reported causes are claims until checked in source.
   Spec: docs/specs/ANTS-5366-deregistered-project-tombstone.md, accepted
   2026-10-10 at review-contract's cap (2 loops, calm cap). Next: build it
   with write-code.
+  Resolved (2026-10-10): built to
+  docs/specs/ANTS-5366-deregistered-project-tombstone.md. Schema 4 adds
+  project.deregistered_at; deregistering keeps the row and its mail;
+  readers hide it by default; migrate and restore revive it. Test:
+  tests/features/project_tombstone (INV-1..8, each run red).
   **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
   Kind: enhancement.
   Source: in-session-2026-09-25.
@@ -69974,7 +69979,7 @@ project. Reported causes are claims until checked in source.
   Source: RetroArch_Ants_MCP_Feedback.md 2026-09-26 (with its correction).
   Lanes: mcp.
 
-- 📋 [ANTS-5483] **A new project never takes the id of a deregistered one.**
+- ✅ [ANTS-5483] **A new project never takes the id of a deregistered one.**
   project.project_id is INTEGER PRIMARY KEY without AUTOINCREMENT
   (src/roadmapstore.cpp, CREATE TABLE project), so SQLite reuses the
   highest deleted rowid: deregister project 30, migrate another, it gets
@@ -69995,6 +70000,9 @@ project. Reported causes are claims until checked in source.
   invariant lives in ANTS-5366's spec.
   Spec: docs/specs/ANTS-5366-deregistered-project-tombstone.md (covers
   this item; INV-5), accepted 2026-10-10.
+  Resolved (2026-10-10) by ANTS-5366: no project row is deleted any
+  more, so SQLite never reuses a project_id. Test:
+  ProjectTombstone.Inv5ProjectIdIsNeverReused.
   **Layman:** When a project is removed, its number is never handed to a new one.
   Kind: fix.
   Source: claude-config-feedback-2026-09-27.

@@ -4123,6 +4123,8 @@ if(ANTS_TESTS)
                 # ANTS-5244 — restoring one project with --import-roadmap.
                 # INV-1 is a source scrape of main.cpp over ANTS_SRC_DIR.
                 tests/features/roadmap_import_command/test_roadmap_import_command.cpp
+                # ANTS-5366 — a deregistered project keeps its row.
+                tests/features/project_tombstone/test_project_tombstone.cpp
                 # ANTS-3794 INV-11 — the backup health check.
                 tests/features/roadmap_backup_health/test_roadmap_backup_health.cpp
                 # ANTS-3764 step 2 — the BulletRecord widening ANTS-3757 needs.

@@ -55,9 +55,10 @@ sleeping or faking a clock.
   idempotent. The second ack passes a **different** timestamp and the stored one
   must not move: the first ack is the fact. A test that re-acked with the same
   stamp would pass against an implementation that overwrites.
-- **INV-5** — Deregistering clears a project's mail from **both ends** and no
-  further. Three projects, so a row belonging to neither party survives — that
-  survivor is what distinguishes a scoped delete from a table truncate.
+- **INV-5** — Deregistering **keeps** a project's mail at both ends
+  ([ANTS-5366](../../../docs/specs/ANTS-5366-deregistered-project-tombstone.md)
+  § 2.2 withdrew the old clear-both-ends rule). The mail the project sent is
+  still in another inbox, and the mail sent to it is still in its own.
 - **INV-8** — The prune removes acked mail past the TTL and unacked mail at no
   age. **Two rows, and neither leg alone is sufficient:** the surviving row
   alone passes against a prune that never runs, and the deleted row alone

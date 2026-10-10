@@ -1157,7 +1157,8 @@ TEST(RoadmapStoreSchema, Ants5046DeregisterInsideTransactionUnblocksTheCap) {
 
     RoadmapStore::DeregisterCounts counts;
     err.clear();
-    ASSERT_TRUE(f.store.deregisterProject(pOld, &counts, &err)) << err.toStdString();
+    ASSERT_TRUE(f.store.deregisterProject(pOld, QStringLiteral("2026-09-11T00:00:00Z"),
+                                          &counts, &err)) << err.toStdString();
     EXPECT_EQ(counts.history, 1);
 
     err.clear();

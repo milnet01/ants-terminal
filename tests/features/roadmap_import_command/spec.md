@@ -24,8 +24,11 @@ so without one no session could find the project.
   byte as the file it came from.
 - **INV-3** — a restore never overwrites. When the store already holds the
   export's project, or holds `root` under another project, the command exits
-  **1**, names `roadmap_migrate op:"deregister"`, and leaves the store
-  unchanged. The root is bound in the same insert as the project row, so the
+  **1** and leaves the store unchanged. It names `roadmap_migrate
+  op:"deregister"` only where one row holds both `root` and the export's slug;
+  elsewhere deregistering frees neither, so it names restoring into another
+  store ([ANTS-5366](../../../docs/specs/ANTS-5366-deregistered-project-tombstone.md)
+  § 2.6). A deregistered row holding both is revived, not refused. The root is bound in the same insert as the project row, so the
   store's `UNIQUE` columns refuse it and nothing half-restored remains.
 - **INV-4** — bad arguments exit **2** and create no store: an export file
   that cannot be read, or a root that is not an existing directory.

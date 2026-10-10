@@ -1631,7 +1631,7 @@ TEST(RoadmapMigrateVerb, Inv14HandlerWiresTheGuard) {
 // into machine-wide figures forever. The store is machine-global, so the
 // incentive ran the wrong way.
 
-// Rows go from every table, and the project is gone.
+// Rows go from every table but `project`, whose row ANTS-5366 § 2.2 keeps.
 TEST(RoadmapMigrateVerb, Ants4617DeregisterRemovesEveryTablesRows) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
@@ -1655,9 +1655,10 @@ TEST(RoadmapMigrateVerb, Ants4617DeregisterRemovesEveryTablesRows) {
     const QList<int> after = rowCounts(storePath);
     ASSERT_EQ(after.size(), rowTables().size());
     for (int i = 0; i < after.size(); ++i) {
-        EXPECT_EQ(after.at(i), 0)
-            << "ANTS-4617: " << rowTables().at(i).toStdString()
-            << " still holds rows — " << describeCounts(after).toStdString();
+        const bool isProject = rowTables().at(i) == QLatin1String("project");
+        EXPECT_EQ(after.at(i), isProject ? 1 : 0)
+            << "ANTS-4617 / ANTS-5366: " << rowTables().at(i).toStdString()
+            << " — " << describeCounts(after).toStdString();
     }
 }
 
@@ -1688,7 +1689,8 @@ TEST(RoadmapMigrateVerb, Ants4617DeregisterLeavesSiblingProjectsIntact) {
                     .value(QStringLiteral("ok")).toBool());
 
     // The keeper's project row survives, and so does everything hanging off it:
-    // exactly half the rows should have gone, since the two fixtures are equal.
+    // exactly half the rows should have gone, since the two fixtures are equal
+    // — except `project`, where ANTS-5366 keeps the doomed row as well.
     auto store = openStore(storePath, RoadmapStore::Access::Interactive);
     ASSERT_NE(store, nullptr);
     QString err;
@@ -1705,7 +1707,8 @@ TEST(RoadmapMigrateVerb, Ants4617DeregisterLeavesSiblingProjectsIntact) {
     const QList<int> left = rowCounts(storePath);
     ASSERT_EQ(left.size(), both.size());
     for (int i = 0; i < left.size(); ++i) {
-        EXPECT_EQ(left.at(i), both.at(i) / 2)
+        const bool isProject = rowTables().at(i) == QLatin1String("project");
+        EXPECT_EQ(left.at(i), isProject ? both.at(i) : both.at(i) / 2)
             << "ANTS-4617: " << rowTables().at(i).toStdString()
             << " — the delete reached past its own project. before="
             << describeCounts(both).toStdString()

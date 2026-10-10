@@ -25,6 +25,7 @@
 #include "roadmapsource.h"
 #include "roadmapstore.h"
 
+#include <QDateTime>
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
@@ -488,8 +489,14 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // as "not registered" — the guard below would be skipped and the failure
     // would resurface at step 8 as a UNIQUE violation wearing `migrate_failed`.
     // Same split RoadmapSource::migratedProject() already makes.
+    //
+    // ANTS-5366 § 2.4 / § 2.5 — both read DEREGISTERED rows too. A departed
+    // project's slug is its mailbox address, so it stays taken; and its root
+    // is revived in place by registerProject(), under the same identity rules
+    // as a live one. Each refusal says `deregistered:true` when its row is.
     QString sqlErr;
-    const auto other = store.readProjectBySlug(slug, &sqlErr);
+    const auto other = store.readProjectBySlug(
+        slug, &sqlErr, RoadmapStore::Visibility::IncludeDeregistered);
     if (!sqlErr.isEmpty()) {
         return rmErr(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: export_slug lookup failed: %1")
@@ -501,14 +508,24 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // A matching ROOT is the re-run case (INV-7), not a collision — which is
     // why this compares the row's root rather than merely finding a row.
     if (other && other->root != req.projectRoot) {
-        return rmErr(QStringLiteral("slug_collision"),
+        QJsonObject e = rmErr(QStringLiteral("slug_collision"),
                      QStringLiteral("roadmap_migrate: export_slug \"%1\" already "
-                                    "belongs to \"%2\" — pass a different "
-                                    "export_slug").arg(slug, other->root));
+                                    "belongs to \"%2\"%3 — pass a different "
+                                    "export_slug")
+                         .arg(slug, other->root,
+                              other->deregisteredAt.isEmpty()
+                                  ? QString()
+                                  : QStringLiteral(" (deregistered; its slug "
+                                                   "stays its mailbox address)")));
+        if (!other->deregisteredAt.isEmpty())
+            e[QStringLiteral("deregistered")] = true;
+        return e;
     }
 
     sqlErr.clear();
-    const auto owner = store.readProjectByRoot(req.projectRoot, &sqlErr);
+    const auto owner = store.readProjectByRoot(
+        req.projectRoot, &sqlErr, RoadmapStore::Visibility::IncludeDeregistered);
+    const bool ownerDeregistered = owner && !owner->deregisteredAt.isEmpty();
     if (!sqlErr.isEmpty()) {
         return rmErr(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: project lookup failed: %1")
@@ -536,31 +553,44 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // different verdict from the real call is the one thing a preview must not
     // do; ANTS-4548 made these previews run every gate for that reason. So the
     // fix is to make the refusal answerable rather than to withdraw it.
-    auto withOwner = [&owner](QJsonObject e) {
+    auto withOwner = [&owner, ownerDeregistered](QJsonObject e) {
         if (owner) {
             e[QStringLiteral("project_id")]         = owner->projectId;
-            e[QStringLiteral("store_backed")]       = true;
+            e[QStringLiteral("store_backed")]       = !ownerDeregistered;
             e[QStringLiteral("stored_export_slug")] = owner->exportSlug;
             e[QStringLiteral("stored_project_name")] = owner->name;
+            if (ownerDeregistered)
+                e[QStringLiteral("deregistered")] = true;
         }
         return e;
     };
+    // ANTS-5366 § 2.4 — the same rules for a deregistered root, but the
+    // message must not call it migrated: it has a mailbox and no roadmap.
+    const QString ownerState = ownerDeregistered
+        ? QStringLiteral("is deregistered and keeps")
+        : QStringLiteral("is already migrated under");
+    const QString rerun = ownerDeregistered ? QStringLiteral("revive it")
+                                            : QStringLiteral("re-run");
     if (owner && owner->exportSlug != slug) {
         return withOwner(rmErr(QStringLiteral("slug_collision"),
-                     QStringLiteral("roadmap_migrate: \"%1\" is already migrated "
-                                    "under export_slug \"%2\"; re-running with "
+                     QStringLiteral("roadmap_migrate: \"%1\" %4 "
+                                    "export_slug \"%2\"; re-running with "
                                     "\"%3\" would re-slug it — pass "
-                                    "export_slug:\"%2\" to re-run, or read "
+                                    "export_slug:\"%2\" to %5, or read "
                                     "project_id / stored_export_slug here if "
                                     "you were asking whether it is migrated")
-                         .arg(req.projectRoot, owner->exportSlug, slug)));
+                         .arg(req.projectRoot, owner->exportSlug, slug, ownerState,
+                              rerun)));
     }
     if (owner && owner->name != name) {
         return withOwner(rmErr(QStringLiteral("bad_args"),
-                     QStringLiteral("roadmap_migrate: \"%1\" is already migrated "
-                                    "as project_name \"%2\"; re-running with "
+                     QStringLiteral("roadmap_migrate: \"%1\" %4 "
+                                    "project_name \"%2\"; re-running with "
                                     "\"%3\" would rename it")
-                         .arg(req.projectRoot, owner->name, name)));
+                         .arg(req.projectRoot, owner->name, name,
+                              ownerDeregistered
+                                  ? QStringLiteral("is deregistered and keeps")
+                                  : QStringLiteral("is already migrated as"))));
     }
 
     // ANTS-4499 / INV-6 — the snapshot goes BEFORE the transaction opens. Two
@@ -1139,7 +1169,10 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     }
 
     RoadmapStore::DeregisterCounts counts;
-    if (!store.deregisterProject(row->projectId, &counts, &err)) {
+    const QString stamp = req.deregisteredAt.isEmpty()
+        ? QDateTime::currentDateTimeUtc().toString(Qt::ISODate)
+        : req.deregisteredAt;
+    if (!store.deregisterProject(row->projectId, stamp, &counts, &err)) {
         return rmErr(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: deregister failed and was "
                                     "rolled back whole: %1").arg(err));

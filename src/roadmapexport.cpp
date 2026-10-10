@@ -801,7 +801,7 @@ bool RoadmapExport::exportProject(RoadmapStore &store, const QString &exportSlug
 }
 
 bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *error,
-                                   const QString &root) {
+                                   const QString &root, qint64 reviveProjectId) {
     if (!store.isOpen())
         return fail(error, QStringLiteral("store is not open"));
     QSqlDatabase db = RoadmapExport::StoreHandle::db(store);
@@ -852,15 +852,36 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             // ANTS-5244 — a restore binds the caller's root here, in the same
             // insert, so `root TEXT UNIQUE` refuses a root already held and
             // the rollback leaves nothing half-restored.
-            q.prepare(QStringLiteral(
-                "INSERT INTO project (root, name, export_slug, legend) VALUES (?, ?, ?, '{}')"));
-            q.addBindValue(root.isEmpty() ? QVariant(QMetaType(QMetaType::QString))
-                                          : QVariant(root));
-            q.addBindValue(o.value(QStringLiteral("name")).toString());
-            q.addBindValue(o.value(QStringLiteral("project")).toString());
-            if (!q.exec())
-                return abort(q.lastError().text());
-            projectId = q.lastInsertId().toLongLong();
+            if (reviveProjectId) {
+                // ANTS-5366 § 2.6 — the same project returning to its own
+                // deregistered row. Keyed on all three so a row that is not
+                // that one, or is live, revives nothing and aborts.
+                q.prepare(QStringLiteral(
+                    "UPDATE project SET name = ?, legend = '{}', deregistered_at = NULL "
+                    "WHERE project_id = ? AND root = ? AND export_slug = ? "
+                    "AND deregistered_at IS NOT NULL"));
+                q.addBindValue(o.value(QStringLiteral("name")).toString());
+                q.addBindValue(reviveProjectId);
+                q.addBindValue(root);
+                q.addBindValue(o.value(QStringLiteral("project")).toString());
+                if (!q.exec())
+                    return abort(q.lastError().text());
+                if (q.numRowsAffected() != 1)
+                    return abort(QStringLiteral("project %1 is not a deregistered row "
+                                                "holding this root and slug")
+                                     .arg(reviveProjectId));
+                projectId = reviveProjectId;
+            } else {
+                q.prepare(QStringLiteral(
+                    "INSERT INTO project (root, name, export_slug, legend) VALUES (?, ?, ?, '{}')"));
+                q.addBindValue(root.isEmpty() ? QVariant(QMetaType(QMetaType::QString))
+                                              : QVariant(root));
+                q.addBindValue(o.value(QStringLiteral("name")).toString());
+                q.addBindValue(o.value(QStringLiteral("project")).toString());
+                if (!q.exec())
+                    return abort(q.lastError().text());
+                projectId = q.lastInsertId().toLongLong();
+            }
         } else if (t == QLatin1String("id_prefix")) {
             q.prepare(QStringLiteral(
                 "INSERT INTO id_prefix (project_id, prefix, high_water) VALUES (?, ?, ?)"));
@@ -1162,17 +1183,38 @@ int RoadmapExport::runImportCommand(const QString &storePath, const QString &fil
 
     // INV-3 — never overwrite. The UNIQUE columns would refuse either case
     // inside rebuildProject(); checking first lets the message say what to do.
-    const QString remedy = QStringLiteral(
-        "; remove it first with roadmap_migrate op:\"deregister\" from its root, "
-        "or restore into another store");
-    if (store.projectIdForRoot(canonicalRoot, &err).has_value())
-        return failWith(1, QStringLiteral("%1 is already registered in %2%3")
-                               .arg(canonicalRoot, storePath, remedy));
-    if (!slug.isEmpty() && store.projectIdForSlug(slug, &err).has_value())
-        return failWith(1, QStringLiteral("project \"%1\" is already in %2%3")
-                               .arg(slug, storePath, remedy));
+    // ANTS-5366 § 2.6 — the readers that see deregistered rows, so a row
+    // holding BOTH this root and this slug while deregistered is the same
+    // project returning, and the restore revives it rather than refusing.
+    const auto byRoot = store.readProjectByRoot(
+        canonicalRoot, &err, RoadmapStore::Visibility::IncludeDeregistered);
+    const auto bySlug = slug.isEmpty()
+        ? std::optional<RoadmapStore::ProjectRow>()
+        : store.readProjectBySlug(slug, &err,
+                                  RoadmapStore::Visibility::IncludeDeregistered);
+    const bool holdsBoth = byRoot && bySlug && byRoot->projectId == bySlug->projectId;
+    qint64 reviveId = 0;
+    if (holdsBoth && !byRoot->deregisteredAt.isEmpty()) {
+        reviveId = byRoot->projectId;
+    } else {
+        // Deregistering frees neither root nor slug (§ 2.2), so that remedy
+        // is offered only where it leads to a revival: one row holding both.
+        const QString remedy = holdsBoth
+            ? QStringLiteral("; remove it first with roadmap_migrate op:\"deregister\" "
+                             "from its root, or restore into another store")
+            : QStringLiteral("; restore into another store");
+        const auto tag = [](const RoadmapStore::ProjectRow &p) {
+            return p.deregisteredAt.isEmpty() ? QString() : QStringLiteral(" (deregistered)");
+        };
+        if (byRoot)
+            return failWith(1, QStringLiteral("%1%2 is already registered in %3%4")
+                                   .arg(canonicalRoot, tag(*byRoot), storePath, remedy));
+        if (bySlug)
+            return failWith(1, QStringLiteral("project \"%1\"%2 is already in %3%4")
+                                   .arg(slug, tag(*bySlug), storePath, remedy));
+    }
 
-    if (!rebuildProject(store, &in, &err, canonicalRoot))
+    if (!rebuildProject(store, &in, &err, canonicalRoot, reviveId))
         return failWith(1, QStringLiteral("%1: %2").arg(file, err));
 
     out << "restored " << slug << " from " << file << " into " << storePath

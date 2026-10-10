@@ -218,6 +218,9 @@ struct DeregisterRequest {
     QString exportSlug;    // alternative key
     bool    confirm = false;
     bool    dryRun  = false;
+    // ANTS-5366 § 2.2 — the timestamp stamped on the kept project row, in
+    // `YYYY-MM-DDTHH:MM:SSZ`. Empty takes the current UTC time.
+    QString deregisteredAt;
     // ANTS-5086 — called with the STORED root of the row about to be deleted,
     // after it is found and before anything is deleted, on a real run only.
     // Returning false refuses `roadmap_busy`. The row's root, not the caller's:
