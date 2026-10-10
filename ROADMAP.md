@@ -41326,6 +41326,21 @@ against current source before filing.
   Second pass of the same gate (2026-10-02) re-found items (1)-(4) above and the existing § 3.10.3 step 2 fresh-counter item, and added two, also out of radius:
   (6) Q2: § 3.5 lists Layman: as optional, while § 3.10.3 says the store's publish gate is unmet until Layman: lines are filled. The global copy makes Layman: required. Decide and state it in § 3.5.
   (7) Q2, unverified: § 3.10.4 says a multi-prefix counter allocates max(shared counter, per-prefix corpus floor) + 1 (effCounter in remotecontrol_roadmap_log_batch.cpp); roadmap-data-model.md § 7.1 says non-first prefixes fall through to the corpus floor alone. Read effCounter and make the losing document match.
+  Plan (2026-10-10): batch this with ANTS-4073's two open edits to
+  roadmap-format.md and run ONE review-contract --genre standard gate
+  over the lot (rules/14-contract-gate.md § Batch). The three edits:
+  (a) § 3.2 — version blocks are the documented default at every
+  version (user decision 2026-09-07, on ANTS-4073); phase blocks stay
+  tolerated. (b) § 3.9 — the slug prefix for a phase archive's sections,
+  which the migration needs before ANTS-4073's code half can be built.
+  Proposed: the designator lower-cased with `.` as `-` (`P07.5.md` →
+  `p07-5`), mirroring `0.7.md` → `0-7`; ANTS-3766 § 2.3 needs the same
+  line. Proposal only; the gate reviews it. (c) this item's decided
+  findings: Priority is the 1-5 band; § 3.5.1's absent id_high_water
+  text (decisions 2026-10-02). Items left open in this body (Layman
+  required or optional; § 3.10.4 vs roadmap-data-model.md § 7.1;
+  store-migrated project without a store) are read from the code or
+  surfaced to the user, not guessed.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog

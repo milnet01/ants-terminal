@@ -128,6 +128,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Roadmap viewer and roadmap_query's archived-id lookup read phase archives (P01.md, P07.5.md)** (ANTS-4073)
+  Archived phases now appear in the viewer's history, after every
+  version archive, and an id rotated into one resolves as archived.
+
 - **Chinese, Japanese and Korean characters stay two cells wide, and accents stay on their letter, when the terminal is started with LC_ALL=C.** (ANTS-3792)
   The terminal now switches its character type to a UTF-8 locale
   (C.UTF-8 first) when the environment gives it none.
