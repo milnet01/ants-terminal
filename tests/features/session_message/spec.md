@@ -81,6 +81,11 @@ sleeping or faking a clock.
 - **`ack` on another project's message is `not_found`**, the same code an
   absent id gets. Deliberately indistinguishable, so a probe cannot use the
   refusal to learn that a message id exists.
+- **A `caller_cwd` below a registered root finds that root's mailbox**
+  (ANTS-5594). The handler resolves the caller with
+  `RoadmapStore::projectIdContaining()`, never the exact-match
+  `projectIdForRoot()`. The walk itself is tested by
+  `status_bar_mail_chip` INV-1; this file pins the handler's wiring.
 
 ## Out of scope
 

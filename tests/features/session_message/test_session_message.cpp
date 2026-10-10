@@ -525,6 +525,18 @@ TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
            "destroys aged mail to measure itself";
 }
 
+// ANTS-5594 — a caller_cwd inside a registered project (its src/, say) finds
+// that project's mailbox. The walk is status_bar_mail_chip INV-1's; this pins
+// that the handler uses it rather than the exact-root lookup.
+TEST(SessionMessage, Ants5594SubdirectoryCallerFindsItsProject) {
+    const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
+    ASSERT_FALSE(h.isEmpty());
+    EXPECT_TRUE(h.contains(QStringLiteral("store.projectIdContaining(rr.cwd")))
+        << "the caller's project must be found by walking up from caller_cwd";
+    EXPECT_FALSE(h.contains(QStringLiteral("projectIdForRoot(")))
+        << "an exact-root lookup refuses no_project from a subdirectory";
+}
+
 // INV-4 — session_orient reports the INBOX, never the outbox, and emits no
 // block at all when there is nothing unacked.
 TEST(SessionMessage, Inv4OrientReportsTheInboxOnly) {

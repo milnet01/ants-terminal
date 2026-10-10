@@ -93,12 +93,15 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     // way, so this is one condition with one code. Deliberately NOT
     // registerProject(): that is upsert-shaped and would silently register any
     // root handed to it, which is the machine-global hazard ANTS-4600 guards.
-    const auto self = store.projectIdForRoot(rr.cwd, &err);
+    // ANTS-5594 — the nearest registered root at or above caller_cwd, so a
+    // session in a project's subdirectory still reaches that project's mail.
+    const auto self = store.projectIdContaining(rr.cwd, &err);
     if (!self)
         return refuse("no_project",
-                      QStringLiteral("session_message: \"%1\" is not registered "
-                                     "in the roadmap store, so it has no "
-                                     "mailbox. Run roadmap_migrate first.")
+                      QStringLiteral("session_message: \"%1\" is not inside a "
+                                     "project registered in the roadmap store, "
+                                     "so it has no mailbox. Run roadmap_migrate "
+                                     "first.")
                           .arg(rr.cwd));
 
     // Read once, so every stamp this call writes agrees.
