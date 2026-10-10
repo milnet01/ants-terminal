@@ -28,11 +28,18 @@ covers the docs-only decision itself.
   runs `--docs` in place. Without it the hook would gate in a cold checkout
   and never see a push as docs-only.
 
+- **INV-5** — with no machine-wide hook, the shim runs `tools/local-ci.sh`
+  in full, and the gate's exit status decides the push. It used to print
+  `NOTHING WAS CHECKED` and let the push through (changed by user ruling,
+  2026-10-10).
+
 ## How it is tested
 
 `test_prepush_range.sh` builds a throwaway repository with copies of the
 real shim and `.ants/gate.conf`, and runs the real machine-wide hook. A stub
 `tools/ci_workflow.py` forwards to the real runner, so the real docs-only
 decision is used. A stand-in `tools/local-ci.sh` prints how it was called
-instead of building. The test exits 77 (skipped) where the machine-wide hook
-or PyYAML is absent, as on GitHub's runners.
+instead of building, and exits with `STUB_GATE_RC` (default 0). INV-5 runs
+the shim against an empty hooks directory. The test exits 77 (skipped) where
+PyYAML is absent; where the machine-wide hook is absent, as on GitHub's
+runners, it runs INV-5 alone.

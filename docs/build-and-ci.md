@@ -39,6 +39,8 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   what the push changes, and runs `tools/local-ci.sh` in the real checkout.
   It refuses a push from a tree with uncommitted or untracked files, or of a
   commit that is not HEAD.
+  Where that hook is missing, the shim runs `tools/local-ci.sh` in full
+  instead, without the secret scan or the clean-tree check.
 - `tools/local-ci.sh` runs `ci.yml`'s `build-test` job in CI's own image
   (ubuntu:24.04: its GCC, mold and Qt 6.4) through
   `tools/qt62-guard.sh --job build-test --run-job`. A cold or stale image

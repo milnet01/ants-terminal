@@ -8,9 +8,13 @@ set -euo pipefail
 
 global_hook="${ANTS_GLOBAL_HOOKS:-$HOME/.claude/githooks}/pre-push"
 if [[ ! -x "$global_hook" ]]; then
-    echo "pre-push: no machine-wide hook at $global_hook — NOTHING WAS CHECKED." >&2
-    echo "          Run tools/local-ci.sh by hand before pushing." >&2
-    exit 0
+    # Without it, run this project's gate in full rather than nothing (user
+    # ruling 2026-10-10). A clone on another machine can still push once the
+    # gate passes. What is lost: the secret scan, the docs-only shortcut and
+    # the clean-tree check, which the machine-wide hook owns.
+    echo "pre-push: no machine-wide hook at $global_hook —" >&2
+    echo "          running tools/local-ci.sh in full instead (no secret scan)." >&2
+    exec "$(git rev-parse --show-toplevel)/tools/local-ci.sh"
 fi
 
 exec "$global_hook" "$@"

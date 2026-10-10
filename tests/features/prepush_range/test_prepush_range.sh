@@ -8,9 +8,8 @@ GLOBAL_HOOKS="${ANTS_GLOBAL_HOOKS:-$HOME/.claude/githooks}"
 if ! python3 -c 'import yaml' 2>/dev/null; then
     echo "[skip] python3 + PyYAML not available"; exit 77
 fi
-if [[ ! -x "$GLOBAL_HOOKS/pre-push" ]]; then
-    echo "[skip] no machine-wide hook at $GLOBAL_HOOKS/pre-push"; exit 77
-fi
+have_global=1
+[[ -x "$GLOBAL_HOOKS/pre-push" ]] || have_global=0
 failures=0
 fail() { failures=$((failures + 1)); printf '[FAIL] %s\n' "$*" >&2; }
 pass() { printf '[ ok ] %s\n' "$*"; }
@@ -41,6 +40,7 @@ case "${1:-}" in
 esac
 echo "GATE-RAN mode=$mode changed=${ANTS_PUSH_CHANGED-<unset>}" | tr '\n' ' '
 echo
+exit "${STUB_GATE_RC:-0}"
 SH
 chmod +x "$T/tools/local-ci.sh" "$T/tools/hooks/pre-push"
 printf 'x = 1\n' > "$T/tools/x.py"
@@ -52,6 +52,25 @@ run_hook() {  # stdin lines -> combined output
     rm -rf "$T/.git/ants-gate-passed"
     (cd "$T" && ANTS_GLOBAL_HOOKS="$GLOBAL_HOOKS" bash tools/hooks/pre-push origin url 2>&1)
 }
+
+# INV-5 — with no machine-wide hook, the shim runs the project's gate in
+# full and its exit status decides the push. Needs no machine-wide hook.
+NOHOOKS="$(mktemp -d -t ants-prepush-nohooks.XXXXXX)"
+out="$(cd "$T" && ANTS_GLOBAL_HOOKS="$NOHOOKS" bash tools/hooks/pre-push origin url </dev/null 2>&1)"; rc=$?
+out_red="$(cd "$T" && STUB_GATE_RC=1 ANTS_GLOBAL_HOOKS="$NOHOOKS" bash tools/hooks/pre-push origin url </dev/null 2>&1)"; rc_red=$?
+rmdir "$NOHOOKS"
+if grep -q 'GATE-RAN mode=full changed=<unset>' <<<"$out" && [[ $rc -eq 0 ]] \
+   && grep -q 'GATE-RAN' <<<"$out_red" && [[ $rc_red -ne 0 ]]; then
+    pass "INV-5 with no machine-wide hook the full gate runs and decides the push"
+else
+    fail "INV-5 no-hook fallback: rc=$rc rc_red=$rc_red: $(grep -m2 'GATE\|pre-push' <<<"$out")"
+fi
+
+if [[ "$have_global" -eq 0 ]]; then
+    echo "[skip] INV-1..4: no machine-wide hook at $GLOBAL_HOOKS/pre-push"
+    if [ "$failures" -gt 0 ]; then exit "$failures"; fi
+    exit 0
+fi
 
 # INV-4 — a clone with no ants.gate keys of its own takes the committed
 # .ants/gate.conf: a docs-only push reaches the gate as --docs, in place.
