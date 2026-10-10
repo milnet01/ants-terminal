@@ -63,7 +63,8 @@ the developer's own `gh` login.
 ## Not covered
 
 The podman legs (`tools/qt62-guard.sh`) run their own two-line compile inside
-the container; only their package list is taken from ci.yml.
+the container; only their package list is taken from ci.yml. That compile's
+flags and cache settings are locked to ci.yml by `ci_guard_parity`.
 
 The test exits 77 (skipped) when PyYAML is absent. ci.yml installs
 `python3-yaml` in the jobs that run the suite so CI does not skip it.

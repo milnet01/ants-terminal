@@ -362,11 +362,14 @@ else
     podman run --rm --security-opt label=disable --init --name "$qt62_container" \
         -v "$PWD:/src:ro" -v "$qt62_volume:/build" -v "$qt62_ccache:/ccache" \
         -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2G -e CCACHE_COMPRESS=1 \
+        -e CCACHE_SLOPPINESS=pch_defines,time_macros \
         -w /src "$qt62_image" \
         bash -euo pipefail -c '
             cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                -DANTS_COMPILE_POOL=4 \
+                -DANTS_REQUIRE_SELF_UPDATE=ON
             cmake --build /build --parallel
         ' &
 fi

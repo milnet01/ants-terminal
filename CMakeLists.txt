@@ -1576,6 +1576,15 @@ if(ANTS_TESTS)
         TIMEOUT 60
         SKIP_RETURN_CODE 77)
 
+    # The podman compile guard configures as ci.yml does; see
+    # tests/features/ci_guard_parity/spec.md. Exits 77 without PyYAML.
+    add_test(NAME ci_guard_parity
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/ci_guard_parity/test_ci_guard_parity.py")
+    set_tests_properties(ci_guard_parity PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
     # ANTS-3428 — a below-latest dependency pin needs a Downgrade Ledger row.
     add_test(NAME dependency_pins
              COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/dependency_pins/test_dependency_pins.py")
