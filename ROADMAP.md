@@ -84301,8 +84301,8 @@ a modern terminal" release.
   files older than it, run at startup and once a day.
   Reload: the key is read from config.json on each sweep, so a change
   reaches a running terminal without a relaunch.
-  Open: whether the log directory should also move off the system
-  drive. Ask the user.
+  Decided (2026-10-10, user): the log directory stays where it is.
+  The age sweep alone stops it growing; no move, no new folder key.
   **Layman:** Old session logs clear themselves out after 30 days, so they stop filling the system drive.
   Kind: feature.
   Source: user-request-2026-10-10.
