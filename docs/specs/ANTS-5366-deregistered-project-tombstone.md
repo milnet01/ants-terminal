@@ -83,9 +83,12 @@ appears where a caller asks for it, so a reader added later fails closed.
 | `slugCandidates()` — mail may be sent to a departed slug | everything built on those: `migratedProject()`, the roadmap verbs, the export of all projects |
 | the identity checks of § 2.4 and § 2.5 | |
 
-`ProjectRow` gains `deregisteredAt`. `readProjectWhere()` and `listProjects()`
-take a visibility argument whose default excludes deregistered rows. The
-mailbox-only lookups need no argument: they never filtered on registration.
+`ProjectRow` gains `deregisteredAt`. `readProject()`, `readProjectBySlug()`,
+`readProjectByRoot()` and `listProjects()` each gain a last parameter
+`RoadmapStore::Visibility visibility = Visibility::Registered`;
+`Visibility::IncludeDeregistered` returns deregistered rows too.
+`slugCandidates()` calls `listProjects()` with `IncludeDeregistered`. The three
+id lookups take no parameter: they never filtered on registration.
 
 So a departed project has a mailbox and no roadmap. Its inbox works from its
 own root, because the inbox resolves the caller by root.
@@ -95,8 +98,9 @@ own root, because the inbox resolves the caller by root.
 `registerProject()` on a root whose row is deregistered clears
 `deregistered_at` and returns the same `project_id`. It does not insert.
 
-`roadmap_migrate`'s two identity checks in `RoadmapMigrateVerb::run()` (the
-export_slug lookup and the root lookup) must see deregistered rows. A revived
+`roadmap_migrate`'s two identity checks in `RoadmapMigrateVerb::run()` call
+`readProjectBySlug()` and `readProjectByRoot()` with
+`Visibility::IncludeDeregistered`. A revived
 project keeps its stored slug and name under the same rules a live one does;
 each refusal carries `deregistered:true` when the row it names is deregistered.
 
@@ -110,21 +114,21 @@ to a stranger. Freeing a slug is out of scope (§ 5).
 ### 2.6 Restoring onto a deregistered row
 
 `RoadmapExport::runImportCommand()` refuses when the root or slug is already
-held. A deregistered row holding **both** the root and the slug being restored
-is the same project returning: the restore writes into that row (clears
+held, asking the id-only `projectIdForRoot()` and `projectIdForSlug()`. It asks
+`readProjectByRoot()` and `readProjectBySlug()` with
+`Visibility::IncludeDeregistered` instead, so it learns `deregisteredAt`. A
+deregistered row holding **both** the root and the slug being restored is the
+same project returning: the restore writes into that row (clears
 `deregistered_at`, sets name and legend from the export) instead of inserting.
-Any other overlap with a deregistered row refuses as today, with
-`deregistered:true`.
+Any other overlap refuses with today's message, plus ` (deregistered)` after
+the holder when its row is deregistered.
 
 ### 2.7 Reaching a running terminal
 
 The verbs reach sessions through a rebuilt `ants-mcpd` plus `/mcp`, with no
 terminal relaunch. The first process built at version 4 to open the store
 climbs it. A process built at version 3 then refuses the store
-(`createSchema()`'s `version > kSchemaVersion` arm). A running terminal is
-such a process: its Roadmap dialog (`src/roadmapdialog.cpp`) and mail chip
-(`src/claudestatuswidgets.cpp`) stop reading the store until it is relaunched
-on a newer build. The user accepted locking older builds out once, for this
+(`createSchema()`'s `version > kSchemaVersion` arm). The user accepted locking older builds out once, for this
 bump, on 2026-09-27 (ANTS-5483's body).
 
 ## 3. Invariants
@@ -138,9 +142,11 @@ bump, on 2026-09-27 (ANTS-5483's body).
   sends to A; deregister B; both rows are still present. *Breaks when:* the
   message step is kept.
 - **INV-3** — Mail reaches a deregistered project. *Test:* deregister B, then
-  `sendMessage()` from A to B's slug succeeds and B's inbox, resolved from B's
-  root, lists it. *Breaks when:* `projectIdForSlug()` or `projectIdForRoot()`
-  filters on registration.
+  `sendMessage()` from A to B's slug succeeds, B's inbox, resolved from B's
+  root, lists it, and `slugCandidates()` offers B's slug for a near miss.
+  *Breaks when:* `projectIdForSlug()` or `projectIdForRoot()` filters on
+  registration, or `slugCandidates()` reads `listProjects()` with the default
+  visibility.
 - **INV-4** — The roadmap readers do not return a deregistered row. *Test:*
   after deregistering B, `readProjectByRoot()`, `readProjectBySlug()`,
   `readProject()` return nothing for B and `listProjects()` omits it, while A is
@@ -163,10 +169,11 @@ bump, on 2026-09-27 (ANTS-5483's body).
   export B, deregister B, import the export at B's root; it succeeds, B's
   `project_id` is unchanged and its items are back. *Breaks when:* the import's
   held-root check sees the deregistered row as a live holder.
-- **INV-9** — A version-3 store climbs to version 4 and matches a fresh one.
-  *Test:* `roadmap_store_upgrade`'s existing comparison of a climbed store with
-  a DDL-built one, which now runs to version 4. *Breaks when:* the rung's
-  column text and the DDL's differ by any character.
+- **INV-9** — A store climbed to version 4 matches a DDL-built one. *Test:*
+  `RoadmapStoreUpgrade.Inv8DdlBuiltAndClimbedStoresMatch`, which seeds a
+  version-1 store, climbs it to `kSchemaVersion` and compares both schemas
+  under its `normaliseDdl` rule. *Breaks when:* the rung's column definition
+  and the DDL's differ in a way that rule does not fold.
 
 ## 4. Migration / compatibility
 
