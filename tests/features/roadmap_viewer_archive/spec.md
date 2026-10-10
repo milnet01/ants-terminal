@@ -216,6 +216,15 @@ Source-grep + pure-helper drive. Same harness pattern as
   archive dir with one matching file and several non-matching
   entries and checking that only the matching content appears.
 
+- **INV-4b** (ANTS-4073) A closed phase archive, named by the
+  case-sensitive regex `^P[0-9]+(\.[0-9]+)?\.md$` (`P01.md`,
+  `P07.5.md`), loads too (roadmap-format.md § 3.9). Phase archives
+  follow every version archive, descending by `(phase, sub)` with an
+  absent `sub` reading as 0. `FP03.md` and `p01.md` are skipped.
+  Asserted by populating the archive dir with `1.0.md`, four phase
+  archives and the two non-matching names, and checking the emitted
+  order and that neither skipped name's content appears.
+
 - **INV-5** Per-file 8 MiB read cap. A current ROADMAP.md of 16 MiB
   is truncated to 8 MiB; an 8 MiB cap applies independently to each
   `QFile::read()` call inside `loadRoadmapMarkdown`. The cap defends

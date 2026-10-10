@@ -40587,6 +40587,17 @@ against current source before filing.
   CONSEQUENCE FOR THIS ITEM'S REMAINING SCOPE. It reads "widen those four sites, and teach rotate_minor the second heading shape". Under the ruling above that work is still owed, because tolerance is the whole point — it is NOT deletable, which is what a reading of "we have moved on from phases" would wrongly suggest. What changes is only the ORDER: the § 3.2 paragraph can be edited now, and the widening is what lets the nine keep working until they migrate.
   On ship: message the Pressless session (it verifies on its code).
   Promised 2026-09-29.
+  Progress (2026-10-10): the two read-only readers accept phase
+  archives. parseArchiveFilename (viewer) and RoadmapFoldIn::archivedIds
+  take P<N>[.<sub>].md, and the viewer sorts phase archives after every
+  version archive (INV-4b in tests/features/roadmap_viewer_archive).
+  Left, and it needs a rule nobody has written: the migration
+  (archiveNameRx, isPlaceableSourcePath, planFrom's "<M>-<N>" slug
+  prefix and the render that splits the store back into files) has no
+  slug prefix defined for a phase archive. Decide it in roadmap-format.md
+  § 3.9 and ANTS-3766 § 2.3 before building. rotate_minor's kMinorRx
+  stays sequenced after ANTS-4081. The § 3.2 edit (version blocks the
+  default, decided 2026-09-07) still owes its review-contract gate.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are

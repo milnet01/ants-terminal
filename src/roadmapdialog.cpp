@@ -3233,13 +3233,22 @@ namespace {
 // ANTS-1125 INV-4a: archive filename is exactly <MAJOR>.<MINOR>.md
 // (case-sensitive). 0.7.0.md / latest.md / 0.7.MD / hidden / .bak
 // are silently skipped.
-bool parseArchiveFilename(const QString &name, int *majorOut, int *minorOut) {
+// ANTS-4073 (INV-4b): a closed phase archives as P<N>[.<sub>].md
+// (roadmap-format.md § 3.9). `phase` says which class matched; the two
+// classes cannot share one key, since P01.md and 1.0.md both parse to (1, 0).
+bool parseArchiveFilename(const QString &name, bool *phaseOut,
+                          int *majorOut, int *minorOut) {
     static const QRegularExpression re(
         QStringLiteral(R"(^(\d+)\.(\d+)\.md$)"));
-    const auto m = re.match(name);
+    static const QRegularExpression phaseRe(
+        QStringLiteral(R"(^P(\d+)(?:\.(\d+))?\.md$)"));
+    auto m = re.match(name);
+    const bool phase = !m.hasMatch();
+    if (phase) m = phaseRe.match(name);
     if (!m.hasMatch()) return false;
+    if (phaseOut) *phaseOut = phase;
     if (majorOut) *majorOut = m.captured(1).toInt();
-    if (minorOut) *minorOut = m.captured(2).toInt();
+    if (minorOut) *minorOut = m.captured(2).toInt();   // absent sub reads 0
     return true;
 }
 } // namespace
@@ -3292,17 +3301,21 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
     QDir d(dir);
     const QStringList rawEntries =
         d.entryList(QDir::Files | QDir::Readable, QDir::NoSort);
-    struct Entry { int major = 0; int minor = 0; QString name; };
+    // ANTS-4073: phase archives are a strictly older class, so every version
+    // archive sorts before every phase archive.
+    struct Entry { bool phase = false; int major = 0; int minor = 0; QString name; };
     QVector<Entry> entries;
     entries.reserve(rawEntries.size());
     for (const QString &name : rawEntries) {
+        bool phase = false;
         int major = 0, minor = 0;
-        if (parseArchiveFilename(name, &major, &minor)) {
-            entries.push_back({major, minor, name});
+        if (parseArchiveFilename(name, &phase, &major, &minor)) {
+            entries.push_back({phase, major, minor, name});
         }
     }
     std::sort(entries.begin(), entries.end(),
               [](const Entry &a, const Entry &b) {
+        if (a.phase != b.phase) return !a.phase;
         if (a.major != b.major) return a.major > b.major;
         return a.minor > b.minor;
     });

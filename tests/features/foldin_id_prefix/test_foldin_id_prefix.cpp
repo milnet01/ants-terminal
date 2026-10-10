@@ -201,10 +201,17 @@ TEST(FoldInIdPrefix, Ants4387ArchivedIdsAreDistinguishedFromUnknownOnes) {
     // becomes an authority on what shipped.
     write("docs/roadmap/notes.md",
           "- \xE2\x9C\x85 [PROJ-0303] **Not an archive file.**\n");
+    // ANTS-4073 — a closed phase archives under its designator (§ 3.9). A
+    // hoisted fold-in block does not rotate on its own, so FP03.md is not one.
+    write("docs/roadmap/P07.5.md",
+          "- \xE2\x9C\x85 [PROJ-0404] **Rotated out with phase 7.5.**\n");
+    write("docs/roadmap/FP03.md",
+          "- \xE2\x9C\x85 [PROJ-0505] **Not a phase archive.**\n");
 
     const QSet<QString> wanted = {
         QStringLiteral("PROJ-0101"), QStringLiteral("PROJ-0202"),
         QStringLiteral("PROJ-0303"), QStringLiteral("PROJ-9999"),
+        QStringLiteral("PROJ-0404"), QStringLiteral("PROJ-0505"),
     };
     const auto got = RoadmapFoldIn::archivedIds(root, wanted);
 
@@ -216,6 +223,11 @@ TEST(FoldInIdPrefix, Ants4387ArchivedIdsAreDistinguishedFromUnknownOnes) {
         << "the bold spelling resolves too — both are sanctioned";
     EXPECT_FALSE(got.contains(QStringLiteral("PROJ-0303")))
         << "a file outside the <MAJOR>.<MINOR>.md shape is not an archive";
+    EXPECT_EQ(got.value(QStringLiteral("PROJ-0404")),
+              QStringLiteral("docs/roadmap/P07.5.md"))
+        << "a phase archive resolves, and reports WHICH archive";
+    EXPECT_FALSE(got.contains(QStringLiteral("PROJ-0505")))
+        << "a fold-in block name is not an archive name";
     EXPECT_FALSE(got.contains(QStringLiteral("PROJ-9999")))
         << "a genuinely unknown id stays unknown — that is the whole point";
 

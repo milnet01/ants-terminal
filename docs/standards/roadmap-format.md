@@ -901,20 +901,17 @@ The convention:
   LocalWebServerManager carries seven in that shape, of seventeen
   `##` blocks.
 
-  **No shipped reader accepts this name yet, and the failure is
-  silent — so do not rotate a phase block by hand until they
-  widen.** The rule is specified and unimplemented. Find the sites
-  that enforce the version-only form by searching `src/` for the
-  archive-name regex; this list is not exhaustive:
+  **Do not rotate a phase block by hand until every reader
+  widens.** Two readers accept the phase name:
   `RoadmapFoldIn::archivedIds` (`src/roadmapfoldin.cpp`), which answers
-  the query verb's `archived_ids`; `parseArchiveFilename`
-  (`src/roadmapdialog.cpp`), which makes the viewer **skip** a
-  non-conforming entry with no message; `archiveNameRx()`
-  (`src/roadmapmigrate.cpp`); `isPlaceableSourcePath`
-  (`src/roadmapmigrateload.cpp`); and `rotate_minor`'s `kMinorRx`
-  (`src/remotecontrol_roadmap_log_batch.cpp`). A `P01.md` written today
-  is read by none of them, so the block would leave `ROADMAP.md`
-  and reach no reader. ANTS-4073 owns widening them.
+  the query verb's `archived_ids`, and `parseArchiveFilename`
+  (`src/roadmapdialog.cpp`), the viewer. The migration does not:
+  `archiveNameRx()` (`src/roadmapmigrate.cpp`) and
+  `isPlaceableSourcePath` (`src/roadmapmigrateload.cpp`) still take
+  the version form only, so a `P01.md` never reaches the store.
+  Nor does `rotate_minor`'s `kMinorRx`
+  (`src/remotecontrol_roadmap_log_batch.cpp`). ANTS-4073 owns
+  widening them.
 
   > Global `roadmap-format.md` § 3.9 said until 2026-08-13 that
   > phase roadmaps do not rotate and should promote to release

@@ -242,6 +242,43 @@ static int runMain() {
             fail("INV-4a", "README.md leaked through filter");
     }
 
+    // INV-4b (ANTS-4073): phase archives `P<N>[.<sub>].md` load too, as a
+    // strictly older class after every version archive, descending by
+    // (phase, sub). `FP03.md` and lower-case `p01.md` are not phase archives.
+    {
+        QTemporaryDir tmpPhase;
+        if (!tmpPhase.isValid()) fail("INV-4b", "tmp not created");
+        QDir(tmpPhase.path()).mkpath(QStringLiteral("docs/roadmap"));
+        const QString r7 = writeFile(tmpPhase.path(),
+                                     QStringLiteral("ROADMAP.md"),
+                                     QByteArrayLiteral("# current\n"));
+        const QString archDir = tmpPhase.path()
+            + QStringLiteral("/docs/roadmap");
+        writeFile(archDir, QStringLiteral("P01.md"), QByteArrayLiteral("tag-P01\n"));
+        writeFile(archDir, QStringLiteral("P07.md"), QByteArrayLiteral("tag-P07\n"));
+        writeFile(archDir, QStringLiteral("P07.5.md"), QByteArrayLiteral("tag-P07.5\n"));
+        writeFile(archDir, QStringLiteral("P10.md"), QByteArrayLiteral("tag-P10\n"));
+        writeFile(archDir, QStringLiteral("1.0.md"), QByteArrayLiteral("tag-1.0\n"));
+        writeFile(archDir, QStringLiteral("FP03.md"), QByteArrayLiteral("BAD-FOLDIN\n"));
+        writeFile(archDir, QStringLiteral("p02.md"), QByteArrayLiteral("BAD-LOWER\n"));
+        const QString assembled = RoadmapDialog::loadMarkdown(r7, true);
+        const int v10 = assembled.indexOf(QStringLiteral("tag-1.0"));
+        const int p10 = assembled.indexOf(QStringLiteral("tag-P10"));
+        const int p75 = assembled.indexOf(QStringLiteral("tag-P07.5"));
+        const int p07 = assembled.indexOf(QStringLiteral("tag-P07\n"));
+        const int p01 = assembled.indexOf(QStringLiteral("tag-P01"));
+        if (v10 < 0 || p10 < 0 || p75 < 0 || p07 < 0 || p01 < 0)
+            fail("INV-4b", "a phase archive was filtered out");
+        if (!(v10 < p10 && p10 < p75 && p75 < p07 && p07 < p01))
+            fail("INV-4b", "versions first, then phases descending by (phase, sub)");
+        if (!assembled.contains(QStringLiteral("<!-- archive: P07.5.md -->")))
+            fail("INV-4b", "comment sentinel missing for P07.5.md");
+        if (assembled.contains(QStringLiteral("BAD-FOLDIN")))
+            fail("INV-4b", "FP03.md leaked through filter");
+        if (assembled.contains(QStringLiteral("BAD-LOWER")))
+            fail("INV-4b", "p02.md (lower case) leaked through filter");
+    }
+
     // INV-5: per-file 8 MiB cap is a literal in the helper.
     if (!contains(source, "8 * 1024 * 1024"))
         fail("INV-5", "kPerFileCap (8 * 1024 * 1024) literal missing");
