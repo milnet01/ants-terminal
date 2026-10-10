@@ -41652,6 +41652,13 @@ against current source before filing.
   User decision 2026-10-03: one kSchemaVersion bump covers ANTS-5366,
   ANTS-5483 and this item's render fingerprint; build the three
   together.
+  User decision 2026-10-10 (supersedes the 2026-10-03 bundle): out of
+  the schema bump. Site 1's render fingerprint already exists as
+  ANTS-5381's publish stamp (RoadmapRender::readPublishStamp,
+  file_sha256). Skip the witness scan when the live file matches the
+  stamp, but only if a measurement inside the app shows the hash
+  cheaper than the scan (13.3 ms; sha256sum of the 6.8 MB file took
+  about 20 ms with process start, 2026-10-10).
   Source: in-session-2026-08-17 (ANTS-3863 implementation).
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
@@ -69336,6 +69343,11 @@ project. Reported causes are claims until checked in source.
   User decision 2026-10-03: one kSchemaVersion bump covers ANTS-5366,
   ANTS-5483 and ANTS-4426's render fingerprint; build the three
   together.
+  User decision 2026-10-10 (supersedes the 2026-10-03 bundle): one
+  kSchemaVersion bump, one appended column. Deregistering keeps the
+  project row with a deregistered marker, so its mailbox keeps
+  receiving. This item's spec also carries ANTS-5483. ANTS-4426 left
+  the bundle (no schema change needed).
   **Layman:** Sessions can leave each other notes, but not for a project that has stepped out of the shared database, which is exactly when it waits for news.
   Kind: enhancement.
   Source: in-session-2026-09-25.
@@ -69974,6 +69986,10 @@ project. Reported causes are claims until checked in source.
   User decision 2026-10-03: one kSchemaVersion bump covers ANTS-5366,
   ANTS-5483 and ANTS-4426's render fingerprint; build the three
   together.
+  User decision 2026-10-10 (supersedes the 2026-10-03 bundle): no
+  change of its own. ANTS-5366 keeps a deregistered project's row, so
+  no project row is deleted and SQLite never reuses its rowid. The
+  invariant lives in ANTS-5366's spec.
   **Layman:** When a project is removed, its number is never handed to a new one.
   Kind: fix.
   Source: claude-config-feedback-2026-09-27.
