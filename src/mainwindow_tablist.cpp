@@ -8,7 +8,10 @@
 #include "coloredtabbar.h"
 #include "tablistpanel.h"
 
+#include "commandpalette.h"
+
 #include <QAction>
+#include <QPointer>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QTimer>
@@ -66,6 +69,35 @@ void MainWindow::applyTabListPanelConfig() {
         m_tabListHidesBarAction->setChecked(m_config.tabListPanelHidesTabBar());
     }
     refreshTabList();
+}
+
+void MainWindow::showTabSwitcher() {
+    if (!m_commandPalette || !m_tabWidget) return;
+    delete m_tabSwitcherActions;
+    m_tabSwitcherActions = new QObject(this);
+
+    QFont f = font();
+    f.setPointSize(m_config.fontSize());
+    const int h = QFontMetrics(f).height();
+    const QColor bg = m_chromeBg.isValid() ? m_chromeBg : palette().color(QPalette::Window);
+
+    QList<QAction *> actions;
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        QWidget *w = m_tabWidget->widget(i);
+        TabListEntry e{w, m_tabFullTitles.value(w, m_tabWidget->tabText(i)),
+                       m_coloredTabBar->tabColor(i), m_coloredTabBar->indicatorAt(i).glyph};
+        auto *a = new QAction(e.title, m_tabSwitcherActions);
+        a->setIcon(TabListPanel::tabIcon(e, h, bg, devicePixelRatioF()));
+        const QString state = TabListPanel::stateLabel(e.glyph);
+        if (!state.isEmpty()) a->setToolTip(e.title + QStringLiteral(", ") + state);
+        const QPointer<QWidget> page(w);
+        connect(a, &QAction::triggered, this, [this, page] {
+            const int idx = page ? m_tabWidget->indexOf(page) : -1;
+            if (idx >= 0) m_tabWidget->setCurrentIndex(idx);
+        });
+        actions << a;
+    }
+    m_commandPalette->showTabs(actions, m_config.fontSize());
 }
 
 void MainWindow::scheduleTabListRefresh() {

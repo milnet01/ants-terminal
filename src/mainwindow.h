@@ -368,6 +368,8 @@ private:
     void applyTabListPanelConfig();
     void scheduleTabListRefresh();
     void refreshTabList();
+    // ANTS-5646 — the command palette in tab mode: type, Enter, switch.
+    void showTabSwitcher();
     // Git branch cache — avoid synchronous .git/HEAD tree walk on every poll
     QString m_gitCacheCwd;
     QString m_gitCacheBranch;
@@ -674,6 +676,9 @@ private:
     QTimer *m_tabListRefreshTimer = nullptr;
     QAction *m_tabListPanelAction = nullptr;
     QAction *m_tabListHidesBarAction = nullptr;
+    // ANTS-5646 — parent of the tab switcher's per-tab actions; deleted
+    // after the palette closes, once a chosen action has fired.
+    QObject *m_tabSwitcherActions = nullptr;
     // The theme's chrome colours, kept by applyTheme for a panel made later.
     QColor m_chromeBg;
     QColor m_chromeText;

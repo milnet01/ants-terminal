@@ -276,6 +276,11 @@ void MainWindow::setupViewMenu() {
         m_config.setTabListPanel(on);
         applyTabListPanelConfig();
     });
+    // ANTS-5646 — type part of a tab's name, Enter to switch.
+    QAction *goToTab = viewMenu->addAction("Go to &Tab...");
+    goToTab->setShortcut(
+        QKeySequence(m_config.keybinding("tab_switcher", "Ctrl+Shift+H")));
+    connect(goToTab, &QAction::triggered, this, &MainWindow::showTabSwitcher);
     m_tabListHidesBarAction =
         viewMenu->addAction("&Hide Tab Bar While the Tab List Shows");
     m_tabListHidesBarAction->setCheckable(true);

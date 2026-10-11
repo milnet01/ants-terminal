@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Go to Tab: press Ctrl+Shift+H, type part of a tab's name, and press Enter to jump to it** (ANTS-5646)
+  View → Go to Tab opens the command palette with one row per open tab,
+  showing its full name, colour stripe and Claude status dot at the
+  terminal font size. Typing narrows the list; Enter switches, Escape
+  cancels. The shortcut can be changed in Settings.
+
 - **Tab List Panel: every open tab by its full name, in a list on the left of the window** (ANTS-5645)
   View → Tab List Panel (Ctrl+Shift+Y) shows one line per tab, grouped
   by tab colour, each with its colour stripe and Claude status dot.

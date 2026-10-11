@@ -84684,7 +84684,7 @@ a modern terminal" release.
   Source: user-request-2026-10-11.
   Lanes: mainwindow, coloredtabbar, config.
 
-- 📋 [ANTS-5646] **A keyboard shortcut opens a type-to-filter list of open tabs, and Enter switches to the chosen one.**
+- ✅ [ANTS-5646] **A keyboard shortcut opens a type-to-filter list of open tabs, and Enter switches to the chosen one.**
   Asked by the user 2026-10-11 alongside ANTS-5645 (the side tab
   panel); useful with the panel hidden. Nothing switches tabs by name
   today. CommandPalette (src/commandpalette.h) already does
@@ -84693,6 +84693,14 @@ a modern terminal" release.
   shows the full tab name, colour stripe and Claude status dot, at a
   size readable for a partially sighted user.
   Reload: the shortcut is a keymap entry, re-read with no relaunch.
+  Resolved (2026-10-11): built as a tab mode of CommandPalette, as
+  the item asked, not a second popup. CommandPalette::showTabs lists
+  one action per tab (MainWindow::showTabSwitcher), keeps titles as
+  written, sizes rows to the terminal font and restores command mode on
+  close. Row icons come from TabListPanel::tabIcon, shared with
+  ANTS-5645. View → Go to Tab, keybinding tab_switcher (Ctrl+Shift+H).
+  Tests: tests/features/tab_switcher (7 cases, red against a stand-in
+  first, two mutations each caught).
   **Layman:** Press a key, type a few letters of a project's name, and press Enter to jump to its tab.
   Kind: feature.
   Source: user-request-2026-10-11.

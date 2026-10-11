@@ -100,10 +100,12 @@ void TabListPanel::rebuild() {
     for (const TabListEntry &e : std::as_const(m_entries))
         anyMark = anyMark || e.color.isValid() || e.glyph != ClaudeTabIndicator::Glyph::None;
 
-    auto makeRow = [this, anyMark](const TabListEntry &e) {
+    auto makeRow = [this, anyMark, iconSide](const TabListEntry &e) {
         auto *item = new QTreeWidgetItem(QStringList{e.title});
         item->setData(0, kPageRole, QVariant::fromValue(static_cast<QObject *>(e.page)));
-        if (anyMark) item->setIcon(0, rowIcon(e));
+        if (anyMark)
+            item->setIcon(0, tabIcon(e, iconSide, m_tree->palette().color(QPalette::Base),
+                                     devicePixelRatioF()));
         const QString state = stateLabel(e.glyph);
         item->setToolTip(0, state.isEmpty() ? e.title : e.title + QStringLiteral(" — ") + state);
         item->setData(0, Qt::AccessibleTextRole,
@@ -167,10 +169,8 @@ void TabListPanel::onItemActivated(QTreeWidgetItem *item) {
     if (page) emit tabActivated(page);
 }
 
-QIcon TabListPanel::rowIcon(const TabListEntry &e) const {
+QIcon TabListPanel::tabIcon(const TabListEntry &e, int h, const QColor &bg, qreal dpr) {
     // A colour stripe on the left, then the Claude dot, sized to the text.
-    const int h = QFontMetrics(m_tree->font()).height();
-    const qreal dpr = devicePixelRatioF();
     QPixmap pm(QSize(h * 2, h) * dpr);
     pm.setDevicePixelRatio(dpr);
     pm.fill(Qt::transparent);
@@ -180,7 +180,6 @@ QIcon TabListPanel::rowIcon(const TabListEntry &e) const {
     if (e.color.isValid())
         p.fillRect(QRect(0, 0, stripe, h), e.color);
     if (e.glyph != ClaudeTabIndicator::Glyph::None) {
-        const QColor bg = m_tree->palette().color(QPalette::Base);
         const qreal r = h * 0.28;
         const QPointF c(stripe + h * 0.6, h / 2.0);
         p.setPen(QPen(ClaudeTabIndicator::ringColor(bg), 1));

@@ -39,6 +39,15 @@ public:
     // QWidget::show(): every reveal must build and position the palette.
     void setVisible(bool visible) override;
 
+    // ANTS-5646 — open in tab mode: `tabActions` are the open tabs, one
+    // per row, shown with their icon at `points` size. Closing returns the
+    // palette to command mode; the caller restores the command list.
+    void showTabs(const QList<QAction *> &tabActions, int points);
+    bool inTabMode() const { return m_tabMode; }
+
+    QLineEdit *inputForTest() const { return m_input; }
+    QListWidget *listForTest() const { return m_list; }
+
 signals:
     void closed();
 
@@ -55,7 +64,10 @@ private:
     QListWidget *m_list = nullptr;
     QVBoxLayout *m_layout = nullptr;
     QList<QPointer<QAction>> m_allActions;
+    bool m_tabMode = false;
+    QFont m_commandFont;  // the font tab mode replaced, restored on close
 
+    QString displayName(const QAction *action) const;
     void positionAndResize();
     void populateList(const QString &filter);
     void ensureListReady();

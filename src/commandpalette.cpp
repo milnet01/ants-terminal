@@ -98,6 +98,13 @@ void CommandPalette::setActions(const QList<QAction *> &actions) {
 void CommandPalette::setVisible(bool visible) {
     if (!visible) {
         QWidget::setVisible(false);
+        if (m_tabMode) {  // ANTS-5646 — back to command mode
+            m_tabMode = false;
+            m_input->setFont(m_commandFont);
+            if (m_list) m_list->setFont(m_commandFont);
+            m_input->setPlaceholderText(tr("Type a command..."));
+            m_input->setAccessibleName(tr("Command palette search"));
+        }
         return;
     }
 
@@ -122,7 +129,7 @@ void CommandPalette::setVisible(bool visible) {
 void CommandPalette::positionAndResize() {
     QWidget *p = parentWidget();
     if (!p) return;
-    int w = std::min(p->width() - 40, 500);
+    int w = std::min(p->width() - 40, m_tabMode ? 900 : 500);  // tab titles run long
     int x = (p->width() - w) / 2;
     int y = 40; // Below title bar + menu
     setGeometry(x, y, w, 0); // Height set by populateList
@@ -135,14 +142,18 @@ void CommandPalette::populateList(const QString &filter) {
     for (int idx = 0; idx < m_allActions.size(); ++idx) {
         QAction *action = m_allActions[idx].data();
         if (!action || action->isSeparator() || action->text().isEmpty()) continue;
-        // Strip & accelerator markers for display and matching
-        QString name = action->text().remove('&');
+        const QString name = displayName(action);
         if (!lowerFilter.isEmpty() && !name.toLower().contains(lowerFilter)) continue;
 
         auto *item = new QListWidgetItem(name);
         // Show shortcut if available
         if (!action->shortcut().isEmpty()) {
             item->setText(name + "    " + action->shortcut().toString());
+        }
+        if (m_tabMode) {  // ANTS-5646 — colour stripe, Claude dot, state in words
+            item->setIcon(action->icon());
+            if (!action->toolTip().isEmpty() && action->toolTip() != name)
+                item->setData(Qt::AccessibleTextRole, action->toolTip());
         }
         item->setData(Qt::UserRole, idx);
         m_list->addItem(item);
@@ -187,7 +198,7 @@ void CommandPalette::updateGhostCompletion(const QString &filter) {
         m_input->setGhostSuffix(QString());
         return;
     }
-    QString name = action->text().remove('&');
+    const QString name = displayName(action);
     if (!name.toLower().startsWith(filter.toLower())) {
         m_input->setGhostSuffix(QString());
         return;
@@ -202,6 +213,28 @@ void CommandPalette::commitGhost() {
     // updateGhostCompletion, which clears the ghost since the new
     // filter equals the action name exactly.
     m_input->setText(m_input->text() + g);
+}
+
+void CommandPalette::showTabs(const QList<QAction *> &tabActions, int points) {
+    if (!m_tabMode) m_commandFont = m_input->font();
+    m_tabMode = true;
+    setActions(tabActions);
+    QFont f = m_commandFont;
+    if (points > 0) f.setPointSize(points);
+    m_input->setFont(f);
+    ensureListReady();
+    m_list->setFont(f);
+    const int h = QFontMetrics(f).height();
+    m_list->setIconSize(QSize(h * 2, h));
+    m_input->setPlaceholderText(tr("Type part of a tab's name..."));
+    m_input->setAccessibleName(tr("Go to tab"));
+    show();
+}
+
+QString CommandPalette::displayName(const QAction *action) const {
+    // A tab's title is shown as written; a menu action's `&` marks its
+    // accelerator and is dropped.
+    return m_tabMode ? action->text() : action->text().remove('&');
 }
 
 void CommandPalette::filterActions(const QString &text) {

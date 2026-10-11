@@ -478,6 +478,15 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     m_commandPalette->hide();
     connect(m_commandPalette, &CommandPalette::closed, this, [this]() {
         if (auto *t = focusedTerminal()) t->setFocus();
+        // ANTS-5646 — leaving tab mode: restore the command list. Deferred,
+        // because the palette fires the chosen tab action after closed().
+        if (m_tabSwitcherActions) {
+            QTimer::singleShot(0, this, [this] {
+                rebuildCommandPalette();
+                delete m_tabSwitcherActions;
+                m_tabSwitcherActions = nullptr;
+            });
+        }
     });
     rebuildCommandPalette();
 

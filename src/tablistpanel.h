@@ -53,6 +53,12 @@ public:
     // Empty for Glyph::None.
     static QString stateLabel(ClaudeTabIndicator::Glyph glyph);
 
+    // The colour stripe and Claude dot for one tab, `height` pixels tall,
+    // the dot's contrast taken against `background`. Shared with the
+    // command palette's tab mode (ANTS-5646).
+    static QIcon tabIcon(const TabListEntry &e, int height, const QColor &background,
+                         qreal devicePixelRatio);
+
     QTreeWidget *treeForTest() const { return m_tree; }
 
 signals:
@@ -61,7 +67,6 @@ signals:
 private:
     void rebuild();
     void onItemActivated(QTreeWidgetItem *item);
-    QIcon rowIcon(const TabListEntry &e) const;
 
     QTreeWidget *m_tree = nullptr;
     QVector<TabListEntry> m_entries;
