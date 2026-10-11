@@ -483,11 +483,12 @@ machine with no store file has no row. It runs on `roadmap_log`
 `op:"append"` and `op:"append_batch"`, never on a dry run, and never for
 a root under the temp directory, which `roadmap_migrate` refuses too
 (ANTS-4600). **A tree whose slug another root owns is refused, not
-skipped** (decided by the user 2026-10-11, ANTS-5649): a second clone,
-or a moved tree, finds no row for its own root, so the rebuild fires and
-`roadmap_migrate` refuses `slug_collision`. The append refuses with it,
-and the error names the remedy: `op:"reroot"` if the project moved,
-else write the roadmap from the owning root. Skipping the rebuild would
+skipped** (decided by the user 2026-10-11, ANTS-5649). The rebuild takes
+its slug from the root's directory name, so a second clone or a moved
+tree under a name giving the same slug finds no row for its own root,
+the rebuild fires, and `roadmap_migrate` refuses `slug_collision`. The
+append refuses with it, and the error names the remedy: `op:"reroot"`
+if the project moved, else write the roadmap from the owning root. Skipping the rebuild would
 let two trees allocate from different floors and issue one id twice.
 The store's render, `ROADMAP.md` plus `docs/roadmap/*.md`,
 carries every public item. The
@@ -562,7 +563,7 @@ becomes the authoritative floor for a store-migrated project.
 `roadmap-data-model.md` § 7.5 keeps `internal` items off the render by policy,
 so their ids appear in no `ROADMAP.md`, archive or CHANGELOG. The store's
 floor counts them; a corpus scan, on a machine without the store, cannot.
-The header mark above carries their floor once ANTS-5638 ships. The
+The header mark above carries their floor. The
 export (ANTS-3794) is not subject to that exclusion, which is why it
 supersedes both.
 
@@ -770,8 +771,9 @@ roadmap"*, it MUST:
 1. Read the file top-to-bottom. **Then take review fixes first**: the
    first 🚧, else the first 📋, whose declared `Kind:` is `review-fix`,
    `audit-fix` or `doc-fix` — § 3.5.3's read rule, never a Kind
-   inherited from a section — in document order, in any `##` block
-   whose heading does not read `shipped`. Skip it on step 3's terms
+   inherited from a section — in document order, in any version,
+   phase or hoisted fold-in `##` block whose heading does not read
+   `shipped`. Skip it on step 3's terms
    (💭, blocked). Only when none is workable, go on to step 2. **This
    outranks position** (§ 3.5.2): position orders the fixes among
    themselves, and the other kinds among themselves. **It reads the
@@ -1093,9 +1095,7 @@ The convention:
   minor or major bump only. Patch bumps don't rotate. On a
   hand-authored roadmap the bump recipe (`.claude/bump.json` on each
   project) owns the snip-and-create step. On a store-migrated one
-  rotation is a store operation (`rotate_minor`, below) that cannot be
-  performed yet; until it can, a skipped rotation there is not a
-  breach.
+  rotation is a store operation (`rotate_minor`, below).
 
   **A block belongs to the minor its heading names, not the minor its
   work shipped in.** The heading's release designator is `<M>.<N>`,

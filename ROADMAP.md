@@ -42475,6 +42475,15 @@ against current source before filing.
   ordering rules here, minus the undefined Waiting-on rule. Item (5)
   retirement records live under docs/history/, which the migration does
   not read.
+  (8) Filed by the roadmap-format gate, loop 25 (2026-10-11), outside
+  its change: § 3.9's designator rule accepts `<M>.<N>` followed by
+  `.x`, so `## 0.5.x and 0.6.x — archived` matches minor 0.5 by the
+  rule, while the next sentence says a heading naming two minors stays.
+  Fix with item (6): state in the rule that a title naming a second
+  designator names no minor.
+  Progress (2026-10-11, d0cadb55): items (3) and (5) written into
+  roadmap-format.md §§ 3.5.4 and 3.9; item (2) was already in
+  roadmap-data-model.md § 7.1. Open: (4), (6), (8).
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.
