@@ -40823,7 +40823,7 @@ against current source before filing.
   Source: user-request-2026-08-10 (global roadmap-format rebuild)..
   Resolved (2026-08-15): the four project candidates are now retried under ~/.claude/, re-rooted through `expandGlobalConfigSentinel` — the same `~global` sentinel ANTS-3719 gave doc_integrity, so every path is still validated and `bad_path` is not widened. Deviation from the proposal, deliberate: `sections_source` keeps ANTS-4373's PATH rather than becoming a `project|global|none` enum, with a global hit prefixed `~global/` — the path answers the enum's question and the next one. `none` stays reachable and the skip arm is now testable by construction rather than by argument, since QDir::homePath() follows $HOME. Verified the global standard parses to 12 required sections; this project is unaffected because its local docs/standards/specs.md still wins. ANTS-3662 § 2.1's no-fallback paragraph amended to record it. Folded in: the skip hint stated a false cause on an empty walk (no document checked is not no block found).
 
-- 📋 [ANTS-4081] **rotate_minor is built but unreachable — nothing calls it, and nothing enforces the rotation event.**
+- ✅ [ANTS-4081] **rotate_minor is built but unreachable — nothing calls it, and nothing enforces the rotation event.**
   ANTS-4070 § 2.4 puts `roadmap-format.md` § 3.9's rotation-event rule —
   rotate only on a minor or major bump — on the CALLER, because the store
   cannot see a version transition: a minor holds zero open bullets
@@ -40847,6 +40847,13 @@ against current source before filing.
   Progress (2026-09-29): retitle_section is wired (ANTS-5557); § 2.4's
   reason covers rotation only. Left: (1) the bump.json rotation step,
   then (2) wire rotate_minor and declare `minor`. A test pins rotate off.
+  Resolved (2026-10-11): (1) .claude/bump.json's rotation todo now
+  calls roadmap_log op:"rotate_minor" on a minor or major bump only,
+  dry run first; (2) rotate_minor is in the op dispatch, the enum and
+  the description, with `minor` declared. The pins flipped
+  deliberately: roadmap_log_op_enum INV-3 and the rotate test, now
+  Ants4081RetitleAndRotateAreDispatched. ANTS-5647 retires the old
+  shell script.
   **Layman:** Hook archive rotation into the release step, then turn it on as a normal command.
   Kind: implement.
   Source: in-session-2026-08-10 (ANTS-4070 implementation).
@@ -42453,6 +42460,18 @@ against current source before filing.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.
   Lanes: roadmapstore, remotecontrol_roadmap_log, docs.
+
+- 📋 [ANTS-5647] **Retire packaging/rotate-roadmap.sh now that the bump recipe rotates through the store.**
+  Since ANTS-4081 the bump recipe's rotation todo calls roadmap_log
+  op:"rotate_minor". Nothing in this repo calls the shell script, which
+  edits ROADMAP.md as markdown, and on this store-rendered roadmap the
+  next write discards that edit. Its tests (roadmap_viewer_archive
+  INV-14 to INV-14d) still run it, so the script and those clauses go
+  together. Check first whether another project's recipe copies it.
+  **Layman:** Remove an old archive script nothing calls any more, once we confirm no other project uses it.
+  Kind: chore.
+  Source: in-session-2026-10-11 (ANTS-4081).
+  Lanes: roadmapstore, packaging.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

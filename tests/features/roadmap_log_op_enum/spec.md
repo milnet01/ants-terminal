@@ -8,8 +8,8 @@ Both have shipped (set_body, convert, retitle_section).
   `op` against, minus the aliases `add` and `add_batch`, appears in the
   `op` enum of `roadmap_log`'s `inputSchema` as served by `tools/list`.
 - **INV-2** Every name in that enum is one the dispatcher compares against.
-- **INV-3** `rotate_minor` is in neither: ANTS-4070 § 2.4 keeps it off until
-  ANTS-4081.
+- **INV-3** `rotate_minor` is in both. ANTS-4070 § 2.4 kept it off until the
+  bump recipe owned the rotation event; ANTS-4081 gave the recipe that step.
 - **INV-4** `link` and `unlink` are in both (ANTS-4079 INV-11).
 
 The dispatcher side is read from source, scoped to the function's body; the

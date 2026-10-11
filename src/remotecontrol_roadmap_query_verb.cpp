@@ -4186,11 +4186,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
     // ANTS-4079 § 2.2 — authored relationship rows.
     if (op == QStringLiteral("link") || op == QStringLiteral("unlink"))
         return cmdRoadmapLogLink(req);
-    // ANTS-5557 — retitle_section (ANTS-4070 § 2.3). rotate_minor stays
-    // unwired: § 2.4 wants the bump recipe to own the rotation event first
-    // (ANTS-4081), and nothing here can tell a minor bump from a patch.
+    // ANTS-5557 — retitle_section (ANTS-4070 § 2.3).
     if (op == QStringLiteral("retitle_section"))
         return cmdRoadmapLogRetitleSection(req);
+    // ANTS-4081 — rotate_minor (ANTS-4070 § 2.2). The op cannot tell a minor
+    // bump from a patch; .claude/bump.json's rotation todo owns that, which is
+    // what § 2.4 asked for before this was wired.
+    if (op == QStringLiteral("rotate_minor"))
+        return cmdRoadmapLogRotateMinor(req);
     // ANTS-5379 — a section's narration and table elements.
     if (op == QStringLiteral("list_elements") || op == QStringLiteral("amend_element") ||
         op == QStringLiteral("delete_element") || op == QStringLiteral("promote_element"))
@@ -4256,6 +4259,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"set_intro\", \"amend_intro\", \"amend_preamble\", "
                            "\"set_preamble\", \"set_legend\", \"delete_section\", "
                            "\"move_section\", \"retitle_section\", "
+                           "\"rotate_minor\", "
                            "\"link\", \"unlink\", "
                            "\"list_elements\", "
                            "\"amend_element\", \"delete_element\", "

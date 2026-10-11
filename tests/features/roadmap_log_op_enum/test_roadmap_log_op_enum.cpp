@@ -81,8 +81,8 @@ TEST(RoadmapLogOpEnum, EnumMatchesDispatch) {
         EXPECT_TRUE(dispatched.contains(op))
             << "INV-2: in the published enum but never dispatched: " << op.toStdString();
 
-    EXPECT_FALSE(dispatched.contains(QStringLiteral("rotate_minor"))) << "INV-3";
-    EXPECT_FALSE(published.contains(QStringLiteral("rotate_minor"))) << "INV-3";
+    EXPECT_TRUE(dispatched.contains(QStringLiteral("rotate_minor"))) << "INV-3";
+    EXPECT_TRUE(published.contains(QStringLiteral("rotate_minor"))) << "INV-3";
 
     for (const char *op : {"link", "unlink"}) {   // INV-4 (ANTS-4079 INV-11)
         EXPECT_TRUE(dispatched.contains(QString::fromLatin1(op))) << "INV-4: " << op;

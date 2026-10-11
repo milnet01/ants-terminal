@@ -1091,9 +1091,9 @@ overridden:
   discards. **Rotation therefore becomes a store operation** — reassign the
   closed minor's sections to the archive path and re-render, which lands both
   files with content preserved and nothing snipped. That is a change to
-  `roadmap-format.md` § 3.9, and its handler is built (`roadmap_log
-  op:"rotate_minor"`, ANTS-4070) but not yet routed: a call refuses until
-  ANTS-4081 wires it. Not an open question in this model.
+  `roadmap-format.md` § 3.9, and it is built: `roadmap_log
+  op:"rotate_minor"` (ANTS-4070), which a bump recipe calls on a minor or
+  major bump (ANTS-4081). Not an open question in this model.
 
 ---
 

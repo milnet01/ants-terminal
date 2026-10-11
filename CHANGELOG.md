@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"rotate_minor" moves a closed minor's sections into its archive, and the release recipe calls it on a minor or major bump** (ANTS-4081)
+  The archive rotation now runs through the roadmap store, so it survives
+  the next roadmap write instead of being undone by it.
+
 - **A store-rendered roadmap carries each id prefix's high-water mark in its header, and a machine with no store rebuilds the store from the roadmap files before it allocates an id** (ANTS-5638)
   Adding a roadmap item on a second computer can no longer reuse a number
   the first computer already gave out, including numbers of internal or

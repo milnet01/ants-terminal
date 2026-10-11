@@ -1122,7 +1122,10 @@ TEST(RoadmapRotateMinor, Inv13LiveSideFreedBaseIsRefused) {
 // ANTS-5557 — retitle_section is reachable through roadmap_log's real
 // dispatch. rotate_minor is NOT: ANTS-4070 § 2.4 keeps it off until the bump
 // recipe owns the rotation event (ANTS-4081), and this pins that.
-TEST(RoadmapRotateMinor, Ants5557RetitleIsDispatchedRotateIsNot) {
+// ANTS-4081 — both are dispatched now. The bump recipe owns the rotation
+// event (.claude/bump.json's rotation todo), which is what ANTS-4070 § 2.4
+// required before rotate_minor could be a routine op.
+TEST(RoadmapRotateMinor, Ants4081RetitleAndRotateAreDispatched) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -1139,6 +1142,9 @@ TEST(RoadmapRotateMinor, Ants5557RetitleIsDispatchedRotateIsNot) {
         << QJsonDocument(r).toJson().toStdString();
 
     const QJsonObject rot = rc.cmdRoadmapLog(rotateReq(root, QStringLiteral("0.7"), true)).object();
-    EXPECT_EQ(rot.value(QStringLiteral("code")).toString(), QStringLiteral("bad_op_combo"))
-        << "rotate_minor must stay unreachable until ANTS-4081";
+    EXPECT_TRUE(rot.value(QStringLiteral("ok")).toBool())
+        << "rotate_minor must be reachable through roadmap_log: "
+        << QJsonDocument(rot).toJson().toStdString();
+    EXPECT_GE(rot.value(QStringLiteral("sections_moved")).toInt(), 1)
+        << QJsonDocument(rot).toJson().toStdString();
 }

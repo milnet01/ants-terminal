@@ -310,13 +310,14 @@ Source-grep + pure-helper drive. Same harness pattern as
 
 - **INV-14** `/bump` rotation contract.
   `.claude/bump.json`'s `todos` array contains a rotation step
-  keyed on **minor and major bumps only — not patch**. The recipe
-  step invokes `packaging/rotate-roadmap.sh <closed-minor>` (the
-  shell-script form is the contract; a future port to Python or
-  another language must keep the same CLI). The step is
-  content-preserving: composing a faux ROADMAP.md with two minor
-  sections, running `rotate-roadmap.sh` for the closed minor,
-  then asserting:
+  keyed on **minor and major bumps only — not patch**. Since
+  ANTS-4081 the step calls `roadmap_log op:"rotate_minor"`, because
+  this project's ROADMAP.md is rendered from the roadmap store and a
+  script's edit to it is discarded by the next write. The clauses
+  below test `packaging/rotate-roadmap.sh`, the markdown form, which
+  keeps its CLI. It is content-preserving: composing a faux
+  ROADMAP.md with two minor sections, running `rotate-roadmap.sh`
+  for the closed minor, then asserting:
   (a) every bullet under the closed minor's `## <closed>.0 — …`
   heading and its sub-headings appears byte-identical in
   `docs/roadmap/<closed>.md`, and

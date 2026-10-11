@@ -12202,6 +12202,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
                     opEnum.append("retitle_section"); // ANTS-5557
+                    opEnum.append("rotate_minor");    // ANTS-4081
                     opEnum.append("link");            // ANTS-4079
                     opEnum.append("unlink");          // ANTS-4079
                     opEnum.append("list_elements");    // ANTS-5379
@@ -12232,6 +12233,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "dry_run previewable (echoing previous_intro), and "
                         "echo replaced_intro_chars (on amend_intro, the "
                         "matched old_text only). "
+                        "\"rotate_minor\" (ANTS-4070, store-only) moves every "
+                        "section of a closed `minor` (\"0.7\") into "
+                        "docs/roadmap/<minor>.md; it refuses minor_not_closed "
+                        "while one holds an open item. Run it on a minor or "
+                        "major bump only, as the bump recipe does; a minor "
+                        "with nothing open may still be the current one. "
                         "\"retitle_section\" (store-only) renames `section` to "
                         "`title` and returns its new `slug`; a clash refuses "
                         "bad_args. "
@@ -13206,6 +13213,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["level"]         = levelProp;
                     props["title"]         = titleProp;
                     props["intro_body"]    = introBodyProp;
+                    {   // ANTS-4081 — op:"rotate_minor"'s one argument.
+                        QJsonObject minorProp;
+                        minorProp["type"]        = "string";
+                        minorProp["pattern"]     = "^[0-9]+\\.[0-9]+$";
+                        minorProp["description"] =
+                            "op:\"rotate_minor\" — the closed minor, "
+                            "<MAJOR>.<MINOR> (\"0.7\").";
+                        props["minor"] = minorProp;
+                    }
                     {   // ANTS-5379 — the element ops' address.
                         QJsonObject elemPosProp;
                         elemPosProp["type"]    = "integer";

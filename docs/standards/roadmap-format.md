@@ -1120,11 +1120,10 @@ this paragraph exists to prevent. `roadmap-data-model.md` § 8 owns the
 reasoning.
 
 The operation is **`roadmap_log op:"rotate_minor"`** (Ants ANTS-4070), taking
-the closed `<MAJOR>.<MINOR>` and nothing else. **It is implemented and it is
-not reachable** — the handler exists, but the verb's `op` dispatch does not
-carry it, so a call reaches `bad_op_combo` and none of the refusal codes
-below can fire. Do not build a
-bump recipe on it yet; ANTS-4081 owns the wiring.
+the closed `<MAJOR>.<MINOR>` and nothing else. **It does not enforce the
+rotation event**: a minor with nothing open can still be the current one, so
+call it from a bump recipe, on a minor or major bump only. Ants Terminal's
+`.claude/bump.json` does (ANTS-4081).
 Three things about it are part of this convention rather than that project's
 implementation detail:
 
