@@ -484,7 +484,8 @@ deleted. **Neither half is built yet** (ANTS-5638): until it ships, such a
 machine falls to the counter row of the table, floored to the corpus, and
 can reissue an id the files do not carry.
 
-**The header mark's form.** The render writes it as one line directly
+**The header mark's form.** Only an `ants-v1` render writes it, since
+the rebuild serves store-migrated projects alone. It is one line directly
 under the generated-file notice, in the project's roadmap file only. A
 `docs/roadmap/*.md` archive carries none.
 
@@ -496,20 +497,24 @@ under the generated-file notice, in the project's roadmap file only. A
   above defines it. `N` is decimal digits.
 - Pairs are separated by one space and sorted by prefix in byte order, so
   two renders of one store write the same line.
-- There is a pair for each prefix the store holds an `id_high_water` row or
-  an item id for. `N` is that prefix's `RoadmapStore::allocationFloor`, so
-  `internal` items count.
+- There is a pair for each `id_high_water` row the store holds for the
+  project, except a synthesis counter's `<prefix>#S` row. `N` is that
+  prefix's `RoadmapStore::allocationFloor`, so `internal` items count. A
+  row for any other prefix could change which prefix
+  `RoadmapStore::idPrefixFor` picks for the next id.
 - A prefix whose floor is 0 gets no pair. With no pair left, the render
   writes no line.
-- Synthesised ids (`<prefix>-S<n>`, ANTS-4500) get no pair, nor does their
-  counter's `<prefix>#S` row. Every rendered bullet carries its id, so a
-  rebuild from the files synthesises none.
+- Synthesised ids (`<prefix>-S<n>`, ANTS-4500) need no pair. Every rendered
+  bullet carries its id, so a rebuild from the files synthesises none.
 - A reader looks for the mark in the first six lines, the window the notice
   is found in. A line it cannot parse is ignored whole, and the rebuild's
   reply says so. The floor then comes from the files' ids alone.
 - The rebuild sets each prefix's `id_high_water` row to the greater of its
   mark and the highest id the rebuilt items hold. The mark never lowers a
   floor.
+- Migrating the file drops the mark line rather than keeping it in the
+  root section's intro, so the render always writes the mark fresh from
+  the store.
 
 ANTS-5638's tests check this form; until they land, nothing does.
 
@@ -1337,9 +1342,10 @@ by this standard or by any tool** — so a multi-prefix project that
 is *not* store-migrated has no **per-prefix** counter carrier: every
 prefix shares the one un-prefixed integer. It does **not** follow that
 the counter is skipped. Allocation is `max(shared counter, per-prefix
-corpus floor) + 1` — the counter supplies the candidate and
-`corpusHighWater()` only floors it, the same `max()` shape § 3.5.1's
-counter row states (`remotecontrol_roadmap_log_batch.cpp`,
+corpus floor, store floor) + 1`, the store floor being
+`RoadmapStore::allocationFloor` where a store row exists — the counter
+supplies the candidate and the other two only floor it, the same `max()`
+shape § 3.5.1's counter row states (`remotecontrol_roadmap_log_batch.cpp`,
 `effCounter`). The consequence worth keeping is about the FLOOR, not
 the source: the shared counter tracks the dominant prefix's
 allocations, so a non-dominant prefix skips numbers and floors to
