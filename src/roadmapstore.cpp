@@ -142,6 +142,16 @@ bool isWritableItemField(const QString &field) {
     return writable.contains(field);
 }
 
+// ANTS-5643 — the refusal a store too new for this build gives. It names the
+// remedy because a schema bump reaches every running session at once, and
+// each one otherwise has to be told by hand.
+QString newerSchemaError(int seen) {
+    return QStringLiteral("store schema %1 is newer than this build's %2. Restart the "
+                          "MCP server to load the newer build: in Claude Code, type /mcp. "
+                          "The Ants Terminal window itself needs a relaunch.")
+        .arg(seen).arg(RoadmapStore::kSchemaVersion);
+}
+
 } // namespace
 
 RoadmapStore::RoadmapStore(QString dbPath, qint64 historyCapBytes, Access access)
@@ -559,8 +569,7 @@ bool RoadmapStore::createSchema(QString *error) {
                 return true;
             if (seen > kSchemaVersion) {
                 if (error)
-                    *error = QStringLiteral("store schema %1 is newer than this build's %2")
-                                 .arg(seen).arg(kSchemaVersion);
+                    *error = newerSchemaError(seen);
                 return false;
             }
         }
@@ -586,8 +595,7 @@ bool RoadmapStore::createSchema(QString *error) {
     if (version > kSchemaVersion) {
         exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
         if (error)
-            *error = QStringLiteral("store schema %1 is newer than this build's %2")
-                         .arg(version).arg(kSchemaVersion);
+            *error = newerSchemaError(version);
         return false;
     }
     if (version == kSchemaVersion) {

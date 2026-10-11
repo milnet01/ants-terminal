@@ -68148,7 +68148,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Lanes: packaging.
   Blocked-by: ANTS-1070.
 
-- 📋 [ANTS-5643] **A store too new for a running ants-mcpd tells the session to type /mcp.**
+- ✅ [ANTS-5643] **A store too new for a running ants-mcpd tells the session to type /mcp.**
   Seen 2026-10-10 after ANTS-5366 moved the store to schema 4 (65a1641f).
   Every session runs build/ants-mcpd in place, so the rebuild swapped the
   file; the first ants-mcpd started after it climbed the store, and every
@@ -68161,6 +68161,10 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   bump commit's session sends one session_message broadcast. Only a
   future bump benefits: the v3 binaries keep their old text.
   Reload: the message ships in the next ants-mcpd build; no relaunch.
+  Resolved (2026-10-11): src/roadmapstore.cpp newerSchemaError() writes
+  both refusals; it names /mcp and the terminal relaunch. Test:
+  RoadmapStoreConcurrency.NewerStoreRefusedWithoutWaitingOnWriter, run
+  red first. The optional broadcast was not built.
   **Layman:** When the roadmap database is upgraded, older Claude sessions get an error that tells them the one-step fix.
   Kind: ux.
   Source: in-session-2026-10-10 (ut-monsterhunt report after ANTS-5366).

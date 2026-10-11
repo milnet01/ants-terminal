@@ -50,7 +50,8 @@ five seconds to re-assert something already asserted.
 **Newer store refused without the lock (ANTS-5086).** `open()` on a store
 whose `user_version` is above `kSchemaVersion` fails with the "newer than
 this build" error while another connection holds the write lock, well inside
-the busy deadline. `open()` also creates a missing store file before SQLite
+the busy deadline. The error names `/mcp` as the remedy (ANTS-5643).
+`open()` also creates a missing store file before SQLite
 opens it, so its permissions are set before the schema is written.
 
 ## Must fail first

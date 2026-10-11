@@ -96,6 +96,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **When the roadmap database is newer than a running MCP server, the error now tells the session to type /mcp** (ANTS-5643)
+  It also says the Ants Terminal window itself needs a relaunch.
+
 - **A project removed from the roadmap store keeps a marked placeholder, so other sessions can still leave it notes and its number is never given to a new project.** (ANTS-5366)
   `roadmap_migrate op:"deregister"` now keeps the project row, stamped
   with `deregistered_at`, and keeps its mail. Its slug stays taken;

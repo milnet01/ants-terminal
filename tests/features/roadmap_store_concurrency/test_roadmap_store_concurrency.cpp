@@ -279,6 +279,9 @@ TEST(RoadmapStoreConcurrency, NewerStoreRefusedWithoutWaitingOnWriter) {
     err.clear();
     EXPECT_FALSE(older.open(&err)) << "a newer store must be refused";
     EXPECT_TRUE(err.contains(QStringLiteral("newer"))) << err.toStdString();
+    // ANTS-5643 — the refusal names its remedy, so a session meeting it
+    // after a schema bump knows to restart its MCP client.
+    EXPECT_TRUE(err.contains(QStringLiteral("/mcp"))) << err.toStdString();
     EXPECT_LT(clock.elapsed(), 1000)
         << "the refusal waited for the write lock instead of reading user_version";
 
