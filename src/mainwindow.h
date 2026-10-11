@@ -41,6 +41,7 @@ class ClaudeBgTaskTracker;
 class ClaudeStatusBarController;
 class ColoredTabBar;
 class ColoredTabWidget;
+class TabListPanel;
 class QSplitter;
 class QFrame;
 class KWinPositionTracker;
@@ -360,6 +361,13 @@ private:
     QTimer *m_statusMessageTimer = nullptr;
     void updateStatusBar();
     void updateTabTitles();
+    // ANTS-5645 — the one place a tab label is cut to fit the tab bar.
+    // Records the whole title for the side tab list first.
+    void setTabLabel(int index, const QString &full);
+    // ANTS-5645 — the side tab list panel: shown, hidden, refreshed.
+    void applyTabListPanelConfig();
+    void scheduleTabListRefresh();
+    void refreshTabList();
     // Git branch cache — avoid synchronous .git/HEAD tree walk on every poll
     QString m_gitCacheCwd;
     QString m_gitCacheBranch;
@@ -657,6 +665,18 @@ private:
     // until rc_protocol clears it (empty `title` → remove from map).
     // Cleaned up alongside `m_tabSessionIds` at tab destruction.
     QHash<QWidget *, QString> m_tabTitlePins;
+
+    // ANTS-5645 — each tab's whole title, as setTabLabel last wrote it.
+    // A tab with no entry shows its tab text. Freed at tab close.
+    QHash<QWidget *, QString> m_tabFullTitles;
+    TabListPanel *m_tabListPanel = nullptr;
+    QSplitter *m_tabSplitter = nullptr;
+    QTimer *m_tabListRefreshTimer = nullptr;
+    QAction *m_tabListPanelAction = nullptr;
+    QAction *m_tabListHidesBarAction = nullptr;
+    // The theme's chrome colours, kept by applyTheme for a panel made later.
+    QColor m_chromeBg;
+    QColor m_chromeText;
 
     // First-show flag (per-instance, not static)
     bool m_firstShow = true;

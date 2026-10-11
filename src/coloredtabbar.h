@@ -127,6 +127,12 @@ public:
         m_indicatorProvider = std::move(provider);
     }
 
+    // ANTS-5645 — the same indicator the tab's dot paints, for the side
+    // tab list. Glyph::None when no provider is installed.
+    ClaudeTabIndicator indicatorAt(int index) const {
+        return m_indicatorProvider ? m_indicatorProvider(index) : ClaudeTabIndicator{};
+    }
+
     // Theme the per-tab close (×) glyph. We draw it ourselves on a real
     // QToolButton installed via setTabButton() rather than relying on a
     // QSS `QTabBar::close-button { image: ... }` rule, because Qt6's QSS
@@ -140,6 +146,10 @@ public:
     // through tabInserted(). Call from MainWindow::applyTheme.
     void setCloseGlyphColors(const QColor &normal, const QColor &hover,
                              const QColor &hoverBg);
+
+signals:
+    // ANTS-5645 — a tab's colour was set or cleared, by any writer.
+    void tabColorChanged(int index);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -172,6 +182,14 @@ public:
     explicit ColoredTabWidget(QWidget *parent = nullptr);
 
     ColoredTabBar *coloredTabBar() const { return m_bar; }
+
+signals:
+    // ANTS-5645 — a tab was added or removed, by any path.
+    void tabsChanged();
+
+protected:
+    void tabInserted(int index) override;
+    void tabRemoved(int index) override;
 
 private:
     ColoredTabBar *m_bar;

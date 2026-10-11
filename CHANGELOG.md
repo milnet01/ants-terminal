@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **Tab List Panel: every open tab by its full name, in a list on the left of the window** (ANTS-5645)
+  View → Tab List Panel (Ctrl+Shift+Y) shows one line per tab, grouped
+  by tab colour, each with its colour stripe and Claude status dot.
+  Click a line to switch tabs. The text follows the terminal font size,
+  the divider can be dragged and its width is kept, and View → Hide Tab
+  Bar While the Tab List Shows frees the top row. Every setting applies
+  at once, with no restart.
+
 - **roadmap_migrate op:"reroot" points a migrated project at its new folder after the folder moves** (ANTS-3857)
   A migrate from a moved project's folder now names this remedy instead of
   leaving only "pass a different export_slug". It refuses while the old

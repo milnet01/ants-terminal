@@ -1492,6 +1492,35 @@ void Config::setBoldItalicFontFamily(const QString &family) {
 }
 
 // Tab groups
+// ANTS-5645 — the side tab list panel. Off by default: the tab bar is
+// the familiar view, and the panel takes width from the terminal.
+bool Config::tabListPanel() const {
+    return m_data.value("tab_list_panel").toBool(false);
+}
+
+void Config::setTabListPanel(bool shown) {
+    if (!storeIfChanged("tab_list_panel", shown)) return;
+    save();
+}
+
+bool Config::tabListPanelHidesTabBar() const {
+    return m_data.value("tab_list_panel_hides_tab_bar").toBool(false);
+}
+
+void Config::setTabListPanelHidesTabBar(bool hides) {
+    if (!storeIfChanged("tab_list_panel_hides_tab_bar", hides)) return;
+    save();
+}
+
+int Config::tabListPanelWidth() const {
+    return qBound(120, m_data.value("tab_list_panel_width").toInt(280), 1200);
+}
+
+void Config::setTabListPanelWidth(int px) {
+    if (!storeIfChanged("tab_list_panel_width", qBound(120, px, 1200))) return;
+    save();
+}
+
 QJsonObject Config::tabGroups() const {
     return m_data.value("tab_groups").toObject();
 }

@@ -493,6 +493,15 @@ public:
     int terminalPadding() const;
     void setTerminalPadding(int px);
 
+    // ANTS-5645 — the side tab list panel. Shown or hidden; whether the
+    // top tab bar hides while it shows; its width in pixels.
+    bool tabListPanel() const;
+    void setTabListPanel(bool shown);
+    bool tabListPanelHidesTabBar() const;
+    void setTabListPanelHidesTabBar(bool hides);
+    int tabListPanelWidth() const;
+    void setTabListPanelWidth(int px);
+
     // Tab groups (color labels)
     QJsonObject tabGroups() const;
     void setTabGroups(const QJsonObject &groups);

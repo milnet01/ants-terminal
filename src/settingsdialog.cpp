@@ -805,7 +805,7 @@ void SettingsDialog::setupKeybindingsTab(QWidget *tab) {
             {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
             {"prev_bookmark", "Ctrl+Shift+Up"}, {"url_quick_select", "Ctrl+Shift+G"},
             {"scratchpad", "Ctrl+Shift+Return"}, {"snippets", "Ctrl+Shift+;"},
-            {"toggle_fold", "Ctrl+Shift+."},
+            {"toggle_fold", "Ctrl+Shift+."}, {"tab_list_panel", "Ctrl+Shift+Y"},
         };
         m_keybindingTable->setRowCount(0);
         for (auto &[action, key] : defaults) {
@@ -1200,7 +1200,7 @@ void SettingsDialog::loadSettings() {
         {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
         {"prev_bookmark", "Ctrl+Shift+Up"}, {"url_quick_select", "Ctrl+Shift+G"},
         {"scratchpad", "Ctrl+Shift+Return"}, {"snippets", "Ctrl+Shift+;"},
-        {"toggle_fold", "Ctrl+Shift+."},
+        {"toggle_fold", "Ctrl+Shift+."}, {"tab_list_panel", "Ctrl+Shift+Y"},
     };
     for (auto &[action, defaultKey] : defaults) {
         int row = m_keybindingTable->rowCount();

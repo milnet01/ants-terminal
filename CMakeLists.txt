@@ -864,6 +864,7 @@ set(ANTS_MAINWINDOW_SOURCES_REL
     src/mainwindow_mcp.cpp
     src/mainwindow_quake.cpp
     src/mainwindow_tabcolors.cpp
+    src/mainwindow_tablist.cpp
     src/mainwindow_repo.cpp
 )
 list(TRANSFORM ANTS_MAINWINDOW_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
@@ -877,6 +878,7 @@ add_library(ants_chrome_lib STATIC
     src/titlebar.cpp
     src/dialogchrome.cpp
     src/coloredtabbar.cpp
+    src/tablistpanel.cpp
     src/commandpalette.cpp
     src/verifytrustmodal.cpp
 )
@@ -2164,6 +2166,8 @@ if(ANTS_TESTS)
                 tests/features/status_bar_elision/test_status_bar_elision.cpp
                 tests/features/review_changes_click/test_review_changes_click.cpp
                 tests/features/tab_color/test_tab_color.cpp
+                # ANTS-5645 — the side tab list panel.
+                tests/features/tab_list_panel/test_tab_list_panel.cpp
                 tests/features/shell_command_wiring/test_shell_command_wiring.cpp
                 tests/features/wayland_quake_mode/test_wayland_quake_mode.cpp
                 tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp

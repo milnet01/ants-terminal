@@ -266,6 +266,25 @@ void MainWindow::setupViewMenu() {
     connect(distinctColours, &QAction::triggered, this,
             &MainWindow::colorTabsDistinctly);
 
+    // ANTS-5645 — every open tab by full name, in a panel on the left.
+    m_tabListPanelAction = viewMenu->addAction("&Tab List Panel");
+    m_tabListPanelAction->setCheckable(true);
+    m_tabListPanelAction->setChecked(m_config.tabListPanel());
+    m_tabListPanelAction->setShortcut(
+        QKeySequence(m_config.keybinding("tab_list_panel", "Ctrl+Shift+Y")));
+    connect(m_tabListPanelAction, &QAction::toggled, this, [this](bool on) {
+        m_config.setTabListPanel(on);
+        applyTabListPanelConfig();
+    });
+    m_tabListHidesBarAction =
+        viewMenu->addAction("&Hide Tab Bar While the Tab List Shows");
+    m_tabListHidesBarAction->setCheckable(true);
+    m_tabListHidesBarAction->setChecked(m_config.tabListPanelHidesTabBar());
+    connect(m_tabListHidesBarAction, &QAction::toggled, this, [this](bool on) {
+        m_config.setTabListPanelHidesTabBar(on);
+        applyTabListPanelConfig();
+    });
+
     viewMenu->addSeparator();
 
     QAction *centerAction = viewMenu->addAction("&Center Window");
@@ -933,6 +952,8 @@ void MainWindow::setupSettingsMenu() {
                     setupQuakeMode();
                     wireQuakeHotkey();
                 }
+
+                applyTabListPanelConfig();  // ANTS-5645
 
 #ifdef ANTS_LUA_PLUGINS
                 // 0.6.9 — let plugins react to settings changes (re-read their

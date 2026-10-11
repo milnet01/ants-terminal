@@ -216,18 +216,12 @@ void MainWindow::restoreSessions() {
             // (splits are never persisted), so writing the pin map
             // directly is equivalent and avoids one lookup.
             m_tabTitlePins[terminal] = savedPinnedTitle;
-            QString display = savedPinnedTitle.length() > 30
-                ? savedPinnedTitle.left(27) + "..."
-                : savedPinnedTitle;
-            m_tabWidget->setTabText(newTabIdx, display);
+            setTabLabel(newTabIdx, savedPinnedTitle);
         } else {
             // No pin → fall back to the shell-derived window title.
-            QString savedTitle = terminal->grid()->windowTitle();
-            if (!savedTitle.isEmpty()) {
-                if (savedTitle.length() > 30)
-                    savedTitle = savedTitle.left(27) + "...";
-                m_tabWidget->setTabText(newTabIdx, savedTitle);
-            }
+            const QString savedTitle = terminal->grid()->windowTitle();
+            if (!savedTitle.isEmpty())
+                setTabLabel(newTabIdx, savedTitle);
         }
 
         // Clear screen buffer so new shell starts with a clean display

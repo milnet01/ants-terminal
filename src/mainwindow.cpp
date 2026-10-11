@@ -44,6 +44,8 @@
 #include "claudesetup.h"        // ANTS-5236 — refreshStatusHookScript
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
+#include "tablistpanel.h"      // ANTS-5645 — side tab list
+#include <QSplitter>
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
 #include "mcpspill.h"        // ANTS-2094 — mcp::setOffloadConfig / spillSweep
 #include "mcporientation.h"  // ANTS-1897 — SessionStart hook installer.
@@ -383,15 +385,25 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
         if (tabIdx >= 0) showTabColorMenu(tabIdx);
     });
 
-    // Layout: title bar -> menu bar -> tabs
+    // Layout: title bar -> menu bar -> tabs. The tabs sit in a splitter so
+    // the ANTS-5645 tab list panel can open on their left.
     QWidget *central = new QWidget(this);
     QVBoxLayout *vbox = new QVBoxLayout(central);
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(0);
     vbox->addWidget(m_titleBar);
     vbox->addWidget(m_menuBar);
-    vbox->addWidget(m_tabWidget, 1);
+    m_tabSplitter = new QSplitter(Qt::Horizontal, central);
+    m_tabSplitter->setChildrenCollapsible(false);
+    m_tabSplitter->addWidget(m_tabWidget);
+    vbox->addWidget(m_tabSplitter, 1);
     setCentralWidget(central);
+    connect(m_tabWidget, &QTabWidget::currentChanged, this,
+            [this](int) { scheduleTabListRefresh(); });
+    connect(m_coloredTabBar, &ColoredTabBar::tabColorChanged, this,
+            [this](int) { scheduleTabListRefresh(); });
+    connect(m_tabWidget, &ColoredTabWidget::tabsChanged, this,
+            [this] { scheduleTabListRefresh(); });
 
     // Tab-bar opaque background: same translucent-parent failure mode
     // as the menubar (see opaquemenubar.h). The fillRect override in
@@ -667,7 +679,11 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // since those paths run setup/teardown that should complete
     // before the save fires.)
     connect(m_coloredTabBar, &QTabBar::tabMoved,
-            this, [this](int, int) { saveTabOrderOnly(); });
+            this, [this](int, int) { saveTabOrderOnly(); scheduleTabListRefresh(); });
+
+    // ANTS-5645 — the tab list panel, if the config shows it. After the
+    // session restore above, so its first refresh sees every tab.
+    applyTabListPanelConfig();
 
     // Apply ordered tab-color sequence from the previous run. Must run
     // AFTER all tabs are in place. For session-persistence ON, the
@@ -1413,6 +1429,12 @@ void MainWindow::applyTheme(const QString &name) {
                                              theme.ansi[1]);
         m_coloredTabBar->update();
     }
+    m_chromeBg = theme.bgSecondary;
+    m_chromeText = theme.textPrimary;
+    if (m_tabListPanel) m_tabListPanel->setThemeColors(m_chromeBg, m_chromeText);
+    if (m_tabSplitter)
+        m_tabSplitter->setStyleSheet(QStringLiteral("QSplitter::handle { background-color: %1; }")
+                                         .arg(theme.bgSecondary.name()));
     if (m_statusBar) {
         m_statusBar->setBackgroundFill(theme.bgSecondary);
         QPalette sp = m_statusBar->palette();
@@ -1625,6 +1647,7 @@ void MainWindow::applyFontSizeToAll(int size) {
     for (auto *t : terminals) {
         t->setFontSize(size);
     }
+    if (m_tabListPanel) m_tabListPanel->setFontPointSize(size);  // ANTS-5645
     showStatusMessage(QString("Font size: %1pt").arg(size), 3000);
 }
 
@@ -1740,6 +1763,9 @@ void MainWindow::setupStatusBarChrome() {
         m_claudeIntegration, m_claudeTabTracker,
         m_coloredTabBar, m_tabWidget);
     m_claudeStatusBarController->applyTheme(m_currentTheme);
+    // ANTS-5645 — the tab list's Claude dots follow the tab bar's.
+    connect(m_claudeTabTracker, &ClaudeTabTracker::shellStateChanged, this,
+            [this] { scheduleTabListRefresh(); });
 
     connect(m_claudeStatusBarController, &ClaudeStatusBarController::reviewClicked,
             this, &MainWindow::showDiffViewer);
@@ -2609,9 +2635,19 @@ void MainWindow::updateTabTitles() {
         }
 
         if (label.isEmpty()) label = "Shell";
-        if (label.length() > 30) label = label.left(27) + "...";
-        m_tabWidget->setTabText(i, label);
+        setTabLabel(i, label);
     }
+}
+
+void MainWindow::setTabLabel(int index, const QString &full) {
+    QWidget *w = m_tabWidget->widget(index);
+    if (!w) return;
+    const QString shown = full.length() > 30 ? full.left(27) + "..." : full;
+    if (m_tabFullTitles.value(w) == full && m_tabWidget->tabText(index) == shown)
+        return;  // the 2 s tick rewrites unchanged labels; skip the refresh
+    m_tabFullTitles[w] = full;
+    m_tabWidget->setTabText(index, shown);
+    scheduleTabListRefresh();
 }
 
 // --- Broadcast input ---
@@ -3043,6 +3079,8 @@ void MainWindow::onConfigFileChanged(const QString &path) {
         for (int i = 0; i < m_tabWidget->count(); ++i)
             m_tabWidget->setTabToolTip(i, QString());
     }
+
+    applyTabListPanelConfig();  // ANTS-5645
 
     showStatusMessage("Config reloaded from disk", 3000);
 

@@ -84661,7 +84661,7 @@ a modern terminal" release.
   Source: in-session-2026-10-10 (CI parity review).
   Lanes: tools.
 
-- 📋 [ANTS-5645] **A side panel lists every open tab by full name, grouped by tab group, as an alternative to the scrolling tab bar.**
+- ✅ [ANTS-5645] **A side panel lists every open tab by full name, grouped by tab group, as an alternative to the scrolling tab bar.**
   Asked by the user 2026-10-11 with about 26 project tabs open: the
   single-row tab bar (ColoredTabBar, a QTabBar, which cannot wrap) hides
   most of them behind scroll arrows. The user chose a side panel over
@@ -84671,6 +84671,14 @@ a modern terminal" release.
   toggled on or off, and the top tab bar can be hidden while it shows.
   Readable at large font sizes (the user is partially sighted).
   Reload: a config.json view key, applied on change with no relaunch.
+  Resolved (2026-10-11): src/tablistpanel.{h,cpp} and
+  src/mainwindow_tablist.cpp. Groups are tab colours, since `tab_groups`
+  holds colours, not names. Full titles come from MainWindow::setTabLabel,
+  now the one place a label is cut to 30 characters. Config keys
+  tab_list_panel, tab_list_panel_hides_tab_bar, tab_list_panel_width;
+  View menu toggle Ctrl+Shift+Y. Contract and tests:
+  tests/features/tab_list_panel (10 cases, red against stand-ins first,
+  three mutations each caught).
   **Layman:** See all your project tabs at once in a list down the side, and click any one to switch, with no scrolling sideways.
   Kind: feature.
   Source: user-request-2026-10-11.

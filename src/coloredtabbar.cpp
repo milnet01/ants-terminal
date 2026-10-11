@@ -144,6 +144,16 @@ ColoredTabWidget::ColoredTabWidget(QWidget *parent)
     setTabBar(m_bar);
 }
 
+void ColoredTabWidget::tabInserted(int index) {
+    QTabWidget::tabInserted(index);
+    emit tabsChanged();
+}
+
+void ColoredTabWidget::tabRemoved(int index) {
+    QTabWidget::tabRemoved(index);
+    emit tabsChanged();
+}
+
 void ColoredTabBar::setBackgroundFill(const QColor &c) {
     if (m_bg != c) {
         m_bg = c;
@@ -159,6 +169,7 @@ void ColoredTabBar::setTabColor(int index, const QColor &color) {
     // Bottom-strip area of the changed tab is the only dirty region;
     // a conservative update() suffices — QTabBar coalesces these.
     update();
+    emit tabColorChanged(index);
 }
 
 const QList<ColoredTabBar::PaletteEntry> &ColoredTabBar::palette() {

@@ -49,6 +49,7 @@
         "src/mainwindow_mcp.cpp",
         "src/mainwindow_quake.cpp",
         "src/mainwindow_tabcolors.cpp",
+        "src/mainwindow_tablist.cpp",
         "src/mainwindow_repo.cpp",
         "src/mainwindow.h",
         "src/mainwindow_internal.h"
@@ -61,6 +62,8 @@
         "src/branchchip.h",
         "src/coloredtabbar.cpp",
         "src/coloredtabbar.h",
+        "src/tablistpanel.cpp",
+        "src/tablistpanel.h",
         "src/commandpalette.cpp",
         "src/commandpalette.h",
         "src/elidedlabel.h",

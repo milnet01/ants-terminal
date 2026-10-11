@@ -115,10 +115,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
                 // the user/script chose a label and the shell's OSC
                 // 0/2 must not stomp it.
                 if (m_tabTitlePins.contains(tabRoot)) break;
-                QString tabTitle = title.isEmpty() ? "Shell" : title;
-                if (tabTitle.length() > 30)
-                    tabTitle = tabTitle.left(27) + "...";
-                m_tabWidget->setTabText(i, tabTitle);
+                setTabLabel(i, title.isEmpty() ? QStringLiteral("Shell") : title);
                 break;
             }
         }
@@ -815,6 +812,7 @@ void MainWindow::performTabClose(int index) {
 
     m_tabSessionIds.remove(w);
     m_tabTitlePins.remove(w);  // free pin alongside session id
+    m_tabFullTitles.remove(w);
     m_tabWidget->removeTab(index);
     w->deleteLater();
 
@@ -1133,9 +1131,7 @@ bool MainWindow::setTabTitleForRemote(int index, const QString &title) {
             if (auto *term = activeTerminalInTab(w)) {
                 QString shellTitle = term->shellTitle();
                 if (shellTitle.isEmpty()) shellTitle = "Shell";
-                if (shellTitle.length() > 30)
-                    shellTitle = shellTitle.left(27) + "...";
-                m_tabWidget->setTabText(index, shellTitle);
+                setTabLabel(index, shellTitle);
             }
         }
     } else {
@@ -1145,8 +1141,7 @@ bool MainWindow::setTabTitleForRemote(int index, const QString &title) {
         // refresh tick. Truncated to the same 30-char ceiling the
         // signal handler uses to avoid the tab strip ballooning.
         m_tabTitlePins[w] = title;
-        QString display = title.length() > 30 ? title.left(27) + "..." : title;
-        m_tabWidget->setTabText(index, display);
+        setTabLabel(index, title);
     }
     return true;
 }
