@@ -34037,6 +34037,12 @@ against current source before filing.
   (ANTS-5609: rotate on every minor bump after re-filing open work), so
   this item now waits on ANTS-5609 and on rotation being callable
   (ANTS-4081), not on a new spec.
+  Progress (2026-10-11): no longer blocked on code. ANTS-4081 shipped
+  (02d9acf9), so the bump recipe's rotation todo calls rotate_minor.
+  What it waits on now is the event: every big block is a 0.7.* section
+  and 0.7 is still the current minor (0.7.113), so § 3.9 rotates them at
+  the 0.8.0 bump, after re-filing their open items (ANTS-5609). Nothing
+  to build before then.
   **Layman:** Our to-do file has grown to 30,000 lines because finished work never gets moved out, even though our own rule says to move it.
   Kind: chore.
   Source: user-question-2026-07-30.
