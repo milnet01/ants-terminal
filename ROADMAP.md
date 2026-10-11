@@ -1,5 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
+<!-- ants-roadmap-id-high-water: ANTS=5649 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -42487,6 +42488,31 @@ against current source before filing.
   Source: in-session-2026-10-11 (ANTS-4081).
   Lanes: roadmapstore, packaging.
 
+- 📋 [ANTS-5649] **Decide whether a second clone whose slug another root owns refuses the store rebuild or skips it.**
+  Follows ANTS-5638. roadmap-format.md § 3.5.1's trigger asks only
+  whether the store has a row for this canonical root. A second plain
+  clone, or a moved tree, has none, so the rebuild fires, and
+  roadmap_migrate refuses slug_collision because the leaf-derived slug
+  belongs to the other root. Before c05fb4d8 such an append fell
+  through to the counter path and succeeded.
+
+  7d1e83aa keeps the refusal and makes the error name the remedy
+  (op:"reroot" if moved; else write from the owning root).
+
+  Option B, raised by the ANTS-5638 session: skip the rebuild when
+  readProjectBySlug (IncludeDeregistered) finds the slug under another
+  root, restoring the fall-through. The rebuild exists for a machine
+  with no store for the project, and this machine has one. Cost: the
+  clone writes the rendered file directly and allocates from the files'
+  ids alone.
+
+  Needs the user's choice. Either way § 3.5.1 records the rule, which
+  changes the standard's direction, so it takes the rule-14 gate.
+  **Layman:** A second copy of a project on the same computer can no longer add roadmap items; decide whether it should be blocked with advice or keep working as before.
+  Kind: enhancement.
+  Source: review-ut-ants-49 of c05fb4d8, session_message 578.
+  Lanes: roadmap-store, mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
@@ -69260,11 +69286,16 @@ project. Reported causes are claims until checked in source.
   Source: feedback-AI_Prompts-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5352] **The write verbs' wire text does not name `fields` as the way to skip the bullet echo.**
+- ✅ [ANTS-5352] **The write verbs' wire text does not name `fields` as the way to skip the bullet echo.**
   Reported by LocalWebServerManager: flip_batch with fields:["ok",
   "flipped_count","skipped"] returned about sixty bytes against a default
   that echoes each bullet whole. Related: ANTS-5263, ANTS-5248 (the echo
   itself), ANTS-5282 (other wire-text items).
+  Resolved (2026-10-11), no code change: ANTS-5263 settled it. A dry-run
+  flip_batch of two items returns flipped[] rows of {id, from_status,
+  to_status, format} and no bullet text; only a dry-run append returns
+  `bullet`, which is its preview. roadmap_log's op description carries
+  an ECHO COST paragraph naming `fields:["ok","id"]`.
   **Layman:** Callers only learn about the biggest saving on roadmap writes when another session tells them.
   Kind: doc.
   Source: feedback-LocalWebServerManager-2026-09-21.
@@ -91723,6 +91754,23 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: user-report-2026-10-11 (coredump notice).
   Lanes: tests.
+
+- 📋 [ANTS-5648] **The status bar shows "Claude: idle" while Claude waits on a long foreground shell command.**
+  Reported by the user 2026-10-11 with a screenshot. Claude Code showed
+  its working spinner ("Thundering... 2m 58s") over a foreground Bash
+  call that was 59 s into a `cc-job ... wait` build-and-test run. The
+  status bar on the same tab read "Claude: idle" the whole time.
+
+  Same symptom as ANTS-1885 and ANTS-5156, both shipped, so this is a
+  new trigger rather than a reopen. Likely cause, unverified: while a
+  tool call runs nothing is written to the transcript and the PTY is
+  quiet, so the state detector times out to idle. Check what the
+  detector reads during a long ToolUse, and hold the ToolUse state
+  until the tool result lands.
+  **Layman:** The status bar says Claude is idle when it is actually busy running a long command.
+  Kind: fix.
+  Source: user-report-2026-10-11 screenshot.
+  Lanes: claude-integration, status-bar.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
