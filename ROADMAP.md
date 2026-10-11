@@ -70839,6 +70839,10 @@ project. Reported causes are claims until checked in source.
   PaginationEngine::softCapBytes() too, with truncated and next_offset,
   since `limit` is documented as a cap. Option B: keep INV-9 as is.
   A changes INV-9, so it takes the rule-14 gate on ANTS-1436.
+  Decided by the user 2026-10-11: option A. An explicit-limit page is
+  trimmed to PaginationEngine::softCapBytes() too, with truncated and
+  next_offset. This changes ANTS-1436 INV-9, so the amendment takes the
+  rule-14 gate before the code.
   **Layman:** When a session asks for a set number of roadmap rows and they are too big, decide whether to send fewer rows or save them all to a side file.
   Kind: enhancement.
   Source: ANTS-5571 follow-up 2026-10-11.
