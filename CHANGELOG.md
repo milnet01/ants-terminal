@@ -129,6 +129,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log op:"rotate_minor"` now moves a `## v0.7.x` patch-stream block with its minor, and still leaves a heading naming two minors' patch streams in place.** (ANTS-5639)
+
 - **Tab List Panel rows are filled with their Claude state colour, keep the tab colour as a stripe, and stay readable when hovered or current.** (ANTS-5650)
   The name is drawn in black or white, whichever reads better on the row.
   The current tab is bold and outlined.

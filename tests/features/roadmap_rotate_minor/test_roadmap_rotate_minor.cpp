@@ -459,14 +459,16 @@ TEST(RoadmapRotateMinor, Inv3OpenItemRefuses) {
 
 // ---------------------------------------------------------------- INV-4 -----
 
-// The match admits only a release designator: `0.7` claims `## 0.7.0` and
-// `## 0.7` but not `## 0.70.0`, and `0.5` does not claim the two-minor signpost.
+// The match admits only a release designator: `0.7` claims `## 0.7.0`,
+// `## 0.7` and the `## v0.7.x` patch stream but not `## 0.70.0`, and `0.5`
+// does not claim the two-minor signpost (ANTS-5639).
 TEST(RoadmapRotateMinor, Inv4MatchAdmitsOnlyAReleaseDesignator) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
 
     const char *kBare     = "0.7";
+    const char *kStream   = "v0.7.x \xE2\x80\x94 patch stream";
     const char *kDecoy    = "0.70.0 \xE2\x80\x94 a much later release";
     const char *kSignpost = "0.5.x and 0.6.x \xE2\x80\x94 archived";
 
@@ -479,6 +481,8 @@ TEST(RoadmapRotateMinor, Inv4MatchAdmitsOnlyAReleaseDesignator) {
     md += bullet(kShipped, "DEMO-0003", "A decoy item.");
     md += QByteArray("## ") + kSignpost + "\n\n";
     md += bullet(kShipped, "DEMO-0004", "A signpost item.");
+    md += QByteArray("## ") + kStream + "\n\n";
+    md += bullet(kShipped, "DEMO-0005", "A patch-stream item.");
 
     qint64 projectId = 0;
     const QString root = seedMigrated(guard, tmp, md, &projectId);
@@ -492,12 +496,14 @@ TEST(RoadmapRotateMinor, Inv4MatchAdmitsOnlyAReleaseDesignator) {
     const QJsonObject resp = rotate(rotateReq(root, QStringLiteral("0.7")));
     ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
         << resp.value(QStringLiteral("error")).toString().toStdString();
-    EXPECT_EQ(resp.value(QStringLiteral("sections_moved")).toInt(), 2)
-        << "exactly `## 0.7.0 …` and `## 0.7` move";
+    EXPECT_EQ(resp.value(QStringLiteral("sections_moved")).toInt(), 3)
+        << "exactly `## 0.7.0 …`, `## 0.7` and `## v0.7.x …` move";
 
     const QByteArray archive = readAll(archivePath(root));
     EXPECT_TRUE(archive.contains("DEMO-0001"));
     EXPECT_TRUE(archive.contains("DEMO-0002"));
+    EXPECT_TRUE(archive.contains("DEMO-0005"))
+        << "a `.x` patch stream belongs to the minor it names";
     EXPECT_FALSE(archive.contains("DEMO-0003"))
         << "`## 0.70.0` is not in minor 0.7 — a plain startsWith claims it";
     EXPECT_FALSE(archive.contains("DEMO-0004"));
@@ -510,8 +516,8 @@ TEST(RoadmapRotateMinor, Inv4MatchAdmitsOnlyAReleaseDesignator) {
     ASSERT_TRUE(signpost.has_value());
     EXPECT_FALSE(signpost->sourcePath.has_value());
 
-    // `.x` is a `.` followed by a NON-digit, so the third case excludes the
-    // signpost without a special case — and nothing else matches 0.5.
+    // The signpost also names 0.6's patch stream, so it names no single minor
+    // — and nothing else matches 0.5.
     const QJsonObject fivish = rotate(rotateReq(root, QStringLiteral("0.5")));
     EXPECT_FALSE(fivish.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(fivish.value(QStringLiteral("code")).toString(),

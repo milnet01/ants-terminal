@@ -107,8 +107,11 @@ block at all.
 
 **A version block is a `##` whose title STARTS with a version** —
 `<M>.<N>`, optionally after a `v` — which is how `roadmap_query`'s
-`version` argument reads it. A phase block's title starts with its
-designator. **Any other `##`, except a hoisted fold-in (below), is
+`version` argument reads it. A title that also names another minor's
+patch stream is not a version block: § 3.9's release-designator rule
+makes `## 0.5.x and 0.6.x — archived` a signpost. The `version` argument
+still finds it by the name it starts with. A phase block's title
+starts with its designator. **Any other `##`, except a hoisted fold-in (below), is
 neither** — `## After 1.0.0`,
 `## Unscheduled`, a block of prose — and § 3.5.4 never selects it, the
 1.0 merge below never takes it, and § 3.9 never rotates it. Its items
@@ -444,14 +447,16 @@ other.
 |---|---|---|
 | **Store-migrated** — store row *and* `ants-v1` | the store, per `(project, prefix)`: the greater of the `id_high_water` row and the highest id any stored item holds. **Not** the committed corpus | neither read nor written; a stale file is simply left behind |
 | **Pass-headings** (§ 3.10.5), store row or not | derived from the heading, never allocated | neither read nor written |
-| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that project's `RoadmapStore::allocationFloor` for the prefix** — the row and the highest id a stored item holds (ANTS-4493, ANTS-5639) | read and written |
+| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1`. A store-rendered `ants-v1` roadmap with no row is rebuilt first (below), then allocates as store-migrated | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that project's `RoadmapStore::allocationFloor` for the prefix** — the row and the highest id a stored item holds (ANTS-4493, ANTS-5639) | read and written |
 
 On a store-migrated project an allocation is
 `RoadmapStore::allocationFloor(project, prefix) + 1`, followed by
 `raiseIdHighWater()`. The floor reads two columns because neither alone is
 complete. The `id_high_water` row remembers an id whose item was later
-deleted. The items hold every id migration wrote; migration writes the
-prefix's row only when it invents ids, and then at 0. **So an absent or
+deleted. The items hold every id migration wrote. A by-hand
+`roadmap_migrate` writes the prefix's row only when it invents ids, and
+then at 0; the store rebuild below also raises it to the header mark's
+`N`. **So an absent or
 zero row is neither an error nor the floor**: it is the state of
 every project until its first store-side allocation, and the stored items
 still floor the next id. Items the render excludes (`internal`, below)
@@ -535,6 +540,10 @@ under the generated-file notice, in the project's roadmap file only. A
   rest through
   `RoadmapStore::allocationFloor`. Each prefix the mark carries then
   floors at least as high as in the source store.
+- **Only that rebuild applies the mark.** A by-hand `roadmap_migrate`
+  ignores it. On a machine with no store row, migrating by hand creates
+  the row without the mark's floors, and the rebuild then never fires.
+  So let the first append rebuild the store instead.
 - **Accepted cost** (decided by the user 2026-10-11, ANTS-5638): a rebuilt
   row can sit higher than the source store's, or exist where it had none,
   so `RoadmapStore::idPrefixFor`, which picks the busiest row, may pick
@@ -1101,11 +1110,14 @@ The convention:
   work shipped in.** The heading's release designator is `<M>.<N>`,
   optionally after a `v`, followed by the end of the title, a character
   that is neither a digit nor a `.`, a `.` and a digit, or `.x` (a patch
-  stream). So `## 0.7.0`, `## 0.7.12 — …`, `## 0.7.50–0.7.59 — …` and
-  `## v0.7.x — patch stream` are all minor 0.7; `## 0.70.0` is not; and a
-  signpost naming two minors, such as `## 0.5.x and 0.6.x — archived`,
-  names no single minor and stays. `rotate_minor`'s title match does not
-  take `.x` yet (ANTS-5639).
+  stream) not followed by a letter, digit, `_` or `.`. **A title that also
+  names another minor's patch stream, `<M>.<N>.x`, names no single minor**
+  and stays. So `## 0.7.0`, `## 0.7.12 — …`, `## 0.7.50–0.7.59 — …` and
+  `## v0.7.x — patch stream` are all minor 0.7; `## 0.70.0` is not; and
+  the signpost `## 0.5.x and 0.6.x — archived` is neither 0.5 nor 0.6.
+  A passing mention of another release, as in `## 2.1.0 — after 2.0`,
+  does not count. `rotate_minor` applies this rule, and
+  `tests/features/roadmap_rotate_minor` INV-4 checks it.
 
   Rotation is content-preserving: every block of the closed minor, with
   its sub-headings and bullets, moves to `docs/roadmap/<closed>.md`

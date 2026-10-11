@@ -3497,17 +3497,31 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
         if (it.value().parentId)
             childrenOf[*it.value().parentId].append(it.key());
 
-    // § 2.2's three-case title match. Case 2 excludes `.` on purpose, so the
-    // three are disjoint: `[^0-9.]` rejects `## 0.5.x and 0.6.x — archived`
-    // (a signpost that belongs to neither minor) and `\.[0-9]` rejects
-    // `## 0.70.0`, which a bare startsWith() would claim.
+    // roadmap-format.md § 3.9's release-designator rule. Case 2 excludes `.`
+    // on purpose, so the cases are disjoint: `\.[0-9]` rejects `## 0.70.0`,
+    // which a bare startsWith() would claim, and `\.x` takes a patch stream
+    // (`## v0.7.x — …`, ANTS-5639).
     const QRegularExpression titleRx(
-        QStringLiteral("\\Av?%1\\.%2(?:\\z|[^0-9.]|\\.[0-9])").arg(major, minor));
+        QStringLiteral("\\Av?%1\\.%2(?:\\z|[^0-9.]|\\.[0-9]|\\.x(?![\\w.]))")
+            .arg(major, minor));
+    // A title that also names another minor's patch stream names no single
+    // minor: `## 0.5.x and 0.6.x — archived` is a signpost and stays.
+    static const QRegularExpression streamRx(
+        QStringLiteral("(?<![\\w.])v?(\\d+)\\.(\\d+)\\.x(?![\\w.])"));
+    const auto namesAnotherStream = [&](const QString &title) {
+        auto it = streamRx.globalMatch(title);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            if (m.captured(1) != major || m.captured(2) != minor) return true;
+        }
+        return false;
+    };
 
     QVector<qint64> frontier;
     for (auto it = rowById.cbegin(); it != rowById.cend(); ++it) {
         if (it.value().level != 2) continue;
-        if (titleRx.match(it.value().title).hasMatch())
+        const QString &title = it.value().title;
+        if (titleRx.match(title).hasMatch() && !namesAnotherStream(title))
             frontier.append(it.key());
     }
     if (frontier.isEmpty())

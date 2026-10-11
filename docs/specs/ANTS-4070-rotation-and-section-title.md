@@ -176,6 +176,9 @@ third case exists to reject — adding a disjunct cannot exclude anything.
 Every descendant section moves with its parent, resolved through `parentId`,
 because § 3.9 rotates "the closed minor's heading **and its sub-headings**".
 
+**Superseded for the title match by [`roadmap-format.md`](../standards/roadmap-format.md) § 3.9's
+release-designator rule (ANTS-5639).**
+
 **Each of the three exists to exclude something real in this corpus, and the
 third is the one a plain prefix match gets wrong.** Case 3 rejects `## 0.70.0`,
 which a bare `startsWith("0.7")` claims. It also rejects

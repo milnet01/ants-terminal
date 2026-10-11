@@ -36,7 +36,7 @@ INV-1 … INV-13 are the design spec's, numbered identically.
 | INV-1 | A rotated minor's bullets render into `docs/roadmap/0.7.md` and out of `ROADMAP.md`, each bullet's rendered text byte-identical to its pre-rotation rendered text. |
 | INV-2 | The second rotation succeeds with `sections_moved: 0` / `sections: []` and renders byte-identically; a minor no title matches returns `section_not_found`. |
 | INV-3 | 📋, 🚧 and 💭 each refuse `minor_not_closed`, as does a 🚧 living under a `###` child of an all-shipped `##`; nothing is written. |
-| INV-4 | `0.7` claims `## 0.7.0` and `## 0.7` but not `## 0.70.0`; `0.5` does not claim the `## 0.5.x and 0.6.x — archived` signpost. |
+| INV-4 | `0.7` claims `## 0.7.0`, `## 0.7` and `## v0.7.x — patch stream` but not `## 0.70.0`; `0.5` does not claim the `## 0.5.x and 0.6.x — archived` signpost, which also names 0.6's patch stream (roadmap-format.md § 3.9, ANTS-5639). |
 | INV-5 | Every descendant moves, including one misfiled under `docs/roadmap/0.6.md`. |
 | INV-6 | `v0.7`, `0.7.0` and `00.7` refuse `bad_args`; `0.7` derives exactly `docs/roadmap/0.7.md`, satisfying `isPlaceableSourcePath()`'s own predicate; a rotation that would empty the live file refuses. |
 | INV-7 | A retitle changes title and slug and nothing else, and reports `slug` + `previous_slug`. |
