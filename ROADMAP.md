@@ -42353,6 +42353,12 @@ against current source before filing.
   the Prefix grammar, so its synthesis pair would be skipped; check
   whether that is reachable; (c) pick and test the reply field that
   reports a broken mark line.
+  Progress (2026-10-11): the § 3.5.1 amendment (586f73ce) converged at
+  gate loop 24. For the build, from that loop: (d) gate the mark's write
+  on the dialect the render emits, and check what a store row recorded
+  as github-task-list renders; (e) raise the rows inside the load's
+  transaction, so a failed rebuild leaves no id_prefix rows (Loader::
+  writeTail's INV-6 comment relies on that). Next: build with write-code.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.

@@ -632,7 +632,7 @@ one**. Live prefixes include `ANTS`, `DOOM`, `FIBR`, `CL`, `ONEUP`, `ROLO`,
 digits, and a project may declare **several**.
 
 Two of `roadmap-format.md` § 3.5.1's rules are not identity rules, and the model
-must not read them as such. Its `-\d+` regex is the acceptance test; its
+must not read them as such. Its `-S?\d+` regex is the acceptance test; its
 "zero-padded to 4 digits" prose is a **write-side convention**, so `CL-9` is a
 well-formed existing ID and not an unparseable one. And that standard's
 § 3.10.4 says id *handling* — parsing,
@@ -700,7 +700,7 @@ so the id it produces is `synthesised` like any other allocation. Of the three `
 source*, which is a statement about a file nobody read, and `quarantined` is
 migration's verdict on an id it could not honour — filing a deliberately-chosen
 id under it would make a first-class identity indistinguishable from salvaged
-junk. Such an id need not match § 3.5.1's `-\d+` shape, and does not become
+junk. Such an id need not match § 3.5.1's `-S?\d+` shape, and does not become
 `quarantined` by failing it; the shape rule governs the ids this model
 *allocates*, not the ones a caller pins.
 
@@ -725,7 +725,7 @@ must not allocate a second identity for them. It is not, however, an
 it, which is the one place this model's identity is not append-only. That
 tension is real and belongs to § 9 along with the rest of migration.
 
-**A sub-designated pass id does not match § 3.5.1's `-\d+` grammar, and is
+**A sub-designated pass id does not match § 3.5.1's `-S?\d+` grammar, and is
 `synthesised` rather than `quarantined` anyway.** The sub is alphabetic — the
 designator `43.5.B` yields `PASS-43-5-B` — so the grammar rule above, which
 governs ids this scheme *allocates*, does not reach it. `quarantined` is
