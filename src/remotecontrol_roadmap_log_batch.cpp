@@ -2415,6 +2415,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // branch, because everything between — per-bullet validation, the section
     // refusals, the skipped[] granularity, the contiguous id assignment — is
     // shared with the markdown path. Only allocation and the write differ.
+    // ANTS-5638 — op:append's rebuild, at the same point and for the same
+    // reason: before the write target is resolved, so it finds the rebuilt row.
+    QJsonObject storeRebuilt;
+    if (!dryRun) {
+        if (auto rb = roadmapRebuildIfAbsent(callerCanonical, roadmapPath)) {
+            if (!rb->value(QStringLiteral("ok")).toBool())
+                return QJsonDocument(*rb);
+            rb->remove(QStringLiteral("ok"));
+            storeRebuilt = *rb;
+        }
+    }
     std::optional<RoadmapWriteTarget> writeTarget;
     {
         // ANTS-3863 § 1 — this read had NO consumer at all: `probe` was filled,
@@ -3084,6 +3095,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         // project takes.
         env[dryRun ? QStringLiteral("would_be_ids")
                    : QStringLiteral("ids")] = ids;
+        if (!storeRebuilt.isEmpty())
+            env[QStringLiteral("store_rebuilt")] = storeRebuilt;   // ANTS-5638
         // `would_apply_count` under dry_run, mirroring the markdown preview so a
         // caller's branch on it does not change with the backend. No `lines` /
         // `bytes`.

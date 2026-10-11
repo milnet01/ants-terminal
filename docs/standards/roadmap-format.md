@@ -478,17 +478,17 @@ machine can open the project with no store row; the generated-file notice
 in the roadmap's header says the file is the store's render. The rebuild
 runs when all three hold: the store has no row for the project's
 canonical root, the roadmap carries that notice, and the file classifies
-`ants-v1`. The store's render, `ROADMAP.md` plus `docs/roadmap/*.md`,
+`ants-v1` on evidence. A deregistered project's row counts as a row; a
+machine with no store file has no row. It runs on `roadmap_log`
+`op:"append"` and `op:"append_batch"`, never on a dry run, and never for
+a root under the temp directory, which `roadmap_migrate` refuses too
+(ANTS-4600). The store's render, `ROADMAP.md` plus `docs/roadmap/*.md`,
 carries every public item. The
 render is to copy each prefix's floor into the header too, in the form
 below, and the rebuild to restore it. The mark carries the source store's
 floor for each prefix. So it covers an id the files no longer show, such
 as an `internal` item's or one a re-migration deleted, wherever that
 store's own floor covers it.
-**Neither the rebuild nor the mark is built yet** (ANTS-5638): until they
-ship, such a
-machine falls to the counter row of the table, floored to the corpus, and
-can reissue an id the files do not carry.
 
 **The header mark's form.** Only an `ants-v1` render writes it, since
 the rebuild serves store-migrated projects alone. It is one line directly
@@ -519,8 +519,9 @@ under the generated-file notice, in the project's roadmap file only. A
 - A reader takes the line directly after the notice. A line that does not
   open with `<!-- ants-roadmap-id-high-water:` means the file has no mark,
   and the reply says nothing of it. A mark line it cannot parse is ignored
-  whole, and the rebuild's reply says so. Either way the floor comes from
-  the files' ids alone.
+  whole, and the rebuild's reply says so: `store_rebuilt.id_mark` is
+  `ignored_unparseable`, against `applied` for a mark it used. Either way
+  the floor comes from the files' ids alone.
 - The rebuild raises each pair's row to its `N` before its load allocates
   any id, creating the row where it is absent; the rebuilt items floor the
   rest through
@@ -534,7 +535,8 @@ under the generated-file notice, in the project's roadmap file only. A
   root section's intro, so the render always writes the mark fresh from
   the store.
 
-ANTS-5638's tests check this form; until they land, nothing does.
+`tests/features/roadmap_id_high_water_mark` checks this form and the
+rebuild.
 
 `id_strategy: "stable_prefix"` (a caller-supplied string id such as
 `Ts20-SP6`) consults neither carrier and raises neither, on either path: a

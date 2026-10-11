@@ -1133,6 +1133,15 @@ public:
     qint64 allocationFloor(qint64 projectId, const QString &prefix,
                            QString *error = nullptr) const;
 
+    // ANTS-5638 — roadmap-format.md § 3.5.1's header mark: one pair per prefix
+    // this project's store knows, from its id_prefix rows AND the ids its items
+    // hold (`internal` included). `P` is allocationFloor(P); `P#S`, where a
+    // `P#S` row or a `P-S` id exists, is the greater of that row and
+    // maxSynthesisedId(P). A prefix the grammar refuses gets no pair. nullopt
+    // is a failed query, never "no pairs".
+    std::optional<QMap<QString, qint64>> idHighWaterMark(qint64 projectId,
+                                                         QString *error = nullptr) const;
+
     // ANTS-4500 § 4.5 — replace one item's `id`. NOT a setItemField() column,
     // deliberately: `id` is the row's identity, every other write path keys on
     // it, and putting it in the writable set would let any caller rewrite one.

@@ -558,6 +558,20 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
     QString        parentOfSubsection;
     int            headingOrdinal = 0;   // 1-based over this source's ##/###
 
+    // ANTS-5638 — roadmap-format.md § 3.5.1's header mark, live file only.
+    // Its line is its own INV-11 span: the root intro skips it (closeSection()
+    // below), so a re-render writes the mark fresh from the store instead of
+    // replaying the copy it read. A broken mark is kept too, marked invalid,
+    // because the rebuild has to say it ignored one.
+    int markLine = 0;
+    if (ctx.index == 0) {
+        RoadmapParse::IdHighWaterMark mark = RoadmapParse::findIdHighWaterMark(lines);
+        if (mark.present && !inFence[mark.line]) {
+            markLine = mark.line;
+            plan.idMark = std::move(mark);
+        }
+    }
+
     // Sections this source contributed start here; `cur` is an index into
     // `builds`, and `sectionBase + cur` the matching index into plan.sections.
     const int sectionBase = plan.sections.size();
@@ -585,7 +599,8 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
         QStringList intro;
         intro.reserve(b.introLast - b.introFirst + 1);
         for (int k = b.introFirst; k <= b.introLast; ++k)
-            intro.append(lines.at(k - 1));
+            if (k != markLine)
+                intro.append(lines.at(k - 1));
         s.intro    = intro.join(QLatin1Char('\n'));
         s.lastLine = b.introLast;
         if (s.firstLine == 0) s.firstLine = b.introFirst;
@@ -623,6 +638,11 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
     int ln = 1;
     while (ln <= n) {
         const QString &raw = lines.at(ln - 1);
+
+        if (ln == markLine) {   // ANTS-5638 — carried by plan.idMark
+            ++ln;
+            continue;
+        }
 
         // A reader record starts here. Items are filed; the rest are the
         // legend block or narration — § 2.4 rejects them as items, and INV-11

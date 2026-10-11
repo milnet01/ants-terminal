@@ -1456,6 +1456,20 @@ private:
                        RoadmapSource::RoadmapText &text,
                        RoadmapSource::ReadError *why, QString *error) const;
 
+    // ANTS-5638 — roadmap-format.md § 3.5.1's rebuild, run by the allocating
+    // ops (op:append, op:append_batch) just before roadmapWriteTarget(), and
+    // never on a dry run. When the store has no row for the project's root
+    // (deregistered rows count as rows), `roadmapPath` carries the
+    // generated-file notice, and it classifies ants-v1 on evidence, the store
+    // is rebuilt from the files through RoadmapMigrateVerb::run(), raising the
+    // header mark first. A root under the temp dir is never rebuilt: ANTS-4600's
+    // rule for roadmap_migrate holds here too.
+    //
+    // nullopt: nothing was rebuilt. Otherwise ok:true carries the reply's
+    // `store_rebuilt` object, and ok:false is a refusal to return as is.
+    std::optional<QJsonObject> roadmapRebuildIfAbsent(const QString &callerCanonical,
+                                                      const QString &roadmapPath);
+
     // ANTS-4070 — the prologue rotate_minor and retitle_section share:
     // canonicalise caller_cwd, find the live roadmap, read it, resolve the
     // store. Returns nullopt with *refusal set on every failure — including

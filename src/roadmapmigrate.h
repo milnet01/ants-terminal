@@ -219,6 +219,13 @@ struct MigrationPlan {
     QVector<PlannedItem>    items;
     QVector<PlannedElement> elements;
     std::optional<PlannedLegend> legend;
+    // ANTS-5638 — roadmap-format.md § 3.5.1's header mark, read from
+    // sources[0] only (an archive carries none). Its line is its own INV-11
+    // span, carved out of the root section's: the root's `intro` leaves it
+    // out, so the render always writes the mark fresh from the store.
+    // Present-but-unparseable is kept, with `valid` false, so the rebuild can
+    // say the mark was ignored.
+    std::optional<RoadmapParse::IdHighWaterMark> idMark;
     QVector<Note>           notes;
 };
 

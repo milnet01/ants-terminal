@@ -1042,8 +1042,9 @@ overridden:
   them from the render by policy, so their IDs appear in no committed file, and a
   fresh clone — where the store is machine-local and may not exist — would
   reissue a live ID from a corpus scan that cannot see them. The store covers
-  them today, because its floor reads every stored item whatever its
-  visibility. The export supersedes both as the authoritative floor, being
+  them, because its floor reads every stored item whatever its visibility, and
+  a machine with no store gets that floor from the roadmap's header mark
+  (`roadmap-format.md` § 3.5.1, ANTS-5638). The export supersedes both as the authoritative floor, being
   subject to no exclusion. **The interim half has landed**: § 3.5.1 names the
   store as a cut-over project's carrier and floor (ANTS-3809), and since
   ANTS-4631 the store path reads no corpus at all. What is still owed is the

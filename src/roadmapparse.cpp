@@ -19,6 +19,9 @@
 #include <QSet>
 #include <QStringView>
 
+#include <algorithm>
+#include <utility>
+
 
 // ANTS-1287: headingLevel + slugifyHeading + uniqueSlug live in RoadmapIndex.
 // File-scope using-declarations preserve the unqualified call surface the
@@ -1767,6 +1770,83 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
     if (hasGfm)          return QStringLiteral("github-task-list");
     return QStringLiteral("ants-v1");
 }
+
+bool isIdPrefix(const QString &prefix) {
+    // ANTS-3498 / ANTS-3492 — digit-led is fine iff a letter is present
+    // (3D_E ✓, 2026 ✗); 1-16 chars total.
+    static const QRegularExpression kShape(QStringLiteral(
+        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
+    return kShape.match(prefix).hasMatch();
+}
+
+namespace {
+const QLatin1String kIdMarkOpen("<!-- ants-roadmap-id-high-water:");
+const QLatin1String kIdMarkClose(" -->");
+
+// A pair's key: a prefix, or a prefix's `#S` synthesis counter (ANTS-4500).
+bool isIdMarkKey(const QString &key) {
+    const QString base = key.endsWith(QLatin1String("#S")) ? key.chopped(2) : key;
+    return isIdPrefix(base);
+}
+}  // namespace
+
+QString formatIdHighWaterMark(const QMap<QString, qint64> &pairs) {
+    if (pairs.isEmpty())
+        return QString();
+    QStringList parts;
+    for (auto it = pairs.cbegin(); it != pairs.cend(); ++it)
+        parts << it.key() + QLatin1Char('=') + QString::number(it.value());
+    return kIdMarkOpen + QLatin1Char(' ') + parts.join(QLatin1Char(' ')) + kIdMarkClose;
+}
+
+IdHighWaterMark findIdHighWaterMark(const QStringList &lines) {
+    IdHighWaterMark mark;
+    const int n = std::min(6, int(lines.size()));
+    int notice = -1;
+    for (int i = 0; i < n && notice < 0; ++i)
+        if (lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+            notice = i;
+    if (notice < 0 || notice + 1 >= lines.size())
+        return mark;
+    // Trailing whitespace only: a CRLF file's `\r` is not part of the grammar.
+    QString line = lines.at(notice + 1);
+    while (!line.isEmpty() && line.back().isSpace())
+        line.chop(1);
+    if (!line.startsWith(kIdMarkOpen))
+        return mark;
+    mark.present = true;
+    mark.line    = notice + 2;
+
+    // § 3.5.1: one space before the pairs, one between, one before `-->`. A
+    // line that breaks any of it is ignored whole, so a reader never acts on
+    // half a mark.
+    if (!line.endsWith(kIdMarkClose) || line.size() <= kIdMarkOpen.size() + kIdMarkClose.size())
+        return mark;
+    QString body = line.mid(kIdMarkOpen.size(),
+                            line.size() - kIdMarkOpen.size() - kIdMarkClose.size());
+    if (!body.startsWith(QLatin1Char(' ')))
+        return mark;
+    body.remove(0, 1);
+    QMap<QString, qint64> pairs;
+    for (const QString &tok : body.split(QLatin1Char(' '))) {
+        const int eq = tok.indexOf(QLatin1Char('='));
+        if (eq <= 0)
+            return mark;
+        const QString key = tok.left(eq);
+        const QString num = tok.mid(eq + 1);
+        bool ok = !num.isEmpty();
+        for (const QChar c : num)
+            ok = ok && c >= QLatin1Char('0') && c <= QLatin1Char('9');
+        const qint64 value = ok ? num.toLongLong(&ok) : 0;
+        if (!ok || !isIdMarkKey(key) || pairs.contains(key))
+            return mark;
+        pairs.insert(key, value);
+    }
+    mark.valid = true;
+    mark.pairs = std::move(pairs);
+    return mark;
+}
+
 // ANTS-3808 § 2.2.1 — the normalisation contract. Every step below is the one
 // parseBullets() has always applied; the values are returned post-match, NOT as
 // raw captures, because the render compares them against the store's columns

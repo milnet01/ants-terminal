@@ -15,6 +15,10 @@
 #include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include "passheadingwrite.h"   // ANTS-2126 — the pass-headings writer (moved from TU 2)
 #include "roadmapmigrateverb.h" // ANTS-5641 — planPassText, so a store append matches a re-import
+#include "roadmapbackuphealth.h" // ANTS-5638 — the rebuild's snapshot folder
+#include "roadmaprender.h"       // ANTS-5638 — hasGeneratedNotice
+#include "config.h"
+#include <QDir>
 #include <QDateTime>
 #include <QFile>
 #include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
@@ -1105,6 +1109,79 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
         return std::nullopt;
     }
     return RoadmapWriteTarget{store, *projectId};
+}
+
+// Here and not beside cmdRoadmapMigrate(): that TU must never reach the
+// process-owned Interactive store (ANTS-3855 INV-2(b)), and this lookup does.
+std::optional<QJsonObject>
+RemoteControl::roadmapRebuildIfAbsent(const QString &callerCanonical,
+                                      const QString &roadmapPath) {
+    const QString root = rcProjectRootFor(callerCanonical);
+    if (root.isEmpty() || roadmapPath.isEmpty() || RoadmapMigrateVerb::isTransientRoot(root))
+        return std::nullopt;
+
+    // A store that will not open, or a lookup that fails, is the write path's
+    // to report: roadmapWriteTarget() meets the same store next. NO store file
+    // is the fresh machine itself, and holds no row for anyone; run() below
+    // creates it.
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString err;
+    RoadmapStore *store = roadmapStoreOrNull(&why, &err);
+    if (why != RoadmapSource::ReadError::None)
+        return std::nullopt;
+    if (store) {
+        err.clear();
+        if (store->readProjectByRoot(root, &err, RoadmapStore::Visibility::IncludeDeregistered)
+            || !err.isEmpty())
+            return std::nullopt;
+    }
+
+    // The two file conditions, cheapest first: the notice sits in the head.
+    QFile f(roadmapPath);
+    if (!f.open(QIODevice::ReadOnly))
+        return std::nullopt;
+    if (!RoadmapRender::hasGeneratedNotice(QString::fromUtf8(f.peek(4096))))
+        return std::nullopt;
+    bool signal = false;
+    const QString format = RoadmapParse::detectRoadmapFormat(
+        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n')), &signal);
+    if (format != QLatin1String("ants-v1") || !signal)
+        return std::nullopt;
+
+    // The same request cmdRoadmapMigrate() builds with no arguments, plus the
+    // mark. No exclusive hold: the caller's shared hold already bars a
+    // roadmap_migrate on this root, and two rebuilds racing serialise on the
+    // store's transaction, where the second is an ordinary re-run.
+    const QString leaf = QDir(root).dirName();
+    RoadmapMigrateVerb::Request r;
+    r.projectRoot = root;
+    r.projectName = leaf;
+    r.exportSlug  = RoadmapMigrateVerb::defaultExportSlug(leaf);
+    r.changedAt   = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    r.raiseIdMark = true;
+    const RoadmapBackupHealth::SnapshotDest dest = RoadmapBackupHealth::snapshotDest(
+        Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir());
+    r.snapshotDir       = dest.folder;
+    r.snapshotDirSource = dest.source;
+
+    const QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r);
+    if (!out.value(QStringLiteral("ok")).toBool()) {
+        QJsonObject e = out;
+        e[QStringLiteral("error")] =
+            QStringLiteral("roadmap_log: this machine's store has no row for \"%1\", so "
+                           "it was to be rebuilt from \"%2\" before allocating, and the "
+                           "rebuild failed: %3. Nothing was written.")
+                .arg(root, roadmapPath, out.value(QStringLiteral("error")).toString());
+        return e;
+    }
+    QJsonObject rebuilt;
+    rebuilt[QStringLiteral("ok")]   = true;
+    rebuilt[QStringLiteral("from")] = roadmapPath;
+    rebuilt[QStringLiteral("items_inserted")] = out.value(QStringLiteral("items_inserted"));
+    for (const char *key : {"id_mark", "backup_path"})
+        if (out.contains(QLatin1String(key)))
+            rebuilt[QLatin1String(key)] = out.value(QLatin1String(key));
+    return rebuilt;
 }
 
 // ANTS-3793 § 2.1 — the ReadError → refusal-envelope mapping, once for the

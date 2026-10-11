@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QThread>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -2832,6 +2833,60 @@ qint64 RoadmapStore::allocationFloor(qint64 projectId, const QString &prefix,
     if (const auto mx = maxAllocatedId(projectId, prefix, error))
         floor = std::max(floor, *mx);
     return floor;
+}
+
+std::optional<QMap<QString, qint64>>
+RoadmapStore::idHighWaterMark(qint64 projectId, QString *error) const {
+    const auto failed = [error](const QString &why) {
+        if (error)
+            *error = why;
+        return std::nullopt;
+    };
+    // Every prefix the store knows, from two places. A row key, read up to a
+    // counter's `#S`...
+    QSet<QString> prefixes;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral("SELECT prefix FROM id_prefix WHERE project_id = ?"));
+    q.addBindValue(projectId);
+    if (!q.exec())
+        return failed(lastErr(q));
+    while (q.next()) {
+        const QString key = q.value(0).toString();
+        prefixes.insert(key.endsWith(QLatin1String("#S")) ? key.chopped(2) : key);
+    }
+    // ...and an item's id: the text before a final `-` and digits, or `-S` and
+    // digits. A prefix with stored ids and no row still gets a pair.
+    static const QRegularExpression kIdTail(QStringLiteral("^(.+)-S?[0-9]+$"));
+    QSqlQuery ids(const_cast<QSqlDatabase &>(m_db));
+    ids.prepare(QStringLiteral("SELECT id FROM item WHERE project_id = ?"));
+    ids.addBindValue(projectId);
+    if (!ids.exec())
+        return failed(lastErr(ids));
+    while (ids.next()) {
+        const auto m = kIdTail.match(ids.value(0).toString());
+        if (m.hasMatch())
+            prefixes.insert(m.captured(1));
+    }
+
+    QMap<QString, qint64> pairs;
+    QString err;
+    for (const QString &p : std::as_const(prefixes)) {
+        if (!RoadmapParse::isIdPrefix(p))
+            continue;   // § 3.5.1: a prefix the grammar refuses gets no pair
+        const qint64 floor = allocationFloor(projectId, p, &err);
+        if (!err.isEmpty())
+            return failed(err);
+        pairs.insert(p, floor);
+        const auto row = idHighWater(projectId, p + QStringLiteral("#S"), &err);
+        if (!err.isEmpty())
+            return failed(err);
+        const auto synth = maxSynthesisedId(projectId, p, &err);
+        if (!err.isEmpty())
+            return failed(err);
+        if (row || synth)
+            pairs.insert(p + QStringLiteral("#S"), std::max(row.value_or(0), synth.value_or(0)));
+    }
+    return pairs;
 }
 
 std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,

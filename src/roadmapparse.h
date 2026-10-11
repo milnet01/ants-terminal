@@ -258,6 +258,31 @@ inline QString foldId(const QString &id) {
 // leaving them untouched.
 QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr);
 
+// ANTS-5638 — roadmap-format.md § 3.5.1's header id high-water mark. Here, in
+// the reader's library, because both halves need it and neither can see the
+// other's: the render (ants_roadmapstore_lib) writes the line and the
+// migration's read half (ants_core_lib) reads it back.
+//
+// § 3.5.1's **Prefix** grammar: [A-Za-z0-9_-], 1-16 characters, a letter
+// somewhere, not led by `_` or `-`. RoadmapFoldIn::isValidIdPrefix() asks this.
+bool isIdPrefix(const QString &prefix);
+
+// `pairs` keys are prefixes or `<prefix>#S` synthesis keys. QMap's order is the
+// line's order: QString compares UTF-16 code units, which for the ASCII the
+// grammar admits is byte order. Empty in, empty out — no pair, no line.
+QString formatIdHighWaterMark(const QMap<QString, qint64> &pairs);
+
+struct IdHighWaterMark {
+    bool present = false;   // a line opening with the mark's tag sits directly
+                            // under the generated-file notice
+    bool valid   = false;   // ...and it parsed; `pairs` is empty otherwise
+    int  line    = 0;       // 1-based; 0 when !present
+    QMap<QString, qint64> pairs;
+};
+// Looks for the notice in the file's first six lines, the window
+// RoadmapRender::hasGeneratedNotice() searches, and reads the line after it.
+IdHighWaterMark findIdHighWaterMark(const QStringList &lines);
+
 // ANTS-3808 § 2.2 — the trailer matchers, asked rather than duplicated. INV-2
 // is phrased as "RoadmapParse remains the only bullet grammar", and that is
 // this namespace: a consumer that needs a trailer value calls in here instead

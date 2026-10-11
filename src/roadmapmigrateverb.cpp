@@ -669,6 +669,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         opts.onlyIdFolds.insert(RoadmapParse::foldId(id.trimmed()));
     opts.idFormat    = idFormat;      // ANTS-3771 § 2.3
     opts.acceptDeletions = req.acceptDeletions;   // ANTS-5287
+    opts.raiseIdMark     = req.raiseIdMark;       // ANTS-5638
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);
 
     // ANTS-5287 — the ids of the deleted_item notes, bounded by max_notes. On a
@@ -818,6 +819,12 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // migration that had not run. The first re-render is the next roadmap_log
     // write.
     env[QStringLiteral("markdown_rewritten")] = false;
+    // ANTS-5638 — what the rebuild did with the header mark. § 3.5.1: a file
+    // with no mark gets no word on it; a broken one is ignored whole, and
+    // said so.
+    if (req.raiseIdMark && plan.idMark)
+        env[QStringLiteral("id_mark")] = plan.idMark->valid
+            ? QStringLiteral("applied") : QStringLiteral("ignored_unparseable");
     // ANTS-5354 — and say what does write it. Until the first render the file
     // lacks the "generated from the store" header, so it looks hand-editable,
     // and a hand edit made in that window is discarded by the next write.

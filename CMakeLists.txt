@@ -2940,6 +2940,9 @@ if(ANTS_TESTS)
                 # migration left behind.
                 tests/features/roadmap_repair_trailers/test_roadmap_repair_trailers.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
+                # ANTS-5638 — the header id high-water mark and the rebuild
+                # that reads it, against a real store in a QTemporaryDir.
+                tests/features/roadmap_id_high_water_mark/test_roadmap_id_high_water_mark.cpp
                 # ANTS-4491 — roadmap_log op:"convert". Behavioural against a
                 # real store in a QTemporaryDir; INV-2 and INV-4 use the
                 # render's Layman gate as their forced pre-commit failure.

@@ -361,6 +361,28 @@ QString withGeneratedNotice(const QString &text, bool atTop = false) {
     return lines.join(QLatin1Char('\n'));
 }
 
+// ANTS-5638 — roadmap-format.md § 3.5.1's header mark, on the line directly
+// under the notice. A mark already there is replaced, and an empty `markLine`
+// removes it, so the line always comes fresh from the store and never twice.
+QString withIdMark(const QString &text, const QString &markLine) {
+    QStringList lines = text.split(QLatin1Char('\n'));
+    const int n = std::min(6, int(lines.size()));
+    for (int i = 0; i < n; ++i) {
+        if (!lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+            continue;
+        const bool had = i + 1 < lines.size()
+            && lines.at(i + 1).startsWith(QLatin1String("<!-- ants-roadmap-id-high-water:"));
+        if (had && markLine.isEmpty())
+            lines.removeAt(i + 1);
+        else if (had)
+            lines[i + 1] = markLine;
+        else if (!markLine.isEmpty())
+            lines.insert(i + 1, markLine);
+        return lines.join(QLatin1Char('\n'));
+    }
+    return text;
+}
+
 bool hasMarkerInHead(const QString &text) {
     const QStringList lines = text.split(QLatin1Char('\n'));
     const int n = std::min(5, int(lines.size()));
@@ -639,6 +661,17 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     if (!resolveUnderRoot(projectRoot, opts.liveRoadmapPath, !opts.dryRun, &liveAbs, error))
         return std::nullopt;
 
+    // ANTS-5638 — only the bullet dialect carries the mark: the rebuild that
+    // reads it serves ants-v1 alone, and a github-task-list row renders as
+    // bullets too, so it reads back as ants-v1 and is served the same way.
+    QString idMark;
+    if (!passHeadings) {
+        const auto pairs = store.idHighWaterMark(projectId, error);
+        if (!pairs)
+            return std::nullopt;
+        idMark = RoadmapParse::formatIdHighWaterMark(*pairs);
+    }
+
     // § 2.8 + § 2.2 — assemble each file. Exactly one blank line between
     // blocks; the file ends with exactly one newline.
     QHash<QString, QString> contentOf;
@@ -775,6 +808,8 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         if (!passHeadings && (!sawRoot || !hasMarkerInHead(text)))
             text = formatMarker() + QStringLiteral("\n\n") + text;
         text = withGeneratedNotice(text, passHeadings);   // ANTS-4555, ANTS-5501
+        if (!passHeadings && path == liveAbs)
+            text = withIdMark(text, idMark);               // ANTS-5638
         if (!text.endsWith(QLatin1Char('\n')))
             text += QLatin1Char('\n');
         contentOf.insert(path, text);

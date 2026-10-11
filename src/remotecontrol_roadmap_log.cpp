@@ -368,6 +368,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         // stored prefix. So the provider moves the body read onto that rare
         // fallback instead of paying 3 MiB for it at the top of the block.
         // openFailed() forces the open, which is what keeps this refusal here.
+        //
+        // ANTS-5638 — a machine with no store row for a store-rendered roadmap
+        // rebuilds the store first, so the allocation below floors on the
+        // header mark rather than on the files' ids alone. A refusal later in
+        // this block does not echo the rebuild; the rebuilt store stands.
+        QJsonObject storeRebuilt;
+        if (!dryRun) {
+            if (auto rb = roadmapRebuildIfAbsent(callerCanonical, roadmapPath)) {
+                if (!rb->value(QStringLiteral("ok")).toBool())
+                    return QJsonDocument(*rb);
+                rb->remove(QStringLiteral("ok"));
+                storeRebuilt = *rb;
+            }
+        }
         auto storeText = RoadmapSource::RoadmapText::fromFile(roadmapPath);
         if (storeText.openFailed()) {
             return rlErr(QStringLiteral("roadmap_read_failed"),
@@ -627,6 +641,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             env[dryRun ? QStringLiteral("would_be_id")
                        : QStringLiteral("id")] = idStr;
             env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
+            if (!storeRebuilt.isEmpty())
+                env[QStringLiteral("store_rebuilt")] = storeRebuilt;   // ANTS-5638
             // No `line` / `bytes_written`: a store has no lines (ANTS-3793
             // INV-2's declared field difference) and the render decides
             // placement. `.roadmap-counter` is not the allocation SOURCE here

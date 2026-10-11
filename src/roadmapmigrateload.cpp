@@ -287,6 +287,16 @@ bool Loader::run() {
     if (!store.setProjectSourceFormat(projectId, plan.sources.at(0).format, &err))
         return fail(err);
 
+    // ANTS-5638 — the rebuild's floor, raised before matchItems() can
+    // allocate. A `P#S` key is synthCounterKey()'s own form, so allocateId()
+    // reads it back. Inside the load's transaction: a refusal after this line
+    // rolls the rows back with everything else.
+    if (opts.raiseIdMark && plan.idMark && plan.idMark->valid) {
+        for (auto it = plan.idMark->pairs.cbegin(); it != plan.idMark->pairs.cend(); ++it)
+            if (!store.raiseIdHighWater(projectId, it.key(), it.value(), &err))
+                return fail(err);
+    }
+
     if (!resolveSections() || !matchItems() || !updateMatched() ||
         !rebuildElements() || !writeLinks() || !writeTail())
         return false;

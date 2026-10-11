@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **A store-rendered roadmap carries each id prefix's high-water mark in its header, and a machine with no store rebuilds the store from the roadmap files before it allocates an id** (ANTS-5638)
+  Adding a roadmap item on a second computer can no longer reuse a number
+  the first computer already gave out, including numbers of internal or
+  deleted items the files do not show. The rebuild runs on the first
+  roadmap_log append or append_batch, never on a dry run, and the reply's
+  `store_rebuilt` says what it did.
+
 - **roadmap_log append, append_batch, amend_body, set_body and amend_headline write through the store on a store-backed `#### Pass N.M` roadmap** (ANTS-5641)
   One call instead of a hand edit plus roadmap_migrate. The stored row is
   the one a re-import of the rendered file produces, and a body edit that

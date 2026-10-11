@@ -1,6 +1,7 @@
 #include "roadmapfoldin.h"
 
 #include "markdownscan.h"
+#include "roadmapparse.h"    // ANTS-5638 — isIdPrefix(), the prefix grammar
 #include "roadmapsource.h"   // ANTS-5087 — the migrated-project dispatch
 #include "roadmapstore.h"
 
@@ -558,12 +559,10 @@ QString renderId(const QString &prefix, int n) {
 }
 
 bool isValidIdPrefix(const QString &prefix) {
-    // ANTS-3498 / ANTS-3492 — canonical id_prefix shape, single-sourced here
-    // and reused by roadmap_log op:append + the three fold-in verbs. Digit-led
-    // is fine iff a letter is present (3D_E ✓, 2026 ✗); 1-16 chars total.
-    static const QRegularExpression kShape(QStringLiteral(
-        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
-    return kShape.match(prefix).hasMatch();
+    // ANTS-3498 / ANTS-3492 — canonical id_prefix shape, reused by roadmap_log
+    // op:append + the three fold-in verbs. ANTS-5638 moved the pattern into the
+    // reader's library, where the render can reach it too.
+    return RoadmapParse::isIdPrefix(prefix);
 }
 
 QList<int> allocateIds(const QString &projectPath, int n, LockWait wait,

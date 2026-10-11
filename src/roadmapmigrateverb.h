@@ -85,6 +85,9 @@ struct Request {
     QString snapshotDirSource;   // "config", "backup_record" or empty
     // ANTS-5287 — lifts ANTS-3765 § 2.7's mass-deletion refusal.
     bool    acceptDeletions = false;
+    // ANTS-5638 — the rebuild: forwarded to RoadmapMigrateLoad::Options.
+    // Not a verb argument; roadmap_log's allocating ops set it.
+    bool    raiseIdMark = false;
 };
 
 // Returns the success envelope, or a refusal carrying `code`. Opens its OWN

@@ -221,6 +221,12 @@ struct Options {
     // ANTS-5287 — keep absent items instead of deleting them. The convert path
     // sets it: it takes no pre-migration snapshot, so it must delete nothing.
     bool    keepAbsent = false;
+    // ANTS-5638 — raise each pair of the plan's header mark to its value
+    // before anything allocates. Only the rebuild sets it (roadmap-format.md
+    // § 3.5.1): an ordinary migration of a rendered file leaves id_prefix as
+    // it always has. Inside the load's transaction, so a refused load leaves
+    // no row behind.
+    bool    raiseIdMark = false;
 };
 
 // One plan, one project, one transaction (§ 2.5). `store` must be open on an

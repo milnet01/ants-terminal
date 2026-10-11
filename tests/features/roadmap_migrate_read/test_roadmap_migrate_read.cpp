@@ -173,6 +173,14 @@ QString planDigest(const MigrationPlan &p) {
                           QJsonDocument::Compact)))
                  .arg(p.legend->firstLine)
                  .arg(p.legend->lastLine);
+    if (p.idMark) {
+        QStringList pairs;
+        for (auto it = p.idMark->pairs.cbegin(); it != p.idMark->pairs.cend(); ++it)
+            pairs << it.key() + QLatin1Char('=') + QString::number(it.value());
+        d += QStringLiteral("M %1|%2|%3\n")
+                 .arg(int(p.idMark->valid)).arg(p.idMark->line)
+                 .arg(pairs.join(QLatin1Char(' ')));
+    }
     for (const auto &n : p.notes)
         d += QStringLiteral("N %1|%2|%3|@%4\n")
                  .arg(n.code, n.detail).arg(n.line).arg(n.sourceIndex);
@@ -193,8 +201,19 @@ QString partitionFault(const QString &markdown, const MigrationPlan &plan) {
             owner.insert(ln, owner.value(ln) + what + QLatin1Char(' '));
         }
     };
-    for (const auto &s : plan.sections)
-        claim(s.firstLine, s.lastLine, QStringLiteral("section:") + s.slug);
+    // ANTS-5638 — the header mark is its own span, carved out of the root
+    // section's: the root's intro skips the line, so its span would otherwise
+    // claim a line its intro does not hold.
+    const int markLine = plan.idMark ? plan.idMark->line : 0;
+    for (const auto &s : plan.sections) {
+        const QString what = QStringLiteral("section:") + s.slug;
+        if (markLine >= s.firstLine && markLine <= s.lastLine) {
+            claim(s.firstLine, markLine - 1, what);
+            claim(markLine + 1, s.lastLine, what);
+        } else {
+            claim(s.firstLine, s.lastLine, what);
+        }
+    }
     for (const auto &i : plan.items)
         claim(i.firstLine, i.lastLine, QStringLiteral("item:") + i.headline);
     for (const auto &e : plan.elements)
@@ -202,6 +221,8 @@ QString partitionFault(const QString &markdown, const MigrationPlan &plan) {
     if (plan.legend)
         claim(plan.legend->firstLine, plan.legend->lastLine,
               QStringLiteral("legend"));
+    if (markLine > 0)
+        claim(markLine, markLine, QStringLiteral("id-mark"));
 
     for (int ln = 1; ln <= lines.size(); ++ln) {
         if (lines.at(ln - 1).trimmed().isEmpty()) continue;
@@ -292,9 +313,20 @@ QString partitionFaultForSource(const MigrationPlan &plan, int sourceIndex) {
             owner.insert(ln, owner.value(ln) + what + QLatin1Char(' '));
         }
     };
-    for (const auto &s : plan.sections)
-        if (s.sourceIndex == sourceIndex)
-            claim(s.firstLine, s.lastLine, QStringLiteral("section:") + s.slug);
+    // ANTS-5638 — partitionFault()'s carve-out; the mark is sources[0]'s only.
+    const int markLine = (plan.idMark && sourceIndex == 0) ? plan.idMark->line : 0;
+    for (const auto &s : plan.sections) {
+        if (s.sourceIndex != sourceIndex) continue;
+        const QString what = QStringLiteral("section:") + s.slug;
+        if (markLine >= s.firstLine && markLine <= s.lastLine) {
+            claim(s.firstLine, markLine - 1, what);
+            claim(markLine + 1, s.lastLine, what);
+        } else {
+            claim(s.firstLine, s.lastLine, what);
+        }
+    }
+    if (markLine > 0)
+        claim(markLine, markLine, QStringLiteral("id-mark"));
     for (const auto &i : plan.items)
         if (i.sourceIndex == sourceIndex)
             claim(i.firstLine, i.lastLine, QStringLiteral("item:") + i.headline);
@@ -1494,6 +1526,38 @@ TEST(roadmap_migrate_read, Ants5384DroppedLegendLineIsLegend) {
     for (const auto &e : plan.elements)
         EXPECT_FALSE(e.payload.contains(QStringLiteral("Dropped")))
             << "a legend line was carried as " << e.kind.toStdString();
+    EXPECT_EQ(partitionFault(md, plan), QString());
+}
+
+// ANTS-5638 — roadmap-format.md § 3.5.1's header mark is its own span. The
+// root intro leaves it out, so the render writes it fresh from the store
+// rather than replaying a copy; INV-11 still partitions every line.
+TEST(roadmap_migrate_read, Ants5638IdMarkIsItsOwnSpan) {
+    const QString md = QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "<!-- Generated from the Ants Terminal roadmap store. Edit it with "
+        "roadmap_log; hand edits are discarded by the next write. -->\n"
+        "<!-- ants-roadmap-id-high-water: DEMO=40 DEMO#S=9 -->\n"
+        "\n"
+        "# Demo Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n");
+    const MigrationPlan plan = planText(md);
+    ASSERT_TRUE(plan.idMark.has_value());
+    EXPECT_TRUE(plan.idMark->valid);
+    EXPECT_EQ(plan.idMark->line, 3);
+    EXPECT_EQ(plan.idMark->pairs.value(QStringLiteral("DEMO")), 40);
+    EXPECT_EQ(plan.idMark->pairs.value(QStringLiteral("DEMO#S")), 9);
+    ASSERT_FALSE(plan.sections.isEmpty());
+    EXPECT_FALSE(plan.sections.first().intro.contains(
+        QLatin1String("ants-roadmap-id-high-water")));
+    EXPECT_TRUE(plan.sections.first().intro.contains(
+        QLatin1String("Generated from the Ants Terminal")))
+        << "the notice above the mark stays in the intro";
     EXPECT_EQ(partitionFault(md, plan), QString());
 }
 
