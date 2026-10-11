@@ -42346,6 +42346,13 @@ against current source before filing.
   covers a prefix the store holds ids for but no id_high_water row.
   Pairs come from every row key and every prefix a stored item's id
   carries, not from rows alone.
+  For the build, from gate loop 23 (2026-10-11): (a) when the rebuild
+  ships, roadmap-data-model.md § 7.5's sentence that a machine without
+  the store allocates from the corpus floor needs updating; (b) the
+  loader's directory-leaf prefix guess (leaf.left(4).toUpper()) can fail
+  the Prefix grammar, so its synthesis pair would be skipped; check
+  whether that is reachable; (c) pick and test the reply field that
+  reports a broken mark line.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
@@ -84547,6 +84554,35 @@ a modern terminal" release.
   Kind: fix.
   Source: in-session-2026-10-10 (CI parity review).
   Lanes: tools.
+
+- 📋 [ANTS-5645] **A side panel lists every open tab by full name, grouped by tab group, as an alternative to the scrolling tab bar.**
+  Asked by the user 2026-10-11 with about 26 project tabs open: the
+  single-row tab bar (ColoredTabBar, a QTabBar, which cannot wrap) hides
+  most of them behind scroll arrows. The user chose a side panel over
+  wrapping rows, shrink-to-fit, and a quick-search popup.
+  Shape: one line per tab with its full name, colour stripe and Claude
+  status dot; grouped under the existing tab_groups; click to switch;
+  toggled on or off, and the top tab bar can be hidden while it shows.
+  Readable at large font sizes (the user is partially sighted).
+  Reload: a config.json view key, applied on change with no relaunch.
+  **Layman:** See all your project tabs at once in a list down the side, and click any one to switch, with no scrolling sideways.
+  Kind: feature.
+  Source: user-request-2026-10-11.
+  Lanes: mainwindow, coloredtabbar, config.
+
+- 📋 [ANTS-5646] **A keyboard shortcut opens a type-to-filter list of open tabs, and Enter switches to the chosen one.**
+  Asked by the user 2026-10-11 alongside ANTS-5645 (the side tab
+  panel); useful with the panel hidden. Nothing switches tabs by name
+  today. CommandPalette (src/commandpalette.h) already does
+  type-to-filter, so the design should first ask whether tabs belong
+  in it, as a mode or prefix, before building a second popup. Each row
+  shows the full tab name, colour stripe and Claude status dot, at a
+  size readable for a partially sighted user.
+  Reload: the shortcut is a keymap entry, re-read with no relaunch.
+  **Layman:** Press a key, type a few letters of a project's name, and press Enter to jump to its tab.
+  Kind: feature.
+  Source: user-request-2026-10-11.
+  Lanes: commandpalette, mainwindow.
 
 ### 🐛 Carried over from 0.7.x
 

@@ -482,9 +482,11 @@ canonical root, the roadmap carries that notice, and the file classifies
 carries every public item. The
 render is to copy each prefix's floor into the header too, in the form
 below, and the rebuild to restore it. The mark carries the source store's
-floor for each prefix. So it covers an id the files no longer show, such as an `internal` item's or one a
-re-migration deleted, wherever that store's own floor covers it.
-**Neither half is built yet** (ANTS-5638): until it ships, such a
+floor for each prefix. So it covers an id the files no longer show, such
+as an `internal` item's or one a re-migration deleted, wherever that
+store's own floor covers it.
+**Neither the rebuild nor the mark is built yet** (ANTS-5638): until they
+ship, such a
 machine falls to the counter row of the table, floored to the corpus, and
 can reissue an id the files do not carry.
 
@@ -497,15 +499,16 @@ under the generated-file notice, in the project's roadmap file only. A
 <!-- ants-roadmap-id-high-water: ANTS=5644 -->
 ```
 
-- Each pair is `KEY=N`. `KEY` is a row's key: a prefix as the **Prefix**
-  bullet above defines it, or a synthesis counter's `<prefix>#S` (ANTS-4500).
+- Each pair is `KEY=N`. `KEY` is a prefix as the **Prefix** bullet above
+  defines it, or a synthesis counter's `<prefix>#S` (ANTS-4500).
   `N` is decimal digits.
 - Pairs are separated by one space and sorted by key in byte order, so
   two renders of one store write the same line.
 - The pairs cover every prefix the store knows for the project. That is
   each `id_high_water` row's key, read up to `#S` for a counter key, and
-  each prefix a stored item's id carries: its text before a final `-NNNN`
-  or `-SNNNN`. An id with neither tail carries none. A prefix the
+  each prefix a stored item's id carries: its text before a final `-` and
+  digits, or `-S` and digits, of any width. An id with neither tail
+  carries none. A prefix the
   **Prefix** bullet does not admit gets no pair.
 - Each such prefix `P` gets the pair `P=N`. `N` is
   `RoadmapStore::allocationFloor` for `P`: the greater of its row and the
