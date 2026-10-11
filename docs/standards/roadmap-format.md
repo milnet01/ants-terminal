@@ -475,13 +475,16 @@ the record, so they are the floor.
 from its files before it allocates** (decided 2026-10-10, ANTS-4140). The
 store lives outside the repo (under `GenericDataLocation`), so another
 machine can open the project with no store row; the generated-file notice
-in the roadmap's header says the file is the store's render. That render,
-`ROADMAP.md` plus `docs/roadmap/*.md`, carries every public item. The
-render is to copy the `id_high_water` rows into the header too, in the
-form below, and the rebuild to restore them from it. The mark is what
-covers an id the store allocated and the files no longer show, such as
-an `internal` item's. An id migration parsed from a file is covered only
-while a file shows it.
+in the roadmap's header says the file is the store's render. The rebuild
+runs when all three hold: the store has no row for the project's
+canonical root, the roadmap carries that notice, and the file classifies
+`ants-v1`. The store's render, `ROADMAP.md` plus `docs/roadmap/*.md`,
+carries every public item. The
+render is to copy each prefix's floor into the header too, in the form
+below, and the rebuild to restore it. The mark carries the source store's
+floor for each prefix it holds an `id_high_water` row for. So it covers an
+id the files no longer show, such as an `internal` item's or one a
+re-migration deleted, wherever that store's own floor covers it.
 **Neither half is built yet** (ANTS-5638): until it ships, such a
 machine falls to the counter row of the table, floored to the corpus, and
 can reissue an id the files do not carry.
@@ -501,17 +504,24 @@ under the generated-file notice, in the project's roadmap file only. A
 - Pairs are separated by one space and sorted by key in byte order, so
   two renders of one store write the same line.
 - There is a pair for each `id_high_water` row the store holds for the
-  project, a zero row included. `N` is the row's value. `roadmap_log`
-  raises the row with every id it allocates on the store path, `internal`
-  items included. A row whose prefix the **Prefix** bullet does not admit
-  gets no pair. With no pair, the render writes no line.
+  project, a zero row included. A prefix pair's `N` is
+  `RoadmapStore::allocationFloor` for that prefix: the row or the highest
+  id a stored item holds, `internal` items included. A `<prefix>#S` pair's
+  `N` is the greater of its row and `RoadmapStore::maxSynthesisedId`. A
+  row whose prefix the **Prefix** bullet does not admit gets no pair. With
+  no pair, the render writes no line.
 - A reader takes the line directly after the notice. A line it cannot
   parse is ignored whole, and the rebuild's reply says so. The floor then
   comes from the files' ids alone.
 - The rebuild raises each pair's row to its `N`, creating the row where
   it is absent; the rebuilt items floor the rest through
-  `RoadmapStore::allocationFloor`. Skipped rows aside, the rows then match
-  the source store's, so `RoadmapStore::idPrefixFor` picks the same prefix.
+  `RoadmapStore::allocationFloor`. Each prefix the mark carries then
+  floors at least as high as in the source store.
+- **Accepted cost** (decided by the user 2026-10-11, ANTS-5638): a rebuilt
+  row can sit higher than the source store's, so
+  `RoadmapStore::idPrefixFor`, which picks the busiest row, may pick
+  another prefix. It matters only where neither the call's `id_prefix`
+  nor `.ants/project.json`'s `id_format` names one.
 - Migrating the file drops the mark line rather than keeping it in the
   root section's intro, so the render always writes the mark fresh from
   the store.
