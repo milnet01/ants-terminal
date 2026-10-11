@@ -479,8 +479,9 @@ in the roadmap's header says the file is the store's render. That render,
 `ROADMAP.md` plus `docs/roadmap/*.md`, carries every public item. The
 render is to record each prefix's high-water mark in the header too, in
 the form below, and the rebuild to floor `id_high_water` to that mark.
-The mark is what covers an id the files no longer show: an `internal` item, or one a re-migration
-deleted. **Neither half is built yet** (ANTS-5638): until it ships, such a
+The mark is what covers an id the store allocated and the files no
+longer show: an `internal` item, or one a re-migration deleted.
+**Neither half is built yet** (ANTS-5638): until it ships, such a
 machine falls to the counter row of the table, floored to the corpus, and
 can reissue an id the files do not carry.
 
@@ -498,20 +499,19 @@ under the generated-file notice, in the project's roadmap file only. A
 - Pairs are separated by one space and sorted by prefix in byte order, so
   two renders of one store write the same line.
 - There is a pair for each `id_high_water` row the store holds for the
-  project, except a synthesis counter's `<prefix>#S` row. `N` is that
-  prefix's `RoadmapStore::allocationFloor`, so `internal` items count. A
-  row for any other prefix could change which prefix
-  `RoadmapStore::idPrefixFor` picks for the next id.
-- A prefix whose floor is 0 gets no pair. With no pair left, the render
-  writes no line.
+  project, a zero row included, except a synthesis counter's `<prefix>#S`
+  row. `N` is the row's value. `roadmap_log` raises the row with every id
+  it allocates on the store path, `internal` items included. With no row,
+  the render writes no line.
 - Synthesised ids (`<prefix>-S<n>`, ANTS-4500) need no pair. Every rendered
   bullet carries its id, so a rebuild from the files synthesises none.
 - A reader looks for the mark in the first six lines, the window the notice
   is found in. A line it cannot parse is ignored whole, and the rebuild's
   reply says so. The floor then comes from the files' ids alone.
-- The rebuild sets each prefix's `id_high_water` row to the greater of its
-  mark and the highest id the rebuilt items hold. The mark never lowers a
-  floor.
+- The rebuild raises each pair's row to its `N`, creating the row where
+  it is absent; the rebuilt items floor the rest through
+  `RoadmapStore::allocationFloor`. The rows then match the source
+  store's, so `RoadmapStore::idPrefixFor` picks the same prefix.
 - Migrating the file drops the mark line rather than keeping it in the
   root section's intro, so the render always writes the mark fresh from
   the store.
