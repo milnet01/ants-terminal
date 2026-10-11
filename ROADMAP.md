@@ -84698,6 +84698,10 @@ a modern terminal" release.
   and readable with one tab, but its scripted ctrl+shift+t steps
   opened no tabs, so the groups are covered by tests only. Check by
   eye after the next relaunch; the user is partially sighted.
+  Seen on screen by the user 2026-10-11: liked it; hover hid the current
+  row's name and the blue dot vanished on the selection. Both fixed by
+  ANTS-5650 (state colour as row fill), which still awaits a relaunch
+  and an on-screen look.
   **Layman:** See all your project tabs at once in a list down the side, and click any one to switch, with no scrolling sideways.
   Kind: feature.
   Source: user-request-2026-10-11.
