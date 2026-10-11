@@ -42359,6 +42359,34 @@ against current source before filing.
   as github-task-list renders; (e) raise the rows inside the load's
   transaction, so a failed rebuild leaves no id_prefix rows (Loader::
   writeTail's INV-6 comment relies on that). Next: build with write-code.
+  Decided by the user 2026-10-11: a dry run never rebuilds the store;
+  the first real write does. So the rebuild runs on the two allocating
+  paths only (op:append near the roadmapWriteTarget call in
+  cmdRoadmapLogAppend; op:append_batch near its roadmapWriteTarget call
+  before the counter-prefix block), skipped when dry_run, and not inside
+  roadmapWriteTarget (20 callers, no dry_run flag there).
+  Build map (read 2026-10-11, no code written yet):
+  - Render: RoadmapRender::render() in src/roadmaprender.cpp; insert the
+    mark after `text = withGeneratedNotice(text, passHeadings)`, only for
+    path == liveAbs and !passHeadings; replace an existing mark line so
+    the insert is idempotent. Prefixes = id_prefix row keys (a store
+    method listing rows may be needed) plus item-id prefixes from
+    allItems, taken before the rows are moved into itemOf.
+  - Import: the mark line must land in the plan, not vanish: INV-11
+    (ANTS-3757) requires every non-blank line in exactly one span.
+    Record it on MigrationPlan (parsed pairs plus its line) in walkSource
+    (src/roadmapmigrate.cpp), keep it out of the root intro, and teach
+    the INV-11 partition check about the span.
+  - Rebuild: RoadmapMigrateVerb::loadInOpenTransaction
+    (src/roadmapmigrateverb.h) loads inside the caller's transaction;
+    raise the plan's mark pairs with raiseIdHighWater in the same
+    transaction, before the load allocates (§ 3.5.1). Trigger: no row
+    for the canonical root, hasGeneratedNotice on the file head, and
+    detectRoadmapFormat gives ants-v1 with a signal.
+  - ANTS-3810 INV-1 compares the projected export, not file bytes, so
+    the mark cannot break it. Render tests that compare exact file bytes
+    will change: expect the red-existing-test row of write-code.
+  - Reload: ants-mcpd rebuild plus /mcp; no terminal relaunch.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
