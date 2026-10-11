@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5649 -->
+<!-- ants-roadmap-id-high-water: ANTS=5650 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84724,6 +84724,30 @@ a modern terminal" release.
   Kind: feature.
   Source: user-request-2026-10-11.
   Lanes: commandpalette, mainwindow.
+
+- ✅ [ANTS-5650] **Tab List Panel rows take their Claude state colour as background and stay readable under hover and selection.**
+  Reported by the user 2026-10-11 after the first on-screen look at
+  ANTS-5645. (1) Hovering the current tab's row hid its name: the app
+  style sheet (src/themedstylesheet.cpp) gives a hovered tree row
+  background bgSecondary and a selected row's text selection-color
+  bgSecondary, so a hovered selected row draws its name in its own
+  background colour. (2) The blue status dot vanished on the selected
+  row's blue highlight. The user asked for the row background to be the
+  Claude state colour, the tab-colour stripe kept at the left, and hover
+  handled. The current tab is shown bold with an outline, since a
+  highlight would hide the state colour.
+  Resolved (2026-10-11): TabRowDelegate in src/tablistpanel.cpp paints
+  each tab row whole (fill, stripe, black or white name, bold and
+  outline when current), so the style sheet's item rules no longer
+  reach it. TabListPanel::rowPaint holds the colours. INV-8 in
+  tests/features/tab_list_panel/spec.md; three cases, red against a
+  stand-in, and a hover-off mutation caught. The off-screen test could
+  not reproduce the style-sheet hover bug itself. Not yet seen on a
+  real screen: needs the next relaunch.
+  **Layman:** Each tab in the side list is coloured by what Claude is doing in it, and its name stays readable when you point at it.
+  Kind: fix.
+  Source: user-report-2026-10-11 (screenshots).
+  Lanes: mainwindow, coloredtabbar.
 
 ### 🐛 Carried over from 0.7.x
 

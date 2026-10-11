@@ -60,6 +60,9 @@ struct ClaudeTabIndicator {
     // Glyph). A semi-transparent stroke, dark on light backgrounds and
     // light on dark ones, so every dot keeps a crisp edge on any theme.
     static QColor ringColor(const QColor &background);
+
+    // WCAG 2.x contrast ratio, 1 to 21 — the measure contrastColor() uses.
+    static double contrastRatio(const QColor &a, const QColor &b);
 };
 
 // QTabBar subclass that renders an optional per-tab colour strip along

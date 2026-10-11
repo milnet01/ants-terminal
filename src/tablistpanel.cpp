@@ -4,12 +4,81 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QScrollBar>
+#include <QStyledItemDelegate>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
 namespace {
 
-constexpr int kPageRole = Qt::UserRole + 1;
+constexpr int kPageRole     = Qt::UserRole + 1;
+constexpr int kGlyphRole    = Qt::UserRole + 2;  // tab rows only
+constexpr int kTabColorRole = Qt::UserRole + 3;  // tab rows only
+
+QColor inkOn(const QColor &fill) {
+    const QColor black(Qt::black), white(Qt::white);
+    return ClaudeTabIndicator::contrastRatio(black, fill)
+                   >= ClaudeTabIndicator::contrastRatio(white, fill)
+               ? black
+               : white;
+}
+
+// ANTS-5650 — paints a tab row whole, so the app style sheet's item rules
+// (a hovered row's fill, a selected row's text colour) never reach it.
+// Group headers keep the default painting.
+class TabRowDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void setBackground(const QColor &background) { m_bg = background; }
+
+    void paint(QPainter *p, const QStyleOptionViewItem &opt,
+               const QModelIndex &index) const override {
+        if (!index.data(kGlyphRole).isValid()) {
+            QStyledItemDelegate::paint(p, opt, index);
+            return;
+        }
+        const auto glyph = static_cast<ClaudeTabIndicator::Glyph>(index.data(kGlyphRole).toInt());
+        const QColor bg = m_bg.isValid() ? m_bg : opt.palette.color(QPalette::Base);
+        const bool current = opt.state & QStyle::State_Selected;
+        const auto rp = TabListPanel::rowPaint(glyph, bg, opt.state & QStyle::State_MouseOver);
+        const QRect r = opt.rect;
+        const int stripe = qMax(5, r.height() / 4);
+        const int pad = qMax(6, r.height() / 4);
+
+        p->save();
+        p->fillRect(r, rp.fill);
+        const QColor tab = index.data(kTabColorRole).value<QColor>();
+        if (tab.isValid())
+            p->fillRect(QRect(r.left(), r.top(), stripe, r.height()), tab);
+        QFont f = opt.font;
+        f.setBold(current);
+        p->setFont(f);
+        p->setPen(rp.ink);
+        const QRect textRect = r.adjusted(stripe + pad, 0, -pad, 0);
+        p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft,
+                    QFontMetrics(f).elidedText(index.data(Qt::DisplayRole).toString(),
+                                               Qt::ElideRight, textRect.width()));
+        if (current) {
+            // The current tab: outlined, so no highlight hides its colour.
+            QPen pen(rp.ink, 2);
+            pen.setJoinStyle(Qt::MiterJoin);
+            p->setPen(pen);
+            p->setBrush(Qt::NoBrush);
+            p->drawRect(QRectF(r).adjusted(stripe + 1, 1, -1, -1));
+        }
+        p->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem &opt, const QModelIndex &index) const override {
+        QSize s = QStyledItemDelegate::sizeHint(opt, index);
+        if (index.data(kGlyphRole).isValid())
+            s.setHeight(qMax(s.height(), QFontMetrics(opt.font).height() + 10));
+        return s;
+    }
+
+private:
+    QColor m_bg;
+};
 
 }  // namespace
 
@@ -25,6 +94,8 @@ TabListPanel::TabListPanel(QWidget *parent) : QWidget(parent) {
     m_tree->setTextElideMode(Qt::ElideRight);
     m_tree->setFocusPolicy(Qt::StrongFocus);
     m_tree->setAccessibleName(QStringLiteral("Open tabs"));
+    m_tree->setItemDelegate(new TabRowDelegate(m_tree));
+    m_tree->setMouseTracking(true);  // hover state for TabRowDelegate
     lay->addWidget(m_tree);
 
     // A click and Enter both switch; activation alone would need a
@@ -62,7 +133,8 @@ void TabListPanel::setThemeColors(const QColor &background, const QColor &text) 
     m_tree->viewport()->setAutoFillBackground(true);
     setPalette(pal);
     setAutoFillBackground(true);
-    rebuild();  // the dot's contrast colour depends on the background
+    static_cast<TabRowDelegate *>(m_tree->itemDelegate())->setBackground(background);
+    m_tree->viewport()->update();
 }
 
 QString TabListPanel::groupName(const QColor &color) {
@@ -94,18 +166,14 @@ void TabListPanel::rebuild() {
     if (m_entries.isEmpty()) return;
 
     const int iconSide = QFontMetrics(m_tree->font()).height();
-    m_tree->setIconSize(QSize(iconSide * 2, iconSide));
-    // No stripe or dot on any row: draw no icons, so names start at the edge.
-    bool anyMark = false;
-    for (const TabListEntry &e : std::as_const(m_entries))
-        anyMark = anyMark || e.color.isValid() || e.glyph != ClaudeTabIndicator::Glyph::None;
+    m_tree->setIconSize(QSize(iconSide, iconSide));  // the header swatches
 
-    auto makeRow = [this, anyMark, iconSide](const TabListEntry &e) {
+    // TabRowDelegate paints the stripe and the state colour from these roles.
+    auto makeRow = [](const TabListEntry &e) {
         auto *item = new QTreeWidgetItem(QStringList{e.title});
         item->setData(0, kPageRole, QVariant::fromValue(static_cast<QObject *>(e.page)));
-        if (anyMark)
-            item->setIcon(0, tabIcon(e, iconSide, m_tree->palette().color(QPalette::Base),
-                                     devicePixelRatioF()));
+        item->setData(0, kGlyphRole, static_cast<int>(e.glyph));
+        item->setData(0, kTabColorRole, e.color);
         const QString state = stateLabel(e.glyph);
         item->setToolTip(0, state.isEmpty() ? e.title : e.title + QStringLiteral(" — ") + state);
         item->setData(0, Qt::AccessibleTextRole,
@@ -167,6 +235,20 @@ void TabListPanel::onItemActivated(QTreeWidgetItem *item) {
     if (!item) return;
     auto *page = qobject_cast<QWidget *>(item->data(0, kPageRole).value<QObject *>());
     if (page) emit tabActivated(page);
+}
+
+TabListPanel::RowPaint TabListPanel::rowPaint(ClaudeTabIndicator::Glyph glyph,
+                                              const QColor &background, bool hovered) {
+    QColor fill = glyph == ClaudeTabIndicator::Glyph::None ? background
+                                                           : ClaudeTabIndicator::color(glyph);
+    if (hovered) {
+        // A quarter of the way towards the ink: visibly different, same hue.
+        const QColor toward = inkOn(fill);
+        const auto mix = [](int a, int b) { return a + (b - a) / 4; };
+        fill = QColor(mix(fill.red(), toward.red()), mix(fill.green(), toward.green()),
+                      mix(fill.blue(), toward.blue()));
+    }
+    return {fill, inkOn(fill)};
 }
 
 QIcon TabListPanel::tabIcon(const TabListEntry &e, int h, const QColor &bg, qreal dpr) {

@@ -9,6 +9,9 @@
 #include "../../_support/xdg_guard.h"
 #include "../../_support/srcgrep.h"
 
+#include <QImage>
+#include <QPainter>
+#include <QStyleOptionViewItem>
 #include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QWidget>
@@ -190,4 +193,95 @@ TEST(TabListPanel, Inv7BothReloadPathsApplyThePanel) {
         ants_test::slurpFunctionBody(src, "&SettingsDialog::settingsChanged, this, [this]()");
     ASSERT_FALSE(dialog.empty());
     EXPECT_NE(dialog.find("applyTabListPanelConfig()"), std::string::npos);
+}
+
+// ---------------------------------------------------------------- INV-8 -----
+// ANTS-5650 — the row's background is its Claude state colour, and the name
+// stays readable under hover and selection.
+
+namespace {
+
+const QColor kDarkBg(0x1e, 0x1e, 0x2e);
+const QColor kDarkText(0xcd, 0xd6, 0xf4);
+const QColor kLightBg(0xef, 0xf1, 0xf5);
+
+const Glyph kAllGlyphs[] = {Glyph::None,     Glyph::Idle,      Glyph::Thinking,
+                            Glyph::ToolUse,  Glyph::Bash,      Glyph::Planning,
+                            Glyph::Auditing, Glyph::Compacting, Glyph::AwaitingInput};
+
+// Paints one row through the tree's own delegate, as the view would.
+QImage paintRow(TabListPanel &panel, QTreeWidgetItem *row, QStyle::State extra) {
+    QTreeWidget *tree = panel.treeForTest();
+    const QModelIndex index = tree->indexFromItem(row);
+    QStyleOptionViewItem opt;
+    opt.initFrom(tree->viewport());
+    opt.widget = tree;
+    opt.rect = QRect(0, 0, 400, 32);
+    opt.state |= QStyle::State_Enabled | QStyle::State_Active | extra;
+    QImage img(opt.rect.size(), QImage::Format_ARGB32);
+    img.fill(Qt::magenta);
+    QPainter p(&img);
+    tree->itemDelegateForIndex(index)->paint(&p, opt, index);
+    return img;
+}
+
+}  // namespace
+
+TEST(TabListPanel, Inv8FillIsTheStateColourOrThePanelBackground) {
+    for (const QColor &bg : {kDarkBg, kLightBg}) {
+        EXPECT_EQ(TabListPanel::rowPaint(Glyph::None, bg, false).fill, bg);
+        for (Glyph g : kAllGlyphs) {
+            if (g == Glyph::None) continue;
+            EXPECT_EQ(TabListPanel::rowPaint(g, bg, false).fill,
+                      ClaudeTabIndicator::color(g))
+                << TabListPanel::stateLabel(g).toStdString();
+        }
+    }
+}
+
+TEST(TabListPanel, Inv8NameReadableOnEveryFillHoveredOrNot) {
+    for (const QColor &bg : {kDarkBg, kLightBg}) {
+        for (Glyph g : kAllGlyphs) {
+            const auto rest = TabListPanel::rowPaint(g, bg, false);
+            const auto hover = TabListPanel::rowPaint(g, bg, true);
+            const std::string what = TabListPanel::stateLabel(g).toStdString();
+            EXPECT_GE(ClaudeTabIndicator::contrastRatio(rest.ink, rest.fill), 4.5) << what;
+            EXPECT_GE(ClaudeTabIndicator::contrastRatio(hover.ink, hover.fill), 4.5) << what;
+            EXPECT_NE(hover.fill, rest.fill) << "hover must show: " << what;
+        }
+    }
+}
+
+// The reported bug: the app style sheet's item rules gave a hovered,
+// selected row its background colour for both fill and text. These are
+// those two rules, from src/themedstylesheet.cpp, with the theme filled in.
+TEST(TabListPanel, Inv8HoveredCurrentRowStillShowsItsName) {
+    Pages p;
+    TabListPanel panel;
+    panel.setThemeColors(kDarkBg, kDarkText);
+    panel.setStyleSheet(QStringLiteral(
+        "QTreeWidget { background-color: %1; color: %2;"
+        "  selection-background-color: #89b4fa; selection-color: %1; }"
+        "QTreeWidget::item:hover { background: %1; }")
+                            .arg(kDarkBg.name(), kDarkText.name()));
+    const QString title = QStringLiteral("A long tab name that runs well past the stripe");
+    panel.setEntries({{&p.a, title, paletteColor(0), Glyph::Thinking}}, &p.a);
+    const auto rows = tabRows(panel.treeForTest());
+    ASSERT_EQ(rows.size(), 1);
+
+    const QImage img = paintRow(panel, rows.at(0),
+                                QStyle::State_Selected | QStyle::State_MouseOver);
+    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true);
+    // Measured against the row's own painted background, past the text.
+    const QColor painted(img.pixel(380, img.height() / 2));
+    int inkish = 0;
+    for (int x = 80; x < 300; ++x)
+        for (int y = 0; y < img.height(); ++y)
+            if (ClaudeTabIndicator::contrastRatio(QColor(img.pixel(x, y)), painted) > 3.0)
+                ++inkish;
+    EXPECT_GT(inkish, 20) << "the name is not visible on a hovered current row";
+    EXPECT_EQ(QColor(img.pixel(380, img.height() / 2)), want.fill)
+        << "the row's background is not its hovered state colour";
+    EXPECT_EQ(QColor(img.pixel(1, img.height() / 2)).rgb(), paletteColor(0).rgb())
+        << "the tab colour stripe is missing";
 }

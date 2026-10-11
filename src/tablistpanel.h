@@ -59,6 +59,16 @@ public:
     static QIcon tabIcon(const TabListEntry &e, int height, const QColor &background,
                          qreal devicePixelRatio);
 
+    // ANTS-5650 — a tab row's background and name colour: the Claude state
+    // colour (the panel background for None), changed under the mouse, with
+    // black or white ink, whichever reads better on it.
+    struct RowPaint {
+        QColor fill;
+        QColor ink;
+    };
+    static RowPaint rowPaint(ClaudeTabIndicator::Glyph glyph, const QColor &background,
+                             bool hovered);
+
     QTreeWidget *treeForTest() const { return m_tree; }
 
 signals:

@@ -20,8 +20,8 @@ item records the user's choice of a side panel over wrapping rows.
   `tabActivated` with that row's page. Headers cannot be selected. The
   current tab's row is the selected row.
 - **INV-4 — Claude state.** A row whose Claude glyph is not `None` names
-  the state in words in its tooltip and accessible text, since the dot is
-  colour only. A row with glyph `None` names no state.
+  the state in words in its tooltip and accessible text, since the colour
+  alone does not say it. A row with glyph `None` names no state.
 - **INV-5 — readable size.** `setFontPointSize` sets the rows' font size.
   The MainWindow passes the terminal font size, so the panel follows it.
 - **INV-6 — config keys.** `tab_list_panel` (default false),
@@ -30,6 +30,15 @@ item records the user's choice of a side panel over wrapping rows.
 - **INV-7 — live reload.** Both `onConfigFileChanged` and the Settings
   dialog's `settingsChanged` handler call `applyTabListPanelConfig`, so a
   change applies with no relaunch.
+- **INV-8 — state as row colour (ANTS-5650).** A tab row's background is
+  `ClaudeTabIndicator::color` of its glyph, or the panel background for
+  `None`. Its tab colour is a stripe at the left edge. The name is drawn
+  in black or white, whichever has the higher contrast with the
+  background, and that contrast is at least 4.5:1. Under the mouse the
+  background changes and the 4.5:1 floor still holds, selected or not.
+  The current tab's row is bold and outlined, with no highlight over its
+  colour. The panel paints tab rows itself, so the app style sheet's
+  item rules do not reach them.
 
 ## Test
 

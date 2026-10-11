@@ -129,6 +129,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **Tab List Panel rows are filled with their Claude state colour, keep the tab colour as a stripe, and stay readable when hovered or current.** (ANTS-5650)
+  The name is drawn in black or white, whichever reads better on the row.
+  The current tab is bold and outlined.
+
 - **When the roadmap database is newer than a running MCP server, the error now tells the session to type /mcp** (ANTS-5643)
   It also says the Ants Terminal window itself needs a relaunch.
 

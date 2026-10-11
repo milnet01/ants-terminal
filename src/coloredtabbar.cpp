@@ -84,6 +84,10 @@ QColor ClaudeTabIndicator::color(Glyph g) {
     return QColor();
 }
 
+double ClaudeTabIndicator::contrastRatio(const QColor &a, const QColor &b) {
+    return wcagContrast(a, b);
+}
+
 QColor ClaudeTabIndicator::contrastColor(Glyph g, const QColor &background) {
     const QColor base = color(g);
     if (!base.isValid() || !background.isValid()) return base;
