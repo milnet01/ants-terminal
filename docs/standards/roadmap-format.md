@@ -482,7 +482,14 @@ canonical root, the roadmap carries that notice, and the file classifies
 machine with no store file has no row. It runs on `roadmap_log`
 `op:"append"` and `op:"append_batch"`, never on a dry run, and never for
 a root under the temp directory, which `roadmap_migrate` refuses too
-(ANTS-4600). The store's render, `ROADMAP.md` plus `docs/roadmap/*.md`,
+(ANTS-4600). **A tree whose slug another root owns is refused, not
+skipped** (decided by the user 2026-10-11, ANTS-5649): a second clone,
+or a moved tree, finds no row for its own root, so the rebuild fires and
+`roadmap_migrate` refuses `slug_collision`. The append refuses with it,
+and the error names the remedy: `op:"reroot"` if the project moved,
+else write the roadmap from the owning root. Skipping the rebuild would
+let two trees allocate from different floors and issue one id twice.
+The store's render, `ROADMAP.md` plus `docs/roadmap/*.md`,
 carries every public item. The
 render is to copy each prefix's floor into the header too, in the form
 below, and the rebuild to restore it. The mark carries the source store's
@@ -760,19 +767,37 @@ items, or refusing to read them, was never an option.
 When an LLM agent (Claude Code, Codex, etc.) is told *"work the
 roadmap"*, it MUST:
 
-1. Read the file top-to-bottom.
+1. Read the file top-to-bottom. **Then take review fixes first**: the
+   first 🚧, else the first 📋, whose declared `Kind:` is `review-fix`,
+   `audit-fix` or `doc-fix` — § 3.5.3's read rule, never a Kind
+   inherited from a section — in document order, in any `##` block
+   whose heading does not read `shipped`. Skip it on step 3's terms
+   (💭, blocked). Only when none is workable, go on to step 2. **This
+   outranks position** (§ 3.5.2): position orders the fixes among
+   themselves, and the other kinds among themselves. **It reads the
+   Kind alone**, so a review finding meant for this tier declares one
+   of those three on its own bullet; one filed as `fix` or `security`
+   waits in the second tier.
 2. Skip past `##` release blocks until it finds the **active
-   release** (the lowest version `##` that contains any 📋 or 🚧
-   items) — or, on a file with **no version `##` block at all**
-   (§ 3.2), the **lowest-numbered `## P<NN>` block** containing any.
+   release**: the lowest version `##` that contains any workable 📋 or
+   🚧 (step 3) and whose heading does not read `shipped` — § 3.7 makes
+   a shipped block read-only and hides its items from the viewer's
+   filters, so selecting one gives the agent work nobody can see. On a
+   file with **no version `##` block at all** (§ 3.2), the same test
+   picks the **lowest-numbered `## P<NN>` block** instead.
+   **Compared as integers**: the `(major, minor, patch)` triple for a
+   version block, an absent patch reading as 0, and `(phase, sub)` for
+   a phase designator, an absent sub reading as 0, so `P07.5` ranks
+   between `P07` and `P08`. Lexical sort is wrong: `0.10` sorts below
+   `0.9`.
    **On a file carrying both shapes** the version blocks win (§ 3.2):
    its phase blocks are worked as extra theme sections of the active
    release, after that release's own themes. Where no version block
    qualifies, fall through to the phase blocks rather than stopping.
-   **Stop only when no block of either shape qualifies** — none holds a
-   📋 or 🚧 — and report that there is no workable item. Do not
-   advance to a later release and do not promote a 💭: each invents
-   work the file does not offer.
+   **Stop only when no block of either shape qualifies** — no block
+   holds a workable 📋 or 🚧 — and report that there is no workable
+   item. Do not advance to a later release and do not promote a 💭:
+   each invents work the file does not offer.
    **Numbered, not first in document order.** A phase roadmap may
    interleave `## FP<NN>` fold-in and `## DS<NN>` debt-sweep blocks
    above and below the phase sequence, so position does not track the
@@ -784,15 +809,18 @@ roadmap"*, it MUST:
    step 3 after that block's own themes.
 3. Within the active release, find the first 🚧 bullet under each
    `###` theme section, else the first 📋. ✅ and 🚫 are closed and are
-   never worked, and 💭 is not queued.
+   never worked, and 💭 is not workable: skip it. **Skip a bullet whose
+   `Blocked-by:` names an item that is not closed (✅ or 🚫)** (§ 3.5).
+   That item cannot start. It is not workable, and its status is
+   unchanged.
 4. Tackle bullets in document order — *not* in ID order.
 5. When inserting new bullets (e.g. from an audit), follow
    §3.5.2.
 
 Do **not** "jump around" by ID. Do **not** reorder existing
 items to fit a perceived priority — let the human author make
-priority decisions through positioning.
-
+priority decisions through positioning, within the two tiers step 1
+sets.
 ### 3.6 Current-work signaling
 
 The Roadmap dialog marks a bullet as "currently being tackled"
@@ -969,6 +997,14 @@ The convention:
   (`corpusHighWater`), the migration reads the same archive folder
   (`findRoadmaps`), and the
   viewer looks beside `ROADMAP.md`, which is then the same folder.
+- **A retirement record lives under `<project root>/docs/history/`**,
+  never `docs/roadmap/`. It is a dated note of sections retired from the
+  roadmap, such as phase blocks folded into release blocks, and not an
+  archive of items. The migration skips any other file under
+  `docs/roadmap/` with an `archive_unrecognised` note, and neither the
+  migration nor the id floor reads `docs/history/`. So keep every item
+  on the roadmap or in an archive, and let the record only describe
+  them. Decided by the user 2026-10-11 (ANTS-5639).
 - File names follow the **case-sensitive regex**
   `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`. No leading `v`, no
   `roadmap-` prefix, no zero-padding (`0.7.md` not `00.07.md`), **no
