@@ -191,6 +191,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **List replies the server sizes itself now fit under the offload threshold, so a 16–20 KB list comes back trimmed and paged instead of saved to a side file** (ANTS-5571)
+  The page cap follows the live `claude.mcp_offload_threshold_bytes`,
+  less a margin for the envelope, and stays at 20 KB at most.
+
 - **session_message works from a project subfolder** (ANTS-5594)
   A caller_cwd below a registered project root now reaches that
   project's mailbox instead of being refused no_project.

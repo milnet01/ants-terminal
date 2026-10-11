@@ -2,6 +2,8 @@
 
 #include "paginationengine.h"
 
+#include "mcpspill.h"
+
 #include <QJsonDocument>
 
 namespace PaginationEngine {
@@ -40,6 +42,10 @@ int measureCutPoint(const QJsonArray &filtered, int budget) {
 }
 
 }  // namespace
+
+int softCapBytes() {
+    return qMin(kSoftCapBytes, mcp::offloadThresholdBytes() - kOffloadMarginBytes);
+}
 
 PageResult pageBullets(const QJsonArray &filtered,
                        int offset,
@@ -80,7 +86,7 @@ PageResult pageBullets(const QJsonArray &filtered,
     } else {
         // Auto-pick: measure-then-cut against the soft cap. Reserve
         // envelope overhead so the wire response fits comfortably.
-        const int budget = kSoftCapBytes - kEnvelopeOverheadBytes;
+        const int budget = softCapBytes() - kEnvelopeOverheadBytes;
         // ANTS-5103 — at least one row. A first row larger than the budget
         // cut the page to zero rows with next_offset == offset, so a client
         // that follows next_offset looped forever.
@@ -107,7 +113,7 @@ PageResult pageBullets(const QJsonArray &filtered,
         QJsonArray leanFull = filtered;   // deep-on-write copy
         downshift(leanFull);
         const QJsonArray leanTail = tailFrom(leanFull);
-        const int budget = kSoftCapBytes - kEnvelopeOverheadBytes;
+        const int budget = softCapBytes() - kEnvelopeOverheadBytes;
         const int n = qMin(qMax(measureCutPoint(leanTail, budget), 1),
                            int(leanTail.size()));   // ANTS-5103 — see above
         QJsonArray slice;

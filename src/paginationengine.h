@@ -1,5 +1,6 @@
 // ANTS-1436 — pagination + auto-truncate helper for cmdRoadmapQuery.
-// Pure (Qt6::Core-only); lives in ants_core_lib. Stateless — args
+// Pure (Qt6::Core-only); lives in ants_core_lib. Stateless apart from the
+// live offload threshold softCapBytes() reads (ANTS-5571) — args
 // in, slice + envelope-augment hints out. See docs/specs/ANTS-1436.md.
 
 #pragma once
@@ -26,6 +27,17 @@ constexpr int kSoftCapBytes = 20480;
 // fields + the ANTS-1294 <ants_mcp_data> framing. Conservative
 // enough that bullets[] always has 20 KB of its own budget.
 constexpr int kEnvelopeOverheadBytes = 512;
+
+// ANTS-5571 — room left under the offload threshold for the envelope keys a
+// verb adds around the page (etag, hints, pagination fields, the framing).
+constexpr int kOffloadMarginBytes = 2048;
+
+// The soft cap in force: kSoftCapBytes, lowered to the live offload
+// threshold (mcp::offloadThresholdBytes) less kOffloadMarginBytes, so a page
+// cut to this fits under the dispatch's offload gate with its envelope. A
+// 16 KB threshold under a fixed 20 KB cap offloaded 16-20 KB pages. Reads the
+// threshold on every call, so a Settings change applies to the next page.
+int softCapBytes();
 
 // Hard clamps on caller-supplied args, per spec INV-8/INV-9.
 constexpr int kMaxLimit = 500;

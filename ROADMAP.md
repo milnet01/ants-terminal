@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5650 -->
+<!-- ants-roadmap-id-high-water: ANTS=5651 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70705,7 +70705,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session message 2026-09-29.
   Lanes: claude-integration.
 
-- 📋 [ANTS-5571] **A list reply between 16 KB and 20 KB is offloaded untrimmed, because the offload threshold sits below the pagination soft cap.**
+- ✅ [ANTS-5571] **A list reply between 16 KB and 20 KB is offloaded untrimmed, because the offload threshold sits below the pagination soft cap.**
   Reported by finbreak (session_message 281, 2026-09-29): roadmap_query
   status:"active" bullet_fields:["id","status","kind","headline_oneline"]
   limit:200 returned 117 rows, 18,211 bytes, offloaded with
@@ -70725,6 +70725,14 @@ project. Reported causes are claims until checked in source.
   the same downshift-free truncation headline_only gets.
 
   Reply to finbreak when this ships.
+  Resolved (2026-10-11): PaginationEngine::softCapBytes() lowers
+  kSoftCapBytes to the live offload threshold less kOffloadMarginBytes
+  (2048); both auto-sizing passes and the bundles cap use it. Contract
+  tests/features/roadmap_query_pagination/spec.md INV-12, red before the
+  fix. Not changed: an explicit `limit` is still honoured whole (INV-9),
+  so the reporter's own call (limit:200) still offloads; that needs a
+  decision. The bullet_fields truncation question is unexamined. Reply to
+  finbreak owed.
   **Layman:** A roadmap list that is a bit too big gets saved to a side file instead of being trimmed to fit, so the asking session needs extra calls.
   Kind: fix.
   Source: session-message-281 finbreak 2026-09-29.
@@ -70790,6 +70798,19 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: user-request-2026-10-02.
   Lanes: hooks.
+
+- 📋 [ANTS-5651] **Decide whether a list page sized by an explicit limit is trimmed to fit under the offload threshold.**
+  ANTS-5571 made the auto-sized page fit under the offload threshold.
+  An explicit `limit` is still honoured whole (ANTS-1436 INV-9), so
+  finbreak's own call (limit:200, 117 rows, 18 KB) still offloads.
+  Option A, recommended: trim an explicit-limit page to
+  PaginationEngine::softCapBytes() too, with truncated and next_offset,
+  since `limit` is documented as a cap. Option B: keep INV-9 as is.
+  A changes INV-9, so it takes the rule-14 gate on ANTS-1436.
+  **Layman:** When a session asks for a set number of roadmap rows and they are too big, decide whether to send fewer rows or save them all to a side file.
+  Kind: enhancement.
+  Source: ANTS-5571 follow-up 2026-10-11.
+  Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage
 

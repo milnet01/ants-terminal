@@ -499,7 +499,7 @@ public:
     // the project ships) does not fire, and the caller then omits the key.
     static QJsonObject buildFeedbackPendingBlock(const QString &rootCanonical);
     // ANTS-1922 — test-only soft-cap override for the bundles branch
-    // (0 = use PaginationEngine::kSoftCapBytes). The pure builder above
+    // (0 = use PaginationEngine::softCapBytes()). The pure builder above
     // takes the cap directly; this lets a live-verb path force truncation.
     void setBundleSoftCapOverride(int bytes) { m_bundleSoftCapOverride = bytes; }
     // ANTS-5052 — test-only override for the rg stdout byte ceiling
@@ -1558,7 +1558,7 @@ private:
     mutable ChangelogQuery::ParseResult m_changelogCache;
     mutable QString m_changelogCachePrefix;
     // ANTS-1922 — test-only soft-cap override for bundles mode (0 =
-    // default PaginationEngine::kSoftCapBytes). Set via
+    // default PaginationEngine::softCapBytes()). Set via
     // setBundleSoftCapOverride; never written on the live path.
     int m_bundleSoftCapOverride = 0;
     // ANTS-5052 — test-only rg stdout ceiling override (0 = default). Set via

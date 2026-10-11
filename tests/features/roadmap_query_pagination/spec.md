@@ -37,6 +37,14 @@ responses come back in chunks the caller can parse directly.
 - **INV-9 / explicit limit honoured up to clamp.** `limit:500`
   returns up to 500 even if auto-pick would pick fewer; clamped to
   [1, 500].
+- **INV-12 / an auto-sized page fits under the offload threshold
+  (ANTS-5571).** The auto path's soft cap is
+  `PaginationEngine::softCapBytes()`: `kSoftCapBytes`, lowered to the
+  live `mcp::offloadThresholdBytes()` less `kOffloadMarginBytes`. So
+  a page the engine sized leaves the margin for its envelope. A list
+  between the threshold and `kSoftCapBytes` is now trimmed. With a
+  threshold above `kSoftCapBytes`, the cap stays `kSoftCapBytes`. An
+  explicit `limit` is unchanged (INV-9).
 - **INV-11 / one helper call site per emission branch.** The
   PaginationEngine::pageBullets call appears exactly twice in
   cmdRoadmapQuery (section + full-file). Source-scrape regression

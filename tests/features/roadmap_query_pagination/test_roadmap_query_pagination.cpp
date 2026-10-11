@@ -3,6 +3,7 @@
 // source-scrape on cmdRoadmapQuery wiring.
 
 #include "../../_support/expect.h"
+#include "mcpspill.h"
 #include "paginationengine.h"
 
 #include <gtest/gtest.h>
@@ -120,6 +121,31 @@ TEST(roadmap_query_pagination, Inv9LimitClampedTo500) {
     const auto r = PaginationEngine::pageBullets(arr, 0, 9999);
     EXPECT_EQ(r.limit, PaginationEngine::kMaxLimit);
     EXPECT_EQ(r.slice.size(), PaginationEngine::kMaxLimit);
+}
+
+// INV-12 (ANTS-5571) — the auto-sized page fits under the live offload
+// threshold. A ~18 KB list sat between the 16 KB default threshold and the
+// 20 KB soft cap, so the engine kept it whole and the dispatch offloaded it.
+TEST(roadmap_query_pagination, Inv12AutoPageFitsUnderOffloadThreshold) {
+    const auto arr = makeBullets(105);   // ~18 KB compact
+    const auto fullBytes = QJsonDocument(arr).toJson(QJsonDocument::Compact).size();
+    ASSERT_GT(fullBytes, 16384);
+    ASSERT_LT(fullBytes, PaginationEngine::kSoftCapBytes
+                             - PaginationEngine::kEnvelopeOverheadBytes);
+
+    mcp::setOffloadConfig(true, 16384, 2048);
+    const auto r = PaginationEngine::pageBullets(arr, 0, -1);
+    EXPECT_TRUE(r.truncated);
+    const auto bytes = QJsonDocument(r.slice).toJson(QJsonDocument::Compact).size();
+    EXPECT_LE(bytes + PaginationEngine::kEnvelopeOverheadBytes
+                  + PaginationEngine::kOffloadMarginBytes, 16384);
+
+    // A threshold above the soft cap leaves the soft cap in force.
+    mcp::setOffloadConfig(true, 1048576, 2048);
+    EXPECT_EQ(PaginationEngine::softCapBytes(), PaginationEngine::kSoftCapBytes);
+    EXPECT_FALSE(PaginationEngine::pageBullets(arr, 0, -1).truncated);
+
+    mcp::setOffloadConfig(true, 16384, 2048);   // back to the defaults
 }
 
 // Edge — single bullet that exceeds budget on its own.

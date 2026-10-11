@@ -2744,7 +2744,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         const int cap = (m_bundleSoftCapOverride > 0)
                             ? m_bundleSoftCapOverride
-                            : PaginationEngine::kSoftCapBytes;
+                            : PaginationEngine::softCapBytes();
         return QJsonDocument(
             buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap));
     }

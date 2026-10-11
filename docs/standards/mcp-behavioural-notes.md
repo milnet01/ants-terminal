@@ -343,7 +343,7 @@ server-controllable beyond this per-tool hint.
   body gate/blocker marker — `blocked by`, `until …lands/ships`, …;
   bare `blocks` is excluded). Byte-stable envelope (size-desc,
   id-asc); whole-bundle soft-cap truncation at
-  `PaginationEngine::kSoftCapBytes` (no `next_offset` in v1). The
+  `PaginationEngine::softCapBytes()` (no `next_offset` in v1). The
   builder is the pure static `RemoteControl::buildRoadmapBundlesEnvelope`
   (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922.md`.
 - **`downshifted` (ANTS-3543 `roadmap_query` + `workspace_search`;
