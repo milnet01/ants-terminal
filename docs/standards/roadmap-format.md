@@ -492,8 +492,8 @@ under the generated-file notice, in the project's roadmap file only. A
 <!-- ants-roadmap-id-high-water: ANTS=5644 -->
 ```
 
-- Each pair is `PREFIX=N`. `PREFIX` follows the declared-prefix grammar,
-  `[A-Za-z][A-Za-z0-9_-]{0,63}` (`src/main.cpp`). `N` is decimal digits.
+- Each pair is `PREFIX=N`. `PREFIX` is a prefix as the **Prefix** bullet
+  above defines it. `N` is decimal digits.
 - Pairs are separated by one space and sorted by prefix in byte order, so
   two renders of one store write the same line.
 - There is a pair for each prefix the store holds an `id_high_water` row or
