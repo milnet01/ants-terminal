@@ -477,12 +477,41 @@ store lives outside the repo (under `GenericDataLocation`), so another
 machine can open the project with no store row; the generated-file notice
 in the roadmap's header says the file is the store's render. That render,
 `ROADMAP.md` plus `docs/roadmap/*.md`, carries every public item. The
-render is to record each prefix's high-water mark in the header too, and
-the rebuild to floor `id_high_water` to that mark. The mark is what covers
-an id the files no longer show: an `internal` item, or one a re-migration
+render is to record each prefix's high-water mark in the header too, in
+the form below, and the rebuild to floor `id_high_water` to that mark.
+The mark is what covers an id the files no longer show: an `internal` item, or one a re-migration
 deleted. **Neither half is built yet** (ANTS-5638): until it ships, such a
 machine falls to the counter row of the table, floored to the corpus, and
 can reissue an id the files do not carry.
+
+**The header mark's form.** The render writes it as one line directly
+under the generated-file notice, in the project's roadmap file only. A
+`docs/roadmap/*.md` archive carries none.
+
+```markdown
+<!-- ants-roadmap-id-high-water: ANTS=5644 -->
+```
+
+- Each pair is `PREFIX=N`. `PREFIX` follows the declared-prefix grammar,
+  `[A-Za-z][A-Za-z0-9_-]{0,63}` (`src/main.cpp`). `N` is decimal digits.
+- Pairs are separated by one space and sorted by prefix in byte order, so
+  two renders of one store write the same line.
+- There is a pair for each prefix the store holds an `id_high_water` row or
+  an item id for. `N` is that prefix's `RoadmapStore::allocationFloor`, so
+  `internal` items count.
+- A prefix whose floor is 0 gets no pair. With no pair left, the render
+  writes no line.
+- Synthesised ids (`<prefix>-S<n>`, ANTS-4500) get no pair, nor does their
+  counter's `<prefix>#S` row. Every rendered bullet carries its id, so a
+  rebuild from the files synthesises none.
+- A reader looks for the mark in the first six lines, the window the notice
+  is found in. A line it cannot parse is ignored whole, and the rebuild's
+  reply says so. The floor then comes from the files' ids alone.
+- The rebuild sets each prefix's `id_high_water` row to the greater of its
+  mark and the highest id the rebuilt items hold. The mark never lowers a
+  floor.
+
+ANTS-5638's tests check this form; until they land, nothing does.
 
 `id_strategy: "stable_prefix"` (a caller-supplied string id such as
 `Ts20-SP6`) consults neither carrier and raises neither, on either path: a
