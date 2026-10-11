@@ -42323,6 +42323,15 @@ against current source before filing.
   the header high-water mark but not its format. The render writes it
   and the rebuild reads it, so this item defines the exact form, in the
   standard, before either is built.
+  Progress (2026-10-11): the mark's form is in roadmap-format.md
+  § 3.5.1 (121ec18e, gated 3 loops to the cap, f60bf60c, 44e9d003 and
+  the loop-3 commit). Filed by gate loop 3, outside the change: the
+  rebuild paragraph says "On a machine with no store" but means no store
+  row for this project's canonical root; store-migrated is defined as
+  having a row, and the notice also opens pass-headings files. The
+  build defines the trigger as: no row for the canonical root, the
+  notice present, and the file classifies ants-v1; record it in the
+  paragraph when the build lands.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
