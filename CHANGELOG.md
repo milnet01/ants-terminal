@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log amend_field field:"section" takes `before_id`, placing moved items directly before a named item, including within their own section.** (ANTS-5380)
+  A session can now reorder items inside a section in one call.
+
 - **Go to Tab: press Ctrl+Shift+H, type part of a tab's name, and press Enter to jump to it** (ANTS-5646)
   View → Go to Tab opens the command palette with one row per open tab,
   showing its full name, colour stripe and Claude status dot at the

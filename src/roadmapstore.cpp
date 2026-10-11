@@ -2495,6 +2495,43 @@ bool RoadmapStore::unfileItem(qint64 itemPk, QString *error) {
     return true;
 }
 
+bool RoadmapStore::shiftElements(qint64 sectionId, int fromPosition, int by,
+                                 QString *error) {
+    if (by < 1) {
+        if (error)
+            *error = QStringLiteral("shiftElements() needs by >= 1, got %1").arg(by);
+        return false;
+    }
+    QSqlQuery sel(m_db);
+    sel.prepare(QStringLiteral(
+        "SELECT element_id FROM element WHERE section_id = ? AND position >= ? "
+        "ORDER BY position DESC"));
+    sel.addBindValue(sectionId);
+    sel.addBindValue(fromPosition);
+    if (!sel.exec()) {
+        if (error)
+            *error = lastErr(sel);
+        return false;
+    }
+    QVector<qint64> ids;
+    while (sel.next())
+        ids << sel.value(0).toLongLong();
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "UPDATE element SET position = position + ? WHERE element_id = ?"));
+    for (const qint64 id : std::as_const(ids)) {
+        q.addBindValue(by);
+        q.addBindValue(id);
+        if (!q.exec()) {
+            if (error)
+                *error = lastErr(q);
+            return false;
+        }
+    }
+    return true;
+}
+
 // ANTS-5287 (ANTS-3765 § 2.4) — the cascade, in foreign-key order. There is no
 // ON DELETE CASCADE in this schema, so the order IS the contract: a child left
 // behind makes the item's DELETE fail the constraint and the caller's

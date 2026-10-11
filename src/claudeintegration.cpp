@@ -13321,8 +13321,18 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "array of strings, or the comma-separated form the "
                         "trailer line uses — both are accepted, and the "
                         "stored bytes are canonicalised either way.");
+                    QJsonObject beforeIdProp;
+                    beforeIdProp["type"] = QStringLiteral("string");
+                    beforeIdProp["description"] = QStringLiteral(
+                        "op:\"amend_field\" field:\"section\" only — file the "
+                        "moved items, in locator order, directly before this "
+                        "item, which must be filed in the destination. It "
+                        "may be the items' own section, which reorders them. "
+                        "Omitted, they go after the section's last element. "
+                        "Any other field refuses bad_args (ANTS-5380).");
                     props["field"]         = fieldProp;      // ANTS-4667
                     props["value"]         = valueProp;      // ANTS-4667
+                    props["before_id"]     = beforeIdProp;   // ANTS-5380
                     props["old_text"]      = oldTextProp;     // ANTS-3406
                     props["new_text"]      = newTextProp;     // ANTS-3406
                     props["id_strategy"]   = idStrategyProp;  // ANTS-1905

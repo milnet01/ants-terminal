@@ -69692,7 +69692,7 @@ project. Reported causes are claims until checked in source.
   Kind: feature.
   Source: LocalWebServerManager and RetroArch feedback 2026-09-25.
 
-- 📋 [ANTS-5380] **amend_field field:"section" reorders within the item's current section.**
+- ✅ [ANTS-5380] **amend_field field:"section" reorders within the item's current section.**
   A move into the item's current section returns moved_count:0. Treat it as a re-append at the section's end, or accept a before_id, and say in the reply when a move was a no-op.
   Code read (2026-10-11): the move lives in
   RemoteControl::cmdRoadmapLogAmendSection, in
@@ -69703,6 +69703,11 @@ project. Reported causes are claims until checked in source.
   end changes today's no-op answer for an item already there. No store
   helper shifts positions to make room, so `before_id` needs one
   ((section_id, position) is UNIQUE). Not yet decided.
+  Resolved (2026-10-11): the additive option. `before_id` files the moved
+  items before that item; RoadmapStore::shiftElements opens the gap. A
+  reorder is a move, so `already_there` stays for moves without
+  `before_id`. Contract: tests/features/roadmap_log_amend_field INV-12;
+  the five Ants5380 cases were red before the fix.
   **Layman:** Lets a session reorder items inside a section in one call instead of four.
   Kind: enhancement.
   Source: LocalWebServerManager feedback 2026-09-25.

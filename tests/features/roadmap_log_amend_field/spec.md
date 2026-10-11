@@ -97,6 +97,14 @@ rather than reaching the caller as a raw SQLite constraint string.
   and does not claim a note can carry the line, since a move takes none.
   Setting the Layman and repeating the move succeeds. *Tests:* the
   `Ants5589*` cases.
+- **INV-12 (ANTS-5380)** — with `before_id`, a section move files the moved
+  items, in locator order, directly before that item. The elements from it
+  onward keep their order behind them. This works within the items' own
+  section: an item already there is reordered, not reported in
+  `already_there`. `before_id` must be filed in the destination section and
+  must not be one of the moved ids; either breach refuses `bad_args` and
+  nothing moves. `before_id` on any other field refuses `bad_args`. Without
+  `before_id`, INV-10 holds unchanged. *Tests:* the `Ants5380*` cases.
 
 ## Out of scope
 

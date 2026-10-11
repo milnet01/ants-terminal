@@ -4083,6 +4083,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     // ANTS-4948 — a section is filing, not a trailer column; its own path.
     if (field == QLatin1String("section"))
         return cmdRoadmapLogAmendSection(req);
+    // ANTS-5380 — `before_id` places a moved item; no column write has a place.
+    if (req.contains(QStringLiteral("before_id"))) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: `before_id` applies only to field:\"section\"; "
+            "nothing was written");
+        return QJsonDocument(env);
+    }
     RlFieldChange change;
     if (const QJsonObject r = rlPrepareFieldChange(req, &change); !r.isEmpty())
         return QJsonDocument(r);
@@ -4555,6 +4565,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: field:\"section\" needs `value`, the "
                            "destination section's slug"));
+    // ANTS-5380 — file the moved items directly before this one, which may sit
+    // in their own section: a reorder.
+    const bool hasBefore = req.contains(QStringLiteral("before_id"));
+    const QString beforeId = req.value(QStringLiteral("before_id")).toString().trimmed();
+    if (hasBefore && beforeId.isEmpty())
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `before_id` must name an item id"));
 
     QString root, roadmapPath;
     QJsonDocument refusal;
@@ -4596,6 +4613,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
         return QJsonDocument(env);
     }
 
+    qint64 beforePk = 0;
+    if (hasBefore) {
+        const auto pk = store.findItem(target->projectId, beforeId, &err);
+        if (!pk && !err.isEmpty())
+            return rlErr(QStringLiteral("store_failed"), err);
+        const auto item = pk ? store.readItem(*pk, &err) : std::nullopt;
+        if (pk && !item)
+            return rlErr(QStringLiteral("store_failed"), err);
+        if (!item || item->sectionId != *destId)
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: `before_id` \"%1\" is not filed in "
+                               "section \"%2\"; nothing was moved")
+                    .arg(beforeId, slug));
+        beforePk = *pk;
+    }
+
     struct Move { QString id; qint64 pk = 0; qint64 fromSection = 0; QString fromSlug; };
     QVector<Move> moves;
     QStringList unchanged;
@@ -4611,7 +4644,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
         const auto item = store.readItem(*pk, &err);
         if (!item)
             return rlErr(QStringLiteral("store_failed"), err);
-        if (item->sectionId == *destId) {
+        if (*pk == beforePk)
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: `before_id` \"%1\" is one of the "
+                               "items being moved; nothing was moved").arg(beforeId));
+        if (item->sectionId == *destId && !hasBefore) {
             unchanged << mid;
             continue;
         }
@@ -4639,12 +4676,28 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
     hist.changedAt = rlHistoryStamp();
     const auto mutate = [&](QString *e) -> bool {
         int pos = maxPos;
+        if (hasBefore) {
+            // ANTS-5380 — unfile first, so a reordered item does not hold a
+            // place in the gap, then open the gap at before_id.
+            for (const Move &m : std::as_const(moves))
+                if (m.fromSection != 0 && !store.unfileItem(m.pk, e))
+                    return false;
+            const auto now = store.listElements(*destId, e);
+            if (!now)
+                return false;
+            for (const RoadmapStore::ElementRow &el : *now)
+                if (el.itemPk == beforePk)
+                    pos = el.position - 1;
+            if (!store.shiftElements(*destId, pos + 1, int(moves.size()), e))
+                return false;
+        }
         for (const Move &m : std::as_const(moves)) {
-            if (m.fromSection != 0 && !store.unfileItem(m.pk, e))
+            if (!hasBefore && m.fromSection != 0 && !store.unfileItem(m.pk, e))
                 return false;
             if (!store.fileItem(m.pk, *destId, ++pos, e))
                 return false;
-            hist.record(m.pk, QStringLiteral("section"), m.fromSlug, slug);
+            if (m.fromSection != *destId)  // a reorder changes no section
+                hist.record(m.pk, QStringLiteral("section"), m.fromSlug, slug);
             // ANTS-4501 § 2.2 — a move is a modification; status is untouched.
             if (!rlStampModified(store, m.pk, e))
                 return false;

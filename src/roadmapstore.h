@@ -587,6 +587,13 @@ public:
     // ITEM. Removes the kind='item' row; the item itself is untouched.
     bool unfileItem(qint64 itemPk, QString *error = nullptr);
 
+    // ANTS-5380 — opens a gap of `by` positions at `fromPosition` by moving
+    // every element of the section at or after it `by` places later, order
+    // kept. (section_id, position) is UNIQUE and SQLite checks it per row, so
+    // the rows move one at a time, last first. Refuses `by` below 1.
+    bool shiftElements(qint64 sectionId, int fromPosition, int by,
+                       QString *error = nullptr);
+
     // ANTS-5287 (ANTS-3765 § 2.4) — deletes an item inside the caller's
     // transaction, cascading in ANTS-4487 § 4.4's order: element, history,
     // feedback_ref, relationship, citation, then the item. Unconditional: a
