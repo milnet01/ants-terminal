@@ -997,7 +997,9 @@ TEST(DebtSweepEngine, Ants5101GitFailureIsNotAClean) {
     {
         QFile f(fake);
         ASSERT_TRUE(f.open(QIODevice::WriteOnly));
-        f.write("#!/bin/sh\nkill -SEGV $$\n");
+        // SIGKILL, not SIGSEGV: QProcess reports both as CrashExit, and
+        // SIGKILL writes no core dump, so a suite run leaves none behind.
+        f.write("#!/bin/sh\nkill -KILL $$\n");
     }
     QFile::setPermissions(fake, QFile::ReadOwner | QFile::WriteOwner |
                                     QFile::ExeOwner);

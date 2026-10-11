@@ -19,6 +19,10 @@ int main(int argc, char *argv[]) {
     // any test runs; see tests/_support/git_env_guard.h for the measurement.
     ants_test::scrubInheritedGitEnv();
 
+    // ANTS-5573 — the tab's ANTS_OSC133_KEY turns the OSC 133 HMAC verifier
+    // on; see tests/bundle_main_core.cpp.
+    qunsetenv("ANTS_OSC133_KEY");
+
     // ANTS-3856 — see tests/bundle_main_core.cpp for the whole reasoning: a
     // per-process XDG_DATA_HOME, so a test that omits its store path opens a
     // throwaway roadmap store instead of the user's live one.

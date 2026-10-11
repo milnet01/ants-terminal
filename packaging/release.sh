@@ -48,10 +48,6 @@
 
 set -euo pipefail
 
-# ANTS-5573 — the OSC 133 tests read this key from the environment, so the
-# suite fails when run from an Ants tab. Remove this line when that ships.
-unset ANTS_OSC133_KEY
-
 # Temp files made beside their target (TL-6) are removed on any exit, so an
 # interrupted run does not leave CHANGELOG.md.XXXXXX in the working tree.
 RELEASE_TMPS=()

@@ -24028,7 +24028,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Source: claude-config adoption-day standards check 2026-09-26.
   Lanes: tests, vt.
 
-- 📋 [ANTS-5605] **OSC 133 tests fail when the suite runs inside an Ants tab, because they inherit the tab's ANTS_OSC133_KEY.**
+- 🚫 [ANTS-5605] **OSC 133 tests fail when the suite runs inside an Ants tab, because they inherit the tab's ANTS_OSC133_KEY.**
   Measured 2026-10-01: 8 tests fail locally and pass on CI (83a79d0e green):
   Osc133RerunSafety Inv1, Inv2, Inv4, Inv6; Osc133HmacVerification.VerifierOffPermissive;
   RisPreservesCallbacks.Main; ScrollbackExportStreaming.Inv3CastMatchesExportBlockAsCast;
@@ -24043,6 +24043,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   the ANTS-5604 work in the tree.
   Fix: unset ANTS_OSC133_KEY for the test run (ctest ENVIRONMENT_MODIFICATION
   on the bundles, or in the test fixtures), so a run inside an Ants tab matches CI.
+  Closed (2026-10-11): duplicate of ANTS-5573, which shipped the fix.
   **Layman:** Some terminal tests fail when run from inside Ants Terminal itself, because they pick up a security key the terminal sets for its own tabs.
   Kind: fix.
   Source: in-session-2026-10-01.
@@ -91398,7 +91399,7 @@ reports are asked for separately, each time.
   Source: user-request-2026-09-29.
   Lanes: docs.
 
-- 📋 [ANTS-5573] **OSC 133 tests fail when run from an Ants shell, because they read the live ANTS_OSC133_KEY.**
+- ✅ [ANTS-5573] **OSC 133 tests fail when run from an Ants shell, because they read the live ANTS_OSC133_KEY.**
   Found 2026-09-29 when the pre-push gate blocked 430f4dc3: an Ants
   tab exports ANTS_OSC133_KEY, so TerminalGrid enforces the HMAC and
   tests feeding unsigned OSC 133 markers fail, e.g.
@@ -91411,6 +91412,11 @@ reports are asked for separately, each time.
   Note (2026-09-30): packaging/release.sh unsets the variable at its top
   so a release run from an Ants tab can build, test and push. Remove that
   line when this ships.
+  Resolved (2026-10-11): tests/bundle_main_core.cpp and
+  tests/bundle_main_gui.cpp clear ANTS_OSC133_KEY before any test runs;
+  packaging/release.sh's stopgap unset is removed. Verified: with the
+  key set, the five OSC 133 suites pass 28/28 (they failed 8 in the
+  pre-push gate the same day).
   **Layman:** Some tests fail when started from inside Ants Terminal itself, because they pick up the terminal's own secret key.
   Kind: fix.
   Source: in-session-2026-09-29.
@@ -91567,6 +91573,18 @@ reports are asked for separately, each time.
   **Layman:** A test helper that reads the program's own source files quietly skips any file it cannot open, so some checks could pass while reading less than they should.
   Kind: fix.
   Source: cold-read 2026-10-09 by the RetroArch session (ANTS-1043).
+  Lanes: tests.
+
+- ✅ [ANTS-5644] **The ANTS-5101 fake git ends with SIGKILL, so a suite run leaves no core dumps.**
+  DebtSweepEngine.Ants5101GitFailureIsNotAClean wrote a fake git that ran
+  kill -SEGV on itself; each suite run in the push gate's container left 9
+  dash core dumps (504 by 2026-10-11) and a desktop crash notice. Now
+  kill -KILL: QProcess reports CrashExit for both, and SIGKILL writes no
+  dump. Verified 2026-10-11 in test_audit: green; red with the engine's
+  crash branch removed; green again restored.
+  **Layman:** Running the test suite no longer leaves crash reports on your computer.
+  Kind: fix.
+  Source: user-report-2026-10-11 (coredump notice).
   Lanes: tests.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)

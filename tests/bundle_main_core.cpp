@@ -15,6 +15,12 @@ int main(int argc, char *argv[]) {
     // any test runs; see tests/_support/git_env_guard.h for the measurement.
     ants_test::scrubInheritedGitEnv();
 
+    // ANTS-5573 — an Ants tab exports ANTS_OSC133_KEY, and TerminalGrid turns
+    // the OSC 133 HMAC verifier on when it is set, so a run from an Ants tab
+    // refused the unsigned markers the OSC 133 tests feed. A test that wants
+    // the verifier on sets the key itself.
+    qunsetenv("ANTS_OSC133_KEY");
+
     // ANTS-3856 — sandbox XDG_DATA_HOME before any test runs, so nothing in
     // this process can reach the user's real data directory.
     //
