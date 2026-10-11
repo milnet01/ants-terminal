@@ -69694,6 +69694,15 @@ project. Reported causes are claims until checked in source.
 
 - 📋 [ANTS-5380] **amend_field field:"section" reorders within the item's current section.**
   A move into the item's current section returns moved_count:0. Treat it as a re-append at the section's end, or accept a before_id, and say in the reply when a move was a no-op.
+  Code read (2026-10-11): the move lives in
+  RemoteControl::cmdRoadmapLogAmendSection, in
+  src/remotecontrol_roadmap_log.cpp. An item already in the
+  destination is put in `already_there` and not moved; a moved item is
+  filed after the section's last element (maxPos + 1). Of the two
+  options in this item, `before_id` is additive. Re-appending at the
+  end changes today's no-op answer for an item already there. No store
+  helper shifts positions to make room, so `before_id` needs one
+  ((section_id, position) is UNIQUE). Not yet decided.
   **Layman:** Lets a session reorder items inside a section in one call instead of four.
   Kind: enhancement.
   Source: LocalWebServerManager feedback 2026-09-25.
@@ -84679,6 +84688,11 @@ a modern terminal" release.
   View menu toggle Ctrl+Shift+Y. Contract and tests:
   tests/features/tab_list_panel (10 cases, red against stand-ins first,
   three mutations each caught).
+  Not yet seen on screen (2026-10-11): the colour-group headers and
+  rows with stripes and dots. A demoreel shot showed the panel opaque
+  and readable with one tab, but its scripted ctrl+shift+t steps
+  opened no tabs, so the groups are covered by tests only. Check by
+  eye after the next relaunch; the user is partially sighted.
   **Layman:** See all your project tabs at once in a list down the side, and click any one to switch, with no scrolling sideways.
   Kind: feature.
   Source: user-request-2026-10-11.
