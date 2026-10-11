@@ -42484,6 +42484,25 @@ against current source before filing.
   Progress (2026-10-11, d0cadb55): items (3) and (5) written into
   roadmap-format.md §§ 3.5.4 and 3.9; item (2) was already in
   roadmap-data-model.md § 7.1. Open: (4), (6), (8).
+  Filed by the roadmap-format gate, loop 26 (2026-10-11), outside its
+  change; each verified against source.
+  (9) § 3.5.1: only the append-time rebuild applies the header mark
+  (remotecontrol_roadmap_query.cpp sets raiseIdMark = true); a plain
+  roadmap_migrate leaves it false (roadmapmigrateverb.h), so a by-hand
+  migrate on a fresh machine creates the row without the mark's floor
+  and the append-time rebuild then never fires. Also "migration writes
+  the prefix's row only when it invents ids, and then at 0" is false
+  for the rebuild, which raises rows to the mark's N. Say which route
+  applies the mark.
+  (10) § 3.9: "Sections are selected by TITLE, by the release-designator
+  rule ... the same rule a hand rotation follows" contradicts "rotate_
+  minor's title match does not take `.x` yet", so a `.x` patch-stream
+  block is left behind by rotate_minor. Close with item (6). Item (8)
+  also needs the same exclusion in § 3.2's version-block definition.
+  (11) § 3.5.1's carrier table puts "no store row" under the counter
+  (read and written), but a store-rendered `ants-v1` roadmap with no
+  row is rebuilt first and then allocates as store-migrated. Note the
+  rebuild in the table's last row.
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.
