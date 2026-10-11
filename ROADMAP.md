@@ -42332,6 +42332,16 @@ against current source before filing.
   build defines the trigger as: no row for the canonical root, the
   notice present, and the file classifies ants-v1; record it in the
   paragraph when the build lands.
+  Decided by the user 2026-10-11: the header mark protects against
+  reusing a number, over keeping the default prefix. So each prefix
+  pair's N is RoadmapStore::allocationFloor (row or stored items),
+  not the raw row value; a `<prefix>#S` pair's N is the greater of
+  its row and maxSynthesisedId. Accepted cost: where no prefix is
+  declared, a rebuilt store's busiest row may differ, so idPrefixFor
+  can pick another default prefix. Next: amend § 3.5.1 to say this
+  (pair N, the coverage sentence, the rebuild bullet's idPrefixFor
+  line) together with the rebuild-trigger wording noted above, then
+  one review-contract gate on that batch, then build.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
