@@ -42306,7 +42306,7 @@ against current source before filing.
   Source: review-contract-2026-10-02 (roadmap-data-model gate, loop 1).
   Lanes: roadmap, roadmap-store.
 
-- 📋 [ANTS-5638] **A store-migrated roadmap opened on a machine with no store rebuilds the store from its files before it allocates an id.**
+- ✅ [ANTS-5638] **A store-migrated roadmap opened on a machine with no store rebuilds the store from its files before it allocates an id.**
   Decided by the user 2026-10-10 on ANTS-4140 item (5). Two parts:
   (1) the render writes each prefix's id high-water mark into the
   roadmap file's header, so the floor survives even when the top item
@@ -42387,6 +42387,14 @@ against current source before filing.
     the mark cannot break it. Render tests that compare exact file bytes
     will change: expect the red-existing-test row of write-code.
   - Reload: ants-mcpd rebuild plus /mcp; no terminal relaunch.
+  Resolved (2026-10-11, c05fb4d8): the render writes the mark, the import
+  carries it as its own INV-11 span, and op:append / op:append_batch
+  rebuild a missing store first, raising the mark inside the load's
+  transaction. Tests: tests/features/roadmap_id_high_water_mark (15
+  cases) and roadmap_migrate_read's Ants5638IdMarkIsItsOwnSpan. Gate
+  items b to e are settled in the commit body. This project's
+  ROADMAP.md gains the mark line on the first write after ants-mcpd is
+  rebuilt and reconnected.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
