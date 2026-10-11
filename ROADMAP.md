@@ -70765,6 +70765,7 @@ project. Reported causes are claims until checked in source.
   so the reporter's own call (limit:200) still offloads; that needs a
   decision. The bullet_fields truncation question is unexamined. Reply to
   finbreak owed.
+  finbreak replied to 2026-10-11 (session_message 580).
   **Layman:** A roadmap list that is a bit too big gets saved to a side file instead of being trimmed to fit, so the asking session needs extra calls.
   Kind: fix.
   Source: session-message-281 finbreak 2026-09-29.
