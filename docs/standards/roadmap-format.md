@@ -106,11 +106,9 @@ step 2 falls through to them only where no version block qualifies.
 block at all.
 
 **A version block is a `##` whose title STARTS with a version** —
-`<M>.<N>`, optionally after a `v` — which is how `roadmap_query`'s
-`version` argument reads it. A title that also names another minor's
-patch stream is not a version block: § 3.9's release-designator rule
-makes `## 0.5.x and 0.6.x — archived` a signpost. The `version` argument
-still finds it by the name it starts with. A phase block's title
+`<M>.<N>`, optionally after a `v`. A title that also names another
+minor's patch stream is not a version block: § 3.9's release-designator
+rule makes `## 0.5.x and 0.6.x — archived` a signpost. A phase block's title
 starts with its designator. **Any other `##`, except a hoisted fold-in (below), is
 neither** — `## After 1.0.0`,
 `## Unscheduled`, a block of prose — and § 3.5.4 never selects it, the

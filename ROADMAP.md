@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5651 -->
+<!-- ants-roadmap-id-high-water: ANTS=5652 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -42552,6 +42552,19 @@ against current source before filing.
   Source: review-ut-ants-49 of c05fb4d8, session_message 578.
   Lanes: roadmap-store, mcp.
 
+- 📋 [ANTS-5652] **roadmap-format.md § 3.5.4 step 2 does not rank a `.x` patch-stream block against numbered patches.**
+  Filed by the roadmap-format gate, loop 27 (2026-10-11), outside its
+  change. Step 2 compares the (major, minor, patch) triple as integers,
+  an absent patch reading as 0. A `## v0.7.x` block is a version block
+  (§§ 3.2, 3.9), but `x` is neither an integer nor absent, so a file with
+  both `## 0.7.3` and `## v0.7.x` holding open work leaves the active
+  block undecided. State the rank (for example: a patch stream ranks as
+  its minor's highest patch).
+  **Layman:** Says which release block an agent works first when a roadmap has both a 0.7.x block and a 0.7.3 block.
+  Kind: review-fix.
+  Source: cold-eyes-2026-10-11 roadmap-format loop 27.
+  Lanes: docs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
@@ -70844,6 +70857,10 @@ project. Reported causes are claims until checked in source.
   trimmed to PaginationEngine::softCapBytes() too, with truncated and
   next_offset. This changes ANTS-1436 INV-9, so the amendment takes the
   rule-14 gate before the code.
+  Decided by the user 2026-10-11: the trim lives in the shared
+  PaginationEngine, so changelog_query's explicit limit is trimmed the
+  same way. ANTS-3533's "an explicit limit wins over the soft cap" is
+  amended in the same gate.
   **Layman:** When a session asks for a set number of roadmap rows and they are too big, decide whether to send fewer rows or save them all to a side file.
   Kind: enhancement.
   Source: ANTS-5571 follow-up 2026-10-11.
