@@ -42422,7 +42422,7 @@ against current source before filing.
   Source: user-request-2026-10-10.
   Lanes: roadmapstore, roadmaprender, roadmapmigrate.
 
-- 📋 [ANTS-5639] **Five findings from the 2026-10-10 roadmap-format.md gate lie outside its change and are fixed here.**
+- ✅ [ANTS-5639] **Five findings from the 2026-10-10 roadmap-format.md gate lie outside its change and are fixed here.**
   Filed by the review-contract gate on the ANTS-4073/ANTS-4140 batch
   (b26bea58), outside that change's radius. Each was verified 2026-10-10.
   (1) Code: the batch append's ANTS-4493 floor reads only
@@ -42503,6 +42503,15 @@ against current source before filing.
   (read and written), but a store-rendered `ants-v1` roadmap with no
   row is rebuilt first and then allocates as store-migrated. Note the
   rebuild in the table's last row.
+  Resolved (2026-10-11, b9a21e68, ae0a129e): items (6), (8), (10) —
+  rotate_minor's title match takes a `.x` patch stream and refuses a
+  title naming another minor's patch stream; § 3.9 states the rule, §
+  3.2 points at it (test INV-4, red then green). Items (9), (11) — §
+  3.5.1 says only the append-time rebuild applies the header mark, and
+  the carrier table names the rebuild. Gated: roadmap-format loops
+  27–28, converged on the change; the one outside finding is ANTS-5652.
+  Item (4) stays moot until a phase-only roadmap exists (ANTS-4073's
+  migration half is parked).
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.
@@ -42560,6 +42569,7 @@ against current source before filing.
   both `## 0.7.3` and `## v0.7.x` holding open work leaves the active
   block undecided. State the rank (for example: a patch stream ranks as
   its minor's highest patch).
+  Re-found by both lanes of loop 28 (2026-10-11).
   **Layman:** Says which release block an agent works first when a roadmap has both a 0.7.x block and a 0.7.3 block.
   Kind: review-fix.
   Source: cold-eyes-2026-10-11 roadmap-format loop 27.
