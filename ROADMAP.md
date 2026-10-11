@@ -42520,7 +42520,7 @@ against current source before filing.
   Source: in-session-2026-10-11 (ANTS-4081).
   Lanes: roadmapstore, packaging.
 
-- 📋 [ANTS-5649] **Decide whether a second clone whose slug another root owns refuses the store rebuild or skips it.**
+- ✅ [ANTS-5649] **Decide whether a second clone whose slug another root owns refuses the store rebuild or skips it.**
   Follows ANTS-5638. roadmap-format.md § 3.5.1's trigger asks only
   whether the store has a row for this canonical root. A second plain
   clone, or a moved tree, has none, so the rebuild fires, and
@@ -42543,6 +42543,10 @@ against current source before filing.
   Decided by the user 2026-10-11: keep the refusal with a remedy
   (7d1e83aa). Option B is not taken. Open: record the rule in
   roadmap-format.md § 3.5.1 through the rule-14 gate.
+  Resolved (2026-10-11): the refusal with a remedy (7d1e83aa) is the
+  rule. roadmap-format.md § 3.5.1 records it (d0cadb55, scoped in
+  a0fc9e98 to a tree whose directory name gives the owner's slug);
+  gated, converged at loop 26.
   **Layman:** A second copy of a project on the same computer can no longer add roadmap items; decide whether it should be blocked with advice or keep working as before.
   Kind: enhancement.
   Source: review-ut-ants-49 of c05fb4d8, session_message 578.
