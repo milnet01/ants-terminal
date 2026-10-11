@@ -508,17 +508,29 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // A matching ROOT is the re-run case (INV-7), not a collision — which is
     // why this compares the row's root rather than merely finding a row.
     if (other && other->root != req.projectRoot) {
+        // ANTS-3857 — an owner whose root is gone is most likely this tree
+        // before a move, and op:"reroot" is the remedy; say so.
+        const bool ownerGone = other->deregisteredAt.isEmpty()
+            && !other->root.isEmpty() && !QFileInfo::exists(other->root);
         QJsonObject e = rmErr(QStringLiteral("slug_collision"),
                      QStringLiteral("roadmap_migrate: export_slug \"%1\" already "
                                     "belongs to \"%2\"%3 — pass a different "
-                                    "export_slug")
+                                    "export_slug%4")
                          .arg(slug, other->root,
                               other->deregisteredAt.isEmpty()
                                   ? QString()
                                   : QStringLiteral(" (deregistered; its slug "
-                                                   "stays its mailbox address)")));
+                                                   "stays its mailbox address)"),
+                              ownerGone
+                                  ? QStringLiteral(", or, if this project moved from "
+                                                   "there, run roadmap_migrate "
+                                                   "op:\"reroot\" export_slug:\"%1\" "
+                                                   "here").arg(slug)
+                                  : QString()));
         if (!other->deregisteredAt.isEmpty())
             e[QStringLiteral("deregistered")] = true;
+        if (ownerGone)
+            e[QStringLiteral("moved_from")] = other->root;
         return e;
     }
 
@@ -1194,6 +1206,96 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     env[QStringLiteral("citations")]     = counts.citations;
     env[QStringLiteral("feedback_refs")] = counts.feedbackRefs;
     env[QStringLiteral("id_prefixes")]   = counts.idPrefixes;
+    return env;
+}
+
+QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootRequest &req) {
+    if (req.exportSlug.isEmpty())
+        return rmErr(QStringLiteral("missing_field"),
+                     QStringLiteral("roadmap_migrate: reroot needs the export_slug of "
+                                    "the project that moved"));
+    if (req.newRoot.isEmpty())
+        return rmErr(QStringLiteral("bad_args"),
+                     QStringLiteral("roadmap_migrate: reroot needs the new root"));
+
+    // deregister()'s connection, for its reason.
+    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    if (!store.open(&err))
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: could not open the roadmap "
+                                    "store at \"%1\": %2").arg(storePath, err));
+
+    const auto row = store.readProjectBySlug(req.exportSlug, &err);
+    if (!row && !err.isEmpty())
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: could not read the project "
+                                    "row: %1").arg(err));
+    if (!row)
+        return rmErr(QStringLiteral("not_found"),
+                     QStringLiteral("roadmap_migrate: the store holds no registered "
+                                    "project \"%1\"").arg(req.exportSlug));
+
+    QJsonObject env;
+    env[QStringLiteral("ok")]           = true;
+    env[QStringLiteral("op")]           = QStringLiteral("reroot");
+    env[QStringLiteral("export_slug")]  = row->exportSlug;
+    env[QStringLiteral("previous_root")] = row->root;
+    env[QStringLiteral("project_root")] = req.newRoot;
+    if (row->root == req.newRoot) {   // already there: nothing to do
+        env[QStringLiteral("unchanged")] = true;
+        return env;
+    }
+
+    // Another row holding the new root is a second project, deregistered or
+    // not; re-rooting onto it would break `root`'s UNIQUE.
+    const auto holder = store.readProjectByRoot(
+        req.newRoot, &err, RoadmapStore::Visibility::IncludeDeregistered);
+    if (!holder && !err.isEmpty())
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: project lookup failed: %1").arg(err));
+    if (holder) {
+        QJsonObject e = rmErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_migrate: \"%1\" is already the root of project "
+                           "\"%2\"; deregister that one first if it is a stale copy")
+                .arg(req.newRoot, holder->exportSlug));
+        e[QStringLiteral("holder_export_slug")] = holder->exportSlug;
+        return e;
+    }
+
+    // THE GUARD, deregister()'s shape. A tree still at the old root makes this
+    // a copy, not a move, and re-rooting would take the row from a live tree.
+    const bool oldPresent = !row->root.isEmpty() && QFileInfo::exists(row->root);
+    env[QStringLiteral("previous_root_exists")] = oldPresent;
+    if (oldPresent && !req.confirm) {
+        QJsonObject e = rmErr(QStringLiteral("confirm_required"),
+            QStringLiteral("roadmap_migrate: \"%1\" still exists on disk, so this "
+                           "looks like a copy rather than a move; re-rooting would "
+                           "take the project's rows from that tree. Pass "
+                           "confirm:true if the new root is the one to keep.")
+                .arg(row->root));
+        e[QStringLiteral("previous_root")] = row->root;
+        e[QStringLiteral("export_slug")]   = row->exportSlug;
+        return e;
+    }
+
+    if (req.dryRun) {
+        env[QStringLiteral("dry_run")]      = true;
+        env[QStringLiteral("would_reroot")] = true;
+        return env;
+    }
+    if (req.holdRoot && !req.holdRoot(row->root)) {
+        QJsonObject e = rmErr(QStringLiteral("roadmap_busy"),
+            QStringLiteral("roadmap_migrate: \"%1\" is being written by another "
+                           "call; retry shortly").arg(row->root));
+        e[QStringLiteral("retry_after_ms")] = 250;
+        return e;
+    }
+    if (!store.setProjectRoot(row->projectId, req.newRoot, &err))
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: reroot failed: %1").arg(err));
+    env[QStringLiteral("rerooted")] = true;
     return env;
 }
 

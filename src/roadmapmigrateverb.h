@@ -232,6 +232,27 @@ struct DeregisterRequest {
 };
 QJsonObject deregister(const QString &storePath, const DeregisterRequest &req);
 
+// ANTS-3857 — op:"reroot": point a registered project's row at the root its
+// tree now lives at. A project is keyed on its canonical root (ANTS-3756
+// INV-8), so a moved tree presents as a new project and run() refuses
+// slug_collision; this is the remedy. Only `project.root` changes: section
+// source paths, relationship and citation doc paths are project-relative.
+//
+// Keyed by `exportSlug`, the one thing a moved project keeps. Refuses
+// `confirm_required` while the OLD root still exists (a copy, not a move;
+// re-rooting would take the row from a live tree) unless `confirm`, and
+// `bad_args` when another row already holds the new root.
+struct RerootRequest {
+    QString newRoot;       // already canonical: the caller's root
+    QString exportSlug;
+    bool    confirm = false;
+    bool    dryRun  = false;
+    // As DeregisterRequest::holdRoot: called with the row's STORED root
+    // before the write, on a real run only. False refuses `roadmap_busy`.
+    std::function<bool(const QString &rowRoot)> holdRoot;
+};
+QJsonObject reroot(const QString &storePath, const RerootRequest &req);
+
 // § 2.1 — the DERIVED DEFAULT for `export_slug`: lowercase, every run of
 // non-[a-z0-9] to a single `-`, leading/trailing `-` stripped. Ants_Terminal →
 // ants-terminal. Declared here so the handler shares the one definition rather

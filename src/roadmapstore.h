@@ -631,6 +631,13 @@ public:
     bool setProjectSourceFormat(qint64 projectId, const QString &format,
                                 QString *error = nullptr);
 
+    // ANTS-3857 — point a project row at a moved tree's root. Takes an
+    // ALREADY-canonical root, as readProjectByRoot() does. Refuses an unknown
+    // projectId for setProjectSourceFormat()'s reason, and a root another row
+    // holds through `root`'s UNIQUE constraint.
+    bool setProjectRoot(qint64 projectId, const QString &canonicalRoot,
+                        QString *error = nullptr);
+
     // id_prefix high-water. Advances only UPWARD: an id this migration
     // allocated must never be reissued by a later run (§ 2.8). A value at or
     // below the stored one is a no-op, not an error.

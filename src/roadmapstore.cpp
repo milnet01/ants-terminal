@@ -2636,6 +2636,25 @@ bool RoadmapStore::setProjectSourceFormat(qint64 projectId, const QString &forma
     return true;
 }
 
+bool RoadmapStore::setProjectRoot(qint64 projectId, const QString &canonicalRoot,
+                                  QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE project SET root = ? WHERE project_id = ?"));
+    q.addBindValue(canonicalRoot);
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    if (q.numRowsAffected() != 1) {
+        if (error)
+            *error = QStringLiteral("no project row %1 to re-root").arg(projectId);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::reassignItemId(qint64 itemPk, const QString &newId, QString *error) {
     if (newId.isEmpty()) {
         if (error)

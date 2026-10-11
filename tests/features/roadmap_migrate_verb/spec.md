@@ -154,6 +154,24 @@ it was not aimed at.
   reading `ok:true` for a project it never removed would report a clean store it
   had not cleaned.
 
+## ANTS-3857 — `op:"reroot"`, for a project whose tree moved
+
+A project is keyed on its canonical root (ANTS-3756 INV-8), so a moved tree
+presents as a new project and a migrate refuses `slug_collision`. `op:"reroot"`
+points the row `export_slug` names at caller_cwd's root. Only `project.root`
+changes: section, relationship and citation paths are project-relative.
+
+- **`Ants3857RerootMovesTheRowAndKeepsEverythingElse`** — every table's row
+  count is unchanged, and a migrate from the new root is then a re-run.
+- **`Ants3857SlugCollisionNamesTheReroot`** — a migrate from the moved tree
+  refuses `slug_collision`, names `op:"reroot"` and carries `moved_from`.
+- **`Ants3857RefusesWhileTheOldRootStillExists`** — `confirm_required`: a tree
+  still at the old root makes this a copy. `confirm:true` overrides.
+- **`Ants3857RefusesARootAnotherProjectHolds`** — `bad_args`.
+- **`Ants3857DryRunChangesNothing`** — no `rerooted` field, and the row is not
+  moved.
+- **`Ants3857UnknownOrMissingSlugRefuses`** — `not_found` and `missing_field`.
+
 ## ANTS-4621 — the schema has to declare what the handler reads
 
 ANTS-4617 shipped `op` and `confirm` documented at length in the verb's

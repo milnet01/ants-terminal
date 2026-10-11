@@ -135,6 +135,20 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
             RoadmapMigrateVerb::deregister(RoadmapStore::defaultPath(), d));
     }
 
+    // ANTS-3857 — the moved tree's root is caller_cwd's; the hold is the OLD
+    // root's, whose rows change. The new root has no row, so nothing on the
+    // store path can be writing it.
+    if (req.value(QStringLiteral("op")).toString() == QLatin1String("reroot")) {
+        RoadmapMigrateVerb::RerootRequest q;
+        q.newRoot    = root;
+        q.exportSlug = req.value(QStringLiteral("export_slug")).toString();
+        q.confirm    = req.value(QStringLiteral("confirm")).toBool(false);
+        q.dryRun     = dryRun;
+        q.holdRoot   = [&hold](const QString &rowRoot) { return hold.take(rowRoot); };
+        return QJsonDocument(
+            RoadmapMigrateVerb::reroot(RoadmapStore::defaultPath(), q));
+    }
+
     if (!dryRun && !hold.take(root))
         return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_migrate")));
 

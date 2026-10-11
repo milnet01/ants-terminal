@@ -13611,6 +13611,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         e.append(QStringLiteral("migrate"));
                         e.append(QStringLiteral("deregister"));
                         e.append(QStringLiteral("init"));
+                        e.append(QStringLiteral("reroot"));   // ANTS-3857
                         p["enum"] = e;
                         p["description"] = QStringLiteral(
                             "Verb mode. Default \"migrate\" (omit it) — load "
@@ -13640,18 +13641,25 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "first roadmap_log op:\"append\" to pin it, or it "
                             "is derived from the directory name. Preview with "
                             "`dry_run:true`, which returns the skeleton and "
-                            "writes nothing.");
+                            "writes nothing. \"reroot\" (ANTS-3857) points "
+                            "the project `export_slug` names at caller_cwd's "
+                            "root, after its tree moved; nothing else changes. "
+                            "It refuses `confirm_required` while the old root "
+                            "still exists (a copy, not a move) and `bad_args` "
+                            "when another project holds the new root; "
+                            "`dry_run:true` previews.");
                         props["op"] = p;
                     }
                     {
                         QJsonObject p;
                         p["type"] = "boolean";
                         p["description"] = QStringLiteral(
-                            "op:\"deregister\" only. Clears the "
-                            "`confirm_required` refusal raised when the "
-                            "project root still EXISTS on disk: the store is "
-                            "primary and ROADMAP.md is its render, so the rows "
-                            "are the only copy of that project's history, "
+                            "op:\"deregister\" and op:\"reroot\" only. Clears "
+                            "the `confirm_required` refusal raised when the "
+                            "project root (for reroot, the OLD root) still "
+                            "EXISTS on disk: the store is primary and "
+                            "ROADMAP.md is its render, so the rows are the "
+                            "only copy of that project's history, "
                             "relationships and citations. An absent root needs "
                             "no confirmation. Ignored by the migrate op.");
                         props["confirm"] = p;

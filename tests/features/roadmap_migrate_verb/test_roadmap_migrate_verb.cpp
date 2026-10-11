@@ -1816,6 +1816,145 @@ TEST(RoadmapMigrateVerb, Ants4617UnknownProjectIsNotFound) {
               QStringLiteral("not_found"));
 }
 
+// ------------------------------------------------------ ANTS-3857 reroot --
+//
+// A project is keyed on its canonical root, so a moved tree presents as a new
+// project and run() refuses slug_collision. op:"reroot" points the row at the
+// new root and changes nothing else.
+
+namespace {
+// Migrates `old`, then renames the directory to `moved`. Returns the moved
+// tree's canonical root, or empty on failure.
+QString migrateThenMove(const QTemporaryDir &dir, const QString &storePath) {
+    const QString oldRoot = makeProjectRoot(dir, QStringLiteral("old"), demoRoadmap());
+    if (oldRoot.isEmpty()
+        || !RoadmapMigrateVerb::run(storePath, request(oldRoot))
+                .value(QStringLiteral("ok")).toBool())
+        return QString();
+    const QString moved = dir.filePath(QStringLiteral("moved"));
+    if (!QDir().rename(oldRoot, moved))
+        return QString();
+    return QFileInfo(moved).canonicalFilePath();
+}
+
+RoadmapMigrateVerb::RerootRequest rerootReq(const QString &newRoot,
+                                            const QString &slug = QStringLiteral("demo")) {
+    RoadmapMigrateVerb::RerootRequest r;
+    r.newRoot    = newRoot;
+    r.exportSlug = slug;
+    return r;
+}
+}  // namespace
+
+TEST(RoadmapMigrateVerb, Ants3857RerootMovesTheRowAndKeepsEverythingElse) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString moved = migrateThenMove(dir, storePath);
+    ASSERT_FALSE(moved.isEmpty());
+    const QList<int> before = rowCounts(storePath);
+
+    const QJsonObject env = RoadmapMigrateVerb::reroot(storePath, rerootReq(moved));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_TRUE(env.value(QStringLiteral("rerooted")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("project_root")).toString(), moved);
+    EXPECT_EQ(rowCounts(storePath), before) << "a reroot moves no row";
+
+    // The moved tree is now the project's own: a re-run is a re-run, not a
+    // collision.
+    const QJsonObject rerun = RoadmapMigrateVerb::run(storePath, request(moved));
+    EXPECT_TRUE(rerun.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(rerun).toJson().toStdString();
+}
+
+TEST(RoadmapMigrateVerb, Ants3857SlugCollisionNamesTheReroot) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString moved = migrateThenMove(dir, storePath);
+    ASSERT_FALSE(moved.isEmpty());
+
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, request(moved));
+    ASSERT_EQ(env.value(QStringLiteral("code")).toString(), QStringLiteral("slug_collision"))
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_TRUE(env.value(QStringLiteral("error")).toString()
+                    .contains(QLatin1String("op:\"reroot\"")))
+        << "a moved project's refusal must name its remedy";
+    EXPECT_FALSE(env.value(QStringLiteral("moved_from")).toString().isEmpty());
+}
+
+TEST(RoadmapMigrateVerb, Ants3857RefusesWhileTheOldRootStillExists) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString oldRoot = makeProjectRoot(dir, QStringLiteral("old"), demoRoadmap());
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(oldRoot))
+                    .value(QStringLiteral("ok")).toBool());
+    const QString copy = makeProjectRoot(dir, QStringLiteral("copy"), demoRoadmap());
+    ASSERT_FALSE(copy.isEmpty());
+
+    const QJsonObject env = RoadmapMigrateVerb::reroot(storePath, rerootReq(copy));
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+              QStringLiteral("confirm_required"))
+        << "a copy is not a move: the row belongs to the tree still at the old root";
+
+    RoadmapMigrateVerb::RerootRequest ok = rerootReq(copy);
+    ok.confirm = true;
+    EXPECT_TRUE(RoadmapMigrateVerb::reroot(storePath, ok).value(QStringLiteral("ok")).toBool());
+}
+
+TEST(RoadmapMigrateVerb, Ants3857RefusesARootAnotherProjectHolds) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString moved = migrateThenMove(dir, storePath);
+    ASSERT_FALSE(moved.isEmpty());
+    const QString other = makeProjectRoot(dir, QStringLiteral("other"), demoRoadmap());
+    ASSERT_TRUE(RoadmapMigrateVerb::run(
+        storePath, request(other, QStringLiteral("other"), QStringLiteral("Other")))
+                    .value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject env = RoadmapMigrateVerb::reroot(storePath, rerootReq(other));
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(env).toJson().toStdString();
+}
+
+TEST(RoadmapMigrateVerb, Ants3857DryRunChangesNothing) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString moved = migrateThenMove(dir, storePath);
+    ASSERT_FALSE(moved.isEmpty());
+
+    RoadmapMigrateVerb::RerootRequest r = rerootReq(moved);
+    r.dryRun = true;
+    const QJsonObject env = RoadmapMigrateVerb::reroot(storePath, r);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_TRUE(env.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_FALSE(env.contains(QStringLiteral("rerooted"))) << "no past tense on a preview";
+    EXPECT_EQ(RoadmapMigrateVerb::run(storePath, request(moved))
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("slug_collision"))
+        << "the preview re-rooted the row";
+}
+
+TEST(RoadmapMigrateVerb, Ants3857UnknownOrMissingSlugRefuses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString moved = migrateThenMove(dir, storePath);
+    ASSERT_FALSE(moved.isEmpty());
+
+    EXPECT_EQ(RoadmapMigrateVerb::reroot(storePath, rerootReq(moved, QStringLiteral("nope")))
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("not_found"));
+    EXPECT_EQ(RoadmapMigrateVerb::reroot(storePath, rerootReq(moved, QString()))
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("missing_field"));
+}
+
 // ---------------------------------------------------- ANTS-4621 schema decl --
 
 // The `roadmap_migrate` entry of the tools/list array, from `t["name"] =

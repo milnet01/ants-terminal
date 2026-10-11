@@ -39350,7 +39350,7 @@ against current source before filing.
   which leaked exactly the row this item exists to prevent. INV-3's write
   is now gated on an ASSERT against the HOME-derived path.
 
-- 📋 [ANTS-3857] **Re-rooting a migrated project — a moved repo currently refuses slug_collision with no remedy.**
+- ✅ [ANTS-3857] **Re-rooting a migrated project — a moved repo currently refuses slug_collision with no remedy.**
   `project.root` is UNIQUE and keys a project on its canonical path
   (ANTS-3756 INV-8). Move the directory and the same project presents a new
   root, so ANTS-3855's `roadmap_migrate` step 6 finds the export slug owned
@@ -39367,6 +39367,14 @@ against current source before filing.
 
   Not urgent — it needs a project to be migrated first (ANTS-3855), and then
   moved.
+  Resolved (2026-10-11): roadmap_migrate op:"reroot", keyed by
+  export_slug, points the row at caller_cwd's root. Only project.root
+  changes: section, relationship and citation paths are project-relative
+  (checked against the live store). It refuses confirm_required while
+  the old root exists and bad_args when another project holds the new
+  root. The first slug_collision now names the reroot and carries
+  moved_from when the owner's root is gone, which also reaches an
+  ANTS-5638 rebuild on a moved tree.
   **Layman:** If you move a project's folder, the roadmap database still thinks it lives at the old path; there is no command to tell it otherwise.
   Kind: feature.
   Source: ANTS-3855 spec § 5 (2026-08-06) — filed while resolving a cold-eyes loop-3 finding.

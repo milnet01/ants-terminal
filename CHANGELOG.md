@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate op:"reroot" points a migrated project at its new folder after the folder moves** (ANTS-3857)
+  A migrate from a moved project's folder now names this remedy instead of
+  leaving only "pass a different export_slug". It refuses while the old
+  folder still exists, unless confirm:true, and a dry run previews it.
+
 - **roadmap_log op:"rotate_minor" moves a closed minor's sections into its archive, and the release recipe calls it on a minor or major bump** (ANTS-4081)
   The archive rotation now runs through the roadmap store, so it survives
   the next roadmap write instead of being undone by it.
