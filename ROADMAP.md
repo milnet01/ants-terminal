@@ -42342,6 +42342,10 @@ against current source before filing.
   (pair N, the coverage sentence, the rebuild bullet's idPrefixFor
   line) together with the rebuild-trigger wording noted above, then
   one review-contract gate on that batch, then build.
+  Decided by the user 2026-10-11 (gate loop 22): the mark also
+  covers a prefix the store holds ids for but no id_high_water row.
+  Pairs come from every row key and every prefix a stored item's id
+  carries, not from rows alone.
   **Layman:** Adding a roadmap item on a second computer can never reuse a number the first computer already gave out.
   Kind: implement.
   Source: user-request-2026-10-10.
@@ -42393,6 +42397,9 @@ against current source before filing.
   (RoadmapAllocStoreFloor INV-7). Open: (2) and (3) need a direction
   decision; (4) moot until a phase-only roadmap exists; (5) needs a
   home named for retirement records; (6) waits on rotate_minor.
+  Item (2) decided by the user 2026-10-11: prefixes compare exactly
+  (case-sensitive), as the code already does. The fix is to amend
+  roadmap-data-model.md § 7.1 to match; no code or data changes.
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.

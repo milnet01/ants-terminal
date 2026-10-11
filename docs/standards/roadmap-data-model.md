@@ -642,13 +642,13 @@ tooling's grammar, not about when two IDs denote the same item.
 **Identity is therefore this document's own decision, stated here: IDs are
 compared case-INSENSITIVELY within a project.** `Sh-1` and `SH-1` are one
 item, and § 4.1's per-project uniqueness is enforced on the case-folded value.
-**The prefix is folded with it, everywhere the prefix is a key.** The
-`id_high_water` row keyed per `(project, prefix)` (§ 8) and the committed-corpus
-scan that floors it both fold the prefix, or `Sh` and `SH` become two allocators
-over one namespace and the second issues `SH-9` while `Sh-9` exists — a
-duplicate under the rule this paragraph just stated, and one nobody can see
-they have created. `roadmap-format.md` § 3.10.4's case-insensitive `id_prefix`
-grammar validates an argument; this is about the lookup.
+**The prefix, as a key, is compared exactly** (decided by the user
+2026-10-11, ANTS-5639). `Sh` and `SH` are two `id_high_water` rows keyed per
+`(project, prefix)` (§ 8), and allocation floors each from its own row and its
+own items. So spell each prefix one way. An id a second spelling issues that
+folds to an existing one, `SH-9` beside `Sh-9`, is refused by the uniqueness
+above rather than stored. `roadmap-format.md` § 3.10.4's case-insensitive
+`id_prefix` grammar validates an argument; this is about the lookup.
 This follows the tooling rather than fighting it — a store that treated them as
 two items would allocate an ID `roadmap_log` then refuses as a duplicate.
 
