@@ -42471,6 +42471,10 @@ against current source before filing.
   Item (2) decided by the user 2026-10-11: prefixes compare exactly
   (case-sensitive), as the code already does. The fix is to amend
   roadmap-data-model.md § 7.1 to match; no code or data changes.
+  Decided by the user 2026-10-11: item (3) adopt the global § 3.5.4
+  ordering rules here, minus the undefined Waiting-on rule. Item (5)
+  retirement records live under docs/history/, which the migration does
+  not read.
   **Layman:** Tidies five older gaps in the roadmap rules and the code behind them that a review found.
   Kind: review-fix.
   Source: cold-eyes-2026-10-10.
@@ -42508,6 +42512,9 @@ against current source before filing.
 
   Needs the user's choice. Either way § 3.5.1 records the rule, which
   changes the standard's direction, so it takes the rule-14 gate.
+  Decided by the user 2026-10-11: keep the refusal with a remedy
+  (7d1e83aa). Option B is not taken. Open: record the rule in
+  roadmap-format.md § 3.5.1 through the rule-14 gate.
   **Layman:** A second copy of a project on the same computer can no longer add roadmap items; decide whether it should be blocked with advice or keep working as before.
   Kind: enhancement.
   Source: review-ut-ants-49 of c05fb4d8, session_message 578.
@@ -84748,6 +84755,8 @@ a modern terminal" release.
   stand-in, and a hover-off mutation caught. The off-screen test could
   not reproduce the style-sheet hover bug itself. Not yet seen on a
   real screen: needs the next relaunch.
+  Seen on a real screen by the user 2026-10-11 after a relaunch: every
+  name readable, hover included.
   **Layman:** Each tab in the side list is coloured by what Claude is doing in it, and its name stays readable when you point at it.
   Kind: fix.
   Source: user-report-2026-10-11 (screenshots).
