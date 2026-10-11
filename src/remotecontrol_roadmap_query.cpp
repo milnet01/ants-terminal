@@ -1172,6 +1172,13 @@ RemoteControl::roadmapRebuildIfAbsent(const QString &callerCanonical,
                            "it was to be rebuilt from \"%2\" before allocating, and the "
                            "rebuild failed: %3. Nothing was written.")
                 .arg(root, roadmapPath, out.value(QStringLiteral("error")).toString());
+        // The migrate error's remedy names roadmap_migrate's arguments, which
+        // roadmap_log does not take. Say which verb, for both causes.
+        if (out.value(QStringLiteral("code")).toString() == QLatin1String("slug_collision"))
+            e[QStringLiteral("error")] = e.value(QStringLiteral("error")).toString()
+                + QStringLiteral(" If the project moved from that root, run roadmap_migrate "
+                                 "here with op:\"reroot\". If both trees stay, write the "
+                                 "roadmap from that root.");
         return e;
     }
     QJsonObject rebuilt;

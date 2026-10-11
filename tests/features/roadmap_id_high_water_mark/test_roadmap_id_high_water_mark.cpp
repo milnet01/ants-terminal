@@ -271,6 +271,10 @@ TEST(RoadmapIdHighWaterMark, Inv1UnparseableMarkIsPresentButNotValid) {
                                 QStringLiteral(" ANTS=1  OTHER=2 -->"),
                                 QStringLiteral(" ANTS -->"),
                                 QStringLiteral(" ANTS=1 ANTS=2 -->"),
+                                // Past the cap: ++ on the raised floor would
+                                // overflow a qint64 near its maximum.
+                                QStringLiteral(" ANTS=1000000000000 -->"),
+                                QStringLiteral(" ANTS#S=9223372036854775807 -->"),
                                 QStringLiteral(" -->")}) {
         const QStringList lines{QStringLiteral("<!-- ants-roadmap-format: 1 -->"),
                                 QString::fromUtf8(kNotice), tag + rest};
@@ -524,6 +528,32 @@ TEST(RoadmapIdHighWaterMark, Inv6DryRunRebuildsNothing) {
     const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
     EXPECT_FALSE(resp.contains(QStringLiteral("store_rebuilt"))) << dump(resp);
     EXPECT_FALSE(storeHasRow(root)) << "a dry run registered the project";
+}
+
+TEST(RoadmapIdHighWaterMark, Inv6SlugOwnedElsewhereNamesTheRemedy) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    const QByteArray body = renderedRoadmap(QString::fromLatin1(kMark40));
+    const QString root = rebuildRoot(guard, tmp, body);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(appendReq(root)).object()
+                    .value(QStringLiteral("ok")).toBool());
+
+    // A second clone, same leaf: its derived export_slug is the first's.
+    const QString raw = QDir(tmp.path()).filePath(QStringLiteral("clone/proj"));
+    ASSERT_TRUE(writeFile(raw + QStringLiteral("/ROADMAP.md"), body));
+    const QString clone = QFileInfo(raw).canonicalFilePath();
+
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(appendReq(clone)).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool()) << dump(resp);
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("slug_collision"))
+        << dump(resp);
+    const QString error = resp.value(QStringLiteral("error")).toString();
+    EXPECT_TRUE(error.contains(QStringLiteral("run roadmap_migrate here"))) << dump(resp);
+    EXPECT_TRUE(error.contains(QStringLiteral("write the roadmap from that root"))) << dump(resp);
+    EXPECT_TRUE(error.contains(QStringLiteral("op:\"reroot\""))) << dump(resp);
+    EXPECT_FALSE(storeHasRow(clone));
 }
 
 TEST(RoadmapIdHighWaterMark, Inv6FileWithoutTheNoticeIsNotRebuilt) {

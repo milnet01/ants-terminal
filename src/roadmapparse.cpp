@@ -1837,6 +1837,10 @@ IdHighWaterMark findIdHighWaterMark(const QStringList &lines) {
         bool ok = !num.isEmpty();
         for (const QChar c : num)
             ok = ok && c >= QLatin1Char('0') && c <= QLatin1Char('9');
+        // At most twelve digits: the rebuild raises a row to N and the next
+        // allocation adds one, which must not overflow. A real floor is far
+        // below this, so a longer value is a corrupt mark.
+        ok = ok && num.size() <= 12;
         const qint64 value = ok ? num.toLongLong(&ok) : 0;
         if (!ok || !isIdMarkKey(key) || pairs.contains(key))
             return mark;
