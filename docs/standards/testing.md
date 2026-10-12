@@ -259,6 +259,19 @@ shows nothing: the seam counts as a behaviour change, and §1 applies to it. Ste
 test then works at a level that needs no seam, since a test that needs one
 cannot run before it exists.
 
+**Where no harness can reproduce a failure, a count over the real log
+that showed it is the red.** Scope: a failure that needs conditions no
+test can set up, such as a real load, an engine-hosted runtime or real
+hardware timing, after a harness was tried and the commit body says why
+it failed. Before the fix, record the log, the pattern, the window and
+the count of hits. The fix names the count the next real run must show,
+usually zero, over a window at least as long. That run is step 4. Until
+it has run, the fix is unproven, and the commit body says so. **Not
+available where a harness can reproduce the failure**: only a test
+guards the next change, and a log count guards nothing. Nothing checks
+that a harness was really tried; the commit body is the trace. Settled
+by the user 2026-10-12 (CFG-0716).
+
 **Exceptions**, each stated in the commit body so a reader can tell a
 decision from an omission: generated code, where the consumer is what is
 tested; a clearly-marked exploratory spike.
@@ -577,6 +590,7 @@ presented at its site as derived.
 | Speed labels honoured (§5) | **`Partial:`** the runner's own timing report (`ctest`'s per-test durations, `pytest --durations=N` — the count is required, and a bare `--durations` is an argument error rather than a report). **Nothing** catches a slow test carrying a valid label that matches no exclusion filter — `languages/cpp.md` § Tests records that case |
 | A disabled test has a tracked cause (§7) | **`Partial:`** skip markers are greppable **only where the framework's marker is what was used — a skip spelled as an early `return` after printing its reason reports a PASS, and no grep reaches it** (measured 2026-09-26 in a live repository), and `review-tests` dimension 8 reports a skip with no reason string at all. **Its long-muted branch fires only where the run supplies the skip's age** — no lane has a blame verb — so on an ordinary run the reason-string half is the whole check. **Nothing** checks that a named item exists or is still open |
 | **The test was seen failing before the code changed (§1)** | **nothing** — once both are green, no artifact distinguishes a test written first from one written after. Not a person either: nobody present can see it afterwards |
+| A log-count red was earned: a harness was tried, and the next real run showed the named count (§1) | **nothing** — the commit body states both, and nothing compares it with the log |
 | The backwards proof was actually run (§2) | **nothing** — the two runs leave nothing behind, and a build error quoted as the red run looks identical to a real one in a transcript |
 | Tests the contract, not the implementation (§3) | **nothing mechanical** — a reader, helped by the naming rule |
 | An invariant's tombstone spelling (§4) | **`Partial:`** `spec_lint` exempts the § 3.7 spelling and reports the others. **Nothing** catches a renumbered id, which is what §4 forbids. Its remaining checks are written for a spec and fire on a conforming feature contract — §4 says so and says what to read instead |
