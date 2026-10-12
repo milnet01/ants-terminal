@@ -3280,6 +3280,17 @@ remainder, captured so they don't drop on the floor.
   in the subfolder? Side note from rusty-psn: roadmap_query
   mode:"report" carries no root or slug field, so a caller cannot see
   which project answered.
+  Located (2026-10-12): MainWindow::refreshRoadmapButton in
+  src/mainwindow.cpp probes a fixed list of ROADMAP.md paths under the
+  tab's shell cwd only (root, docs/, docs/private/, docs/internal/,
+  .github/). It never asks the roadmap store and never walks to a parent
+  or child folder. rusty-psn's file is at rusty-psn-source/ROADMAP.md,
+  one level below the tab's cwd, so nothing matches. The same check also
+  hides the button in any subfolder of a project (a tab in src/).
+  roadmap_query keys on caller_cwd exactly too (rusty-psn's call from the
+  parent folder refused project_not_registered). Candidate fix, not yet
+  decided: walk up to the nearest registered store root or git root, and
+  optionally take one registered child when the cwd holds none.
   **Layman:** In the rusty-psn tab the bottom bar has no Roadmap button, though that project's roadmap lives in the roadmap store.
   Kind: fix.
   Source: user-report-2026-10-12.
@@ -71002,6 +71013,15 @@ project. Reported causes are claims until checked in source.
   PaginationEngine, so changelog_query's explicit limit is trimmed the
   same way. ANTS-3533's "an explicit limit wins over the soft cap" is
   amended in the same gate.
+  Progress (2026-10-12): specs amended (docs/specs/ANTS-1436.md INV-9,
+  docs/specs/ANTS-3533.md § 2.2) and gated by review-contract to the cap
+  (ANTS-1436 loops 1-2, ANTS-3533 loops 10-11), both calm. Next: build
+  red-first in src/paginationengine.cpp. Tail filed here, not yet checked:
+  ANTS-1436 § Dispatch forwarding's "only dispatch lambda that forwards
+  verbatim" may be stale (ANTS-3422); ANTS-3533 INV-6 says paging engages
+  through the dispatch allowlists, though cmdChangelogQuery calls
+  pageBullets itself; ANTS-3533 § 2.2 says "~20 KB" where softCapBytes()
+  can be lower.
   **Layman:** When a session asks for a set number of roadmap rows and they are too big, decide whether to send fewer rows or save them all to a side file.
   Kind: enhancement.
   Source: ANTS-5571 follow-up 2026-10-11.
