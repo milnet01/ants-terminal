@@ -379,8 +379,8 @@ its output on one for the tombstone check alone.
 **The contract may be the test source's own header comment**, where the
 project's pattern puts it there rather than in a separate file; the ids
 and the append-only rule bind the same either way. `CLAUDE.md` rule 14
-sanctions that container **while its conditions hold** — one test
-discharging every clause, no other contract in the file, nothing but its
+sanctions that container **while its conditions hold** — one feature's
+tests discharging every clause, no other contract in the file, nothing but its
 own test binding to it. A contract that outgrows them is gated like any
 other, so a header comment is not a route around the gate.
 
