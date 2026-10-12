@@ -52,6 +52,10 @@ omitted shipped work would not conform.
 
 ### 3.1 File header
 
+A new roadmap starts in the store: run `roadmap_migrate`
+`op:"init"`, then add items with `roadmap_log`. Do not hand-write
+`ROADMAP.md`; the render writes the header below.
+
 A conforming file declares the format version with an HTML
 comment in the **first five lines**:
 
