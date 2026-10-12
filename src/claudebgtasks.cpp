@@ -1,4 +1,5 @@
 #include "claudebgtasks.h"
+#include "claudetranscriptwatch.h"
 #include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
 #include "claudetranscriptwalker.h"  // ANTS-1261 — shared JSONL walk + gating
 
@@ -32,16 +33,21 @@ ClaudeBgTaskTracker::ClaudeBgTaskTracker(QObject *parent) : QObject(parent) {
     m_rescanDebounce.setSingleShot(true);
     m_rescanDebounce.setInterval(kRescanDebounceMs);
     connect(&m_rescanDebounce, &QTimer::timeout, this, &ClaudeBgTaskTracker::rescan);
-    connect(&m_watcher, &QFileSystemWatcher::fileChanged,
-            this, [this] { m_rescanDebounce.start(); });
+    // ANTS-1285 — one shared watch per transcript; filter on our own path.
+    connect(&ClaudeTranscriptWatch::instance(), &ClaudeTranscriptWatch::changed,
+            this, [this](const QString &path) {
+                if (path == m_transcriptPath) m_rescanDebounce.start();
+            });
 }
 
-ClaudeBgTaskTracker::~ClaudeBgTaskTracker() = default;
+ClaudeBgTaskTracker::~ClaudeBgTaskTracker() {
+    if (auto *watch = ClaudeTranscriptWatch::existing())
+        watch->release(m_transcriptPath);
+}
 
 void ClaudeBgTaskTracker::setTranscriptPath(const QString &path) {
     if (path == m_transcriptPath) return;
-    if (!m_transcriptPath.isEmpty())
-        m_watcher.removePath(m_transcriptPath);
+    ClaudeTranscriptWatch::instance().release(m_transcriptPath);
     m_transcriptPath = path;
     // Mirror claudetasklist: reset poll() change-signal shortcircuit so
     // a path re-bind always reparses.
@@ -52,8 +58,7 @@ void ClaudeBgTaskTracker::setTranscriptPath(const QString &path) {
     m_cursor = {};
     m_acc = {};
     walkCache().restore(m_transcriptPath, m_cursor, m_acc);
-    if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
-        m_watcher.addPath(m_transcriptPath);
+    ClaudeTranscriptWatch::instance().acquire(m_transcriptPath);
     m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
     rescan();
 }
@@ -156,11 +161,7 @@ void ClaudeBgTaskTracker::rescan() {
     // QFileSystemWatcher drops the path on atomic-rewrite; re-add if it
     // disappeared between rescans (Claude writes JSONL append-only, but
     // some editors do an atomic rename on save which trips the watcher).
-    if (!m_transcriptPath.isEmpty()
-            && QFileInfo::exists(m_transcriptPath)
-            && !m_watcher.files().contains(m_transcriptPath)) {
-        m_watcher.addPath(m_transcriptPath);
-    }
+    ClaudeTranscriptWatch::instance().ensure(m_transcriptPath);
 
     // Compare shape: count, ids, finished flags. Skip emit if identical
     // — saves a UI rebuild when only metadata-only events appended.
@@ -189,8 +190,7 @@ void ClaudeBgTaskTracker::poll() {
     const QFileInfo fi(m_transcriptPath);
     if (!fi.exists()) return;
     // File missing at bind time may now exist — re-add watch + reparse.
-    if (!m_watcher.files().contains(m_transcriptPath)) {
-        m_watcher.addPath(m_transcriptPath);
+    if (ClaudeTranscriptWatch::instance().ensure(m_transcriptPath)) {
         rescan();
         return;
     }

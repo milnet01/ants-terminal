@@ -582,9 +582,9 @@ void testAnts1218Inv1_chipFormatCountsUp() {
 // "one done". The displayed numerator must monotonically rise.
 //
 // Memory note: one tracker re-pointed three times, not three trackers.
-// Each ClaudeTaskListTracker owns a QFileSystemWatcher (one inotify
-// watch); three trackers would mean three concurrent watches for a
-// purely sequential check.
+// Each tracker subscribes its path to the shared ClaudeTranscriptWatch
+// (ANTS-1285); three trackers on three paths would mean three concurrent
+// watches for a purely sequential check.
 void testAnts1218Inv2_chipNumeratorMonotone() {
     QTemporaryDir dir;
     if (!dir.isValid()) { expect(false, "ANTS-1218-INV-2 setup"); return; }

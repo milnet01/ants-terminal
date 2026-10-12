@@ -133,6 +133,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The task-list and background-task trackers share one file watch on the Claude transcript instead of keeping one each** (ANTS-1285)
+  Each append to the transcript now wakes one watch, not two, and a
+  watch lost to a file replacement is restored for both trackers at once.
+
 - **The current tab in the side list fades from its status colour into the inverse of the panel background, in place of an outline** (ANTS-5660)
 
 - **Tab list rows fade from their Claude state colour into the panel background, and the tab colour stripe is 3px wider** (ANTS-5658)

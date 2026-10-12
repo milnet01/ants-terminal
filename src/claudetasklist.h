@@ -4,7 +4,6 @@
 #include <QString>
 #include <QHash>
 #include <QList>
-#include <QFileSystemWatcher>
 #include <QTimer>
 
 #include "claudetranscriptwalker.h"
@@ -123,7 +122,8 @@ public:
 
 private:
     QString m_transcriptPath;
-    QFileSystemWatcher m_watcher;
+    // ANTS-1285 — the transcript is watched through the shared
+    // ClaudeTranscriptWatch, which this tracker subscribes to per path.
 
     // ANTS-5050 — coalesce the fileChanged storm. Claude appends to the
     // transcript continuously while it works, and each signal drove a

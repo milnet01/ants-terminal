@@ -115,15 +115,16 @@ TEST(ClaudeBgTasksButton, Main) {
              "`emit tasksChanged()` when the task-list shape changes");
     }
 
-    // INV-4: tracker uses QFileSystemWatcher.
-    if (bgh.find("QFileSystemWatcher") == std::string::npos) {
-        fail("INV-4: ClaudeBgTaskTracker header must include a "
-             "QFileSystemWatcher member — pure polling drops live tail "
-             "events for in-flight transcript writes");
+    // INV-4: tracker watches its transcript through the shared hub
+    // (ANTS-1285).
+    if (bgcpp.find("&ClaudeTranscriptWatch::changed") == std::string::npos) {
+        fail("INV-4: ClaudeBgTaskTracker must connect to "
+             "ClaudeTranscriptWatch::changed — pure polling drops live "
+             "tail events for in-flight transcript writes");
     }
-    if (bgcpp.find("addPath") == std::string::npos) {
-        fail("INV-4: ClaudeBgTaskTracker must call `addPath` on its "
-             "watcher when the transcript path is set");
+    if (bgcpp.find("ClaudeTranscriptWatch::instance().acquire(") == std::string::npos) {
+        fail("INV-4: ClaudeBgTaskTracker must subscribe its transcript "
+             "to ClaudeTranscriptWatch when the path is set");
     }
 
     // INV-5: status-bar button hidden when no tasks running.

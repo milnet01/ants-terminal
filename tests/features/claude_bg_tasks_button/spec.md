@@ -86,10 +86,12 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   emits it from `rescan()` only when the task-list shape changes.
   Without the signal the dialog and button never live-update.
 
-- **INV-4** (tracker uses `QFileSystemWatcher`):
-  `ClaudeBgTaskTracker::setTranscriptPath` adds the path to a
-  `QFileSystemWatcher` member. Polling-only would not pick up
-  per-character appends from the in-flight transcript writer.
+- **INV-4** (tracker watches its transcript):
+  `ClaudeBgTaskTracker::setTranscriptPath` subscribes the path to the
+  shared `ClaudeTranscriptWatch` (ANTS-1285), and the tracker rescans
+  on that hub's `changed` signal for its own path. Polling-only would
+  not pick up per-character appends from the in-flight transcript
+  writer.
 
 - **INV-5** (status-bar button hidden when no tasks running):
   `ClaudeStatusBarController::refreshBgTasksButton` calls `hide()`

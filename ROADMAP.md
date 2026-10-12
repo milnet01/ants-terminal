@@ -25588,7 +25588,7 @@ The items below identify the next batch of leverage.
 
 #### ⚡ Performance — non-MCP-but-related
 
-- 📋 [ANTS-1285] **Consolidate `claudetasklist` + `claudebgtasks` `QFileSystemWatcher` instances.**
+- ✅ [ANTS-1285] **Consolidate `claudetasklist` + `claudebgtasks` `QFileSystemWatcher` instances.**
   Both trackers install a
   separate watcher on the SAME transcript path; on tab switch we
   pay the watcher-add/remove cost twice and the kernel fires two
@@ -25602,6 +25602,16 @@ The items below identify the next batch of leverage.
   Kind: optimize.
   Source: indie-review-2026-05-13.
   Progress (2026-07-19, autonomous token-perf sweep): plan is STALE and the task is NOT the bounded hoist it reads as. ANTS-1261 shipped (2026-06-28) as a HEADER-ONLY free function (ClaudeTranscript::walk in src/claudetranscriptwalker.h), NOT a QObject base class — so "hoist the watcher into the base" has no base to hoist into. Verified current state: THREE independent QFileSystemWatchers sit on the focused-tab transcript — ClaudeTaskListTracker::m_watcher (claudetasklist.h:98), ClaudeBgTaskTracker::m_watcher (claudebgtasks.h:101), and ClaudeIntegration::m_transcriptWatcher (claudeintegration.h:736). (ClaudeTabTracker's single shared m_watcher at claudetabtracker.h:125 is a SEPARATE per-shell-dot component, already consolidated, not in scope.) A correct fix is a signal-rewiring refactor — e.g. have both trackers consume ClaudeIntegration's existing transcript-changed signal (or a small shared TranscriptWatchHub) instead of each owning a watcher — and MUST preserve the atomic-rename re-watch each currently handles (QFileSystemWatcher silently drops the path on tmpfile+rename; see claudebgtasks.h sweepLiveness + claudetasklist.h re-add). Correctness-sensitive, so deferred from the bounded-churn set rather than done blind. Payoff is small: ClaudeTabTracker's own note says inotify cost (~1 KB/path) is negligible until hundreds of tabs — this collapses 3 watches to 1 on ONE path. Recommend implementing as its own focused change (map ClaudeIntegration's signal, rewire, re-run the 47 transcript-parser feature tests + the watcher-drop cases) when picked up.
+  Shipped (2026-10-12): src/claudetranscriptwatch.{h,cpp} holds one
+  QFileSystemWatcher, counted per path, as a child of the application.
+  ClaudeTaskListTracker and ClaudeBgTaskTracker acquire and release
+  their path there, filter its changed signal, and call ensure() where
+  they used to re-add a dropped watch. Locked by
+  tests/features/transcript_watch_shared (red on the old trackers, green
+  now). ClaudeIntegration's own m_transcriptWatcher is untouched: its
+  watch-swap sequence is pinned by claude_pid_replacement and is outside
+  this item's headline, so the transcript carries two watches, not
+  three.
 
 - ✅ [ANTS-1286] **Audit tool-detection cache (session-scoped).**
   Shipped 2026-05-14. Added `ToolDetectionEngine`

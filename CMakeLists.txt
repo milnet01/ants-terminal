@@ -925,6 +925,8 @@ add_library(ants_claude_lib STATIC
     src/claudebgtasksdialog.cpp
     src/claudetasklist.cpp
     src/claudetasklistdialog.cpp
+    # ANTS-1285 — the one transcript watch both trackers share.
+    src/claudetranscriptwatch.cpp
     # ANTS-1897 — MCP discoverability via SessionStart hook installer.
     src/mcporientation.cpp
 )
@@ -2543,6 +2545,8 @@ if(ANTS_TESTS)
                 tests/features/claude_question_prompt_dot/test_claude_question_prompt_dot.cpp
                 tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
                 tests/features/claude_task_list/test_claude_task_list.cpp
+                # ANTS-1285 — both trackers share one transcript watch.
+                tests/features/transcript_watch_shared/test_transcript_watch_shared.cpp
                 tests/features/claude_session_freshness/test_claude_session_freshness.cpp
                 tests/features/claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp
                 tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp
