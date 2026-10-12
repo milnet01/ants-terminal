@@ -19,7 +19,7 @@ ants-terminal (0.7.114-1) unstable; urgency=medium
   * Claude Code tools use only the private per-user folder, never /tmp,
     for the terminal's connection points. (ANTS-5587)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 12 Oct 2026 12:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 12 Oct 2026 00:00:00 +0200
 
 ants-terminal (0.7.113-1) unstable; urgency=medium
 

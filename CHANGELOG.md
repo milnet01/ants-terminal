@@ -12,6 +12,8 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.114] - 2026-10-12
+
 **Theme:** A side panel that lists every tab by its full name, with Go
 to Tab and four sort orders; tabs that survive restarts, shutdowns and
 log-outs; and steadier plugins.
