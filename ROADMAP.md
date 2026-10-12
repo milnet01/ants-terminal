@@ -71526,6 +71526,10 @@ project. Reported causes are claims until checked in source.
   another machine. Fix: run the render at the end of op:"init".
   Code: src/remotecontrol_roadmap_migrate.cpp (op:"init" branch),
   src/roadmapmigrateverb.cpp initSkeleton().
+  Loop 30 (2026-10-12): both lanes again found the init reply's
+  next_step contradicting roadmap-format.md § 3.1, which now says to add
+  a release block first and to pass id_prefix on the first append.
+  next_step should say the same.
   **Layman:** Starting a new roadmap gives you a section where nothing is ever picked up for work, and a file that does not yet say it is generated.
   Kind: fix.
   Source: in-session-2026-10-12 (review-contract on roadmap-format.md, CFG-0757).

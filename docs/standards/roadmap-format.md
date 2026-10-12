@@ -54,8 +54,10 @@ omitted shipped work would not conform.
 
 A project with no roadmap starts in the store: run `roadmap_migrate`
 `op:"init"`, add a release block (§ 3.2) with `roadmap_log`
-`op:"create_section"`, then add items to it with `roadmap_log`. The
-tools write the header below. On a store-migrated project (§ 3.5.1),
+`op:"create_section"`, then add items to it with `roadmap_log`. Pass
+`id_prefix` on the first append to choose the prefix (§ 3.5.1);
+without it, the directory name sets it. The tools write the header
+below. On a store-migrated project (§ 3.5.1),
 do not hand-edit `ROADMAP.md`.
 
 A conforming file declares the format version with an HTML
