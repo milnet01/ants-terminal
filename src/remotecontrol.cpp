@@ -154,11 +154,17 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
     // the store keys a project on exactly that. It is NOT the roadmap file's own
     // directory: the two coincide only while the roadmap sits at the root, and
     // the candidate list above also matches docs/ and .github/.
+    //
+    // ANTS-5667 — a folder declaring `repo_root` is probed through that repo
+    // root instead of itself, and owned by it: an outer folder holding its
+    // clone one level down reads the clone's roadmap and keys the clone's
+    // store row, whether or not it holds a roadmap of its own.
     for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
-        const QString hit = probeDir(dir);
+        const QString repo = ProjectSettings::repoRootOf(dir);
+        const QString hit = probeDir(repo);
         if (!hit.isEmpty()) {
             if (ownerDir)
-                *ownerDir = dir;
+                *ownerDir = repo;
             return hit;
         }
     }
@@ -2401,4 +2407,8 @@ RemoteControl::~RemoteControl() {
             hub->detach(m_socketPath, this);
         m_server = nullptr;
     }
+}
+
+QString RemoteControl::roadmapFileFor(const QString &canonicalDir) {
+    return rcdetail::findRoadmapUnder(canonicalDir);   // ANTS-5667
 }

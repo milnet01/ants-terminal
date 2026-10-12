@@ -1888,7 +1888,11 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             const QJsonObject stored =
                 QJsonDocument::fromJson(sf.readAll()).object();
             sf.close();
-            for (const QString &k : kKeys) {
+            // ANTS-5667 — repo_root is echoed and checked like a path key,
+            // but stays out of kKeys so it never lands in `undeclared`.
+            QStringList echoed = kKeys;
+            echoed << QStringLiteral("repo_root");
+            for (const QString &k : echoed) {
                 if (!stored.contains(k)) continue;
                 const QJsonValue v = stored.value(k);
                 declared[k] = v;
@@ -1965,6 +1969,13 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     if (req.contains(QStringLiteral("id_format")))
         changes[QStringLiteral("id_format")] =
             req.value(QStringLiteral("id_format"));
+    // ANTS-5667 — `repo_root` is set-only for the same reason: it is the
+    // user's decision that this folder stands for a child repository, so
+    // detect and init never propose it, and it is not a layout gap for
+    // `undeclared` to report. applyWrite() validates it as a directory.
+    if (req.contains(QStringLiteral("repo_root")))
+        changes[QStringLiteral("repo_root")] =
+            req.value(QStringLiteral("repo_root"));
 
     // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
     // ANTS-2227 — under dry_run, return the would-be settings + landing path
@@ -2094,7 +2105,7 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         return err(QStringLiteral("bad_args"), QStringLiteral(
             "project_settings set: supply at least one of "
             "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"
-            "/id_format"));
+            "/id_format/repo_root"));
     QString ec, ek, ev;
     const auto merged = ProjectSettings::applyWrite(
         existing, changes, rootCanonical, &ec, &ek, &ev);

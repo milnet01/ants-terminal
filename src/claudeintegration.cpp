@@ -7568,7 +7568,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "`suggestion` (source_roots, test_roots, docs_dir, specs_dir, "
                     "roadmap, changelog). op:\"init\" writes the detected keys. "
                     "op:\"set\" creates or updates keys (null clears), including "
-                    "id_format {prefix?, pattern?}. Refusals: bad_args, bad_path, "
+                    "id_format {prefix?, pattern?} and repo_root. Refusals: bad_args, bad_path, "
                     "settings_exists, unrecognised_format, id_format_mismatch. "
                     "caller_cwd required.");
                 psTool["detail"] = QStringLiteral(
@@ -7718,6 +7718,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["roadmap"]      = rmProp;
                     props["changelog"]    = clProp;
                     props["id_format"]    = ifProp;              // ANTS-3771
+                    // ANTS-5667 — set-only, like id_format: detect never
+                    // proposes it.
+                    QJsonObject rrProp; rrProp["type"] = "string";
+                        rrProp["description"] = QStringLiteral(
+                            "op:set only. For an outer folder that is not a git "
+                            "repository: the child folder holding its clone "
+                            "(e.g. \"hells-gate-recomp\"). The roadmap, id_format "
+                            "and mailbox are then the clone's; the other keys "
+                            "stay relative to this folder. Must be an existing "
+                            "directory inside it, else bad_path.");
+                    props["repo_root"]    = rrProp;
                     props["dry_run"]      = makeDryRunProp();    // ANTS-2227
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     schema["properties"]  = props;

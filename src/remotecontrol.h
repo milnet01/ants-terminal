@@ -498,6 +498,15 @@ public:
     // needs none. Returns {} when the maintainer gate (the format-standard doc
     // the project ships) does not fire, and the caller then omits the key.
     static QJsonObject buildFeedbackPendingBlock(const QString &rootCanonical);
+    // ANTS-4622 / ANTS-5667 — session_orient's mail_pending block, static and
+    // public on the same precedent. Returns {} when nothing is unacked or the
+    // project has no mailbox, and the caller then omits the key.
+    static QJsonObject buildMailPendingBlock(const QString &rootCanonical);
+    // ANTS-5667 — rcdetail::findRoadmapUnder() for callers outside the
+    // remotecontrol sources, which may not include remotecontrol_internal.h.
+    // MainWindow's Roadmap button asks this, so it shows exactly where
+    // roadmap_query finds a roadmap.
+    static QString roadmapFileFor(const QString &canonicalDir);
     // ANTS-1922 — test-only soft-cap override for the bundles branch
     // (0 = use PaginationEngine::softCapBytes()). The pure builder above
     // takes the cap directly; this lets a live-verb path force truncation.

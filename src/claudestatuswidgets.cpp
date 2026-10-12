@@ -34,6 +34,7 @@
 #include "claudebgtasks.h"
 #include "claudestateresolver.h"   // ANTS-1873
 #include "config.h"                // ANTS-1735 §2.7 — claudeAutoModel()
+#include "projectsettings.h"       // ANTS-5667 — repoRootOf
 #include "tokenusageengine.h"      // ANTS-3572 — humanizeCount / sumYear
 #include "modelautoswitch.h"       // ANTS-1735 §2.3 — decide() gate
 #include "modelrecommender.h"
@@ -1452,7 +1453,11 @@ void ClaudeStatusBarController::refreshMailChip()
     if (cached != m_mailProjectForCwd.constEnd()) {
         projectId = *cached;
     } else {
-        if (const auto id = m_mailStore->projectIdContaining(cwd))
+        // ANTS-5667 — an outer folder declaring `repo_root` shows its clone's
+        // mail. A key added later lands at the next store write, which clears
+        // this cache.
+        if (const auto id = m_mailStore->projectIdContaining(
+                ProjectSettings::repoRootOf(cwd)))
             projectId = *id;
         m_mailProjectForCwd.insert(cwd, projectId);
     }

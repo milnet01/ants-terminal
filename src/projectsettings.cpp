@@ -118,12 +118,27 @@ Settings load(const QString &rootCanonical) {
     s.changelog   = validEntry(rootCanonical, o.value(QStringLiteral("changelog")));
     s.specsDir    = validEntry(rootCanonical, o.value(QStringLiteral("specs_dir")));
     s.idFormat    = parseIdFormat(o.value(QStringLiteral("id_format")));  // ANTS-3771
+    s.repoRoot    = validEntry(rootCanonical, o.value(QStringLiteral("repo_root")));  // ANTS-5667
     return s;
 }
 
 RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical) {
-    const Settings s = load(rootCanonical);
+    // ANTS-5667 INV-9 — the repo root's declaration, so every caller of one
+    // store row allocates under one prefix.
+    const Settings s = load(repoRootOf(rootCanonical));
     return s.idFormat.value_or(RoadmapParse::IdFormat{});
+}
+
+QString repoRootOf(const QString &dirCanonical) {
+    if (dirCanonical.isEmpty()) return dirCanonical;
+    // load() has already dropped a value that escapes the folder or does not
+    // exist (validEntry); what is left to refuse is a file.
+    const auto rel = load(dirCanonical).repoRoot;
+    if (!rel) return dirCanonical;
+    const QFileInfo fi(dirCanonical + QLatin1Char('/') + *rel);
+    const QString canonical = fi.canonicalFilePath();
+    if (canonical.isEmpty() || !fi.isDir()) return dirCanonical;
+    return canonical;
 }
 
 // ----- ANTS-2161 — detector + writer ------------------------------------
@@ -461,7 +476,8 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
         const bool dirArray = key == QLatin1String("source_roots")
                            || key == QLatin1String("test_roots");
         const bool dir      = key == QLatin1String("docs_dir")
-                           || key == QLatin1String("specs_dir");
+                           || key == QLatin1String("specs_dir")
+                           || key == QLatin1String("repo_root");   // ANTS-5667
         const bool file     = key == QLatin1String("roadmap")
                            || key == QLatin1String("changelog");
 

@@ -243,5 +243,32 @@ Written with `project_settings op:"set" id_format:{…}`, which refuses
 member instead, so an unreadable declaration never takes the roadmap down with
 it. `op:"detect"` cannot suggest it — a grammar is not a path on disk.
 
+From an outer folder declaring `repo_root`, `id_format` is read from the repo
+root's file, not the outer folder's (ANTS-5667).
+
 Full contract:
 [`../specs/ANTS-3771-id-format-declaration.md`](../specs/ANTS-3771-id-format-declaration.md).
+
+## Per-project `repo_root` (ANTS-5667)
+
+**Not a config key** — it lives in `<root>/.ants/project.json`, like
+`id_format`. It is for a project kept in an outer folder that is not a git
+repository, with the clone one level down.
+
+```json
+{ "repo_root": "hells-gate-recomp" }
+```
+
+- `repo_root` (string, optional) — the child folder, relative to the folder
+  holding the file, that the roadmap store and git know the project by.
+- From the outer folder, the roadmap verbs, `session_message`,
+  `session_orient`'s `mail_pending`, the status-bar mail chip and the Roadmap
+  button all act on the clone.
+- The roadmap and `id_format` come from the clone. The other path keys stay
+  relative to the outer folder.
+- Written with `project_settings op:"set" repo_root:"…"`, which refuses
+  `bad_path` unless it names an existing directory inside the folder.
+  `op:"detect"` and `op:"init"` never propose it.
+
+Full contract:
+[`../specs/ANTS-5667-outer-folder-repo-root.md`](../specs/ANTS-5667-outer-folder-repo-root.md).

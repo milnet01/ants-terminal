@@ -403,3 +403,61 @@ TEST(ProjectSettings, Ants3353EmptyHintLeavesTheConventionalProbeAlone) {
     EXPECT_EQ(s.roadmap.value_or(QString()), QStringLiteral("ROADMAP.md"));
     EXPECT_EQ(s.changelog.value_or(QString()), QStringLiteral("CHANGELOG.md"));
 }
+
+// ---------------------------------------------------------------- ANTS-5667 --
+// docs/specs/ANTS-5667-outer-folder-repo-root.md. An outer folder that is not a
+// git repository names its clone with `repo_root`; repoRootOf() maps the folder
+// to that clone and to nothing else.
+
+// INV-1 — the child the key names, and the folder unchanged for every value
+// that does not name a directory inside it.
+TEST(ProjectSettings, RepoRootOf) {
+    QTemporaryDir outerTmp, elsewhere;
+    ASSERT_TRUE(outerTmp.isValid());
+    ASSERT_TRUE(elsewhere.isValid());
+    const QString outer = canon(outerTmp);
+    const QString away  = canon(elsewhere);
+    QDir().mkpath(outer + "/clone");
+    writeFile(outer + "/afile", QStringLiteral("x\n"));
+    ASSERT_TRUE(QFile::link(away, outer + "/escape"));
+    const QString clone = QFileInfo(outer + "/clone").canonicalFilePath();
+
+    // No file at all.
+    EXPECT_EQ(ProjectSettings::repoRootOf(outer), outer);
+
+    const auto declare = [&](const QString &json) {
+        writeFile(outer + "/.ants/project.json", json);
+        return ProjectSettings::repoRootOf(outer);
+    };
+    EXPECT_EQ(declare(QStringLiteral("{\"repo_root\":\"clone\"}")), clone)
+        << "a child folder must map to that child";
+    EXPECT_EQ(declare(QStringLiteral("{}")), outer) << "no key";
+    EXPECT_EQ(declare(QStringLiteral("{\"repo_root\":\"../x\"}")), outer);
+    EXPECT_EQ(declare(QStringLiteral("{\"repo_root\":\"%1\"}").arg(away)), outer)
+        << "an absolute path outside the folder";
+    EXPECT_EQ(declare(QStringLiteral("{\"repo_root\":\"escape\"}")), outer)
+        << "a symlink pointing outside the folder";
+    EXPECT_EQ(declare(QStringLiteral("{\"repo_root\":\"missing\"}")), outer);
+    EXPECT_EQ(declare(QStringLiteral("{\"repo_root\":\"afile\"}")), outer)
+        << "a regular file is not a repository root";
+}
+
+// INV-9 — the id format is the repo root's, so two callers of one store row
+// cannot allocate under two prefixes.
+TEST(ProjectSettings, IdFormatFollowsRepoRoot) {
+    QTemporaryDir outerTmp;
+    ASSERT_TRUE(outerTmp.isValid());
+    const QString outer = canon(outerTmp);
+    writeFile(outer + "/clone/.ants/project.json",
+              QStringLiteral("{\"id_format\":{\"prefix\":\"HG\"}}"));
+    writeFile(outer + "/.ants/project.json",
+              QStringLiteral("{\"repo_root\":\"clone\","
+                             "\"id_format\":{\"prefix\":\"XX\"}}"));
+
+    EXPECT_EQ(ProjectSettings::idFormatFor(outer).prefix, QStringLiteral("HG"))
+        << "the outer folder's own id_format was read";
+    // Control: the clone answers for itself.
+    EXPECT_EQ(ProjectSettings::idFormatFor(
+                  QFileInfo(outer + "/clone").canonicalFilePath()).prefix,
+              QStringLiteral("HG"));
+}

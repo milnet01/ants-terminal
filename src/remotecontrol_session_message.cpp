@@ -18,6 +18,7 @@
 
 #include "remotecontrol.h"
 
+#include "projectsettings.h"   // ANTS-5667 — repoRootOf
 #include "resolvedroot.h"
 #include "roadmapstore.h"
 
@@ -95,7 +96,9 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     // root handed to it, which is the machine-global hazard ANTS-4600 guards.
     // ANTS-5594 — the nearest registered root at or above caller_cwd, so a
     // session in a project's subdirectory still reaches that project's mail.
-    const auto self = store.projectIdContaining(rr.cwd, &err);
+    // ANTS-5667 — an outer folder declaring `repo_root` asks for its clone.
+    const auto self =
+        store.projectIdContaining(ProjectSettings::repoRootOf(rr.cwd), &err);
     if (!self)
         return refuse("no_project",
                       QStringLiteral("session_message: \"%1\" is not inside a "

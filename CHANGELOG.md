@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **A project kept in an outer folder can name its git clone with `repo_root`** (ANTS-5667)
+  Put `"repo_root": "<clone folder>"` in the outer folder's
+  `.ants/project.json` (or run `project_settings op:"set"`). From the
+  outer folder, the roadmap verbs, the mailbox, `session_orient`'s mail
+  count, the status-bar mail chip and the Roadmap button then work on
+  the clone's project. The Roadmap button now finds a roadmap wherever
+  `roadmap_query` does, including from a project subfolder (ANTS-5664).
+
 ### Changed
 
 - **roadmap_query and changelog_query now cut a page sized by an explicit `limit` to the same byte budget as an auto-sized page, with `truncated` and `next_offset`, so it fits inline instead of being saved to a side file.** (ANTS-5651)

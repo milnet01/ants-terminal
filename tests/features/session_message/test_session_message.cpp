@@ -530,11 +530,13 @@ TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
 
 // ANTS-5594 — a caller_cwd inside a registered project (its src/, say) finds
 // that project's mailbox. The walk is status_bar_mail_chip INV-1's; this pins
-// that the handler uses it rather than the exact-root lookup.
+// that the handler uses it rather than the exact-root lookup. ANTS-5667 maps
+// the folder through repoRootOf first; its behaviour is ProjectRepoRoot's.
 TEST(SessionMessage, Ants5594SubdirectoryCallerFindsItsProject) {
     const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
     ASSERT_FALSE(h.isEmpty());
-    EXPECT_TRUE(h.contains(QStringLiteral("store.projectIdContaining(rr.cwd")))
+    EXPECT_TRUE(h.contains(QStringLiteral(
+        "store.projectIdContaining(ProjectSettings::repoRootOf(rr.cwd)")))
         << "the caller's project must be found by walking up from caller_cwd";
     EXPECT_FALSE(h.contains(QStringLiteral("projectIdForRoot(")))
         << "an exact-root lookup refuses no_project from a subdirectory";

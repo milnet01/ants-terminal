@@ -453,21 +453,17 @@ TEST(McpLastAuditSummary, Ants1459FindRoadmapUnderWidens) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-1459 RQ-4 — MainWindow::refreshRoadmapButton's path-list
-// stays byte-equal to findRoadmapUnder's so the status-bar
-// button surfaces on the same projects the MCP can query.
+// ANTS-1459 RQ-4, superseded by ANTS-5667 INV-6 — the status-bar button
+// surfaces on the same projects the MCP can query because it asks the same
+// finder, rather than holding a copy of its path list.
 TEST(McpLastAuditSummary, Ants1459StatusBarRoadmapButtonWidened) {
     expect_reset();
-    const std::string mw = ants_test::slurpMainWindow();
-    expect(mw.find("docs/private/ROADMAP.md") != std::string::npos,
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpMainWindow(), "void MainWindow::refreshRoadmapButton");
+    expect(body.find("RemoteControl::roadmapFileFor(") != std::string::npos,
            "RQ-4",
-           "refreshRoadmapButton must probe docs/private/ROADMAP.md");
-    expect(mw.find("docs/internal/ROADMAP.md") != std::string::npos,
-           "RQ-4",
-           "refreshRoadmapButton must probe docs/internal/ROADMAP.md");
-    expect(mw.find(".github/ROADMAP.md") != std::string::npos,
-           "RQ-4",
-           "refreshRoadmapButton must probe .github/ROADMAP.md");
+           "refreshRoadmapButton must ask findRoadmapUnder, through "
+           "RemoteControl::roadmapFileFor");
     EXPECT_EQ(0, expect_failures());
 }
 

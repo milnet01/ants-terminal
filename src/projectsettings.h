@@ -32,6 +32,10 @@ struct Settings {
     // thin accessor rather than a second reader. nullopt when the key is
     // absent, or when every member of it was dropped by validation.
     std::optional<RoadmapParse::IdFormat> idFormat;
+    // ANTS-5667 — the folder the roadmap store and git know this project by,
+    // for an outer folder holding its clone one level down. Read through
+    // repoRootOf(); the path keys above stay relative to this folder.
+    std::optional<QString>     repoRoot;      // dir;  repoRootOf
 };
 
 // Reads + parses <rootCanonical>/.ants/project.json on every call (no
@@ -61,6 +65,14 @@ Settings load(const QString &rootCanonical);
 // key whose every member load() dropped — which is the zero-change path INV-1
 // asserts. Uncached, like load() itself.
 RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical);
+
+// ANTS-5667 — the folder `dirCanonical` stands for in the roadmap store: the
+// canonical directory its .ants/project.json `repo_root` names, or
+// `dirCanonical` unchanged when the key is absent, dropped, or names something
+// that is not a directory. Reads only that folder's file; it never walks, so
+// each caller keeps its own rule for reaching the folder it passes.
+// docs/specs/ANTS-5667-outer-folder-repo-root.md § 2.2.
+QString repoRootOf(const QString &dirCanonical);
 
 // ANTS-2161 / ANTS-3393 — true for a top-level directory name the source
 // walk should neither descend nor index: any dot-dir (.git/.ants/.venv),
@@ -184,7 +196,7 @@ UndeclaredSplit splitUndeclared(const QString &rootCanonical,
 // Merge `changes` into `existing` for an op:"set"/"init" write. `changes`
 // carries only the caller-supplied keys; a JSON-null value REMOVES the key.
 // Recognised keys are validated at write-time under the canonical root
-// (source_roots/test_roots/docs_dir/specs_dir must be existing dirs;
+// (source_roots/test_roots/docs_dir/specs_dir/repo_root must be existing dirs;
 // roadmap/changelog existing files) — STRICT, unlike load()'s lenient
 // read-time drop. Unrecognised keys already in `existing` are preserved.
 // On a validation failure returns nullopt and sets *errCode ("bad_args"

@@ -3262,7 +3262,7 @@ remainder, captured so they don't drop on the floor.
   connect).
   Kind: implement.
 
-- 📋 [ANTS-5664] **A project served by the roadmap store shows no Roadmap button in the status bar.**
+- ✅ [ANTS-5664] **A project served by the roadmap store shows no Roadmap button in the status bar.**
   Seen 2026-10-12 on build d3dc355c (0.7.114) in the rusty-psn tab; the
   OneUp tab shows the button. Unverified hypothesis: the button keys on
   the tab's cwd, and rusty-psn's registered root differs from the tab's
@@ -3297,6 +3297,10 @@ remainder, captured so they don't drop on the floor.
   folder's .ants/project.json. A button-only walk was dropped: it would
   diverge from the verbs again, which is how this bug arose (ANTS-3350
   widened findRoadmapUnder; the button kept its own list).
+  Resolved (2026-10-12) by ANTS-5667: the Roadmap button now asks
+  findRoadmapUnder (through RemoteControl::roadmapFileFor), so it shows
+  from a project subfolder and from an outer folder declaring
+  `repo_root`.
   **Layman:** In the rusty-psn tab the bottom bar has no Roadmap button, though that project's roadmap lives in the roadmap store.
   Kind: fix.
   Source: user-report-2026-10-12.
@@ -71417,7 +71421,7 @@ project. Reported causes are claims until checked in source.
   Source: rusty-psn feedback 2026-10-12.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-5667] **An outer project folder resolves to the project its .ants/project.json names.**
+- ✅ [ANTS-5667] **An outer project folder resolves to the project its .ants/project.json names.**
   Reported 2026-10-12 by dantes-inferno-recomp (Dantes_Inferno_Recomp/
   outer folder, registered clone hells-gate-recomp/). From the outer
   folder roadmap_query refuses no_roadmap_loaded, session_message
@@ -71439,6 +71443,14 @@ project. Reported causes are claims until checked in source.
   Dantes_Inferno_Recomp/; the clone keeps its own .ants/project.json, which
   supplies roadmap and id_format, spec § 2.1); claude-config
   (its CFG-0763 waits on it). Spec: docs/specs/ANTS-5667-outer-folder-repo-root.md.
+  Resolved (2026-10-12): built per
+  docs/specs/ANTS-5667-outer-folder-repo-root.md.
+  `ProjectSettings::repoRootOf` maps an outer folder to the clone its
+  `repo_root` names; findRoadmapUnder, rlStoreCounterPrefix,
+  idFormatFor, check_sync, session_message, session_orient's
+  mail_pending, the mail chip and the Roadmap button use it. Tests:
+  tests/features/project_repo_root, plus ProjectSettings.RepoRootOf and
+  IdFormatFollowsRepoRoot.
   **Layman:** When you keep a project in a folder with its git clone one level down, Ants tools and the Roadmap button work from the outer folder too.
   Kind: feature.
   Source: dantes-inferno-recomp feedback 2026-10-12.

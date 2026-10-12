@@ -1965,8 +1965,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // variable that is not set yet.
                 const QString rmPath = findRoadmapUnder(callerCanonical);
                 if (!rmPath.isEmpty())
-                    measured = rcStampDriftFields(env, *store, *projectId,
-                                                  callerCanonical, rmPath);
+                    measured = rcStampDriftFields(   // ANTS-5667
+                        env, *store, *projectId,
+                        rcProjectRootFor(callerCanonical), rmPath);
             }
             env[QStringLiteral("sync_checked")] = measured;
         }
@@ -2099,7 +2100,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
                     *store, rcProjectRootFor(callerCanonical), text, nullptr,
                     &syncWhy)) {
-                if (rcStampDriftFields(out, *store, *pid, callerCanonical, path))
+                if (rcStampDriftFields(out, *store, *pid,    // ANTS-5667
+                                       rcProjectRootFor(callerCanonical), path))
                     measured = true;
             }
         }

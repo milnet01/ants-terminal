@@ -2275,13 +2275,16 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     if (guessed) *guessed = false;
     if (!idPrefixArg.isEmpty())
         return idPrefixArg;
+    // ANTS-5667 INV-9 — from an outer folder declaring `repo_root`, both the
+    // declaration and the folder-name default below are the repo root's.
+    const QString root = ProjectSettings::repoRootOf(callerCanonical);
     // ANTS-3771 § 2.3 — new step 2, ABOVE the store row. The store row records
     // what THIS STORE has allocated; the declaration records what the PROJECT
     // has decided, and where they disagree the project is right and the row is
     // a stale artefact of a migration. An explicit id_prefix argument still
     // wins (INV-7) — it is documented to override everything.
     const QString declared =
-        ProjectSettings::idFormatFor(callerCanonical).prefix;
+        ProjectSettings::idFormatFor(root).prefix;
     if (!declared.isEmpty())
         return declared;
     QString ignored;
@@ -2292,8 +2295,7 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     // ANTS-3863 — the ONE full() below the seam, and it is deliberately here:
     // sniffing the prefix out of the corpus needs every byte, and a migrated
     // project normally has a stored prefix and never reaches this line.
-    return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical,
-                                  guessed);
+    return rlResolveCounterPrefix(idPrefixArg, text.full(), root, guessed);
 }
 
 // ANTS-3771 — see remotecontrol_internal.h for what each of these three owes.

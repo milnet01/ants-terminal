@@ -2857,38 +2857,15 @@ void MainWindow::refreshRoadmapButton() {
         m_roadmapPath.clear();
         return;
     }
-    // ANTS-1137 — case-insensitive match against an explicit
-    // candidate list instead of QDir::entryInfoList(QDir::Files)
-    // which enumerated the entire CWD on every 2 s status-tick.
-    // On a directory with thousands of files (node_modules,
-    // ~/Downloads, vendored deps) the enumeration was visible
-    // UI stutter. The N QFileInfo::exists() calls remain O(1).
-    //
-    // ANTS-1459 — same docs/ / docs/private/ / docs/internal/ /
-    // .github/ widening as the roadmap_query MCP handler so the
-    // status-bar button surfaces on projects (RetroArch et al.)
-    // that don't keep ROADMAP.md at the repo root.
-    QString found;
-    const QStringList candidates = {
-        QStringLiteral("ROADMAP.md"),
-        QStringLiteral("roadmap.md"),
-        QStringLiteral("Roadmap.md"),
-        QStringLiteral("docs/ROADMAP.md"),
-        QStringLiteral("docs/roadmap.md"),
-        QStringLiteral("docs/private/ROADMAP.md"),
-        QStringLiteral("docs/private/roadmap.md"),
-        QStringLiteral("docs/internal/ROADMAP.md"),
-        QStringLiteral("docs/internal/roadmap.md"),
-        QStringLiteral(".github/ROADMAP.md"),
-        QStringLiteral(".github/roadmap.md"),
-    };
-    for (const QString &name : candidates) {
-        const QString candidate = cwd + QLatin1Char('/') + name;
-        if (QFileInfo::exists(candidate)) {
-            found = candidate;
-            break;
-        }
-    }
+    // ANTS-5667 — the same finder roadmap_query uses, so the button shows
+    // exactly where the verbs find a roadmap: a project subfolder, a
+    // `roadmap` key, and an outer folder's `repo_root`. It replaces a
+    // copy of the candidate list (ANTS-1459) that drifted from it. Still a
+    // fixed set of stat calls per tick, never a directory listing
+    // (ANTS-1137).
+    const QString canonical = QFileInfo(cwd).canonicalFilePath();
+    const QString found = canonical.isEmpty()
+        ? QString() : RemoteControl::roadmapFileFor(canonical);
     if (found.isEmpty()) {
         m_roadmapBtn->hide();
         m_roadmapPath.clear();

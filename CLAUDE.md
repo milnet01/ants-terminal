@@ -127,7 +127,8 @@ Retrofitting is a roadmap item, never an obligation. Models to copy:
   (deleting a project, backups, `kSchemaVersion`):
   [`.claude/rules/roadmap-store.md`](.claude/rules/roadmap-store.md).
 - Per-project layout: optional `<root>/.ants/project.json` (`source_roots`,
-  `test_roots`, `docs_dir`, `roadmap`, `changelog`, `specs_dir`).
+  `test_roots`, `docs_dir`, `roadmap`, `changelog`, `specs_dir`, and
+  `repo_root` for an outer folder whose clone sits one level down).
   World-readable, no secrets. Edited by `project_settings`.
 - Scrollback default 50k, max 1M.
 - Theme colours are set on `TerminalGrid`, which holds the ANSI palette.

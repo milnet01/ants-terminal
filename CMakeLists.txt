@@ -2958,6 +2958,8 @@ if(ANTS_TESTS)
                 # bundle's subset link does not carry.
                 tests/features/roadmap_synth_id/test_synth_id.cpp
                 tests/features/roadmap_subdir_dispatch/test_roadmap_subdir_dispatch.cpp
+                # ANTS-5667 — an outer folder resolves to its repo_root clone.
+                tests/features/project_repo_root/test_project_repo_root.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
                 # the verbs, against stores the migration actually built.

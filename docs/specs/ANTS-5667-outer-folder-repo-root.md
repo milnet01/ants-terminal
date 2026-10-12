@@ -53,12 +53,12 @@ It reads only the folder it is given. It does not walk: each caller passes the f
 - **`ProjectSettings::idFormatFor(dir)`** reads the settings file at `repoRootOf(dir)`, for its other callers.
 - **`RemoteControl::cmdSessionMessage`** passes `repoRootOf(rr.cwd)` to `projectIdContaining`.
 - **`session_orient`'s `mail_pending` block** passes `repoRootOf(rootCanonical)` to `projectIdForRoot`.
-- **The status-bar mail chip** (`ClaudeStatusBarController::refreshMailChip`) passes `repoRootOf(cwd)` to `projectIdContaining`. `ants_claude_lib` gains `PRIVATE ants_mcpcore_lib`, where `ProjectSettings` lives.
+- **The status-bar mail chip** (`ClaudeStatusBarController::refreshMailChip`) passes `repoRootOf(cwd)` to `projectIdContaining`. `ants_claude_lib` already reaches `ants_mcpcore_lib`, where `ProjectSettings` lives, through its `PUBLIC ants_chrome_lib` chain, so no link edge is added.
 - **`hooks/ants-inbox-notice.sh`** is unchanged. A non-git outer folder skips its `git rev-parse` step and reaches `session_message`, which now resolves it.
 
 ### 2.4 The Roadmap button
 
-`MainWindow::refreshRoadmapButton` calls `rcdetail::findRoadmapUnder` on the tab's canonical folder and drops its own candidate list. It then shows the button exactly where `roadmap_query` finds a roadmap, including a project subfolder and a `roadmap` key. This replaces ANTS-1459 RQ-4, which kept two copies of the list equal by a source check; the copies drifted anyway.
+`MainWindow::refreshRoadmapButton` calls `rcdetail::findRoadmapUnder` on the tab's canonical folder, through the public wrapper `RemoteControl::roadmapFileFor` (`remotecontrol_internal.h` is for the remotecontrol sources only), and drops its own candidate list. It then shows the button exactly where `roadmap_query` finds a roadmap, including a project subfolder and a `roadmap` key. This replaces ANTS-1459 RQ-4, which kept two copies of the list equal by a source check; the copies drifted anyway.
 
 ### 2.5 `project_settings`
 
@@ -89,7 +89,7 @@ It reads only the folder it is given. It does not walk: each caller passes the f
 
 ## 4. RAM / build cost
 
-`repoRootOf` is one small file read per call. `ants_claude_lib` gains one link edge to `ants_mcpcore_lib`; no new translation unit beyond the test.
+`repoRootOf` is one small file read per call. No new link edge and no new translation unit beyond the test.
 
 ## 5. Out of scope
 
