@@ -484,8 +484,9 @@ repository, where such a skip had reported green since April.
 
 ## 8. Coverage
 
-- **Every fix carries a regression test.** Test-first makes this
-  automatic — the failing test *is* the start of the fix.
+- **Every fix carries a regression test**, except one proved by §1's
+  log-count red, where no harness can reproduce the failure. Test-first
+  makes this automatic — the failing test *is* the start of the fix.
 - **Every new feature carries at least one conformance test** against
   its contract.
 - **Every audit or review finding that gets fixed carries one**, for the
@@ -599,7 +600,7 @@ presented at its site as derived.
 | Tests obey `coding.md`, minus §1.3 (§9) | **`Partial:`** `check-code`'s language sweep reaches test files by its own rule — *"a tool-decided finding that happens to sit in a test file is this skill's"* — so `coding.md` § What checks this answers for whatever it names there. **nothing mechanical** for the rest: a code reviewer, who also has to know §9's carve-out exists |
 | A parity test names its reference (§11) | **nothing mechanical** — a code reviewer. All three of §11's breaches compile, run and pass |
 
-**The two `nothing` rows on §1 and §2 are the largest hole in this
+**The `nothing` rows on §1 and §2 are the largest hole in this
 standard**, and it is unclosable by tooling: that discipline rests on
 something no artifact records. That is why both sections state *why* the
 order matters rather than merely requiring it — a rule only habit
