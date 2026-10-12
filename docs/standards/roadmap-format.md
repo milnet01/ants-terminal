@@ -56,7 +56,8 @@ A project with no roadmap starts in the store: run `roadmap_migrate`
 `op:"init"`, add a release block (§ 3.2) with `roadmap_log`
 `op:"create_section"`, then add items to it with `roadmap_log`. Pass
 `id_prefix` on the first append to choose the prefix (§ 3.5.1);
-without it, the directory name sets it. The tools write the header
+without it, `id_format.prefix` in `.ants/project.json` sets it, and
+without that, the directory name. The tools write the header
 below. On a store-migrated project (§ 3.5.1),
 do not hand-edit `ROADMAP.md`.
 

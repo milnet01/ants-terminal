@@ -71601,7 +71601,7 @@ project. Reported causes are claims until checked in source.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5674] **roadmap-format.md § 3.1 names a declared id_format prefix as the default before the directory name.**
+- ✅ [ANTS-5674] **roadmap-format.md § 3.1 names a declared id_format prefix as the default before the directory name.**
   § 3.1 (CFG-0757's paragraph) says: pass `id_prefix` on the first
   append; "without it, the directory name sets it". The allocator puts
   a declared `.ants/project.json` id_format prefix first
@@ -71610,6 +71610,11 @@ project. Reported causes are claims until checked in source.
   a project declares one. Fix: name the declaration before the directory
   name. Apply rule 14's test to the edit; the claude-config copy has the
   same paragraph, so tell that session.
+  Resolved (2026-10-12): § 3.1 now names `id_format.prefix` in
+  .ants/project.json between the `id_prefix` argument and the directory
+  name, matching rlResolveCounterPrefix. The sniffed prefix is left out:
+  a first append has no ids to sniff. ~/.claude/standards/roadmap-format.md
+  (v1.1) has no § 3.1 paragraph of this shape, so claude-config owes no edit.
   **Layman:** The roadmap standard says where a new item's id prefix comes from, and it left out the prefix a project can declare.
   Kind: doc-fix.
   Source: in-session-2026-10-12 (ANTS-5672 check).
