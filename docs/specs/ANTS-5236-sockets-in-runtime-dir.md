@@ -176,10 +176,9 @@ its next launch. Until then:
   a candidate that is not a socket owned by the uid. Broken by reading the
   legacy name. *Test:* `tests/features/claude_socket_runtime_dir/` case
   `Inv3PickerIgnoresLegacyName`.
-- **INV-4** — `mcp-bridge.py`'s `pick_socket` finds a socket in
-  `$XDG_RUNTIME_DIR/ants-terminal/` and never one under the legacy
-  `/tmp/ants-terminal-mcp-*` name. Broken by reading that glob. *Test:*
-  `tests/features/mcp_bridge_client/test_mcp_bridge_client.py`.
+- **INV-4** — retired 2026-10-12 with `tools/mcp-bridge.py` (ANTS-5308).
+  It held that the bridge's `pick_socket` read the runtime directory, never
+  the legacy name. `ants-mcpd`'s picker is INV-3.
 - **INV-5** — The script from `statusHookScript()` delivers stdin to
   `$ANTS_CLAUDE_HOOK_SOCKET` when that socket exists, and with the variable
   unset delivers nothing, even to a listening legacy
@@ -258,7 +257,7 @@ their assertions rather than on the build.
 | INV-1 | `tests/features/claude_socket_runtime_dir/` |
 | INV-2 | `tests/features/claude_socket_runtime_dir/` |
 | INV-3 | `tests/features/claude_socket_runtime_dir/` |
-| INV-4 | `tests/features/mcp_bridge_client/` |
+| INV-4 | retired (ANTS-5308) |
 | INV-5 | `tests/features/claude_socket_runtime_dir/` |
 | INV-6 | `tests/features/claude_socket_runtime_dir/` |
 | INV-7 | `tests/features/claude_socket_runtime_dir/` |

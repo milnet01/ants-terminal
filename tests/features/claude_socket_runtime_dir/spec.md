@@ -8,7 +8,7 @@ Contract: [`docs/specs/ANTS-5236-sockets-in-runtime-dir.md`](../../../docs/specs
 - **INV-1** — the hook and MCP socket paths are in `antsRuntimeDir()`, not `tempPath()`. Case `Inv1PathsUseRuntimeDir`.
 - **INV-2** — a runtime directory at a mode other than 0700 binds nothing and creates nothing in `tempPath()`. Case `Inv2BadDirBindsNothing`.
 - **INV-3** — `pickTerminalSocket` scans the runtime directory, never picks a socket under the legacy `tempPath()` name (ANTS-5587), and skips a non-socket. Case `Inv3PickerIgnoresLegacyName`.
-- **INV-4** — checked elsewhere: a case in `../mcp_bridge_client/test_mcp_bridge_client.py`; the bridge's runtime pattern is the module variable `RUNTIME_SOCK_GLOB`.
+- **INV-4** — retired with `tools/mcp-bridge.py` (ANTS-5308). `ants-mcpd`'s picker is INV-3.
 - **INV-5** — the forwarder script delivers to `$ANTS_CLAUDE_HOOK_SOCKET`, and with it unset delivers nothing, even to a listening legacy socket of the `ants-terminal` ancestor (ANTS-5587). Case `Inv5ScriptUsesExportedSocketOnly`.
 - **INV-6** — `refreshStatusHookScript` rewrites a stale forwarder, leaves a current one alone, creates nothing. Case `Inv6RefreshOnlyWhatExists`.
 - **INV-7** — `reapStaleTerminalSockets` sweeps the runtime directory, keeps live and own sockets, and leaves the legacy `tempPath()` name alone (ANTS-5587), a regular file there included (ANTS-5080). Case `Inv7SweepCoversRuntimeDirOnly`.

@@ -110,7 +110,7 @@ include `note`.
 ### INV-10 — retried note append is idempotent (ANTS-3440)
 
 A flip/annotate can commit its ROADMAP.md write but still surface to the
-caller as a *client-side* transport timeout (mcp-bridge read-timeout);
+caller as a *client-side* transport timeout (MCP client read-timeout);
 the caller then retries. The status flip is naturally idempotent
 (emoji→same emoji), but a second `appendBodyNote` would duplicate the
 resolution note. `appendBodyNote` therefore dedups: when the exact

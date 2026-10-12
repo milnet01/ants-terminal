@@ -1,6 +1,6 @@
 // ANTS-4932 — ants-mcpd: the project-scoped Ants MCP verbs, served over stdio.
 //
-// Claude Code launches this in place of tools/mcp-bridge.py. It answers every
+// Claude Code launches this as its Ants MCP server. It answers every
 // verb that reads no tab or terminal state itself, and forwards the rest to a
 // running terminal. Because the client starts it, a rebuilt ants-mcpd is
 // picked up by a client reconnect: no terminal relaunch, so no Claude Code

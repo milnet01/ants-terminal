@@ -1677,14 +1677,6 @@ if(ANTS_TESTS)
             TIMEOUT 30)
     endif()
 
-    # tools/mcp-bridge.py: symlink-safe socket pick, sane timeouts, and a
-    # reply rather than a crash on a non-object request.
-    add_test(NAME mcp_bridge_client
-             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/mcp_bridge_client/test_mcp_bridge_client.py")
-    set_tests_properties(mcp_bridge_client PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 60)
-
     # ANTS-5577 — release.sh, release-notes.sh and obs-status.sh behavioural
     # conformance (shell harnesses drive the real scripts against throwaway git
     # repos and an osc shim; the C++ release_pipeline test keeps the

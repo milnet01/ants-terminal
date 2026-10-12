@@ -25,8 +25,8 @@ When the line does not parse, the server replies with JSON-RPC error
 is `-32600` (Invalid Request). Either reply carries `jsonrpc: "2.0"` and
 `id: null`, ends in a newline, and closes the connection.
 
-`tools/mcp-bridge.py`, the production client, already ends every request
-with a newline.
+`ants-mcpd`, the production client, already ends every request with a
+newline.
 
 ## Invariants
 

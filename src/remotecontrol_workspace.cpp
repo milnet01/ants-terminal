@@ -1921,8 +1921,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
 
     // ANTS-4736 — the batch deadline.
     //
-    // The bridge stops waiting for a reply after ANTS_MCP_READ_TIMEOUT_S
-    // (tools/mcp-bridge.py, default 60) while this loop keeps running. So a
+    // The client stops waiting for a reply after its read timeout (ants-mcpd:
+    // kTimeoutMs in src/mcpdforwarder.cpp, 60 s) while this loop keeps
+    // running. So a
     // batch that outlives it went on mutating the file BETWEEN the caller's
     // next commands: observed as a suite that failed one test, then passed it
     // alone, then passed twice. That is the leaked-mutant failure this verb

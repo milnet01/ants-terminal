@@ -12,6 +12,12 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Removed
+
+- **The old Python MCP connector, tools/mcp-bridge.py, is gone; ants-mcpd replaces it.** (ANTS-5308)
+  If Claude Code still points at the old script, run the
+  `claude mcp add` command in the README again.
+
 ## [0.7.114] - 2026-10-12
 
 **Theme:** A side panel that lists every tab by its full name, with Go

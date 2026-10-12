@@ -13,8 +13,7 @@
 namespace mcpd {
 
 namespace {
-// Same ceilings as tools/mcp-bridge.py: the terminal's reply cap, and the
-// bridge's connect and read timeouts.
+// The terminal's reply cap, and the connect and read timeout.
 constexpr qsizetype kMaxReplyBytes = 10 * 1024 * 1024;
 constexpr int kTimeoutMs = 60 * 1000;
 }  // namespace

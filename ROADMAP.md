@@ -68001,7 +68001,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-request-2026-09-07.
   Lanes: mcp, build.
 
-- 📋 [ANTS-5308] **Retire tools/mcp-bridge.py once ants-mcpd has shipped for one release.**
+- ✅ [ANTS-5308] **Retire tools/mcp-bridge.py once ants-mcpd has shipped for one release.**
   ANTS-4932 keeps the Python bridge for one release as a fallback, so a
   half-migrated machine degrades to today's behaviour. This item removes
   it after that release: delete the script, its README setup line, and
@@ -68019,6 +68019,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   release", so keep the bridge in 0.7.114 and remove it in 0.7.115.
   README now names both versions. The user wants it removed then for
   certain. Do it straight after 0.7.114 is tagged.
+  Resolved (2026-10-12): tools/mcp-bridge.py and its test
+  (tests/features/mcp_bridge_client) deleted, the ctest registration
+  dropped, README tells a user still pointing at it to re-register, and
+  comments that named the bridge now name ants-mcpd. No packaging
+  installed the bridge. ANTS-5236 INV-4 retired with it.
   **Layman:** After the new standalone MCP program has been out for a release, remove the old Python bridge it replaced.
   Kind: chore.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).
