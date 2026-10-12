@@ -71169,7 +71169,7 @@ project. Reported causes are claims until checked in source.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-10-06 (GAME-0190 spec).
   Lanes: mcp.
 
-- 📋 [ANTS-5628] **Shorten the schemas of the four always-loaded verbs, which every session pays for at start.**
+- ✅ [ANTS-5628] **Shorten the schemas of the four always-loaded verbs, which every session pays for at start.**
   workspace_search, file_outline, read_region and find_definition stay in
   kEagerVerbs. Measured 2026-10-08 with `claude -p "/context"` in an empty
   directory: 4.8k, 3.2k, 3k and 0.9k tokens. Most of it is per-parameter
@@ -71177,6 +71177,16 @@ project. Reported causes are claims until checked in source.
   tool_info {name:...} serves it on demand; keep a short purpose and a
   one-line summary per argument. Re-measure before and after; tell the
   claude-config session the result.
+  Shipped (2026-10-12): the tools/list wire copy of every alwaysLoad
+  verb replaces each long argument description with a one-line summary
+  from a table in claudeintegration.cpp; the saved list tool_info reads
+  keeps the full text. Measured with a stdio tools/list against
+  build/ants-mcpd: workspace_search 13,015 to 4,228 bytes, file_outline
+  8,792 to 2,999, read_region 8,167 to 2,856, find_definition 2,793 to
+  1,884; total 32,767 to 11,967 (about 8.2k to 3.0k tokens at 4 bytes
+  per token, not re-measured with /context). Locked by mcp_eager_load
+  Ants5628WireArgumentsAreShort. Reaches a session on its next /mcp
+  reconnect or start; no terminal relaunch.
   **Layman:** Every Claude Code session on the machine starts by loading four Ants tools in full; trimming their wording makes every session start lighter.
   Kind: perf.
   Source: claude-config request 2026-10-08.

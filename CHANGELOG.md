@@ -133,6 +133,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The four always-loaded Ants MCP tools send one-line argument descriptions, cutting what every Claude Code session loads at start by about two thirds** (ANTS-5628)
+  workspace_search, file_outline, read_region and find_definition went
+  from 32,767 to 11,967 bytes in tools/list. The full argument text is
+  still served by tool_info {name}.
+
 - **The task-list and background-task trackers share one file watch on the Claude transcript instead of keeping one each** (ANTS-1285)
   Each append to the transcript now wakes one watch, not two, and a
   watch lost to a file replacement is restored for both trackers at once.

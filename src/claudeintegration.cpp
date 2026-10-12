@@ -15692,6 +15692,83 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     }
                 }
 
+                // ANTS-5628 — an always-loaded verb's schema is paid for by
+                // every session at start, so on the wire each of its argument
+                // descriptions becomes a one-line summary. The snapshot above
+                // keeps the full text, and tool_info {name} serves it, which
+                // the description's pointer already names. Keyed by
+                // "verb/arg" first, then by "arg" for the arguments the four
+                // verbs share. A summary is used only where it is shorter;
+                // an argument with no entry keeps its own text.
+                {
+                    static const QHash<QString, QString> kArgSummary = {
+                        {QStringLiteral("caller_cwd"), QStringLiteral("Your $PWD (required); picks the project.")},
+                        {QStringLiteral("compact"), QStringLiteral("Drop null, false and empty fields from the reply.")},
+                        {QStringLiteral("encoding"), QStringLiteral("\"tabular\" packs object arrays as {__cols__, __rows__}; default \"json\".")},
+                        {QStringLiteral("etag_match"), QStringLiteral("Etag from an earlier call; an unchanged result returns {unchanged:true}.")},
+                        {QStringLiteral("fields"), QStringLiteral("Return only these top-level reply fields.")},
+                        {QStringLiteral("raw"), QStringLiteral("Return the file text verbatim; use it when you will Edit from the output.")},
+                        {QStringLiteral("workspace_search/context"), QStringLiteral("Lines of context around each match (0-10).")},
+                        {QStringLiteral("workspace_search/count_only"), QStringLiteral("Return only the match and file counts.")},
+                        {QStringLiteral("workspace_search/dedup"), QStringLiteral("Fold identical lines into one match with also_at (default true).")},
+                        {QStringLiteral("workspace_search/enclosing_symbol"), QStringLiteral("Name the function each match is inside.")},
+                        {QStringLiteral("workspace_search/exclude_glob"), QStringLiteral("Glob or globs to leave out, written positively (\"docs/**\").")},
+                        {QStringLiteral("workspace_search/files_only"), QStringLiteral("Return only the matching files, with hit counts.")},
+                        {QStringLiteral("workspace_search/glob"), QStringLiteral("One inclusion glob, e.g. \"*.cpp\" or \"docs/{a,b}.md\".")},
+                        {QStringLiteral("workspace_search/headline_only"), QStringLiteral("Rows as {file, line, headline}, without context.")},
+                        {QStringLiteral("workspace_search/lane"), QStringLiteral("Subdirectory to search, e.g. \"src\".")},
+                        {QStringLiteral("workspace_search/match_wrapped"), QStringLiteral("Match a literal quotation across hard line wraps.")},
+                        {QStringLiteral("workspace_search/matches_only"), QStringLiteral("Return the distinct matched strings, with counts.")},
+                        {QStringLiteral("workspace_search/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
+                        {QStringLiteral("workspace_search/max_match_bytes"), QStringLiteral("Clip each match's text to N bytes (default 512; 0 = no clip).")},
+                        {QStringLiteral("workspace_search/offset"), QStringLiteral("Skip the first N matches; pass back next_offset to page.")},
+                        {QStringLiteral("workspace_search/query"), QStringLiteral("Alias for pattern.")},
+                        {QStringLiteral("workspace_search/respect_gitignore"), QStringLiteral("false also searches ignored files.")},
+                        {QStringLiteral("workspace_search/timeout_sec"), QStringLiteral("ripgrep time budget in seconds (1-30, default 5).")},
+                        {QStringLiteral("file_outline/etags"), QStringLiteral("{path: etag} for the paths form; an unchanged file returns a stub.")},
+                        {QStringLiteral("file_outline/filter"), QStringLiteral("Keep only symbols whose name contains this text.")},
+                        {QStringLiteral("file_outline/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
+                        {QStringLiteral("file_outline/max_heading_level"), QStringLiteral("Markdown: drop headings deeper than this level.")},
+                        {QStringLiteral("file_outline/max_symbols"), QStringLiteral("Cap on symbols[] (default 200).")},
+                        {QStringLiteral("file_outline/paths"), QStringLiteral("Several paths in one call; returns files[].")},
+                        {QStringLiteral("file_outline/sizes"), QStringLiteral("Add bytes and lines to each symbol.")},
+                        {QStringLiteral("read_region/call_sequence"), QStringLiteral("Also return the region's calls in order, and the accessors it uses.")},
+                        {QStringLiteral("read_region/max_line_bytes"), QStringLiteral("Clip each line to N bytes.")},
+                        {QStringLiteral("read_region/section"), QStringLiteral("Markdown heading text or slug; returns that section.")},
+                        {QStringLiteral("find_definition/include_body"), QStringLiteral("Return each definition's body inline.")},
+                    };
+                    for (int i = 0; i < tools.size(); ++i) {
+                        QJsonObject t = tools.at(i).toObject();
+                        if (!t.value(QStringLiteral("_meta")).toObject()
+                                 .value(QStringLiteral("anthropic/alwaysLoad"))
+                                 .toBool())
+                            continue;
+                        const QString name =
+                            t.value(QStringLiteral("name")).toString();
+                        QJsonObject schema =
+                            t.value(QStringLiteral("inputSchema")).toObject();
+                        QJsonObject props =
+                            schema.value(QStringLiteral("properties")).toObject();
+                        for (auto pit = props.begin(); pit != props.end(); ++pit) {
+                            QString summary = kArgSummary.value(
+                                name + QLatin1Char('/') + pit.key());
+                            if (summary.isEmpty())
+                                summary = kArgSummary.value(pit.key());
+                            QJsonObject p = pit.value().toObject();
+                            if (summary.isEmpty()
+                                || summary.size()
+                                       >= p.value(QStringLiteral("description"))
+                                              .toString().size())
+                                continue;
+                            p[QStringLiteral("description")] = summary;
+                            pit.value() = p;
+                        }
+                        schema[QStringLiteral("properties")] = props;
+                        t[QStringLiteral("inputSchema")] = schema;
+                        tools.replace(i, t);
+                    }
+                }
+
                 // ANTS-1502 — two-tier discovery. When the caller
                 // requests `_meta.shape == "lite"`, return a compact
                 // shape `[{name, summary, kind}]` per tool (~80 chars

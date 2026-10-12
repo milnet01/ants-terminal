@@ -26,6 +26,13 @@ deferred: most sessions call them rarely.
   `roadmap_log` nor `changelog_log`. *Test:* source-grep for the field
   and the set name, then membership read from the set's initializer.
 
+- **ANTS-5628** — on the wire, every argument description of an
+  always-loaded verb is at most 140 characters, and `tool_info {name}`
+  still returns the full text. Breaks if the wire copy carries the long
+  per-argument prose, or if the shortening reaches the saved list
+  `tool_info` reads. *Test:* `Ants5628WireArgumentsAreShort` runs
+  `tools/list` and `tool_info` in-process.
+
 ## Pre-fix check
 
 Against pre-fix code the `anthropic/alwaysLoad` field and `kEagerVerbs`
