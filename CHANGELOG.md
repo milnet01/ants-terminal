@@ -197,6 +197,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude context gauge appears after the first reply, even when the session's newest message is very long.** (ANTS-5657)
+
 - **Closed tabs stay closed after a restart** (ANTS-5654)
   Closing a tab now deletes its saved copy, and a saved tab list that
   names only lost tabs no longer brings back tabs closed long ago.

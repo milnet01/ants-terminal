@@ -440,43 +440,47 @@ void ClaudeIntegration::pollClaudeProcess() {
 // --- Session Transcripts ---
 
 // ANTS-1163: read the most recent ISO 8601 `timestamp` field from the
-// JSONL tail. Walks backwards over the last 32 KB so we don't pay the
-// full transcript scan on every refresh tick. Returns 0 when no
+// JSONL tail. Walks backwards from the last 32 KB, widening only when
+// that holds no timestamped record, so we don't pay the full transcript
+// scan on every refresh tick. Returns 0 when no
 // timestamped event sits in the tail window — caller falls back to
 // file mtime.
 qint64 ClaudeIntegration::lastEventTimestampMs(const QString &path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return 0;
-
-    constexpr qint64 kWindow = 32 * 1024;
     const qint64 size = f.size();
-    const qint64 start = std::max<qint64>(0, size - kWindow);
-    if (!f.seek(start)) return 0;
-    QByteArray tail = f.read(size - start);
-    f.close();
 
-    // Drop a likely-truncated leading partial line if we didn't read
-    // from offset 0 — same trick parseTranscriptTail uses.
-    if (start > 0) {
-        const int firstNl = tail.indexOf('\n');
-        if (firstNl < 0) return 0;
-        tail.remove(0, firstNl + 1);
-    }
+    // ANTS-5657 — a record can outgrow the window (a long tool result),
+    // leaving no whole timestamped record in it. Widen fourfold and retry,
+    // up to the per-record cap parseTranscriptTail uses (ANTS-5089).
+    for (qint64 window = 32 * 1024;; window *= 4) {
+        window = std::min(window, kMaxTranscriptRecordBytes);
+        const qint64 start = std::max<qint64>(0, size - window);
+        if (!f.seek(start)) return 0;
+        QByteArray tail = f.read(size - start);
 
-    const QList<QByteArray> lines = tail.split('\n');
-    for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
-        const QByteArray line = it->trimmed();
-        if (line.isEmpty()) continue;
-        const QJsonDocument doc = QJsonDocument::fromJson(line);
-        if (!doc.isObject()) continue;
-        const QJsonValue ts = doc.object().value(QStringLiteral("timestamp"));
-        if (!ts.isString()) continue;
-        const QDateTime dt = QDateTime::fromString(
-            ts.toString(), Qt::ISODateWithMs);
-        if (!dt.isValid()) continue;
-        return dt.toMSecsSinceEpoch();
+        // Drop a likely-truncated leading partial line if we didn't read
+        // from offset 0 — same trick parseTranscriptTail uses.
+        if (start > 0) {
+            const int firstNl = tail.indexOf('\n');
+            tail.remove(0, firstNl >= 0 ? firstNl + 1 : tail.size());
+        }
+
+        const QList<QByteArray> lines = tail.split('\n');
+        for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+            const QByteArray line = it->trimmed();
+            if (line.isEmpty()) continue;
+            const QJsonDocument doc = QJsonDocument::fromJson(line);
+            if (!doc.isObject()) continue;
+            const QJsonValue ts = doc.object().value(QStringLiteral("timestamp"));
+            if (!ts.isString()) continue;
+            const QDateTime dt = QDateTime::fromString(
+                ts.toString(), Qt::ISODateWithMs);
+            if (!dt.isValid()) continue;
+            return dt.toMSecsSinceEpoch();
+        }
+        if (start == 0 || window >= kMaxTranscriptRecordBytes) return 0;
     }
-    return 0;
 }
 
 // ANTS-1163: wall-clock epoch ms when `pid` started. /proc/<pid>/stat

@@ -222,3 +222,17 @@ No caller wants the machine-wide newest.
 - **INV-23** — `activeSessionPath("")` returns empty, even when a fresh
   transcript exists under `~/.claude/projects/`. *Test:*
   `ClaudeSessionFreshness.EmptyCwdIsNotUnscoped`.
+
+## 9. ANTS-5657 — a long newest record hides the session
+
+`lastEventTimestampMs` read a fixed 32 KB tail. When the newest record
+was longer, it found no timestamp and returned 0, and with a Claude PID
+known (INV-11) the transcript was rejected. The context gauge then
+stayed hidden until a short record landed last.
+
+- **INV-24** — when the newest record is longer than 32 KB and carries
+  a timestamp, `lastEventTimestampMs` returns that timestamp. *Test:*
+  `ClaudeSessionFreshness.LongLastRecordStillHasATimestamp`.
+- **INV-25** — when a long newest record has no timestamp,
+  `lastEventTimestampMs` returns the timestamp of the record before
+  it. *Test:* `ClaudeSessionFreshness.LongLastRecordStillHasATimestamp`.

@@ -709,3 +709,36 @@ TEST(ClaudeSessionFreshness, EmptyCwdIsNotUnscoped) {
     EXPECT_EQ(ci.activeSessionPath(QString()), QString())
         << "INV-23: an empty cwd returned another project's transcript";
 }
+
+// ANTS-5657 — a record longer than the first 32 KB read window. Tool
+// results this size are common at session start.
+TEST(ClaudeSessionFreshness, LongLastRecordStillHasATimestamp) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString iso = QStringLiteral("2026-10-12T06:00:00.000Z");
+    const qint64 want = QDateTime::fromString(iso, Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const QByteArray filler(200 * 1024, 'x');
+
+    // INV-24: the newest record is long and timestamped.
+    const QString p1 = dir.path() + "/long_last.jsonl";
+    {
+        const QByteArray longRecord = QStringLiteral(
+            R"({"type":"user","timestamp":"%1","message":{"role":"user","content":"%2"}})")
+            .arg(iso, QString::fromLatin1(filler)).toUtf8();
+        ASSERT_TRUE(writeWithMtime(p1, fixtureBody({
+            timestampedAssistantEvent(QStringLiteral("2026-10-12T05:00:00.000Z")),
+            longRecord}), 1760248800));
+    }
+    EXPECT_EQ(ClaudeIntegration::lastEventTimestampMs(p1), want);
+
+    // INV-25: a long record with no timestamp is passed over to the
+    // timestamped record before it.
+    const QString p2 = dir.path() + "/long_meta_last.jsonl";
+    {
+        const QByteArray longMeta =
+            QByteArray(R"({"type":"summary","text":")") + filler + QByteArray("\"}");
+        ASSERT_TRUE(writeWithMtime(p2, fixtureBody({timestampedAssistantEvent(iso), longMeta}),
+                                   1760248800));
+    }
+    EXPECT_EQ(ClaudeIntegration::lastEventTimestampMs(p2), want);
+}

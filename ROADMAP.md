@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5656 -->
+<!-- ants-roadmap-id-high-water: ANTS=5657 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84898,6 +84898,21 @@ a modern terminal" release.
   Kind: feature.
   Source: user-request-2026-10-12.
   Lanes: chrome.
+
+- ✅ [ANTS-5657] **The context gauge stays hidden while the transcript's newest record is over 32 KB.**
+  `ClaudeIntegration::lastEventTimestampMs` reads a fixed 32 KB tail.
+  When the newest record is longer, it finds no timestamp and returns 0,
+  and with a Claude PID known `effectiveLastEventMs` rejects the
+  transcript (ANTS-2191), so `sessionPathForCwd` finds nothing and the
+  gauge never gets a token count. Large tool results cluster at session
+  start. Fix: grow the window until a timestamped record is found, as
+  `parseTranscriptTail` does (ANTS-5089).
+  Shipped 2026-10-12: lastEventTimestampMs widens its window fourfold
+  up to 16 MiB. INV-24 and INV-25 failed before the change.
+  **Layman:** The Claude context gauge can take minutes to appear at the start of a session; it should appear after the first reply.
+  Kind: fix.
+  Source: user-report-2026-10-12.
+  Lanes: claude.
 
 ### 🐛 Carried over from 0.7.x
 
