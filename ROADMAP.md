@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5668 -->
+<!-- ants-roadmap-id-high-water: ANTS=5670 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -53944,6 +53944,8 @@ are closed inline in the feedback files rather than filed here.
   the ANTS-5364 shape: let max_bytes raise the spill threshold for the
   call up to a ceiling, or inline whole slices in item order until the
   budget runs out.
+  On ship: message the pressless project inbox (session_message to:
+  pressless); it owes a re-test (promised 2026-10-12).
   **Layman:** The tool for fetching several pieces of a file at once returns nothing usable, while fetching the same pieces one at a time works.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
@@ -70747,6 +70749,11 @@ project. Reported causes are claims until checked in source.
   docs/specs/ANTS-5506-mcpd-call.md reports `HOME`, `XDG_CONFIG_HOME`
   and `XDG_DATA_HOME` as unresolved symbols. Enum values in the same run
   are ANTS-5535's.
+  Seen again 2026-10-12 (Vestige): gtest names from TEST(Suite, Name),
+  such as `Ph2_ZeroOrNegativeRangeMisses`, plus GL calls
+  (`glGetNamedBufferSubData`) and CMake functions
+  (`FetchContent_Declare`). Vestige suggests a quieter not_checked class
+  for GL and CMake names. Rest of that finding: ANTS-5669.
   **Layman:** The document checker flags real names as missing when they come from the build file, the tests or the Qt library, so its warnings get ignored.
   Kind: fix.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
@@ -71467,6 +71474,41 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: claude-config session report 2026-10-12.
   Lanes: remotecontrol.
+
+### Ants MCP feedback from CC sessions — 2026-10-12 triage
+
+- 📋 [ANTS-5669] **doc_symbols resolves names from vendored dependencies and std::, and reports function parameters as not checked.**
+  Vestige: doc_lint (doc_symbols) on docs/engine/physics/spec.md
+  reported 76 unresolved names, every one real. This item covers three of
+  the six classes: symbols of a FetchContent dependency under
+  build/_deps/*-src (`JPH::BodyInterface`, `JPH_ASSERT`), std:: names
+  (`std::unique_ptr`, `std::bad_alloc`) and function parameters
+  (`normalAxis`, `outHitDistance`). Suggested: walk build/_deps/*-src and
+  external/ (or a declared deps dir) for third-party names; treat a std::
+  prefix as external; report parameters as not_checked, not unresolved.
+  The other three classes are already filed: enumerators under ANTS-5535;
+  gtest, CMake and GL names under ANTS-5544.
+  Related: ANTS-5357, ANTS-5626.
+  **Layman:** The document checker reports real names as missing when they come from a downloaded library, the C++ standard library or a function's own arguments, so the real mistakes get lost.
+  Kind: fix.
+  Source: feedback-Vestige-2026-10-12.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-5670] **doc_symbols resolves Rust const and static items and impl methods, and reports crate-path names as not checked.**
+  rusty-psn: doc_lint (doc_symbols) over STANDARDS.md reported 26 of 58
+  unresolved. Several exist: `ALLOWED_DOMAINS` and
+  `security::ALLOWED_DOMAINS` (pub const in src/security.rs),
+  `MAX_METADATA_SIZE`, `CHUNK_SIZE`, `MERGE_CHUNK_SIZE`, `INVALID_CHARS`.
+  Plain fn names already resolve (docs/design.md: 15 of 15). Others are
+  library items (`tokio::sync::mpsc`, `reqwest::Client`) no project index
+  can resolve. Fix: index Rust `const` / `static` items and methods inside
+  `impl` blocks; report a crate-path symbol as not_checked rather than
+  unresolved. The one real dead name in that run (`PlaformVariant`) was
+  buried among the false ones. Related: ANTS-5357, ANTS-5626.
+  **Layman:** The document checker cannot see some kinds of Rust names, so a Rust project's documents look full of dead references that are not dead.
+  Kind: fix.
+  Source: feedback-rusty-psn-source-2026-10-12.
+  Lanes: mcp, docs.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
@@ -92107,6 +92149,12 @@ reports are asked for separately, each time.
   separate `external` class for names from a known library rather than
   `unresolved`. Verify: doc_lint over ANTS-1302 no longer lists the
   Selection values.
+  Seen again 2026-10-12 (Vestige, docs/engine/physics/spec.md):
+  `ConstraintType::HINGE`, `CollisionShapeType::BOX` and
+  `ClothBackendPolicy::FORCE_CPU` reported unresolved though the enums
+  are in engine/physics/*.h. Vestige suggests resolving a qualified
+  name's last segment against its qualifier. Rest of that finding:
+  ANTS-5669.
   **Layman:** The tool that checks names in documents cannot see the individual values of a list type, so it reports real names as missing.
   Kind: fix.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
