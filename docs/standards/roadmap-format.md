@@ -52,9 +52,11 @@ omitted shipped work would not conform.
 
 ### 3.1 File header
 
-A new roadmap starts in the store: run `roadmap_migrate`
-`op:"init"`, then add items with `roadmap_log`. Do not hand-write
-`ROADMAP.md`; the render writes the header below.
+A project with no roadmap starts in the store: run `roadmap_migrate`
+`op:"init"`, add a release block (§ 3.2) with `roadmap_log`
+`op:"create_section"`, then add items to it with `roadmap_log`. The
+tools write the header below. On a store-migrated project (§ 3.5.1),
+do not hand-edit `ROADMAP.md`.
 
 A conforming file declares the format version with an HTML
 comment in the **first five lines**:

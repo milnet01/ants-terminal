@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5670 -->
+<!-- ants-roadmap-id-high-water: ANTS=5671 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71509,6 +71509,27 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: feedback-rusty-psn-source-2026-10-12.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-5671] **roadmap_migrate op:"init" starts a roadmap with a release block, and its file carries the generated-file notice.**
+  Found by both lanes of the 2026-10-12 roadmap-format.md gate.
+  initSkeleton() writes one section, `## Backlog`, and the init reply's
+  `next_step` tells the caller to append there. roadmap-format.md § 3.2
+  says a `##` that is neither a version nor a phase block is never selected
+  by § 3.5.4, so items filed as told are never worked. § 3.1 now tells a
+  conformer to add a release block first; the skeleton and `next_step`
+  should do it themselves (e.g. a `## 0.1.0` block, or point next_step at
+  op:"create_section").
+  Second gap: nothing renders after init (the handler falls through to
+  the migrate, which reports markdown_rewritten:false), so the file has no
+  generated-file notice until the first roadmap_log write. A clone
+  committed in that state does not trigger § 3.5.1's store rebuild on
+  another machine. Fix: run the render at the end of op:"init".
+  Code: src/remotecontrol_roadmap_migrate.cpp (op:"init" branch),
+  src/roadmapmigrateverb.cpp initSkeleton().
+  **Layman:** Starting a new roadmap gives you a section where nothing is ever picked up for work, and a file that does not yet say it is generated.
+  Kind: fix.
+  Source: in-session-2026-10-12 (review-contract on roadmap-format.md, CFG-0757).
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
