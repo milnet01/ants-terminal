@@ -231,7 +231,7 @@ moves inside a run, the recipe's verb moves it.
 `CHANGELOG.md` is not generated. **Step 3** is a roadmap edit and goes
 through the store's write verb, which mutates the store and re-renders;
 editing the rendered file by hand loses the change at the next render.
-**Step 4 is not yet performable** — `roadmap-format.md` § 3.12 owns that and says why.
+**Step 4** renames a store section, `roadmap_log op:"retitle_section"`; `roadmap-format.md` § 3.12 owns that.
 
 ## What checks this
 
@@ -255,7 +255,7 @@ here went stale when the next row landed. `documentation.md` § 2.8 item 3.
 | § 4.3 step 1 — a dated section exists with content | `cut-release` Phase 0e, which stops the release — **unless the recipe performs the cut itself, when 0e passes and the check moves to the recipe's `post_check`, which is optional**. It reads for readiness, not format: any dash, and it does not check the section's internal shape |
 | § 4.3 step 3 — bullets flipped to ✅ | `cut-release` Phase 0f, which stops on any ROADMAP ID the section claims shipped that is not ✅ |
 | § 4.3 step 2 — `[Unreleased]` was actually emptied | **nothing** — a changelog whose `[Unreleased]` was never emptied looks exactly like one with nothing unreleased |
-| § 4.3 step 4 on a store-backed project | **`roadmap-format.md` § 3.12**, which owns why it is not yet performable |
+| § 4.3 step 4 on a store-backed project | **`roadmap-format.md` § 3.12**, which owns the store operation |
 
 ## Cold-eyes loop log
 
