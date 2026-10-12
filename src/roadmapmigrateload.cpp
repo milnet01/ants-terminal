@@ -463,6 +463,12 @@ bool Loader::matchItems() {
     // source the reader cannot disambiguate is also what ANTS-3771 exists to
     // stop doing. The duplicate is evidence the lead-in was prose, and only
     // the author can say which bullet keeps the name.
+    const auto site = [&](const PlannedItem &p) {
+        const QString path = p.sourceIndex < plan.sources.size()
+                                 ? plan.sources.at(p.sourceIndex).path
+                                 : QStringLiteral("<source %1>").arg(p.sourceIndex);
+        return QStringLiteral("'%1' at %2:%3").arg(p.id, path).arg(p.firstLine);
+    };
     QHash<QString, qsizetype> claimedBy;
     for (qsizetype i = 0; i < plan.items.size(); ++i) {
         const PlannedItem &it = plan.items.at(i);
@@ -481,13 +487,7 @@ bool Loader::matchItems() {
         // Each site carries ITS OWN spelling, because the fold is
         // case-insensitive and the two need not be spelled alike — quoting one
         // spelling for both sends the reader grepping for a string that occurs
-        // once.
-        const auto site = [&](const PlannedItem &p) {
-            const QString path = p.sourceIndex < plan.sources.size()
-                                     ? plan.sources.at(p.sourceIndex).path
-                                     : QStringLiteral("<source %1>").arg(p.sourceIndex);
-            return QStringLiteral("'%1' at %2:%3").arg(p.id, path).arg(p.firstLine);
-        };
+        // once. site() above quotes each item's own id.
         return fail(QStringLiteral(
                         "two bullets claim one id — %1 and %2 — which the store folds "
                         "to the single identity '%3'. %4Give one of them a distinct id.")
@@ -658,6 +658,20 @@ bool Loader::matchItems() {
         if (!recordHistory(pk, QStringLiteral("id"), cur->id, it.id, &seq))
             return false;
         note("id_reassigned", QStringLiteral("%1 -> %2").arg(cur->id, it.id));
+    }
+
+    // ANTS-5662 — a NEW item with an empty headline is refused by name, for
+    // the duplicate-id reason above. The reader keeps an id-bearing bullet
+    // whose headline did not parse (no bold span, or an unclosed `**`), and
+    // putItem() died on `NOT NULL constraint failed: item.headline`. A MATCHED
+    // item may arrive empty: its stored headline stands (field_conflict).
+    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+        const PlannedItem &it = plan.items.at(i);
+        if (!matchPk.at(i) && it.headline.isEmpty())
+            return fail(QStringLiteral(
+                            "bullet %1 has no headline. Write it in bold after the "
+                            "id, as `**Headline.**` (roadmap-format.md § 3.5).")
+                            .arg(site(it)));
     }
 
     // ANTS-5258 — resolve the per-item match records, AFTER every pass has

@@ -1636,3 +1636,34 @@ TEST(roadmap_migrate_read, Ants5495RaggedTableRowIsNoted) {
             named = n.detail.contains(QStringLiteral("chrome"));
     EXPECT_TRUE(named) << "the detail names the row's first cell";
 }
+
+// ANTS-5662 — rusty-psn's import died on "NOT NULL constraint failed:
+// item.headline", naming no bullet. Two shapes were suspected; neither reaches
+// it (the cause was a headline not in bold, refused by name in the load).
+// These lock the reader's handling of both: a sub-list is body text, and a `*`
+// inside a code span does not end the bold headline.
+TEST(roadmap_migrate_read, Ants5662IndentedSubListIsBody) {
+    const QString md = v1Doc(QString::fromUtf8(
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An item.**\n"
+        "  Kind: implement.\n"
+        "  - a sub-point\n"
+        "  - another sub-point\n"
+        "  Source: test.\n"));
+    const MigrationPlan plan = planText(md);
+    ASSERT_EQ(plan.items.size(), 1);
+    EXPECT_EQ(plan.items[0].headline, QStringLiteral("An item."));
+    EXPECT_TRUE(plan.items[0].body.contains(QStringLiteral("- a sub-point")))
+        << qPrintable(plan.items[0].body);
+    EXPECT_TRUE(plan.items[0].body.contains(QStringLiteral("- another sub-point")));
+    EXPECT_EQ(partitionFault(md, plan), QString());
+}
+
+TEST(roadmap_migrate_read, Ants5662StarInHeadlineCodeSpan) {
+    const QString md = v1Doc(QString::fromUtf8(
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **Fix `VC*` matching.**\n"
+        "  Kind: fix.\n"
+        "  Source: test.\n"));
+    const MigrationPlan plan = planText(md);
+    ASSERT_EQ(plan.items.size(), 1);
+    EXPECT_EQ(plan.items[0].headline, QStringLiteral("Fix `VC*` matching."));
+}

@@ -34,6 +34,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_migrate names the bullet and line of an item with no bold headline** (ANTS-5662)
+  The import now refuses such an item with its id and file:line,
+  dry run included, instead of a bare database constraint message.
+
 - **`changelog_log` writes a Fixed entry for a fix item without the roadmap's description of the bug.** (ANTS-5673)
   `add_from_roadmap` and an id-only `add_batch` entry no longer reuse a
   fix item's Layman line as the body under Fixed; the reply returns it as

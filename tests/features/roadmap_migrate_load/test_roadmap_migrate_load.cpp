@@ -1482,6 +1482,33 @@ TEST(RoadmapMigrateLoad, DuplicateIdFoldRefusesWithBothSites) {
     EXPECT_EQ(f.count(QStringLiteral("item")), 0) << "the transaction must roll back";
 }
 
+// ANTS-5662 — an id-bearing bullet whose headline parsed empty (no bold span:
+// `- 📋 [X-0001] Plain text.`, or an unclosed `**`) reached putItem() and died
+// as `NOT NULL constraint failed: item.headline`, naming no bullet. rusty-psn
+// bisected its file four times to find it. The refusal names the bullet's id
+// and `path:line`, and holds for a dry run, which is how it was first met.
+TEST(RoadmapMigrateLoad, Ants5662EmptyHeadlineRefusesWithItsSite) {
+    for (const bool dryRun : {true, false}) {
+        Fixture f;
+        QString err;
+        ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+        QVector<PlannedItem> items{
+            item(QStringLiteral("X-0001"), QStringLiteral("fine"), QStringLiteral("s"), 0),
+            item(QStringLiteral("X-0002"), QString(), QStringLiteral("s"), 1),
+        };
+        items[1].firstLine = 42;
+
+        const auto out = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts(dryRun));
+        EXPECT_FALSE(out.ok) << "dryRun=" << dryRun;
+        const std::string msg = out.error.toStdString();
+        EXPECT_NE(msg.find("'X-0002' at /nowhere/ROADMAP.md:42"), std::string::npos)
+            << "the refusal must name the bullet and its line: " << msg;
+        EXPECT_EQ(msg.find("NOT NULL constraint failed"), std::string::npos) << msg;
+        EXPECT_EQ(f.count(QStringLiteral("item")), 0) << "nothing may be written";
+    }
+}
+
 // The same check must not fire on ids that merely look similar — it keys on the
 // case-folded id and nothing else, so a shared prefix or a shared headline is
 // not a collision.

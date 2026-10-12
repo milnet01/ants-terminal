@@ -203,3 +203,15 @@ a null slug, a repeated headline, a bold label that looks like an id. Sixteen
 green tests coexisted with a loader that could not migrate three of ten real
 projects. The corpus run in ANTS-3765 § 4 is the check that would have caught
 all of them, and it is now part of the spec rather than a one-off.
+
+## ANTS-5662 — a new item with no headline is refused by name (2026-10-12)
+
+The reader keeps an id-bearing bullet whose headline is not in bold, with an
+empty headline. Inserted, it died on `NOT NULL constraint failed:
+item.headline`, naming no bullet. The load now refuses it, dry run included,
+with the bullet's id and `path:line`, and writes nothing. A matched item may
+still arrive empty: its stored headline stands, as the ANTS-4522 tests lock.
+
+**Must fail first:** with the check absent, the test fails on the bare SQL
+message. With the matched-item exemption absent, the three tests that send an
+empty headline for a stored item fail.

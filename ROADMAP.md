@@ -71415,7 +71415,7 @@ project. Reported causes are claims until checked in source.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-10-10.
   Lanes: roadmap-store, remotecontrol_roadmap_log.
 
-- 📋 [ANTS-5662] **roadmap_migrate names the line and bullet behind an empty parsed headline, and reads an indented `- ` line as body text.**
+- ✅ [ANTS-5662] **roadmap_migrate names the line and bullet behind an empty parsed headline, and reads an indented `- ` line as body text.**
   Reported by rusty-psn (rusty-psn-source_Ants_MCP_Feedback.md, heading
   "roadmap_migrate: 'NOT NULL constraint failed: item.headline' names no
   bullet"). Not yet reproduced here. Claimed causes: (1) a two-space
@@ -71423,6 +71423,14 @@ project. Reported causes are claims until checked in source.
   headline; (2) a headline code span holding `*` (e.g. `VC*`) breaking
   the bold parse. Fix: refuse before the INSERT with the source line and
   bullet id of any empty headline; treat a body-indent `- ` line as body.
+  Resolved (2026-10-12): reproduced. Neither suspected shape was the
+  cause: an indented `- ` line is already body text, and a `*` inside a
+  code span already stays in the bold headline (two reader tests now lock
+  both). The real cause is an id-bearing bullet whose headline is not in
+  bold (`- 📋 [X-0001] Plain text.`, or an unclosed `**`): the reader keeps
+  it with an empty headline. Loader::matchItems now refuses a NEW item
+  with no headline, naming its id and path:line, dry run included. A
+  matched item may still arrive empty (its stored headline stands).
   **Layman:** When importing a roadmap fails, the error will say which line caused it instead of a bare database message.
   Kind: fix.
   Source: rusty-psn feedback 2026-10-12.
