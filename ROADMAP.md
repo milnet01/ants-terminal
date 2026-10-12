@@ -21311,7 +21311,7 @@ indie-review finding.
   Source: user-request-2026-08-26.
   Lanes: chrome, ui.
 
-- 📋 [ANTS-4690] **Tab-tag label contrast sits near 2.5:1 through the alpha-140 wash, below every WCAG floor.**
+- ✅ [ANTS-4690] **Tab-tag label contrast sits near 2.5:1 through the alpha-140 wash, below every WCAG floor.**
   MEASURED, not estimated. ColoredTabBar::paintEvent() composites the tab's
   colour over the ALREADY-RENDERED label as a vertical gradient reaching
   alpha 140/255 at the bottom. Against Catppuccin Mocha base #1E1E2E with
@@ -21340,6 +21340,12 @@ indie-review finding.
 
   Measure per theme before choosing: the light themes (Solarized-light,
   Gruvbox-light) invert the relationship and may already be worse.
+  Resolved (2026-10-12): the wash is capped where the name ends, at the
+  strongest alpha keeping the name at 4.5:1 on the resting, selected and
+  hovered tab (no worse than bare where the theme is below 4.5:1); the
+  band below the name keeps alpha 140. New setHoverFill(bgPrimary).
+  Test: TabColor.Ants4690LabelReadableThroughTheWash, every palette
+  colour on Mocha and Latte; it failed 69 cases before the fix.
   **Layman:** Text on a coloured tab is harder to read than it should be; fixing it changes how every coloured tab looks.
   Kind: accessibility.
   Source: in-session-2026-08-26 (measured while adding tab colours).

@@ -60,6 +60,12 @@ produce a visible, persistent colour tag on the tab that:
    palette-size tabs each get a different colour, and neighbouring tabs are
    never in the same colour family, across the wrap too.
 
+8. **A tagged tab's name stays readable (ANTS-4690).** The colour wash is
+   capped where the name ends, so the name keeps 4.5:1 against the washed
+   background, resting, selected and hovered. Where the theme's own text
+   is below 4.5:1 on a bare tab, the wash makes it no worse. Below the
+   name the wash reaches its full strength.
+
 ## Rationale
 
 The context-menu feature was implemented in 0.6.x but silently broken

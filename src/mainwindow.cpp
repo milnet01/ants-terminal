@@ -1429,6 +1429,7 @@ void MainWindow::applyTheme(const QString &name) {
     // tab and across the entire status bar. User report 2026-04-25.
     if (m_coloredTabBar) {
         m_coloredTabBar->setBackgroundFill(theme.bgSecondary);
+        m_coloredTabBar->setHoverFill(theme.bgPrimary);  // ANTS-4690
         // Tab close (×) glyph: resting textSecondary, hover textPrimary,
         // hover background ansi-red (will-click cue). Drawn on a real
         // QToolButton per tab — Qt6 QSS can't render the data-URI SVG the

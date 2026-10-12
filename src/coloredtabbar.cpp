@@ -165,6 +165,13 @@ void ColoredTabBar::setBackgroundFill(const QColor &c) {
     }
 }
 
+void ColoredTabBar::setHoverFill(const QColor &c) {
+    if (m_hoverFill != c) {
+        m_hoverFill = c;
+        update();
+    }
+}
+
 void ColoredTabBar::setTabColor(int index, const QColor &color) {
     if (index < 0 || index >= count()) return;
     // An invalid QColor is Qt's idiom for "no colour" — store it so
@@ -234,6 +241,25 @@ QColor ColoredTabBar::tabColor(int index) const {
     const QVariant v = tabData(index);
     if (!v.isValid()) return QColor();
     return v.value<QColor>();
+}
+
+int ColoredTabBar::labelWashAlpha(const QColor &tab, const QColor &background,
+                                  const QColor &text, int maxAlpha) {
+    const auto over = [&](int alpha) {
+        const auto ch = [alpha](int b, int t) { return qRound(b + (t - b) * alpha / 255.0); };
+        return QColor(ch(background.red(), tab.red()), ch(background.green(), tab.green()),
+                      ch(background.blue(), tab.blue()));
+    };
+    const double floor = qMin(4.5, ClaudeTabIndicator::contrastRatio(text, background));
+    // Luminance moves one way along the wash, so contrast does too:
+    // bisect for the last alpha that still clears the floor.
+    if (ClaudeTabIndicator::contrastRatio(text, over(maxAlpha)) >= floor) return maxAlpha;
+    int lo = 0, hi = maxAlpha;
+    while (hi - lo > 1) {
+        const int mid = (lo + hi) / 2;
+        (ClaudeTabIndicator::contrastRatio(text, over(mid)) >= floor ? lo : hi) = mid;
+    }
+    return lo;
 }
 
 void ColoredTabBar::setCloseGlyphColors(const QColor &normal,
@@ -349,20 +375,40 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         // the accent line (selected tab) or manufacture a fake one on
         // non-selected tabs.
         //
-        // Bottom alpha of 140/255 is the sweet spot on a 30px tab: tab
-        // text stays readable across all themes (tested against Dark,
-        // Solarized-light, Gruvbox) while the colour is clearly visible.
         // Top alpha 0 makes the top edge of the tab look untinted so the
-        // gradient reads as an intentional wash rather than a full fill.
+        // gradient reads as an intentional wash rather than a full fill;
+        // it reaches 140/255 at the bottom.
+        //
+        // ANTS-4690 — at alpha 140 the name measured about 2.5:1. So the
+        // wash is capped where the name ends, at the alpha that keeps the
+        // name readable in both its resting and its selected colour, and
+        // reaches full strength only in the band below the name.
         constexpr int kActiveUnderlineReserve = 2;
+        constexpr int kWashAlpha = 140;
+        constexpr int kNameMargin = 2;  // px below the name the cap still holds
         const QRect gradRect(r.left(), r.top(),
                              r.width(), r.height() - kActiveUnderlineReserve);
         if (gradRect.height() <= 0) continue;
 
+        const QColor surface = m_bg.isValid() ? m_bg : QWidget::palette().color(QPalette::Window);
+        const QColor fallbackText = QWidget::palette().color(QPalette::WindowText);
+        const QColor resting = m_closeNormal.isValid() ? m_closeNormal : fallbackText;
+        const QColor selected = m_closeHover.isValid() ? m_closeHover : fallbackText;
+        const double nameBottom = r.height() / 2.0 + fontMetrics().height() / 2.0 + kNameMargin;
+        const double nameEnd = qBound(0.0, nameBottom / gradRect.height(), 1.0);
+        // A hovered tab shows the selected text colour on the hover fill.
+        const QColor hover = m_hoverFill.isValid() ? m_hoverFill : surface;
+        const int nameAlpha = std::min({qRound(kWashAlpha * nameEnd),
+                                        labelWashAlpha(c, surface, resting, kWashAlpha),
+                                        labelWashAlpha(c, surface, selected, kWashAlpha),
+                                        labelWashAlpha(c, hover, selected, kWashAlpha)});
+
         QLinearGradient g(gradRect.topLeft(), gradRect.bottomLeft());
         QColor topStop = c; topStop.setAlpha(0);
-        QColor botStop = c; botStop.setAlpha(140);
+        QColor nameStop = c; nameStop.setAlpha(nameAlpha);
+        QColor botStop = c; botStop.setAlpha(kWashAlpha);
         g.setColorAt(0.0, topStop);
+        g.setColorAt(nameEnd, nameStop);
         g.setColorAt(1.0, botStop);
         painter.fillRect(gradRect, g);
     }

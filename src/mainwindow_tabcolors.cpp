@@ -94,9 +94,8 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
     //
     // The real bar for a new entry: compute the ratio through the wash and
     // require it to be no worse than the WORST colour already shipped. Every
-    // colour below clears that. Raising the floor for all of them is a
-    // separate change (it would alter every existing tab's appearance) and
-    // is ANTS-4690.
+    // colour below clears that. ANTS-4690 has since capped the wash behind
+    // the name, so paintEvent() keeps every colour at 4.5:1 there.
     // ANTS-5238 — the list itself lives in ColoredTabBar::palette(), shared
     // with View > Give Each Tab a Different Colour.
     struct ColorEntry { QString name; QColor color; };

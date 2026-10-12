@@ -295,6 +295,59 @@ int runDistinctColours() {
 
 }  // namespace
 
+// ANTS-4690 — a tagged tab's name stays readable through the colour wash:
+// 4.5:1 at the bottom of the name, or no worse than on the bare tab where
+// the theme itself sits below that. Mocha and Latte, from src/themes.cpp,
+// with the app style sheet's tab rules (src/themedstylesheet.cpp).
+TEST(TabColor, Ants4690LabelReadableThroughTheWash) {
+    struct Theme { QColor bg2, bg1, text1, text2; };
+    const Theme themes[] = {
+        {QColor(0x18, 0x18, 0x25), QColor(0x1E, 0x1E, 0x2E), QColor(0xCD, 0xD6, 0xF4),
+         QColor(0xA6, 0xAD, 0xC8)},
+        {QColor(0xE6, 0xE9, 0xEF), QColor(0xEF, 0xF1, 0xF5), QColor(0x4C, 0x4F, 0x69),
+         QColor(0x6C, 0x6F, 0x85)},
+    };
+    for (const Theme &t : themes) {
+        for (const ColoredTabBar::PaletteEntry &e : ColoredTabBar::palette()) {
+            for (bool selected : {false, true}) {
+                // On a parent, as the app sets them on the window: the bar's
+                // own style sheet (its close button) would replace them.
+                QWidget host;
+                host.setStyleSheet(QStringLiteral(
+                    "QTabBar { background-color: %1; }"
+                    "QTabBar::tab { background-color: %1; color: %3; padding: 6px 16px 6px 22px;"
+                    "  border: none; border-bottom: 2px solid transparent; }"
+                    "QTabBar::tab:selected { color: %2; border-bottom: 2px solid %2; }")
+                                      .arg(t.bg2.name(), t.text1.name(), t.text2.name()));
+                ColoredTabBar bar(&host);
+                bar.setBackgroundFill(t.bg2);
+                bar.setHoverFill(t.bg1);
+                bar.setCloseGlyphColors(t.text2, t.text1, QColor(Qt::red));
+                bar.addTab(QStringLiteral("Tab name"));
+                bar.addTab(QStringLiteral("Other"));
+                bar.setCurrentIndex(selected ? 0 : 1);
+                bar.setTabColor(0, e.color);
+                bar.resize(bar.sizeHint());
+                const QImage img = bar.grab().toImage();
+                const QRect r = bar.tabRect(0);
+                const int labelBottom = r.center().y() + bar.fontMetrics().height() / 2;
+                ASSERT_LT(labelBottom, r.bottom());
+                const QColor text = selected ? t.text1 : t.text2;
+                const QColor under(img.pixel(r.left() + 3, labelBottom));
+                const double floor =
+                    qMin(4.5, ClaudeTabIndicator::contrastRatio(text, t.bg2)) - 0.05;
+                EXPECT_GE(ClaudeTabIndicator::contrastRatio(text, under), floor)
+                    << e.name.toStdString() << " on " << t.bg2.name().toStdString()
+                    << (selected ? " selected" : " resting") << ", under the name "
+                    << under.name().toStdString();
+                // The wash still shows below the name.
+                const QColor band(img.pixel(r.left() + 3, r.bottom() - 3));
+                EXPECT_NE(band.rgb(), t.bg2.rgb()) << "no wash on " << e.name.toStdString();
+            }
+        }
+    }
+}
+
 TEST(TabColor, Main) {
     // Force offscreen QPA so the test runs on CI without a display.
     // Redirect Config's QStandardPaths reads/writes to ~/.qttest/ so

@@ -103,9 +103,20 @@ public:
     // opaquemenubar.h for the long-form rationale.
     void setBackgroundFill(const QColor &c);
 
+    // ANTS-4690 — the hovered tab's background (the app style sheet's
+    // `QTabBar::tab:hover`, theme bgPrimary). The colour wash is capped so
+    // the tab's name stays readable on it too.
+    void setHoverFill(const QColor &c);
+
     // Current stored colour for the tab at `index`, or an invalid QColor
     // if none is set or `index` is out of range.
     QColor tabColor(int index) const;
+
+    // ANTS-4690 — the strongest alpha, at most `maxAlpha`, at which `tab`
+    // can wash over `background` with `text` still at 4.5:1 on it, or no
+    // less readable than on the bare background where that is below 4.5:1.
+    static int labelWashAlpha(const QColor &tab, const QColor &background,
+                              const QColor &text, int maxAlpha);
 
     // ANTS-5238 — the tab-tag palette, in the order the tab's right-click
     // menu lists it (warm to cool, neutrals last; "None" is the menu's own).
@@ -168,6 +179,7 @@ private:
 
     IndicatorProvider m_indicatorProvider;
     QColor m_bg;  // opaque fill, see setBackgroundFill comment
+    QColor m_hoverFill;  // hovered tab background, see setHoverFill
     QColor m_closeNormal;   // resting × glyph colour (theme textSecondary)
     QColor m_closeHover;    // moused-over × glyph colour (theme textPrimary)
     QColor m_closeHoverBg;  // hover background (theme ansi-red), will-click cue

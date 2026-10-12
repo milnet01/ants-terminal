@@ -201,6 +201,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A coloured tab's name stays readable: the colour wash is lighter behind the name and full strength below it** (ANTS-4690)
+  The name keeps 4.5:1 contrast on resting, selected and hovered tabs,
+  for every tab colour, on dark and light themes.
+
 - **The Claude context gauge appears after the first reply, even when the session's newest message is very long.** (ANTS-5657)
 
 - **Closed tabs stay closed after a restart** (ANTS-5654)
