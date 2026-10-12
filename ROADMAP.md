@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5673 -->
+<!-- ants-roadmap-id-high-water: ANTS=5674 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71549,7 +71549,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-10-12 (review-contract on roadmap-format.md, CFG-0757).
   Lanes: mcp.
 
-- 📋 [ANTS-5672] **roadmap_log's append allocator defaults to the id prefix a project declares in .ants/project.json.**
+- 🚫 [ANTS-5672] **roadmap_log's append allocator defaults to the id prefix a project declares in .ants/project.json.**
   Split from ANTS-5671 (loop 31 of the 2026-10-12 roadmap-format.md
   gate, settled by reading code): roadmap_log's append allocator never
   reads a declared `.ants/project.json` id_format prefix; only
@@ -71558,6 +71558,14 @@ project. Reported causes are claims until checked in source.
   one is declared. roadmap_migrate already takes a declared prefix
   (ANTS-5374 announces only a folder-derived one). Default the append
   allocator to the declared prefix too.
+  Dropped (2026-10-12): the premise is false. Both allocator paths
+  already put a declared id_format prefix above everything but an
+  explicit id_prefix: rlResolveCounterPrefix (src/remotecontrol.cpp,
+  ANTS-3771 § 2.3) and rlStoreCounterPrefix
+  (src/remotecontrol_roadmap_query.cpp), which also ranks it above the
+  store's id_prefix row. Locked by
+  roadmap_id_format_declared.Inv7DeclaredPrefixBeatsTheSniff, green in
+  the 2026-10-12 suite. Loop 31's reading of the code was wrong.
   **Layman:** A new roadmap's first item gets the id prefix the project chose, even when the caller forgets to name it.
   Kind: enhancement.
   Source: split from ANTS-5671, 2026-10-12.
@@ -71584,6 +71592,20 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-12.
   Lanes: mcp.
+
+- 📋 [ANTS-5674] **roadmap-format.md § 3.1 names a declared id_format prefix as the default before the directory name.**
+  § 3.1 (CFG-0757's paragraph) says: pass `id_prefix` on the first
+  append; "without it, the directory name sets it". The allocator puts
+  a declared `.ants/project.json` id_format prefix first
+  (rlResolveCounterPrefix, rlStoreCounterPrefix; test
+  Inv7DeclaredPrefixBeatsTheSniff), so the sentence is incomplete where
+  a project declares one. Fix: name the declaration before the directory
+  name. Apply rule 14's test to the edit; the claude-config copy has the
+  same paragraph, so tell that session.
+  **Layman:** The roadmap standard says where a new item's id prefix comes from, and it left out the prefix a project can declare.
+  Kind: doc-fix.
+  Source: in-session-2026-10-12 (ANTS-5672 check).
+  Lanes: docs.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
