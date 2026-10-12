@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5659 -->
+<!-- ants-roadmap-id-high-water: ANTS=5660 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84945,6 +84945,17 @@ a modern terminal" release.
   **Layman:** With the side tab list hiding the top tab bar, a new tab (Ctrl+Shift+T) brought the top bar back although View still showed it hidden.
   Kind: fix.
   Source: user-report-2026-10-12.
+  Lanes: tablistpanel.
+
+- ✅ [ANTS-5660] **The current tab in the side list fades into the inverse background instead of carrying an outline.**
+  rowPaint gains `current`: the current row's fade end is the inverted
+  panel background (None rows included); hover stays one solid colour;
+  the name stays bold on solid colour. Tests:
+  TabListPanel.Inv8CurrentRowFadesIntoTheInverseBackground and
+  Inv8PaintedCurrentRowHasNoOutline, both red before the change.
+  **Layman:** The active tab in the side list is marked by a fade from its status colour into the opposite of the panel background, not by a box around it.
+  Kind: ux.
+  Source: user-request-2026-10-12.
   Lanes: tablistpanel.
 
 ### 🐛 Carried over from 0.7.x

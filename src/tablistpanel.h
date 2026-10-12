@@ -73,15 +73,16 @@ public:
     // colour (the panel background for None), changed under the mouse, with
     // black or white ink, whichever reads better on it.
     // ANTS-5658 — at rest a state row fades left to right from `fill`,
-    // under the name, to `fade`, the background. Hovered or None, `fade`
-    // equals `fill`: one colour.
+    // under the name, to `fade`, the background. ANTS-5660 — the current
+    // row, None included, fades to the inverse of the background instead.
+    // Hovered, or a None row not current, `fade` equals `fill`: one colour.
     struct RowPaint {
         QColor fill;
         QColor fade;
         QColor ink;
     };
     static RowPaint rowPaint(ClaudeTabIndicator::Glyph glyph, const QColor &background,
-                             bool hovered);
+                             bool hovered, bool current);
 
     // Open an editor on `page`'s row, holding its whole title. Rows are
     // not rebuilt while it is open. Returns false when no row shows `page`.

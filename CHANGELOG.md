@@ -133,6 +133,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The current tab in the side list fades from its status colour into the inverse of the panel background, in place of an outline** (ANTS-5660)
+
 - **Tab list rows fade from their Claude state colour into the panel background, and the tab colour stripe is 3px wider** (ANTS-5658)
   The colour stays solid behind the name, so the name stays readable;
   hovering fills the whole row with one colour.

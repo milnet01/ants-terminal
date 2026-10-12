@@ -44,7 +44,8 @@ public:
         const auto glyph = static_cast<ClaudeTabIndicator::Glyph>(index.data(kGlyphRole).toInt());
         const QColor bg = m_bg.isValid() ? m_bg : opt.palette.color(QPalette::Base);
         const bool current = opt.state & QStyle::State_Selected;
-        const auto rp = TabListPanel::rowPaint(glyph, bg, opt.state & QStyle::State_MouseOver);
+        const auto rp = TabListPanel::rowPaint(glyph, bg, opt.state & QStyle::State_MouseOver,
+                                               current);
         const QRect r = opt.rect;
         // ANTS-5658 — 3px wider than the ANTS-5650 stripe.
         const int stripe = qMax(5, r.height() / 4) + 3;
@@ -75,14 +76,6 @@ public:
         p->setFont(f);
         p->setPen(rp.ink);
         p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, name);
-        if (current) {
-            // The current tab: outlined, so no highlight hides its colour.
-            QPen pen(rp.ink, 2);
-            pen.setJoinStyle(Qt::MiterJoin);
-            p->setPen(pen);
-            p->setBrush(Qt::NoBrush);
-            p->drawRect(QRectF(r).adjusted(stripe + 1, 1, -1, -1));
-        }
         p->restore();
     }
 
@@ -371,23 +364,28 @@ void TabListPanel::onItemActivated(QTreeWidgetItem *item) {
 }
 
 TabListPanel::RowPaint TabListPanel::rowPaint(ClaudeTabIndicator::Glyph glyph,
-                                              const QColor &background, bool hovered) {
+                                              const QColor &background, bool hovered,
+                                              bool current) {
     QColor fill = glyph == ClaudeTabIndicator::Glyph::None ? background
                                                            : ClaudeTabIndicator::color(glyph);
-    if (hovered || glyph == ClaudeTabIndicator::Glyph::None) {
-        if (hovered) {
-            // A quarter of the way towards the ink: visibly different, same hue.
-            const QColor toward = inkOn(fill);
-            const auto mix = [](int a, int b) { return a + (b - a) / 4; };
-            fill = QColor(mix(fill.red(), toward.red()), mix(fill.green(), toward.green()),
-                          mix(fill.blue(), toward.blue()));
-        }
+    if (hovered) {
+        // A quarter of the way towards the ink: visibly different, same hue.
+        const QColor toward = inkOn(fill);
+        const auto mix = [](int a, int b) { return a + (b - a) / 4; };
+        fill = QColor(mix(fill.red(), toward.red()), mix(fill.green(), toward.green()),
+                      mix(fill.blue(), toward.blue()));
         return {fill, fill, inkOn(fill)};
     }
 
-    // ANTS-5658 — at rest the state colour fades into the background. The
-    // delegate starts the fade after the name, so the name always sits on
-    // the colour its ink was chosen for.
+    // ANTS-5660 — the current tab fades into the inverse of the background,
+    // in place of an outline. ANTS-5658 — any other state row fades into the
+    // background; a None row stays plain. The delegate starts the fade after
+    // the name, so the name always sits on the colour its ink was chosen for.
+    if (current)
+        return {fill, QColor(255 - background.red(), 255 - background.green(),
+                             255 - background.blue()),
+                inkOn(fill)};
+    if (glyph == ClaudeTabIndicator::Glyph::None) return {fill, fill, inkOn(fill)};
     return {fill, background, inkOn(fill)};
 }
 

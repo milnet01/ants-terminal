@@ -254,10 +254,10 @@ QImage paintRow(TabListPanel &panel, QTreeWidgetItem *row, QStyle::State extra) 
 
 TEST(TabListPanel, Inv8FillIsTheStateColourOrThePanelBackground) {
     for (const QColor &bg : {kDarkBg, kLightBg}) {
-        EXPECT_EQ(TabListPanel::rowPaint(Glyph::None, bg, false).fill, bg);
+        EXPECT_EQ(TabListPanel::rowPaint(Glyph::None, bg, false, false).fill, bg);
         for (Glyph g : kAllGlyphs) {
             if (g == Glyph::None) continue;
-            EXPECT_EQ(TabListPanel::rowPaint(g, bg, false).fill,
+            EXPECT_EQ(TabListPanel::rowPaint(g, bg, false, false).fill,
                       ClaudeTabIndicator::color(g))
                 << TabListPanel::stateLabel(g).toStdString();
         }
@@ -267,8 +267,8 @@ TEST(TabListPanel, Inv8FillIsTheStateColourOrThePanelBackground) {
 TEST(TabListPanel, Inv8NameReadableOnEveryFillHoveredOrNot) {
     for (const QColor &bg : {kDarkBg, kLightBg}) {
         for (Glyph g : kAllGlyphs) {
-            const auto rest = TabListPanel::rowPaint(g, bg, false);
-            const auto hover = TabListPanel::rowPaint(g, bg, true);
+            const auto rest = TabListPanel::rowPaint(g, bg, false, false);
+            const auto hover = TabListPanel::rowPaint(g, bg, true, false);
             const std::string what = TabListPanel::stateLabel(g).toStdString();
             EXPECT_GE(ClaudeTabIndicator::contrastRatio(rest.ink, rest.fill), 4.5) << what;
             EXPECT_GE(ClaudeTabIndicator::contrastRatio(hover.ink, hover.fill), 4.5) << what;
@@ -296,7 +296,7 @@ TEST(TabListPanel, Inv8HoveredCurrentRowStillShowsItsName) {
 
     const QImage img = paintRow(panel, rows.at(0),
                                 QStyle::State_Selected | QStyle::State_MouseOver);
-    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true);
+    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true, false);
     // Measured against the row's own painted background, past the text.
     const QColor painted(img.pixel(380, img.height() / 2));
     int inkish = 0;
@@ -316,8 +316,8 @@ TEST(TabListPanel, Inv8HoveredCurrentRowStillShowsItsName) {
 TEST(TabListPanel, Inv8RestingRowFadesIntoTheBackground) {
     for (const QColor &bg : {kDarkBg, kLightBg}) {
         for (Glyph g : kAllGlyphs) {
-            const auto rest = TabListPanel::rowPaint(g, bg, false);
-            const auto hover = TabListPanel::rowPaint(g, bg, true);
+            const auto rest = TabListPanel::rowPaint(g, bg, false, false);
+            const auto hover = TabListPanel::rowPaint(g, bg, true, false);
             const std::string what = TabListPanel::stateLabel(g).toStdString();
             EXPECT_EQ(rest.fade, bg) << what;
             EXPECT_EQ(hover.fade, hover.fill) << "hover must be one colour: " << what;
@@ -335,7 +335,7 @@ TEST(TabListPanel, Inv8PaintedRowIsAGradientWithAWiderStripe) {
                      &p.b);
     const auto rows = tabRows(panel.treeForTest());
     ASSERT_EQ(rows.size(), 2);
-    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, false);
+    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, false, false);
 
     const QImage rest = paintRow(panel, rows.at(0), {});
     const int mid = rest.height() / 2;
@@ -361,9 +361,45 @@ TEST(TabListPanel, Inv8PaintedRowIsAGradientWithAWiderStripe) {
         << "nothing fades after the name";
 
     const QImage hover = paintRow(panel, rows.at(0), QStyle::State_MouseOver);
-    const auto hoverWant = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true);
+    const auto hoverWant = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true, false);
     EXPECT_EQ(QColor(hover.pixel(12, mid)), hoverWant.fill);
     EXPECT_EQ(QColor(hover.pixel(399, mid)), hoverWant.fill) << "hover is not a full fill";
+}
+
+// ANTS-5660 — the current tab has no outline: its row fades from the state
+// colour into the inverse of the panel background; hovered, one colour.
+TEST(TabListPanel, Inv8CurrentRowFadesIntoTheInverseBackground) {
+    for (const QColor &bg : {kDarkBg, kLightBg}) {
+        const QColor inverse(255 - bg.red(), 255 - bg.green(), 255 - bg.blue());
+        for (Glyph g : kAllGlyphs) {
+            const std::string what = TabListPanel::stateLabel(g).toStdString();
+            const auto cur = TabListPanel::rowPaint(g, bg, false, true);
+            EXPECT_EQ(cur.fill, TabListPanel::rowPaint(g, bg, false, false).fill) << what;
+            EXPECT_EQ(cur.fade, inverse) << what;
+            EXPECT_GE(ClaudeTabIndicator::contrastRatio(cur.ink, cur.fill), 4.5) << what;
+            const auto hover = TabListPanel::rowPaint(g, bg, true, true);
+            EXPECT_EQ(hover.fade, hover.fill) << "hover must be one colour: " << what;
+        }
+    }
+}
+
+TEST(TabListPanel, Inv8PaintedCurrentRowHasNoOutline) {
+    Pages p;
+    TabListPanel panel;
+    panel.setThemeColors(kDarkBg, kDarkText);
+    panel.setEntries({{&p.a, QStringLiteral("Ants Terminal"), paletteColor(0), Glyph::Thinking}},
+                     &p.a);
+    const auto rows = tabRows(panel.treeForTest());
+    ASSERT_EQ(rows.size(), 1);
+    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, false, true);
+    const QImage img = paintRow(panel, rows.at(0), QStyle::State_Selected);
+    // Where the outline ran: just inside the top edge, past the stripe.
+    EXPECT_EQ(QColor(img.pixel(14, 1)), want.fill) << "the current row is still outlined";
+    const QColor right(img.pixel(399, img.height() / 2));
+    EXPECT_LE(qAbs(right.red() - want.fade.red()) + qAbs(right.green() - want.fade.green()) +
+                  qAbs(right.blue() - want.fade.blue()),
+              24)
+        << "the right end is not the inverse background, it is " << right.name().toStdString();
 }
 
 // ---------------------------------------------------------------- INV-9 -----

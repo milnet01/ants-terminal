@@ -41,8 +41,9 @@ item records the user's choice of a side panel over wrapping rows.
   state colour, and that contrast is at least 4.5:1. Under the mouse the
   whole row fills with one changed colour, with no fade, and the 4.5:1
   floor still holds, selected or not.
-  The current tab's row is bold and outlined, with no highlight over its
-  colour. The panel paints tab rows itself, so the app style sheet's
+  The current tab's row is bold, with no outline and no highlight over
+  its colour: after the name it fades into the inverse of the panel
+  background, whatever its state (ANTS-5660). The panel paints tab rows itself, so the app style sheet's
   item rules do not reach them.
 - **INV-9 — rename from the panel.** A right-click on a tab row emits
   `tabContextMenuRequested` with its page; a header emits nothing. The
