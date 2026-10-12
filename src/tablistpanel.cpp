@@ -6,6 +6,7 @@
 #include <QScrollBar>
 #include <QStyledItemDelegate>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
 
 namespace {
@@ -104,6 +105,48 @@ TabListPanel::TabListPanel(QWidget *parent) : QWidget(parent) {
             [this](QTreeWidgetItem *item, int) { onItemActivated(item); });
     connect(m_tree, &QTreeWidget::itemActivated, this,
             [this](QTreeWidgetItem *item, int) { onItemActivated(item); });
+
+    // Right-click opens the same tab menu as the tab bar, which may be
+    // hidden while this panel shows.
+    m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tree, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        QTreeWidgetItem *item = m_tree->itemAt(pos);
+        auto *page = item ? qobject_cast<QWidget *>(item->data(0, kPageRole).value<QObject *>())
+                          : nullptr;
+        if (page) emit tabContextMenuRequested(page);
+    });
+    // Enter and a click away submit; Escape reverts. commitData runs first,
+    // so the row already holds the typed name here.
+    connect(m_tree->itemDelegate(), &QAbstractItemDelegate::closeEditor, this,
+            [this](QWidget *, QAbstractItemDelegate::EndEditHint hint) {
+                onEditorClosed(hint != QAbstractItemDelegate::RevertModelCache);
+            });
+}
+
+bool TabListPanel::startRename(QWidget *page) {
+    if (!page || m_renaming) return false;
+    for (QTreeWidgetItemIterator it(m_tree); *it; ++it) {
+        QTreeWidgetItem *item = *it;
+        if (item->data(0, kPageRole).value<QObject *>() != page) continue;
+        m_renaming = item;
+        m_renameFrom = item->text(0);
+        m_renamePage = page;
+        item->setFlags(item->flags() | Qt::ItemIsEditable);
+        m_tree->scrollToItem(item);
+        m_tree->editItem(item, 0);
+        return true;
+    }
+    return false;
+}
+
+void TabListPanel::onEditorClosed(bool submitted) {
+    if (!m_renaming) return;
+    const QString name = m_renaming->text(0);
+    m_renaming = nullptr;
+    if (submitted && m_renamePage && name != m_renameFrom) emit tabRenamed(m_renamePage, name);
+    // Rebuild either way: it drops the editable flag, restores a reverted
+    // title, and applies entries that arrived while the editor was open.
+    rebuild();
 }
 
 void TabListPanel::setEntries(const QVector<TabListEntry> &entries, QWidget *current) {
@@ -111,7 +154,9 @@ void TabListPanel::setEntries(const QVector<TabListEntry> &entries, QWidget *cur
         return;
     m_entries = entries;
     m_current = current;
-    rebuild();
+    // A rebuild would delete the row under the open editor; closing it
+    // rebuilds.
+    if (!m_renaming) rebuild();
 }
 
 void TabListPanel::setFontPointSize(int points) {
@@ -120,7 +165,7 @@ void TabListPanel::setFontPointSize(int points) {
     QFont f = m_tree->font();
     f.setPointSize(points);
     m_tree->setFont(f);
-    rebuild();
+    if (!m_renaming) rebuild();
 }
 
 void TabListPanel::setThemeColors(const QColor &background, const QColor &text) {

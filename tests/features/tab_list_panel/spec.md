@@ -39,6 +39,14 @@ item records the user's choice of a side panel over wrapping rows.
   The current tab's row is bold and outlined, with no highlight over its
   colour. The panel paints tab rows itself, so the app style sheet's
   item rules do not reach them.
+- **INV-9 — rename from the panel.** A right-click on a tab row emits
+  `tabContextMenuRequested` with its page; a header emits nothing. The
+  MainWindow answers with the tab bar's menu, `showTabColorMenu(i, true)`,
+  whose Rename calls `startRename`, because the tab bar may be hidden.
+  `startRename` opens an editor on the row holding its whole title, and
+  `setEntries` does not rebuild the rows while it is open. Closing it with
+  a changed name emits `tabRenamed` once; Escape emits nothing and keeps
+  the old title. The MainWindow pins the name with `setTabTitleForRemote`.
 
 ## Test
 

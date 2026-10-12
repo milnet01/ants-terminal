@@ -2,6 +2,7 @@
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "coloredtabbar.h"
+#include "tablistpanel.h"
 #include "terminalwidget.h"
 #include <QJsonObject>
 #include <QLineEdit>
@@ -9,6 +10,8 @@
 #include <QSplitter>
 #include <QJsonArray>
 #include <QCursor>
+#include <QPointer>
+#include <QTimer>
 #include <QColorDialog>  // ANTS-1374 — custom per-tab colour picker
 #include <QPainter>
 #include <QPen>
@@ -19,7 +22,7 @@ using namespace mainwindowdetail;
 
 // --- Tab Color Groups ---
 
-void MainWindow::showTabColorMenu(int tabIndex) {
+void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
     QMenu menu(this);
 
     // Capture the tab's QWidget so we resolve the (possibly-shifted) index at
@@ -30,9 +33,21 @@ void MainWindow::showTabColorMenu(int tabIndex) {
 
     // Rename tab
     QAction *renameAction = menu.addAction("Rename Tab...");
-    connect(renameAction, &QAction::triggered, this, [this, tabWidget]() {
+    connect(renameAction, &QAction::triggered, this, [this, tabWidget, fromPanel]() {
         int idx = m_tabWidget->indexOf(tabWidget);
         if (idx < 0) return;
+        // From the tab list panel, edit the name in its row: the tab bar
+        // can be hidden, and an editor over it would be invisible. The
+        // panel's tabRenamed signal pins the name (applyTabListPanelConfig).
+        // Opened after the menu has closed, so the menu's focus hand-back
+        // cannot end the edit at once.
+        if (fromPanel && m_tabListPanel) {
+            QTimer::singleShot(0, m_tabListPanel, [panel = m_tabListPanel,
+                                                   page = QPointer<QWidget>(tabWidget)] {
+                if (page) panel->startRename(page);
+            });
+            return;
+        }
         QLineEdit *editor = new QLineEdit(m_tabWidget->tabBar());
         editor->setText(m_tabWidget->tabText(idx));
         editor->selectAll();

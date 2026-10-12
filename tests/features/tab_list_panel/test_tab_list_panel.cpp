@@ -9,7 +9,9 @@
 #include "../../_support/xdg_guard.h"
 #include "../../_support/srcgrep.h"
 
+#include <QAbstractItemDelegate>
 #include <QImage>
+#include <QLineEdit>
 #include <QPainter>
 #include <QStyleOptionViewItem>
 #include <QTemporaryDir>
@@ -284,4 +286,115 @@ TEST(TabListPanel, Inv8HoveredCurrentRowStillShowsItsName) {
         << "the row's background is not its hovered state colour";
     EXPECT_EQ(QColor(img.pixel(1, img.height() / 2)).rgb(), paletteColor(0).rgb())
         << "the tab colour stripe is missing";
+}
+
+// ---------------------------------------------------------------- INV-9 -----
+// The tab bar's Rename edited over the tab bar, which the panel can hide.
+
+namespace {
+
+QLineEdit *openEditor(TabListPanel &panel, QTreeWidgetItem *row) {
+    return qobject_cast<QLineEdit *>(
+        panel.treeForTest()->indexWidget(panel.treeForTest()->indexFromItem(row)));
+}
+
+void closeEditor(TabListPanel &panel, QLineEdit *editor,
+                 QAbstractItemDelegate::EndEditHint hint) {
+    QAbstractItemDelegate *d = panel.treeForTest()->itemDelegate();
+    if (hint != QAbstractItemDelegate::RevertModelCache) emit d->commitData(editor);
+    emit d->closeEditor(editor, hint);
+}
+
+}  // namespace
+
+TEST(TabListPanel, Inv9RightClickOnATabRowAsksForTheMenu) {
+    Pages p;
+    TabListPanel panel;
+    panel.resize(300, 300);
+    panel.show();
+    panel.setEntries({{&p.a, QStringLiteral("a"), paletteColor(0), Glyph::None}}, &p.a);
+    QTreeWidget *tree = panel.treeForTest();
+    QVector<QWidget *> asked;
+    QObject::connect(&panel, &TabListPanel::tabContextMenuRequested,
+                     [&asked](QWidget *page) { asked << page; });
+
+    QTreeWidgetItem *header = tree->topLevelItem(0);
+    emit tree->customContextMenuRequested(tree->visualItemRect(header).center());
+    EXPECT_TRUE(asked.isEmpty()) << "a header asked for a tab menu";
+
+    emit tree->customContextMenuRequested(tree->visualItemRect(tabRows(tree).at(0)).center());
+    ASSERT_EQ(asked.size(), 1);
+    EXPECT_EQ(asked.at(0), &p.a);
+}
+
+TEST(TabListPanel, Inv9RenameEditsTheRowAndSendsAChangedName) {
+    Pages p;
+    const QString longTitle =
+        QStringLiteral("A project name far longer than the thirty-character tab cut");
+    TabListPanel panel;
+    panel.resize(300, 300);
+    panel.show();
+    panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
+                      {&p.b, longTitle, QColor(), Glyph::None}},
+                     &p.a);
+    QVector<QPair<QWidget *, QString>> renamed;
+    QObject::connect(&panel, &TabListPanel::tabRenamed,
+                     [&renamed](QWidget *page, const QString &n) { renamed.append({page, n}); });
+
+    ASSERT_TRUE(panel.startRename(&p.b));
+    QTreeWidgetItem *row = tabRows(panel.treeForTest()).at(1);
+    QLineEdit *editor = openEditor(panel, row);
+    ASSERT_NE(editor, nullptr) << "no editor opened on the row";
+    EXPECT_EQ(editor->text(), longTitle);
+
+    // A refresh while typing must not delete the row under the editor.
+    panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::Thinking},
+                      {&p.b, longTitle, QColor(), Glyph::None}},
+                     &p.a);
+    ASSERT_EQ(tabRows(panel.treeForTest()).at(1), row);
+    ASSERT_EQ(openEditor(panel, row), editor);
+
+    editor->setText(QStringLiteral("Build"));
+    closeEditor(panel, editor, QAbstractItemDelegate::SubmitModelCache);
+    ASSERT_EQ(renamed.size(), 1);
+    EXPECT_EQ(renamed.at(0).first, &p.b);
+    EXPECT_EQ(renamed.at(0).second, QStringLiteral("Build"));
+    // The refresh that arrived during the edit is applied once it closes.
+    EXPECT_TRUE(tabRows(panel.treeForTest()).at(0)->toolTip(0).contains(
+        QStringLiteral("Claude thinking")));
+}
+
+TEST(TabListPanel, Inv9EscapeSendsNothingAndKeepsTheTitle) {
+    Pages p;
+    TabListPanel panel;
+    panel.resize(300, 300);
+    panel.show();
+    panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None}}, &p.a);
+    int renamed = 0;
+    QObject::connect(&panel, &TabListPanel::tabRenamed, [&renamed] { ++renamed; });
+
+    ASSERT_TRUE(panel.startRename(&p.a));
+    QLineEdit *editor = openEditor(panel, tabRows(panel.treeForTest()).at(0));
+    ASSERT_NE(editor, nullptr);
+    editor->setText(QStringLiteral("typed then abandoned"));
+    closeEditor(panel, editor, QAbstractItemDelegate::RevertModelCache);
+    EXPECT_EQ(renamed, 0);
+    EXPECT_EQ(tabRows(panel.treeForTest()).at(0)->text(0), QStringLiteral("a"));
+    EXPECT_FALSE(panel.startRename(&p.b)) << "a page with no row opened an editor";
+}
+
+TEST(TabListPanel, Inv9MainWindowRoutesThePanelMenuAndRename) {
+    const std::string src = ants_test::slurpMainWindow();
+    ASSERT_FALSE(src.empty());
+    const std::string apply =
+        ants_test::slurpFunctionBody(src, "void MainWindow::applyTabListPanelConfig(");
+    ASSERT_FALSE(apply.empty());
+    EXPECT_NE(apply.find("showTabColorMenu(i, true)"), std::string::npos);
+    const size_t renamed = apply.find("&TabListPanel::tabRenamed");
+    ASSERT_NE(renamed, std::string::npos);
+    EXPECT_NE(apply.find("setTabTitleForRemote(", renamed), std::string::npos);
+    const std::string menu =
+        ants_test::slurpFunctionBody(src, "void MainWindow::showTabColorMenu(");
+    ASSERT_FALSE(menu.empty());
+    EXPECT_NE(menu.find("startRename("), std::string::npos);
 }

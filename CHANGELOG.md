@@ -193,6 +193,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tabs can be renamed from the tab list side panel**
+  Right-click a tab in the side panel for the same menu as the tab
+  bar: Rename Tab and the tab colours. Rename edits the name in the
+  panel row, so it works with the tab bar hidden. Enter keeps the new
+  name; Escape cancels.
+
 - **List replies the server sizes itself now fit under the offload threshold, so a 16–20 KB list comes back trimmed and paged instead of saved to a side file** (ANTS-5571)
   The page cap follows the live `claude.mcp_offload_threshold_bytes`,
   less a margin for the envelope, and stays at 20 KB at most.

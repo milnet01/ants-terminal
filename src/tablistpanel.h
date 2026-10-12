@@ -3,6 +3,7 @@
 #include "coloredtabbar.h"
 
 #include <QColor>
+#include <QPointer>
 #include <QString>
 #include <QVector>
 #include <QWidget>
@@ -69,17 +70,29 @@ public:
     static RowPaint rowPaint(ClaudeTabIndicator::Glyph glyph, const QColor &background,
                              bool hovered);
 
+    // Open an editor on `page`'s row, holding its whole title. Rows are
+    // not rebuilt while it is open. Returns false when no row shows `page`.
+    bool startRename(QWidget *page);
+
     QTreeWidget *treeForTest() const { return m_tree; }
 
 signals:
     void tabActivated(QWidget *page);
+    // A right-click on a tab row. Headers send nothing.
+    void tabContextMenuRequested(QWidget *page);
+    // The rename editor closed with a changed name. Escape sends nothing.
+    void tabRenamed(QWidget *page, const QString &name);
 
 private:
     void rebuild();
     void onItemActivated(QTreeWidgetItem *item);
+    void onEditorClosed(bool submitted);
 
     QTreeWidget *m_tree = nullptr;
     QVector<TabListEntry> m_entries;
     QWidget *m_current = nullptr;
     int m_points = 0;
+    QTreeWidgetItem *m_renaming = nullptr;  // the row being renamed
+    QString m_renameFrom;                   // its title when the editor opened
+    QPointer<QWidget> m_renamePage;         // null if the tab closes mid-edit
 };

@@ -30,6 +30,17 @@ void MainWindow::applyTabListPanelConfig() {
             const int i = m_tabWidget->indexOf(page);
             if (i >= 0) m_tabWidget->setCurrentIndex(i);
         });
+        connect(m_tabListPanel, &TabListPanel::tabContextMenuRequested, this,
+                [this](QWidget *page) {
+                    const int i = m_tabWidget->indexOf(page);
+                    if (i >= 0) showTabColorMenu(i, true);
+                });
+        // Same pin as the tab bar's Rename; an empty name clears it.
+        connect(m_tabListPanel, &TabListPanel::tabRenamed, this,
+                [this](QWidget *page, const QString &name) {
+                    const int i = m_tabWidget->indexOf(page);
+                    if (i >= 0) setTabTitleForRemote(i, name.trimmed());
+                });
 
         m_tabListRefreshTimer = new QTimer(this);
         m_tabListRefreshTimer->setSingleShot(true);

@@ -418,7 +418,9 @@ private:
 
     // Tab color groups — storage lives in m_coloredTabBar (QTabBar::tabData
     // per tab); MainWindow only exposes the context-menu entry point.
-    void showTabColorMenu(int tabIndex);
+    // `fromPanel`: opened from the tab list panel, so Rename edits there;
+    // the tab bar may be hidden.
+    void showTabColorMenu(int tabIndex, bool fromPanel = false);
 
     // Persist per-tab colour choices across restarts. Storage lives in the
     // `tab_groups` config key as a JSON object mapping the tab's UUID
