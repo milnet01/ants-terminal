@@ -71530,6 +71530,12 @@ project. Reported causes are claims until checked in source.
   next_step contradicting roadmap-format.md § 3.1, which now says to add
   a release block first and to pass id_prefix on the first append.
   next_step should say the same.
+  Loop 31 (2026-10-12), open question settled by reading code:
+  roadmap_log's append allocator never reads a declared
+  `.ants/project.json` id_format prefix (only roadmap_query refuses
+  id_format_mismatch), so a first append without id_prefix takes the
+  directory-derived prefix even where a different one is declared.
+  Consider defaulting to the declared prefix here too.
   **Layman:** Starting a new roadmap gives you a section where nothing is ever picked up for work, and a file that does not yet say it is generated.
   Kind: fix.
   Source: in-session-2026-10-12 (review-contract on roadmap-format.md, CFG-0757).
