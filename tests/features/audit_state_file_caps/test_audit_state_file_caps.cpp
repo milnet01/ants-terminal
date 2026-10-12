@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QByteArray>
 #include <QFile>
@@ -53,8 +54,8 @@ QString functionBody(const QString &src, const QString &signature) {
 
 class AuditStateFileCaps : public ::testing::Test {
 protected:
-    void SetUp() override { qputenv("ANTS_AUDIT_TRUST_UNSAFE", "1"); }
-    void TearDown() override { qunsetenv("ANTS_AUDIT_TRUST_UNSAFE"); }
+    void SetUp() override { m_env.setEnv("ANTS_AUDIT_TRUST_UNSAFE", "1"); }
+    ants_test::XdgGuard m_env;
 };
 
 }  // namespace
