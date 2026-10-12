@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5666 -->
+<!-- ants-roadmap-id-high-water: ANTS=5667 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -3291,10 +3291,17 @@ remainder, captured so they don't drop on the floor.
   parent folder refused project_not_registered). Candidate fix, not yet
   decided: walk up to the nearest registered store root or git root, and
   optionally take one registered child when the cwd holds none.
+  Decided (2026-10-12): fixed by ANTS-5667, not on its own. The
+  button resolves through the same project_root key as the verbs, so
+  rusty-psn gets its button back by declaring project_root in the outer
+  folder's .ants/project.json. A button-only walk was dropped: it would
+  diverge from the verbs again, which is how this bug arose (ANTS-3350
+  widened findRoadmapUnder; the button kept its own list).
   **Layman:** In the rusty-psn tab the bottom bar has no Roadmap button, though that project's roadmap lives in the roadmap store.
   Kind: fix.
   Source: user-report-2026-10-12.
   Lanes: statusbar, roadmap.
+  Blocked-by: ANTS-5667.
 
 ### 🎨 GitHub-aware status bar (user requests 2026-04-27)
 
@@ -71409,6 +71416,27 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: rusty-psn feedback 2026-10-12.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-5667] **An outer project folder resolves to the project its .ants/project.json names.**
+  Reported 2026-10-12 by dantes-inferno-recomp (Dantes_Inferno_Recomp/
+  outer folder, registered clone hells-gate-recomp/). From the outer
+  folder roadmap_query refuses no_roadmap_loaded, session_message
+  refuses no_project, and the inbox hook disagrees with the verb. A
+  `roadmap` key pointing into the clone makes reads answer from the
+  markdown file, so a write there would be overwritten by the store's
+  next render.
+  Design (user decision relayed 2026-10-12): one key in the outer
+  .ants/project.json names the project folder (working name
+  `project_root`). Every project-scoped verb, the store lookup,
+  session_message, the inbox hook and the status-bar Roadmap button
+  resolve through it. Needs a spec: today four rules resolve a folder
+  (resolveCallerCwdRoot, repoBoundedAncestors/findRoadmapUnder,
+  projectIdForRoot exact match, projectIdContaining upward walk).
+  Covers ANTS-5664 (rusty-psn, same layout).
+  **Layman:** When you keep a project in a folder with its git clone one level down, Ants tools and the Roadmap button work from the outer folder too.
+  Kind: feature.
+  Source: dantes-inferno-recomp feedback 2026-10-12.
+  Lanes: remotecontrol, roadmap, statusbar, hooks.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
