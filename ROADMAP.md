@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5660 -->
+<!-- ants-roadmap-id-high-water: ANTS=5661 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -6276,7 +6276,7 @@ minor tag (next: pre-0.8.0).
 
 ### ⚡ Performance — hot-path sweep (user request 2026-04-30)
 
-- 📋 [ANTS-1115] **Performance, performance, performance — full hot-path sweep across the ten subsystems that determine perceived speed.**
+- 🚫 [ANTS-1115] **Performance, performance, performance — full hot-path sweep across the ten subsystems that determine perceived speed.**
   **Deferred to 0.8.x.** Ten-row table is real
   work that needs a dedicated release cycle and a benchmark
   baseline first (the table's "Expected win" column is unmeasured
@@ -6361,6 +6361,11 @@ minor tag (next: pre-0.8.0).
   is live in src/vtparser.cpp and the strtol this item named is gone.
   The remaining rows may or may not still be hot, and nothing here says
   which. Kept filed for its reasoning; do not act on its numbers.
+  Dropped (2026-10-12, ANTS-4921): rows 1 and 2 shipped, row 3 shipped
+  as the glyph cache (ANTS-3453), row 4 is ANTS-3464, row 7 is
+  ANTS-2000/ANTS-5418. The rest are unmeasured guesses; the 2026-10-12
+  run justifies none of them. File a row as its own item when a
+  benchmark shows it hot.
 
 ### ⚡ Freeze-focused hot-path sweep (user request 2026-07-09)
 
@@ -22221,6 +22226,10 @@ under one guard). The deferrals below.
   query stops matching padding. Accepted cost: a search can no longer
   find trailing spaces a program really printed. Capping the match list
   was the alternative and was not taken.
+  Measured (2026-10-12, ANTS-4921, 23aa46f0): bench_widget_search scans
+  1.04M lines/s for a literal term but 47.8k lines/s for a single-space
+  query, about 20x slower. A one-character query is what the first
+  keystroke sends, so it is the case this item names.
   Source: indie-review-2026-06-04.
   Lanes: terminalwidget.
 
@@ -84977,7 +84986,7 @@ a modern terminal" release.
 
 ### ⚡ Performance
 
-- 📋 [ANTS-1059] **Terminal throughput slowdowns.**
+- 🚫 [ANTS-1059] **Terminal throughput slowdowns.**
   (user report 2026-04-20).
   Intermittent stalls observed during normal use. Investigation items:
   (a) profile `onVtBatch()` under heavy-output workloads — `yes`,
@@ -85067,8 +85076,12 @@ a modern terminal" release.
   in terminalgrid.h, whose own comment says it avoids the per-scroll
   allocation that dominated that benchmark. Whether throughput is still
   a problem is now an open measurement, not a known defect.
+  Dropped (2026-10-12, ANTS-4921): re-measured at 23aa46f0, throughput
+  holds at its baseline and newline_stream's named hotspot is gone. No
+  STALL line in debug.log. Reopen on a logged STALL line, which names
+  the handler.
 
-- 📋 [ANTS-1060] **Dynamic grid storage.**
+- 🚫 [ANTS-1060] **Dynamic grid storage.**
   (Alacritty
   [PR #1584](https://github.com/alacritty/alacritty/pull/1584/files)).
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily
@@ -85081,6 +85094,9 @@ a modern terminal" release.
   scrollback is a deque grown on demand -- so the saving it describes
   does not exist. Of what it proposed, only empty-row interning is
   unbuilt, and that needs a measurement to justify.
+  Dropped (2026-10-12, ANTS-4921): the pre-allocated grid it would
+  shrink does not exist. Scrollback memory is owned by ANTS-4534 (the
+  64-byte Cell).
 
 - 📋 [ANTS-1061] **Async image decoding.**
   Hand sixel/Kitty/iTerm2 payloads to
@@ -85095,7 +85111,7 @@ a modern terminal" release.
   **Layman:** Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
 
-- 📋 [ANTS-4921] **Re-measure the performance baseline before acting on any parked perf item.**
+- ✅ [ANTS-4921] **Re-measure the performance baseline before acting on any parked perf item.**
   Three perf items were verified 2026-09-07 and all three had lost their
   premise: the hotspot each named has since been addressed, so the work as
   filed would be optimising against a measurement nobody has taken.
@@ -85118,6 +85134,17 @@ a modern terminal" release.
 
   Blocks ANTS-1115, ANTS-1059 and ANTS-1060, which stay filed so the
   reasoning behind them is not lost.
+  Shipped (2026-10-12): tools/perf-report.sh --repeat 3 run at 23aa46f0
+  against the 2026-09-12 baseline (b67b4c16), same machine (Ryzen 5
+  5600, 31 GiB). VT throughput within 5% or better: ascii_print 30.0,
+  ansi_sgr 18.5, newline_stream 6.1, utf8_cjk 8.9 MB/s. Search
+  unchanged. Full-frame paint faster: plain -7.5%, styled -15%, CJK
+  -34%. Two groups slower, neither our code: the audit walks +23% track
+  the tree growing from 2173 to 2585 tracked files; the paint
+  micro-bench +25-31% follows the Qt 6.11.2 and HarfBuzz 14.6 updates of
+  2026-10-10/11 (bench source unchanged since the baseline). New
+  baseline saved in tests/perf/baseline.tsv. Re-filed: nothing.
+  ANTS-1059, ANTS-1060 and ANTS-1115 dropped on these numbers.
   **Layman:** Check what is actually slow now, before optimising things that may already be fast.
   Kind: perf.
   Source: stale-premise-triage-2026-09-07.
@@ -85364,6 +85391,19 @@ a modern terminal" release.
   **Layman:** Saving performance numbers for one benchmark silently throws away the saved numbers for all the others.
   Kind: fix.
   Source: in-session-2026-09-12 (ANTS-2000).
+
+- 📋 [ANTS-5661] **bench_session_save reports a negative session.write_ms, because it subtracts two separately timed means.**
+  Measured 2026-10-12 at 23aa46f0: session.write_ms -1.30 ms, with
+  save_total_ms 486.3 and serialize_ms 487.6. tests/perf/bench_session_save.cpp
+  computes writeMs = saveMs - serializeMs from two loops timed apart; the
+  write is under the noise between them, so the sign flips run to run and
+  the perf report flags a regression or an improvement at random.
+  Fix: time SessionManager::writeBlob directly (it is private; a test
+  accessor is the likely route) or stop reporting the phase.
+  **Layman:** The session-save speed test can report that writing the file took less than no time, which makes its comparison against the baseline meaningless.
+  Kind: fix.
+  Source: in-session-2026-10-12 (found running ANTS-4921).
+  Lanes: perf, session.
 
 ### 🎨 Features — multiplexing
 
