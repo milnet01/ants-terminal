@@ -211,5 +211,22 @@ TEST(CrashSafeSessionPersist, Inv9_saveTabOrderOnlyShortCircuitGuards) {
     EXPECT_EQ(0, expect_failures()) << "Inv9_saveTabOrderOnlyShortCircuitGuards failed";
 }
 
+// Restore deleted each tab's .dat once its shell started, and the next
+// save was up to 30 s away. A reboot in that window lost every tab
+// (reported 2026-10-12).
+TEST(CrashSafeSessionPersist, Inv10_restoreRemovesNoSessionFile) {
+    expect_reset();
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-10: read mainwindow sources";
+
+    const std::string body = extractBody(cp, "void MainWindow::restoreSessions");
+    expect(!body.empty(), "ANTS-1159-INV-10: restoreSessions body extracted");
+    expect(contains(body, "SessionManager::loadSession"),
+           "ANTS-1159-INV-10: the extracted body is the restore loop");
+    expect(!contains(body, "removeSession"),
+           "ANTS-1159-INV-10: restoreSessions deletes a saved tab before it is re-saved");
+    EXPECT_EQ(0, expect_failures()) << "Inv10_restoreRemovesNoSessionFile failed";
+}
+
 }  // namespace
 

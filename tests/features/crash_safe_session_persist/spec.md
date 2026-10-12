@@ -19,6 +19,7 @@ INV labels qualified `ANTS-1159-INV-N`.
 | 7  | `MainWindow::closeEvent` stops `m_sessionSaveTimer` before calling `saveAllSessions` (so the timer can't re-enter mid-shutdown). |
 | 8  | `MainWindow::closeEvent` STILL calls `saveAllSessions()` (no regression of the existing path). |
 | 9  | `saveTabOrderOnly` short-circuits on `!sessionPersistence()` and on the 5 s uptime floor (mirrors `saveAllSessions`). |
+| 10 | `MainWindow::restoreSessions` removes no session file. A restored tab's `.dat` stays until the next save overwrites it, so a crash or shutdown before that save loses nothing. |
 
 ## Why source-grep, not behavioural
 

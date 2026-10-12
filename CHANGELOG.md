@@ -193,6 +193,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Saved tabs survive a restart soon after the terminal opens** (ANTS-5653)
+  Reopening saved tabs no longer deletes their saved copies. Before,
+  closing or restarting within about 30 seconds of opening the
+  terminal could lose every tab.
+
 - **Tabs can be renamed from the tab list side panel**
   Right-click a tab in the side panel for the same menu as the tab
   bar: Rename Tab and the tab colours. Rename edits the name in the

@@ -278,7 +278,9 @@ void MainWindow::restoreSessions() {
             if (!tab.terminal->startShell(tab.startDir, m_config.shellCommand()))
                 continue;
             tab.terminal->update();
-            SessionManager::removeSession(tab.tabId);
+            // The tab's .dat stays: the next save overwrites it. Deleting it
+            // here left no copy until that save, up to 30 s away, and a
+            // reboot in that window lost every tab (2026-10-12).
             // ANTS-1375 — register the restored shell with the Claude
             // services. newTab + newTabForRemote already do this; the
             // restoreSessions path forgot, so per-tab Claude state dots

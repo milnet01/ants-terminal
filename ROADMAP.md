@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5652 -->
+<!-- ants-roadmap-id-high-water: ANTS=5655 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84846,6 +84846,37 @@ a modern terminal" release.
   Kind: fix.
   Source: user-report-2026-10-11 (screenshots).
   Lanes: mainwindow, coloredtabbar.
+
+- ✅ [ANTS-5653] **Restoring tabs no longer deletes their saved files before the next save.**
+  restoreSessions deleted each tab's session_<id>.dat once its shell
+  started; the next save was up to 30 s away. The machine rebooted at
+  07:35:36 on 2026-10-12, about 25 s after a launch, and every tab was
+  lost. Fixed in mainwindow_sessions.cpp; ANTS-1159-INV-10 locks it.
+  **Layman:** A restart soon after opening the terminal no longer wipes every saved tab.
+  Kind: fix.
+  Source: user-report-2026-10-12.
+
+- 📋 [ANTS-5654] **Restore falls back to every stray session file when tab_order.txt lists only missing ones.**
+  MainWindow::restoreSessions uses SessionManager::savedSessions() when
+  loadTabOrder returns empty. loadTabOrder drops ids whose .dat is
+  missing, so a tab_order.txt that exists but names only lost tabs is
+  treated like no tab_order.txt at all, and orphan files from tabs
+  closed weeks ago come back. Closing a tab also leaves its .dat
+  behind until the 30-day prune, which supplies the orphans. Fall back
+  only when tab_order.txt is absent, and remove a closed tab's file.
+  **Layman:** After a lost session the terminal reopened one long-forgotten tab instead of starting clean.
+  Kind: fix.
+  Source: user-report-2026-10-12.
+
+- 📋 [ANTS-5655] **The terminal saves no session on SIGTERM or a desktop logout.**
+  ants-terminal installs no SIGTERM handler and does not answer
+  QGuiApplication::commitDataRequest, so a reboot or logout ends it
+  without closeEvent's forced saveAllSessions. ants-mcpd already routes
+  SIGTERM to aboutToQuit through a self-pipe (src/mcpdmain.cpp); copy
+  that and save there.
+  **Layman:** Shutting the computer down can lose up to 30 seconds of tab changes.
+  Kind: fix.
+  Source: user-report-2026-10-12.
 
 ### 🐛 Carried over from 0.7.x
 
