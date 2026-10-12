@@ -1,6 +1,6 @@
 # ANTS-5667 — An outer project folder resolves to the repository its `repo_root` names
 
-**Status:** spec draft (2026-10-12).
+**Status:** accepted (2026-10-12), review-contract loops 1 + 2 folded, cap reached.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5667 (dantes-inferno-recomp feedback 2026-10-12; design is the user's decision relayed by that session the same day).
 **Covers:** ANTS-5664 (rusty-psn's missing Roadmap button, the same layout), which is blocked by this item.
@@ -47,9 +47,10 @@ It reads only the folder it is given. It does not walk: each caller passes the f
 
 ### 2.3 Who calls it
 
-- **`rcdetail::findRoadmapUnder`.** A probed folder whose `repoRootOf(dir)` differs from `dir` is probed through its repo root instead: the repo root's own `roadmap` key, then its candidate list. The folder's own `roadmap` key and candidates are not probed. `ownerDir` stays `dir`.
-- **`rcdetail::rcProjectRootFor` and `rcdetail::rcWorktreeMainCheckout`.** Both map the owner folder through `repoRootOf` before `rcMainCheckoutOf`. Every roadmap verb resolves its store key through `rcProjectRootFor`, so they all reach the store row registered at the repo root. The worktree-write refusal (ANTS-4953) calls `rcWorktreeMainCheckout`, so it sees the same root.
-- **`ProjectSettings::idFormatFor(dir)`** reads the settings file at `repoRootOf(dir)`. The store's prefix chain (`rcdetail::rlStoreCounterPrefix`) passes it the caller's folder, so from the outer folder it reads the repo root's `id_format`, not the outer file's.
+- **`rcdetail::findRoadmapUnder`.** A probed folder whose `repoRootOf(dir)` differs from `dir` is probed through its repo root instead: the repo root's own `roadmap` key, then its candidate list. The folder's own `roadmap` key and candidates are not probed, and `ownerDir` is the repo root. `ownerDir` is the store key (ANTS-4882), and every caller that passes it is reached without a change of its own: `rcProjectRootFor`, `rcWorktreeMainCheckout` (the ANTS-4953 worktree-write refusal) and `roadmap_log`'s `projectRootDir`. A `workspace_search` for `findRoadmapUnder(` with a second argument lists them.
+- **`roadmap_query`'s `check_sync`** passes `rcProjectRootFor(callerCanonical)` to `rcStampDriftFields`, not `callerCanonical`: `RoadmapWrite::measureDrift` renders the store against the root it is given.
+- **`rcdetail::rlStoreCounterPrefix`** maps its caller folder through `repoRootOf` on entry. It hands that folder to `ProjectSettings::idFormatFor` and to its directory-default fallback, `rlResolveCounterPrefix`, so from the outer folder both see the repo root.
+- **`ProjectSettings::idFormatFor(dir)`** reads the settings file at `repoRootOf(dir)`, for its other callers.
 - **`RemoteControl::cmdSessionMessage`** passes `repoRootOf(rr.cwd)` to `projectIdContaining`.
 - **`session_orient`'s `mail_pending` block** passes `repoRootOf(rootCanonical)` to `projectIdForRoot`.
 - **The status-bar mail chip** (`ClaudeStatusBarController::refreshMailChip`) passes `repoRootOf(cwd)` to `projectIdContaining`. `ants_claude_lib` gains `PRIVATE ants_mcpcore_lib`, where `ProjectSettings` lives.
@@ -77,14 +78,14 @@ It reads only the folder it is given. It does not walk: each caller passes the f
 ## 3. Invariants
 
 - **INV-1** — `repoRootOf(dir)` returns the canonical directory `dir`'s `repo_root` names when it exists inside `dir`, and `dir` unchanged otherwise. Broken by following a value that escapes `dir` or names a file. *Test:* `ProjectSettings.RepoRootOf` over temporary folders: a child folder → the child; no file, no key, `"../x"`, an absolute path outside, a symlink pointing outside, a missing path and a regular file → `dir`.
-- **INV-2** — `findRoadmapUnder` on a folder declaring `repo_root` returns the repo root's roadmap, with `ownerDir` the folder itself, whether or not the folder holds a roadmap of its own. Broken by probing the folder's own roadmap first. *Test:* `ProjectRepoRoot.FindRoadmapUnder` with an outer fixture holding only the key, then the same fixture with its own `ROADMAP.md`: both return the clone's file.
+- **INV-2** — `findRoadmapUnder` on a folder declaring `repo_root` returns the repo root's roadmap, with `ownerDir` the repo root, whether or not the folder holds a roadmap of its own. Broken by probing the folder's own roadmap first, or by leaving `ownerDir` at the folder. *Test:* `ProjectRepoRoot.FindRoadmapUnder` with an outer fixture holding only the key, then the same fixture with its own `ROADMAP.md`: both return the clone's file, with the clone as `ownerDir`.
 - **INV-3** — From the outer folder, `rcProjectRootFor` returns the repo root, so `roadmap_query` answers with `source:"store"` and a `roadmap_log` append lands in the store row registered at the repo root. Broken by keying the store lookup on the outer folder. *Test:* `ProjectRepoRoot.RoadmapVerbsUseStore` with a throwaway store registered at the fixture clone: `roadmap_query` from the outer folder reports `source:"store"`, and an append from it is read back from the clone.
 - **INV-4** — `session_message` from the outer folder reaches the repo root's mailbox: a message sent to the clone's slug is listed by `op:"inbox"` from the outer folder, and an ack there clears it for the clone. Broken by resolving the mailbox from the outer folder unmapped. *Test:* `ProjectRepoRoot.MailboxFromOuterFolder` with a throwaway store.
 - **INV-5** — `session_orient`'s `mail_pending` and the status-bar mail chip key their store lookup on `repoRootOf` of their folder. Broken by a mail surface that disagrees with `session_message` from the outer folder. *Test:* `ProjectRepoRoot.MailPendingFromOuterFolder` for `session_orient`, and a source check that `ClaudeStatusBarController::refreshMailChip` passes its folder through `ProjectSettings::repoRootOf` before `projectIdContaining`.
 - **INV-6** — `refreshRoadmapButton` decides visibility by `findRoadmapUnder` alone and holds no candidate list. Broken by a second probe that can drift. *Test:* `ProjectRepoRoot.ButtonUsesFindRoadmapUnder`, a source check on the function body; `tests/features/roadmap_viewer` INV-6 still passes.
 - **INV-7** — `project_settings op:"set"` writes a valid `repo_root`, refuses `bad_path` for one that is missing, outside the folder or a file, and `op:"get"` reports it; `detect` never proposes it. Broken by accepting a value `repoRootOf` would ignore. *Test:* `ProjectRepoRoot.ProjectSettingsKey`.
 - **INV-8** — A folder whose settings carry no `repo_root` resolves exactly as before through every surface in § 2.3. Broken by any mapping that fires without the key. *Test:* `ProjectRepoRoot.NoKeyUnchanged`: inside a fixture clone with no key, `rcProjectRootFor`, `findRoadmapUnder` and the mailbox lookup return what they return on the unchanged code; the existing `roadmap_subdir_dispatch` and `session_message` suites stay green.
-- **INV-9** — From a folder declaring `repo_root`, `idFormatFor` returns the repo root's `id_format` and ignores the folder's own. Broken by reading the caller's folder, which lets two callers of one store row allocate under two prefixes. *Test:* `ProjectSettings.IdFormatFollowsRepoRoot`: an outer fixture declaring prefix `XX` and `repo_root` naming a clone that declares `HG` returns `HG`.
+- **INV-9** — From a folder declaring `repo_root`, `idFormatFor` returns the repo root's `id_format` and ignores the folder's own. Broken by reading the caller's folder, which lets two callers of one store row allocate under two prefixes. *Test:* `ProjectSettings.IdFormatFollowsRepoRoot`: an outer fixture declaring prefix `XX` and `repo_root` naming a clone that declares `HG` returns `HG`. A second case in `ProjectRepoRoot.CounterPrefixFromOuterFolder`: with no `id_format` in either file and no stored `id_prefix`, `rlStoreCounterPrefix` returns the same prefix from the outer folder as from the clone.
 
 ## 4. RAM / build cost
 
@@ -111,7 +112,7 @@ It reads only the folder it is given. It does not walk: each caller passes the f
 | INV-6 | `ProjectRepoRoot.ButtonUsesFindRoadmapUnder` |
 | INV-7 | `ProjectRepoRoot.ProjectSettingsKey` |
 | INV-8 | `ProjectRepoRoot.NoKeyUnchanged` |
-| INV-9 | `ProjectSettings.IdFormatFollowsRepoRoot` |
+| INV-9 | `ProjectSettings.IdFormatFollowsRepoRoot`, `ProjectRepoRoot.CounterPrefixFromOuterFolder` |
 
 ## 7. Cross-doc impact
 

@@ -71433,6 +71433,11 @@ project. Reported causes are claims until checked in source.
   (resolveCallerCwdRoot, repoBoundedAncestors/findRoadmapUnder,
   projectIdForRoot exact match, projectIdContaining upward walk).
   Covers ANTS-5664 (rusty-psn, same layout).
+  On ship, tell these the key name and that it is safe to set:
+  rusty-psn through session_message to its project inbox, not a session
+  name (its RPSN-0128 waits on it); dantes-inferno-recomp (outer
+  Dantes_Inferno_Recomp/, may then drop the clone's copy); claude-config
+  (its CFG-0763 waits on it). Spec: docs/specs/ANTS-5667-outer-folder-repo-root.md.
   **Layman:** When you keep a project in a folder with its git clone one level down, Ants tools and the Roadmap button work from the outer folder too.
   Kind: feature.
   Source: dantes-inferno-recomp feedback 2026-10-12.
