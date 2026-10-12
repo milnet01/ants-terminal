@@ -53894,6 +53894,11 @@ are closed inline in the feedback files rather than filed here.
   mcpdmain.cpp, recordDispatch, two MainWindow methods) totalling about
   17 KB came back as a spill handle with shape-only rows. The session fell
   back to plain Read for all five, which cost more than one inline reply.
+  Seen again 2026-10-12 (Pressless): three line ranges of one spec,
+  16874 bytes total, spilled with shape-only rows. Pressless suggests
+  the ANTS-5364 shape: let max_bytes raise the spill threshold for the
+  call up to a ceiling, or inline whole slices in item order until the
+  budget runs out.
   **Layman:** The tool for fetching several pieces of a file at once returns nothing usable, while fetching the same pieces one at a time works.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
