@@ -288,6 +288,61 @@ TEST(TabListPanel, Inv8HoveredCurrentRowStillShowsItsName) {
         << "the tab colour stripe is missing";
 }
 
+// ANTS-5658 — at rest a state row fades from its state colour, under the
+// name, into the panel background; hovered, it is one colour.
+TEST(TabListPanel, Inv8RestingRowFadesIntoTheBackground) {
+    for (const QColor &bg : {kDarkBg, kLightBg}) {
+        for (Glyph g : kAllGlyphs) {
+            const auto rest = TabListPanel::rowPaint(g, bg, false);
+            const auto hover = TabListPanel::rowPaint(g, bg, true);
+            const std::string what = TabListPanel::stateLabel(g).toStdString();
+            EXPECT_EQ(rest.fade, bg) << what;
+            EXPECT_EQ(hover.fade, hover.fill) << "hover must be one colour: " << what;
+        }
+    }
+}
+
+TEST(TabListPanel, Inv8PaintedRowIsAGradientWithAWiderStripe) {
+    Pages p;
+    TabListPanel panel;
+    panel.setThemeColors(kDarkBg, kDarkText);
+    const QString name = QStringLiteral("Ants Terminal");
+    panel.setEntries({{&p.a, name, paletteColor(0), Glyph::Thinking},
+                      {&p.b, QStringLiteral("y"), paletteColor(0), Glyph::None}},
+                     &p.b);
+    const auto rows = tabRows(panel.treeForTest());
+    ASSERT_EQ(rows.size(), 2);
+    const auto want = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, false);
+
+    const QImage rest = paintRow(panel, rows.at(0), {});
+    const int mid = rest.height() / 2;
+    // 32px row: the ANTS-5650 stripe was max(5, 32/4) = 8px; now 11px.
+    EXPECT_EQ(QColor(rest.pixel(10, mid)).rgb(), paletteColor(0).rgb())
+        << "the stripe is not 3px wider";
+    EXPECT_NE(QColor(rest.pixel(11, mid)).rgb(), paletteColor(0).rgb());
+    const auto near = [](const QColor &a, const QColor &b) {
+        return qAbs(a.red() - b.red()) <= 8 && qAbs(a.green() - b.green()) <= 8 &&
+               qAbs(a.blue() - b.blue()) <= 8;
+    };
+    EXPECT_TRUE(near(QColor(rest.pixel(12, mid)), want.fill)) << "left end is not the state colour";
+    EXPECT_TRUE(near(QColor(rest.pixel(399, mid)), want.fade)) << "right end is not the fade colour";
+    EXPECT_FALSE(near(QColor(rest.pixel(12, mid)), QColor(rest.pixel(399, mid))))
+        << "the resting row is one flat colour";
+    // The name sits on the state colour: no fade until it ends. The stripe
+    // is 11px and the pad max(6, 32/4) = 8px, so the name starts at 19.
+    const int nameEnd = 19 + QFontMetrics(panel.treeForTest()->viewport()->font())
+                                 .horizontalAdvance(name);
+    ASSERT_LT(nameEnd, 380);
+    EXPECT_EQ(QColor(rest.pixel(nameEnd - 1, 1)), want.fill) << "the fade starts under the name";
+    EXPECT_FALSE(near(QColor(rest.pixel((nameEnd + 399) / 2, 1)), want.fill))
+        << "nothing fades after the name";
+
+    const QImage hover = paintRow(panel, rows.at(0), QStyle::State_MouseOver);
+    const auto hoverWant = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true);
+    EXPECT_EQ(QColor(hover.pixel(12, mid)), hoverWant.fill);
+    EXPECT_EQ(QColor(hover.pixel(399, mid)), hoverWant.fill) << "hover is not a full fill";
+}
+
 // ---------------------------------------------------------------- INV-9 -----
 // The tab bar's Rename edited over the tab bar, which the panel can hide.
 

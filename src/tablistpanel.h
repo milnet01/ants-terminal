@@ -72,8 +72,12 @@ public:
     // ANTS-5650 — a tab row's background and name colour: the Claude state
     // colour (the panel background for None), changed under the mouse, with
     // black or white ink, whichever reads better on it.
+    // ANTS-5658 — at rest a state row fades left to right from `fill`,
+    // under the name, to `fade`, the background. Hovered or None, `fade`
+    // equals `fill`: one colour.
     struct RowPaint {
         QColor fill;
+        QColor fade;
         QColor ink;
     };
     static RowPaint rowPaint(ClaudeTabIndicator::Glyph glyph, const QColor &background,

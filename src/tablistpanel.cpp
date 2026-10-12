@@ -46,22 +46,35 @@ public:
         const bool current = opt.state & QStyle::State_Selected;
         const auto rp = TabListPanel::rowPaint(glyph, bg, opt.state & QStyle::State_MouseOver);
         const QRect r = opt.rect;
-        const int stripe = qMax(5, r.height() / 4);
+        // ANTS-5658 — 3px wider than the ANTS-5650 stripe.
+        const int stripe = qMax(5, r.height() / 4) + 3;
         const int pad = qMax(6, r.height() / 4);
 
+        QFont f = opt.font;
+        f.setBold(current);
+        const QRect textRect = r.adjusted(stripe + pad, 0, -pad, 0);
+        const QFontMetrics fm(f);
+        const QString name = fm.elidedText(index.data(Qt::DisplayRole).toString(),
+                                           Qt::ElideRight, textRect.width());
+
         p->save();
-        p->fillRect(r, rp.fill);
+        if (rp.fade == rp.fill) {
+            p->fillRect(r, rp.fill);
+        } else {
+            // Left to right: the state colour under the name, then fading
+            // into the background, so the name never sits on the fade.
+            const int nameEnd = textRect.left() + fm.horizontalAdvance(name);
+            QLinearGradient g(qMin(nameEnd, r.right() - 1), 0, r.right(), 0);
+            g.setColorAt(0, rp.fill);
+            g.setColorAt(1, rp.fade);
+            p->fillRect(r, g);
+        }
         const QColor tab = index.data(kTabColorRole).value<QColor>();
         if (tab.isValid())
             p->fillRect(QRect(r.left(), r.top(), stripe, r.height()), tab);
-        QFont f = opt.font;
-        f.setBold(current);
         p->setFont(f);
         p->setPen(rp.ink);
-        const QRect textRect = r.adjusted(stripe + pad, 0, -pad, 0);
-        p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft,
-                    QFontMetrics(f).elidedText(index.data(Qt::DisplayRole).toString(),
-                                               Qt::ElideRight, textRect.width()));
+        p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, name);
         if (current) {
             // The current tab: outlined, so no highlight hides its colour.
             QPen pen(rp.ink, 2);
@@ -361,14 +374,21 @@ TabListPanel::RowPaint TabListPanel::rowPaint(ClaudeTabIndicator::Glyph glyph,
                                               const QColor &background, bool hovered) {
     QColor fill = glyph == ClaudeTabIndicator::Glyph::None ? background
                                                            : ClaudeTabIndicator::color(glyph);
-    if (hovered) {
-        // A quarter of the way towards the ink: visibly different, same hue.
-        const QColor toward = inkOn(fill);
-        const auto mix = [](int a, int b) { return a + (b - a) / 4; };
-        fill = QColor(mix(fill.red(), toward.red()), mix(fill.green(), toward.green()),
-                      mix(fill.blue(), toward.blue()));
+    if (hovered || glyph == ClaudeTabIndicator::Glyph::None) {
+        if (hovered) {
+            // A quarter of the way towards the ink: visibly different, same hue.
+            const QColor toward = inkOn(fill);
+            const auto mix = [](int a, int b) { return a + (b - a) / 4; };
+            fill = QColor(mix(fill.red(), toward.red()), mix(fill.green(), toward.green()),
+                          mix(fill.blue(), toward.blue()));
+        }
+        return {fill, fill, inkOn(fill)};
     }
-    return {fill, inkOn(fill)};
+
+    // ANTS-5658 — at rest the state colour fades into the background. The
+    // delegate starts the fade after the name, so the name always sits on
+    // the colour its ink was chosen for.
+    return {fill, background, inkOn(fill)};
 }
 
 QIcon TabListPanel::tabIcon(const TabListEntry &e, int h, const QColor &bg, qreal dpr) {

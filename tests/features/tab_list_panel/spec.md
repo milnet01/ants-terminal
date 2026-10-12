@@ -33,10 +33,14 @@ item records the user's choice of a side panel over wrapping rows.
   change applies with no relaunch.
 - **INV-8 — state as row colour (ANTS-5650).** A tab row's background is
   `ClaudeTabIndicator::color` of its glyph, or the panel background for
-  `None`. Its tab colour is a stripe at the left edge. The name is drawn
+  `None`. At rest a state row's background is solid under the name, then
+  fades left to right into the panel background (ANTS-5658). Its tab
+  colour is a stripe at the left edge, `max(5, height / 4) + 3` pixels
+  wide. The name is drawn
   in black or white, whichever has the higher contrast with the
-  background, and that contrast is at least 4.5:1. Under the mouse the
-  background changes and the 4.5:1 floor still holds, selected or not.
+  state colour, and that contrast is at least 4.5:1. Under the mouse the
+  whole row fills with one changed colour, with no fade, and the 4.5:1
+  floor still holds, selected or not.
   The current tab's row is bold and outlined, with no highlight over its
   colour. The panel paints tab rows itself, so the app style sheet's
   item rules do not reach them.

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5657 -->
+<!-- ants-roadmap-id-high-water: ANTS=5658 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84913,6 +84913,18 @@ a modern terminal" release.
   Kind: fix.
   Source: user-report-2026-10-12.
   Lanes: claude.
+
+- ✅ [ANTS-5658] **Tab list rows fade from the state colour into the background, with a wider colour stripe.**
+  User request, relayed by claude-config (messages 583, 584): stripe
+  3px wider; status colour as a left-to-right gradient into the panel
+  background; hover keeps a full solid fill. The fade starts after the
+  name, because on a dark theme most state colours need black ink,
+  which is unreadable on the dark background. Contract: INV-8 in
+  tests/features/tab_list_panel/spec.md.
+  **Layman:** Each tab in the side list now shows its Claude status colour behind the name, fading into the normal background on the right; the tab's colour stripe is 3px wider, and hovering still fills the whole row.
+  Kind: ux.
+  Source: user-request-2026-10-12.
+  Lanes: tablistpanel.
 
 ### 🐛 Carried over from 0.7.x
 

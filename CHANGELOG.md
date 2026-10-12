@@ -133,6 +133,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **Tab list rows fade from their Claude state colour into the panel background, and the tab colour stripe is 3px wider** (ANTS-5658)
+  The colour stays solid behind the name, so the name stays readable;
+  hovering fills the whole row with one colour.
+
 - **`roadmap_log op:"rotate_minor"` now moves a `## v0.7.x` patch-stream block with its minor, and still leaves a heading naming two minors' patch streams in place.** (ANTS-5639)
 
 - **Tab List Panel rows are filled with their Claude state colour, keep the tab colour as a stripe, and stay readable when hovered or current.** (ANTS-5650)
