@@ -682,6 +682,7 @@ private:
     QTimer *m_tabListRefreshTimer = nullptr;
     QAction *m_tabListPanelAction = nullptr;
     QAction *m_tabListHidesBarAction = nullptr;
+    QActionGroup *m_tabListSortGroup = nullptr;  // ANTS-5656, data() = config key
     // ANTS-5646 — parent of the tab switcher's per-tab actions; deleted
     // after the palette closes, once a chosen action has fired.
     QObject *m_tabSwitcherActions = nullptr;

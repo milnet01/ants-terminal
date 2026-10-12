@@ -42,6 +42,15 @@ public:
     // The rows' font size, in points. MainWindow passes the terminal's.
     void setFontPointSize(int points);
 
+    // ANTS-5656 — the row order. Sorting reorders the panel only, never
+    // the tabs. The config key `tab_list_panel_sort` stores sortModeKey().
+    enum class SortMode { ByColour, ByColourAZ, AZ, TabOrder };
+    void setSortMode(SortMode mode);
+    SortMode sortMode() const { return m_sort; }
+    static QString sortModeKey(SortMode mode);
+    // An unknown or empty key is ByColour.
+    static SortMode sortModeFromKey(const QString &key);
+
     // An opaque background and the text colour, from the theme. Under the
     // window's translucent background an unfilled panel shows the desktop.
     void setThemeColors(const QColor &background, const QColor &text);
@@ -92,6 +101,7 @@ private:
     QVector<TabListEntry> m_entries;
     QWidget *m_current = nullptr;
     int m_points = 0;
+    SortMode m_sort = SortMode::ByColour;
     QTreeWidgetItem *m_renaming = nullptr;  // the row being renamed
     QString m_renameFrom;                   // its title when the editor opened
     QPointer<QWidget> m_renamePage;         // null if the tab closes mid-edit

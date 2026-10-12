@@ -65,6 +65,8 @@ void MainWindow::applyTabListPanelConfig() {
             const int total = m_tabSplitter->width();
             m_tabSplitter->setSizes({width, qMax(1, total - width)});
             m_tabListPanel->setFontPointSize(m_config.fontSize());
+            m_tabListPanel->setSortMode(
+                TabListPanel::sortModeFromKey(m_config.tabListPanelSort()));
         }
     }
     if (m_coloredTabBar)
@@ -78,6 +80,14 @@ void MainWindow::applyTabListPanelConfig() {
     if (m_tabListHidesBarAction) {
         const QSignalBlocker block(m_tabListHidesBarAction);
         m_tabListHidesBarAction->setChecked(m_config.tabListPanelHidesTabBar());
+    }
+    if (m_tabListSortGroup) {
+        const QString key =
+            TabListPanel::sortModeKey(TabListPanel::sortModeFromKey(m_config.tabListPanelSort()));
+        for (QAction *a : m_tabListSortGroup->actions()) {
+            const QSignalBlocker block(a);
+            a->setChecked(a->data().toString() == key);
+        }
     }
     refreshTabList();
 }

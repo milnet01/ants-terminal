@@ -1,5 +1,6 @@
 #include "tablistpanel.h"
 
+#include <QCollator>
 #include <QHeaderView>
 #include <QPainter>
 #include <QPixmap>
@@ -8,6 +9,8 @@
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace {
 
@@ -168,6 +171,28 @@ void TabListPanel::setFontPointSize(int points) {
     if (!m_renaming) rebuild();
 }
 
+void TabListPanel::setSortMode(SortMode mode) {
+    if (mode == m_sort) return;
+    m_sort = mode;
+    if (!m_renaming) rebuild();
+}
+
+QString TabListPanel::sortModeKey(SortMode mode) {
+    switch (mode) {
+        case SortMode::ByColour:   return QStringLiteral("colour");
+        case SortMode::ByColourAZ: return QStringLiteral("colour_az");
+        case SortMode::AZ:         return QStringLiteral("az");
+        case SortMode::TabOrder:   return QStringLiteral("tab_order");
+    }
+    return QStringLiteral("colour");
+}
+
+TabListPanel::SortMode TabListPanel::sortModeFromKey(const QString &key) {
+    for (SortMode m : {SortMode::ByColourAZ, SortMode::AZ, SortMode::TabOrder})
+        if (key == sortModeKey(m)) return m;
+    return SortMode::ByColour;
+}
+
 void TabListPanel::setThemeColors(const QColor &background, const QColor &text) {
     QPalette pal = m_tree->palette();
     for (auto role : {QPalette::Base, QPalette::Window, QPalette::AlternateBase})
@@ -227,13 +252,28 @@ void TabListPanel::rebuild() {
         return item;
     };
 
+    // ANTS-5656 — the A–Z modes order rows by name: case ignored, numbers
+    // in number order, tab order kept between equal names.
+    QVector<TabListEntry> ordered = m_entries;
+    if (m_sort == SortMode::AZ || m_sort == SortMode::ByColourAZ) {
+        QCollator collator;
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        collator.setNumericMode(true);
+        std::stable_sort(ordered.begin(), ordered.end(),
+                         [&collator](const TabListEntry &a, const TabListEntry &b) {
+                             return collator.compare(a.title, b.title) < 0;
+                         });
+    }
+
     QTreeWidgetItem *currentItem = nullptr;
     bool anyColour = false;
     for (const TabListEntry &e : std::as_const(m_entries))
         anyColour = anyColour || e.color.isValid();
+    const bool grouped =
+        anyColour && (m_sort == SortMode::ByColour || m_sort == SortMode::ByColourAZ);
 
-    if (!anyColour) {
-        for (const TabListEntry &e : std::as_const(m_entries)) {
+    if (!grouped) {
+        for (const TabListEntry &e : std::as_const(ordered)) {
             QTreeWidgetItem *row = makeRow(e);
             m_tree->addTopLevelItem(row);
             if (e.page == m_current) currentItem = row;
@@ -255,7 +295,7 @@ void TabListPanel::rebuild() {
                 header->setIcon(0, QIcon(swatch));
             }
             m_tree->addTopLevelItem(header);
-            for (const TabListEntry &e : std::as_const(m_entries)) {
+            for (const TabListEntry &e : std::as_const(ordered)) {
                 const bool match = coloured ? (e.color.isValid() && e.color.rgb() == colour.rgb())
                                             : !e.color.isValid();
                 if (!match) continue;

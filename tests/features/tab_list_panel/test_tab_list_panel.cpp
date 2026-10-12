@@ -398,3 +398,124 @@ TEST(TabListPanel, Inv9MainWindowRoutesThePanelMenuAndRename) {
     ASSERT_FALSE(menu.empty());
     EXPECT_NE(menu.find("startRename("), std::string::npos);
 }
+
+// --------------------------------------------------------------- INV-10 -----
+
+namespace {
+
+QStringList rowTitles(QTreeWidget *tree) {
+    QStringList out;
+    for (QTreeWidgetItem *row : tabRows(tree)) out << row->text(0);
+    return out;
+}
+
+// Tab order: "tab 10", "Beta", "alpha", "Tab 2"; b and d share a colour.
+void setMixedEntries(TabListPanel &panel, Pages &p) {
+    panel.setEntries({{&p.a, QStringLiteral("tab 10"), QColor(), Glyph::None},
+                      {&p.b, QStringLiteral("Beta"), paletteColor(0), Glyph::None},
+                      {&p.c, QStringLiteral("alpha"), QColor(), Glyph::None},
+                      {&p.d, QStringLiteral("Tab 2"), paletteColor(0), Glyph::None}},
+                     &p.a);
+}
+
+}  // namespace
+
+TEST(TabListPanel, Inv10SortKeysParseWithColourAsTheFallback) {
+    using S = TabListPanel::SortMode;
+    EXPECT_EQ(TabListPanel::sortModeFromKey(QStringLiteral("colour")), S::ByColour);
+    EXPECT_EQ(TabListPanel::sortModeFromKey(QStringLiteral("colour_az")), S::ByColourAZ);
+    EXPECT_EQ(TabListPanel::sortModeFromKey(QStringLiteral("az")), S::AZ);
+    EXPECT_EQ(TabListPanel::sortModeFromKey(QStringLiteral("tab_order")), S::TabOrder);
+    EXPECT_EQ(TabListPanel::sortModeFromKey(QStringLiteral("nonsense")), S::ByColour);
+    EXPECT_EQ(TabListPanel::sortModeFromKey(QString()), S::ByColour);
+    for (S m : {S::ByColour, S::ByColourAZ, S::AZ, S::TabOrder})
+        EXPECT_EQ(TabListPanel::sortModeFromKey(TabListPanel::sortModeKey(m)), m);
+}
+
+TEST(TabListPanel, Inv10AZListsEveryRowWithNoHeaders) {
+    Pages p;
+    TabListPanel panel;
+    panel.setSortMode(TabListPanel::SortMode::AZ);
+    setMixedEntries(panel, p);
+    QTreeWidget *tree = panel.treeForTest();
+    ASSERT_EQ(tree->topLevelItemCount(), 4) << "A–Z has no colour headers";
+    // Case ignored; numbers in number order.
+    EXPECT_EQ(rowTitles(tree), (QStringList{"alpha", "Beta", "Tab 2", "tab 10"}));
+}
+
+TEST(TabListPanel, Inv10AZKeepsTabOrderBetweenEqualNames) {
+    Pages p;
+    TabListPanel panel;
+    panel.setSortMode(TabListPanel::SortMode::AZ);
+    panel.setEntries({{&p.a, QStringLiteral("same"), QColor(), Glyph::None},
+                      {&p.b, QStringLiteral("Same"), QColor(), Glyph::None},
+                      {&p.c, QStringLiteral("same"), QColor(), Glyph::None}},
+                     &p.a);
+    const auto rows = tabRows(panel.treeForTest());
+    ASSERT_EQ(rows.size(), 3);
+    EXPECT_EQ(rows.at(0)->data(0, Qt::UserRole + 1).value<QObject *>(), &p.a);
+    EXPECT_EQ(rows.at(1)->data(0, Qt::UserRole + 1).value<QObject *>(), &p.b);
+    EXPECT_EQ(rows.at(2)->data(0, Qt::UserRole + 1).value<QObject *>(), &p.c);
+}
+
+TEST(TabListPanel, Inv10TabOrderListsEveryRowWithNoHeaders) {
+    Pages p;
+    TabListPanel panel;
+    panel.setSortMode(TabListPanel::SortMode::TabOrder);
+    setMixedEntries(panel, p);
+    QTreeWidget *tree = panel.treeForTest();
+    ASSERT_EQ(tree->topLevelItemCount(), 4);
+    EXPECT_EQ(rowTitles(tree), (QStringList{"tab 10", "Beta", "alpha", "Tab 2"}));
+}
+
+TEST(TabListPanel, Inv10ColourAZSortsInsideEachGroup) {
+    Pages p;
+    TabListPanel panel;
+    panel.setSortMode(TabListPanel::SortMode::ByColourAZ);
+    setMixedEntries(panel, p);
+    QTreeWidget *tree = panel.treeForTest();
+    ASSERT_EQ(tree->topLevelItemCount(), 2);
+    EXPECT_EQ(tree->topLevelItem(0)->text(0), paletteName(0));
+    EXPECT_EQ(tree->topLevelItem(1)->text(0), QStringLiteral("No colour"));
+    EXPECT_EQ(rowTitles(tree), (QStringList{"Beta", "Tab 2", "alpha", "tab 10"}));
+}
+
+TEST(TabListPanel, Inv10ColourIsTheDefaultAndKeepsTabOrderInsideGroups) {
+    Pages p;
+    TabListPanel panel;
+    setMixedEntries(panel, p);
+    EXPECT_EQ(rowTitles(panel.treeForTest()),
+              (QStringList{"Beta", "Tab 2", "tab 10", "alpha"}));
+}
+
+TEST(TabListPanel, Inv10ChangingTheModeRebuildsTheRows) {
+    Pages p;
+    TabListPanel panel;
+    setMixedEntries(panel, p);
+    panel.setSortMode(TabListPanel::SortMode::AZ);
+    EXPECT_EQ(rowTitles(panel.treeForTest()),
+              (QStringList{"alpha", "Beta", "Tab 2", "tab 10"}));
+}
+
+TEST(TabListPanel, Inv10SortKeyRoundTripsThroughConfig) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    guard.setEnv("XDG_CONFIG_HOME", tmp.path().toUtf8());
+    {
+        Config c;
+        EXPECT_EQ(c.tabListPanelSort(), QStringLiteral("colour"));
+        c.setTabListPanelSort(QStringLiteral("az"));
+    }
+    Config again;
+    EXPECT_EQ(again.tabListPanelSort(), QStringLiteral("az"));
+}
+
+TEST(TabListPanel, Inv10ReloadPassesTheSortToThePanel) {
+    const std::string src = ants_test::slurpMainWindow();
+    ASSERT_FALSE(src.empty());
+    const std::string apply =
+        ants_test::slurpFunctionBody(src, "void MainWindow::applyTabListPanelConfig(");
+    ASSERT_FALSE(apply.empty());
+    EXPECT_NE(apply.find("setSortMode("), std::string::npos);
+    EXPECT_NE(apply.find("tabListPanelSort()"), std::string::npos);
+}

@@ -26,7 +26,8 @@ item records the user's choice of a side panel over wrapping rows.
   The MainWindow passes the terminal font size, so the panel follows it.
 - **INV-6 — config keys.** `tab_list_panel` (default false),
   `tab_list_panel_hides_tab_bar` (default false) and
-  `tab_list_panel_width` (default 280) round-trip through `Config`.
+  `tab_list_panel_width` (default 280) round-trip through `Config`, as
+  does `tab_list_panel_sort` (INV-10).
 - **INV-7 — live reload.** Both `onConfigFileChanged` and the Settings
   dialog's `settingsChanged` handler call `applyTabListPanelConfig`, so a
   change applies with no relaunch.
@@ -47,6 +48,15 @@ item records the user's choice of a side panel over wrapping rows.
   `setEntries` does not rebuild the rows while it is open. Closing it with
   a changed name emits `tabRenamed` once; Escape emits nothing and keeps
   the old title. The MainWindow pins the name with `setTabTitleForRemote`.
+- **INV-10 — sort order (ANTS-5656).** `setSortMode` picks one of four
+  orders, and `tab_list_panel_sort` stores it: `colour` (the default, and
+  any unknown value) is INV-2; `colour_az` is INV-2 with each group's rows
+  A–Z; `az` lists every row A–Z with no headers; `tab_order` lists every
+  row in tab order with no headers. A–Z ignores case, puts numbers in
+  number order ("Tab 2" before "Tab 10"), and keeps tab order between
+  equal names. Sorting changes the panel only, never the tab order. The
+  View menu's "Tab List Sort" sets it, and `applyTabListPanelConfig`
+  passes it to the panel, so a change applies with no relaunch.
 
 ## Test
 

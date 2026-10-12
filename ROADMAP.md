@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5655 -->
+<!-- ants-roadmap-id-high-water: ANTS=5656 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84884,6 +84884,20 @@ a modern terminal" release.
   **Layman:** Shutting the computer down can lose up to 30 seconds of tab changes.
   Kind: fix.
   Source: user-report-2026-10-12.
+
+- ✅ [ANTS-5656] **The tab list panel can sort its rows by colour, by colour then A–Z, A–Z, or tab order.**
+  The user keeps tabs in alphabetical order. Choices (user, 2026-10-12):
+  four sort modes, and the sort changes the panel only, never the real
+  tab order. Config key `tab_list_panel_sort`; live reload through
+  applyTabListPanelConfig. A–Z is case-insensitive with numbers in
+  number order; equal names keep tab order. Contract:
+  tests/features/tab_list_panel/spec.md INV-10.
+  Shipped 2026-10-12: View → Tab List Sort. Tests INV-10 in
+  test_tab_list_panel.cpp; disabling the sort fails three of them.
+  **Layman:** Choose how the side tab list orders your tabs, including plain alphabetical order, from View → Tab List Sort.
+  Kind: feature.
+  Source: user-request-2026-10-12.
+  Lanes: chrome.
 
 ### 🐛 Carried over from 0.7.x
 

@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **The tab list panel sorts its rows four ways: by colour, by colour then A–Z, A–Z, or tab order.** (ANTS-5656)
+  Pick one from View → Tab List Sort. It applies at once and is
+  remembered. Only the panel is sorted; the tabs keep their order.
+
 - **roadmap_log amend_field field:"section" takes `before_id`, placing moved items directly before a named item, including within their own section.** (ANTS-5380)
   A session can now reorder items inside a section in one call.
 

@@ -2,6 +2,7 @@
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "coloredtabbar.h"
+#include "tablistpanel.h"  // ANTS-5656 — sort-mode keys
 #include "mcporientation.h"  // ANTS-1897 — SessionStart hook installer.
 #include "opaquemenubar.h"
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
@@ -287,6 +288,27 @@ void MainWindow::setupViewMenu() {
     m_tabListHidesBarAction->setChecked(m_config.tabListPanelHidesTabBar());
     connect(m_tabListHidesBarAction, &QAction::toggled, this, [this](bool on) {
         m_config.setTabListPanelHidesTabBar(on);
+        applyTabListPanelConfig();
+    });
+    // ANTS-5656 — the panel's row order. The tabs themselves never move.
+    QMenu *sortMenu = viewMenu->addMenu("Tab List &Sort");
+    m_tabListSortGroup = new QActionGroup(this);
+    m_tabListSortGroup->setExclusive(true);
+    const QString sortKey =
+        TabListPanel::sortModeKey(TabListPanel::sortModeFromKey(m_config.tabListPanelSort()));
+    for (const auto &[label, mode] :
+         {std::pair{"By &Colour", TabListPanel::SortMode::ByColour},
+          std::pair{"By Colour, Then &A–Z", TabListPanel::SortMode::ByColourAZ},
+          std::pair{"&A–Z", TabListPanel::SortMode::AZ},
+          std::pair{"&Tab Order", TabListPanel::SortMode::TabOrder}}) {
+        QAction *a = sortMenu->addAction(QString::fromUtf8(label));
+        a->setCheckable(true);
+        a->setData(TabListPanel::sortModeKey(mode));
+        a->setChecked(a->data().toString() == sortKey);
+        m_tabListSortGroup->addAction(a);
+    }
+    connect(m_tabListSortGroup, &QActionGroup::triggered, this, [this](QAction *a) {
+        m_config.setTabListPanelSort(a->data().toString());
         applyTabListPanelConfig();
     });
 

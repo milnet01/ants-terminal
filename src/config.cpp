@@ -1521,6 +1521,17 @@ void Config::setTabListPanelWidth(int px) {
     save();
 }
 
+// ANTS-5656 — read as-is; TabListPanel::sortModeFromKey maps an unknown
+// value to colour grouping.
+QString Config::tabListPanelSort() const {
+    return m_data.value("tab_list_panel_sort").toString(QStringLiteral("colour"));
+}
+
+void Config::setTabListPanelSort(const QString &key) {
+    if (!storeIfChanged("tab_list_panel_sort", key)) return;
+    save();
+}
+
 QJsonObject Config::tabGroups() const {
     return m_data.value("tab_groups").toObject();
 }
