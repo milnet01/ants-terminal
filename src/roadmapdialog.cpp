@@ -3480,6 +3480,39 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
         return x(kColDateKind) - x(kColSummary);
     };
 
+    // Wrapping the dates can still leave the summary narrower than its widest
+    // word, and Qt then breaks the word anywhere: Mageia's fonts did, at the
+    // first-run width (2026-10-12). So hold the summary at its widest word,
+    // where a line may end at a space or after a hyphen, plus the cell
+    // padding. Capped at the floor: a longer word breaks, as it must.
+    const auto holdSummaryWords = [&summaryWidth, cellPaddingX](QTextTable *table,
+                                                                qreal cap) {
+        static const QRegularExpression breakAfter(QStringLiteral("(?<=-)| "));
+        qreal widestWord = 0;
+        for (int row = 0; row < table->rows(); ++row) {
+            const QTextTableCell cell = table->cellAt(row, kColSummary);
+            if (!cell.isValid() || cell.column() != kColSummary) continue;
+            const int end = cell.lastCursorPosition().position();
+            for (QTextBlock b = cell.firstCursorPosition().block();
+                 b.isValid() && b.position() <= end; b = b.next()) {
+                for (auto f = b.begin(); !f.atEnd(); ++f) {
+                    const QTextFragment frag = f.fragment();
+                    const QFontMetricsF fm(frag.charFormat().font().resolve(
+                        table->document()->defaultFont()));
+                    for (const QString &word : frag.text().split(breakAfter))
+                        widestWord = qMax(widestWord, fm.horizontalAdvance(word));
+                }
+            }
+        }
+        const qreal need = qMin(std::ceil(widestWord) + cellPaddingX, cap);
+        if (summaryWidth(table) >= need) return;
+        QTextTableFormat fmt = table->format();
+        QVector<QTextLength> widths = fmt.columnWidthConstraints();
+        widths[kColSummary] = QTextLength(QTextLength::FixedLength, need);
+        fmt.setColumnWidthConstraints(widths);
+        table->setFormat(fmt);
+    };
+
     std::function<void(QTextFrame *)> walk = [&](QTextFrame *frame) {
         for (auto it = frame->begin(); !it.atEnd(); ++it) {
             QTextFrame *child = it.currentFrame();
@@ -3496,8 +3529,10 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
                     if (fmt != table->format()) table->setFormat(fmt);
                     setDateWrap(table, false);
                     if (doc->textWidth() > 0
-                        && summaryWidth(table) < doc->textWidth() * kSummaryFloor)
+                        && summaryWidth(table) < doc->textWidth() * kSummaryFloor) {
                         setDateWrap(table, true);
+                        holdSummaryWords(table, doc->textWidth() * kSummaryFloor);
+                    }
                 }
             }
             walk(child);
