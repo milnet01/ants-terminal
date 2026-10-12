@@ -90,7 +90,7 @@ qint64 maxDeclaredId(const QString &text, const QString &prefix);
 // ROADMAP.md:
 //   • ROADMAP.md          — live bullets
 //   • CHANGELOG.md        — shipped items folded out of the roadmap
-//   • docs/roadmap/*.md   — whole minors rotated out (rotate-roadmap.sh)
+//   • docs/roadmap/*.md   — whole minors rotated out (roadmap_log rotate_minor)
 // This lets `.roadmap-counter` be a pure, untracked local cache:
 // allocation floors to this value, so a stale/absent/wiped counter can
 // never reissue a live id. When `prefix` is empty the project's dominant

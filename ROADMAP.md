@@ -42652,13 +42652,20 @@ against current source before filing.
   Source: cold-eyes-2026-10-10.
   Lanes: roadmapstore, remotecontrol_roadmap_log, docs.
 
-- 📋 [ANTS-5647] **Retire packaging/rotate-roadmap.sh now that the bump recipe rotates through the store.**
+- ✅ [ANTS-5647] **Retire packaging/rotate-roadmap.sh now that the bump recipe rotates through the store.**
   Since ANTS-4081 the bump recipe's rotation todo calls roadmap_log
   op:"rotate_minor". Nothing in this repo calls the shell script, which
   edits ROADMAP.md as markdown, and on this store-rendered roadmap the
   next write discards that edit. Its tests (roadmap_viewer_archive
   INV-14 to INV-14d) still run it, so the script and those clauses go
   together. Check first whether another project's recipe copies it.
+  Resolved (2026-10-12): no other project's files name the script
+  (searched /mnt/Games/Scripts and ~/.claude: only 2026-09-26 audit
+  scratch and one dated field-pass record). Removed the script, its
+  CMake define, the INV-14 script clauses and INV-14a..d from
+  roadmap_viewer_archive (spec and test); INV-14 now points at
+  tests/features/roadmap_rotate_minor. The 0.7.x metainfo release note
+  naming the script is history and stays.
   **Layman:** Remove an old archive script nothing calls any more, once we confirm no other project uses it.
   Kind: chore.
   Source: in-session-2026-10-11 (ANTS-4081).

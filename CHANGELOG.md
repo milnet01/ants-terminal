@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Removed
 
+- **`packaging/rotate-roadmap.sh` is gone; a closed minor is rotated with `roadmap_log op:"rotate_minor"`** (ANTS-5647)
+
 - **roadmap_log no longer reports the deprecated `discarded_external_edits` / `would_discard_external_edits` keys** (ANTS-5613)
   Read `publish_overwrote_file_text` (`would_overwrite_file_text` on a
   preview) instead; it has carried the same value since 0.7.114.

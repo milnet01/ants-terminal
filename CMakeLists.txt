@@ -3845,8 +3845,7 @@ if(ANTS_TESTS)
         ROADMAPPARSE_CPP="${CMAKE_SOURCE_DIR}/src/roadmapparse.cpp")
     set_property(SOURCE tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        ROADMAP_FORMAT_MD="${CMAKE_SOURCE_DIR}/docs/standards/roadmap-format.md"
-        ROTATE_ROADMAP_SH="${CMAKE_SOURCE_DIR}/packaging/rotate-roadmap.sh")
+        ROADMAP_FORMAT_MD="${CMAKE_SOURCE_DIR}/docs/standards/roadmap-format.md")
     set_property(SOURCE tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ROADMAPSHORTCUTSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.cpp"

@@ -313,93 +313,10 @@ Source-grep + pure-helper drive. Same harness pattern as
   keyed on **minor and major bumps only — not patch**. Since
   ANTS-4081 the step calls `roadmap_log op:"rotate_minor"`, because
   this project's ROADMAP.md is rendered from the roadmap store and a
-  script's edit to it is discarded by the next write. The clauses
-  below test `packaging/rotate-roadmap.sh`, the markdown form, which
-  keeps its CLI. It is content-preserving: composing a faux
-  ROADMAP.md with two minor sections, running `rotate-roadmap.sh`
-  for the closed minor, then asserting:
-  (a) every bullet under the closed minor's `## <closed>.0 — …`
-  heading and its sub-headings appears byte-identical in
-  `docs/roadmap/<closed>.md`, and
-  (b) the same bullets *and the closed minor's
-  `## <closed>.0 — …` heading* are absent from the post-rotation
-  ROADMAP.md, and
-  (c) the post-rotation ROADMAP.md still parses cleanly via
-  `parseBullets`.
-
-- **INV-14a** `rotate-roadmap.sh` CLI shape:
-  `rotate-roadmap.sh <closed-minor> [<roadmap-path>] [<archive-dir>]`.
-  `closed-minor` is required and must match `^[0-9]+\.[0-9]+$`
-  (rejecting `0.7.0`, `latest`, `v0.7`, etc.). The script exits 1
-  with a usage line on bad arguments, and exits 2 on degenerate
-  section bounds (start ≥ end). Defaults: `roadmap-path` =
-  `./ROADMAP.md`; `archive-dir` = `./docs/roadmap` — both are
-  relative to the cwd, so invocation from outside the project root
-  surfaces a "ROADMAP.md not found" error rather than silently
-  rotating the wrong file. The script tolerates spaces in path
-  arguments (every shell expansion is double-quoted). The
-  closed-minor's `.` characters are regex-escaped before being
-  fed to `awk` so `## 0X7` cannot accidentally match
-  `^## 0.7[. ]` — INV is asserted via source-grep that the
-  awk pattern uses an `ESCAPED=...sed 's/\./...'` form rather
-  than feeding `$CLOSED` raw.
-  Asserted by source-grep + behavioural fixture round-trips.
-
-- **INV-14b** Idempotence (exit code AND content). Invoking
-  `rotate-roadmap.sh 0.5` twice in a row exits 0 both times. The
-  first run rotates; the second run finds no `## 0.5.` heading
-  remaining and returns "nothing to rotate" without modifying
-  ROADMAP.md. Additionally — and this is the load-bearing
-  property — the **archive file is not clobbered between runs**.
-  If `docs/roadmap/0.5.md` already exists when `rotate-roadmap.sh`
-  starts, the script preserves it byte-for-byte (logs a
-  "preserving it (no-clobber)" notice on stderr) and only
-  performs the snip-out from ROADMAP.md if a matching section is
-  still present. This is the realistic edge case where someone
-  manually re-pastes the closed minor's section back into
-  ROADMAP.md after a rotation: they get the snip; their
-  hand-edited archive is untouched. Asserted by a fixture that
-  runs the script, hand-edits the archive, runs the script
-  again, and compares hashes.
-
-- **INV-14b1** Sequential rotation of two different minors:
-  `rotate-roadmap.sh 0.5 && rotate-roadmap.sh 0.6` both exit 0
-  and produce two distinct archive files. Closed-minor sections
-  are independent; rotating 0.5 does not affect 0.6's section.
-  Asserted by a fixture with three sections (`## 0.5.0`,
-  `## 0.6.0`, `## 0.7.0`) and verifying both archives land with
-  no cross-contamination.
-
-- **INV-14c** Atomic write — applies to **both** the post-rotation
-  ROADMAP.md and the new archive file. Both are written via
-  `mktemp` + `mv` (POSIX rename) — never via direct
-  truncate-then-write. A crash mid-write leaves the previous
-  on-disk content intact. Same atomic-replace pattern Ants uses
-  for SessionManager and the audit-export sites (ANTS-1016 /
-  ANTS-1017). Asserted by source-grep that `rotate-roadmap.sh`
-  references `mktemp` for the archive write path AND for the
-  ROADMAP.md write path, with `mv` rename completing each.
-
-- **INV-14d** Section-bound discipline. The script walks from the
-  first `## <closed-minor>[. ]` heading forward to the next `## `
-  heading that does *not* start with `## <closed-minor>[. ]`.
-  Multiple sub-headings within the closed minor (e.g. `## 0.7.0`,
-  `## 0.7.7`, `## 0.7.12`) all rotate together while a sibling
-  `## 0.8.0` heading stays put. Asserted with a fixture that has
-  three sub-headings in 0.7 and one in 0.8 — the test checks that
-  exactly the 0.7 trio moves and 0.8 remains.
-
-  **EOF case:** when the closed minor is the last section in
-  ROADMAP.md (no trailing `## ` heading after it), the walk
-  treats EOF as the end marker and rotates the section to its
-  final line. Asserted by a separate fixture with only a
-  `## 0.7.0` section and no trailing heading.
-
-  **Single-line section case:** a section consisting of just the
-  `## 0.7.0 — title` heading with no body lines (followed
-  immediately by `## 0.8.0 …`) rotates cleanly with a one-line
-  archive body. The sanity guard `END_LINE > START_LINE` allows
-  single-line sections through.
+  script's edit to it is discarded by the next write. Its tests are
+  tests/features/roadmap_rotate_minor. The markdown form,
+  `packaging/rotate-roadmap.sh`, and its clauses INV-14a to INV-14d
+  were retired by ANTS-5647: nothing called the script.
 
 ## How to verify pre-fix code fails
 
