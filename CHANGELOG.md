@@ -212,6 +212,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap backup made before a database update can still be restored after it** (ANTS-3860)
+  The backup file now carries its own format version, so a change to the
+  database layout no longer makes older backups unreadable.
+
+- **Running the test suite no longer leaves crash reports on your computer** (ANTS-5644)
+  One test's stand-in program ended itself in a way that wrote a crash
+  dump and showed a desktop crash notice on every run. It now ends
+  without one.
+
 - **The tab bar stays hidden when you open or close a tab while the side tab list replaces it** (ANTS-5659)
 
 - **A coloured tab's name stays readable: the colour wash is lighter behind the name and full strength below it** (ANTS-4690)
@@ -252,7 +261,7 @@ for security-relevant changes.
   floor new ids to the highest id the store holds, not only to its
   counter row.
 
-- **The Roadmap viewer and roadmap_query's archived-id lookup read phase archives (P01.md, P07.5.md)** (ANTS-4073)
+- **The Roadmap viewer and roadmap_query's archived-id lookup read phase archives (P01.md, P07.5.md)** (part of ANTS-4073)
   Archived phases now appear in the viewer's history, after every
   version archive, and an id rotated into one resolves as archived.
 

@@ -38357,6 +38357,8 @@ against current source before filing.
   now requires at close. Gated by review-contract, converged at its
   second round (review log rows 19-20); out-of-scope findings filed as
   ANTS-5616.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — a
+  data-standard decision; nothing a user sees changed.
   **Layman:** Closed roadmap items can record "what was done and why" in the database, but the published roadmap file has nowhere to put it — so it is lost on any rebuild from the file.
   Kind: investigate.
   Source: in-session-2026-08-04 (found while drafting ANTS-3810).
@@ -39964,6 +39966,8 @@ against current source before filing.
   loses and invents nothing. D4's criterion amendment to
   docs/plans/ANTS-4065-import-mapping-contract.md is not made: CLAUDE.md
   marks docs/plans/ historical, and nothing is built from that plan now.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — a
+  mapping contract closed on existing tests; no behaviour change.
   **Layman:** Write down exactly how every field in the text roadmap turns into a database field, so importing stops quietly changing things.
   Kind: implement.
   Source: user-request-2026-08-08.
@@ -41599,6 +41603,8 @@ against current source before filing.
   roadmap_write_history because the export suite's bundle cannot drive
   roadmap_log; ANTS-3822 § 6 and INV-7 updated to say so. Both
   invariants this item named are now tested.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — tests
+  only.
   **Layman:** Two of the eight rules in the roadmap-history feature shipped without a test; one of them guards the dangerous case.
   Kind: test.
   Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).
@@ -42232,6 +42238,8 @@ against current source before filing.
   into canonical order. No body paragraph is re-flowed. Finbreak's own
   first render (3b36e6d, 2026-09-21) was the same size. Which item fixed
   the wrap was not traced.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — closed
+  by measurement; no code change.
   **Layman:** The first time the tools write your roadmap they also re-flow every paragraph, so a one-line change shows up as a thousand-line diff.
   Kind: enhancement.
   Source: finbreak-feedback-2026-08-18 (maintainer-measured).
@@ -42296,6 +42304,8 @@ against current source before filing.
   On the gate's finding, the user also marked the `priority` column
   unused. roadmap-format.md § 3.5.2 updated to match. Converged gate,
   review log rows 19-20.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — a
+  data-standard decision to drop unbuilt text; no behaviour change.
   **Layman:** Our data standard describes reading an item's priority out of the roadmap file, but no code does it — we need to decide whether to build it or delete the description.
   Kind: investigate.
   Source: global-findings-2026-08-12 item 1 (CFG-0064), maintainer-verified 2026-08-18.
@@ -42337,6 +42347,8 @@ against current source before filing.
   refusal about 14 months out. Repo growth is not a concern: git
   delta-packs the weekly copies, and the whole config repo is a 21.5 MiB
   pack. Follow-up with a 35 MB trigger: ANTS-5622.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — an
+  investigation; its follow-up is ANTS-5622.
   **Layman:** The biggest weekly backup file keeps growing and will one day be too big for GitHub; plan for that before it happens.
   Kind: investigate.
   Source: ANTS-3794 first real run (in-session-2026-09-19).
@@ -42611,6 +42623,8 @@ against current source before filing.
   rule. roadmap-format.md § 3.5.1 records it (d0cadb55, scoped in
   a0fc9e98 to a tree whose directory name gives the owner's slug);
   gated, converged at loop 26.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — the
+  behaviour shipped in 7d1e83aa under ANTS-5638, whose entry covers it.
   **Layman:** A second copy of a project on the same computer can no longer add roadmap items; decide whether it should be blocked with advice or keep working as before.
   Kind: enhancement.
   Source: review-ut-ants-49 of c05fb4d8, session_message 578.
@@ -57587,6 +57601,8 @@ filed below.
   with 381 revisions walked. Vestige was converted to ants-v1, so
   migratedProject() now resolves it and the shared prologue no longer
   refuses. No code change was needed.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — closed
+  by re-measurement; no code change was needed.
   **Layman:** The roadmap repair tool refuses to run on Vestige even though Vestige's data is in the database.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
@@ -69413,6 +69429,8 @@ project. Reported causes are claims until checked in source.
   to_status, format} and no bullet text; only a dry-run append returns
   `bullet`, which is its preview. roadmap_log's op description carries
   an ECHO COST paragraph naming `fields:["ok","id"]`.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — closed
+  with no code change; ANTS-5263 settled it.
   **Layman:** Callers only learn about the biggest saving on roadmap writes when another session tells them.
   Kind: doc.
   Source: feedback-LocalWebServerManager-2026-09-21.
@@ -70296,6 +70314,8 @@ project. Reported causes are claims until checked in source.
   Resolved (2026-10-10) by ANTS-5366: no project row is deleted any
   more, so SQLite never reuses a project_id. Test:
   ProjectTombstone.Inv5ProjectIdIsNeverReused.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately —
+  delivered by ANTS-5366, whose entry covers it.
   **Layman:** When a project is removed, its number is never handed to a new one.
   Kind: fix.
   Source: claude-config-feedback-2026-09-27.
@@ -85195,6 +85215,8 @@ a modern terminal" release.
   2026-10-10/11 (bench source unchanged since the baseline). New
   baseline saved in tests/perf/baseline.tsv. Re-filed: nothing.
   ANTS-1059, ANTS-1060 and ANTS-1115 dropped on these numbers.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — a
+  performance re-measurement; no behaviour change.
   **Layman:** Check what is actually slow now, before optimising things that may already be fast.
   Kind: perf.
   Source: stale-premise-triage-2026-09-07.
@@ -86467,6 +86489,8 @@ here.)
   (src/remotecontrol_roadmap_log.cpp, step 1b). The note lands at the
   end of the body rather than under the headline; the one-call goal is
   met.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — closed
+  as already shipped by ANTS-1793; no change in this cycle.
   **Layman:** When Claude marks a roadmap item done via the MCP tool, it should be able to add the "shipped in pull N" note in the same step instead of a second manual edit.
   Kind: enhancement.
   Source: in-session-2026-05-20 (dogfooding during pull 35 / ANTS-1303).
@@ -87601,6 +87625,8 @@ here.)
   longer moves. The D3 exception is deleted from
   docs/plans/ANTS-4065-import-mapping-contract.md, as that step said it
   would be.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — closed
+  by re-measurement; the fix shipped under ANTS-4507.
   Blocked-by: ANTS-4507.
 
 - ✅ [ANTS-4406] **The store-divergence witness compares two different quantities, so it warns forever and both its numbers are wrong.**
@@ -89093,6 +89119,8 @@ here.)
   Resolved (2026-10-02) with ANTS-4119: roadmap_query mode:"sources"
   enumerates the distinct Source values (source_group:"exact") or their
   stems (default), with item counts.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4119, whose entry covers it.
   **Layman:** You can filter roadmap items by where they came from, but nothing lists what the available origins actually are.
   Kind: enhancement.
   Source: in-session-2026-09-09.
@@ -91943,6 +91971,8 @@ reports are asked for separately, each time.
   packaging/release.sh's stopgap unset is removed. Verified: with the
   key set, the five OSC 133 suites pass 28/28 (they failed 8 in the
   pre-push gate the same day).
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — test
+  harness only; users see no change.
   **Layman:** Some tests fail when started from inside Ants Terminal itself, because they pick up the terminal's own secret key.
   Kind: fix.
   Source: in-session-2026-09-29.
@@ -92061,6 +92091,8 @@ reports are asked for separately, each time.
   Found 2026-10-08 while adding INV-3 / Invariant 6 to those files.
   Resolved (2026-10-09): plaintext_prompt_warning gains INV-4 and INV-5, and
   config_parse_failure_guard gains Invariant 7, each naming its test.
+  Release note (2026-10-12): no CHANGELOG entry, deliberately — test
+  contract text only.
   **Layman:** Two test descriptions are missing entries for tests that already exist.
   Kind: doc-fix.
   Source: in-session-2026-10-08.
