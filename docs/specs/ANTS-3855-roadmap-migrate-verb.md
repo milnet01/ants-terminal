@@ -5,7 +5,8 @@
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
 **Composes with:** ANTS-3757 (read half), ANTS-3765 (load half), ANTS-3793 (consumer cutover).
-**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever. Plus **ANTS-4600**, which is not one of those four and is not an envelope report at all: it is the registration guard (§ 2.5 step 0b, INV-14), and it lives here because this verb is the only thing that registers a project. And **ANTS-4559**, an envelope report like the first four — the `notes[]` bounds — joining them for the same reason.
+**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever. Plus **ANTS-4600**, which is not one of those four and is not an envelope report at all: it is the registration guard (§ 2.5 step 0b, INV-14), and it lives here because this verb registers projects. The store rebuild
+(ANTS-5638) registers through the same `run()` and applies the same guard. And **ANTS-4559**, an envelope report like the first four — the `notes[]` bounds — joining them for the same reason.
 
 **Layman:** The roadmap database is built and tested but nothing can put a
 project into it. This adds the command that does — with a preview mode that
@@ -223,7 +224,8 @@ HANDLER — RemoteControl::cmdRoadmapMigrate
      rr.source == Unresolvable                        -> no_project
  0b. RoadmapMigrateVerb::isTransientRoot(rr.cwd)      -> transient_root
      stamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate)  // ONE clock read
-     dir = RoadmapBackupHealth::snapshotDest(Config key, stateDir)  // § 2.4 rungs 2-3
+     dir = RoadmapBackupHealth::snapshotDest(Config key, stateDir,
+                                             RoadmapStore::defaultPath())  // § 2.4 rungs 2-3
      RoadmapMigrateVerb::run(RoadmapStore::defaultPath(),
                              {rr.cwd, name, slug, stamp, dryRun, maxNotes,
                               backup, backupTo, dir.folder, dir.source,
@@ -531,9 +533,9 @@ store" puts the snapshot on the system drive. The user decided the order:
    line of its backup record (ANTS-3794 § 2.4), **only when the record's
    `store=` names the store being migrated** (ANTS-5621). A record naming
    another store is skipped, so a migrate into a scratch store cannot
-   overwrite the real store's snapshot. A record with no `store=` line,
-   written before ANTS-5621, is used as before; the next weekly run adds
-   the line.
+   overwrite the real store's snapshot. A record whose `store=` is absent
+   or empty, as one written before ANTS-5621 is, is used as before; the
+   next successful weekly run fills it.
 4. Beside the store: the directory of `run()`'s `storePath`. The handler
    passes `RoadmapStore::defaultPath()`, so live behaviour is unchanged, and a
    test driving `run()` with a temp store never writes to the real one.
@@ -562,7 +564,10 @@ canonicalising both. The handler passes the config key, the state
 directory and `RoadmapStore::defaultPath()`, the store it migrates, and
 copies the result into `Request::snapshotDir` and
 `Request::snapshotDirSource`; `run()` does no config or file read of its own,
-so a test drives it with a plain value. `backup_fallback`, present only after
+so a test drives it with a plain value. The store rebuild (ANTS-5638,
+`src/remotecontrol_roadmap_query.cpp`) resolves the folder the same way and
+passes `RoadmapStore::defaultPath()` too; `storePath` has no default.
+`backup_fallback`, present only after
 a fallback, is `{"folder": <tried>, "error": <why>}`. Hardcoding the games-drive path was
 declined: it is specific to this machine.
 
@@ -1188,7 +1193,9 @@ ANTS-3819).
   arbitrary `storePath`, and every fixture above legitimately migrates a temp
   root into a temp store — a guard inside `run()` would red all of them. What
   is refused is registering a transient root into the MACHINE-GLOBAL store,
-  which is this handler's decision alone.
+  which each caller passing `RoadmapStore::defaultPath()` decides: this
+  handler, and the store rebuild (ANTS-5638), which checks `isTransientRoot()`
+  too.
   <br>**It does not fire on a DELETED root**, which canonicalises to empty and
   is step 0a's `no_project`. `RoadmapStore::registerProject()`'s INV-8 is the
   same case one layer down and arrives too late for this one: a session
@@ -1196,11 +1203,11 @@ ANTS-3819).
   canonicalisation passed and the row is permanent.
 - **INV-15** *(ANTS-5247)* — with no `backup_to`, the snapshot goes to the
   first of: the `claude.roadmap_snapshot_dir` folder, the folder the weekly
-  snapshot record names in `dest=` when its `store=` is absent or names the
-  store being migrated, beside the store. If the snapshot to the
+  snapshot record names in `dest=` when its `store=` is absent, empty or names
+  the store being migrated, beside the store. If the snapshot to the
   chosen folder fails, it is retaken beside the store. `backup_path_source`
   names the rung used. *Test:* `roadmap_migrate_backup`, `run()` driven
-  directly with `Request::snapshotDir` set, four legs: a writable folder is
+  directly with `Request::snapshotDir` set: a writable folder is
   used; an empty `snapshotDir` lands beside `storePath`; an unwritable folder
   falls back beside `storePath` and says so in `backup_fallback`; a folder
   that does not exist falls back the same way and is not created; an explicit
@@ -1208,8 +1215,8 @@ ANTS-3819).
   and 3 is a unit test of `RoadmapBackupHealth::snapshotDest(configDir,
   stateDir, storePath)`, five legs: both set (config wins, source `config`),
   record only with a matching `store=` (source `backup_record`), neither (empty), a record whose
-  `store=` names another store (empty, ANTS-5621), and a record with no
-  `store=` line (source `backup_record`).
+  `store=` names another store (empty, ANTS-5621), and a record whose
+  `store=` is absent or empty (source `backup_record`).
   <br>*Breaks when:* the fallback also applies to `backup_to` — a caller who
   named a destination and gets a different one has been overridden silently.
 - **INV-16** *(ANTS-5287)* — `items_deleted`, `deleted_ids` and the
@@ -1308,8 +1315,9 @@ target, no new dependency, no new link edge (§ 2.1). The feature test joins `te
 ## 6. Tests
 
 Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-14
-and INV-16. INV-15 lives in `tests/features/roadmap_migrate_backup/`, beside
-the rest of the snapshot's contract.
+and INV-16. INV-15's `run()` legs live in `tests/features/roadmap_migrate_backup/`,
+beside the rest of the snapshot's contract; its `snapshotDest()` legs live in
+`tests/features/roadmap_backup_health/`.
 Label `features;fast`. Source added to `test_core`'s `SOURCES` list — not
 `add_executable` (`tests/features/README.md`).
 
@@ -1441,6 +1449,10 @@ remaining legs against the declared-but-unimplemented seam.
   `backup_path_source` and `backup_fallback`.
   `tests/features/roadmap_migrate_backup/spec.md` INV-8 narrows: a failed
   default-folder snapshot falls back before it refuses.
+- **ANTS-5621 (2026-10-12).** [ANTS-3794](ANTS-3794-roadmap-store-backup.md)
+  § 2.4's snapshot record gains `store=`, set and carried like `dest=`, so
+  it becomes five lines (its INV-13). `tests/features/roadmap_backup_health/spec.md`
+  gains INV-15's two new `snapshotDest()` legs.
 - **`CHANGELOG.md`** — one `Added` entry.
 - **A source-scrape caveat, not a doc.** Adding a verb has twice pushed a
   literal past a fixed-byte scrape window in `test_claude`
@@ -1451,6 +1463,7 @@ remaining legs against the declared-but-unimplemented seam.
 
 | Loop | Date | Lanes | Findings (C/H/M/L/I) | Resolution |
 |---|---|---|---|---|
+| 12 | 2026-10-12 | 2 cold `review-lane` via neutral-lane, one shared-context file (brief-core + spec overlay + packet of 9 windows: roadmapbackuphealth.{h,cpp}, roadmap-backup-lib.sh, roadmap-store-backup.sh, the migrate handler, defaultPath, the store-rebuild caller, the snapshotDest order test, ANTS-3794 § 2.4), scrubbed copy; both lanes held every question | **Q1 1 · Q2 3 · Q3 2 · Q4 0** — verified 6, fixed 6, dismissed 1 | **First loop of a NEW run, gating ANTS-5621's amendment (commit ab7eee88).** Found building the packet, fixed before dispatch: § 2.3's pseudocode still called `snapshotDest` with two arguments (Q2); § 7 owed an ANTS-5621 entry (Q2). Q3 (both lanes): an EMPTY `store=`, left by a failed first post-upgrade run, was unclassified; rung 3 and INV-15 now read absent or empty as a pre-ANTS-5621 record. Q3 (both lanes): the store rebuild (ANTS-5638) also calls `snapshotDest`; § 2.4 now says it passes `defaultPath()` and `storePath` has no default. Q2 (lane a): § 6 put all of INV-15 in roadmap_migrate_backup while § 7 put the new legs in roadmap_backup_health; § 6 now splits them. Q1 (lane a), out of radius and fixed as an exempt record of existing code: the header and INV-14 said only this handler registers projects; the rebuild does too, and checks `isTransientRoot()` (remotecontrol_roadmap_query.cpp). Dismissed: INV-15's "four legs" listed five; not material, the count deleted. Open question left to the builder: how both sides canonicalise a path that does not exist. Lanes reported no git snapshot in context. |
 | 11 (cap) | 2026-10-02 | 2 cold `review-lane` via neutral-lane, packet and scrubbed copy rebuilt from disk after loop 10, line count re-measured; both lanes held every question | **Q1 0 · Q2 2 · Q3 0 · Q4 0** — verified 2, fixed 2, dismissed 0 | **Two verified, two fixed. CAP REACHED (2 for a spec); ships.** Q2 (both lanes): § 7 owed nothing for ANTS-4656, so the test `spec.md`'s INV-10 restatement and the verb description would keep the old merged-row shape; § 7 now names both, and that the fourth leg lands with ANTS-3765 INV-20's loader change. Q2 (lane b): INV-10's *Test:* paragraph said three legs and § 6 named no fixture for the `sample_ids` leg; now four legs, with the two-item `field_conflict` re-run named. **These two fixes are read by no lane**; implementation is their reader. **Final-loop own-fix share: 0 of 2** — both anchor on passages the amendment left untouched — a CALM cap. **Whole-run span share: 2 of 4** findings sit in commit c1935b34's changed lines. Nothing filed: the open question on `deleted_ids` from a refused load is pre-existing and was settled by loop 8. |
 | 10 | 2026-10-02 | 2 cold `review-lane` via neutral-lane, one shared-context file (brief-core + spec overlay + packet of 5 windows: Note, noteToJson/setNotes, the INV-10 test, ANTS-3765 § 2.11, applyPlanFields), scrubbed copy; both lanes held every question | **Q1 0 · Q2 1 · Q3 1 · Q4 0** — verified 2, fixed 2, dismissed 0 | **Two verified, two fixed. First loop of a NEW run, gating ANTS-4656's amendment (commit c1935b34).** Q2 (both lanes): INV-10 said a row of one keeps the pre-ANTS-4649 shape *exactly*, while the same invariant gives every row `count` and a row of one `id`; now *keeps `line` and carries no samples*. Q3 (lane b): § 2.4 filtered `sample_ids` to non-empty ids but did not say whether `sample_lines` skips zeros; both now take the first three non-zero / non-empty values in member order. Open questions resolved clean: the existing *a merged row must stay locatable* assertion runs on plan notes, which carry lines, so it still holds; `tests/features/roadmap_migrate_verb/spec.md` is updated when the code is built. Lanes reported no git snapshot in context. |
 | 9 (cap) | 2026-09-27 | 2 cold `review-lane`, same brief, packet and scrubbed copy rebuilt from disk after loop 8, line count re-measured; both lanes held every question | **Q1 1 · Q2 2 · Q3 2 · Q4 0** — verified 5, dismissed 0; 1 out-of-radius fixed at the cap | **Five verified, five fixed. CAP REACHED (2 for a spec); ships.** `dest=` pinned as always written and empty until the first success, read empty-as-unset; § 2.5 gains the 6b `backup_failed` row, which INV-4's fixture builds from; § 2.3's step-8 comment now maps `mass_deletion` separately; the schema already declared `backup`/`backup_to` (`src/claudeintegration.cpp`), so only `accept_deletions` is new; a rung-2/3 folder that does not exist is never created (an unmounted drive would be recreated on the system drive) and counts as a failure, with an INV-15 leg. Out of radius, fixed at the cap: § 2.4's `updated_items_truncated` paragraph contradicted the one above it; the code derives it from `updatedItemsDropped`, so the stale one now says so. Open questions settled by grep: `roadmap_migrate` is registered in `src/mcptoolregistry.cpp` (served by ants-mcpd), and `roadmapbackuphealth.cpp` is in `ants_roadmapstore_lib`. **Final-loop own-fix share: 2 of 5** (`dest=` wording and the 6b step, both loop 8's). Calm. **Whole-run span share: 7 of 11** in commit facf6e13's changed lines. No tail. |
