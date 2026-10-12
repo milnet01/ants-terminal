@@ -1,6 +1,6 @@
 # ANTS-3794 — publish the roadmap export weekly and report a backup that stops
 
-**Status:** accepted (2026-09-19), review-contract loops 1 + 2 folded (cap reached).
+**Status:** accepted (2026-09-19), review-contract loops 1 + 2 folded (cap reached). **Amended 2026-10-12 (ANTS-5621)** — § 2.4 and INV-13: the snapshot record gains `store=`; loops 3 and 4, cap reached.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3794 (ANTS-3758 split, seam 3c; user decisions 2026-09-19).
 **Pairs with:** [ANTS-3761](ANTS-3761-roadmap-export-format.md) — the export's bytes; this spec runs and publishes it.
@@ -173,8 +173,9 @@ error=
 - `dest=` is the absolute canonical `DEST_DIR` of the last successful
   snapshot. Like `success`, it is set on success and carried across a
   failed run. ANTS-3855 § 2.4 reads it for the pre-migration snapshot.
-- `store=` is the absolute canonical path of the store that snapshot
-  copied, set and carried exactly as `dest=` is. It names which store
+- `store=` is the path of the store that snapshot copied: its directory's
+  canonical path (`pwd -P`) plus its file name. It is set and carried
+  exactly as `dest=` is. It names which store
   `dest=` backs up, so ANTS-3855 § 2.4 can tell when the store being
   migrated is a different one. Without it, a migrate into a scratch store
   wrote its snapshot over the real store's (ANTS-5621).
@@ -341,11 +342,12 @@ timer that is disabled or lost.
   `tests/features/roadmap_export_publish`, which also drives the
   snapshot script against a temporary store.
 - **INV-13** *(ANTS-5621)* — the `snapshot` record's `store=` is the
-  canonical path of the store the script copied: set on success, kept on
+  § 2.4 path of the store the script copied: set on success, kept on
   failure, like `dest=`. Breaks if it names the default store when the
-  script copied another, or is emptied by a failed run. *Test:*
+  script copied another, or a failed run changes it. *Test:*
   `tests/features/roadmap_export_publish`, the INV-12 run against a
-  temporary store, then a failing run.
+  temporary store, then a failing run under a different `XDG_DATA_HOME`
+  holding no store: `store=` still names the first store.
 
 ## 4. RAM / build cost
 
@@ -437,3 +439,4 @@ before its fix, per the project convention.
 | 2 | 2026-09-19 | 3, cold, identical shared packet | 1 | 1 | 2 | 0 | Verified 4, fixed 4, dismissed 2. Cap reached (2 for a spec): shipped. Q1 (found resolving two lanes' open question on hooks): the commit subject 'roadmap-export: ...' fails claude-config's commit-msg hook (exit 1), so every weekly run would fail; now 'chore: weekly roadmap export (<date>)' (exit 0). Q2: the lock-held exit 3 contradicted 'every failure records and notifies'; now stated as not a failure. Q3: all three record keys are always written, and an empty value reads as absent. Q3: the snapshot timer is named (ants-roadmap-backup.timer), and the hint names each job's timer. Dismissed: an ignored roadmap-export/ making 'nothing to commit' read as success (refuted: git add exits 128 'did not match any files'); the 4 MiB figure under Access::Bulk (true, builds nothing different). Resolved clean: the newer-schema refusal is in createSchema(); cross-project rows are ANTS-5244's. Calm cap: 1 of 4 final-loop findings anchored on text this run wrote (§2.3 step 5). Gated span 977b0b69 is the whole new spec, so all 8 verified findings fall inside it. |
 | 2-impl | 2026-09-19 | none (implementation fold-back; no reviewer dispatched) | n/a | n/a | n/a | n/a | Implementation found one cross-doc line wrong: mcp-behavioural-notes.md does not document session_orient's optional blocks, and neither does any other document for feedback_pending or mail_pending, so no note was added and § 7 now says so. Also met at build time, contract unchanged: the ants-terminal target now links ants_roadmapstore_lib directly, since main.cpp calls runExportCommand(). Records what was built, so CLAUDE.md rule 14 does not re-arm the gate. |
 | 3 | 2026-10-12 | 2, cold, identical shared packet via neutral-lane (backup lib, snapshot script, roadmapbackuphealth.cpp, the INV-12 test, ANTS-3855 § 2.4's snapshot rungs); both lanes held every question | 0 | 0 | 1 | 0 | First loop of a new run gating ANTS-5621's `store=` amendment (commit ab7eee88). Verified 1, fixed 1, dismissed 1. Q3 (both lanes): "empty reads as absent" was stated for `assess()` alone, so an empty `store=` left by a failed first post-upgrade run could be read as a mismatch by `snapshotDest()`; every reader now reads empty as absent. Dismissed, out of radius and not material: line 170's "attempt is set on every run that got past the lock" is false for the snapshot script, which records failures before the lock too; no reader uses `attempt` beyond its presence. Lanes reported no git snapshot. |
+| 4 (cap) | 2026-10-12 | 2, cold, packet and scrubbed copy rebuilt from disk after loop 3; both lanes held every question | 0 | 0 | 0 | 1 | Verified 1, fixed 1, dismissed 0. Cap reached (2 for a spec): ships. Q4 (lane b): INV-13's failing run reused the successful run's `XDG_DATA_HOME`, so a writer that rewrote `store=` on failure would still pass; the failing run now uses a different `XDG_DATA_HOME` holding no store. With ANTS-3855 loop 13, `store=` now has a stated form, the store directory's canonical path plus its file name. Not run: lane a's measurement request on § 2.3 step 5's `git commit -- 'roadmap-export/*.jsonl'`, a shipped clause outside this amendment. Resolved clean: `defaultPath()` follows `XDG_DATA_HOME` as the shell does. This loop's fix is read by no lane. Calm cap: 0 of 1 final-loop findings anchor on loop 3's fix text. Whole-run span share: 1 of 2 in commit ab7eee88's changed lines. |

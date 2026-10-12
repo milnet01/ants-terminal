@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5674 -->
+<!-- ants-roadmap-id-high-water: ANTS=5675 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -54104,6 +54104,27 @@ are closed inline in the feedback files rather than filed here.
   Kind: implement.
   Source: ANTS-5245 measurement (in-session-2026-10-02).
   Lanes: roadmap.
+
+- 📋 [ANTS-5675] **ANTS-3855's refusal table places roadmap_busy at a run() step that the handler owns.**
+  Found by a cold lane on 2026-10-12, outside ANTS-5621's amendment, so
+  filed rather than looped on. § 2.5's table puts `roadmap_busy` at step
+  "4a", between planFrom() and store.open(), which § 2.3 assigns to the
+  SEAM, run(); § 2.3's sequence has no step 4a. The code raises it in the
+  handler (RemoteControl::roadmapBusyRefusal,
+  src/remotecontrol_roadmap_migrate.cpp; the handler holds the root
+  exclusively), and the store rebuild calls run() under its caller's
+  shared hold. INV-4 drives "each refusal run() can reach (steps 1-8)"
+  and lists caller_cwd_required, no_project and transient_root as out of
+  the fixture's reach, but not roadmap_busy. A builder following the
+  table would put the exclusive hold inside run(), and the rebuild would
+  then block or refuse. Fix: a handler step (0c) for the root hold in
+  § 2.3, the table row relabelled to it, and roadmap_busy added to
+  INV-4's out-of-reach list. Records existing code, so rule 14's
+  "code already exists" exception applies.
+  **Layman:** The written plan for the roadmap import says a "busy" refusal happens in one place while the code raises it somewhere else, which could mislead whoever changes it next.
+  Kind: doc-fix.
+  Source: review-contract-2026-10-12 (ANTS-3855 loop 13, out of radius).
+  Lanes: roadmap-store, mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
