@@ -54047,7 +54047,7 @@ are closed inline in the feedback files rather than filed here.
   Source: ANTS-4487 § 4.2, split out 2026-09-27.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5621] **A migrate into a scratch store overwrites the real store's pre-migrate.sqlite.**
+- ✅ [ANTS-5621] **A migrate into a scratch store overwrites the real store's pre-migrate.sqlite.**
   Happened 2026-10-02: ants-mcpd --call roadmap_migrate run with HOME,
   XDG_CONFIG_HOME and XDG_DATA_HOME pointed at a scratch folder, but
   XDG_STATE_HOME left as the real one. The store opened was the scratch
@@ -54085,6 +54085,16 @@ are closed inline in the feedback files rather than filed here.
   (dest= is used only when store= is absent or names the store being
   migrated; snapshotDest gains storePath). Rung 2 (the config key) is
   left as it was and the spec says so. Gate: review-contract on each.
+  Resolved (2026-10-12): built to the gated amendments (ANTS-3855 loops
+  12-13, ANTS-3794 loops 3-4, calm caps). tools/roadmap-backup-lib.sh
+  writes store= (the store directory's canonical path plus file name),
+  set and carried like dest=; snapshotDest(configDir, stateDir,
+  storePath) skips a record naming another store; both callers pass
+  RoadmapStore::defaultPath(). Red first: RoadmapBackupHealth.
+  Ants5621SnapshotDestNamesItsStore failed on the scratch-store leg, and
+  roadmap_export_publish's two INV-13 checks failed, before the fix.
+  Rung 2 (the config key) is unchanged, as the spec states. Filed from
+  the gate: ANTS-5675.
   **Layman:** Testing a roadmap import on a throwaway copy can overwrite the real safety backup of your roadmap.
   Kind: fix.
   Source: in-session-2026-10-02 (ANTS-4438 re-measure).

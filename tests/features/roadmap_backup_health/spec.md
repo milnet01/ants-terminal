@@ -21,8 +21,13 @@ unhealthy jobs with the parent's § 2.5 state.**
 
 ## ANTS-5247 — the snapshot folder
 
-**`RoadmapBackupHealth::snapshotDest(configDir, stateDir)` returns the folder
+**`RoadmapBackupHealth::snapshotDest(configDir, stateDir, storePath)` returns the folder
 the pre-migration snapshot defaults to, and where it came from.** A non-empty
 `configDir` wins (`config`); else the snapshot record's `dest=`
-(`backup_record`); else nothing. An empty `dest=` counts as unset. Parent:
+(`backup_record`); else nothing. An empty `dest=` counts as unset.
+ANTS-5621: the record is used only when its `store=` is absent, empty or
+names `storePath` (directory's canonical path plus file name); a record
+naming another store gives nothing. `Ants5621SnapshotDestNamesItsStore`
+holds it, a symlinked directory and a not-yet-created store file included.
+Parent:
 `docs/specs/ANTS-3855-roadmap-migrate-verb.md` INV-15.

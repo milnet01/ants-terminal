@@ -252,9 +252,11 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     r.backup      = req.value(QStringLiteral("backup")).toBool(true);
     r.backupTo    = req.value(QStringLiteral("backup_to")).toString();
     // ANTS-5247 — § 2.4 rungs 2 and 3, read on every call so a changed key or
-    // a newer weekly snapshot needs no relaunch of ants-mcpd.
+    // a newer weekly snapshot needs no relaunch of ants-mcpd. ANTS-5621 —
+    // the store this call migrates, so rung 3 skips a record naming another.
     const RoadmapBackupHealth::SnapshotDest dest = RoadmapBackupHealth::snapshotDest(
-        Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir());
+        Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir(),
+        RoadmapStore::defaultPath());
     r.snapshotDir       = dest.folder;
     r.snapshotDirSource = dest.source;
     // ANTS-5287 — lifts ANTS-3765 § 2.7's mass-deletion refusal.

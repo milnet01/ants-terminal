@@ -11,31 +11,36 @@
 #   dest=<folder>            snapshot job only (ANTS-5247): the canonical
 #                            DEST_DIR of the last success; empty until then,
 #                            carried across a failure like success
+#   store=<path>             snapshot job only (ANTS-5621): the store that
+#                            success copied, as its directory's canonical
+#                            path plus file name; set and carried like dest
 
 roadmap_backup_state_dir() {
     printf '%s/ants-terminal' "${XDG_STATE_HOME:-$HOME/.local/state}"
 }
 
-# roadmap_backup_record <job> ok|fail [error text] [dest folder]
+# roadmap_backup_record <job> ok|fail [error text] [dest folder] [store path]
 roadmap_backup_record() {
-    local job=$1 outcome=$2 err=${3:-} newdest=${4:-}
-    local dir file now success="" dest=""
+    local job=$1 outcome=$2 err=${3:-} newdest=${4:-} newstore=${5:-}
+    local dir file now success="" dest="" store=""
     dir=$(roadmap_backup_state_dir)
     file="$dir/roadmap-backup-$job.state"
     mkdir -p "$dir" || return 1
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     [ -f "$file" ] && success=$(sed -n 's/^success=//p' "$file" | head -n 1)
     [ -f "$file" ] && dest=$(sed -n 's/^dest=//p' "$file" | head -n 1)
+    [ -f "$file" ] && store=$(sed -n 's/^store=//p' "$file" | head -n 1)
     if [ "$outcome" = ok ]; then
         success=$now
         err=""
         [ -n "$newdest" ] && dest=$newdest
+        [ -n "$newstore" ] && store=$newstore
     else
         err=$(printf '%s' "${err:-unknown failure}" | tr '\n\r' '  ')
     fi
     {
         printf 'attempt=%s\nsuccess=%s\nerror=%s\n' "$now" "$success" "$err"
-        if [ "$job" = snapshot ]; then printf 'dest=%s\n' "$dest"; fi
+        if [ "$job" = snapshot ]; then printf 'dest=%s\nstore=%s\n' "$dest" "$store"; fi
     } > "$file.tmp" && mv "$file.tmp" "$file"
 }
 

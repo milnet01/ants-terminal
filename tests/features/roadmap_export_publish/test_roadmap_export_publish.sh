@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ANTS-3794 INV-7, INV-8, INV-9, INV-10, INV-12 — tools/roadmap-export-publish.sh
+# ANTS-3794 INV-7, INV-8, INV-9, INV-10, INV-12, INV-13 — tools/roadmap-export-publish.sh
 # and the snapshot record. Contract: tests/features/roadmap_export_publish/spec.md
 set -uo pipefail
 
@@ -133,6 +133,16 @@ check "INV-12 failure sets error" test -n "$(recval error "$SREC")"
 check "INV-12 failure keeps success" test "$(recval success "$SREC")" = "$before"
 check "INV-12 failure keeps dest" test "$(recval dest "$SREC")" = "$(cd "$T/snaps" && pwd -P)"
 check "INV-12 record always carries dest=" grep -q "^dest=" "$SREC"
+
+# --- INV-13 (ANTS-5621: the store the snapshot copied) ---
+sqlite3 "$T/data/ants-terminal/roadmap.sqlite" "create table t(a); insert into t values (1);"
+XDG_DATA_HOME="$T/data" "$SNAPSHOT" "$T/snaps" >/dev/null 2>&1
+want="$(cd "$T/data/ants-terminal" && pwd -P)/roadmap.sqlite"
+check "INV-13 success sets store to the copied store" test "$(recval store "$SREC")" = "$want"
+mkdir -p "$T/other"
+XDG_DATA_HOME="$T/other" "$SNAPSHOT" "$T/snaps" >/dev/null 2>&1
+check "INV-13 a run with no store fails" test $? -ne 0
+check "INV-13 failure under another store keeps store" test "$(recval store "$SREC")" = "$want"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

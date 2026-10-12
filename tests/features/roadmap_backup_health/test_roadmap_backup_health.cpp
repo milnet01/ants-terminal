@@ -5,6 +5,7 @@
 
 #include "roadmapbackuphealth.h"
 
+#include <QDir>
 #include <QFile>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -123,22 +124,69 @@ TEST(RoadmapBackupHealth, Ants5247SnapshotDestOrder) {
     };
 
     // No record at all: neither rung names a folder.
-    auto r = RoadmapBackupHealth::snapshotDest(QString(), d.path());
+    auto r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), QString());
     EXPECT_TRUE(r.folder.isEmpty());
     EXPECT_TRUE(r.source.isEmpty());
 
     writeSnap(QStringLiteral("/srv/backups/roadmap"));
-    r = RoadmapBackupHealth::snapshotDest(QStringLiteral("/cfg/snaps"), d.path());
+    r = RoadmapBackupHealth::snapshotDest(QStringLiteral("/cfg/snaps"), d.path(), QString());
     EXPECT_EQ(r.folder, QStringLiteral("/cfg/snaps")) << "the config key must win";
     EXPECT_EQ(r.source, QStringLiteral("config"));
 
-    r = RoadmapBackupHealth::snapshotDest(QString(), d.path());
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), QString());
     EXPECT_EQ(r.folder, QStringLiteral("/srv/backups/roadmap"));
     EXPECT_EQ(r.source, QStringLiteral("backup_record"));
 
     // dest= present but empty (no success yet) reads as unset.
     writeSnap(QString());
-    r = RoadmapBackupHealth::snapshotDest(QString(), d.path());
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), QString());
     EXPECT_TRUE(r.folder.isEmpty());
     EXPECT_TRUE(r.source.isEmpty()) << "an empty dest= must not report backup_record";
+}
+
+// ANTS-5621 — rung 3 is the record's dest= only when its store= names the
+// store being migrated, or is absent or empty (a record from before
+// ANTS-5621). A migrate into a scratch store overwrote the real store's
+// pre-migrate.sqlite because the record named no store. Both sides compare the
+// store directory's canonical path plus the file name, so a store file not yet
+// created still compares, and a symlinked directory still matches.
+TEST(RoadmapBackupHealth, Ants5621SnapshotDestNamesItsStore) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    ASSERT_TRUE(QDir(d.path()).mkpath(QStringLiteral("real")));
+    ASSERT_TRUE(QDir(d.path()).mkpath(QStringLiteral("scratch")));
+    ASSERT_TRUE(QFile::link(d.path() + QStringLiteral("/real"),
+                            d.path() + QStringLiteral("/alias")));
+    const QString realDir = QDir(d.path() + QStringLiteral("/real")).canonicalPath();
+    const QString realStore    = d.path() + QStringLiteral("/real/roadmap.sqlite");
+    const QString aliasStore   = d.path() + QStringLiteral("/alias/roadmap.sqlite");
+    const QString scratchStore = d.path() + QStringLiteral("/scratch/roadmap.sqlite");
+    const QString rec = d.path() + QStringLiteral("/roadmap-backup-snapshot.state");
+    const auto writeSnap = [&](const QString &storeLine) {
+        QFile f(rec);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QStringLiteral("attempt=%1\nsuccess=%1\nerror=\ndest=/srv/snaps\n%2")
+                    .arg(iso(now()), storeLine).toUtf8());
+    };
+
+    // The record names the real store, as the weekly job writes it.
+    writeSnap(QStringLiteral("store=%1/roadmap.sqlite\n").arg(realDir));
+    auto r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), realStore);
+    EXPECT_EQ(r.source, QStringLiteral("backup_record")) << "the matching store uses rung 3";
+    EXPECT_EQ(r.folder, QStringLiteral("/srv/snaps"));
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), aliasStore);
+    EXPECT_EQ(r.source, QStringLiteral("backup_record")) << "a symlinked directory still matches";
+
+    // The defect: a scratch store must not take the real store's folder.
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), scratchStore);
+    EXPECT_TRUE(r.source.isEmpty()) << "a record naming another store must be skipped";
+    EXPECT_TRUE(r.folder.isEmpty());
+
+    // A record from before ANTS-5621: no store= line, or an empty one.
+    writeSnap(QString());
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), scratchStore);
+    EXPECT_EQ(r.source, QStringLiteral("backup_record")) << "no store= line is used as before";
+    writeSnap(QStringLiteral("store=\n"));
+    r = RoadmapBackupHealth::snapshotDest(QString(), d.path(), scratchStore);
+    EXPECT_EQ(r.source, QStringLiteral("backup_record")) << "an empty store= reads as absent";
 }

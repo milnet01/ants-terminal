@@ -66,5 +66,7 @@ if (( ${#snaps[@]} > KEEP )); then
 fi
 
 # ANTS-5247 — the canonical folder, read by roadmap_migrate's snapshot default.
-roadmap_backup_record snapshot ok "" "$(cd "$DEST" && pwd -P)"
+# ANTS-5621 — and the store it backs up, so a migrate of another store skips it.
+roadmap_backup_record snapshot ok "" "$(cd "$DEST" && pwd -P)" \
+    "$(cd "$(dirname "$STORE")" && pwd -P)/$(basename "$STORE")"
 echo "roadmap-store-backup: wrote $out"

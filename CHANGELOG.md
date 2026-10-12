@@ -40,6 +40,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap import into a scratch store no longer overwrites the real store's pre-migrate backup** (ANTS-5621)
+  The weekly snapshot record now names the store it copied (`store=`),
+  and roadmap_migrate uses the record's backup folder only for that
+  store. A record from before this change is used as before until the
+  next weekly run fills the line.
+
 - **roadmap_migrate names the bullet and line of an item with no bold headline** (ANTS-5662)
   The import now refuses such an item with its id and file:line,
   dry run included, instead of a bare database constraint message.

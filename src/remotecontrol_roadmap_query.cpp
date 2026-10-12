@@ -1160,7 +1160,8 @@ RemoteControl::roadmapRebuildIfAbsent(const QString &callerCanonical,
     r.changedAt   = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     r.raiseIdMark = true;
     const RoadmapBackupHealth::SnapshotDest dest = RoadmapBackupHealth::snapshotDest(
-        Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir());
+        Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir(),
+        RoadmapStore::defaultPath());
     r.snapshotDir       = dest.folder;
     r.snapshotDirSource = dest.source;
 

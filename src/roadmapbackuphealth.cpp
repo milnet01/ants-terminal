@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QStringList>
 
@@ -19,6 +20,19 @@ constexpr Job kJobs[] = {
     {"snapshot", "ants-roadmap-backup.timer"},
     {"export", "ants-roadmap-export.timer"},
 };
+
+// ANTS-5621 — the form ANTS-3794 § 2.4 writes in `store=`: the store
+// directory's canonical path plus the file name. The file itself may not exist
+// yet, and canonicalFilePath() of a missing file is empty, so two missing
+// stores would compare equal. A directory that does not exist falls back to
+// the absolute cleaned path.
+QString storeKey(const QString &storePath) {
+    const QFileInfo fi(storePath);
+    const QString dir = fi.absoluteDir().canonicalPath();
+    if (dir.isEmpty())
+        return QDir::cleanPath(fi.absoluteFilePath());
+    return dir + QLatin1Char('/') + fi.fileName();
+}
 
 QString recordPath(const QString &dir, const QString &job) {
     return dir + QStringLiteral("/roadmap-backup-") + job + QStringLiteral(".state");
@@ -98,12 +112,18 @@ QJsonObject RoadmapBackupHealth::assess(const QString &stateDir, const QDateTime
 // ANTS-5247 — ANTS-3855 § 2.4 rungs 2 and 3, in that order. Empty is unset on
 // both, as assess() reads an empty record value.
 RoadmapBackupHealth::SnapshotDest RoadmapBackupHealth::snapshotDest(const QString &configDir,
-                                                                     const QString &stateDir) {
+                                                                     const QString &stateDir,
+                                                                     const QString &storePath) {
     if (!configDir.trimmed().isEmpty())
         return {configDir.trimmed(), QStringLiteral("config")};
     QHash<QString, QString> rec;
     readRecord(recordPath(stateDir, QStringLiteral("snapshot")), &rec);
     const QString dest = rec.value(QStringLiteral("dest"));
+    // ANTS-5621 — the record backs up the store it names. An absent or empty
+    // store= is a record from before ANTS-5621 and is used as before.
+    const QString store = rec.value(QStringLiteral("store"));
+    if (!store.isEmpty() && store != storeKey(storePath))
+        return {};
     if (!dest.isEmpty())
         return {dest, QStringLiteral("backup_record")};
     return {};

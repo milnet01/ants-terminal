@@ -3,7 +3,7 @@
 Feature contract for **ANTS-3794**.
 Parent spec: [`docs/specs/ANTS-3794-roadmap-store-backup.md`](../../../docs/specs/ANTS-3794-roadmap-store-backup.md)
 
-§ 6.1 of the parent assigns **INV-7, INV-8, INV-9, INV-10 and INV-12** to this
+§ 6.1 of the parent assigns **INV-7, INV-8, INV-9, INV-10, INV-12 and INV-13** to this
 directory. The test is a shell script over throwaway repositories: a bare
 remote and two clones. A stub stands in for the binary through
 `ANTS_ROADMAP_EXPORT_BIN`, so no network and no real store are involved.
@@ -27,3 +27,6 @@ or `sqlite3` is missing. That skip path is why those tools are not in
   record nor the repository.
 - **INV-12** — `tools/roadmap-store-backup.sh` writes the `snapshot` record by
   the same rules, against a temporary store.
+- **INV-13** — a successful snapshot sets `store=` to the copied store's
+  directory canonical path plus file name; a failing run under a different
+  `XDG_DATA_HOME`, holding no store, leaves it unchanged (ANTS-5621).
