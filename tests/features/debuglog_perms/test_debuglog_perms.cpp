@@ -9,6 +9,7 @@
 // Exit 0 = all invariants hold. Non-zero = regression.
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 #include "debuglog.h"
 
 #include <QCoreApplication>
@@ -41,11 +42,9 @@ int statMode(const QString &path) {
 void runRuntimeChecks() {
     const mode_t oldUmask = ::umask(0022);
 
-    // Capture prior XDG_DATA_HOME so we restore it at exit and don't
-    // leave subsequent tests in the test_core bundle pointing at a
-    // deleted directory.
-    const bool hadXdg = qEnvironmentVariableIsSet("XDG_DATA_HOME");
-    const QByteArray priorXdg = hadXdg ? qgetenv("XDG_DATA_HOME") : QByteArray();
+    // Restores XDG_DATA_HOME at exit so later tests in the test_core
+    // bundle don't point at a deleted directory.
+    ants_test::XdgGuard env;
 
     // Isolated XDG_DATA_HOME so parallel runs don't collide and so we
     // don't touch a real user log.
@@ -54,7 +53,7 @@ void runRuntimeChecks() {
         + QStringLiteral("/ants-debuglog-perms-")
         + QUuid::createUuid().toString(QUuid::Id128);
     QDir().mkpath(xdg);
-    qputenv("XDG_DATA_HOME", xdg.toLocal8Bit());
+    env.setEnv("XDG_DATA_HOME", xdg.toLocal8Bit());
 
     const QString expected = xdg + QStringLiteral("/ants-terminal/debug.log");
 
@@ -122,11 +121,6 @@ void runRuntimeChecks() {
     QDir().rmpath(QFileInfo(expected).absolutePath());
     QDir().rmdir(xdg);
     ::umask(oldUmask);
-
-    // Restore prior XDG_DATA_HOME so the next test in the bundle isn't
-    // pointing at our now-removed temp dir.
-    if (hadXdg) qputenv("XDG_DATA_HOME", priorXdg);
-    else qunsetenv("XDG_DATA_HOME");
 }
 
 void runSourceChecks() {
@@ -220,17 +214,17 @@ TEST(DebuglogPerms, WriteEscapesEveryMessage) {
         + QStringLiteral("/ants-debuglog-escape-")
         + QUuid::createUuid().toString(QUuid::Id128);
     QDir().mkpath(xdg);
-    const QByteArray priorXdg = qgetenv("XDG_DATA_HOME");
-    qputenv("XDG_DATA_HOME", xdg.toLocal8Bit());
+    ants_test::XdgGuard env;
+    env.setEnv("XDG_DATA_HOME", xdg.toLocal8Bit());
     DebugLog::setActive(0);
     DebugLog::setActive(DebugLog::Events);
     DebugLog::write(DebugLog::Events, QStringLiteral("real\n[forged] line"));
     QFile f(DebugLog::logFilePath());
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray body = f.readAll();
+    const bool opened = f.open(QIODevice::ReadOnly);
+    const QByteArray body = opened ? f.readAll() : QByteArray();
     DebugLog::setActive(0);
-    qputenv("XDG_DATA_HOME", priorXdg);
     QDir(xdg).removeRecursively();
+    ASSERT_TRUE(opened) << "debug.log was not written";
     EXPECT_FALSE(body.contains("\n[forged] line")) << body.constData();
     EXPECT_TRUE(body.contains("real\\x0a[forged] line")) << body.constData();
 }
@@ -238,14 +232,13 @@ TEST(DebuglogPerms, WriteEscapesEveryMessage) {
 // RC-46 (audit 2026-09-26) — a secret-shaped value in a log message is redacted
 // before it reaches debug.log (SecretRedact::scrub), whatever the category.
 TEST(DebugLogPerms, SecretShapesAreRedactedBeforeTheyAreWritten) {
-    const bool hadXdg = qEnvironmentVariableIsSet("XDG_DATA_HOME");
-    const QByteArray priorXdg = hadXdg ? qgetenv("XDG_DATA_HOME") : QByteArray();
+    ants_test::XdgGuard env;
     const QString xdg =
         QStandardPaths::writableLocation(QStandardPaths::TempLocation)
         + QStringLiteral("/ants-debuglog-redact-")
         + QUuid::createUuid().toString(QUuid::Id128);
     QDir().mkpath(xdg);
-    qputenv("XDG_DATA_HOME", xdg.toLocal8Bit());
+    env.setEnv("XDG_DATA_HOME", xdg.toLocal8Bit());
 
     DebugLog::setActive(0);
     DebugLog::setActive(DebugLog::Events);
@@ -258,8 +251,6 @@ TEST(DebugLogPerms, SecretShapesAreRedactedBeforeTheyAreWritten) {
     const QByteArray body = opened ? f.readAll() : QByteArray();
     f.close();
     QDir(xdg).removeRecursively();
-    if (hadXdg) qputenv("XDG_DATA_HOME", priorXdg);
-    else qunsetenv("XDG_DATA_HOME");
 
     ASSERT_TRUE(opened) << "debug.log was not written";
     EXPECT_TRUE(body.contains("login password=")) << "the line itself was lost";

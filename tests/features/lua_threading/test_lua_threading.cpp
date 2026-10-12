@@ -25,6 +25,7 @@
 #include "pluginmanager.h"
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -469,7 +470,8 @@ TEST(LuaThreading, Ants5107SettingsWaitIsNotBudgetTime) {
 
 // Saving a plugin several times in quick succession reloads it once.
 TEST(LuaThreading, Ants5107DevReloadRunsOncePerBurst) {
-    qputenv("ANTS_PLUGIN_DEV", "1");
+    ants_test::XdgGuard env;
+    env.setEnv("ANTS_PLUGIN_DEV", "1");
     if (!PluginManager::devMode())
         GTEST_SKIP() << "dev mode was read before this test could set it";
     const QString dir = makeTeardownDir();
