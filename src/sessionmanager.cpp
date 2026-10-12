@@ -749,6 +749,10 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     }
 }
 
+bool SessionManager::hasTabOrder() {
+    return QFile::exists(sessionDir() + "/tab_order.txt");
+}
+
 QStringList SessionManager::loadTabOrder(int *activeIndex) {
     QString path = sessionDir() + "/tab_order.txt";
     QFile file(path);

@@ -193,6 +193,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closed tabs stay closed after a restart** (ANTS-5654)
+  Closing a tab now deletes its saved copy, and a saved tab list that
+  names only lost tabs no longer brings back tabs closed long ago.
+
+- **Tabs are saved when the computer shuts down or you log out** (ANTS-5655)
+  The terminal now saves every tab when the system asks it to quit,
+  instead of losing up to 30 seconds of changes.
+
 - **Saved tabs survive a restart soon after the terminal opens** (ANTS-5653)
   Reopening saved tabs no longer deletes their saved copies. Before,
   closing or restarting within about 30 seconds of opening the

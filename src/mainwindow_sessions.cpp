@@ -96,6 +96,12 @@ void MainWindow::saveAllSessions(bool force) {
     saveProcessTabOrder(tabOrder, activeIndex);
 }
 
+void MainWindow::saveSessionsForShutdown() {
+    if (m_sessionSaveTimer) m_sessionSaveTimer->stop();
+    saveTabColorSequence();
+    saveAllSessions(/*force=*/true);
+}
+
 // ANTS-1159 — cheap tab-order-only save. Builds this window's tab
 // order + active index and writes it through saveProcessTabOrder.
 // Does NOT touch the per-tab
@@ -171,7 +177,9 @@ void MainWindow::restoreSessions() {
     // Use saved tab order if available, fall back to file modification time
     int activeIndex = 0;
     QStringList sessions = SessionManager::loadTabOrder(&activeIndex);
-    if (sessions.isEmpty())
+    // ANTS-5654 — every stray file only when no tab list was ever saved. A
+    // list naming only lost tabs reopened tabs closed weeks before.
+    if (sessions.isEmpty() && !SessionManager::hasTabOrder())
         sessions = SessionManager::savedSessions();
     if (sessions.isEmpty()) return;
 

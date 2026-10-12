@@ -64,6 +64,8 @@ public:
     // Tab order persistence
     static void saveTabOrder(const QStringList &tabIds, int activeIndex = 0);
     static QStringList loadTabOrder(int *activeIndex = nullptr);
+    // ANTS-5654 — whether tab_order.txt exists, whatever it names.
+    static bool hasTabOrder();
 
     // Cleanup old sessions (older than maxAgeDays)
     static void cleanupOldSessions(int maxAgeDays = 30);

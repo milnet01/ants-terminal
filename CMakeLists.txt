@@ -2142,6 +2142,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/cjk_width_c_locale/test_cjk_width_c_locale.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
+    set_property(SOURCE tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
 
     # ----------------------------------------------------------------------
     # ANTS-1217 Phase 3 — test_chrome bundle.

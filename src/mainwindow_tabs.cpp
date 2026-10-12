@@ -13,6 +13,7 @@
 #include "claudeintegration.h"
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
+#include "sessionmanager.h"
 #include <QJsonObject>
 #include <QApplication>
 #include <QMessageBox>
@@ -799,6 +800,11 @@ void MainWindow::performTabClose(int index) {
                 m_config.setTabGroups(groups);
             }
         }
+        // ANTS-5654 — and its session file, so no later restore can bring
+        // the closed tab back. A split tab's id is keyed on its terminal,
+        // as saveAllSessions reads it.
+        if (tabId.isEmpty() && term && term != w) tabId = m_tabSessionIds.value(term);
+        if (!tabId.isEmpty()) SessionManager::removeSession(tabId);
     }
 
     // Release every pane's Claude tracker entries BEFORE removeTab — once

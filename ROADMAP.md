@@ -84856,7 +84856,7 @@ a modern terminal" release.
   Kind: fix.
   Source: user-report-2026-10-12.
 
-- 📋 [ANTS-5654] **Restore falls back to every stray session file when tab_order.txt lists only missing ones.**
+- ✅ [ANTS-5654] **Restore falls back to every stray session file when tab_order.txt lists only missing ones.**
   MainWindow::restoreSessions uses SessionManager::savedSessions() when
   loadTabOrder returns empty. loadTabOrder drops ids whose .dat is
   missing, so a tab_order.txt that exists but names only lost tabs is
@@ -84864,16 +84864,23 @@ a modern terminal" release.
   closed weeks ago come back. Closing a tab also leaves its .dat
   behind until the 30-day prune, which supplies the orphans. Fall back
   only when tab_order.txt is absent, and remove a closed tab's file.
+  Resolved (2026-10-12): restoreSessions falls back to savedSessions()
+  only when SessionManager::hasTabOrder() is false, and performTabClose
+  removes the closed tab's file. ANTS-1159-INV-11 and INV-12 lock both.
   **Layman:** After a lost session the terminal reopened one long-forgotten tab instead of starting clean.
   Kind: fix.
   Source: user-report-2026-10-12.
 
-- 📋 [ANTS-5655] **The terminal saves no session on SIGTERM or a desktop logout.**
+- ✅ [ANTS-5655] **The terminal saves no session on SIGTERM or a desktop logout.**
   ants-terminal installs no SIGTERM handler and does not answer
   QGuiApplication::commitDataRequest, so a reboot or logout ends it
   without closeEvent's forced saveAllSessions. ants-mcpd already routes
   SIGTERM to aboutToQuit through a self-pipe (src/mcpdmain.cpp); copy
   that and save there.
+  Resolved (2026-10-12): main.cpp routes SIGTERM through a self-pipe to
+  MainWindow::saveSessionsForShutdown on every window, the first last,
+  then quits. ANTS-1159-INV-13. Checked live on an isolated offscreen
+  instance: SIGTERM after 23 s wrote its tab and tab_order.txt.
   **Layman:** Shutting the computer down can lose up to 30 seconds of tab changes.
   Kind: fix.
   Source: user-report-2026-10-12.

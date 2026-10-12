@@ -143,6 +143,10 @@ private:
     void changeFontSize(int delta);
     void applyFontSizeToAll(int size);
 public:
+    // ANTS-5655 — the save closeEvent makes, for a quit that skips it
+    // (SIGTERM at shutdown or logout; see main.cpp).
+    void saveSessionsForShutdown();
+
     // Remote-control data accessors — public because RemoteControl is
     // a sibling class (not a friend) and each contract below is a
     // narrow, intentional seam for rc_protocol commands. Every new

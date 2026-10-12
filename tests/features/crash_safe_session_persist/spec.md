@@ -20,6 +20,9 @@ INV labels qualified `ANTS-1159-INV-N`.
 | 8  | `MainWindow::closeEvent` STILL calls `saveAllSessions()` (no regression of the existing path). |
 | 9  | `saveTabOrderOnly` short-circuits on `!sessionPersistence()` and on the 5 s uptime floor (mirrors `saveAllSessions`). |
 | 10 | `MainWindow::restoreSessions` removes no session file. A restored tab's `.dat` stays until the next save overwrites it, so a crash or shutdown before that save loses nothing. |
+| 11 | `restoreSessions` reopens every stray `session_*.dat` (`savedSessions()`) only when `SessionManager::hasTabOrder()` is false. A `tab_order.txt` naming only lost tabs restores nothing rather than tabs closed long ago. |
+| 12 | `performTabClose` removes the closed tab's session file, so a closed tab leaves no stray file for INV-11's fallback. |
+| 13 | On SIGTERM `main` saves every window's tabs through `MainWindow::saveSessionsForShutdown`, the first window last so its order leads `tab_order.txt`, then quits. `saveSessionsForShutdown` forces `saveAllSessions`. A shutdown or logout that ends the process by signal no longer skips `closeEvent`'s save. |
 
 ## Why source-grep, not behavioural
 

@@ -228,5 +228,57 @@ TEST(CrashSafeSessionPersist, Inv10_restoreRemovesNoSessionFile) {
     EXPECT_EQ(0, expect_failures()) << "Inv10_restoreRemovesNoSessionFile failed";
 }
 
+// A tab_order.txt naming only lost tabs fell back to every stray file and
+// reopened a tab closed weeks before (reported 2026-10-12, ANTS-5654).
+TEST(CrashSafeSessionPersist, Inv11_strayFilesOnlyWithoutATabOrder) {
+    expect_reset();
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-11: read mainwindow sources";
+
+    const std::string body = extractBody(cp, "void MainWindow::restoreSessions");
+    const size_t guard = body.find("!SessionManager::hasTabOrder()");
+    const size_t fallback = body.find("SessionManager::savedSessions()");
+    expect(guard != std::string::npos,
+           "ANTS-1159-INV-11: restoreSessions checks hasTabOrder() before the fallback");
+    expect(fallback != std::string::npos && guard < fallback,
+           "ANTS-1159-INV-11: the savedSessions() fallback sits behind that check");
+    EXPECT_EQ(0, expect_failures()) << "Inv11_strayFilesOnlyWithoutATabOrder failed";
+}
+
+TEST(CrashSafeSessionPersist, Inv12_closingATabRemovesItsFile) {
+    expect_reset();
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-12: read mainwindow sources";
+
+    const std::string body = extractBody(cp, "void MainWindow::performTabClose");
+    expect(!body.empty(), "ANTS-1159-INV-12: performTabClose body extracted");
+    expect(contains(body, "SessionManager::removeSession("),
+           "ANTS-1159-INV-12: performTabClose removes the tab's session file");
+    EXPECT_EQ(0, expect_failures()) << "Inv12_closingATabRemovesItsFile failed";
+}
+
+// A reboot ended the process by SIGTERM, which skipped closeEvent's save
+// (ANTS-5655).
+TEST(CrashSafeSessionPersist, Inv13_sigtermSavesEveryWindow) {
+    expect_reset();
+    const std::string main = readFile(SRC_MAIN_CPP_PATH);
+    ASSERT_FALSE(main.empty()) << "ANTS-1159-INV-13: read src/main.cpp";
+    expect(contains(main, "sigaction(SIGTERM"),
+           "ANTS-1159-INV-13: main installs a SIGTERM handler");
+    const size_t others = main.find("other->saveSessionsForShutdown()");
+    const size_t first = main.find("window.saveSessionsForShutdown()");
+    const size_t quit = main.find("QCoreApplication::quit()", first);
+    expect(others != std::string::npos && first != std::string::npos && others < first,
+           "ANTS-1159-INV-13: other windows save first, the first window last");
+    expect(first != std::string::npos && quit != std::string::npos,
+           "ANTS-1159-INV-13: the handler quits after saving");
+
+    const std::string cp = ants_test::slurpMainWindow();
+    const std::string body = extractBody(cp, "void MainWindow::saveSessionsForShutdown");
+    expect(contains(body, "saveAllSessions(/*force=*/true)"),
+           "ANTS-1159-INV-13: saveSessionsForShutdown forces saveAllSessions");
+    EXPECT_EQ(0, expect_failures()) << "Inv13_sigtermSavesEveryWindow failed";
+}
+
 }  // namespace
 

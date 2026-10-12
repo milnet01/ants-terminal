@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include "debuglog.h"
 #include <QCommandLineParser>
+#include <QSocketNotifier>
 #include <QTimer>
 #include <QFont>
 #include <QSurfaceFormat>
@@ -28,6 +29,8 @@
 #include <QStyleFactory>
 
 #include <csignal>
+#include <fcntl.h>
+#include <unistd.h>
 #include <cstdio>
 
 namespace {
@@ -495,6 +498,31 @@ int main(int argc, char *argv[]) {
 
     MainWindow window(quakeMode, e2eMode);
     window.show();
+
+    // ANTS-5655 — a reboot or logout ends the process with SIGTERM, which
+    // skips closeEvent and its save. The signal reaches the event loop
+    // through a self-pipe, as in ants-mcpd. The first window saves last:
+    // tab_order.txt leads with the saving window's tabs, and restore
+    // reopens them in that order.
+    static int sigPipe[2] = {-1, -1};
+    if (::pipe2(sigPipe, O_CLOEXEC | O_NONBLOCK) == 0) {
+        struct sigaction sa {};
+        sa.sa_handler = [](int) {
+            const char c = 1;
+            [[maybe_unused]] const ssize_t n = ::write(sigPipe[1], &c, 1);
+        };
+        sigemptyset(&sa.sa_mask);
+        ::sigaction(SIGTERM, &sa, nullptr);
+        auto *sigNotifier = new QSocketNotifier(sigPipe[0], QSocketNotifier::Read, &app);
+        QObject::connect(sigNotifier, &QSocketNotifier::activated, &app, [&window] {
+            for (QWidget *top : QApplication::topLevelWidgets()) {
+                auto *other = qobject_cast<MainWindow *>(top);
+                if (other && other != &window) other->saveSessionsForShutdown();
+            }
+            window.saveSessionsForShutdown();
+            QCoreApplication::quit();
+        });
+    }
 
     // Debug-only graceful auto-quit. Env-gated, no production effect.
     // Kept in tree for future LSan / shutdown-ordering investigations
