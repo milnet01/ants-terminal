@@ -179,3 +179,12 @@ oracle: an inserted entry parses under the category it was written to.
 `Ants5108FencedHeadingIsNotAnInsertTarget`,
 `Ants5108NormalizeKeepsAnIndentedHeadingInItsBullet`,
 `Ants5108DatedMergeIgnoresAnIndentedHeading`.
+
+### ANTS-5673 — a Fixed entry does not inherit a fix item's Layman line
+
+A fix item's Layman line describes the defect. So `add_from_roadmap`
+does not reuse it as the body when the entry's category is Fixed and
+the item's kind maps to Fixed (`ChangelogLog::inheritsLaymanBody`). The
+reply hands the line back as `layman_body_omitted`. An explicit `body`
+still wins, and any other item keeps inheriting its Layman line.
+*Test:* `Ants5673FixedEntryDropsTheDefectLayman`.

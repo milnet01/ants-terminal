@@ -363,12 +363,12 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
         << "the scrape matched nothing in the grammar itself — it is broken, "
            "not the tree";
 
-    // The exempt sites in the RemoteControl implementation, which cannot be
-    // otherwise: both rxBoldLayman constructions capture the Layman sentence
+    // The exempt site in the RemoteControl implementation, which cannot be
+    // otherwise: rcInheritedLayman's rxBoldLayman captures the Layman sentence
     // INCLUDING its trailing period (rec.layman is period-stripped by
     // ANTS-1154 INV-4, and a period-less CHANGELOG body was the bug ANTS-1933
-    // fixed). ANTS-5485 removed the third site, roadmap_branch_drift's
-    // rxCommitSha.
+    // fixed). ANTS-5485 removed roadmap_branch_drift's rxCommitSha; ANTS-5673
+    // merged changelog_log's two rxBoldLayman copies into that one helper.
     //
     // ANTS-3833 — counted across the ELEVEN TUs rather than against one
     // filename. The split moved these three bodies to sibling TUs without
@@ -378,7 +378,7 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
     int rcHits = 0;
     for (const QString &tu : rcTranslationUnits())
         rcHits += hitsPerFile.value(tu);
-    EXPECT_EQ(rcHits, 2);
+    EXPECT_EQ(rcHits, 1);
 
     // The site this spec REMOVES. Asserting zero here rather than treating the
     // inventory as the allowlist is the whole point: an allowlist that included

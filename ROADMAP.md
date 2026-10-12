@@ -71563,7 +71563,7 @@ project. Reported causes are claims until checked in source.
   Source: split from ANTS-5671, 2026-10-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5673] **changelog_log add_from_roadmap writes no inherited Layman body under Fixed for a fix-kind item.**
+- ✅ [ANTS-5673] **changelog_log add_from_roadmap writes no inherited Layman body under Fixed for a fix-kind item.**
   Pressless 2026-10-12 (PRESS-0252, PRESS-0253): op:"add_from_roadmap"
   with category Fixed and a `summary` override (ANTS-4360) still
   inherits the item's Layman line as the body. A fix item's Layman line
@@ -71572,6 +71572,14 @@ project. Reported causes are claims until checked in source.
   is fix, review-fix or audit-fix, omit the inherited body unless `body`
   is given, or warn (`body_inherited_from_layman`). Message the pressless
   inbox on ship.
+  Resolved (2026-10-12): under Fixed, for a fix-kind item, add_from_roadmap
+  and an id-only add_batch entry no longer reuse the Layman line as the
+  body; the reply (or the applied row) hands it back as
+  `layman_body_omitted`. An explicit `body` still wins. The two
+  rxBoldLayman copies are now one helper, rcInheritedLayman, so
+  RoadmapItemBody.Inv2SingleGrammar's exemption count drops from 2 to 1.
+  Tests: Ants5673FixedEntryDropsTheDefectLayman and
+  Ants5673FixEntryDropsTheDefectLayman, both red before the fix.
   **Layman:** A changelog entry for a fixed bug no longer copies the roadmap's description of the bug, which made the bug sound still live.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-12.

@@ -1440,3 +1440,55 @@ TEST(changelog_log_writer, Ants5108DatedMergeIgnoresAnIndentedHeading) {
     ASSERT_TRUE(r.ok) << r.code.toStdString() << ": " << r.error.toStdString();
     EXPECT_TRUE(r.merged);
 }
+
+// ANTS-5673 — a fix item's Layman line describes the DEFECT ("it should tell
+// you to choose again"), so inherited as the body of a `### Fixed` entry it
+// says the bug is live. Pressless hand-corrected two such entries on
+// 2026-10-12. Under Fixed, for a fix-kind item, the inherited body is dropped
+// and handed back as `layman_body_omitted`; an explicit `body` still wins, and
+// a non-fix item keeps inheriting (Ants4360SummaryOverridesTheRoadmapHeadline).
+TEST(changelog_log_writer, Ants5673FixedEntryDropsTheDefectLayman) {
+    const QByteArray fixRoadmap(
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xE2\x9C\x85 [ANTS-0043] **The picker ignores a bad choice.**\n"
+        "  **Layman:** The picker quietly ignores the choice; it should say so.\n"
+        "  Kind: fix.\n"
+        "  Source: test.\n");
+    const auto run = [&](const QString &body, std::string *md) {
+        QTemporaryDir tmp;
+        EXPECT_TRUE(tmp.isValid());
+        EXPECT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+        EXPECT_TRUE(writeFile(rmPath(tmp.path()), fixRoadmap));
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add_from_roadmap");
+        req[QStringLiteral("id")]         = QStringLiteral("ANTS-0043");
+        req[QStringLiteral("summary")]    =
+            QStringLiteral("The picker now says when a choice is not valid.");
+        if (!body.isEmpty()) req[QStringLiteral("body")] = body;
+        const QJsonObject resp = rc.cmdChangelogLog(req).object();
+        *md = readFileStd(clPath(tmp.path()));
+        return resp;
+    };
+
+    std::string md;
+    const QJsonObject inherited = run(QString(), &md);
+    ASSERT_TRUE(inherited.value(QStringLiteral("ok")).toBool())
+        << inherited.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(inherited.value(QStringLiteral("category")).toString(),
+              QStringLiteral("Fixed"));
+    EXPECT_FALSE(contains(md, "quietly ignores the choice"))
+        << "the defect's Layman line was written as a Fixed entry's body";
+    EXPECT_EQ(inherited.value(QStringLiteral("layman_body_omitted")).toString(),
+              QStringLiteral("The picker quietly ignores the choice; it should say so."))
+        << "the dropped line must be handed back so the caller can reuse it";
+
+    const QJsonObject given = run(QStringLiteral("It names the valid options."), &md);
+    ASSERT_TRUE(given.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(contains(md, "It names the valid options."))
+        << "an explicit body still wins";
+    EXPECT_FALSE(given.contains(QStringLiteral("layman_body_omitted")))
+        << "nothing was omitted when the caller gave a body";
+}

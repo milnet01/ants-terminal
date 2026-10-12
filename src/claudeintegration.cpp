@@ -14505,7 +14505,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "Optional prose appended under the bullet as "
                         "2-space-indented continuation line(s). Under "
                         "add_from_roadmap, overrides the reused Layman "
-                        "line. Pre-wrap to ~70 columns.");
+                        "line. Under Fixed, a fix-kind item's Layman line "
+                        "is not reused, since it describes the defect; "
+                        "the reply hands it back as `layman_body_omitted` "
+                        "(ANTS-5673). Pre-wrap to ~70 columns.");
 
                     QJsonObject clId;
                     clId["type"] = "string";

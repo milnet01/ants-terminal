@@ -34,6 +34,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_log` writes a Fixed entry for a fix item without the roadmap's description of the bug.** (ANTS-5673)
+  `add_from_roadmap` and an id-only `add_batch` entry no longer reuse a
+  fix item's Layman line as the body under Fixed; the reply returns it as
+  `layman_body_omitted`, and an explicit `body` still wins.
+
 - **`roadmap_migrate op:"init"` now renders the new roadmap file, and its reply says to add a release block before the first item.** (ANTS-5671)
   The file carries the generated-file notice from its first commit, and
   the reply's `next_step` points at `roadmap_log op:"create_section"`

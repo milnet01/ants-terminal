@@ -49,6 +49,11 @@ QString kindToCategory(const QString &kind) {
     return QStringLiteral("Changed");
 }
 
+bool inheritsLaymanBody(const QString &category, const QString &kind) {
+    return !(category == QLatin1String("Fixed")
+             && kindToCategory(kind) == QLatin1String("Fixed"));
+}
+
 bool isValidCategory(const QString &category) {
     return canonicalCategories().contains(category);
 }

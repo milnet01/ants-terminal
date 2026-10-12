@@ -138,6 +138,24 @@ ClRoutedInsert routeOrInsertUnreleased(const QString &markdown,
     return out;
 }
 
+// The bullet's Layman line, the body add_from_roadmap reuses: it is
+// CHANGELOG-voice already. (Never the full bullet body — it carries
+// Kind:/Source:/Lanes: metadata.) One copy for the single op and add_batch.
+//
+// ANTS-1933: rxBoldLayman on the body is tried FIRST because it captures the
+// full sentence including the trailing period via greedy (.+). `layman` has
+// the period stripped (INV-4), so using it directly produced period-less
+// CHANGELOG bodies after ANTS-1861 fixed parseBullets to recognise the bold
+// form. The fallback covers plain-form Layman: bullets.
+QString rcInheritedLayman(const RoadmapParse::BulletRecord &match) {
+    static const QRegularExpression rxBoldLayman(
+        QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto lm = rxBoldLayman.match(match.body);
+    const QString bold = lm.hasMatch() ? lm.captured(1).trimmed() : QString();
+    return bold.isEmpty() ? match.layman : bold;
+}
+
 }  // namespace
 
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
@@ -1016,6 +1034,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
 
     // Resolve summary / body / id / category by mode.
     QString summary, body, id, category;
+    QString laymanOmitted;   // ANTS-5673
     const QString reqCategory =
         req.value(QStringLiteral("category")).toString();
     id = req.value(QStringLiteral("id")).toString();
@@ -1137,29 +1156,20 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                   match->headlineFull.isEmpty() ? match->headline
                                                 : match->headlineFull)
             : summaryOverride;
-        // Reuse the authored user-facing prose: the bullet's Layman
-        // line is CHANGELOG-voice already. An explicit `body` arg
-        // overrides it. (We deliberately do NOT splat the full bullet
-        // body — it carries Kind:/Source:/Lanes: metadata.)
-        //
-        // ANTS-1933: rxBoldLayman on match->body is tried FIRST because
-        // it captures the full sentence including the trailing period via
-        // greedy (.+). match->layman has the period stripped (INV-4), so
-        // using it directly produced period-less CHANGELOG bodies after
-        // ANTS-1861 fixed parseBullets to recognise the bold form.
-        if (body.isEmpty()) {
-            static const QRegularExpression rxBoldLayman(
-                QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
-                QRegularExpression::CaseInsensitiveOption);
-            const auto lm = rxBoldLayman.match(match->body);
-            if (lm.hasMatch()) body = lm.captured(1).trimmed();
-        }
-        // Fallback: period-stripped layman field (covers plain-form Layman:
-        // bullets where match->body won't contain the bold prefix).
-        if (body.isEmpty()) body = match->layman;
+        // The Layman line is the body unless `body` is given
+        // (rcInheritedLayman).
         category = !reqCategory.isEmpty()
             ? reqCategory
             : ChangelogLog::kindToCategory(match->kind);
+        if (body.isEmpty()) {
+            body = rcInheritedLayman(*match);
+            // ANTS-5673 — under Fixed, a fix item's Layman line describes the
+            // defect; hand it back rather than publish the bug as live.
+            if (!ChangelogLog::inheritsLaymanBody(category, match->kind)) {
+                laymanOmitted = body;
+                body.clear();
+            }
+        }
     }
 
     // Scrub leaked tool-call XML from both fields (parity with
@@ -1211,6 +1221,8 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // `bullet` then carries a dated heading rather than a bullet.
         if (routeToSubsection) out["routed_to_subsection"] = true;
         if (!id.isEmpty()) out["id"] = id;
+        if (!laymanOmitted.isEmpty())
+            out["layman_body_omitted"] = laymanOmitted;   // ANTS-5673
         if (res.malformed_section) {
             out["advisory"] = changelogMalformedAdvisory(
                 res.malformed_line, /*plural=*/false, /*applied=*/false);
@@ -1255,6 +1267,8 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     // ANTS-4563 — same contract on the write path as on the preview.
     if (routeToSubsection) out["routed_to_subsection"] = true;
     if (!id.isEmpty()) out["id"] = id;
+    if (!laymanOmitted.isEmpty())
+        out["layman_body_omitted"] = laymanOmitted;   // ANTS-5673
     // ANTS-2125 — non-blocking advisory: the entry was inserted in
     // canonical order, but the Unreleased section already interleaves
     // non-heading prose between its `### ` category blocks, so the layout
@@ -1290,6 +1304,7 @@ struct ClBatchEntryResult {
     // ANTS-5098 — the parts the bullet was rendered from, so a mixed section
     // can route the entry to the dated-topic form as op:"add" does.
     QString summary, body;
+    QString laymanOmitted;   // ANTS-5673
 };
 
 ClBatchEntryResult resolveClBatchEntry(
@@ -1351,17 +1366,16 @@ ClBatchEntryResult resolveClBatchEntry(
         summary = rcHeadlineOneline(
             match->headlineFull.isEmpty() ? match->headline
                                           : match->headlineFull);
-        if (body.isEmpty()) {
-            static const QRegularExpression rxBoldLayman(
-                QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
-                QRegularExpression::CaseInsensitiveOption);
-            const auto lm = rxBoldLayman.match(match->body);
-            if (lm.hasMatch()) body = lm.captured(1).trimmed();
-        }
-        if (body.isEmpty()) body = match->layman;
         category = !reqCategory.isEmpty()
             ? reqCategory
             : ChangelogLog::kindToCategory(match->kind);
+        if (body.isEmpty()) {
+            body = rcInheritedLayman(*match);
+            if (!ChangelogLog::inheritsLaymanBody(category, match->kind)) {
+                r.laymanOmitted = body;   // ANTS-5673, as the single op
+                body.clear();
+            }
+        }
     } else {
         r.code  = QStringLiteral("missing_field");
         r.error = QStringLiteral(
@@ -1591,6 +1605,8 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         a["created_category"] = res.created_category;
         if (res.created_category) anyCreatedCategory = true;
         if (routedInsert.routed) a["routed_to_subsection"] = true;  // ANTS-5098
+        if (!er.laymanOmitted.isEmpty())
+            a["layman_body_omitted"] = er.laymanOmitted;   // ANTS-5673
         // ANTS-4395 — stash the bullet so the line can be RE-RESOLVED against
         // the final markdown below. `res.line` is correct at insert time and
         // goes stale the moment a later entry lands in the same category:

@@ -18,6 +18,11 @@ namespace ChangelogLog {
 // caller can cite a bullet by id without restating the category.
 QString kindToCategory(const QString &kind);
 
+// ANTS-5673 — false when an entry citing a roadmap item must NOT inherit its
+// Layman line as the body: under Fixed, for a fix-kind item, that line
+// describes the defect, so the entry would say the bug is live.
+bool inheritsLaymanBody(const QString &category, const QString &kind);
+
 // True iff `category` is one of the six canonical categories.
 bool isValidCategory(const QString &category);
 

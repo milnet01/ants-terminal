@@ -434,3 +434,37 @@ TEST(changelog_log_add_batch, Ants4395PerEntryLinesAreDistinctAndReal) {
     // The scaffolding field must not leak into the envelope.
     EXPECT_FALSE(applied.at(0).toObject().contains(QStringLiteral("_bullet_head")));
 }
+
+// ANTS-5673 — an id-only entry for a fix item lands under Fixed without the
+// item's Layman line, which describes the defect; the applied row hands the
+// dropped line back as `layman_body_omitted`.
+TEST(changelog_log_add_batch, Ants5673FixEntryDropsTheDefectLayman) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), QByteArray(
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xE2\x9C\x85 [ANTS-0043] **The picker ignores a bad choice.**\n"
+        "  **Layman:** The picker quietly ignores the choice; it should say so.\n"
+        "  Kind: fix.\n"
+        "  Source: test.\n")));
+
+    RemoteControl rc(nullptr);
+    QJsonObject e;
+    e[QStringLiteral("id")] = QStringLiteral("ANTS-0043");
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    req[QStringLiteral("entries")]    = QJsonArray{e};
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(contains(readFileStd(clPath(tmp.path())), "quietly ignores the choice"))
+        << "the defect's Layman line was written as a Fixed entry's body";
+    const QJsonObject a =
+        resp.value(QStringLiteral("applied")).toArray().first().toObject();
+    EXPECT_EQ(a.value(QStringLiteral("layman_body_omitted")).toString(),
+              QStringLiteral("The picker quietly ignores the choice; it should say so."));
+}

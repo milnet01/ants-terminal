@@ -94,3 +94,10 @@ Behavioural against `cmdChangelogLog` (op:add_batch; m_main-independent)
 over a `QTemporaryDir` project (CHANGELOG.md + optional ROADMAP.md),
 mirroring the `changelog_log_writer` harness. No real CHANGELOG.md. INV-3
 and INV-5 FAIL against pre-fix code (the op is unknown → `bad_op_combo`).
+
+## ANTS-5673 — an id-only fix entry drops the defect's Layman line
+
+An id-only entry follows the single op's rule
+(`changelog_log_writer/spec.md`, ANTS-5673): under Fixed, a fix-kind
+item's Layman line is not the body, and the applied row carries it as
+`layman_body_omitted`. *Test:* `Ants5673FixEntryDropsTheDefectLayman`.
