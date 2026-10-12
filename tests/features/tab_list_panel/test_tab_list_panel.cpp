@@ -184,6 +184,29 @@ TEST(TabListPanel, Inv6ConfigKeysRoundTrip) {
     EXPECT_EQ(again.tabListPanelWidth(), 400);
 }
 
+// ANTS-5659 — a new tab brought the hidden tab bar back: four sites set
+// its visibility from the tab count alone. One function now decides.
+TEST(TabListPanel, Inv11OneFunctionDecidesTheTabBar) {
+    const std::string src = ants_test::stripComments(ants_test::slurpMainWindow());
+    ASSERT_FALSE(src.empty());
+    const auto count = [&](const std::string &needle) {
+        int n = 0;
+        for (size_t at = src.find(needle); at != std::string::npos; at = src.find(needle, at + 1))
+            ++n;
+        return n;
+    };
+    EXPECT_EQ(count("tabBar()->setVisible(") + count("m_coloredTabBar->setVisible("), 1)
+        << "the tab bar's visibility is set outside updateTabBarVisibility()";
+    const std::string body =
+        ants_test::slurpFunctionBody(src, "void MainWindow::updateTabBarVisibility(");
+    ASSERT_FALSE(body.empty());
+    EXPECT_NE(body.find("setVisible("), std::string::npos);
+    EXPECT_NE(body.find("count() > 1"), std::string::npos) << "one tab needs no bar";
+    EXPECT_NE(body.find("tabListPanelHidesTabBar()"), std::string::npos)
+        << "the side list's hide setting is ignored";
+    EXPECT_GE(count("updateTabBarVisibility()"), 6) << "a tab-count site does not call it";
+}
+
 TEST(TabListPanel, Inv7BothReloadPathsApplyThePanel) {
     const std::string src = ants_test::slurpMainWindow();
     ASSERT_FALSE(src.empty());

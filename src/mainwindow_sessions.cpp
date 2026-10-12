@@ -251,7 +251,7 @@ void MainWindow::restoreSessions() {
         defaultTab->deleteLater();
     }
 
-    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+    updateTabBarVisibility();
 
     // Defer tab activation and shell startup until after the event loop has
     // processed layout — widgets need their final geometry so that the grid

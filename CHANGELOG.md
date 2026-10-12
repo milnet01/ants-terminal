@@ -201,6 +201,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The tab bar stays hidden when you open or close a tab while the side tab list replaces it** (ANTS-5659)
+
 - **A coloured tab's name stays readable: the colour wash is lighter behind the name and full strength below it** (ANTS-4690)
   The name keeps 4.5:1 contrast on resting, selected and hovered tabs,
   for every tab colour, on dark and light themes.

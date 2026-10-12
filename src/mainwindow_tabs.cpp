@@ -459,8 +459,7 @@ void MainWindow::newTab() {
         m_claudeIntegration->setShellPid(terminal->shellPid());
     trackTerminalShell(terminal);
 
-    // Hide tab bar when only one tab
-    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+    updateTabBarVisibility();
 
     // ANTS-1159 — persist the new tab in the on-disk order
     // immediately so a crash in the next 30 s window doesn't
@@ -822,7 +821,7 @@ void MainWindow::performTabClose(int index) {
     m_tabWidget->removeTab(index);
     w->deleteLater();
 
-    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+    updateTabBarVisibility();
 
     if (auto *t = currentTerminal()) {
         t->setFocus();
@@ -1199,8 +1198,7 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command,
         m_claudeIntegration->setShellPid(terminal->shellPid());
     trackTerminalShell(terminal);
 
-    // Hide tab bar when only one tab (same logic as newTab slot).
-    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+    updateTabBarVisibility();
 
     if (started && !command.isEmpty()) {
         // 200 ms settle before writing — same timing the SSH-manager

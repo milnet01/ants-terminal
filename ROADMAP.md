@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5658 -->
+<!-- ants-roadmap-id-high-water: ANTS=5659 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84930,6 +84930,21 @@ a modern terminal" release.
   **Layman:** Each tab in the side list now shows its Claude status colour behind the name, fading into the normal background on the right; the tab's colour stripe is 3px wider, and hovering still fills the whole row.
   Kind: ux.
   Source: user-request-2026-10-12.
+  Lanes: tablistpanel.
+
+- ✅ [ANTS-5659] **Opening or closing a tab shows the tab bar again while the side tab list is set to hide it.**
+  Four sites (newTab, closeTab, the second new-tab path in
+  mainwindow_tabs.cpp, session restore in mainwindow_sessions.cpp) set
+  tabBar()->setVisible(count() > 1) without reading
+  tabListPanelHidesTabBar; applyTabListPanelConfig set it without the
+  one-tab rule. Fix: one MainWindow::updateTabBarVisibility() holds both.
+  Resolved (2026-10-12): MainWindow::updateTabBarVisibility is the one
+  place; TabListPanel.Inv11OneFunctionDecidesTheTabBar (red at 5 sites
+  before, green after). Side effect: with the panel off and one tab,
+  toggling the panel no longer shows the bar for that single tab.
+  **Layman:** With the side tab list hiding the top tab bar, a new tab (Ctrl+Shift+T) brought the top bar back although View still showed it hidden.
+  Kind: fix.
+  Source: user-report-2026-10-12.
   Lanes: tablistpanel.
 
 ### 🐛 Carried over from 0.7.x

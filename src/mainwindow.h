@@ -370,6 +370,9 @@ private:
     void setTabLabel(int index, const QString &full);
     // ANTS-5645 — the side tab list panel: shown, hidden, refreshed.
     void applyTabListPanelConfig();
+    // ANTS-5659 — show the tab bar only for two or more tabs, and not
+    // while the side tab list is set to hide it.
+    void updateTabBarVisibility();
     void scheduleTabListRefresh();
     void refreshTabList();
     // ANTS-5646 — the command palette in tab mode: type, Enter, switch.

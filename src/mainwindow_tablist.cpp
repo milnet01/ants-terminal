@@ -16,6 +16,15 @@
 #include <QSplitter>
 #include <QTimer>
 
+// ANTS-5659 — the one place the tab bar is shown or hidden: one tab needs
+// no bar, and the side list can stand in for it. Every site that changes
+// the tab count or the panel settings calls this.
+void MainWindow::updateTabBarVisibility() {
+    if (!m_tabWidget) return;
+    const bool listReplacesBar = m_config.tabListPanel() && m_config.tabListPanelHidesTabBar();
+    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1 && !listReplacesBar);
+}
+
 void MainWindow::applyTabListPanelConfig() {
     if (!m_tabSplitter) return;
     const bool show = m_config.tabListPanel();
@@ -69,8 +78,7 @@ void MainWindow::applyTabListPanelConfig() {
                 TabListPanel::sortModeFromKey(m_config.tabListPanelSort()));
         }
     }
-    if (m_coloredTabBar)
-        m_coloredTabBar->setVisible(!(show && m_config.tabListPanelHidesTabBar()));
+    updateTabBarVisibility();
 
     // The View menu ticks follow the config, including an external edit.
     if (m_tabListPanelAction) {

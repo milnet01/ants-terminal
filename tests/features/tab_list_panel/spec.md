@@ -61,8 +61,14 @@ item records the user's choice of a side panel over wrapping rows.
   equal names. Sorting changes the panel only, never the tab order. The
   View menu's "Tab List Sort" sets it, and `applyTabListPanelConfig`
   passes it to the panel, so a change applies with no relaunch.
+- **INV-11 — the tab bar's visibility (ANTS-5659).** The tab bar shows
+  only with two or more tabs, and never while the panel is shown with
+  `tab_list_panel_hides_tab_bar` set. `MainWindow::updateTabBarVisibility`
+  is the only code that shows or hides it, and every change to the tab
+  count or the panel settings calls it.
 
 ## Test
 
 `test_tab_list_panel.cpp`, suite `TabListPanel`, in the `test_chrome`
-bundle. INV-7 and the second half of INV-1 read the MainWindow sources.
+bundle. INV-7, INV-11 and the second half of INV-1 read the MainWindow
+sources.
