@@ -129,7 +129,9 @@ TEST(list_downshift, Inv2GateConditions) {
                                                  headlineProj);
     EXPECT_TRUE(a.downshifted);
     // explicit positive limit → never downshift (fat paging respected).
-    const auto b = PaginationEngine::pageBullets(makeFatBullets(500), 0, 50,
+    // ANTS-5651 cuts an explicit-limit page to the soft cap, so the rows are
+    // small enough that all 50 fit and the count isolates the gate.
+    const auto b = PaginationEngine::pageBullets(makeFatBullets(500, 50), 0, 50,
                                                  headlineProj);
     EXPECT_FALSE(b.downshifted);
     EXPECT_EQ(b.slice.size(), 50);
