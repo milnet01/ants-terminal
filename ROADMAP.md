@@ -3269,6 +3269,17 @@ remainder, captured so they don't drop on the floor.
   folder (its feedback file is named rusty-psn-source), or the button
   looks for a ROADMAP.md file rather than asking the store. Start with
   locate-defect on the button's visibility check (ANTS-4255).
+  Progress (2026-10-12): rusty-psn answered (inbox message 607). The
+  tab's cwd is /mnt/Games/Scripts/Linux/rusty-psn, which is not a git
+  repo. The registered root is the subfolder rusty-psn-source. A
+  roadmap_query from the parent refuses project_not_registered; from the
+  subfolder it answers. So the first hypothesis holds: the button looks
+  up the tab's cwd exactly and does not find a registered project one
+  level below it. Open question for the fix: should the lookup also try
+  a single registered child of the cwd, or should the user open the tab
+  in the subfolder? Side note from rusty-psn: roadmap_query
+  mode:"report" carries no root or slug field, so a caller cannot see
+  which project answered.
   **Layman:** In the rusty-psn tab the bottom bar has no Roadmap button, though that project's roadmap lives in the roadmap store.
   Kind: fix.
   Source: user-report-2026-10-12.
