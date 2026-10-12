@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5662 -->
+<!-- ants-roadmap-id-high-water: ANTS=5665 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -3261,6 +3261,18 @@ remainder, captured so they don't drop on the floor.
   source-grep, INV-14 direct `QAbstractButton::clicked` Close-button
   connect).
   Kind: implement.
+
+- 📋 [ANTS-5664] **A project served by the roadmap store shows no Roadmap button in the status bar.**
+  Seen 2026-10-12 on build d3dc355c (0.7.114) in the rusty-psn tab; the
+  OneUp tab shows the button. Unverified hypothesis: the button keys on
+  the tab's cwd, and rusty-psn's registered root differs from the tab's
+  folder (its feedback file is named rusty-psn-source), or the button
+  looks for a ROADMAP.md file rather than asking the store. Start with
+  locate-defect on the button's visibility check (ANTS-4255).
+  **Layman:** In the rusty-psn tab the bottom bar has no Roadmap button, though that project's roadmap lives in the roadmap store.
+  Kind: fix.
+  Source: user-report-2026-10-12.
+  Lanes: statusbar, roadmap.
 
 ### 🎨 GitHub-aware status bar (user requests 2026-04-27)
 
@@ -70984,6 +70996,20 @@ project. Reported causes are claims until checked in source.
   Source: ANTS-5571 follow-up 2026-10-11.
   Lanes: mcp.
 
+- 📋 [ANTS-5665] **project_settings detect says no source_roots override is needed while its own counts show tracked source outside the default roots.**
+  op:detect on rusty-psn-source: default walk indexed 16 of 18 source
+  files, yet the reason string said no override needed and
+  would_use_roots was [src]. The two missing were tracked scripts/*.sh,
+  which indie_review_partition then gave no lane. Suggested fix: when
+  default_source_count < total_source_count, propose the missing
+  top-level directories in suggestion.source_roots and name the
+  uncovered files. Related: ANTS-5521 (op:init stays silent on the same
+  advice), ANTS-4093.
+  **Layman:** The setup check tells a project its code folders are fine while two tracked scripts sit outside them, so later reviews skip those scripts.
+  Kind: fix.
+  Source: rusty-psn-source-feedback-2026-10-12.
+  Lanes: mcp.
+
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage
 
 - ✅ [ANTS-5583] **indie_review_partition empties a pinned lane's sourcePaths when its files are not under src/.**
@@ -81996,6 +82022,21 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: fix.
   Source: user-request-2026-10-08.
   Lanes: statusbar, claude.
+
+- 📋 [ANTS-5663] **The context gauge is missing from a busy Claude Code tab for a long time before it appears.**
+  Seen 2026-10-12 on build d3dc355c (0.7.114): the OneUp tab, 11 min
+  into a turn with 67k tokens streamed, showed no Context gauge (the bar
+  had Claude: thinking, the savings counter, Review Changes, Opus,
+  Roadmap). A rusty-psn tab at the same moment showed Context 10%. The
+  user reports it came up later on its own. ANTS-5630 (slow to appear)
+  and ANTS-5657 (hidden while the newest record is over 32 KB) shipped
+  before this build, so this is either a third cause or one of those
+  not fully closed. Start with locate-defect: what the gauge waits for
+  before its first paint, and whether a long single turn starves it.
+  **Layman:** The 'Context %' reading in the bottom bar took a long time to show up for one tab, even though Claude had been working there for minutes.
+  Kind: fix.
+  Source: user-report-2026-10-12.
+  Lanes: claudeintegration, statusbar.
 
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
