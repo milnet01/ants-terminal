@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5661 -->
+<!-- ants-roadmap-id-high-water: ANTS=5662 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -22729,6 +22729,27 @@ that shipped 6+ months ago — pure self-reference).
   config_parse_failure_guard's 'Do NOT use' comment is about
   setTestModeEnabled, not the guard. diagnostics_guards' ScratchLog also
   resets DebugLog, so only its env half moves.
+  Progress (2026-10-12): leak fixes in lua_threading and
+  session_persistence_default, and the safe restore in debuglog_perms,
+  shipped (622f0df2). Moved onto ants_test::XdgGuard so far:
+  appimage_openssl3_shim, audit_state_file_caps, audit_run_output_cap,
+  audit_tool_process_group_kill. Remaining, one file per commit, build
+  the file's bundle (build_target_for) and run its suite each time:
+  test_audit: audit_inprocess_lanes_async (next), debt_sweep_engine,
+  tool_detection_engine. test_claude: claude_socket_runtime_dir,
+  claude_session_freshness, auto_switch_surfacing,
+  claude_projects_summary_cache, claude_tab_status_indicator,
+  diagnostics_guards (env half only; ScratchLog also resets DebugLog),
+  git_optional_locks, local_socket_connection_cap, mcp_async_dispatch,
+  roadmap_log_store_preview_and_counter, roadmap_source_witness,
+  shared_socket_listener, spec_lint_verb. test_core:
+  config_parse_failure_guard (its "Do NOT use" comment is about
+  setTestModeEnabled, not the guard), config_ai_review_concurrency,
+  config_tab_title_format, config_reload_loop_safety, mcp_master_toggle,
+  spawn_budget. test_chrome: pty_child_env, shell_command_wiring,
+  ui_state_persistence. test_dialogs: review_changes_diff_cap. Not
+  process state, so skipped: mcp_orientation_install,
+  test_audit_bundle_2026_05_19, roadmap_store_sandbox, mcp_extra_tools.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.**
   `tests/features/concurrent_writer_lock/
@@ -71286,6 +71307,19 @@ project. Reported causes are claims until checked in source.
   Kind: feature.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-10-10.
   Lanes: roadmap-store, remotecontrol_roadmap_log.
+
+- 📋 [ANTS-5662] **roadmap_migrate names the line and bullet behind an empty parsed headline, and reads an indented `- ` line as body text.**
+  Reported by rusty-psn (rusty-psn-source_Ants_MCP_Feedback.md, heading
+  "roadmap_migrate: 'NOT NULL constraint failed: item.headline' names no
+  bullet"). Not yet reproduced here. Claimed causes: (1) a two-space
+  indented `- ` sub-list line under a bullet parsed as a new bullet with no
+  headline; (2) a headline code span holding `*` (e.g. `VC*`) breaking
+  the bold parse. Fix: refuse before the INSERT with the source line and
+  bullet id of any empty headline; treat a body-indent `- ` line as body.
+  **Layman:** When importing a roadmap fails, the error will say which line caused it instead of a bare database message.
+  Kind: fix.
+  Source: rusty-psn feedback 2026-10-12.
+  Lanes: roadmap-store.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
