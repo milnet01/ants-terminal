@@ -2,6 +2,7 @@
 // spec.md beside this file.
 
 #include "auditrunner.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -18,15 +19,15 @@ namespace {
 
 class ScopedPathPrepend {
 public:
-    explicit ScopedPathPrepend(const QString &dir) : m_old(qgetenv("PATH")) {
+    explicit ScopedPathPrepend(const QString &dir) {
+        const QByteArray old = qgetenv("PATH");
         QByteArray next = dir.toUtf8();
-        if (!m_old.isEmpty()) { next += ':'; next += m_old; }
-        qputenv("PATH", next);
+        if (!old.isEmpty()) { next += ':'; next += old; }
+        m_env.setEnv("PATH", next);
     }
-    ~ScopedPathPrepend() { qputenv("PATH", m_old); }
 
 private:
-    QByteArray m_old;
+    ants_test::XdgGuard m_env;
 };
 
 bool writeExecutable(const QString &path, const QString &body) {
