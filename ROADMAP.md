@@ -4148,6 +4148,12 @@ in each named file carry the original indie-review citation.
   installed tools, a config file and the filesystem type, and assembles
   some commands at runtime, so the spec's row design could not carry it.
   ANTS-1044 now moves populateChecks() unchanged instead.
+  Awaiting user decision (2026-10-12): the Colony benefit this item
+  gives (a smaller file) shipped with ANTS-1044, which moved
+  populateChecks into src/auditdialog_catalogue.cpp. What is left is
+  turning it into a data table, which the 2026-09-14 ruling says needs
+  its own spec and review. Recommended: drop it, or keep it only if the
+  user wants audit checks hot-reloadable as data.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -20236,6 +20242,12 @@ indie-review finding.
   **Layman:** stop letting the system locale determine how
   wide a character is — ship our own width table so display
   is stable across distros.
+  Awaiting user decision (2026-10-12): the LANG=C half is fixed by
+  ANTS-3792 (TerminalGrid::ensureUtf8CType at startup). What is left is
+  a trade-off: a vendored width table makes widths identical on every
+  distro, but programs inside the terminal size text with the system's
+  wcwidth, so a table newer than the system's misaligns them.
+  Recommended: keep the system wcwidth and drop this item.
   Kind: perf.
   Source: indie-review-2026-05-14 (lane-1 M4).
 
@@ -22697,6 +22709,24 @@ that shipped 6+ months ago — pure self-reference).
   tests that still hand-roll their own guard instead of using the shared
   one. Scope is now that dedup, not a bundle-wide RAII sweep. Do not
   re-derive the original plan from the headline.
+  Classified (2026-10-12) by reading all 37 tests/features files that
+  call qputenv / qunsetenv / setTestModeEnabled without
+  tests/_support/xdg_guard.h. Not process state (skip):
+  mcp_orientation_install, test_audit_bundle_2026_05_19,
+  roadmap_store_sandbox, mcp_extra_tools. LEAKS (fix first):
+  lua_threading Ants5107DevReloadRunsOncePerBurst sets ANTS_PLUGIN_DEV
+  and never restores it (PluginManager::devMode caches it per process,
+  so the env restore only stops the leak to later tests and children);
+  session_persistence_default runMain calls setTestModeEnabled(false)
+  and never restores it. UNSAFE restore: debuglog_perms
+  WriteEscapesEveryMessage has an ASSERT before its XDG_DATA_HOME
+  restore. The other 30 hand-roll a restore (destructor, qScopeGuard,
+  TearDown or inline) and are the dedup. Behaviour note: several
+  hand-rolled restores treat set-but-empty as unset, or set an unset var
+  to empty; XdgGuard tracks set-ness exactly.
+  config_parse_failure_guard's 'Do NOT use' comment is about
+  setTestModeEnabled, not the guard. diagnostics_guards' ScratchLog also
+  resets DebugLog, so only its env half moves.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.**
   `tests/features/concurrent_writer_lock/
