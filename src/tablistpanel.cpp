@@ -84,6 +84,44 @@ private:
     QColor m_bg;
 };
 
+// ANTS-5656 — A–Z order: case ignored, digit runs compared as numbers.
+// QCollator's numeric mode needs ICU, which Qt builds such as CI's lack, so
+// the digit runs are compared here and only text runs go to the collator.
+int compareTitles(const QString &a, const QString &b) {
+    QCollator collator;
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    auto runEnd = [](const QString &s, int i) {
+        const bool digit = s.at(i).isDigit();
+        while (i < s.size() && s.at(i).isDigit() == digit) ++i;
+        return i;
+    };
+    int i = 0, j = 0;
+    while (i < a.size() && j < b.size()) {
+        const int ie = runEnd(a, i), je = runEnd(b, j);
+        const QStringView ra = QStringView(a).mid(i, ie - i);
+        const QStringView rb = QStringView(b).mid(j, je - j);
+        int c = 0;
+        if (ra.front().isDigit() && rb.front().isDigit()) {
+            // Leading zeros aside, the longer run is the bigger number.
+            auto strip = [](QStringView r) {
+                while (r.size() > 1 && r.front() == u'0') r = r.mid(1);
+                return r;
+            };
+            const QStringView na = strip(ra), nb = strip(rb);
+            c = na.size() != nb.size() ? (na.size() < nb.size() ? -1 : 1)
+                                       : na.compare(nb);
+        } else {
+            c = collator.compare(ra, rb);
+        }
+        if (c != 0) return c;
+        i = ie;
+        j = je;
+    }
+    // One title ran out: the shorter one sorts first.
+    const qsizetype restA = a.size() - i, restB = b.size() - j;
+    return restA < restB ? -1 : (restA > restB ? 1 : 0);
+}
+
 }  // namespace
 
 TabListPanel::TabListPanel(QWidget *parent) : QWidget(parent) {
@@ -256,12 +294,9 @@ void TabListPanel::rebuild() {
     // in number order, tab order kept between equal names.
     QVector<TabListEntry> ordered = m_entries;
     if (m_sort == SortMode::AZ || m_sort == SortMode::ByColourAZ) {
-        QCollator collator;
-        collator.setCaseSensitivity(Qt::CaseInsensitive);
-        collator.setNumericMode(true);
         std::stable_sort(ordered.begin(), ordered.end(),
-                         [&collator](const TabListEntry &a, const TabListEntry &b) {
-                             return collator.compare(a.title, b.title) < 0;
+                         [](const TabListEntry &a, const TabListEntry &b) {
+                             return compareTitles(a.title, b.title) < 0;
                          });
     }
 
