@@ -34,9 +34,13 @@ responses come back in chunks the caller can parse directly.
 - **INV-8 / bad_args on non-numeric or negative.** `offset:"foo"`,
   `offset:-1`, `limit:0`, `limit:"bar"` all return
   `{ok:false, code:"bad_args"}`.
-- **INV-9 / explicit limit honoured up to clamp.** `limit:500`
-  returns up to 500 even if auto-pick would pick fewer; clamped to
-  [1, 500].
+- **INV-9 / explicit limit is a cap (ANTS-5651).** An explicit
+  `limit` is clamped to [1, 500] and bounds the page. Small rows:
+  `limit:500` returns 500. Rows too large for
+  `PaginationEngine::softCapBytes()`: the page is cut by bytes,
+  keeps at least one row, and carries `truncated:true` +
+  `next_offset`. `limit` echoes the caller's clamped value and
+  `downshifted` stays false.
 - **INV-12 / an auto-sized page fits under the offload threshold
   (ANTS-5571).** The auto path's soft cap is
   `PaginationEngine::softCapBytes()`: `kSoftCapBytes`, lowered to the
@@ -44,7 +48,7 @@ responses come back in chunks the caller can parse directly.
   a page the engine sized leaves the margin for its envelope. A list
   between the threshold and `kSoftCapBytes` is now trimmed. With a
   threshold above `kSoftCapBytes`, the cap stays `kSoftCapBytes`. An
-  explicit `limit` is unchanged (INV-9).
+  explicit-`limit` page is cut to the same cap (INV-9).
 - **INV-11 / one helper call site per emission branch.** The
   PaginationEngine::pageBullets call appears exactly twice in
   cmdRoadmapQuery (section + full-file). Source-scrape regression
