@@ -223,6 +223,8 @@ HANDLER — RemoteControl::cmdRoadmapMigrate
  0a. rr = ants::resolveCallerCwdRoot(m_main, caller_cwd)
      rr.source == Unresolvable                        -> no_project
  0b. RoadmapMigrateVerb::isTransientRoot(rr.cwd)      -> transient_root
+ 0c. !dryRun && !hold.take(rr.cwd)                  -> roadmap_busy
+     // the exclusive root hold (ANTS-5086), released on every return
      stamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate)  // ONE clock read
      dir = RoadmapBackupHealth::snapshotDest(Config key, stateDir,
                                              RoadmapStore::defaultPath())  // § 2.4 rungs 2-3
@@ -849,6 +851,7 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 | — | `caller_cwd` absent or empty — refused by the `Required` contract, before the handler | `caller_cwd_required` |
 | 0a | `caller_cwd` present but does not canonicalise | `no_project` |
 | 0b | `caller_cwd` resolves under the system temp dir (ANTS-4600) | `transient_root` |
+| 0c | a real run (not `dry_run`) finds the root held by a writer past its 5 s wait, or by another migration (ANTS-5086; ANTS-2132 § 2.10) | `roadmap_busy` |
 | 1 | `project_name` empty after trimming | `bad_args` |
 | 2 | `export_slug` fails the DDL `CHECK` in § 2.1 | `bad_args` |
 | 3 | `findRoadmaps()` → `not_found` | `no_roadmap` |
@@ -856,7 +859,6 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 | 3 | `findRoadmaps()` → `not_utf8` | `not_utf8` |
 | 3 | `findRoadmaps()` → `archive_format_mismatch` | `format_mismatch` |
 | 3 | `findRoadmaps()` → `too_large` — the sources exceed 32 MiB (ANTS-5086) | `too_large` |
-| 4a | a real run (not `dry_run`) finds the root held by a writer past its 5 s wait, or by another migration (ANTS-5086; ANTS-2132 § 2.10) | `roadmap_busy` |
 | 5 | `store.open()` fails | `store_failed` |
 | 6 | either lookup fails with an SQL error (distinct from "no row") | `store_failed` |
 | 6 | the slug belongs to a different root, or a re-run changes this root's slug | `slug_collision` |
@@ -1003,10 +1005,11 @@ ANTS-3819).
   name, and a slug owned by a *different* root, all presuppose a `project` row —
   against those, a zero-count assertion is false for a correct implementation.
   Row level rather than a byte hash, for § 2.5's reason.
-  <br>**Three rows are out of the fixture's reach and are covered by inspection,
+  <br>**Four rows are out of the fixture's reach and are covered by inspection,
   not by this test:** `caller_cwd_required` is the dispatcher's, before the
-  handler; `no_project` is step 0a's and `transient_root` step 0b's, both
-  inside `cmdRoadmapMigrate`, which § 6 drives no test against. Both refuse before `run()` is entered, so neither can
+  handler; `no_project` is step 0a's, `transient_root` step 0b's and
+  `roadmap_busy` step 0c's, all inside `cmdRoadmapMigrate`, which § 6 drives
+  no test against. All three refuse before `run()` is entered, so none can
   touch a store — the property holds by construction rather than by fixture.
 - **INV-5** — One stamp per call, in the shape `history.changed_at` CHECKs.
   *Test:* the envelope's `changed_at` matches

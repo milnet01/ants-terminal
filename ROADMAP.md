@@ -54115,7 +54115,7 @@ are closed inline in the feedback files rather than filed here.
   Source: ANTS-5245 measurement (in-session-2026-10-02).
   Lanes: roadmap.
 
-- 📋 [ANTS-5675] **ANTS-3855's refusal table places roadmap_busy at a run() step that the handler owns.**
+- ✅ [ANTS-5675] **ANTS-3855's refusal table places roadmap_busy at a run() step that the handler owns.**
   Found by a cold lane on 2026-10-12, outside ANTS-5621's amendment, so
   filed rather than looped on. § 2.5's table puts `roadmap_busy` at step
   "4a", between planFrom() and store.open(), which § 2.3 assigns to the
@@ -54131,6 +54131,10 @@ are closed inline in the feedback files rather than filed here.
   § 2.3, the table row relabelled to it, and roadmap_busy added to
   INV-4's out-of-reach list. Records existing code, so rule 14's
   "code already exists" exception applies.
+  Resolved (2026-10-12): § 2.3 gains handler step 0c (the exclusive
+  root hold, skipped on a dry run, as cmdRoadmapMigrate does); § 2.5's
+  roadmap_busy row moves from 4a to 0c; INV-4 lists four rows covered by
+  inspection, roadmap_busy included. No other document restates the step.
   **Layman:** The written plan for the roadmap import says a "busy" refusal happens in one place while the code raises it somewhere else, which could mislead whoever changes it next.
   Kind: doc-fix.
   Source: review-contract-2026-10-12 (ANTS-3855 loop 13, out of radius).
