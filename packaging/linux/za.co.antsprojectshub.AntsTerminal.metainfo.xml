@@ -103,6 +103,21 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.114" date="2026-10-12">
+      <description>
+        <p>A side panel that lists every tab by its full name, with Go to Tab and four sort orders; tabs that survive restarts, shutdowns and log-outs; and steadier plugins.</p>
+        <ul>
+          <li><em>Added:</em> View → Tab List Panel (Ctrl+Shift+Y) lists every open tab by its full name, grouped by tab colour, with its colour stripe and Claude status dot. Click a line to switch tabs; sort the list by colour, by colour then A–Z, A–Z, or tab order. Go to Tab (Ctrl+Shift+H) jumps to a tab as you type its name. (ANTS-5645, ANTS-5656, ANTS-5646)</li>
+          <li><em>Added:</em> The status bar shows when the current tab's Claude Code session has unread messages from other sessions. Ants Terminal now ships cc-job, which runs a long command so that relaunching Ants does not kill it, and demoreel, which records short demo videos. (ANTS-5620, ANTS-5629, ANTS-5617)</li>
+          <li><em>Changed:</em> Claude Code sessions start lighter: the always-loaded Ants MCP tools send about two thirds less text. The AI Assistant shows its answer as it arrives. Restoring saved tabs uses less memory. (ANTS-5628, ANTS-5105, ANTS-5106)</li>
+          <li><em>Fixed:</em> Tabs are saved when the computer shuts down or you log out, saved tabs survive a restart soon after the terminal opens, and closed tabs stay closed after a restart. (ANTS-5655, ANTS-5653, ANTS-5654)</li>
+          <li><em>Fixed:</em> A plugin can no longer flood the terminal with log lines or notifications, a plugin that stopped responding is not loaded again until its files change, and unloading or reloading plugins finishes within two seconds. (ANTS-5107)</li>
+          <li><em>Fixed:</em> The Claude context gauge appears after the first reply. A coloured tab's name stays readable. Chinese, Japanese and Korean characters stay two cells wide under LC_ALL=C. Ants no longer freezes when another Ants window is stuck mid-save. (ANTS-5657, ANTS-4690, ANTS-3792, ANTS-5106)</li>
+          <li><em>Fixed:</em> Roadmap and Ants MCP tools: a roadmap backup made before a database update still restores, ids are never reused, and several tools report more accurately. (ANTS-3860, ANTS-5639, ANTS-5366)</li>
+          <li><em>Security:</em> Claude Code tools look for the terminal's connection points only in your private per-user folder, never the shared /tmp folder. (ANTS-5587)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.113" date="2026-10-01">
       <description>
         <p>A tidier, faster Roadmap window. Everything lines up in columns, it remembers what you had open, and big sections open much faster. Also: the Flatpak build can now run git and search tools on your computer, the status bar shows Claude Code's context use again, and several security hardening fixes.</p>

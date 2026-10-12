@@ -1,3 +1,26 @@
+ants-terminal (0.7.114-1) unstable; urgency=medium
+
+  * Tab List Panel lists every open tab by its full name, grouped by
+    colour, sorted four ways. Go to Tab (Ctrl+Shift+H) jumps to a tab by
+    name. (ANTS-5645, 5656, 5646)
+  * Status bar shows unread messages from other Claude Code sessions.
+    Ships cc-job and demoreel. (ANTS-5620, 5629, 5617)
+  * Claude Code sessions start lighter; the AI Assistant shows answers as
+    they arrive; restoring tabs uses less memory. (ANTS-5628, 5105, 5106)
+  * Tabs are saved at shutdown and log-out, survive an early restart, and
+    closed tabs stay closed. (ANTS-5655, 5653, 5654)
+  * Plugins can no longer flood the terminal; a stuck plugin is not
+    reloaded until changed; reloads finish within two seconds. (ANTS-5107)
+  * Context gauge appears after the first reply; coloured tab names stay
+    readable; CJK width holds under LC_ALL=C; no freeze when another
+    window is stuck mid-save. (ANTS-5657, 4690, 3792, 5106)
+  * Roadmap backups restore after a database update; roadmap ids are
+    never reused. (ANTS-3860, 5639, 5366)
+  * Claude Code tools use only the private per-user folder, never /tmp,
+    for the terminal's connection points. (ANTS-5587)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 12 Oct 2026 12:00:00 +0200
+
 ants-terminal (0.7.113-1) unstable; urgency=medium
 
   * Roadmap window says so when a roadmap's layout cannot be read as items.
