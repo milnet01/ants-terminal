@@ -6,6 +6,8 @@
 #include "changelogquery.h"
 #include "changeloglog.h"
 #include "mcpprojection.h"
+#include "mcpspill.h"
+#include "paginationengine.h"
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
@@ -13,6 +15,7 @@
 
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
@@ -442,6 +445,41 @@ TEST(ChangelogQueryHandler, Ants5147IdLookupIgnoresPagination) {
         EXPECT_EQ(resp.value(QStringLiteral("total")).toInt(), 3);
         EXPECT_FALSE(resp.value(QStringLiteral("truncated")).toBool());
     }
+}
+
+// ANTS-5651 (§ 2.2, § 7 item 2) — an explicit `limit` caps the row count and
+// the page is still cut to the soft cap, through the shared PaginationEngine.
+// Before ANTS-5651 a `limit:500` page came back whole and offloaded.
+TEST(ChangelogQueryHandler, Ants5651ExplicitLimitPageCutToSoftCap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QFile f(tmp.path() + QStringLiteral("/CHANGELOG.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QByteArray md = "# Changelog\n\n## [Unreleased]\n\n### Added\n\n";
+    const QByteArray pad(150, 'x');
+    for (int i = 0; i < 300; ++i)
+        md += "- **Entry " + QByteArray::number(i) + " " + pad + ".**\n\n";
+    f.write(md);
+    f.close();
+
+    mcp::setOffloadConfig(true, 16384, 2048);
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("limit")] = 500;
+    const QJsonObject resp = rc.cmdChangelogQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    const QJsonArray entries = resp.value(QStringLiteral("entries")).toArray();
+    EXPECT_GE(entries.size(), 1);
+    EXPECT_LT(entries.size(), 300);
+    EXPECT_EQ(resp.value(QStringLiteral("count")).toInt(), entries.size());
+    EXPECT_TRUE(resp.value(QStringLiteral("truncated")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("next_offset")).toInt(),
+              resp.value(QStringLiteral("offset")).toInt() + entries.size());
+    EXPECT_FALSE(resp.contains(QStringLiteral("downshifted")));
+    EXPECT_LE(QJsonDocument(entries).toJson(QJsonDocument::Compact).size(),
+              PaginationEngine::softCapBytes()
+                  - PaginationEngine::kEnvelopeOverheadBytes);
 }
 
 // ---- Wiring source-scrape (INV-1 / INV-6 / INV-9) ----

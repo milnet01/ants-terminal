@@ -3839,8 +3839,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`downshifted:true`; the drop signals "
                         "(`truncated`/`next_offset`) are cleared when the "
                         "lean list is complete, and only reappear if even "
-                        "the lean list overflows. Explicit limit wins "
-                        "(auto-pick + downshift only fire when omitted). "
+                        "the lean list overflows. Explicit limit caps "
+                        "rows, still cut by bytes; downshift only when omitted. "
                         "When pagination applies, envelope carries "
                         "offset/limit/total/truncated and next_offset "
                         "when truncated.");
@@ -14817,7 +14817,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject cqLimit;
                     cqLimit["type"] = "integer";
                     cqLimit["description"] = QStringLiteral(
-                        "Page size, clamped 1..500 (mirrors roadmap_query). "
+                        "Page size cap, clamped 1..500, still cut to the soft "
+                        "cap (mirrors roadmap_query). "
                         "Omitted → auto soft-cap; truncation emits truncated + "
                         "next_offset. ANTS-3576 — in entries mode (not "
                         "headline_only / include_body), a would-be-truncated "

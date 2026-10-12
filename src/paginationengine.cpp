@@ -76,13 +76,20 @@ PageResult pageBullets(const QJsonArray &filtered,
     if (limit > 0) {
         if (limit < kMinLimit) limit = kMinLimit;
         if (limit > kMaxLimit) limit = kMaxLimit;
-        // Take the first `limit` of tail.
-        QJsonArray slice;
+        // ANTS-5651 — `limit` is a cap, not a promise: the first `limit` rows
+        // of tail are cut to the same byte budget as the auto path, keeping
+        // at least one row (ANTS-5103), so an explicit page cannot offload.
+        QJsonArray bounded;
         for (int i = 0; i < tail.size() && i < limit; ++i) {
-            slice.append(tail.at(i));
+            bounded.append(tail.at(i));
         }
+        const int budget = softCapBytes() - kEnvelopeOverheadBytes;
+        const int n = qMin(qMax(measureCutPoint(bounded, budget), 1),
+                           int(bounded.size()));
+        QJsonArray slice;
+        for (int i = 0; i < n; ++i) slice.append(bounded.at(i));
         r.slice = slice;
-        r.limit = limit;
+        r.limit = limit;   // echo the caller's clamped limit (INV-2)
     } else {
         // Auto-pick: measure-then-cut against the soft cap. Reserve
         // envelope overhead so the wire response fits comfortably.

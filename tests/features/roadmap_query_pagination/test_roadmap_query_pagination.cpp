@@ -104,23 +104,63 @@ TEST(roadmap_query_pagination, Inv5OffsetPastEndEmpty) {
     EXPECT_EQ(r.nextOffset, -1);
 }
 
-// INV-9 — explicit limit honoured up to clamp (500).
-TEST(roadmap_query_pagination, Inv9ExplicitLimitHonoured) {
+// INV-9 (ANTS-5651) — an explicit limit is a cap: the limit-bounded page is
+// cut to the soft cap like the auto path, with truncated/next_offset, and
+// keeps the caller's limit in the echo. Before ANTS-5651 the 400 rows here
+// (~70 KB) came back whole and the dispatch offloaded them.
+TEST(roadmap_query_pagination, Inv9ExplicitLimitCutToSoftCap) {
+    mcp::setOffloadConfig(true, 16384, 2048);
+    const int budget = PaginationEngine::softCapBytes()
+                     - PaginationEngine::kEnvelopeOverheadBytes;
     const auto arr = makeBullets(450);
-    // Caller asks for 400 even though auto-pick would pick less;
-    // explicit limit wins.
-    const auto r = PaginationEngine::pageBullets(arr, 0, 400);
-    EXPECT_EQ(r.slice.size(), 400);
+    bool projected = false;
+    const auto r = PaginationEngine::pageBullets(
+        arr, 0, 400, [&](QJsonArray &) { projected = true; });
+    EXPECT_GE(r.slice.size(), 1);
+    EXPECT_LT(r.slice.size(), 400);
     EXPECT_EQ(r.limit, 400);
-    EXPECT_TRUE(r.truncated);  // 400 < 450 total
+    EXPECT_TRUE(r.truncated);
+    EXPECT_EQ(r.nextOffset, r.slice.size());
+    EXPECT_LE(QJsonDocument(r.slice).toJson(QJsonDocument::Compact).size(),
+              budget);
+    EXPECT_FALSE(r.downshifted);   // the lean downshift stays auto-path only
+    EXPECT_FALSE(projected);
 }
 
-// INV-9 clamp — limit above 500 is clamped to 500.
+// INV-9 — the cut measures from `offset`, not from the start of the list.
+TEST(roadmap_query_pagination, Inv9ExplicitLimitCutFromOffset) {
+    mcp::setOffloadConfig(true, 16384, 2048);
+    const auto arr = makeBullets(450);
+    const auto r = PaginationEngine::pageBullets(arr, 100, 400);
+    ASSERT_GE(r.slice.size(), 1);
+    EXPECT_LT(r.slice.size(), 400);
+    EXPECT_EQ(r.slice.at(0).toObject().value("id").toString(),
+              QStringLiteral("ANTS-0100"));
+    EXPECT_TRUE(r.truncated);
+    EXPECT_EQ(r.nextOffset, 100 + r.slice.size());
+}
+
+// INV-9 — a row larger than the budget still comes back alone (ANTS-5103's
+// floor), so next_offset always advances.
+TEST(roadmap_query_pagination, Inv9ExplicitLimitKeepsOneOversizedRow) {
+    const auto arr = makeBullets(3, /*payloadBytes*/30000);
+    const auto r = PaginationEngine::pageBullets(arr, 0, 2);
+    EXPECT_EQ(r.slice.size(), 1);
+    EXPECT_TRUE(r.truncated);
+    EXPECT_EQ(r.nextOffset, 1);
+}
+
+// INV-9 clamp — limit above 500 is clamped to 500. Rows small enough that
+// 500 fit under the byte cut, so the clamp is what bounds the page.
 TEST(roadmap_query_pagination, Inv9LimitClampedTo500) {
-    const auto arr = makeBullets(600);
+    mcp::setOffloadConfig(true, 16384, 2048);
+    QJsonArray arr;
+    for (int i = 0; i < 600; ++i) arr.append(i % 10);
     const auto r = PaginationEngine::pageBullets(arr, 0, 9999);
     EXPECT_EQ(r.limit, PaginationEngine::kMaxLimit);
     EXPECT_EQ(r.slice.size(), PaginationEngine::kMaxLimit);
+    EXPECT_TRUE(r.truncated);
+    EXPECT_EQ(r.nextOffset, PaginationEngine::kMaxLimit);
 }
 
 // INV-12 (ANTS-5571) — the auto-sized page fits under the live offload

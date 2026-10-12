@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5665 -->
+<!-- ants-roadmap-id-high-water: ANTS=5666 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70997,7 +70997,7 @@ project. Reported causes are claims until checked in source.
   Source: user-request-2026-10-02.
   Lanes: hooks.
 
-- 📋 [ANTS-5651] **Decide whether a list page sized by an explicit limit is trimmed to fit under the offload threshold.**
+- ✅ [ANTS-5651] **Decide whether a list page sized by an explicit limit is trimmed to fit under the offload threshold.**
   ANTS-5571 made the auto-sized page fit under the offload threshold.
   An explicit `limit` is still honoured whole (ANTS-1436 INV-9), so
   finbreak's own call (limit:200, 117 rows, 18 KB) still offloads.
@@ -71022,6 +71022,15 @@ project. Reported causes are claims until checked in source.
   through the dispatch allowlists, though cmdChangelogQuery calls
   pageBullets itself; ANTS-3533 § 2.2 says "~20 KB" where softCapBytes()
   can be lower.
+  Resolved (2026-10-12): PaginationEngine::pageBullets cuts an
+  explicit-limit page to softCapBytes() - kEnvelopeOverheadBytes,
+  keeping at least one row; limit echo unchanged; no downshift on that
+  path. Red-first: Inv9ExplicitLimitCutToSoftCap,
+  Inv9ExplicitLimitCutFromOffset, Inv9ExplicitLimitKeepsOneOversizedRow
+  and ChangelogQueryHandler.Ants5651ExplicitLimitPageCutToSoftCap failed
+  on the old code, then 43/43 green across roadmap_query_pagination and
+  changelog_query. The review tail filed above stays open as notes on
+  this item.
   **Layman:** When a session asks for a set number of roadmap rows and they are too big, decide whether to send fewer rows or save them all to a side file.
   Kind: enhancement.
   Source: ANTS-5571 follow-up 2026-10-11.
@@ -71039,6 +71048,19 @@ project. Reported causes are claims until checked in source.
   **Layman:** The setup check tells a project its code folders are fine while two tracked scripts sit outside them, so later reviews skip those scripts.
   Kind: fix.
   Source: rusty-psn-source-feedback-2026-10-12.
+  Lanes: mcp.
+
+- 📋 [ANTS-5666] **Correct three stale passages the ANTS-5651 review left unchecked in the paging specs.**
+  Filed at the review's cap, not yet verified. (1) docs/specs/ANTS-1436.md
+  § Dispatch forwarding says it is the only dispatch lambda that
+  forwards verbatim; ANTS-3422 may have changed that. (2)
+  docs/specs/ANTS-3533.md INV-6 says paging engages through the dispatch
+  allowlists, but cmdChangelogQuery calls pageBullets itself. (3)
+  ANTS-3533 § 2.2 says "~20 KB" where softCapBytes() can be lower.
+  Records of shipped code, so rule 14's code-exists exception applies.
+  **Layman:** Tidy three out-of-date sentences in the design notes for how roadmap and changelog lookups split results into pages.
+  Kind: doc-fix.
+  Source: review-contract-2026-10-12 ANTS-5651 tail.
   Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage

@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **roadmap_query and changelog_query now cut a page sized by an explicit `limit` to the same byte budget as an auto-sized page, with `truncated` and `next_offset`, so it fits inline instead of being saved to a side file.** (ANTS-5651)
+
 ### Removed
 
 - **The old Python MCP connector, tools/mcp-bridge.py, is gone; ants-mcpd replaces it.** (ANTS-5308)
