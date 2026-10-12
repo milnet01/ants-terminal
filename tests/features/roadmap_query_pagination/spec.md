@@ -50,9 +50,10 @@ responses come back in chunks the caller can parse directly.
   threshold above `kSoftCapBytes`, the cap stays `kSoftCapBytes`. An
   explicit-`limit` page is cut to the same cap (INV-9).
 - **INV-11 / one helper call site per emission branch.** The
-  PaginationEngine::pageBullets call appears exactly twice in
-  cmdRoadmapQuery (section + full-file). Source-scrape regression
-  asserts call-site count.
+  PaginationEngine::pageBullets call appears once per emission
+  branch: three in cmdRoadmapQuery (section, full-file,
+  section_index) and two in cmdChangelogQuery. Source-scrape
+  regression asserts the count.
 
 ## Test scope
 
