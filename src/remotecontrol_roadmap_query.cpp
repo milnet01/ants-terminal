@@ -1310,12 +1310,10 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
         // ANTS-4984 — the check measures a divergence between the file and
         // the render; it cannot know a hand edit caused it (a stale render or
         // a store that fell behind looks the same). The new key names only
-        // what was measured. The old one is deprecated, kept for one release
-        // because other sessions' tooling reads it.
+        // what was measured. ANTS-5613 — the old key's one release as an
+        // alias (0.7.114) is over, so it is no longer emitted.
         out[dryRun ? QStringLiteral("would_overwrite_file_text")
                    : QStringLiteral("publish_overwrote_file_text")] = any;
-        out[dryRun ? QStringLiteral("would_discard_external_edits")
-                   : QStringLiteral("discarded_external_edits")] = any;
         if (any) {
             out[dryRun ? QStringLiteral("would_discard_edit_lines")
                        : QStringLiteral("discarded_edit_lines")] =

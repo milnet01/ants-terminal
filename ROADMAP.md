@@ -67815,7 +67815,7 @@ than re-filed; everything else lands here.
   Kind: fix.
   Source: in-session-2026-09-19 ANTS-4977 build.
 
-- 📋 [ANTS-5613] **Remove the deprecated `discarded_external_edits` / `would_discard_external_edits` keys one release after ANTS-4984 ships.**
+- ✅ [ANTS-5613] **Remove the deprecated `discarded_external_edits` / `would_discard_external_edits` keys one release after ANTS-4984 ships.**
   ANTS-4984 added `publish_overwrote_file_text` (and
   `would_overwrite_file_text`) beside the old keys and kept the old ones
   for one release, because other sessions' tooling reads them. In the
@@ -67823,6 +67823,13 @@ than re-filed; everything else lands here.
   in rcRoadmapWriteFields, drop the alias sentence from the roadmap_log
   detail text and docs/standards/mcp-behavioural-notes.md, and move the
   write-half tests' assertions to the new names.
+  Resolved (2026-10-12): ANTS-4984 shipped in 0.7.114, so the alias
+  had its release. rcRoadmapWriteFields no longer emits the old pair; the
+  alias sentence is gone from the roadmap_log detail and
+  mcp-behavioural-notes.md; the write-half tests read the new names, and
+  Ants4984OverwroteFileTextNamesWhatItMeasured now asserts the old pair is
+  absent on the preview, the drifted write and the clean write (red before
+  the removal, green after).
   **Layman:** After a release of overlap, drop the old, misleading name for the lost-text warning.
   Kind: chore.
   Source: split from ANTS-4984, 2026-10-01.

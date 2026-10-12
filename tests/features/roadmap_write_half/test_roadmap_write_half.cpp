@@ -1147,11 +1147,11 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
     ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool())
         << "precondition: code=" << first.value(QStringLiteral("code")).toString().toStdString()
         << " error=" << first.value(QStringLiteral("error")).toString().toStdString();
-    ASSERT_TRUE(first.contains(QStringLiteral("discarded_external_edits")))
+    ASSERT_TRUE(first.contains(QStringLiteral("publish_overwrote_file_text")))
         << "ANTS-4462: the field is absent only when nothing measured the file. "
            "A store-backed write measured it, so it must report — silence here "
            "is indistinguishable from the defect";
-    EXPECT_TRUE(first.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_TRUE(first.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "the migration's own normalisation is a real overwrite and is "
            "reported as one; suppressing it would mean modelling which "
            "differences are cosmetic, which is a judgement this check does not "
@@ -1164,7 +1164,7 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
     const QJsonObject clean =
         rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A clean bullet."))).object();
     ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
-    EXPECT_FALSE(clean.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_FALSE(clean.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "a write over a file that is already the store's own render "
            "discards nothing";
     EXPECT_FALSE(clean.contains(QStringLiteral("discarded_edit_lines")))
@@ -1190,7 +1190,7 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
            "HAD when these items were filed (ANTS-4628 has since scoped that "
            "gate; drift is per FILE and has no equivalent scope, so the "
            "argument stands)";
-    EXPECT_TRUE(dirty.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_TRUE(dirty.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "ANTS-4465: the hand-written preamble line was overwritten by the "
            "re-render and the envelope said nothing";
     EXPECT_GE(dirty.value(QStringLiteral("discarded_edit_lines")).toInt(), 1)
@@ -1209,7 +1209,7 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
     const QJsonObject after =
         rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A bullet after the revert."))).object();
     ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool());
-    EXPECT_FALSE(after.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_FALSE(after.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "a stale true would train callers to ignore the field";
 }
 
@@ -1217,7 +1217,7 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
 //
 // Reported from Rolodex: on a migrated project whose ROADMAP.md was rendered
 // before the format marker existed, the first write reported
-// discarded_external_edits:true — the marker comment and its blank line, which
+// publish_overwrote_file_text:true — the marker comment and its blank line, which
 // the RENDER emits and the older file never had. Every content counter in the
 // same envelope read zero.
 //
@@ -1279,7 +1279,7 @@ TEST(RoadmapWriteHalf, Ants4729RenderOnlyMarkerIsNotADiscard) {
     EXPECT_TRUE(readAll(roadmap).contains("ants-roadmap-format"))
         << "precondition for the assertions below: the render really did "
            "re-add the marker, so there WAS a difference to classify";
-    EXPECT_FALSE(env.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_FALSE(env.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "ANTS-4729: the marker is a line the RENDER adds and the file "
            "lacked. An addition can never be content the publish discarded, "
            "so flagging it fires this check on the renderer's own output";
@@ -1521,7 +1521,7 @@ TEST(RoadmapWriteHalf, Ants4614SecondRenderIsQuiet) {
 
     const QJsonObject again = rc.cmdRoadmapLogRenderForTest(r).object();
     ASSERT_TRUE(again.value(QStringLiteral("ok")).toBool());
-    EXPECT_FALSE(again.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_FALSE(again.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "ANTS-4614: a render over the store's own output discards nothing";
     EXPECT_EQ(readAll(roadmap), settled)
         << "ANTS-4614: the render is idempotent";
@@ -1611,7 +1611,7 @@ TEST(RoadmapWriteHalf, Ants4615SplitsRestyledFromLostText) {
     const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
         appendReq(root, QStringLiteral("A bullet after the hand-edits."))).object();
     ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
-    ASSERT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool())
+    ASSERT_TRUE(env.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "precondition: both hand-edits should have registered as drift";
 
     // The total is unchanged in meaning — still every drifted line, both
@@ -1678,7 +1678,7 @@ TEST(RoadmapWriteHalf, Ants5327CountsAReflowAsRestyledNotLost) {
     const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
         appendReq(root, QStringLiteral("A bullet after the reflow."))).object();
     ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
-    ASSERT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("publish_overwrote_file_text")).toBool());
     EXPECT_GE(env.value(QStringLiteral("discarded_restyled_lines")).toInt(), 1)
         << "ANTS-5327: the joined line's words all survive into the render";
     EXPECT_EQ(env.value(QStringLiteral("discarded_text_lines")).toInt(), 1)
@@ -1828,7 +1828,7 @@ TEST(RoadmapWriteHalf, Ants4695CountsRepunctuationApartFromRestyling) {
     const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
         appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
     ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
-    ASSERT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool())
+    ASSERT_TRUE(env.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "precondition: the period should have registered as drift";
 
     EXPECT_GE(env.value(QStringLiteral("discarded_repunctuated_lines")).toInt(), 1)
@@ -1871,7 +1871,7 @@ TEST(RoadmapWriteHalf, Ants4957RestyleOnlyDriftSaysSo) {
     QJsonObject dry = appendReq(root, QStringLiteral("A bullet after the restyle."));
     dry[QStringLiteral("dry_run")] = true;
     const QJsonObject env = rc.cmdRoadmapLogAppendForTest(dry).object();
-    ASSERT_TRUE(env.value(QStringLiteral("would_discard_external_edits")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("would_overwrite_file_text")).toBool());
     EXPECT_EQ(env.value(QStringLiteral("would_discard_reason")).toString(),
               QStringLiteral("restyle_only"));
 }
@@ -1906,7 +1906,7 @@ TEST(RoadmapWriteHalf, Ants4965CountsWhitespaceChangesAsStructure) {
     dry[QStringLiteral("dry_run")] = true;
     const QJsonObject env = rc.cmdRoadmapLogAppendForTest(dry).object();
     ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
-    ASSERT_TRUE(env.value(QStringLiteral("would_discard_external_edits")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("would_overwrite_file_text")).toBool());
     EXPECT_EQ(env.value(QStringLiteral("would_discard_structure_lines")).toInt(), 1)
         << "ANTS-4965: a whitespace-only change must be counted as structure";
     EXPECT_EQ(env.value(QStringLiteral("would_discard_restyled_lines")).toInt(), 0)
@@ -1936,7 +1936,7 @@ TEST(RoadmapWriteHalf, Ants4615BreakdownRidesOnTheTrueArmOnly) {
     const QJsonObject clean = rc.cmdRoadmapLogAppendForTest(
         appendReq(root, QStringLiteral("A clean bullet."))).object();
     ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
-    ASSERT_FALSE(clean.value(QStringLiteral("discarded_external_edits")).toBool())
+    ASSERT_FALSE(clean.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "precondition: the second write should be clean";
     EXPECT_FALSE(clean.contains(QStringLiteral("discarded_text_lines")));
     EXPECT_FALSE(clean.contains(QStringLiteral("discarded_restyled_lines")));
@@ -1972,10 +1972,10 @@ TEST(RoadmapWriteHalf, Ants4462DryRunUsesTheFutureTense) {
 
     ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())
         << "precondition: code=" << dry.value(QStringLiteral("code")).toString().toStdString();
-    EXPECT_TRUE(dry.value(QStringLiteral("would_discard_external_edits")).toBool())
+    EXPECT_TRUE(dry.value(QStringLiteral("would_overwrite_file_text")).toBool())
         << "ANTS-4462: the preview is where the warning is worth most";
     EXPECT_GE(dry.value(QStringLiteral("would_discard_edit_lines")).toInt(), 1);
-    EXPECT_FALSE(dry.contains(QStringLiteral("discarded_external_edits")))
+    EXPECT_FALSE(dry.contains(QStringLiteral("publish_overwrote_file_text")))
         << "ANTS-4463: a dry run discarded nothing, so it must not say it did";
     EXPECT_FALSE(dry.contains(QStringLiteral("discarded_edit_lines")));
 
@@ -1983,10 +1983,10 @@ TEST(RoadmapWriteHalf, Ants4462DryRunUsesTheFutureTense) {
     EXPECT_TRUE(readAll(roadmap).contains("> A line no verb can write."));
 }
 
-// ANTS-4984 — `discarded_external_edits` names a cause (a hand edit) the check
-// cannot know: a stale render or a store that fell behind looks the same. The
-// key that says only what is measured rides beside it, in both tenses, and
-// agrees with it on every arm while the old name stays for one release.
+// ANTS-4984 — the old key named a cause (a hand edit) the check cannot know:
+// a stale render or a store that fell behind looks the same. The key that says
+// only what is measured replaced it, in both tenses. ANTS-5613 — after one
+// release as an alias, the old pair is no longer emitted on any arm.
 TEST(RoadmapWriteHalf, Ants4984OverwroteFileTextNamesWhatItMeasured) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
@@ -2009,8 +2009,7 @@ TEST(RoadmapWriteHalf, Ants4984OverwroteFileTextNamesWhatItMeasured) {
     ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool());
     EXPECT_TRUE(dry.value(QStringLiteral("would_overwrite_file_text")).toBool())
         << "the preview names what it measured";
-    EXPECT_EQ(dry.value(QStringLiteral("would_overwrite_file_text")),
-              dry.value(QStringLiteral("would_discard_external_edits")));
+    EXPECT_FALSE(dry.contains(QStringLiteral("would_discard_external_edits")));
     EXPECT_FALSE(dry.contains(QStringLiteral("publish_overwrote_file_text")))
         << "ANTS-4463: a dry run overwrote nothing";
 
@@ -2018,8 +2017,7 @@ TEST(RoadmapWriteHalf, Ants4984OverwroteFileTextNamesWhatItMeasured) {
         appendReq(root, QStringLiteral("A written bullet."))).object();
     ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool());
     EXPECT_TRUE(first.value(QStringLiteral("publish_overwrote_file_text")).toBool());
-    EXPECT_EQ(first.value(QStringLiteral("publish_overwrote_file_text")),
-              first.value(QStringLiteral("discarded_external_edits")));
+    EXPECT_FALSE(first.contains(QStringLiteral("discarded_external_edits")));
     EXPECT_FALSE(first.contains(QStringLiteral("would_overwrite_file_text")));
 
     const QJsonObject clean = rc.cmdRoadmapLogAppendForTest(
@@ -2028,8 +2026,7 @@ TEST(RoadmapWriteHalf, Ants4984OverwroteFileTextNamesWhatItMeasured) {
     ASSERT_TRUE(clean.contains(QStringLiteral("publish_overwrote_file_text")))
         << "a checked clean write says false; absence means nobody looked";
     EXPECT_FALSE(clean.value(QStringLiteral("publish_overwrote_file_text")).toBool());
-    EXPECT_EQ(clean.value(QStringLiteral("publish_overwrote_file_text")),
-              clean.value(QStringLiteral("discarded_external_edits")));
+    EXPECT_FALSE(clean.contains(QStringLiteral("discarded_external_edits")));
 }
 
 
@@ -2110,7 +2107,7 @@ TEST(RoadmapWriteHalf, Ants4475OpAliasAcceptsTheSiblingSpelling) {
 
 // ANTS-4947 — three op:"annotate" calls in one session against one id, on a
 // project whose file is already the store's own render. The reporter saw all
-// three return ok, and the THIRD report discarded_external_edits with
+// three return ok, and the THIRD report publish_overwrote_file_text with
 // discarded_text carrying note 2 verbatim: the file held a note the fresh
 // render did not, so the store had lost a write its own envelope had confirmed.
 // Nothing outside the store touched the file.
@@ -2157,7 +2154,7 @@ TEST(RoadmapWriteHalf, Ants4947SequentialAnnotatesKeepEveryNote) {
             << " error=" << r.value(QStringLiteral("error")).toString().toStdString();
         EXPECT_TRUE(r.value(QStringLiteral("note_appended")).toBool())
             << "the envelope claimed the note landed: " << n.toStdString();
-        EXPECT_FALSE(r.value(QStringLiteral("discarded_external_edits")).toBool())
+        EXPECT_FALSE(r.value(QStringLiteral("publish_overwrote_file_text")).toBool())
             << "nothing outside the store touched this file, so a discard here "
                "is the verb overwriting a write it made itself; discarded_text="
             << QJsonDocument(r.value(QStringLiteral("discarded_text")).toArray())
@@ -2209,7 +2206,7 @@ TEST(RoadmapWriteHalf, Ants4947LongMultiParagraphNoteSurvives) {
                 << label << ": code="
                 << r.value(QStringLiteral("code")).toString().toStdString()
                 << " error=" << r.value(QStringLiteral("error")).toString().toStdString();
-            EXPECT_FALSE(r.value(QStringLiteral("discarded_external_edits")).toBool())
+            EXPECT_FALSE(r.value(QStringLiteral("publish_overwrote_file_text")).toBool())
                 << label << ": the verb discarded text it wrote itself; discarded_text="
                 << QJsonDocument(r.value(QStringLiteral("discarded_text")).toArray())
                        .toJson(QJsonDocument::Compact).toStdString();
@@ -2295,7 +2292,7 @@ TEST(RoadmapWriteHalf, Ants4947InterleavedSessionsKeepEveryNote) {
     const QJsonObject r3 = annotate(a, n3);
     ASSERT_TRUE(r3.value(QStringLiteral("ok")).toBool());
 
-    EXPECT_FALSE(r3.value(QStringLiteral("discarded_external_edits")).toBool())
+    EXPECT_FALSE(r3.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "the third write reported discarding text nobody outside the store "
            "wrote; discarded_text="
         << QJsonDocument(r3.value(QStringLiteral("discarded_text")).toArray())
@@ -2387,7 +2384,7 @@ TEST(RoadmapWriteHalf, Ants4947RestyleOnlyDriftKeepsNoBackup) {
     const QJsonObject first = rc.cmdRoadmapLogAppendForTest(
         appendReq(root, QStringLiteral("A first bullet."))).object();
     ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool());
-    ASSERT_TRUE(first.value(QStringLiteral("discarded_external_edits")).toBool())
+    ASSERT_TRUE(first.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "precondition: the migration's own normalisation is reported";
     ASSERT_EQ(first.value(QStringLiteral("discarded_text_lines")).toInt(), 0)
         << "precondition: this fixture's first write restyles and loses nothing";
@@ -3363,7 +3360,7 @@ TEST(RoadmapWriteHalf, Ants5399LayoutDriftPointsAtRender) {
     env = rc.cmdRoadmapLog(render).object();
     ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(env).toJson().toStdString();
-    EXPECT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool());
+    EXPECT_TRUE(env.value(QStringLiteral("publish_overwrote_file_text")).toBool());
     EXPECT_FALSE(env.contains(QStringLiteral("drift_hint")));
 }
 

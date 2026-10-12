@@ -27,8 +27,8 @@ lands in the case's sandbox. **`RoadmapStore` is never default-constructed:**
 | `Inv6LineRangeRefused` | INV-6 | `flip_batch`'s `line_range` locator is refused **per locator** with `locator_unsupported` into `skipped[]`, while an `id` locator in the same batch still applies. |
 | `Inv7DryRunCommitsNothing` | INV-7 | `append` with `dry_run:true` returns `ok` + `dry_run` and commits nothing: no new item in the store, and `ROADMAP.md` is byte-identical. |
 | `Ants4462ReportsDiscardedExternalEdits` | ANTS-4462 / ANTS-4465 | The publish reports what it overwrote that the store never held. Four arms in one case, because the sequence is the contract: the FIRST write after a migration reports drift (the file still carries the author's table separator where the store keeps a canonical one — real bytes, really overwritten); the second reports none, because the first republished the file; a hand-edited preamble line makes it report again, with a count and **without** becoming a refusal; and the write after that is quiet, so the flag cannot go stale. |
-| `Ants4462DryRunUsesTheFutureTense` | ANTS-4462 / ANTS-4463 | A preview carries `would_discard_external_edits` / `would_discard_edit_lines` and **neither** past-tense name — ANTS-4463's rule reaching two new fields — and leaves the hand-edit on disk. |
-| `Ants4984OverwroteFileTextNamesWhatItMeasured` | ANTS-4984 | `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview) equals the deprecated `discarded_external_edits` / `would_discard_external_edits` on the preview, the drifted write and the clean write after it; each arm carries only its own tense, and a clean write says `false` rather than leaving the key out. |
+| `Ants4462DryRunUsesTheFutureTense` | ANTS-4462 / ANTS-4463 | A preview carries `would_overwrite_file_text` / `would_discard_edit_lines` and **neither** past-tense name — ANTS-4463's rule reaching two new fields — and leaves the hand-edit on disk. |
+| `Ants4984OverwroteFileTextNamesWhatItMeasured` | ANTS-4984 | `publish_overwrote_file_text` (`would_overwrite_file_text` on a preview) is set on the preview, the drifted write and the clean write after it, and the old `discarded_external_edits` / `would_discard_external_edits` pair is on none of them (ANTS-5613); each arm carries only its own tense, and a clean write says `false` rather than leaving the key out. |
 | `Inv8BundleRow` | INV-8 | `bundle_row` is a read-modify-write of one `kind='table'` element's canonical-JSON payload — a **store** assertion: `"rows"` gains the row, `"header"` is unchanged, and no second table element is inserted. |
 
 ## Must-fail-first — run, not asserted
@@ -326,7 +326,7 @@ fallback, which refused every such bullet `bad_status`.
 |---|---|
 | `Ants5283DryRunSaysWhetherTheRenderWouldChange` | On a freshly migrated project, `op:"render" dry_run:true` reports `would_change:true`; after a real render, the same dry run reports `would_change:false`. |
 
-**Would break this:** leaving the caller to infer the answer from `would_write`, or deriving it from `would_discard_external_edits`.
+**Would break this:** leaving the caller to infer the answer from `would_write`, or deriving it from `would_overwrite_file_text`.
 
 
 ## ANTS-5399 — layout drift points at op:"render"

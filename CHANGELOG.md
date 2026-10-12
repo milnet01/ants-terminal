@@ -28,6 +28,10 @@ for security-relevant changes.
 
 ### Removed
 
+- **roadmap_log no longer reports the deprecated `discarded_external_edits` / `would_discard_external_edits` keys** (ANTS-5613)
+  Read `publish_overwrote_file_text` (`would_overwrite_file_text` on a
+  preview) instead; it has carried the same value since 0.7.114.
+
 - **The old Python MCP connector, tools/mcp-bridge.py, is gone; ants-mcpd replaces it.** (ANTS-5308)
   If Claude Code still points at the old script, run the
   `claude mcp add` command in the README again.
