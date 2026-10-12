@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5672 -->
+<!-- ants-roadmap-id-high-water: ANTS=5673 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71561,6 +71561,20 @@ project. Reported causes are claims until checked in source.
   **Layman:** A new roadmap's first item gets the id prefix the project chose, even when the caller forgets to name it.
   Kind: enhancement.
   Source: split from ANTS-5671, 2026-10-12.
+  Lanes: mcp.
+
+- 📋 [ANTS-5673] **changelog_log add_from_roadmap writes no inherited Layman body under Fixed for a fix-kind item.**
+  Pressless 2026-10-12 (PRESS-0252, PRESS-0253): op:"add_from_roadmap"
+  with category Fixed and a `summary` override (ANTS-4360) still
+  inherits the item's Layman line as the body. A fix item's Layman line
+  describes the defect, so the Fixed entry says the bug is live until
+  hand-edited. Suggested: when the category is Fixed and the item's kind
+  is fix, review-fix or audit-fix, omit the inherited body unless `body`
+  is given, or warn (`body_inherited_from_layman`). Message the pressless
+  inbox on ship.
+  **Layman:** A changelog entry for a fixed bug no longer copies the roadmap's description of the bug, which made the bug sound still live.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-12.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
