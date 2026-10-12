@@ -300,7 +300,9 @@ leaves the old binary, and its old result, in place.
 **§1's definition of red governs this run too.** Removing a fix often
 breaks the build rather than failing an assertion, so remove the fix's
 *effect* and not its declarations: the test must still compile and fail
-on the assertion that locks the behaviour.
+on the assertion that locks the behaviour. **The recipes in
+`languages/<name>.md` revert the whole fix.** Where that removes something
+the test compiles against, narrow the revert to the effect.
 
 If it passes against the broken code it is not testing what you think,
 and rewriting it is the remedy — but establish first that it ran against
@@ -461,7 +463,7 @@ could the author later. Decide it on the condition instead:
   code under test cannot make it fire. **A host condition standing in for a
   known failure on that host is code-keyed here and owes the item** —
   `skipIf(platform == "darwin")` over a macOS bug reads as host-keyed and is
-  not, which is why §10 names it. **Such a skip — or a test that cannot
+  not, which is why §10 names it. **A host-keyed skip — or a test that cannot
   import without a host dependency — must be false somewhere the suite
   runs.** Where the usual developer and CI setups both skip it, name
   where it does run; a skip true everywhere is a test nobody runs. Where CI
@@ -489,16 +491,17 @@ repository, where such a skip had reported green since April.
   makes this automatic — the failing test *is* the start of the fix.
 - **Every new feature carries at least one conformance test** against
   its contract.
-- **Every audit or review finding that gets fixed carries one**, for the
-  same reason: a finding fixed without a test is one that can return
-  unnoticed.
-- **A fix that is a version floor with no behaviour of yours carries no
-  test.** Bumping past an upstream advisory locks down nothing you wrote, so
+- **Every audit or review finding about behaviour that gets fixed carries
+  one**, for the same reason: a finding fixed without a test is one that
+  can return unnoticed. A behaviour-neutral finding, such as duplication,
+  ships no behaviour, so no test can go red (§1).
+- **A fix that only pins a dependency at or above a patched release
+  carries no test.** Bumping past an upstream advisory locks down nothing you wrote, so
   there is no behaviour to regress; `security.md` § 9 points here for it.
 - **Refactors get no new tests.** They must keep the existing ones
   passing; that is what makes them refactors. If a refactor reveals
   untested behaviour, that is its own tracked item. **A refactor that fixes
-  a review finding carries that finding's test**: the finding bullet wins.
+  a review finding about behaviour carries that finding's test**: the finding bullet wins.
 
 **Coverage percentage is not a target.** It measures which lines ran, not
 whether anything was checked — a suite can execute every line and assert
@@ -540,7 +543,6 @@ following a chain of abstractions to find out what it actually asserts.
 - ❌ Touching the network without an explicit opt-in.
 - ❌ A test named for what it walks rather than what it proves.
 - ❌ Committing a test in a failing or unfinished state.
-- ❌ Disabling a failing test with nothing tracking the cause.
 - ❌ Skipping the order because the change is small.
 - ❌ Chasing a coverage number.
 
