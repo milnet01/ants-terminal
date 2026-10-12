@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+**Theme:** A side panel that lists every tab by its full name, with Go
+to Tab and four sort orders; tabs that survive restarts, shutdowns and
+log-outs; and steadier plugins.
+
 ### Added
 
 - **The tab list panel sorts its rows four ways: by colour, by colour then A–Z, A–Z, or tab order.** (ANTS-5656)

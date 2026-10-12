@@ -4115,7 +4115,7 @@ in each named file carry the original indie-review citation.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
-- 📋 [ANTS-1049] **Audit-pipeline `populateChecks`-as-data-table.**
+- 🚫 [ANTS-1049] **Audit-pipeline `populateChecks`-as-data-table.**
   Subsumed by ANTS-1044 (`auditdialog.cpp` decomposition above) —
   same scope: `auditcatalogue.cpp` data table +
   `packaging/check-*.sh` shell-fragment extraction. Entry preserved
@@ -4154,6 +4154,7 @@ in each named file carry the original indie-review citation.
   turning it into a data table, which the 2026-09-14 ruling says needs
   its own spec and review. Recommended: drop it, or keep it only if the
   user wants audit checks hot-reloadable as data.
+  Dropped (2026-10-12): user decision, on the reasons recorded above.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -20230,7 +20231,7 @@ suppression that survives line drift.
 Items surfaced by the audit cycle that aren't tied to a single
 indie-review finding.
 
-- 📋 [ANTS-1361] **Locale-independent grapheme width via vendored Unicode table.**
+- 🚫 [ANTS-1361] **Locale-independent grapheme width via vendored Unicode table.**
   `wcwidth(static_cast<wchar_t>(cp))`
   at `terminalgrid.cpp:385` is glibc-dependent: lags Unicode by
   1–2 versions, `LANG=C` renders CJK single-width, emoji ZWJ
@@ -20248,6 +20249,7 @@ indie-review finding.
   distro, but programs inside the terminal size text with the system's
   wcwidth, so a table newer than the system's misaligns them.
   Recommended: keep the system wcwidth and drop this item.
+  Dropped (2026-10-12): user decision, on the reasons recorded above.
   Kind: perf.
   Source: indie-review-2026-05-14 (lane-1 M4).
 
