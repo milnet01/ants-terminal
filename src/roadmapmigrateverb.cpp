@@ -388,6 +388,15 @@ QString RoadmapMigrateVerb::initSkeleton(const QString &projectName) {
              "## Backlog\n").arg(projectName);
 }
 
+QString RoadmapMigrateVerb::initNextStep() {
+    return QStringLiteral(
+        "add a release block with roadmap_log op:\"create_section\" level:2 "
+        "title:\"0.1.0 — <theme>\" (roadmap-format.md § 3.1; items in "
+        "Backlog are never selected for work), then append to the slug it "
+        "returns with op:\"append\". Pass `id_prefix` on that first append to "
+        "pin the id prefix, or it is derived from the directory name.");
+}
+
 bool RoadmapMigrateVerb::isTransientRoot(const QString &canonicalRoot) {
     // The temp root is canonicalised too. `canonicalRoot` is canonical by
     // precondition, and on a system whose temp dir is itself a symlink the two

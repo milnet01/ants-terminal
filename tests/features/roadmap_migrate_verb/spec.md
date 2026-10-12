@@ -266,3 +266,20 @@ report does not carry.
 - **`Ants4992OnlyIdsScopesUpdatedItems`** — an id past the cap is
   reported alone, `items_updated` is the whole run's, and an unknown id
   is named in `only_ids_not_updated`.
+
+## ANTS-5671 — `op:"init"` points at a release block and renders
+
+The skeleton's one section is `## Backlog`, which roadmap-format.md
+§ 3.5.4 never selects. `next_step` comes from
+`RoadmapMigrateVerb::initNextStep()`: it names `op:"create_section"` for
+a release block and `id_prefix`, as § 3.1 does. After a successful
+migrate the handler calls `cmdRoadmapLogRender`, so the file carries the
+generated-file notice from its first commit. The reply carries
+`rendered`, and `render_error` when the render failed.
+
+- **`Ants5671InitNextStepNamesAReleaseBlock`** — the text, through the
+  seam: it names `op:"create_section"` and `id_prefix`, and not
+  `section:"backlog"`.
+- **`Ants5671InitHandlerRendersAndUsesTheSeam`** — the wiring, a source
+  grep after `if (initialised)`, as `Inv14HandlerWiresTheGuard` does it.
+  Both fail against the pre-fix tree.

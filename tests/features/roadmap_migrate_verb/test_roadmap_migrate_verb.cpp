@@ -2188,6 +2188,49 @@ TEST(RoadmapMigrateVerb, Ants4740InitSkeletonIsParseableAndEmpty) {
         << "the standard is still named, just not linked";
 }
 
+// ANTS-5671 — the skeleton's one section is `## Backlog`, which roadmap-format.md
+// § 3.5.4 never selects, so an item filed there as next_step told is never
+// worked. § 3.1 says to add a release block first; next_step says the same.
+TEST(RoadmapMigrateVerb, Ants5671InitNextStepNamesAReleaseBlock) {
+    const QString next = RoadmapMigrateVerb::initNextStep();
+    EXPECT_TRUE(next.contains(QStringLiteral("op:\"create_section\"")))
+        << "next_step must tell the caller to add a release block first: "
+        << next.toStdString();
+    EXPECT_FALSE(next.contains(QStringLiteral("section:\"backlog\"")))
+        << "next_step still points appends at the never-selected backlog: "
+        << next.toStdString();
+    EXPECT_TRUE(next.contains(QStringLiteral("id_prefix")))
+        << "§ 3.1 also says to pass id_prefix on the first append";
+}
+
+// ANTS-5671 — with no render after init the file lacks the generated-file
+// notice until the first roadmap_log write, so a clone committed in that state
+// does not trigger § 3.5.1's store rebuild elsewhere. The handler is not driven
+// by any test (spec.md § Routing), so its wiring is a source grep, as INV-14's.
+TEST(RoadmapMigrateVerb, Ants5671InitHandlerRendersAndUsesTheSeam) {
+    const QString handlerPath =
+        QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/remotecontrol_roadmap_migrate.cpp");
+    QFile f(handlerPath);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << handlerPath.toStdString();
+
+    QStringList code;
+    const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (line.trimmed().startsWith(QStringLiteral("//")))
+            continue;
+        code.append(line);
+    }
+    const QString text = code.join(QLatin1Char('\n'));
+
+    const qsizetype at = text.indexOf(QStringLiteral("if (initialised)"));
+    ASSERT_GE(at, 0) << "the init reply block was not found";
+    const QString tail = text.mid(at);
+    EXPECT_TRUE(tail.contains(QStringLiteral("cmdRoadmapLogRender(")))
+        << "op:\"init\" must publish the store to the file before it replies";
+    EXPECT_TRUE(tail.contains(QStringLiteral("RoadmapMigrateVerb::initNextStep()")))
+        << "next_step must come from the tested seam, not a second copy";
+}
+
 // ----------------------------------------------------------------- ANTS-4492 --
 //
 // Vestige's roadmap is genuinely two dialects in one file: a large historical

@@ -285,6 +285,11 @@ bool isTransientRoot(const QString &canonicalRoot);
 // exists to escape.
 QString initSkeleton(const QString &projectName);
 
+// ANTS-5671 — op:"init"'s `next_step`. Here, beside the skeleton, so a test can
+// read it: the skeleton's section is `## Backlog`, which roadmap-format.md
+// § 3.5.4 never selects, so the advice is to add a release block first (§ 3.1).
+QString initNextStep();
+
 // ANTS-5641 — plan one pass-headings text the way roadmap_migrate plans a file,
 // so a store append on a pass-headings roadmap stores exactly the row a later
 // re-import of the rendered file produces. Pure: no store, no filesystem. Here

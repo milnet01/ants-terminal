@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5671 -->
+<!-- ants-roadmap-id-high-water: ANTS=5672 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71510,7 +71510,7 @@ project. Reported causes are claims until checked in source.
   Source: feedback-rusty-psn-source-2026-10-12.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5671] **roadmap_migrate op:"init" starts a roadmap with a release block, and its file carries the generated-file notice.**
+- ✅ [ANTS-5671] **roadmap_migrate op:"init" starts a roadmap with a release block, and its file carries the generated-file notice.**
   Found by both lanes of the 2026-10-12 roadmap-format.md gate.
   initSkeleton() writes one section, `## Backlog`, and the init reply's
   `next_step` tells the caller to append there. roadmap-format.md § 3.2
@@ -71536,9 +71536,31 @@ project. Reported causes are claims until checked in source.
   id_format_mismatch), so a first append without id_prefix takes the
   directory-derived prefix even where a different one is declared.
   Consider defaulting to the declared prefix here too.
+  Resolved (2026-10-12): next_step now comes from
+  RoadmapMigrateVerb::initNextStep() and tells the caller to add a
+  release block with op:"create_section" before the first append; the
+  handler runs cmdRoadmapLogRender after a successful init and reports
+  `rendered`. The skeleton keeps `## Backlog`, since § 3.1 has the
+  conformer add the release block. The declared-prefix default is split
+  to ANTS-5672. Tests: Ants5671InitNextStepNamesAReleaseBlock,
+  Ants5671InitHandlerRendersAndUsesTheSeam, both red before the fix.
   **Layman:** Starting a new roadmap gives you a section where nothing is ever picked up for work, and a file that does not yet say it is generated.
   Kind: fix.
   Source: in-session-2026-10-12 (review-contract on roadmap-format.md, CFG-0757).
+  Lanes: mcp.
+
+- 📋 [ANTS-5672] **roadmap_log's append allocator defaults to the id prefix a project declares in .ants/project.json.**
+  Split from ANTS-5671 (loop 31 of the 2026-10-12 roadmap-format.md
+  gate, settled by reading code): roadmap_log's append allocator never
+  reads a declared `.ants/project.json` id_format prefix; only
+  roadmap_query refuses id_format_mismatch. So a first append without
+  id_prefix takes the directory-derived prefix even where a different
+  one is declared. roadmap_migrate already takes a declared prefix
+  (ANTS-5374 announces only a folder-derived one). Default the append
+  allocator to the declared prefix too.
+  **Layman:** A new roadmap's first item gets the id prefix the project chose, even when the caller forgets to name it.
+  Kind: enhancement.
+  Source: split from ANTS-5671, 2026-10-12.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

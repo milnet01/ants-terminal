@@ -32,6 +32,13 @@ for security-relevant changes.
   If Claude Code still points at the old script, run the
   `claude mcp add` command in the README again.
 
+### Fixed
+
+- **`roadmap_migrate op:"init"` now renders the new roadmap file, and its reply says to add a release block before the first item.** (ANTS-5671)
+  The file carries the generated-file notice from its first commit, and
+  the reply's `next_step` points at `roadmap_log op:"create_section"`
+  rather than at the Backlog section, which is never picked up for work.
+
 ## [0.7.114] - 2026-10-12
 
 **Theme:** A side panel that lists every tab by its full name, with Go

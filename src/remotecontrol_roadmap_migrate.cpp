@@ -268,10 +268,23 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
         out[QStringLiteral("initialised")] = true;
         out[QStringLiteral("created_path")] = root + QStringLiteral("/ROADMAP.md");
         out[QStringLiteral("section")]      = QStringLiteral("backlog");
-        out[QStringLiteral("next_step")] = QStringLiteral(
-            "append with roadmap_log op:\"append\" section:\"backlog\". The id "
-            "prefix is not stored anywhere: pass `id_prefix` on that first "
-            "append to pin it, or it is derived from the directory name.");
+        out[QStringLiteral("next_step")]    = RoadmapMigrateVerb::initNextStep();
+        // ANTS-5671 — publish now, so the file carries the generated-file
+        // notice from its first commit; without it a clone does not trigger
+        // roadmap-format.md § 3.5.1's store rebuild. Called directly: this
+        // handler already holds the root exclusively, and the shared hold is
+        // taken by cmdRoadmapLog, not by the render itself.
+        if (out.value(QStringLiteral("ok")).toBool()) {
+            QJsonObject rq;
+            rq[QStringLiteral("caller_cwd")] = root;
+            const QJsonObject rendered = cmdRoadmapLogRender(rq).object();
+            out[QStringLiteral("rendered")] =
+                rendered.value(QStringLiteral("ok")).toBool();
+            if (rendered.value(QStringLiteral("ok")).toBool())
+                out.remove(QStringLiteral("next_call_hint"));   // ANTS-5354's: done
+            else
+                out[QStringLiteral("render_error")] = rendered;
+        }
     }
     return QJsonDocument(out);
 }
