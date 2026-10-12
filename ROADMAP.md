@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5667 -->
+<!-- ants-roadmap-id-high-water: ANTS=5668 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71437,6 +71437,18 @@ project. Reported causes are claims until checked in source.
   Kind: feature.
   Source: dantes-inferno-recomp feedback 2026-10-12.
   Lanes: remotecontrol, roadmap, statusbar, hooks.
+
+- 📋 [ANTS-5668] **project_settings detect proposes an existing src/ as the source root even when it is empty.**
+  Reported 2026-10-12 by claude-config (claude-03) while wiring
+  start-project to run project_settings op:"init". On a fresh skeleton,
+  src/ holds only .gitkeep and scripts/ holds two .sh files, so detect
+  proposed source_roots ["scripts"]. start-project now overrides it with
+  ["src"] (claude-config 787c10f). Proposed rule: an existing src/ wins
+  in detect's suggestion even when it holds no source yet.
+  **Layman:** A brand-new project's settings point at the folder where its code will go, not at a helper-scripts folder.
+  Kind: enhancement.
+  Source: claude-config session report 2026-10-12.
+  Lanes: remotecontrol.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
