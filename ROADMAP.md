@@ -71426,8 +71426,8 @@ project. Reported causes are claims until checked in source.
   markdown file, so a write there would be overwritten by the store's
   next render.
   Design (user decision relayed 2026-10-12): one key in the outer
-  .ants/project.json names the project folder (working name
-  `project_root`). Every project-scoped verb, the store lookup,
+  .ants/project.json names the project folder (`repo_root`, per the spec). Every
+  project-scoped verb, the store lookup,
   session_message, the inbox hook and the status-bar Roadmap button
   resolve through it. Needs a spec: today four rules resolve a folder
   (resolveCallerCwdRoot, repoBoundedAncestors/findRoadmapUnder,
@@ -71436,7 +71436,8 @@ project. Reported causes are claims until checked in source.
   On ship, tell these the key name and that it is safe to set:
   rusty-psn through session_message to its project inbox, not a session
   name (its RPSN-0128 waits on it); dantes-inferno-recomp (outer
-  Dantes_Inferno_Recomp/, may then drop the clone's copy); claude-config
+  Dantes_Inferno_Recomp/; the clone keeps its own .ants/project.json, which
+  supplies roadmap and id_format, spec § 2.1); claude-config
   (its CFG-0763 waits on it). Spec: docs/specs/ANTS-5667-outer-folder-repo-root.md.
   **Layman:** When you keep a project in a folder with its git clone one level down, Ants tools and the Roadmap button work from the outer folder too.
   Kind: feature.
