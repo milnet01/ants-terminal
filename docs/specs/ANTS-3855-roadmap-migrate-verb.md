@@ -528,10 +528,20 @@ store" puts the snapshot on the system drive. The user decided the order:
 2. The `claude.roadmap_snapshot_dir` config key
    (`docs/standards/mcp-config-keys.md`).
 3. The folder the weekly snapshot job last wrote to, read from the `dest=`
-   line of its backup record (ANTS-3794 § 2.4).
+   line of its backup record (ANTS-3794 § 2.4), **only when the record's
+   `store=` names the store being migrated** (ANTS-5621). A record naming
+   another store is skipped, so a migrate into a scratch store cannot
+   overwrite the real store's snapshot. A record with no `store=` line,
+   written before ANTS-5621, is used as before; the next weekly run adds
+   the line.
 4. Beside the store: the directory of `run()`'s `storePath`. The handler
    passes `RoadmapStore::defaultPath()`, so live behaviour is unchanged, and a
    test driving `run()` with a temp store never writes to the real one.
+
+Rung 2 names no store, so it applies to whatever store is migrated. A caller
+that redirects `XDG_DATA_HOME` to a scratch store and leaves the config
+directory alone still snapshots into the configured folder; ANTS-5621 left
+that rung as it was, since the measured loss came through rung 3.
 
 Rungs 2 and 3 name a folder; the file in it is `pre-migrate.sqlite`, which
 stays outside the weekly job's `roadmap-*.sqlite` prune glob. **A snapshot to
@@ -544,11 +554,13 @@ the retake fails too, and that refusal carries `backup_fallback` as well. `backu
 `backup_record` or `beside_store`. After a fallback, `backup_fallback` carries
 the folder tried and its error.
 
-`RoadmapBackupHealth::snapshotDest(configDir, stateDir)`, in
+`RoadmapBackupHealth::snapshotDest(configDir, stateDir, storePath)`, in
 `ants_roadmapstore_lib` beside `assess()`, owns rungs 2 and 3:
 it returns the folder and its source (`config`, `backup_record`, or empty
-when neither is set). The handler passes the config key and the state
-directory and copies the result into `Request::snapshotDir` and
+when neither applies). It compares `store=` with `storePath` after
+canonicalising both. The handler passes the config key, the state
+directory and `RoadmapStore::defaultPath()`, the store it migrates, and
+copies the result into `Request::snapshotDir` and
 `Request::snapshotDirSource`; `run()` does no config or file read of its own,
 so a test drives it with a plain value. `backup_fallback`, present only after
 a fallback, is `{"folder": <tried>, "error": <why>}`. Hardcoding the games-drive path was
@@ -1184,7 +1196,8 @@ ANTS-3819).
   canonicalisation passed and the row is permanent.
 - **INV-15** *(ANTS-5247)* — with no `backup_to`, the snapshot goes to the
   first of: the `claude.roadmap_snapshot_dir` folder, the folder the weekly
-  snapshot record names in `dest=`, beside the store. If the snapshot to the
+  snapshot record names in `dest=` when its `store=` is absent or names the
+  store being migrated, beside the store. If the snapshot to the
   chosen folder fails, it is retaken beside the store. `backup_path_source`
   names the rung used. *Test:* `roadmap_migrate_backup`, `run()` driven
   directly with `Request::snapshotDir` set, four legs: a writable folder is
@@ -1193,8 +1206,10 @@ ANTS-3819).
   that does not exist falls back the same way and is not created; an explicit
   unwritable `backup_to` still refuses `backup_failed`. The order of rungs 2
   and 3 is a unit test of `RoadmapBackupHealth::snapshotDest(configDir,
-  stateDir)`, three legs: both set (config wins, source `config`), record only
-  (source `backup_record`), neither (empty).
+  stateDir, storePath)`, five legs: both set (config wins, source `config`),
+  record only with a matching `store=` (source `backup_record`), neither (empty), a record whose
+  `store=` names another store (empty, ANTS-5621), and a record with no
+  `store=` line (source `backup_record`).
   <br>*Breaks when:* the fallback also applies to `backup_to` — a caller who
   named a destination and gets a different one has been overridden silently.
 - **INV-16** *(ANTS-5287)* — `items_deleted`, `deleted_ids` and the

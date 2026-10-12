@@ -157,7 +157,8 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/ants-terminal/roadmap-backup-<job>.state
 
 `<job>` is `snapshot` (`tools/roadmap-store-backup.sh`) or `export`
 (`tools/roadmap-export-publish.sh`). The file holds three `key=value`
-lines, and the `snapshot` record a fourth, `dest=` (ANTS-5247):
+lines, and the `snapshot` record two more, `dest=` (ANTS-5247) and
+`store=` (ANTS-5621):
 
 ```
 attempt=2026-09-21T00:36:32Z
@@ -172,6 +173,11 @@ error=
 - `dest=` is the absolute canonical `DEST_DIR` of the last successful
   snapshot. Like `success`, it is set on success and carried across a
   failed run. ANTS-3855 § 2.4 reads it for the pre-migration snapshot.
+- `store=` is the absolute canonical path of the store that snapshot
+  copied, set and carried exactly as `dest=` is. It names which store
+  `dest=` backs up, so ANTS-3855 § 2.4 can tell when the store being
+  migrated is a different one. Without it, a migrate into a scratch store
+  wrote its snapshot over the real store's (ANTS-5621).
 - Every key a job writes is always written. A value not yet set is empty, and
   `assess()` reads an empty value as absent.
 - Written temp-then-`mv`, so a reader never sees half a file.
@@ -332,6 +338,12 @@ timer that is disabled or lost.
   exits without writing it. *Test:*
   `tests/features/roadmap_export_publish`, which also drives the
   snapshot script against a temporary store.
+- **INV-13** *(ANTS-5621)* — the `snapshot` record's `store=` is the
+  canonical path of the store the script copied: set on success, kept on
+  failure, like `dest=`. Breaks if it names the default store when the
+  script copied another, or is emptied by a failed run. *Test:*
+  `tests/features/roadmap_export_publish`, the INV-12 run against a
+  temporary store, then a failing run.
 
 ## 4. RAM / build cost
 
@@ -368,7 +380,7 @@ timer that is disabled or lost.
   the bundle `build_target_for` reports for `src/roadmapexport.cpp`.
 - `tests/features/roadmap_backup_health/` — INV-11. C++, same bundle.
 - `tests/features/roadmap_export_publish/` — INV-7, INV-8, INV-9, INV-10,
-  INV-12.
+  INV-12, INV-13.
   A shell test over throwaway git repositories (a bare remote and two
   clones) and a stub binary set through `ANTS_ROADMAP_EXPORT_BIN`, so it
   needs no network and no real store. Registered with

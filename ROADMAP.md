@@ -54078,6 +54078,13 @@ are closed inline in the feedback files rather than filed here.
   contract change and owes rule 14's gate first. It bites only a caller
   that redirects some XDG dirs but not all. The config rung
   (claude.roadmap_snapshot_dir) has the same blind spot.
+  Progress (2026-10-12): specs amended before building:
+  docs/specs/ANTS-3794-roadmap-store-backup.md § 2.4 + INV-13 (the
+  snapshot record gains store=) and
+  docs/specs/ANTS-3855-roadmap-migrate-verb.md § 2.4 rung 3 + INV-15
+  (dest= is used only when store= is absent or names the store being
+  migrated; snapshotDest gains storePath). Rung 2 (the config key) is
+  left as it was and the spec says so. Gate: review-contract on each.
   **Layman:** Testing a roadmap import on a throwaway copy can overwrite the real safety backup of your roadmap.
   Kind: fix.
   Source: in-session-2026-10-02 (ANTS-4438 re-measure).
