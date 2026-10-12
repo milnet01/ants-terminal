@@ -19,6 +19,7 @@
 #include "appimageenv.h"
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -29,18 +30,12 @@ ANTS_TEST_SCOPE();
 namespace {
 
 // Saves and restores the two variables a test touches.
-struct EnvGuard {
-    QByteArray ld, shim;
-    bool hadLd, hadShim;
-    EnvGuard()
-        : ld(qgetenv("LD_LIBRARY_PATH")), shim(qgetenv("ANTS_OPENSSL3_SHIM")),
-          hadLd(qEnvironmentVariableIsSet("LD_LIBRARY_PATH")),
-          hadShim(qEnvironmentVariableIsSet("ANTS_OPENSSL3_SHIM")) {}
-    ~EnvGuard() {
-        if (hadLd) qputenv("LD_LIBRARY_PATH", ld); else qunsetenv("LD_LIBRARY_PATH");
-        if (hadShim) qputenv("ANTS_OPENSSL3_SHIM", shim); else qunsetenv("ANTS_OPENSSL3_SHIM");
-    }
-};
+ants_test::XdgGuard guardShimEnv() {
+    ants_test::XdgGuard g;
+    g.guardEnv("LD_LIBRARY_PATH");
+    g.guardEnv("ANTS_OPENSSL3_SHIM");
+    return g;
+}
 
 }  // namespace
 
@@ -59,7 +54,7 @@ TEST(AppImageOpenSsl3Shim, Inv1WithoutEntry) {
 }
 
 TEST(AppImageOpenSsl3Shim, Inv2DropRemovesShim) {
-    EnvGuard g;
+    auto g = guardShimEnv();
     qputenv("ANTS_OPENSSL3_SHIM", "/run/user/1000/ants-terminal-openssl3");
     qputenv("LD_LIBRARY_PATH", "/run/user/1000/ants-terminal-openssl3:/opt/lib");
     AppImageEnv::dropOpenSsl3Shim();
@@ -74,7 +69,7 @@ TEST(AppImageOpenSsl3Shim, Inv2DropRemovesShim) {
 }
 
 TEST(AppImageOpenSsl3Shim, Inv3NoShimNoChange) {
-    EnvGuard g;
+    auto g = guardShimEnv();
     qunsetenv("ANTS_OPENSSL3_SHIM");
     qputenv("LD_LIBRARY_PATH", "/run/user/1000/ants-terminal-openssl3:/opt/lib");
     AppImageEnv::dropOpenSsl3Shim();
