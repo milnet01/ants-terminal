@@ -103,18 +103,19 @@ its own render is § 9's.
 
 **INV-3 — Once a project is *store-migrated*, the store is its only writer of
 record.** **"Store-migrated" is a store project row *plus* a roadmap the format
-detector classifies `ants-v1`** — the pair `RoadmapSource::migratedProject()`
-tests, defined in `roadmap-format.md` § 3.5.1. **"Cut over" names the first
-conjunct and nothing beyond it.** That function's only project-level test is
-`RoadmapStore::readProjectByRoot()` returning a row, and no cutover flag exists
-anywhere in the code — so no project is store-rowed and not-yet-cut-over, and
-this document's phrasing and § 3.5.1's ("a store row *and* a roadmap this
-format's detector classifies as `ants-v1`") are the same test stated twice, not
-two tests that could disagree about which ID carrier a project reads.
+detector classifies as a dialect the store serves, `ants-v1` or pass-headings**
+— the pair `RoadmapSource::migratedProject()` tests, with
+`RoadmapSource::storeServedDialects()` as the dialect list (ANTS-4803). **"Cut
+over" names the first conjunct and nothing beyond it.** That function's only
+project-level test is `RoadmapStore::readProjectByRoot()` returning a row, and
+no cutover flag exists anywhere in the code — so no project is store-rowed and
+not-yet-cut-over. `roadmap-format.md` § 3.5.1 states the test for `ants-v1`
+alone because it governs id allocation, and a pass-headings item's id is
+synthesised from its heading (§ 7.1), never allocated.
 The second conjunct is load-bearing and is used in that sense throughout this
-document: a project with a row whose roadmap is a GFM or pass-headings dialect
-fails that function's closing `ants-v1` test, is still written by the markdown
-splice paths, renders nothing, and so is **not** covered by this invariant.
+document: a project with a row whose roadmap is a GFM dialect fails that
+function's closing dialect test, is still written by the markdown splice paths,
+renders nothing, and so is **not** covered by this invariant.
 Retiring those paths is § 9's.
 The export and the render are generated; a hand-edit to either is lost at the
 next generation, so both must be fidelity-checked. *What checks this* has the
@@ -214,13 +215,13 @@ path that accepts the fix and is then surprised by `render_gate_unmet`.) An item
 its first write.
 
 **This is a rule about the item, and § 3.2's publish gate is a rule about the
-write — the second still applies.** On a store-migrated project every write
-validates by rendering, so a write is refused `render_gate_unmet` when a public
+write — the second still applies.** On a store-migrated `ants-v1` project every
+write validates by rendering, so a write is refused `render_gate_unmet` when a public
 open item **it touches** lacks a `layman`. Nothing above exempts a write from
 that gate; § 3.2 owns it and names the remedy.
 
 **So the tier exemption above does NOT extend to `layman` on a store-migrated
-project — for a PUBLIC, OPEN item.** An editor fixing a typo on such an item
+`ants-v1` project — for a PUBLIC, OPEN item.** An editor fixing a typo on such an item
 has to give it a one-sentence `layman`, because the write puts it in the gate's scope. A closed item or an
 `internal` one is never gated (§ 3.2), so the exemption holds there unchanged;
 demanding `layman` on a closed item is § 10's anti-pattern and this paragraph
@@ -254,7 +255,7 @@ inverts the amendment on the one operation it was made for — Music_Production'
 publish was the case that could not be unblocked any other way. No caller on
 the verb surface passes an unscoped render.
 
-**On a store-migrated project (INV-3's sense — cut over, and a roadmap
+**On a store-migrated `ants-v1` project (INV-3's sense, with a roadmap
 `roadmap-format.md` § 3.1's detector classifies `ants-v1`, from the marker
 where present and a best-effort parse otherwise), the gate blocks every store
 write, not only publication.** Each write op on such a project validates
@@ -274,8 +275,9 @@ to its end that is a project no call can edit at all: Music_Production reached
 it, where the one op that would publish the ids a repair must name was itself
 gate-refused, with no route out through the verb surface (ANTS-4628). A rule
 whose enforcement removes the ability to comply is not enforcing anything. A cut-over project whose roadmap is a
-GFM or pass-headings dialect still splices markdown, renders nothing, and so
-meets no gate on write. A closed item publishes without
+GFM dialect still splices markdown, renders nothing, and so meets no gate on
+write. A pass-headings roadmap renders, but its format has no `Layman:` slot,
+so the render skips the gate there (`src/roadmaprender.cpp`). A closed item publishes without
 `layman`: § 3.3 leaves the field empty on migrated items, so gating closed
 items too would make the gate unsatisfiable for every project with published
 history. This is the **only** publish-gating field; `priority` and `resolution`
@@ -295,10 +297,10 @@ nothing on the verb surface issues one.
 
 The practical effect is that the backlog is repaid as the corpus is edited,
 one sentence at a time, by whoever is already in that item — and never demanded
-as a precondition for unrelated work. The whole-project FIGURE is no longer
-reported by anything on the verb surface, since every dry run reachable there is
-now scoped; measuring it needs an unscoped `render()`, which only a direct
-library caller can make. That is a gap, recorded as one. ANTS-3821 still tracks filling
+as a precondition for unrelated work. The whole-project FIGURE is reported by
+`roadmap_log` `op:"convert"`: its render runs the gate as an advisory over every
+open item and returns the offenders as `layman_missing`, and its dry run writes
+nothing (ANTS-5256). ANTS-3821 still tracks filling
 this project's own missing lines in; it is now a tidy-up rather than the thing
 standing between the project and its first render.
 
@@ -975,6 +977,11 @@ honesty mechanism: without it a defaulted `kind` and an author's considered
 | `migrated` | Generated by migration itself rather than chosen by an author — every ID migration **allocates** (§ 7.2, **both** rows) *or* **synthesises**. The second case is a pass-headings item, whose id is derived from the author's own heading (§ 7.1): it has a source-side counterpart, but no author wrote an id, so `asserted` would be a false claim and `migrated` is correct. |
 | `store-generated` | Stamped by the store on a post-cutover write — the `write (store-populated)` fields of § 4.1. Distinct from `asserted`, which is what the *author's* fields on that same write carry. |
 
+**An absent key is not `defaulted`.** A row written outside migration —
+`roadmap_log` `op:"append"`, for one — carries no `source` key. A reader treats that as "no claim", never as
+`defaulted`, and so cannot find an author's value by testing for `asserted`.
+The render tests `!= "defaulted"` for this reason (`src/roadmaprender.cpp`).
+
 A value is **never silently promoted to `asserted`.** Editing a field through
 the store sets `asserted` for that field only; the item's other fields keep
 what they had.
@@ -995,8 +1002,8 @@ overridden:
 
 - **The render is a conforming `ROADMAP.md`, and that is a requirement on the
   render rather than a happy accident.** Its § 3.5 makes the status emoji, the
-  `[PROJ-NNNN]` ID, the bold headline and `Kind:` *required pieces* of every
-  bullet; its § 3.1 requires the format marker; its §§ 3.6.2–3.6.3 match
+  `[PROJ-NNNN]` ID, the bold headline, `Kind:`, `Source:` and `Layman:`
+  *required pieces* of every bullet; its § 3.1 requires the format marker; its §§ 3.6.2–3.6.3 match
   CHANGELOG entries and commit subjects against bullet **headlines**.
   `documentation.md` § 3 binds the same file independently, to status emojis and
   stable per-bullet IDs. A full-fidelity render (INV-2) satisfies all of them,
@@ -1019,6 +1026,12 @@ overridden:
   A conformance check (§ 9's) must therefore read the quarantine set before
   reporting, or it will fail a render that is behaving exactly as specified.
 
+  **Two pieces are written only where the store holds them.** A `Source:` whose
+  provenance is `defaulted` is left out: rendering § 3.5.3's default would turn
+  "this bullet said nothing" into a claim the next import reads as asserted
+  (ANTS-4065 § 2.4, `src/roadmaprender.cpp`). A `Layman:` is absent where the
+  item stores none; § 3.2 says when that is allowed.
+
 - **Required fields on markdown.** Its § 3.5 requires `Layman:` and `Source:`,
   and § 3.5.3 gives a reader's defaults for an absent `Kind:` / `Source:`. On
   markdown nothing enforces either requirement; § 3.3 *adopts* those defaults,
@@ -1027,8 +1040,8 @@ overridden:
   is explicit that the counter is a derived per-machine cache and **not**
   source: the true high-water mark is the highest ID across the committed
   corpus, which it defines as `ROADMAP.md` + `CHANGELOG.md` +
-  `docs/roadmap/*.md`. Once a project is **store-migrated** (INV-3's sense —
-  cut over *and* `ants-v1`) the store owns allocation and the counter is
+  `docs/roadmap/*.md`. Once a project is **store-migrated** with an `ants-v1`
+  roadmap (INV-3's sense) the store owns allocation and the counter is
   retired for it; a cut-over project whose roadmap is a GFM dialect keeps its
   counter, and a pass-headings one derives its ids from the headings and uses
   neither. § 3.5.1's carrier table is the authority on all three.
@@ -1138,8 +1151,9 @@ implementation gate rather than in a standard:
   legend; its store path already does (§ 5.1, ANTS-3793).
   **`roadmap_log` is no longer among them**: ANTS-3809 landed its write half, so
   on a cut-over project in the emoji-bullet shape its eight ops mutate the store
-  and re-render (*What checks this*). Its splice paths remain for every other
-  project, and retiring those is not yet filed.
+  and re-render (*What checks this*); on a pass-headings one its ops write
+  through the store or refuse (ANTS-5334, ANTS-5641). Its splice paths remain
+  for every other project, and retiring those is not yet filed.
 
 ANTS-3754 carries the verified finding list that is those specs' input.
 
@@ -1178,8 +1192,8 @@ than a question.
   exists to hold open security findings.
 - ❌ **Hand-editing the render or the export on a store-migrated project**
   (INV-3) — the export always, the render wherever it owns the file (§ 3.2; on
-  a cut-over GFM or pass-headings project the roadmap is spliced, not
-  generated, so this bullet does not reach it). Both are
+  a cut-over GFM project the roadmap is spliced, not generated, so this
+  bullet does not reach it). Both are
   generated; the edit is lost silently.
 
 ---

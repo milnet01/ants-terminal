@@ -792,13 +792,12 @@ which heading you expect it under.
   re-render** instead of splicing markdown; `RoadmapRender::render()`
   writes every byte of the roadmap files. "Store-migrated" is the pair
   ANTS-3793's `RoadmapSource::migratedProject()` tests — a store row *and*
-  an `ants-v1` emoji-format roadmap
-  ([`roadmap-data-model.md`](roadmap-data-model.md),
-  [`roadmap-format.md`](roadmap-format.md) § 3.5.1). A project with a store
-  row but a GFM roadmap keeps the GFM splice path, one with a pass-headings
-  roadmap keeps that format's own path — the bullet above, which now
-  accounts for all eight ops — and a project with no store row is
-  unaffected. Differences a
+  a roadmap in a dialect the store serves, `ants-v1` or pass-headings
+  ([`roadmap-data-model.md`](roadmap-data-model.md) INV-3). A project with a
+  store row but a GFM roadmap keeps the GFM splice path. On a pass-headings
+  one, the ops with a store route write through it and the rest refuse
+  `unsupported_format` (ANTS-5334, ANTS-5641). A project with no store row
+  is unaffected. Differences a
   caller sees:
   - **The render owns the WHOLE file, and every write now says what that
     cost.** A hand-edit the store does not model — the preamble above the

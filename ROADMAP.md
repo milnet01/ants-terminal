@@ -42422,7 +42422,7 @@ against current source before filing.
   Source: ANTS-3794 first real run (in-session-2026-09-19).
   Lanes: roadmap.
 
-- 📋 [ANTS-5616] **roadmap-data-model.md disagrees with the code and with roadmap-format.md in six places.**
+- ✅ [ANTS-5616] **roadmap-data-model.md disagrees with the code and with roadmap-format.md in six places.**
   Found by the 2026-10-02 review-contract gate on the ANTS-3824/4440
   amendment, both lanes independently; outside that change, so filed
   rather than looped on. Each was verified against the code.
@@ -42458,6 +42458,19 @@ against current source before filing.
      "defaulted" (src/roadmaprender.cpp, the assertedSource test), since
      roadmap_log op:append writes no source key. A reader testing for
      asserted would miss every post-cutover append.
+  Resolved (2026-10-12): points 2 and 3 were already corrected (§ 7.1,
+  ANTS-5639, 2026-10-11). Fixed against the code: (1) INV-3's
+  store-migrated now names both store-served dialects
+  (storeServedDialects, ANTS-4803), GFM alone still splices; § 3.1, §
+  3.2, § 8's allocation bullet, § 9 and § 10 follow, and the gate
+  sentences are narrowed to ants-v1, since the pass-headings render
+  skips it. The mcp-behavioural-notes ANTS-3809 entry is settled:
+  store-served pass-headings ops write through the store or refuse
+  unsupported_format, never splice. (4) § 8 lists `Source:` and
+  `Layman:` as required pieces, with the defaulted-source and no-layman
+  render exceptions. (5) § 3.2 names op:"convert"'s layman_missing as
+  the whole-project figure. (6) § 7.7 says an absent provenance key is
+  not defaulted.
   **Layman:** The written rules for how roadmap data is stored have fallen behind the code in four spots, so someone following them would build the wrong thing.
   Kind: doc-fix.
   Source: review-contract-2026-10-02 (roadmap-data-model gate, loop 1).
@@ -91723,7 +91736,7 @@ reports are asked for separately, each time.
   Source: user-report-2026-09-14 (screenshot, status bar idle mid-turn).
   Lanes: claude, claudestatuswidgets.
 
-- 📋 [ANTS-5157] **roadmap-data-model.md § 8 still says roadmap-format.md files `Source:` as an optional trailer, though it has been required since v1.2.**
+- ✅ [ANTS-5157] **roadmap-data-model.md § 8 still says roadmap-format.md files `Source:` as an optional trailer, though it has been required since v1.2.**
   Found by the blast-radius sweep of the ANTS-4955 contract review. The
   `Optional fields.` bullet in roadmap-data-model.md § 8 reads: its § 3.5
   files `Layman:` and `Source:` as optional. roadmap-format.md made
@@ -91742,6 +91755,9 @@ reports are asked for separately, each time.
   and the batch op's effCounter both take the shared counter whatever the
   prefix. An allocator built from § 7.1 would drop the counter for a second
   prefix. Correct both passages in one gated pass on roadmap-data-model.md.
+  Resolved (2026-10-12): both passages already read correctly (§ 8
+  Required fields on markdown; § 7.1 shared counter), and § 8's
+  required-pieces list now names `Source:` as well (ANTS-5616).
   **Layman:** One roadmap standard still describes a field as optional after the other standard made it required, so the two disagree.
   Kind: doc-fix.
   Source: in-session-2026-09-14 (review-contract sweep, ANTS-4955 gate on roadmap-format.md).
