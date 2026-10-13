@@ -24322,6 +24322,11 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   § 2.6 note above) are the design choices. Re-checked the same day:
   all seven appear only in luaengine.cpp's eventFromString; none has a
   fireEvent call site.
+  Progress (2026-10-13): title_changed, tab_created and tab_closed
+  now fire (tests/features/plugin_tab_title_events, red then green).
+  Tab payload "index=N&split=S"; a split pane and a restored tab count.
+  Left: output, line, prompt, keypress, which wait on their spec and
+  review-contract gate.
 
 - ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.

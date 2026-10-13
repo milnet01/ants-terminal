@@ -455,6 +455,10 @@ private:
     // Handle trigger signals from terminals
     void onTriggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
 
+    // ANTS-4272 — fire the `tab_created` / `tab_closed` plugin event, payload
+    // "index=N&split=0|1". A no-op in a build without Lua plugins.
+    void firePluginTabEvent(bool created, int tabIndex, bool split);
+
     // 0.6.9 — palette entries registered by plugins via ants.palette.register({...}).
     // Maintained as a parallel list to the menu-derived QActions; whenever this
     // changes (plugin load/reload/unload, new register call) we rebuild the

@@ -2256,6 +2256,8 @@ if(ANTS_TESTS)
                 tests/features/broadcast_input/test_broadcast_input.cpp
                 # ANTS-5079 — split panes are tracked and released like tabs (source-scrape).
                 tests/features/split_pane_shell_tracking/test_split_pane_shell_tracking.cpp
+                # ANTS-4272 — title_changed, tab_created and tab_closed fire (source-scrape).
+                tests/features/plugin_tab_title_events/test_plugin_tab_title_events.cpp
                 # ANTS-5079 — review command quoting, export failure, KWin cleanup, SSH timer guard.
                 tests/features/mainwindow_command_safety/test_mainwindow_command_safety.cpp
                 # ANTS-5080 — resume quoting, socket reaper check, tab-keyed review probe.

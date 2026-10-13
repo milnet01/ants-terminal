@@ -381,9 +381,9 @@ end
 | `"line"` †                | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
 | `"prompt"` †              | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed                        |
 | `"keypress"` †            | `function(key)` returns bool? | **yes**     | User pressed a key (before the grid sees it)         |
-| `"title_changed"` †       | `function(new_title)`         | no          | OSC 0/1/2 title change                               |
-| `"tab_created"` †         | `function(tab_info)`          | no          | New tab opened (includes splits)                     |
-| `"tab_closed"` †          | `function(tab_info)`          | no          | Tab/pane closed                                      |
+| `"title_changed"`         | `function(new_title)`         | no          | A pane's shell title changed (OSC 0/1/2)            |
+| `"tab_created"`           | `function(payload)`           | no          | New tab or split pane — payload `"index=N&split=S"`  |
+| `"tab_closed"`            | `function(payload)`           | no          | Tab or split pane closed — payload as `tab_created`  |
 | `"keybinding"`            | `function(action_id)`         | no          | Manifest `"keybindings"` shortcut fired              |
 | `"load"`                  | `function(plugin_name)`       | no          | Once after `init.lua` returns — deferred init hook   |
 | `"unload"`                | `function(plugin_name)`       | no          | Just before VM shutdown — save state here            |
@@ -399,6 +399,10 @@ end
 `fireEvent` call site** in the terminal source as of 0.7.92. Handlers
 for these events will never fire in the current build. They are listed
 here as the intended API surface for a future wiring commit.
+
+**Tab payload:** `index` is the tab's 0-based position; `split` is `1`
+when a split pane opened or closed, `0` for a whole tab. A restored tab
+counts as created.
 
 **Rate limits:** terminal output drives `"command_finished"` and the
 `run_script` form of `"palette_action"`, so each terminal caps them. Past

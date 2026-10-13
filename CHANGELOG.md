@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **Plugins hear title changes, new tabs and closed tabs** (ANTS-4272)
+  The `title_changed`, `tab_created` and `tab_closed` plugin events now
+  fire. Split panes count, and the tab events carry `index=N&split=S`.
+
 - **A project kept in an outer folder can name its git clone with `repo_root`** (ANTS-5667)
   Put `"repo_root": "<clone folder>"` in the outer folder's
   `.ants/project.json` (or run `project_settings op:"set"`). From the

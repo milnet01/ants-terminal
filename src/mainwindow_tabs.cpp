@@ -123,6 +123,12 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         if (terminal == focusedTerminal()) {
             onTitleChanged(title);
         }
+#ifdef ANTS_LUA_PLUGINS
+        // ANTS-4272 — any pane's shell title, pinned tab or not. The widget
+        // emits once per VT batch and only on a change, so the rate is low.
+        if (m_pluginManager)
+            m_pluginManager->fireEvent(PluginEvent::TitleChanged, title);
+#endif
     });
 
     connect(terminal, &TerminalWidget::shellExited, this, [this, terminal](int /*code*/) {
@@ -137,6 +143,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
                 QWidget *w = m_tabWidget->widget(i);
                 if (w->isAncestorOf(terminal)) { ownTab = w; break; }
             }
+            firePluginTabEvent(false, m_tabWidget->indexOf(ownTab), true);
             terminal->setParent(nullptr);
             terminal->deleteLater();
             cleanupEmptySplitters(ownTab);
@@ -432,6 +439,19 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     }
 }
 
+void MainWindow::firePluginTabEvent(bool created, int tabIndex, bool split) {
+#ifdef ANTS_LUA_PLUGINS
+    // ANTS-4272 — fire-and-forget like every event but keypress (ANTS-1750
+    // § 2.6). URL-form payload, as command_finished's, so a plugin can split it.
+    if (!m_pluginManager) return;
+    m_pluginManager->fireEvent(
+        created ? PluginEvent::TabCreated : PluginEvent::TabClosed,
+        QStringLiteral("index=%1&split=%2").arg(tabIndex).arg(split ? 1 : 0));
+#else
+    Q_UNUSED(created) Q_UNUSED(tabIndex) Q_UNUSED(split)
+#endif
+}
+
 void MainWindow::newTab() {
     // Inherit CWD from the currently focused terminal
     QString inheritCwd;
@@ -460,6 +480,7 @@ void MainWindow::newTab() {
     trackTerminalShell(terminal);
 
     updateTabBarVisibility();
+    firePluginTabEvent(true, idx, false);
 
     // ANTS-1159 — persist the new tab in the on-disk order
     // immediately so a crash in the next 30 s window doesn't
@@ -571,6 +592,7 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
     // it lights the tab dot and its tasks are counted.
     trackTerminalShell(newTerm);
     newTerm->setFocus();
+    firePluginTabEvent(true, m_tabWidget->currentIndex(), true);
 }
 
 void MainWindow::splitHorizontal() {
@@ -610,6 +632,7 @@ void MainWindow::closeFocusedPane() {
     }
 
     releaseTerminalShell(focused);  // ANTS-5079
+    firePluginTabEvent(false, m_tabWidget->currentIndex(), true);
     focused->setParent(nullptr);
     focused->deleteLater();
     cleanupEmptySplitters(m_tabWidget->currentWidget());
@@ -820,6 +843,7 @@ void MainWindow::performTabClose(int index) {
     m_tabFullTitles.remove(w);
     m_tabWidget->removeTab(index);
     w->deleteLater();
+    firePluginTabEvent(false, index, false);
 
     updateTabBarVisibility();
 
@@ -1199,6 +1223,7 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command,
     trackTerminalShell(terminal);
 
     updateTabBarVisibility();
+    firePluginTabEvent(true, idx, false);
 
     if (started && !command.isEmpty()) {
         // 200 ms settle before writing — same timing the SSH-manager

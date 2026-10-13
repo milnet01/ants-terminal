@@ -252,6 +252,9 @@ void MainWindow::restoreSessions() {
     }
 
     updateTabBarVisibility();
+    // ANTS-4272 — after the default tab's removal, so the index is final.
+    for (const RestoredTab &rt : restoredTabs)
+        firePluginTabEvent(true, m_tabWidget->indexOf(rt.terminal), false);
 
     // Defer tab activation and shell startup until after the event loop has
     // processed layout — widgets need their final geometry so that the grid
