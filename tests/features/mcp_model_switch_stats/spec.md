@@ -16,7 +16,7 @@ avoided/regret ratio, never a flattering numerator alone.
   `{ok, switches, downgrades, upgrades, opus_turns_avoided,
   opus_turns_routed_in, regret_count, regret_rate, under_route_count,
   pending_count, by_tier, auto_model_switch_enabled, floor_tier,
-  min_dwell_sec, scope, headline}`. The `_enabled`/`floor_tier`/
+  min_dwell_sec, scope, headline}`. The `auto_model_switch_enabled`/`floor_tier`/
   `min_dwell_sec`/`scope` fields are sourced from a `StatsConfig` struct
   the dispatch layer fills from `Config::claudeAutoModel()` (ANTS-1889).
 - **MCP wiring** — `RemoteControl::cmdModelSwitchStats` delegate, mainwindow

@@ -91,8 +91,8 @@ risk, and both would otherwise have let a mutation through:
 
 ## A real defect this lane caught
 
-`Inv3`'s glob arm failed on first run: `QRegularExpression::wildcardToRegular`
-`Expression` gives `*` **glob** semantics, where it does not cross a path
+`Inv3`'s glob arm failed on first run: `QRegularExpression::wildcardToRegularExpression`
+gives `*` **glob** semantics, where it does not cross a path
 separator, so `*superpowers/*` never matched `docs/superpowers/plans/x.md` and
 the exclusion silently did nothing. Qt 6.6's `NonPathWildcardConversion` says
 exactly this, but the project's floor is Qt 6.2, so `isExcludedPath` writes the

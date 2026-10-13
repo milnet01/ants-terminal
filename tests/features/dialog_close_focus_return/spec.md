@@ -115,7 +115,7 @@ required for the behavioural INVs).
   The lambda must check that the resolved terminal pointer is
   non-null before calling `setFocus`. Defends against the
   early-startup race where a config-load-failure dialog
-  closes before `m_currentTerminal` exists. Asserted by
+  closes before any terminal exists. Asserted by
   source-grep that the lambda body contains both
   `focusedTerminal()` AND a `nullptr` / `if` guard before
   the `setFocus` call.

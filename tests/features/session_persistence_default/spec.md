@@ -51,7 +51,7 @@ accessor: {key missing, key=false, key=true} → {true, false, true}.
   constructing the `Config`.
 
 ### Out of scope
-- `SessionManager::saveAll` / `restoreAll` behaviour — covered by
+- `MainWindow::saveAllSessions` / `restoreSessions` behaviour — covered by
   other tests; here we only prove the *gate* defaults correctly.
 - The Settings dialog's checkbox wiring. The accessor is the source
   of truth; UI callers read it.

@@ -9,7 +9,7 @@ before touching `vp->width()` / `backToTopGuard->width()`, but once `-O3`
 inlines `QWidget::width()` through the `QScrollBar::valueChanged` /
 `rangeChanged` signal-dispatch machinery that invokes the lambda, GCC loses
 the guard and reports 4 *false-positive* `-Wnull-dereference` warnings
-(2 "potential", 2 definite) at `qwidget.h:904`.
+(2 "potential", 2 definite) at line 904 of Qt's qwidget.h.
 
 Same false-positive class as **ANTS-1554** (mainwindow `QHash`) and
 **ANTS-3358** (dialogchrome `ChromeGuard`). The fix mirrors them:

@@ -64,7 +64,7 @@ therefore scan the joined `auditdialog.cpp` + `auditengine.cpp` +
 **INV-1 — A regex-shape rejection helper exists and is invoked.**
 Source-grep across the audit pipeline source: a function whose name
 contains a substring like `Catastrophic`, `Dangerous`, `RegexShape`,
-`isCatastrophic`, etc. (case-insensitive) must be defined. It must
+isCatastrophic, etc. (case-insensitive) must be defined. It must
 return a bool. The helper must be invoked at the user-pattern entry
 points: somewhere referencing the `dropIfMatches` field AND
 somewhere inside `loadAllowlist`.

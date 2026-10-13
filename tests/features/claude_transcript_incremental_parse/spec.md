@@ -61,7 +61,7 @@ handler, so the full-parse contract is unchanged by construction.
 | INV-4 | `TruncationForcesFullRewalk`, `ShrinkForcesFullRewalk`, `RewriteInPlaceForcesFullRewalk` |
 | INV-5 | `ResumedWalkIgnoresTailCap` |
 | INV-6 | `PathChangeResetsCursor`, `PathChangeNeverTakesAnotherPathsState` |
-| INV-7 | `SteppedParseEqualsColdParse` (both trackers) |
+| INV-7 | `SteppedParseEqualsColdParseTaskList`, `SteppedParseEqualsColdParseBgTasks` |
 | INV-8 | `FullParseContractUnchanged` |
 | INV-9 | `RebindResumesTaskListFromKeptState`, `RebindResumesBgTasksFromKeptState`, `SiblingTrackerResumesFromKeptState` |
 | INV-10 | `WalkCacheKeepsOnlyTheMostRecentPaths` |

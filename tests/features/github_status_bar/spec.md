@@ -62,11 +62,10 @@ same per-tab lifecycle as the Roadmap button. Tab switch fires
    are cached as empty strings with the same `fetchedAt` so the
    per-tab refresh doesn't hammer `gh` for unauthenticated repos.
 
-### Update available — `m_updateAvailableLabel` (objectName `updateAvailableLabel`)
+### Update available — `m_updateAvailableAction` (objectName `updateAvailableAction`)
 
-A clickable label showing `↗ Update v<X.Y.Z> available` (cyan
-`#5DCFCF`, matches the Thinking state-dot colour). Click is
-intercepted by `MainWindow::handleUpdateClicked`. Since ANTS-5560 it
+A menu-bar action, right of Help, showing `↗ Update v<X.Y.Z> available`.
+A click goes to `MainWindow::handleUpdateClicked`. Since ANTS-5560 it
 routes on `SelfUpdate::installKind()`: an AppImage opens
 `UpdateDialog` (download, verify, swap, then Restart now / Restart
 later); any other install opens the release page
@@ -117,14 +116,15 @@ opened and when the user clicked on Help > Check for Updates."):
 `tests/features/github_status_bar/test_github_status_bar.cpp` —
 source-grep harness, no Qt link.
 
-- **INV-1** Both labels exist as `QLabel*` members on `MainWindow`
-  with the documented objectNames (`repoVisibilityLabel`,
-  `updateAvailableLabel`).
-- **INV-2** Both labels are constructed in the status-bar setup
-  block and start `hide()`-n. The **repo-visibility** label is on
-  the left side via `addWidget` (next to the git-branch chip,
-  shipped 0.7.49). The **update-available** label is on the right
-  side via `addPermanentWidget` (next to the Claude Code chrome).
+- **INV-1** `MainWindow` has a `QLabel *m_repoVisibilityLabel` and,
+  since ANTS-1124, a `QAction *m_updateAvailableAction`.
+- **INV-2** Both are constructed and start hidden, with objectNames
+  `repoVisibilityLabel` and `updateAvailableAction`. The
+  **repo-visibility** label is on the left of the status bar via
+  `addWidget` (next to the git-branch chip, shipped 0.7.49). The
+  **update-available** action is on the menu bar via
+  `m_menuBar->addAction`. The retired name `m_updateAvailableLabel`
+  appears in neither `mainwindow.h` nor `mainwindow.cpp`.
 - **INV-3** The pure helpers `findGitRepoRoot` and
   `parseGithubOriginSlug` exist in `mainwindow.cpp`, and
   `compareSemver` in `selfupdate.cpp` (moved by ANTS-5560).

@@ -48,7 +48,7 @@ Spec source: `docs/specs/ANTS-1294.md`.
 
 `test_mcp_output_sanitisation.cpp` is one bundle source file in
 the `test_claude` target (it already links `ants_claude_lib` and
-defines `SRC_CLAUDE_INTEGRATION_CPP_PATH` / `_H_PATH` /
+defines `SRC_CLAUDE_INTEGRATION_CPP_PATH` / `SRC_CLAUDE_INTEGRATION_H_PATH` /
 `ANTS_CLAUDE_MD_PATH`). Mixes:
 
 - Engine-level GoogleTest cases that call

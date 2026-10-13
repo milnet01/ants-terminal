@@ -12,7 +12,7 @@ The roadmap asked for a read-only way to see **which line ranges changed**
 in each file, for splitting a messy working tree into separate clean
 commits. `git_state op:diff` already existed but returned only `--numstat`
 line *counts* per file — not the `@@` hunk boundaries a commit split needs.
-Rather than add a parallel `git_diff` verb that would clone
+Rather than add a parallel git_diff verb that would clone
 `op:diff`'s root resolution / path+range validation / GitWrap error
 mapping, the capability is folded into `op:diff` via a `hunks` flag, backed
 by this pure parser (reuse-over-rewrite).

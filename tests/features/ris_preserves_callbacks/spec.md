@@ -35,7 +35,7 @@ after a single `tput reset` / `reset(1)` / `stty sane` — silently
 breaking:
 
 - Desktop notifications emitted by running commands
-  (`osc9` / `notify-send`-via-terminal).
+  (OSC 9 / `notify-send`-via-terminal).
 - `command_finished` plugin event (trigger-system, audit dialog
   command-row mapping).
 - Progress bars reported by long-running commands (rsync, apt).

@@ -11,7 +11,7 @@ combobox correctly.
 
 **Pre-fix bug:** nothing in the PTY-launch path consumed the value.
 `TerminalWidget::startShell(const QString &workDir)` took only a
-cwd; `VtStream::onStart` invoked `Pty::start(QString(), workDir, …)`
+cwd; the old VtStream::onStart invoked `Pty::start(QString(), workDir, …)`
 with a hardcoded empty shell arg, so `Pty::start` always fell back
 to `$SHELL` / `getpwuid_r()->pw_shell` / `/bin/bash`. The user's
 shell choice was silently dropped on every tab open.
