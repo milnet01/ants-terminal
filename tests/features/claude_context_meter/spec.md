@@ -27,6 +27,10 @@ partially sighted, so the meter must be large and readable.
 - **INV-6** — the meter is readable: at least 150×22 px, bold text of at
   least 13 px reading `Context N%`, drawn with a dark outline so it contrasts
   with every fill colour. *Test:* `Inv6ReadableMeter` (source scrape).
+- **INV-7** — a `system` / `compact_boundary` event newer than every event
+  carrying `message.usage` sets the size to its `compactMetadata.postTokens`;
+  a usage event after it wins again. *Test:*
+  `Inv7CompactBoundaryIsTheNewestReading`. (ANTS-5631)
 
 ## Reload
 

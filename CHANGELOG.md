@@ -49,6 +49,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **After a compact, the context gauge shows the new, smaller size straight away instead of waiting for Claude's next reply.** (ANTS-5631)
+
 - **The nightly memory-safety (ASan) test run has a 30-minute limit, up from 22, so a full passing run is no longer cut off before it finishes.** (ANTS-5680)
 
 - **roadmap_log amend_body keeps a list item's hanging indent when it re-wraps a joined line.** (ANTS-5677)

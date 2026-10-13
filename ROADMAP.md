@@ -82408,7 +82408,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-10-08.
   Lanes: statusbar, claude.
 
-- 📋 [ANTS-5631] **The context meter keeps its pre-compact reading until Claude's next reply.**
+- ✅ [ANTS-5631] **The context meter keeps its pre-compact reading until Claude's next reply.**
   Located 2026-10-08: parseTranscriptTail (src/claudeintegration.cpp)
   takes the newest transcript entry carrying message.usage, and
   parseTranscriptForState updates the meter only when that count is
@@ -82419,6 +82419,13 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   token count. Fix: treat the compact boundary as the newest reading,
   using its count if it has one, else hiding the meter until the next
   reply. The claude_context_meter spec has no compaction invariant.
+  Shipped (2026-10-13): Claude Code's system/compact_boundary record
+  carries compactMetadata.postTokens (seen in a real auto-compact:
+  preTokens 301513, postTokens 24450). parseTranscriptTail's backward
+  walk now takes it when it is newer than every usage event.
+  claude_context_meter INV-7: red against HEAD (read 301513), green
+  after. Not covered: a boundary pushed out of the 32 KB tail by a large
+  summary record still falls back to the pre-compact figure.
   **Layman:** After a compact the context gauge still shows the old, high figure until Claude answers again.
   Kind: fix.
   Source: user-request-2026-10-08.
@@ -82467,6 +82474,10 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   /clear (same PID, new session file) does to the gauge.
   Fix: reset the gauge on a PID change; bind to the SessionStart
   payload's transcript_path where its session belongs to this tab.
+  Order (2026-10-13, after the user named the symptoms): ANTS-5631
+  shipped first; then this item; then ANTS-5682 (estimate between
+  replies, design the user chose); then ANTS-5663. The user did NOT
+  report the tab-switch blank, so it is not in scope.
   **Layman:** When you restart Claude Code, the context gauge keeps showing the old session's number for a while.
   Kind: fix.
   Source: user-report-2026-10-13.

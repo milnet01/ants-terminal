@@ -879,13 +879,19 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // Context size from the most recent event carrying usage info. Walk
     // backward. With prompt caching, input_tokens is only the uncached tail,
     // so the context is the sum of all three input fields.
+    // ANTS-5631 — a compact boundary newer than every usage event is the
+    // reading: Claude Code records the post-compact size on it.
     for (int i = events.size() - 1; i >= 0; --i) {
         const QJsonObject usage = events[i].value("message").toObject()
                                            .value("usage").toObject();
-        const qint64 tokens =
+        qint64 tokens =
             usage.value("input_tokens").toInteger()
             + usage.value("cache_creation_input_tokens").toInteger()
             + usage.value("cache_read_input_tokens").toInteger();
+        if (events[i].value("subtype").toString()
+                == QLatin1String("compact_boundary"))
+            tokens = events[i].value("compactMetadata").toObject()
+                         .value("postTokens").toInteger();
         if (tokens > 0) {
             snap.contextTokens = tokens;
             snap.contextPercent = static_cast<int>(std::min<qint64>(

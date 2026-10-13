@@ -45,6 +45,42 @@ TEST(ClaudeContextMeter, Inv1TokensSumAllThreeFields) {
     EXPECT_EQ(snap.contextTokens, 456789);
 }
 
+// INV-7 (ANTS-5631) — a compact boundary newer than every usage event is
+// the reading: its compactMetadata.postTokens. The record shapes are a
+// real auto-compact's (2026-10-13), trimmed to the fields read here.
+TEST(ClaudeContextMeter, Inv7CompactBoundaryIsTheNewestReading) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + "/compact.jsonl";
+    const QByteArray before =
+        R"({"type":"assistant","message":{"stop_reason":"end_turn","usage":)"
+        R"({"input_tokens":2,"cache_creation_input_tokens":1000,)"
+        R"("cache_read_input_tokens":300511,"output_tokens":40}}})" "\n"
+        R"({"type":"system","subtype":"compact_boundary","compactMetadata":)"
+        R"({"trigger":"auto","preTokens":301513,"postTokens":24450}})" "\n"
+        R"({"type":"user","isCompactSummary":true,"message":{"role":"user",)"
+        R"("content":"summary"}})" "\n";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(before);
+    }
+    EXPECT_EQ(ClaudeIntegration::parseTranscriptTail(path, false).contextTokens,
+              24450)
+        << "the pre-compact figure survived the compact";
+
+    // The first reply after the compact is newer again, so it wins.
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::Append));
+        f.write(R"({"type":"assistant","message":{"stop_reason":"end_turn",)"
+                R"("usage":{"input_tokens":2,"cache_creation_input_tokens":55096,)"
+                R"("cache_read_input_tokens":32986,"output_tokens":315}}})" "\n");
+    }
+    EXPECT_EQ(ClaudeIntegration::parseTranscriptTail(path, false).contextTokens,
+              88084);
+}
+
 // INV-2
 TEST(ClaudeContextMeter, Inv2PercentAgainstWindow) {
     QTemporaryDir tmp;
