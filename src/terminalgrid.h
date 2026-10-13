@@ -822,6 +822,8 @@ private:
     std::deque<uint32_t> m_kittyImageOrder; // insertion order, oldest at front
     std::string m_kittyChunkBuffer; // For multi-chunk transmissions
     uint32_t m_kittyChunkId = 0;
+    // ANTS-5676 — the first chunk's control keys; later chunks omit them.
+    std::unordered_map<char, std::string> m_kittyChunkParams;
 
     // Image-bomb defense (0.6.11). Tracks total decoded image bytes held by
     // this terminal across both the inline-display vector (m_inlineImages)

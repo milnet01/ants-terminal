@@ -40,6 +40,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Kitty images sent in several chunks now display.** (ANTS-5676)
+  Later chunks take the first chunk's format and placement keys, as the
+  Kitty graphics protocol specifies. A query sent mid-transfer is still
+  answered on its own.
+
 - **A roadmap import into a scratch store no longer overwrites the real store's pre-migrate backup** (ANTS-5621)
   The weekly snapshot record now names the store it copied (`store=`),
   and roadmap_migrate uses the record's backup folder only for that

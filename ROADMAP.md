@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5675 -->
+<!-- ants-roadmap-id-high-water: ANTS=5676 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92589,6 +92589,29 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: user-report-2026-10-11 screenshot.
   Lanes: claude-integration, status-bar.
+
+- ✅ [ANTS-5676] **A chunked Kitty image is decoded with the last chunk's keys, so a PNG sent in chunks never displays.**
+  The Kitty graphics protocol puts the control keys (a, f, s, v, c, r,
+  i, q) on the FIRST chunk only; later chunks carry m= and optionally q.
+  TerminalGrid::handleApc parses the keys of whichever APC it is
+  handling, so on the final m=0 chunk `format` falls back to 32 and
+  `action` to T. A PNG (f=100) is then read as raw RGBA with no s/v,
+  the image is null, and nothing is placed. Only the image id is carried
+  over (m_kittyChunkId). Measured 2026-10-13: a 1920x1920 PNG sent in
+  4096-byte chunks placed 0 images; the same payload unchunked placed 1.
+  No test sends a chunked image and checks that it displays.
+  Fix: keep the first chunk's key map beside m_kittyChunkBuffer and use
+  it for the final chunk.
+  Resolved (2026-10-13): handleApc keeps the first chunk's keys (minus m)
+  in m_kittyChunkParams and merges them only into a continuation frame,
+  one whose own keys are m and q. A cold read by the pressless session
+  found that an unguarded merge leaked m=1 into an a=q probe sent
+  mid-transfer; INV-5 covers it. Test:
+  tests/features/kitty_chunked_transmission.
+  **Layman:** Images that programs such as kitty icat send in several pieces never appear in Ants.
+  Kind: fix.
+  Source: in-session-2026-10-13 (measuring ANTS-1061).
+  Lanes: terminal-core.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

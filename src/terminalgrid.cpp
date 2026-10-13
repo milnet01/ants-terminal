@@ -793,6 +793,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_kittyChunkBuffer.clear();
                         m_kittyChunkBuffer.shrink_to_fit();
                         m_kittyChunkId = 0;
+                        m_kittyChunkParams.clear();
                         markAllScreenDirty();
                         m_altCursorRow = m_cursorRow;
                         m_altCursorCol = m_cursorCol;
@@ -2689,6 +2690,7 @@ void TerminalGrid::resize(int rows, int cols) {
     m_kittyChunkBuffer.clear();
     m_kittyChunkBuffer.shrink_to_fit();
     m_kittyChunkId = 0;
+    m_kittyChunkParams.clear();
 
     // ANTS-1194 — capture "scroll region was at full screen" before any
     // mutation. If yes, the resize must EXPAND/contract the region with
@@ -3523,6 +3525,15 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         if (pos < params_str.size() && params_str[pos] == ',') ++pos;
     }
 
+    // ANTS-5676 — a chunked transmission carries its control keys on the
+    // first chunk only; later chunks carry m= (and q=). Fill those in on a
+    // continuation chunk. A frame with any other key is a command of its
+    // own (a query sent mid-transmission, say) and keeps only its own keys.
+    const bool continuation = std::all_of(params.begin(), params.end(),
+        [](const auto &kv) { return kv.first == 'm' || kv.first == 'q'; });
+    if (continuation)
+        for (const auto &[key, value] : m_kittyChunkParams) params.emplace(key, value);
+
     // Extract common parameters
     char action = 'T'; // Default: transmit + display
     if (params.count('a')) action = params['a'][0];
@@ -3539,6 +3550,10 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     // Handle chunked transmission
     if (more == 1) {
         if (m_kittyChunkBuffer.empty()) m_kittyChunkId = imageId;
+        if (m_kittyChunkParams.empty()) {
+            m_kittyChunkParams = params;
+            m_kittyChunkParams.erase('m');
+        }
         // Reject if the accumulated buffer would exceed the cap. The image
         // budget cannot defend here — it only runs after the final `m=0`
         // chunk, so without this guard an attacker can keep sending `m=1`
@@ -3551,6 +3566,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
             m_kittyChunkBuffer.clear();
             m_kittyChunkBuffer.shrink_to_fit();
             m_kittyChunkId = 0;
+            m_kittyChunkParams.clear();
             return;
         }
         m_kittyChunkBuffer += data_str;
@@ -3564,6 +3580,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         m_kittyChunkBuffer.clear();
         m_kittyChunkBuffer.shrink_to_fit();
         m_kittyChunkId = 0;
+        m_kittyChunkParams.clear();
         return;
     }
     std::string fullData = m_kittyChunkBuffer + data_str;
@@ -3571,6 +3588,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     m_kittyChunkBuffer.shrink_to_fit();
     if (imageId == 0 && m_kittyChunkId != 0) imageId = m_kittyChunkId;
     m_kittyChunkId = 0;
+    m_kittyChunkParams.clear();
 
     // Handle actions
     if (action == 'd') {

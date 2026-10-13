@@ -2057,6 +2057,8 @@ if(ANTS_TESTS)
                 tests/features/bce_scroll_erase/test_bce_scroll_erase.cpp
                 tests/features/wide_char_overwrite_mate/test_wide_char_overwrite.cpp
                 tests/features/osc8_apc_memory_caps/test_osc8_apc_memory_caps.cpp
+                # ANTS-5676 — a chunked Kitty image keeps its first chunk's keys.
+                tests/features/kitty_chunked_transmission/test_kitty_chunked_transmission.cpp
                 tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
                 # ANTS-5082 — mistyped theme colours fall back; oversized theme files are skipped.
                 tests/features/user_theme_loading/test_user_theme_loading.cpp
