@@ -25,6 +25,17 @@ QString squashOneLine(QString s, int maxLen = 200) {
     return s;
 }
 
+// ANTS-3516 — the one liveness rule both passes apply, so the parse-time
+// pass and sweepLiveness() cannot drift apart: a task whose output file is
+// gone, or has not been written for 60 s, has no producer attached. The
+// window is generous on purpose: a long build can be silent for 30 s or
+// more (CMake configure, a slow link).
+bool outputLooksStale(const QString &outputPath, const QDateTime &now) {
+    constexpr qint64 kStaleSecs = 60;
+    const QFileInfo fi(outputPath);
+    return !fi.exists() || fi.lastModified().toUTC().secsTo(now) > kStaleSecs;
+}
+
 } // namespace
 
 ClaudeBgTaskTracker::ClaudeBgTaskTracker(QObject *parent) : QObject(parent) {
@@ -87,7 +98,6 @@ int ClaudeBgTaskTracker::runningCount() const {
 // flipped, mirroring rescan()'s no-op-no-emit behaviour so a settled
 // status bar doesn't repaint each tick.
 void ClaudeBgTaskTracker::sweepLiveness() {
-    constexpr qint64 kStaleSecs = 60;
     const QDateTime now = QDateTime::currentDateTimeUtc();
     bool changed = false;
     for (auto &t : m_tasks) {
@@ -103,24 +113,14 @@ void ClaudeBgTaskTracker::sweepLiveness() {
         // is permanent and never reconsidered here.
         if (t.finished) {
             if (!t.finishedByLiveness) continue;
-            const QFileInfo fi(t.outputPath);
-            if (fi.exists()
-                    && fi.lastModified().toUTC().secsTo(now) <= kStaleSecs) {
+            if (!outputLooksStale(t.outputPath, now)) {
                 t.finished = false;
                 t.finishedByLiveness = false;
                 changed = true;
             }
             continue;
         }
-        const QFileInfo fi(t.outputPath);
-        if (!fi.exists()) {
-            t.finished = true;
-            t.finishedByLiveness = true;
-            changed = true;
-            continue;
-        }
-        const QDateTime mtime = fi.lastModified().toUTC();
-        if (mtime.secsTo(now) > kStaleSecs) {
+        if (outputLooksStale(t.outputPath, now)) {
             t.finished = true;
             t.finishedByLiveness = true;
             changed = true;
@@ -402,27 +402,16 @@ QList<ClaudeBackgroundTask> finalizeBgTasks(const ClaudeBgTaskAccum &acc) {
     //   • OR the file's mtime is older than the staleness window
     //     below (60 s of no writes ⇒ the producer is gone).
     //
-    // The 60 s window is generous on purpose: a long-running build
-    // can have 30+ seconds of silence between progress prints (CMake
-    // configure step, slow link). 60 s only flips a task to finished
-    // once we're confident no producer is attached. False-negatives
-    // (real running task flagged finished) are corrected on the next
-    // tick once the file does write again — but in practice the
-    // assistant polls long-running tasks via BashOutput well before
-    // the 60 s window elapses.
-    constexpr qint64 kStaleSecs = 60;
+    // outputLooksStale() holds the 60 s window and why it is generous.
+    // False-negatives (a real running task flagged finished) are corrected
+    // by sweepLiveness() once the file writes again — but in practice the
+    // assistant polls long-running tasks via BashOutput well before the
+    // window elapses.
     const QDateTime now = QDateTime::currentDateTimeUtc();
     for (auto &t : filtered) {
         if (t.finished) continue;
         if (t.outputPath.isEmpty()) continue;  // can't tell — leave alone
-        const QFileInfo fi(t.outputPath);
-        if (!fi.exists()) {
-            t.finished = true;
-            t.finishedByLiveness = true;  // ANTS-1840: heuristic, not transcript
-            continue;
-        }
-        const QDateTime mtime = fi.lastModified().toUTC();
-        if (mtime.secsTo(now) > kStaleSecs) {
+        if (outputLooksStale(t.outputPath, now)) {
             t.finished = true;
             t.finishedByLiveness = true;  // ANTS-1840: heuristic, not transcript
         }

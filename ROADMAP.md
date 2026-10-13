@@ -21189,9 +21189,30 @@ indie-review finding.
   the GUI thread waits in wait(), so every call deadlocks permanently;
   filed as ANTS-5024. audit_run's synchronous path has the same join
   shape; filed as ANTS-5035.
+  Re-checked (2026-10-13): the join is still there
+  (registerProjectScopedVerbs, mcptoolregistry.cpp, "STAYS, deliberately
+  (ANTS-2132 § 5)"). But since ANTS-4932 the same registration runs inside
+  ants-mcpd, a window-free process, and Claude Code's `ants` server is
+  build/ants-mcpd (~/.claude.json). So the window freeze now happens only
+  when a client falls back to the terminal's own endpoint (ANTS-4932 § 8);
+  through ants-mcpd the join blocks that session's mcpd for the sweep
+  instead. Fixing it means amending ANTS-2132 § 5 to give
+  indie_review_dispatch audit_run's DeferredToolHandler (§ 2.8, INV-16),
+  which is a gated direction change. Waiting on the user: build it, or
+  close as superseded by ants-mcpd.
 
 - 📋 [ANTS-3516] **Extract a shared ClaudeTranscriptTracker base for claudetasklist + claudebgtasks (ANTS-2119 transcript-watch dedup).**
   Spun out of ANTS-2119 (deferred-set; the reviewer explicitly said "defer-and-log rather than do mid-review"). claudetasklist.cpp and claudebgtasks.cpp duplicate rescan()/setTranscriptPath()/poll()/the watch-loss re-add block/the mtime short-circuit/the 16 MiB-cap seek-discard-partial-line preamble near-verbatim (claudetasklist.cpp:77-187 ≈ claudebgtasks.cpp:37-159), and the comments cross-reference each other by line number ("Same shape as claudebgtasks.cpp:91-95") — a maintenance smell that rots on any edit. A ClaudeTranscriptTracker<T> CRTP/template base (or a shared TranscriptWatch helper owning the QFileSystemWatcher + poll + cap-seek) would remove ~80 lines and the cross-file line-number coupling (dimension #6). ALSO fold in L1: parseTranscript's tail-liveness pass (claudebgtasks.cpp:394-410) and sweepLiveness() (:66-105) duplicate the same kStaleSecs=60 staleness predicate — extract a static isOutputStale(task, now) so the un-latch semantics stay in lockstep. Higher-risk than the surgical bundle (both trackers are live QObject file-watchers driving the UI chip), so it wants its own spec + cold-eyes + test pass before touching. Detail: .indie-review/reports-2026-06-11/claudetasklist.md L1/L2.
+  Progress (2026-10-13). Since filing, the trackers came to share
+  ClaudeTranscriptWatch (the watcher) and ClaudeTranscript::WalkCache /
+  the walker (the cap-seek preamble), so most of the ~80 lines are gone.
+  Shipped here: L1, one outputLooksStale() helper for both liveness passes
+  in claudebgtasks.cpp (sweepLiveness and the parse-time pass; each site
+  is the helper or its exact negation), and the last line-number
+  cross-reference now names ClaudeBgTaskTracker::rescan. Left: a shared
+  base for setTranscriptPath / rescan / poll, which now differ mostly in
+  types and comparison shape. Waiting on the user: build the base, or
+  close the rest as not worth the risk to two live UI watchers.
   **Layman:** Two nearly-identical file-watching helpers (one for the task list, one for background tasks) duplicate ~80 lines and cross-reference each other by line number in comments — which rot. Fold the shared machinery into one base so a fix to one can't silently miss the other.
   Kind: refactor.
   Source: indie-review-2026-06-11 (claudetasklist L1/L2) — deferred from ANTS-2119 surgical sweep 2026-07-14.

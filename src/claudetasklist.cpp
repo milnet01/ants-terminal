@@ -185,7 +185,7 @@ void ClaudeTaskListTracker::rescan() {
 
     // QFileSystemWatcher drops the path on atomic-rewrite; re-add if
     // it disappeared between rescans. Same shape as
-    // claudebgtasks.cpp:91-95.
+    // ClaudeBgTaskTracker::rescan.
     ClaudeTranscriptWatch::instance().ensure(m_transcriptPath);
 
     // Compare shape: same length AND same (id, status) pairs in the
