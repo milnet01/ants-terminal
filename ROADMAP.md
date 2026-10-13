@@ -24333,6 +24333,13 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   delivered while the PTY has echo off (a password). keypress is
   watch-only for now: no veto, so no blocking call into a worker;
   a veto can be added later if a plugin needs one.
+  Correction (2026-10-13), from the spec's review loop 1: echo off
+  alone does not mark a password. Measured: bash and zsh clear ECHO
+  (and ICANON) at every prompt; read -s and getpass clear ECHO with
+  ICANON on. The spec now detects a password prompt as ECHO off with
+  ICANON on, keeping the user's intent. Residual: a full-screen
+  password prompt (ICANON off) is not detected. Spec:
+  docs/specs/ANTS-4272-plugin-io-events.md.
 
 - ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.

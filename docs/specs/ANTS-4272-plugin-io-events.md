@@ -45,8 +45,9 @@ Recorded in ANTS-4272's body:
   `terminal.read`; `keypress` needs `input.keys`. The user grants each
   once per plugin, through the existing first-load prompt. `prompt`
   carries no terminal content and needs none.
-- **Passwords.** No `keypress` event is delivered while the PTY has echo
-  off, or while its echo state is unknown.
+- **Passwords.** No `keypress` event is delivered while a password is
+  being typed, or while the terminal cannot tell. § 2.7 says how a
+  password prompt is detected.
 - **Watch only.** A `keypress` handler cannot swallow the key. ANTS-1750
   § 2.6's bounded veto is not built.
 
@@ -68,21 +69,24 @@ prompt asks for them.
 static QString permissionFor(PluginEvent e);
 ```
 
-An engine whose `hasPermission(permissionFor(event))` is false is skipped.
+An engine is skipped when `permissionFor(event)` is non-empty and
+`hasPermission` of it is false.
 `ants.on()` still accepts the name, so a plugin can register before the
 user grants; its handler simply never runs.
 
 ### 2.2 No work when nobody listens
 
 ```cpp
-// PluginManager — true when a healthy engine handles `e` and holds its permission.
+// PluginManager — true when a healthy engine handles `e` and, where
+// permissionFor(e) is non-empty, holds that permission.
 bool wants(PluginEvent e) const;
 // TerminalWidget — installed by MainWindow::connectTerminal under ANTS_LUA_PLUGINS.
 void setPluginEventFilter(std::function<bool(PluginEvent)> wants);
 ```
 
-Each emit site in § 2.3–2.6 asks the filter first, and does no decoding,
-text extraction or formatting when it returns false or is unset. A build
+Each emit site in § 2.3–2.6 asks the filter first. When it returns false
+or is unset, the site skips the plugin emit and its decoding, text
+extraction or formatting; the host function's other work runs as before. A build
 without `ANTS_LUA_PLUGINS` never installs it.
 
 Each site emits a `TerminalWidget` signal; `MainWindow::connectTerminal`
@@ -113,9 +117,9 @@ the decoded text, escape sequences included.
 
 ### 2.4 `line`
 
-`TerminalWidget::onGridLineCompleted` reads the row's text before its
-`m_triggerRules.empty()` early return, and emits `pluginLine(text)` when
-the filter wants `Line` and a new per-terminal budget allows it.
+When the filter wants `Line`, `TerminalWidget::onGridLineCompleted` reads
+the row's text before its `m_triggerRules.empty()` early return, and emits
+`pluginLine(text)` if a new per-terminal budget allows it.
 `takeEventBudget` takes the cap as a parameter, defaulting to
 `kEventsPerSecond`; the line budget's cap is
 `kPluginLinesPerSecond = 200`. Lines past the cap in a one-second window
@@ -145,7 +149,7 @@ reaches the callback. `exitCode` is meaningful for `D` only.
 
 - the filter wants `KeyPress`;
 - `event` is non-null;
-- the PTY's echo is known to be on (§ 2.7);
+- the PTY is known not to be at a password prompt (§ 2.7);
 - a per-terminal budget at `kPluginKeysPerSecond = 100` allows it.
 
 `name` is
@@ -157,35 +161,52 @@ An IME commit (`TerminalWidget::inputMethodEvent`) and a paste
 (`TerminalWidget::performPaste`) do not pass through `sendKeyData`, so
 they fire no `keypress`.
 
-### 2.7 Echo state
+### 2.7 Password prompts
+
+A shell at its prompt turns echo off, so echo alone does not mark a
+password. Measured 2026-10-13 by reading each program's termios through
+the pty master (`pty.fork`, then `tcgetattr` after two seconds):
+
+| Program | `ECHO` | `ICANON` |
+|---|---|---|
+| `bash --norc --noprofile -i`, at its prompt | off | off |
+| `zsh -f -i`, at its prompt | off | off |
+| `bash -c "read -s"` | off | on |
+| Python `getpass.getpass()` | off | on |
+| `cat` | on | on |
+
+So a password prompt is **`ECHO` off with `ICANON` on**: line mode with
+no echo.
 
 ```cpp
-// Pty — true only when tcgetattr(fd) succeeds and ECHO is set.
-static bool echoEnabled(int masterFd);
+// Pty — true only when tcgetattr(fd) succeeds and the PTY is not
+// at a password prompt (ECHO clear with ICANON set).
+static bool keysShareable(int masterFd);
 ```
 
 On Linux a pty master reports the slave's termios, so the master fd
-answers for the shell side. Measured 2026-10-13 with `os.openpty()`:
-clearing `ECHO` on the slave made `tcgetattr` on the master report it
-cleared.
+answers for the shell side; the table above was read that way.
 
 The fd is used only on the parse worker thread. `Pty::onReadReady`
-samples `echoEnabled(m_masterFd)` on every read, beside its existing
+samples `keysShareable(m_masterFd)` on every read, beside its existing
 `tcgetpgrp` sample, and stores it in a `std::atomic<bool>` that `VtStream`
 owns and `TerminalWidget` reads. It starts false, so no key is delivered
 before the first read. A password prompt is output, so the read carrying
-it also samples echo off.
+it also samples the prompt's termios.
 
 ### 2.8 Failure modes
 
 - **A handler is slow.** Events queue on its worker. ANTS-1750's health
   tick demotes a plugin whose handler outruns its budget; the GUI never
   waits. The caps in § 2.3–2.6 bound how fast a queue can grow.
-- **The echo sample is stale.** A program that turns echo off and reads a
-  key without printing anything gives no read to sample, so keys typed
-  then are delivered. This is the residual risk of sampling on reads;
-  § 2.10 says why sampling per key was rejected.
-- **`tcgetattr` fails** (the fd closed in teardown). `echoEnabled`
+- **The sample is stale.** A program that enters a password prompt
+  without printing anything gives no read to sample, so keys typed then
+  are delivered. This is the residual risk of sampling on reads; § 2.10
+  says why sampling per key was rejected.
+- **A full-screen program asks for a password.** It reads keys with
+  `ICANON` off, which looks like a shell prompt, so its keys reach a
+  plugin holding `input.keys`.
+- **`tcgetattr` fails** (the fd closed in teardown). `keysShareable`
   returns false and keys are withheld.
 - **A permission is never granted.** The handler is registered and never
   runs. No error is raised, as an un-granted `ants.clipboard` is simply
@@ -209,7 +230,10 @@ relaunch like any other build.
   yet.
 - **One `output` event per `VtBatch`.** Rejected: unbounded rate under
   bulk output (§ 1 item 2).
-- **Sample echo per key from the GUI thread.** Rejected: `Pty`'s fd lives
+- **Withhold keys whenever `ECHO` is off.** Rejected: § 2.7's table
+  shows bash and zsh clear `ECHO` at every prompt, so almost no key would
+  be delivered.
+- **Sample the termios per key from the GUI thread.** Rejected: `Pty`'s fd lives
   on the parse worker, and a GUI-thread `tcgetattr` races its close in
   teardown.
 - **Strip escape sequences from `output`.** Rejected: `line` already
@@ -232,9 +256,10 @@ relaunch like any other build.
   *Test:* `tests/features/plugin_io_events`.
 
 - **INV-3** — Each emit site in § 2.3–2.6 calls the plugin filter before
-  decoding, reading a row or formatting a key name, and returns at once
-  when the filter is unset or false. Breaks when an emit site decodes or
-  reads text before asking.
+  decoding, reading a row or formatting a key name, and skips the emit,
+  and only the emit, when the filter is unset or false. Breaks when an
+  emit site decodes or reads text before asking, or returns from its host
+  function.
   *Test:* `tests/features/plugin_io_events` source-scrape of `onVtBatch`,
   `onGridLineCompleted`, `sendKeyData` and the prompt callback.
 
@@ -265,13 +290,14 @@ relaunch like any other build.
   *Test:* `tests/features/plugin_io_events` feeds a `TerminalGrid`
   `OSC 133;A`, `B`, `C` and `D;3`, then a forged `A`.
 
-- **INV-8** — `Pty::echoEnabled` returns false for a pty whose slave has
-  `ECHO` cleared, and for an fd `tcgetattr` rejects; `sendKeyData` emits
-  no `pluginKey` unless the sampled state is true. Breaks when the helper
-  reads the wrong flag, or fails open.
+- **INV-8** — `Pty::keysShareable` returns false for a pty whose slave
+  has `ECHO` clear with `ICANON` set, true with both clear, and false for
+  an fd `tcgetattr` rejects; `sendKeyData` emits no `pluginKey` unless the
+  sampled state is true. Breaks when the helper tests `ECHO` alone, or
+  fails open.
   *Test:* `tests/features/plugin_io_events` opens a pty with `openpty`,
-  clears `ECHO` on the slave and checks `echoEnabled(master)`, then
-  passes `-1`.
+  sets each of the two slave states and checks
+  `keysShareable(master)`, then passes `-1`.
 
 - **INV-9** — `sendKeyData` writes the key before it emits `pluginKey`
   and consumes no result; `inputMethodEvent` and `performPaste` emit
@@ -325,7 +351,8 @@ against the pre-change source before it passes.
 | INV-7 | `tests/features/plugin_io_events`, OSC 133 test |
 | INV-8 | `tests/features/plugin_io_events`, pty test |
 | INV-9 | `tests/features/plugin_io_events`, source-scrape |
-| § 2.8 stale echo sample | **nothing** — a limit of sampling on reads, accepted in § 2.10 |
+| § 2.8 stale sample | **nothing** — a limit of sampling on reads, accepted in § 2.10 |
+| § 2.8 full-screen password | **nothing** — a raw-mode password prompt looks like a shell prompt; not yet queued |
 
 ## Cold-eyes loop log
 
