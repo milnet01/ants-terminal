@@ -525,7 +525,8 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         m_contextBar->setStyleSheet(contextMeterStyle(th, chunkColor));
         const QString tip = contextMeterTooltip(
             m_integration->contextTokens(),
-            m_integration->contextWindowTokens(), percent);
+            m_integration->contextWindowTokens(), percent,
+            m_integration->contextEstimated());
         m_contextBar->setToolTip(tip);
         m_contextBar->setAccessibleDescription(tip);
     });
@@ -2938,7 +2939,8 @@ qint64 ClaudeStatusBarController::lastOverrideMsForProject(
     return m_lastOverrideMsByProject.value(project, -1);
 }
 
-QString contextMeterTooltip(qint64 tokens, qint64 window, int percent) {
+QString contextMeterTooltip(qint64 tokens, qint64 window, int percent,
+                            bool estimated) {
     QLocale c = QLocale::c();   // "456,789" whatever the system locale
     c.setNumberOptions(QLocale::DefaultNumberOptions);   // C omits separators
     QString tip = QObject::tr(
@@ -2947,6 +2949,9 @@ QString contextMeterTooltip(qint64 tokens, qint64 window, int percent) {
         "Change the size in Settings → General if your model differs.")
         .arg(percent)
         .arg(c.toString(tokens), c.toString(window));
+    if (estimated)
+        tip += QObject::tr("\nEstimated: includes tool output since Claude's "
+                           "last reply. The next reply gives the exact count.");
     if (percent >= 80)
         tip += QObject::tr("\nNearly full: run /compact or start a new session.");
     return tip;

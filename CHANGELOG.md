@@ -49,6 +49,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The context gauge moves as soon as a tool's output lands, with an estimate the hover text marks, instead of waiting for Claude's next reply** (ANTS-5682)
+
 - **The context gauge clears when Claude Code exits or restarts, and shows the new session's figure once it has one** (ANTS-5683)
 
 - **After a compact, the context gauge shows the new, smaller size straight away instead of waiting for Claude's next reply.** (ANTS-5631)

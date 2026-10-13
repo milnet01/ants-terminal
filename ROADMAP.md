@@ -82446,7 +82446,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-report-2026-10-12.
   Lanes: claudeintegration, statusbar.
 
-- 📋 [ANTS-5682] **The context gauge moves only when Claude replies, so it trails large tool output.**
+- ✅ [ANTS-5682] **The context gauge moves only when Claude replies, so it trails large tool output.**
   User report 2026-10-13: the gauge feels unresponsive while Claude
   works. Checked 2026-10-13: parseTranscriptTail (src/claudeintegration.cpp)
   takes input + cache_creation + cache_read tokens from the newest
@@ -82458,6 +82458,13 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   estimate (bytes / 4) for user and tool-result records written after it,
   replaced by the next real figure; the tooltip marks an estimate.
   Related: ANTS-5631 (after /compact), ANTS-5663 (slow to appear).
+  Resolved 2026-10-13: parseTranscriptTail adds the newest reply's
+  output_tokens and, for each user record after it, its text bytes / 4
+  (typed prompt, text blocks, tool_result content; not images or
+  toolUseResult). The next reply replaces the estimate; a compact
+  boundary gets none. The tooltip says "Estimated" while it applies.
+  Spec INV-1, INV-4 amended, INV-9 added; test
+  Inv9EstimatesRecordsAfterTheLastReply.
   **Layman:** While Claude works, the context gauge lags behind: a big file or command output doesn't show until Claude's next reply.
   Kind: fix.
   Source: user-request-2026-10-13.

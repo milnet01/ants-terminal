@@ -79,8 +79,12 @@ struct ClaudeTranscriptSnapshot {
     QString detail;                // short human-readable label ("thinking", "Bash", …)
     int contextPercent = -1;       // -1 if no usage observed in window
     // Tokens in the context: input + cache_creation_input + cache_read_input
-    // of the newest event carrying usage; -1 when none was observed.
+    // + output of the newest event carrying usage, plus an estimate for the
+    // user and tool-result records after it (ANTS-5682); -1 when none was
+    // observed.
     qint64 contextTokens = -1;
+    // True when contextTokens includes that estimate.
+    bool contextEstimated = false;
     bool planMode = false;         // result of the latch + most-recent permission-mode
     bool auditing = false;         // /audit turn in flight
     QJsonObject toolUseBlock;      // raw tool_use block for updateChangedFiles; empty if N/A
@@ -130,6 +134,8 @@ public:
     int contextPercent() const { return m_contextPercent; }
     // Tokens the focused session's context holds; 0 when none is known.
     qint64 contextTokens() const { return m_contextTokens; }
+    // True when contextTokens() includes an estimate (ANTS-5682).
+    bool contextEstimated() const { return m_contextEstimated; }
     // The window contextPercent is measured against (Settings, Claude tab).
     // Setting it recomputes the percentage and re-emits contextUpdated.
     static constexpr qint64 kDefaultContextWindowTokens = 1'000'000;
@@ -752,6 +758,7 @@ private:
     QString m_currentTool;
     int m_contextPercent = 0;
     qint64 m_contextTokens = 0;
+    bool m_contextEstimated = false;
     qint64 m_contextWindowTokens = kDefaultContextWindowTokens;
     QStringList m_changedFiles;
     bool m_planMode = false;

@@ -9,8 +9,9 @@ partially sighted, so the meter must be large and readable.
 ## Invariants
 
 - **INV-1** — a transcript's context size is `input_tokens +
-  cache_creation_input_tokens + cache_read_input_tokens` of the newest event
-  carrying `message.usage`. *Test:* `Inv1TokensSumAllThreeFields`.
+  cache_creation_input_tokens + cache_read_input_tokens + output_tokens` of
+  the newest event carrying `message.usage`, plus INV-9's estimate. *Test:*
+  `Inv1TokensSumAllThreeFields`.
 - **INV-2** — the percentage is `min(100, tokens * 100 / window)`, where the
   window defaults to 1,000,000. Changing the window recomputes it and emits
   `contextUpdated`. *Test:* `Inv2PercentAgainstWindow`.
@@ -18,6 +19,7 @@ partially sighted, so the meter must be large and readable.
   clamped to [10,000, 10,000,000]. *Test:* `Inv3ConfigDefaultAndClamp`.
 - **INV-4** — the hover text names the tokens used, the window and the
   percentage, with thousands separators, and advises `/compact` from 80%.
+  When the size includes INV-9's estimate, it says "Estimated".
   *Test:* `Inv4TooltipNamesTheNumbers`.
 - **INV-5** — the meter is shown whenever the session has a non-zero token
   count, even when the percentage rounds to 0, and again when the Claude
@@ -37,6 +39,12 @@ partially sighted, so the meter must be large and readable.
   `Inv8ClearContextReadingHidesTheMeter` and
   `Inv8PollClearsOnExitAndOnNewProcess` (source scrape of
   `pollClaudeProcess`). (ANTS-5683)
+- **INV-9** — each `user` record after that newest usage event adds its
+  text bytes / 4: a typed prompt, text blocks and `tool_result` content.
+  Images and the record's other fields, such as `toolUseResult`, are not
+  counted. The next usage event replaces the estimate. A compact boundary's
+  `postTokens` gets no estimate. *Test:*
+  `Inv9EstimatesRecordsAfterTheLastReply`. (ANTS-5682)
 
 ## Reload
 

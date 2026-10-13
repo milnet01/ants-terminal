@@ -156,6 +156,7 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         m_currentTool.clear();
         m_contextPercent = 0;
         m_contextTokens = 0;
+        m_contextEstimated = false;
         m_claudePid = 0;            // force pollClaudeProcess to re-detect
         m_activeSessionId.clear();
 
@@ -784,6 +785,32 @@ QStringList ClaudeIntegration::recentSessionsForCwd(const QString &projectCwd) c
     return sessions;
 }
 
+// ANTS-5682 — the text a user record adds to the context: a typed prompt, or
+// the text blocks and tool results it carries. Images are skipped, since
+// their token cost is not proportional to their bytes. The record's other
+// fields (toolUseResult repeats the tool's output) are not context.
+static qint64 userRecordTextBytes(const QJsonObject &record) {
+    const QJsonValue content = record.value("message").toObject().value("content");
+    if (content.isString()) return content.toString().toUtf8().size();
+    qint64 bytes = 0;
+    const auto textOf = [](const QJsonValue &v) -> qint64 {
+        if (v.isString()) return v.toString().toUtf8().size();
+        qint64 n = 0;
+        for (const QJsonValue &b : v.toArray())
+            n += b.toObject().value("text").toString().toUtf8().size();
+        return n;
+    };
+    for (const QJsonValue &c : content.toArray()) {
+        const QJsonObject block = c.toObject();
+        const QString type = block.value("type").toString();
+        if (type == QLatin1String("text"))
+            bytes += block.value("text").toString().toUtf8().size();
+        else if (type == QLatin1String("tool_result"))
+            bytes += textOf(block.value("content"));
+    }
+    return bytes;
+}
+
 ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         const QString &path, bool latchedPlanMode) {
     ClaudeTranscriptSnapshot snap;
@@ -892,10 +919,26 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
             usage.value("input_tokens").toInteger()
             + usage.value("cache_creation_input_tokens").toInteger()
             + usage.value("cache_read_input_tokens").toInteger();
-        if (events[i].value("subtype").toString()
-                == QLatin1String("compact_boundary"))
+        const bool isCompact = events[i].value("subtype").toString()
+                == QLatin1String("compact_boundary");
+        if (isCompact)
             tokens = events[i].value("compactMetadata").toObject()
                          .value("postTokens").toInteger();
+        if (tokens > 0 && !isCompact) {
+            // ANTS-5682 — the reply itself joins the context, and so does
+            // every user or tool-result record written after it. Those carry
+            // no usage, so estimate them at four bytes a token until the
+            // next reply reports the real figure.
+            tokens += usage.value("output_tokens").toInteger();
+            qint64 laterBytes = 0;
+            for (int j = i + 1; j < events.size(); ++j)
+                if (events[j].value("type").toString() == QLatin1String("user"))
+                    laterBytes += userRecordTextBytes(events[j]);
+            if (laterBytes > 0) {
+                tokens += laterBytes / 4;
+                snap.contextEstimated = true;
+            }
+        }
         if (tokens > 0) {
             snap.contextTokens = tokens;
             snap.contextPercent = static_cast<int>(std::min<qint64>(
@@ -1084,6 +1127,7 @@ void ClaudeIntegration::clearContextReading() {
     if (m_contextTokens <= 0 && m_contextPercent == 0) return;
     m_contextTokens = 0;
     m_contextPercent = 0;
+    m_contextEstimated = false;
     emit contextUpdated(0);
 }
 
@@ -1097,6 +1141,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
 
     if (snap.contextTokens > 0) {
         m_contextTokens = snap.contextTokens;
+        m_contextEstimated = snap.contextEstimated;
         m_contextPercent = static_cast<int>(std::min<qint64>(
             100, m_contextTokens * 100 / m_contextWindowTokens));
         emit contextUpdated(m_contextPercent);

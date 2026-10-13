@@ -45,7 +45,7 @@ TEST(ClaudeContextMeter, Inv1TokensSumAllThreeFields) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     const auto snap = ClaudeIntegration::parseTranscriptTail(writeTranscript(tmp), false);
-    EXPECT_EQ(snap.contextTokens, 456789);
+    EXPECT_EQ(snap.contextTokens, 457127);   // + output_tokens 338
 }
 
 // INV-7 (ANTS-5631) — a compact boundary newer than every usage event is
@@ -81,7 +81,42 @@ TEST(ClaudeContextMeter, Inv7CompactBoundaryIsTheNewestReading) {
                 R"("cache_read_input_tokens":32986,"output_tokens":315}}})" "\n");
     }
     EXPECT_EQ(ClaudeIntegration::parseTranscriptTail(path, false).contextTokens,
-              88084);
+              88399);   // + output_tokens 315
+}
+
+// INV-9 (ANTS-5682) — records after the newest reply are estimated at four
+// bytes a token, from their text alone, until the next reply replaces them.
+TEST(ClaudeContextMeter, Inv9EstimatesRecordsAfterTheLastReply) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = writeTranscript(tmp);   // 457127 with output
+    const QByteArray output(40000, 'a');
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::Append));
+        // A tool result as Claude Code writes it: the output in the message
+        // and again in toolUseResult, which is not sent to the model.
+        f.write("\n" R"({"type":"user","message":{"role":"user","content":[)"
+                R"({"type":"tool_result","tool_use_id":"t1","content":")"
+                + output + R"("}]},"toolUseResult":{"stdout":")" + output
+                + R"("}})" "\n");
+    }
+    auto snap = ClaudeIntegration::parseTranscriptTail(path, false);
+    EXPECT_EQ(snap.contextTokens, 457127 + 10000)
+        << "the tool output is counted once, at bytes / 4";
+    EXPECT_TRUE(snap.contextEstimated);
+
+    // The next reply is the real figure again.
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::Append));
+        f.write(R"({"type":"assistant","message":{"stop_reason":"end_turn",)"
+                R"("usage":{"input_tokens":2,"cache_creation_input_tokens":12000,)"
+                R"("cache_read_input_tokens":456634,"output_tokens":100}}})" "\n");
+    }
+    snap = ClaudeIntegration::parseTranscriptTail(path, false);
+    EXPECT_EQ(snap.contextTokens, 468736);
+    EXPECT_FALSE(snap.contextEstimated);
 }
 
 // INV-8 (ANTS-5683) — clearing the reading zeroes it and tells the meter.
@@ -90,7 +125,7 @@ TEST(ClaudeContextMeter, Inv8ClearContextReadingHidesTheMeter) {
     ASSERT_TRUE(tmp.isValid());
     ClaudeIntegration ci;
     ci.parseTranscriptForState(writeTranscript(tmp));
-    ASSERT_EQ(ci.contextTokens(), 456789);
+    ASSERT_EQ(ci.contextTokens(), 457127);
     QSignalSpy spy(&ci, &ClaudeIntegration::contextUpdated);
     ci.clearContextReading();
     EXPECT_EQ(ci.contextTokens(), 0);
@@ -135,8 +170,8 @@ TEST(ClaudeContextMeter, Inv2PercentAgainstWindow) {
     EXPECT_EQ(ci.contextWindowTokens(), 1'000'000);
     QSignalSpy spy(&ci, &ClaudeIntegration::contextUpdated);
     ci.parseTranscriptForState(writeTranscript(tmp));
-    EXPECT_EQ(ci.contextTokens(), 456789);
-    EXPECT_EQ(ci.contextPercent(), 45);   // 456789 * 100 / 1,000,000
+    EXPECT_EQ(ci.contextTokens(), 457127);
+    EXPECT_EQ(ci.contextPercent(), 45);   // 457127 * 100 / 1,000,000
     ASSERT_GE(spy.count(), 1);
 
     spy.clear();
@@ -180,6 +215,10 @@ TEST(ClaudeContextMeter, Inv4TooltipNamesTheNumbers) {
     EXPECT_FALSE(low.contains(QStringLiteral("/compact"))) << low.toStdString();
     const QString high = contextMeterTooltip(850000, 1'000'000, 85);
     EXPECT_TRUE(high.contains(QStringLiteral("/compact"))) << high.toStdString();
+    // ANTS-5682 — an estimate says so; an exact figure does not.
+    EXPECT_FALSE(low.contains(QStringLiteral("Estimated"))) << low.toStdString();
+    const QString est = contextMeterTooltip(456789, 1'000'000, 45, true);
+    EXPECT_TRUE(est.contains(QStringLiteral("Estimated"))) << est.toStdString();
 }
 
 // INV-5 — the handler keys visibility on the token count.

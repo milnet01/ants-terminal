@@ -49,8 +49,10 @@ struct Theme;
 #include "modelautoswitch.h"
 
 // The context meter's hover text: tokens used, the window, the percentage,
-// and what to do as it fills. Pure, so a test can pin it.
-QString contextMeterTooltip(qint64 tokens, qint64 window, int percent);
+// and what to do as it fills. Pure, so a test can pin it. `estimated` says
+// the count includes records Claude has not yet reported on (ANTS-5682).
+QString contextMeterTooltip(qint64 tokens, qint64 window, int percent,
+                            bool estimated = false);
 
 class ClaudeStatusBarController : public QObject {
     Q_OBJECT
