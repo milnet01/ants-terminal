@@ -25609,6 +25609,11 @@ own design + test cycles.
   and role attributes. The user chose visible words (2026-10-13). The
   keyboard half was already provided (Tab + Enter, 2026-06-27 note).
   Card toggles (▴/▾ on each item) were left as they are.
+  Fixed (2026-10-13): the state word broke one letter per line
+  when every section was collapsed (user report, screenshot). The
+  first column is fixed at zero and grows only to nowrap content; the
+  chevron cell had none. `.rm-col-chev` is now nowrap; test
+  Ants1277StateWordStaysOnOneLine was red at 7 lines, green after.
 
 #### 🧰 Tooling — surfaced during this fold-in
 

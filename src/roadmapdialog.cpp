@@ -1073,6 +1073,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // even if a future Qt regression flips the palette path again.
         ".rm-section-toggle{color:%2;font-weight:normal;font-size:%7px;padding-right:12px;padding-left:4px;}"
         ".rm-section-state{padding-left:4px;}"
+        // ANTS-1277 — the first column is fixed at zero and grows only to
+        // nowrap content; without this, a view of collapsed sections (no card
+        // state cell to widen it) broke "closed" one letter per line.
+        ".rm-col-chev{white-space:nowrap;}"
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
         // ANTS-3392 / ANTS-5604 — the whole view is one

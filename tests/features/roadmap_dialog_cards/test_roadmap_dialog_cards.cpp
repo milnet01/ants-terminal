@@ -1303,3 +1303,38 @@ TEST(RoadmapDialogCards, Ants5610NarrowViewKeepsTheSummaryReadable) {
     EXPECT_LT(cellX(doc, t, card, 10), double(kWidth))
         << "the id column was pushed past the right edge";
 }
+
+// ANTS-1277 — the chevron cell carries the state word, in the first column,
+// which applyCardColumnGrid fixes at zero. With every section collapsed no
+// card's nowrap state cell widens that column, and "closed" broke one
+// letter per line.
+TEST(RoadmapDialogCards, Ants1277StateWordStaysOnOneLine) {
+    const QString md = QStringLiteral(
+        "# Fixture\n\n"
+        "## Per-store publication playbook\n\n"
+        "- ✅ [ANTS-9211] **Shipped.**\n"
+        "  Source: fixture.\n\n"
+        "## Memory-efficiency sweep\n\n"
+        "- 📋 [ANTS-9212] **Planned.**\n"
+        "  Source: fixture.\n");
+    RD::CardRenderOptions opts;
+    opts.activePreset = RD::Preset::Full;
+    const QString html = RD::renderCardsHtml(
+        md, kAllOn, {}, QStringLiteral("light"), RD::SortOrder::Document,
+        QString(), {}, opts);
+
+    QTextDocument doc;
+    doc.setTextWidth(1400);
+    doc.setHtml(html);
+    RoadmapDialog::applyCardColumnGrid(&doc, RD::Density::Cozy);
+
+    const QList<QTextTable *> tables = gridTablesOf(doc);
+    ASSERT_EQ(tables.size(), 1);
+    QTextTable *t = tables.first();
+    const int head = rowWith(t, QStringLiteral("publication playbook"));
+    ASSERT_GE(head, 0);
+    ASSERT_TRUE(cellText(t, head, 0).contains(QStringLiteral("closed")));
+    EXPECT_EQ(t->cellAt(head, 0).firstCursorPosition().block()
+                  .layout()->lineCount(), 1)
+        << "\"▸ closed\" broke across lines";
+}
