@@ -118,11 +118,13 @@ ClaudeBgTasksDialog::ClaudeBgTasksDialog(ClaudeBgTaskTracker *tracker,
       m_lastHtml(std::make_shared<QString>()) {
     setObjectName(QStringLiteral("claudeBgTasksDialog"));
     setWindowTitle(tr("Background Tasks"));
+    setMinimumSize(600, 400);
     resize(900, 600);
     setAttribute(Qt::WA_DeleteOnClose);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
-    auto chrome = DialogChrome::install(this, m_themeName);
+    auto chrome = DialogChrome::install(this, m_themeName, /*resizable=*/true,
+                                        QStringLiteral("ClaudeBgTasksDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *layout = new QVBoxLayout(content);

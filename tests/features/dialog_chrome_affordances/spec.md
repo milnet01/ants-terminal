@@ -45,6 +45,10 @@ function dialogs need no `Config` plumbing).
 - **INV-11 / D3 save on close still holds (ANTS-5037 guard).** After
   whatever fixes INV-9/INV-10, an explicit `close()` on a resizable+keyed
   dialog still persists its current size under that key.
+- **INV-12 / every call site opts in (ANTS-1734).** Every
+  `DialogChrome::install(` call in a `src/*.cpp` file, outside a `//`
+  comment, passes a third argument containing `true` and a fourth (the
+  size key).
 
 ## Test scope
 

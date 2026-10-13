@@ -156,7 +156,8 @@ AuditDialog::AuditDialog(const QString &projectPath,
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
     auto chrome = DialogChrome::install(this,
-                                        m_config ? m_config->theme() : QString());
+                                        m_config ? m_config->theme() : QString(),
+                                        /*resizable=*/true, QStringLiteral("AuditDialog"));
     m_contentArea = chrome.contentArea;
 
     m_process = new QProcess(this);

@@ -161,11 +161,13 @@ ClaudeTaskListDialog::ClaudeTaskListDialog(ClaudeTaskListTracker *tracker,
       m_themeName(std::move(themeName)) {
     setObjectName(QStringLiteral("claudeTaskListDialog"));
     setWindowTitle(tr("Task List"));
+    setMinimumSize(500, 320);
     resize(700, 480);
     setAttribute(Qt::WA_DeleteOnClose);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
-    auto chrome = DialogChrome::install(this, m_themeName);
+    auto chrome = DialogChrome::install(this, m_themeName, /*resizable=*/true,
+                                        QStringLiteral("ClaudeTaskListDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *layout = new QVBoxLayout(content);

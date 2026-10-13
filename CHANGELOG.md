@@ -24,6 +24,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Eight more windows can now be resized, remember their size, and open centred on the terminal: Project Audit, AI Assistant, the Claude allowlist, projects, transcript, background-task and task-list windows, and the roadmap shortcut sheet.** (ANTS-1734)
+
 - **The Roadmap viewer's section arrows now say "open" or "closed", so a screen reader announces whether a section is open.** (ANTS-1277)
 
 - **Large inline images no longer freeze the window while they load.** (ANTS-1061)

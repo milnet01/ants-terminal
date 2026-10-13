@@ -37,7 +37,8 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
     connect(m_client, &LlmClient::chunk, this, &AiDialog::onLlmChunk);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
-    auto chrome = DialogChrome::install(this);
+    auto chrome = DialogChrome::install(this, QString(), /*resizable=*/true,
+                                        QStringLiteral("AiDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *layout = new QVBoxLayout(content);

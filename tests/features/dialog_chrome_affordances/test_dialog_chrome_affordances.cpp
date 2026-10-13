@@ -6,12 +6,18 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDialog>
+#include <QDir>
 #include <QShowEvent>
 #include <QSize>
 #include <QSizeGrip>
+#include <QStringList>
 
 #include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
@@ -237,4 +243,47 @@ TEST(DialogChromeAffordances, INV11_CloseStillSavesSize) {
            "saved "
         << saved.width() << "x" << saved.height() << ", expected "
         << expected.width() << "x" << expected.height();
+}
+
+// INV-12 (ANTS-1734) — every DialogChrome::install call in src/ opts into
+// D2–D4: its third argument is `true` and it passes a fourth, the size
+// key. The default (`resizable=false`) is for this suite's own INV-2.
+// A scan of the call sites, because eight dialogs kept the default
+// after the standard listed no non-conformers.
+TEST(DialogChromeAffordances, INV12_EveryInstallCallIsResizableAndKeyed) {
+    const QDir src(QStringLiteral(SRC_DIR));
+    const QStringList files =
+        src.entryList({QStringLiteral("*.cpp")}, QDir::Files, QDir::Name);
+    ASSERT_FALSE(files.isEmpty()) << "no sources under " << SRC_DIR;
+    const std::string needle = "DialogChrome::install(";
+    int calls = 0;
+    for (const QString &name : files) {
+        const std::string text =
+            ants_test::slurpFile(src.filePath(name).toStdString());
+        for (size_t pos = text.find(needle); pos != std::string::npos;
+             pos = text.find(needle, pos + needle.size())) {
+            // A call quoted in a comment is not a call.
+            const size_t lineStart = text.rfind('\n', pos) + 1;
+            const std::string lead = text.substr(lineStart, pos - lineStart);
+            if (lead.find("//") != std::string::npos) continue;
+            // Split the arguments at top-level commas.
+            std::vector<std::string> args(1);
+            int depth = 0;
+            for (size_t i = pos + needle.size(); i < text.size(); ++i) {
+                const char ch = text[i];
+                if (ch == '(') ++depth;
+                if (ch == ')' && depth-- == 0) break;
+                if (ch == ',' && depth == 0) { args.emplace_back(); continue; }
+                args.back() += ch;
+            }
+            ++calls;
+            const int line = static_cast<int>(
+                std::count(text.begin(), text.begin() + pos, '\n')) + 1;
+            EXPECT_TRUE(args.size() >= 4
+                        && args[2].find("true") != std::string::npos)
+                << name.toStdString() << ":" << line
+                << " — install() without resizable=true and a size key";
+        }
+    }
+    EXPECT_GT(calls, 0) << "the scan found no install() calls";
 }

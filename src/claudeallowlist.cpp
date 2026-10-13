@@ -40,7 +40,8 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
     resize(650, 500);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
-    auto chrome = DialogChrome::install(this);
+    auto chrome = DialogChrome::install(this, QString(), /*resizable=*/true,
+                                        QStringLiteral("ClaudeAllowlistDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *mainLayout = new QVBoxLayout(content);

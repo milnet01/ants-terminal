@@ -277,9 +277,11 @@ auto chrome = DialogChrome::install(this, themeName,
 `install(this, theme)` stays **D1-only** (unchanged). Opted-in today:
 SettingsDialog, the review-dialog family (cold-eyes / test-audit /
 independent-review, one shared `"ReviewDialog"` key), SshDialog, the About
-box, the diff viewer, and RoadmapDialog (`"RoadmapDialog"` key, migrated
-off the legacy `saveGeometry` blob in ANTS-2012).
+box, the diff viewer, RoadmapDialog (`"RoadmapDialog"` key, migrated
+off the legacy `saveGeometry` blob in ANTS-2012), and, from ANTS-1734,
+the Project Audit, AI Assistant, Claude allowlist, projects, transcript,
+background-task and task-list dialogs and the roadmap shortcut sheet.
 
-No remaining non-conformers: every `QDialog` either opts into the
-`install` resize/persist path or is intentionally D1-only (no
-user-resizable content).
+Every `DialogChrome::install` call in `src/` passes `resizable=true` and
+a size key; `tests/features/dialog_chrome_affordances` INV-12 checks it.
+That test cannot see a `QDialog` built without `DialogChrome` at all.

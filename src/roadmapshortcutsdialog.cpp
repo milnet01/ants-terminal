@@ -22,7 +22,8 @@ RoadmapShortcutsDialog::RoadmapShortcutsDialog(const QString &themeName,
     setAccessibleName(tr("Roadmap keyboard shortcuts overlay"));
     setAttribute(Qt::WA_DeleteOnClose, false);   // INV-6: reuse instance
 
-    auto chrome = DialogChrome::install(this, themeName);
+    auto chrome = DialogChrome::install(this, themeName, /*resizable=*/true,
+                                        QStringLiteral("RoadmapShortcutsDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *root = new QVBoxLayout(content);
@@ -86,6 +87,7 @@ RoadmapShortcutsDialog::RoadmapShortcutsDialog(const QString &themeName,
     btnRow->addWidget(closeBtn);
     root->addLayout(btnRow);
 
+    setMinimumSize(360, 240);
     resize(480, 360);
 }
 

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5680 -->
+<!-- ants-roadmap-id-high-water: ANTS=5681 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -20742,7 +20742,7 @@ indie-review finding.
   Source: in-session-2026-05-21.
   Fixed 2026-05-29: removed unused `#include <functional>` from auditdialog.h (line 25).
 
-- 📋 [ANTS-1734] **Make dialogs conform to the new dialogs.md standard (D2–D4).**
+- ✅ [ANTS-1734] **Make dialogs conform to the new dialogs.md standard (D2–D4).**
   docs/standards/dialogs.md (cold-eyes-clean) sets four dialog
   invariants; the cold-eyes pass confirmed existing dialogs don't yet
   meet D2-D4. Highest-leverage fix: fold a `QSizeGrip` (D2), a
@@ -20754,6 +20754,13 @@ indie-review finding.
   `restoreGeometry` (violates D3 + D4) — switch it to bare-QSize +
   re-center. D1 (theme) already holds via DialogChrome. Kind:
   enhancement.
+  Shipped (2026-10-13): the DialogChrome half had landed earlier
+  (ANTS-1842, ANTS-2012), but eight install() call sites still took
+  the D1-only default. Each now passes resizable=true and a size key;
+  three gained a minimum size. tests/features/dialog_chrome_affordances
+  INV-12 scans every call site (red on exactly those eight, green
+  after). dialogs.md's "no remaining non-conformers" line corrected.
+  Dialogs built with no DialogChrome at all are ANTS-5681.
   **Layman:** Make every pop-up window resizable, remember the size you set, and always open centred on the terminal — like the new rulebook says.
   Kind: enhancement.
   Source: cold-eyes-2026-05-21 (dialogs.md authoring).
@@ -21879,6 +21886,20 @@ indie-review finding.
   Kind: investigate.
   Source: check-dependencies-2026-10-05.
   Lanes: lua, packaging, dependencies.
+
+- 📋 [ANTS-5681] **Four dialogs are built without DialogChrome, so they break dialogs.md D1 to D4.**
+  Each is a bare `new QDialog` / `QDialog dlg` with no
+  `DialogChrome::install` (checked 2026-10-13): the Rule Quality dialog
+  in `AuditDialog::showRuleQualityDialog`, the "Plugin permissions"
+  dialog and "Command Snippets" in mainwindow.cpp, and the dialog in
+  terminalwidget.cpp titled by its caller. So they use the native frame
+  and OS palette (D1) and get no grip, saved size or centring (D2-D4).
+  INV-12 of tests/features/dialog_chrome_affordances scans install()
+  calls only, so it cannot see these.
+  **Layman:** Four small pop-up windows ignore the terminal's colour theme and can't remember their size.
+  Kind: fix.
+  Source: in-session-2026-10-13 (found during ANTS-1734).
+  Lanes: dialogchrome, auditdialog, mainwindow, terminalwidget.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 

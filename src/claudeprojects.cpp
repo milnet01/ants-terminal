@@ -25,7 +25,8 @@ ClaudeProjectsDialog::ClaudeProjectsDialog(ClaudeIntegration *integration,
     resize(1050, 700);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
-    auto chrome = DialogChrome::install(this);
+    auto chrome = DialogChrome::install(this, QString(), /*resizable=*/true,
+                                        QStringLiteral("ClaudeProjectsDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *mainLayout = new QVBoxLayout(content);
