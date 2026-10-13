@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5681 -->
+<!-- ants-roadmap-id-high-water: ANTS=5683 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -82439,6 +82439,39 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-report-2026-10-12.
   Lanes: claudeintegration, statusbar.
 
+- 📋 [ANTS-5682] **The context gauge moves only when Claude replies, so it trails large tool output.**
+  User report 2026-10-13: the gauge feels unresponsive while Claude
+  works. Checked 2026-10-13: parseTranscriptTail (src/claudeintegration.cpp)
+  takes input + cache_creation + cache_read tokens from the newest
+  record carrying message.usage. Tool-result records carry no usage, and
+  output_tokens are not counted, so context added by a tool result shows
+  only at the next assistant record. The 50 ms watcher debounce is not
+  the cause. The window (1,000,000) matches the user's model.
+  Plan (the user chose it): add the last reply's output_tokens plus an
+  estimate (bytes / 4) for user and tool-result records written after it,
+  replaced by the next real figure; the tooltip marks an estimate.
+  Related: ANTS-5631 (after /compact), ANTS-5663 (slow to appear).
+  **Layman:** While Claude works, the context gauge lags behind: a big file or command output doesn't show until Claude's next reply.
+  Kind: fix.
+  Source: user-request-2026-10-13.
+  Lanes: claudeintegration, statusbar.
+
+- 📋 [ANTS-5683] **After a Claude Code restart the context gauge keeps the old session's figure until the new session's first reply.**
+  User report 2026-10-13. Read 2026-10-13 in pollClaudeProcess
+  (src/claudeintegration.cpp): a PID change clears m_transcriptPath and
+  the watch but emits no contextUpdated, so the gauge keeps the old
+  figure. The new transcript is found only by the 2 s poll, through
+  sessionPathForCwd's process-start freshness filter, so not before the
+  new session writes its file. The SessionStart hook payload's
+  transcript_path is not read anywhere in src/. Not yet checked: what
+  /clear (same PID, new session file) does to the gauge.
+  Fix: reset the gauge on a PID change; bind to the SessionStart
+  payload's transcript_path where its session belongs to this tab.
+  **Layman:** When you restart Claude Code, the context gauge keeps showing the old session's number for a while.
+  Kind: fix.
+  Source: user-report-2026-10-13.
+  Lanes: claudeintegration, statusbar.
+
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
 Run several Claude Code sessions on one project at once: an orchestrator deals
@@ -83944,6 +83977,9 @@ acting on it.
   timeout-minutes 50 -> 60. CiAsanBudget (11) + ci_workflow tests
   green; Inv4 seen red with the cap at 53 and green at 60. The next
   nightly is the real check.
+  Verified (2026-10-13): manual run 38371272486 on caebe14b, all four
+  jobs green. The sanitized test step took 21m57s (08:45:44 to
+  09:07:41Z), 3 s under the old 22m guard and 8 min under the new 30m.
   **Layman:** The nightly memory-safety test run now takes longer than its time limit, so it fails even when every test passes.
   Kind: fix.
   Source: user-report-2026-10-13 (nightly run 38364859702).
