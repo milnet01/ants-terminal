@@ -25856,7 +25856,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1291] **Skill-displacement decision criteria + audit.**
+- 🚫 [ANTS-1291] **Skill-displacement decision criteria + audit.**
   Walk the full `~/.claude/skills/` tree (and any plugin-shipped
   skills) and label each as `movable` / `partial` / `claude-side
   only` against the decision criterion above. Ship as a one-time
@@ -25869,6 +25869,10 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** sit down once, sort every "superpowers" skill into
   "this could be an MCP tool" vs "this needs Claude's judgement,"
   publish the list so we stop relitigating per-skill.
+  Dropped (2026-10-13, user decision): the premise is gone. ANTS-1289
+  and ANTS-1290, the tools it would extend, shipped; the skills it would
+  audit are now the user's own ~/.claude set, owned by the claude-config
+  session.
   Kind: doc.
   Source: indie-review-2026-05-13.
 
@@ -79933,7 +79937,7 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Pre-commit validation
 
-- 📋 [ANTS-1310] **`validate_commit` MCP — gate before commit.**
+- 🚫 [ANTS-1310] **`validate_commit` MCP — gate before commit.**
   Single call that runs the project's standard pre-commit checks
   (build → test → lint → drift) using the caches from ANTS-1299
   / ANTS-1300, and returns `{ok: bool, gates: {build, tests,
@@ -79945,10 +79949,13 @@ expected token-leverage per implementation hour.
   but server-side and project-aware.
   **Layman:** one MCP call that runs every gate before commit
   and returns "are you allowed to ship this yet."
+  Dropped (2026-10-13, user decision): duplicates verify_changes
+  (ANTS-1289) and the pre-push gate (tools/local-ci.sh), which already
+  run build, tests and drift before a commit is pushed.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1311] **`risk_classifier` MCP — tag edits by risk class.**
+- 🚫 [ANTS-1311] **`risk_classifier` MCP — tag edits by risk class.**
   For a proposed diff, return tags from a known set: `security`
   (touches IPC / sandbox / OSC 52 / hooks / auth), `hot_path`
   (touches paintEvent / parser inner loop / 2s timer code),
@@ -79961,6 +79968,8 @@ expected token-leverage per implementation hour.
   signals automatically.
   **Layman:** tag risky edit areas (security, hot path, public
   API) so Claude knows when to slow down and double-check.
+  Dropped (2026-10-13, user decision): no current consumer; no skill or
+  workflow branches on a risk tag.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
