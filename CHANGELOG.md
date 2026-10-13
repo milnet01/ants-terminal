@@ -45,6 +45,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The nightly memory-safety (ASan) test run has a 30-minute limit, up from 22, so a full passing run is no longer cut off before it finishes.** (ANTS-5680)
+
 - **roadmap_log amend_body keeps a list item's hanging indent when it re-wraps a joined line.** (ANTS-5677)
   On a `#### Pass` roadmap, the wrapped continuation of a `- **Key**:`
   line now starts two spaces in, under the item's text, as the rest of

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5679 -->
+<!-- ants-roadmap-id-high-water: ANTS=5680 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -83888,6 +83888,28 @@ acting on it.
   **Layman:** When several changes are pushed quickly, CI still tests every one of them in full, which may not be needed.
   Kind: investigate.
   Source: user-request-2026-09-28 (CI speed-ups).
+  Lanes: ci.
+
+- ✅ [ANTS-5680] **The nightly ASan test step outgrew its 22-minute guard again; give it 30 minutes.**
+  Measured 2026-10-13 from the scheduled runs, step "Run audit-rule
+  tests under sanitizers": 10-06 1222s, 10-07 1120s, 10-08 889s,
+  10-11 1109s passed; 10-12 and 10-13 hit `timeout 22m` (exit 124)
+  at 1320s. On 10-13 every finished test had passed; e2e_cases was
+  still running. 10-09 and 10-10 failed on
+  McpReadLog.TimeBudgetStopsAtALineAndResumes, since fixed (its
+  resume budget is now 600000 ms). The step ran 11m55s on 2026-09-11
+  (ANTS-5014); the suite has grown since.
+  Fix: guard 22m -> 30m (~1.4x the slowest passing 1222s), job
+  timeout-minutes 50 -> 60 so it stays above 24m + 30m (ANTS-4533).
+  Per-suite batching (ANTS-5014 option b, measured 46% less) is the
+  structural fix if it grows again.
+  Shipped (2026-10-13): ci.yml build-asan ctest guard 22m -> 30m, job
+  timeout-minutes 50 -> 60. CiAsanBudget (11) + ci_workflow tests
+  green; Inv4 seen red with the cap at 53 and green at 60. The next
+  nightly is the real check.
+  **Layman:** The nightly memory-safety test run now takes longer than its time limit, so it fails even when every test passes.
+  Kind: fix.
+  Source: user-report-2026-10-13 (nightly run 38364859702).
   Lanes: ci.
 
 ## Memory and performance pass (2026-09-14)
