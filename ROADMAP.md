@@ -25445,7 +25445,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-28) — already done, superseded. This 2026-05-13 item predates the optimisation it requested. Verified in src/terminalwidget.cpp: ANTS-1779 already hoisted the per-row run vector and the per-run codepoint buffer into mutable members m_paintRuns (std::vector<PaintTextRun>) + m_paintCps (std::vector<char32_t>), reused across rows AND frames via clear() (capacity retained); PaintTextRun now records its codepoints as a [cpStart, cpStart+cpLen) slice into the shared m_paintCps arena rather than owning a nested vector (terminalwidget.h:665,675-676; terminalwidget.cpp:800-808). ANTS-1149 separately hoisted the QTextLayout (m_paintLayout member) out of the per-run loop. The only remaining std::vector in the paint loop (PaintHighlightSpan `computed`, terminalwidget.cpp:775) is allocated on a highlight-cache MISS only, then moved into m_hlSpanCache — not per-frame. No per-row/per-frame heap churn remains. No code change made: churning a hot, already-optimised paint path would be redundant (the item's own caveat was 'measure perf-overlay delta first' — there is no delta to capture).
 
-- 📋 [ANTS-1277] **Keyboard nav + aria-expanded on collapsible cards (roadmapdialog).**
+- ✅ [ANTS-1277] **Keyboard nav + aria-expanded on collapsible cards (roadmapdialog).**
   `src/roadmapdialog.cpp:1888`. The dialog
   binds `/`, `?`, `Esc`, `F5`, `Ctrl+C/A`, arrows, `PgUp/Dn`,
   `Home/End`, `Tab` — but there is NO keyboard path to expand a
@@ -25461,6 +25461,13 @@ own design + test cycles.
   Kind: accessibility.
   Source: indie-review-2026-05-13.
   Progress (2026-06-27): the viewer is a QTextBrowser whose default Qt::TextBrowserInteraction already includes LinksAccessibleByKeyboard, so the keyboard-expand half is already provided by the framework — Tab focuses an ants:// section/card toggle anchor and Enter activates it (no flags overridden anywhere). The remaining ask (aria-expanded / role=button on the chevrons) is unverifiable against QTextDocument's accessibility bridge, which exposes plain text + link targets, not custom HTML attributes — emitting aria-* would be a likely no-op. Left planned for a proper screen-reader (Orca/QAccessible) verification pass that can confirm what actually surfaces before adding markup.
+  Shipped (2026-10-13): each section toggle reads "▾ open" or
+  "▸ closed" (span rm-section-state inside the link; tests/features/
+  roadmap_dialog_cards INV-33, seen red against HEAD and green after).
+  aria-* was not added: a Qt 6 check showed QTextDocument drops aria-*
+  and role attributes. The user chose visible words (2026-10-13). The
+  keyboard half was already provided (Tab + Enter, 2026-06-27 note).
+  Card toggles (▴/▾ on each item) were left as they are.
 
 #### 🧰 Tooling — surfaced during this fold-in
 

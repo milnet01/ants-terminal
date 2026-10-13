@@ -24,6 +24,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Roadmap viewer's section arrows now say "open" or "closed", so a screen reader announces whether a section is open.** (ANTS-1277)
+
 - **Large inline images no longer freeze the window while they load.** (ANTS-1061)
   iTerm2 and Kitty PNG images are now decoded on the tab's background
   parse thread. A 4096-pixel image used to hold the window for about

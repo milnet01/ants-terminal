@@ -497,6 +497,32 @@ static int runMain(int argc, char **argv) {
                 "ANTS-7003 (3rd Perf) leaked into expanded view");
     }
 
+    // ANTS-1277 — INV-33: a section's toggle link names its state in
+    // words after the chevron, so a screen reader announces it. Qt's
+    // QTextDocument drops aria-* attributes, so the word is the only
+    // carrier.
+    {
+        RD::CardRenderOptions opts;
+        opts.activePreset = RD::Preset::Full;
+        // The release sections are opened too, or their Performance
+        // headings do not render at all.
+        opts.expandedSections.insert(QStringLiteral("performance-2"));
+        opts.expandedSections.insert(QStringLiteral("0-8-0-release"));
+        opts.expandedSections.insert(QStringLiteral("0-7-0-release"));
+        opts.expandedSections.insert(QStringLiteral("beyond-1-0"));
+        const std::string h = RD::renderCardsHtml(
+            fixtureDuplicateHeadings(), kAllOn, {}, QStringLiteral("light"),
+            RD::SortOrder::Document, QString(), {}, opts).toStdString();
+        if (!contains(h, "href=\"ants://collapse-section/performance-2\">▾"
+                         "<span class=\"rm-section-state\">open</span></a>"))
+            fail("SectionStateWord",
+                "the open section's toggle does not say \"open\"");
+        if (!contains(h, "href=\"ants://expand-section/performance\">▸"
+                         "<span class=\"rm-section-state\">closed</span></a>"))
+            fail("SectionStateWord",
+                "a closed section's toggle does not say \"closed\"");
+    }
+
     // ANTS-1239 — section-header <a> tags carry an explicit color.
     // Source-grep guards against a regression to `color:inherit`
     // which Qt's text engine doesn't honor for <a> (it falls back

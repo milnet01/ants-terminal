@@ -1072,6 +1072,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // as belt-and-braces so dark-theme section headers stay legible
         // even if a future Qt regression flips the palette path again.
         ".rm-section-toggle{color:%2;font-weight:normal;font-size:%7px;padding-right:12px;padding-left:4px;}"
+        ".rm-section-state{padding-left:4px;}"
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
         // ANTS-3392 / ANTS-5604 — the whole view is one
@@ -1220,6 +1221,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         }
         const QString chevron = sectionExpanded
             ? QStringLiteral("▾") : QStringLiteral("▸");
+        // ANTS-1277 — the state in words, inside the link, so a screen
+        // reader announces it. QTextDocument drops aria-* and role
+        // attributes (checked 2026-10-13), so a visible word is the carrier.
+        const QString stateWord = sectionExpanded ? tr("open") : tr("closed");
         const QString verb = sectionExpanded
             ? QStringLiteral("collapse-section")
             : QStringLiteral("expand-section");
@@ -1231,8 +1236,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         html += QStringLiteral(
             "<tr class=\"rm-section\"><td class=\"rm-hd rm-col-chev\">"
             "<a name=\"%1\"></a>"
-            "<a class=\"rm-section-toggle\" href=\"ants://%2/%3\">%4</a>"
-            "</td>").arg(anchor, verb, slug, chevron);
+            "<a class=\"rm-section-toggle\" href=\"ants://%2/%3\">%4"
+            "<span class=\"rm-section-state\">%5</span></a>"
+            "</td>").arg(anchor, verb, slug, chevron, htmlEscape(stateWord));
         for (const int n : {c.done, c.inProgress, c.planned, c.considered,
                             c.dropped})
             html += QStringLiteral("<td class=\"rm-hd rm-count\">%1</td>")
