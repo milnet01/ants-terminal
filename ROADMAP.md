@@ -85619,10 +85619,36 @@ a modern terminal" release.
   shrink does not exist. Scrollback memory is owned by ANTS-4534 (the
   64-byte Cell).
 
-- 📋 [ANTS-1061] **Async image decoding.**
+- 🚧 [ANTS-1061] **Async image decoding.**
   Hand sixel/Kitty/iTerm2 payloads to
   `QtConcurrent::run`; render a placeholder cell until `QImage`
   future resolves. Big sixel frames stop blocking the prompt.
+  Progress (2026-10-13). Measured with a throwaway timer over
+  TerminalGrid::processAction (QT_QPA_PLATFORM=offscreen, -O2): one
+  4096x4096 PNG via Kitty f=100 or iTerm2 holds the GUI thread 100-120 ms;
+  1920 px about 20-40 ms; sixel up to 2000x2000 under 10 ms. So scope is
+  iTerm2 and Kitty PNG; sixel stays synchronous (cheap, and bounded by
+  ANTS-5076's work cap).
+  Design decision (not the placeholder this item first proposed, which
+  would have to guess the cursor advance before the size is known):
+  decode on VtStream's existing parse worker. New src/inlineimagedecode.{h,cpp}
+  (ants_core_lib): strict base64, peek-then-decode, OSC 1337 split, Kitty
+  key parse + ANTS-5676 continuation merge, and inlineimage::Predecoder,
+  which follows Kitty chunking. VtBatch::images carries {action index,
+  PredecodedImage}; VtAction is NOT given a field (one exists per parsed
+  byte). TerminalWidget::onVtBatch passes each to
+  TerminalGrid::processAction(action, predecoded); the grid uses it only
+  when PredecodedImage::matches() the base64 it would decode (size +
+  std::hash), else decodes itself. Budget, placement and replies stay in
+  the grid. Hot reload: none needed; reaches users at the next terminal
+  start like any grid change.
+  State: code written and the whole tree builds; scrape tests
+  image_bomb_png_header_peek and terminalgrid_image_budget_hardening
+  re-pointed at the new file (specs updated, INV-4 added) but not yet
+  re-run. Left: a behavioural test dir (predecoder decodes iTerm2 and
+  chunked Kitty; grid uses a matching image, ignores a mismatched one;
+  VtStream ships VtBatch::images), re-measure GUI-thread time, full gate,
+  CHANGELOG, commit.
   **Layman:** Decode images in the background so a large image no longer freezes the prompt while it loads.
   Kind: refactor.
 
