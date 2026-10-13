@@ -82441,6 +82441,18 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   before this build, so this is either a third cause or one of those
   not fully closed. Start with locate-defect: what the gauge waits for
   before its first paint, and whether a long single turn starves it.
+  Progress (2026-10-13): not reproduced. Ruled out: (1) ANTS-5657 was
+  in d3dc355c (d97b9506 is its ancestor), so the 32 KB timestamp case
+  is not it. (2) The six newest OneUp transcripts, replayed record by
+  record through parseTranscriptTail's window rules (no non-sidechain
+  usage record in the window = no figure), lack a figure only for a few
+  seconds after very large records, never for minutes. None of those
+  records were sidechain. So the parse is not the cause. Left: the
+  transcript is never resolved (pollClaudeProcess finds another claude
+  process, or sessionPathForCwd rejects the file), and the status label
+  comes from elsewhere. The Ants debug log ends 2026-10-09, so it says
+  nothing about 2026-10-12. Next sighting: turn on the Claude debug
+  category and read its "hook recv" and "hook-drop" lines for that tab.
   **Layman:** The 'Context %' reading in the bottom bar took a long time to show up for one tab, even though Claude had been working there for minutes.
   Kind: fix.
   Source: user-report-2026-10-12.
