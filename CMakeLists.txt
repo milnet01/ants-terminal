@@ -4334,6 +4334,10 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_INLINEIMAGEDECODE_PATH="${CMAKE_SOURCE_DIR}/src/inlineimagedecode.cpp")
+    # ANTS-5683 — the context meter test scrapes pollClaudeProcess.
+    set_property(SOURCE tests/features/claude_context_meter/test_claude_context_meter.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CLAUDEINTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp")
     set_property(SOURCE tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_VTSTREAM_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.h")

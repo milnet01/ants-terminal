@@ -49,6 +49,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The context gauge clears when Claude Code exits or restarts, and shows the new session's figure once it has one** (ANTS-5683)
+
 - **After a compact, the context gauge shows the new, smaller size straight away instead of waiting for Claude's next reply.** (ANTS-5631)
 
 - **The nightly memory-safety (ASan) test run has a 30-minute limit, up from 22, so a full passing run is no longer cut off before it finishes.** (ANTS-5680)

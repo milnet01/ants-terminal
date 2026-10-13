@@ -18,6 +18,9 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #  error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
 #endif
+#ifndef SRC_CLAUDEINTEGRATION_CPP_PATH
+#  error "SRC_CLAUDEINTEGRATION_CPP_PATH compile definition required"
+#endif
 
 namespace {
 
@@ -79,6 +82,49 @@ TEST(ClaudeContextMeter, Inv7CompactBoundaryIsTheNewestReading) {
     }
     EXPECT_EQ(ClaudeIntegration::parseTranscriptTail(path, false).contextTokens,
               88084);
+}
+
+// INV-8 (ANTS-5683) — clearing the reading zeroes it and tells the meter.
+TEST(ClaudeContextMeter, Inv8ClearContextReadingHidesTheMeter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ClaudeIntegration ci;
+    ci.parseTranscriptForState(writeTranscript(tmp));
+    ASSERT_EQ(ci.contextTokens(), 456789);
+    QSignalSpy spy(&ci, &ClaudeIntegration::contextUpdated);
+    ci.clearContextReading();
+    EXPECT_EQ(ci.contextTokens(), 0);
+    EXPECT_EQ(ci.contextPercent(), 0);
+    ASSERT_EQ(spy.count(), 1);
+    EXPECT_EQ(spy.takeFirst().at(0).toInt(), 0);
+    // Nothing to clear: no signal, so a poll with no Claude stays quiet.
+    ci.clearContextReading();
+    EXPECT_EQ(spy.count(), 0);
+}
+
+// INV-8 — pollClaudeProcess clears it when Claude exits and when another
+// Claude process replaces it. Source scrape: the poll walks /proc for a real
+// child named claude, which a unit test cannot stage.
+TEST(ClaudeContextMeter, Inv8PollClearsOnExitAndOnNewProcess) {
+    const std::string src = ants_test::slurpFile(SRC_CLAUDEINTEGRATION_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const size_t at = src.find("void ClaudeIntegration::pollClaudeProcess() {");
+    ASSERT_NE(at, std::string::npos);
+    const std::string body = src.substr(at, src.find("\n}\n", at) - at);
+
+    const size_t gone = body.find("if (!found) {");
+    ASSERT_NE(gone, std::string::npos);
+    const std::string goneBlock =
+        body.substr(gone, body.find("return;", gone) - gone);
+    EXPECT_NE(goneBlock.find("clearContextReading();"), std::string::npos)
+        << "Claude exited, but the meter keeps its reading";
+
+    const size_t changed = body.find("if (pidChanged) {");
+    ASSERT_NE(changed, std::string::npos);
+    const std::string changedBlock =
+        body.substr(changed, body.find("\n    }\n", changed) - changed);
+    EXPECT_NE(changedBlock.find("clearContextReading();"), std::string::npos)
+        << "a new Claude process inherits the old session's reading";
 }
 
 // INV-2

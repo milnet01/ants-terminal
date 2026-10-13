@@ -31,6 +31,12 @@ partially sighted, so the meter must be large and readable.
   carrying `message.usage` sets the size to its `compactMetadata.postTokens`;
   a usage event after it wins again. *Test:*
   `Inv7CompactBoundaryIsTheNewestReading`. (ANTS-5631)
+- **INV-8** — when the focused shell's Claude process exits or is replaced
+  by another, the reading is cleared and `contextUpdated(0)` is emitted, so
+  the meter hides until the new session reports a size. *Tests:*
+  `Inv8ClearContextReadingHidesTheMeter` and
+  `Inv8PollClearsOnExitAndOnNewProcess` (source scrape of
+  `pollClaudeProcess`). (ANTS-5683)
 
 ## Reload
 

@@ -135,6 +135,9 @@ public:
     static constexpr qint64 kDefaultContextWindowTokens = 1'000'000;
     qint64 contextWindowTokens() const { return m_contextWindowTokens; }
     void setContextWindowTokens(qint64 tokens);
+    // ANTS-5683 — drop the reading when the Claude it came from is gone
+    // (exited or replaced), and emit contextUpdated(0) so the meter hides.
+    void clearContextReading();
     bool planMode() const { return m_planMode; }
 
     // session_id from the most recent hook event. Updated before any

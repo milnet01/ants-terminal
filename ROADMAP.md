@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5683 -->
+<!-- ants-roadmap-id-high-water: ANTS=5684 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -82463,7 +82463,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-10-13.
   Lanes: claudeintegration, statusbar.
 
-- 📋 [ANTS-5683] **After a Claude Code restart the context gauge keeps the old session's figure until the new session's first reply.**
+- ✅ [ANTS-5683] **After a Claude Code restart the context gauge keeps the old session's figure until the new session's first reply.**
   User report 2026-10-13. Read 2026-10-13 in pollClaudeProcess
   (src/claudeintegration.cpp): a PID change clears m_transcriptPath and
   the watch but emits no contextUpdated, so the gauge keeps the old
@@ -82478,9 +82478,36 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   shipped first; then this item; then ANTS-5682 (estimate between
   replies, design the user chose); then ANTS-5663. The user did NOT
   report the tab-switch blank, so it is not in scope.
+  Resolved 2026-10-13: pollClaudeProcess calls the new
+  clearContextReading() when Claude exits and when another Claude process
+  replaces it, so the gauge hides instead of showing the old figure, and
+  returns with the new session's first size. Spec INV-8; tests
+  Inv8ClearContextReadingHidesTheMeter and
+  Inv8PollClearsOnExitAndOnNewProcess. Binding from the SessionStart
+  payload was not built: it carries no process id to tie it to this tab.
+  That part and the /clear case moved to ANTS-5684.
   **Layman:** When you restart Claude Code, the context gauge keeps showing the old session's number for a while.
   Kind: fix.
   Source: user-report-2026-10-13.
+  Lanes: claudeintegration, statusbar.
+
+- 📋 [ANTS-5684] **Check what /clear does to the context gauge, and bind a new session's transcript from the SessionStart hook only where it can be tied to this tab.**
+  Split from ANTS-5683, which shipped the reset on a Claude exit or a
+  process change. Two open questions, read 2026-10-13 in
+  src/claudeintegration.cpp:
+  1. /clear keeps the PID. If it starts a new session file,
+  isFocusedTabSession compares the new session_id with the old
+  transcript's name, so the SessionStart is dropped, and
+  pollClaudeProcess re-resolves only on a PID change or an empty path.
+  The gauge would then stay on the old transcript. Not yet reproduced.
+  2. The SessionStart payload carries transcript_path but no process id,
+  and nothing in src/ adds one. During the cold start
+  isFocusedTabSession accepts any session, so binding from it could pick
+  up a sibling tab's session. A fix needs a way to tie the hook to this
+  tab's Claude (the hook's parent pid, or the payload's cwd plus a check).
+  **Layman:** After typing /clear in Claude Code, the context gauge may keep showing the old conversation's number; this item checks that and fixes it if so.
+  Kind: investigate.
+  Source: in-session-2026-10-13 (split from ANTS-5683).
   Lanes: claudeintegration, statusbar.
 
 ### Colony — multi-session orchestration (user-request 2026-09-06)

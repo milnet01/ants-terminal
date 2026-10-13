@@ -325,6 +325,7 @@ void ClaudeIntegration::pollClaudeProcess() {
         // below does NOT subsume the not-found case.
         m_claudePid = 0;
         m_transcriptPath.clear();
+        clearContextReading();   // ANTS-5683 — the reading was that Claude's
         // Indie-review 2026-05-13: prune the plan-mode cache for this
         // shell-pid. Linux PID reuse is fast; a tab that crashed before
         // closeTab ran would otherwise poison a future tab assigned the
@@ -353,6 +354,9 @@ void ClaudeIntegration::pollClaudeProcess() {
         m_transcriptPath.clear();
         const QStringList watched = m_transcriptWatcher.files();
         if (!watched.isEmpty()) m_transcriptWatcher.removePaths(watched);
+        // ANTS-5683 — and so does its reading. Kept, the meter showed the
+        // old session's figure until the new session's first reply.
+        clearContextReading();
     }
 
     // ANTS-4457 — resolve on a PID change AND whenever we still hold no
@@ -1074,6 +1078,13 @@ void ClaudeIntegration::setContextWindowTokens(qint64 tokens) {
     m_contextPercent = static_cast<int>(std::min<qint64>(
         100, m_contextTokens * 100 / m_contextWindowTokens));
     emit contextUpdated(m_contextPercent);
+}
+
+void ClaudeIntegration::clearContextReading() {
+    if (m_contextTokens <= 0 && m_contextPercent == 0) return;
+    m_contextTokens = 0;
+    m_contextPercent = 0;
+    emit contextUpdated(0);
 }
 
 void ClaudeIntegration::parseTranscriptForState(const QString &path) {
