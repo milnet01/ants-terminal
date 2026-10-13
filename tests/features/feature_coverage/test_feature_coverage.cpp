@@ -102,6 +102,16 @@ void testExtractLineNumbering() {
     }
 }
 
+// INV-6a (ANTS-2122) — a file:line citation is reduced to its file; key:value
+// pairs, id placeholders and test-family shorthand are not names.
+void testExtractNonNames() {
+    const QString md = "See `aidialog.cpp:115-137`, `flipped_count:1`, `ANTS-NN`,\n"
+                       "`Inv3b`, `Ants5118Inv1`, `Foo::bar` and `Inv2_FullName`.\n";
+    expectTokens("extract.nonNames",
+                 FeatureCoverage::extractSpecTokens(md),
+                 {"aidialog.cpp", "Foo::bar", "Inv2_FullName"});
+}
+
 // ---------------------------------------------------------------------------
 // Lane 1 — drift (invariants 7-8)
 // ---------------------------------------------------------------------------
@@ -460,6 +470,7 @@ static int runMain() {
     testExtractStopwordsDropped();
     testExtractDedup();
     testExtractLineNumbering();
+    testExtractNonNames();
 
     testDriftPredicateFilter();
     testDriftAllFound();

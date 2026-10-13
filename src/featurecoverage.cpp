@@ -95,6 +95,31 @@ static bool isPseudoToken(const QString &tok) {
     return false;
 }
 
+// ANTS-2122 — shapes in a feature spec that are not names. Feature-spec lane
+// only: the contract-doc lane (extractDocLiteralTokens) has its own contract.
+static bool isNonNameShape(const QString &tok) {
+    // An id placeholder (`ANTS-NN`) and test-family shorthand
+    // (`Inv4`, `Inv3b`, `Ants3815`, `Ants5118Inv1`) name no symbol; they
+    // resolved only as substrings of longer names.
+    static const QRegularExpression idPlaceholder(R"(^[A-Z]+-N+$)");
+    if (idPlaceholder.match(tok).hasMatch()) return true;
+    static const QRegularExpression testFamily(R"(^(Ants\d+)?(Inv\d+[a-z]?)?$)");
+    if (testFamily.match(tok).hasMatch()) return true;
+    // A `key:value` pair (one colon, not `::`) is report or JSON text.
+    if (tok.contains(QLatin1Char(':')) && !tok.contains(QStringLiteral("::")))
+        return true;
+    return false;
+}
+
+// ANTS-2122 — `file.cpp:143` or `file.cpp:115-137` claims the file exists, so
+// the line part is cut and the file is what gets checked.
+static QString reduceFileLineCitation(const QString &tok) {
+    static const QRegularExpression fileLine(
+        R"(^(.+\.[A-Za-z0-9]+):\d+(-\d+)?$)");
+    const auto m = fileLine.match(tok);
+    return m.hasMatch() ? m.captured(1) : tok;
+}
+
 QList<SpecToken> extractSpecTokens(const QString &specText) {
     // Identifier-shaped token between backticks. First char alpha/underscore;
     // remainder alphanumeric/underscore/colon/hyphen/dot — covers CamelCase,
@@ -112,9 +137,10 @@ QList<SpecToken> extractSpecTokens(const QString &specText) {
         QRegularExpressionMatchIterator it = tokenRe.globalMatch(lines[i]);
         while (it.hasNext()) {
             const auto m = it.next();
-            const QString tok = m.captured(1);
+            const QString tok = reduceFileLineCitation(m.captured(1));
             if (stop.contains(tok)) continue;
             if (isPseudoToken(tok)) continue;
+            if (isNonNameShape(tok)) continue;
             // Pure numeric tail → noise (e.g. `1024`). The regex already
             // requires alpha-leading, but a token like `a123` could slip
             // through if alpha-then-all-digits; we keep those — they're

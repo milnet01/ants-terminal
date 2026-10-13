@@ -15013,6 +15013,18 @@ class; the deferrals below cover the rest.
   deliberately does not exist in plain text, never in backticks. The
   lane reads only backticked tokens, so the convention needs no lane
   code. Next: steps (1), (3) and (4) as re-sequenced above.
+  Progress (2026-10-13), step (1) shipped: extractSpecTokens reduces
+  file:line(-line) citations to the file, and drops key:value pairs, id
+  placeholders and Inv/AntsN test shorthand (feature_coverage INV-6a).
+  The contract-doc lane is untouched. Measured with a throwaway harness
+  linked against the lane, 722 specs: current-lane findings 165 -> 93 (73
+  removed, every one a non-name; one new, qwidget.h:904, a Qt header that
+  had passed by accident). Boundary-matcher additions 26 -> 11; the 11 are
+  step (3)'s spec wording: git_diff, isCatastrophic, osc9 and
+  VtStream::onStart to plain text; m_currentTerminal,
+  SessionManager::saveAll, updateAvailableLabel, SteppedParseEqualsColdParse,
+  a wrapped wildcardToRegularExpression, _enabled and _H_PATH to their real
+  names. The 93 current findings are their own sweep.
 
 - ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.

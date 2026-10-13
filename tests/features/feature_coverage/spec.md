@@ -48,6 +48,18 @@ to identifier-shaped ones.
 6. **Line numbers are 1-based.** The first line of the input is
    line 1, not line 0.
 
+6a. **Shapes that are not names are reduced or dropped** (ANTS-2122).
+    A `file:line` or `file:line-line` citation becomes the file name,
+    since the file's existence is what it claims. A `key:value` pair
+    (one colon, not `::`), an id placeholder such as `ANTS-NN`, and
+    test-family shorthand (`Inv4`, `Ants3815`, `Ants5118Inv1`) are
+    dropped. Given
+
+        See `aidialog.cpp:115-137`, `flipped_count:1`, `ANTS-NN`,
+        `Inv3b`, `Ants5118Inv1`, `Foo::bar` and `Inv2_FullName`.
+
+    the extractor returns `{aidialog.cpp, Foo::bar, Inv2_FullName}`.
+
 ## Lane 1 — Drift detection (invariants 7-8)
 
 7. **Predicate controls the filter.** `findDriftTokens` with a

@@ -24,6 +24,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Project Audit's spec-drift check reads file:line citations as files, and skips key:value text and test shorthand.** (ANTS-2122)
+  On this project its findings fell from 165 to 93, all of the removed
+  ones being citations of files that exist or report text such as
+  `flipped_count:1`.
+
 - **Scrollback search ignores the blank cells after the end of each line.** (ANTS-2000)
   A search for a space now finds only spaces inside lines, so it no
   longer freezes the window: about ten times faster over 50,000
