@@ -778,6 +778,18 @@ TEST(RoadmapStoreSchema, Inv25FilingPathsAreClosed) {
         << "unfileItem() must take the item's filing and nothing else — the "
            "narration row in the same section is payload nothing re-inserts";
 
+    // ANTS-3760 — fileItem() refuses a section in another project, as
+    // putItem() does ("Items are never global"). No schema constraint catches
+    // it, so without the method's own check the row would simply land.
+    const qint64 otherP = f.project(QStringLiteral("beta"));
+    const qint64 otherS = f.section(otherP);
+    err.clear();
+    EXPECT_FALSE(f.store.fileItem(pk, otherS, 1, &err))
+        << "fileItem() filed an item in another project's section";
+    EXPECT_TRUE(err.contains(QStringLiteral("not in project")))
+        << "must be refused by fileItem()'s own same-project check; got: "
+        << err.toStdString();
+
     // And fileItem() FILES an item that is not filed — the case § 2.6's element
     // rebuild needs and the whole reason the method exists.
     err.clear();

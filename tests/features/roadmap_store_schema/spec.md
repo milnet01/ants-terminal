@@ -106,7 +106,10 @@ refuses `kind='item'` and `fileItem()` refuses an already-filed item, so
 `putItem()` and `fileItem()` stay the only ways an item acquires a filing. A
 third leg covers `unfileItem()`, the only way back: it must take **one item's**
 filing and leave the section's other element rows alone, since a narration row
-in that section is payload nothing re-inserts. The
+in that section is payload nothing re-inserts. A fourth leg (ANTS-3760):
+`fileItem()` refuses a section in another project, as `putItem()` does, since
+ANTS-3756 § 2.3 has the store validate that rule before every insert and the
+schema has no constraint for it. The
 assertion is on the refusal's **shape**, not its existence, and that is forced
 by the schema: the `element` CHECK and `elem_item_uq` refuse both cases too, so
 a method that passed its arguments straight through would also return `false`.

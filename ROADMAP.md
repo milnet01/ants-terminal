@@ -35363,7 +35363,7 @@ against current source before filing.
   Kind: doc.
   Source: user-question-2026-07-30 (during ANTS-3753 cold-eyes).
 
-- 📋 [ANTS-3760] **ANTS-3756 deferred tail — verified findings left unfixed at the cold-eyes cap, plus the split recommendation.**
+- ✅ [ANTS-3760] **ANTS-3756 deferred tail — verified findings left unfixed at the cold-eyes cap, plus the split recommendation.**
   These are VERIFIED and UNFIXED. Do NOT re-review to rediscover them — a
   fresh loop costs a full multi-agent dispatch to regenerate what is
   already written here. Fold them in directly.
@@ -35432,6 +35432,18 @@ against current source before filing.
   engine, location, schema, concurrency) and the EXPORT (2.4 and
   INV-1/2/5/12/13 — serialisation and round-trip). Nearly all loop-2 and
   loop-3 collateral landed in the export half.
+  Resolved (2026-10-13). Re-checked all sixteen against today's
+  ANTS-3756, ANTS-3761, roadmap-data-model.md and src/roadmapstore.cpp:
+  1-4 and 6-13 and 15 were fixed in the 2026-07-30 loop rows (3-split to
+  6-decision) and the implementation; 16, the split, is ANTS-3761. One
+  real gap under 5: RoadmapStore::fileItem() filed an item into another
+  project's section, while ANTS-3756 § 2.3 says the store validates that
+  rule before every insert. It now refuses as putItem() does
+  (roadmap_store_schema INV-25 fourth leg, red before). Its two callers
+  resolve the section inside the caller's project, so no live write was
+  wrong. 14 (dst_path vs doc) closed n/a: the two name different roles,
+  a relationship's target and a citation's anchor, and renaming either
+  is a schema and export-format change for no reader's gain.
   **Layman:** The leftover review notes for the store spec, written down so nobody has to re-run the review to find them again.
   Kind: doc.
   Source: cold-eyes-2026-07-30 (ANTS-3756 loop 3, converged by cap).
@@ -88197,6 +88209,17 @@ here.)
   asymmetry is wrong anywhere else RcGate is the write gate. This item found it
   in session_memory because that is where it hurt, not because it is the only
   place focus is standing in for tenancy.
+  Re-checked (2026-10-13): the write path still gates through
+  RcGate::checkCallerCwd against resolveRootCanonical(m_roots)
+  (cmdSessionMemory, remotecontrol_coldeyes.cpp). But since ANTS-4932 the
+  verb runs in ants-mcpd, whose RootProvider is ServerCwdRootProvider:
+  fallbackRoot() is the process cwd, which the client set to its own
+  working directory (ANTS-4932 § 2.1). So through ants-mcpd the gate
+  already compares caller_cwd with the session's own project, the tenancy
+  check this item asks for, and focus does not enter. The focused-tab
+  gate survives only on the terminal's fallback endpoint
+  (MainWindowRootProvider). Waiting on the user: close as superseded by
+  ants-mcpd, or amend ANTS-1435 (gated) for the fallback path.
 
 - ✅ [ANTS-4343] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
   Found in ANTS-4065 Phase D2. `ANTS-4141`…`ANTS-4145` were allocated by

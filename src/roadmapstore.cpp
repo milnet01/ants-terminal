@@ -2073,6 +2073,23 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
         return false;
     }
 
+    // ANTS-3760 — same-project rule, as putItem() states it: "Items are never
+    // global". No schema constraint covers it, so this check is the rule.
+    QSqlQuery same(m_db);
+    same.prepare(QStringLiteral(
+        "SELECT s.project_id, i.project_id FROM section s, item i "
+        "WHERE s.section_id = ? AND i.item_pk = ?"));
+    same.addBindValue(sectionId);
+    same.addBindValue(itemPk);
+    if (!same.exec() || !same.next()
+        || same.value(0).toLongLong() != same.value(1).toLongLong()) {
+        if (error)
+            *error = QStringLiteral("section %1 is not in project %2")
+                         .arg(sectionId).arg(same.isValid()
+                                                 ? same.value(1).toLongLong() : -1);
+        return false;
+    }
+
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "INSERT INTO element (section_id, position, kind, item_pk) VALUES (?,?, 'item', ?)"));
