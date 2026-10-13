@@ -24314,6 +24314,14 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   Kind: implement.
   Source: cold-eyes-2026-05-21.
   Cross-ref (ANTS-1750 § 2.6): events are now delivered async on a worker thread. The only veto-capable event is `keypress` (swallow a key by returning `false`); when wired it MUST use a `Qt::BlockingQueuedConnection` with a bounded ~5–10 ms timeout (`QSemaphore::tryAcquire`/wait-condition — Qt has no native timeout), and on timeout proceed un-vetoed + demote the plugin to observe-only, so a slow keypress handler degrades to a single sub-frame hiccup rather than re-introducing the freeze. The other six stay fire-and-forget.
+  Decided by the user (2026-10-13): split the work. Wire title_changed,
+  tab_created and tab_closed now, with a test each (low rate, fire and
+  forget). Write and gate a short spec (write-spec, review-contract)
+  for output, line, prompt and keypress before building them: their
+  rate on the output path and keypress's bounded veto (the ANTS-1750
+  § 2.6 note above) are the design choices. Re-checked the same day:
+  all seven appear only in luaengine.cpp's eventFromString; none has a
+  fireEvent call site.
 
 - ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.
@@ -88149,7 +88157,7 @@ here.)
   in a different code and is filed as ANTS-4656 rather than left inside this
   closure.
 
-- 📋 [ANTS-4145] **`session_memory` write ops key their tenancy gate on the FOCUSED tab, so a session in any other tab cannot save its own project's state.**
+- 🚫 [ANTS-4145] **`session_memory` write ops key their tenancy gate on the FOCUSED tab, so a session in any other tab cannot save its own project's state.**
   Hit 2026-08-13 trying to persist Phase D2's resume state before a
   relaunch — the verb's headline use case. From an Ants_Terminal session:
 
@@ -88220,6 +88228,11 @@ here.)
   gate survives only on the terminal's fallback endpoint
   (MainWindowRootProvider). Waiting on the user: close as superseded by
   ants-mcpd, or amend ANTS-1435 (gated) for the fallback path.
+  Closed by the user (2026-10-13) as superseded by ants-mcpd: there the
+  write gate compares caller_cwd with the server's own cwd, which is the
+  session's project, so focus does not matter. The focused-tab gate
+  survives only on the terminal fallback endpoint; ANTS-1435 still
+  describes it.
 
 - ✅ [ANTS-4343] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
   Found in ANTS-4065 Phase D2. `ANTS-4141`…`ANTS-4145` were allocated by
