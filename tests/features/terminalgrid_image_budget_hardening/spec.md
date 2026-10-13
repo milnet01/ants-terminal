@@ -19,9 +19,15 @@ iTerm2 base64; 2026-06-11 terminalgrid M2: the Kitty graphics path).
   invalid bytes and fed a garbage-prefixed stream to the image loader /
   raw-pixel `.copy()`. A failed decode leaves the image null → the existing
   ENODATA Kitty-protocol response fires.
+- **INV-4** (ANTS-1061) both handlers strict-decode through
+  `inlineimage::decodeBase64Strict` in `src/inlineimagedecode.cpp`, which uses
+  `fromBase64Encoding` + `AbortOnBase64DecodingErrors`. `VtStream`'s parse
+  worker decodes the same payloads ahead of the grid, through the same helper
+  and, for iTerm2, behind the same `kMaxInlineImageB64Bytes` bound.
 
 ## Test
 
-Source-grep conformance against `src/terminalgrid.cpp` (mirrors
+Source-grep conformance against `src/terminalgrid.cpp` and
+`src/inlineimagedecode.cpp` (mirrors
 `image_bomb_png_header_peek` — a live image test would either pass silently or
 hang CI; the regression class is "a future edit drops the guard").

@@ -2325,8 +2325,15 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         }
     }
 
-    for (const auto &action : batch->actions) {
-        m_grid->processAction(action);
+    // ANTS-1061 — hand each action the image the worker decoded from it.
+    auto image = batch->images.cbegin();
+    for (std::size_t i = 0; i < batch->actions.size(); ++i) {
+        const PredecodedImage *predecoded = nullptr;
+        if (image != batch->images.cend() && image->first == i) {
+            predecoded = image->second.get();
+            ++image;
+        }
+        m_grid->processAction(batch->actions[i], predecoded);
     }
 
     if (m_scrollOffset > 0) {

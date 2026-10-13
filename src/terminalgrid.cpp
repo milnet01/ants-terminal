@@ -1,9 +1,7 @@
 #include "terminalgrid.h"
 
 #include <QByteArray>
-#include <QBuffer>
 #include <QDateTime>
-#include <QImageReader>
 #include <QStandardPaths>
 #include <QDir>
 #include <QSet>
@@ -349,7 +347,14 @@ void TerminalGrid::setDefaultBg(const QColor &c) {
         m_currentAttrs.bg = c;
 }
 
-void TerminalGrid::processAction(const VtAction &action) {
+// ANTS-1061 — the parse worker decodes with the shared limits; the grid's
+// own constants must not drift from them.
+static_assert(TerminalGrid::MAX_IMAGE_DIM == inlineimage::kMaxImageDim);
+static_assert(TerminalGrid::MAX_KITTY_CHUNK_BYTES == inlineimage::kMaxKittyChunkBytes);
+
+void TerminalGrid::processAction(const VtAction &action,
+                                 const PredecodedImage *predecoded) {
+    m_predecoded = predecoded;
     ++m_contentRevision;  // ANTS-5030 — the one ingress for PTY-driven mutation
     switch (action.type) {
     case VtAction::Print:
@@ -378,6 +383,7 @@ void TerminalGrid::processAction(const VtAction &action) {
         handleApc(action.oscString, action.truncated);
         break;
     }
+    m_predecoded = nullptr;
 }
 
 void TerminalGrid::breakWidePairsAround(int row, int startCol, int endCol) {
@@ -1681,41 +1687,24 @@ bool TerminalGrid::takeNotifyQuota() {
 void TerminalGrid::handleOscImage(const std::string &payload) {
     // Format: 1337;File=[params]:BASE64DATA
     // Params: name=..., size=..., width=..., height=..., inline=1
-    auto colonPos = payload.find(':', 5);
-    if (colonPos == std::string::npos) return;
-
-    std::string params = payload.substr(5, colonPos - 5);
-    std::string b64data = payload.substr(colonPos + 1);
-
-    // Check inline=1
-    if (params.find("inline=1") == std::string::npos) return;
+    std::string params, b64data;
+    if (!inlineimage::splitITerm2(payload, &params, &b64data)) return;
 
     // ANTS-1829 — bound the base64 BEFORE decoding and strict-decode, matching
     // the OSC 52 / SetUserVar discipline. The 10 MiB OSC payload cap is the
     // only other backstop; an explicit local ceiling keeps this path bounded
-    // even if that changes, and AbortOnBase64DecodingErrors rejects a corrupt
-    // payload outright rather than feeding a garbage prefix to the image loader.
-    constexpr size_t kMaxInlineImageB64Bytes = 12 * 1024 * 1024;  // ~9 MiB decoded
-    if (b64data.size() > kMaxInlineImageB64Bytes) return;
-    auto decRes = QByteArray::fromBase64Encoding(
-        QByteArray::fromRawData(b64data.data(), static_cast<int>(b64data.size())),
-        QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
-    if (decRes.decodingStatus != QByteArray::Base64DecodingStatus::Ok) return;
-    QByteArray decoded = decRes.decoded;
-    // Peek at the declared image dimensions BEFORE committing to a full
-    // decode. A "compression bomb" PNG can advertise 100k×100k in its
-    // header while the compressed payload is <1 KB — QImage::loadFromData
-    // would allocate ~40 GB before the dimension check fires. QImageReader
-    // reads just the header.
-    QBuffer buf(&decoded);
-    buf.open(QIODevice::ReadOnly);
-    QImageReader reader(&buf);
-    const QSize declared = reader.size();
-    if (declared.width()  > MAX_IMAGE_DIM ||
-        declared.height() > MAX_IMAGE_DIM) return;
-    QImage img;
-    if (!img.loadFromData(decoded)) return;  // image-peek-ok: size peeked above
-    if (img.width() > MAX_IMAGE_DIM || img.height() > MAX_IMAGE_DIM) return;
+    // even if that changes, and decodeBase64Strict (AbortOnBase64DecodingErrors)
+    // rejects a corrupt payload outright rather than feeding a garbage prefix
+    // to the image loader.
+    if (b64data.size() > inlineimage::kMaxInlineImageB64Bytes) return;
+    // ANTS-1061 — the parse worker usually decoded it already. Otherwise
+    // decodeBytes peeks the declared size before a full decode, so a
+    // compression-bomb header cannot force a huge allocation.
+    QImage img = (m_predecoded && m_predecoded->matches(b64data))
+        ? m_predecoded->image
+        : inlineimage::decodeBytes(inlineimage::decodeBase64Strict(b64data),
+                                   nullptr, MAX_IMAGE_DIM);
+    if (img.isNull()) return;
 
     // Image-bomb defense: reject post-decode if the decoded bitmap would
     // push us over the per-terminal byte budget. We measure here (after
@@ -3509,30 +3498,13 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     std::string data_str = (semicolon != std::string::npos)
         ? payload.substr(semicolon + 1) : "";
 
-    // Parse parameters
-    std::unordered_map<char, std::string> params;
-    size_t pos = 0;
-    while (pos < params_str.size()) {
-        char key = params_str[pos];
-        if (pos + 1 >= params_str.size() || params_str[pos + 1] != '=') break;
-        pos += 2;
-        std::string value;
-        while (pos < params_str.size() && params_str[pos] != ',') {
-            value += params_str[pos];
-            ++pos;
-        }
-        params[key] = value;
-        if (pos < params_str.size() && params_str[pos] == ',') ++pos;
-    }
-
-    // ANTS-5676 — a chunked transmission carries its control keys on the
-    // first chunk only; later chunks carry m= (and q=). Fill those in on a
-    // continuation chunk. A frame with any other key is a command of its
-    // own (a query sent mid-transmission, say) and keeps only its own keys.
-    const bool continuation = std::all_of(params.begin(), params.end(),
-        [](const auto &kv) { return kv.first == 'm' || kv.first == 'q'; });
-    if (continuation)
-        for (const auto &[key, value] : m_kittyChunkParams) params.emplace(key, value);
+    // Parse parameters. ANTS-5676 — a chunked transmission carries its
+    // control keys on the first chunk only; later chunks carry m= (and q=).
+    // A continuation chunk takes the first chunk's keys; a frame with any
+    // other key is a command of its own (a query sent mid-transmission, say)
+    // and keeps only its own keys.
+    inlineimage::KittyKeys params = inlineimage::parseKittyKeys(params_str);
+    inlineimage::mergeContinuationKeys(params, m_kittyChunkParams);
 
     // Extract common parameters
     char action = 'T'; // Default: transmit + display
@@ -3640,38 +3612,28 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
 
     // Decode image data (cap at 10MB decoded to prevent DoS)
     QImage image;
-    if (!fullData.empty() && fullData.size() <= 15 * 1024 * 1024) { // ~10MB decoded
-        QByteArray base64Data = QByteArray::fromRawData(fullData.data(),
-                                                         static_cast<int>(fullData.size()));
+    if (!fullData.empty() && fullData.size() <= inlineimage::kMaxKittyB64Bytes) {
+        // ANTS-1061 — a PNG the parse worker already decoded from exactly
+        // this text needs no base64 or PNG decode here.
+        const bool predecodedPng = format == 100 && m_predecoded &&
+                                   m_predecoded->matches(fullData);
         // ANTS-2119 M2 — strict decode, matching the OSC 52 / OSC 1337 image
-        // paths (1568): AbortOnBase64DecodingErrors rejects a corrupt payload
-        // outright instead of silently skipping invalid bytes and feeding a
+        // paths (1568): decodeBase64Strict rejects a corrupt payload outright
+        // instead of silently skipping invalid bytes and feeding a
         // garbage-prefixed byte stream to the image loader / raw-pixel .copy().
         // A failed decode leaves `decoded` empty, so the image stays null and
-        // falls through to the ENODATA protocol response below (3450) — the
-        // right Kitty-protocol signal, which an early return would skip.
-        auto decRes = QByteArray::fromBase64Encoding(
-            base64Data,
-            QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
-        QByteArray decoded =
-            (decRes.decodingStatus == QByteArray::Base64DecodingStatus::Ok)
-                ? decRes.decoded
-                : QByteArray();
+        // falls through to the ENODATA protocol response below — the right
+        // Kitty-protocol signal, which an early return would skip.
+        const QByteArray decoded = predecodedPng
+            ? QByteArray() : inlineimage::decodeBase64Strict(fullData);
 
         if (format == 100) {
-            // PNG format — peek dimensions via QImageReader before decode
-            // so a declared-huge / actually-tiny compression bomb can't
-            // force a multi-GB allocation before the size check fires.
-            QBuffer headerBuf(&decoded);
-            headerBuf.open(QIODevice::ReadOnly);
-            QImageReader reader(&headerBuf, "PNG");
-            const QSize declared = reader.size();
-            if (declared.width()  <= MAX_IMAGE_DIM &&
-                declared.height() <= MAX_IMAGE_DIM) {
-                image.loadFromData(decoded, "PNG");  // image-peek-ok
-            }
-            if (image.width() > MAX_IMAGE_DIM || image.height() > MAX_IMAGE_DIM)
-                image = QImage(); // Reject oversized
+            // PNG format. decodeBytes peeks the declared size before a full
+            // decode, so a declared-huge / actually-tiny compression bomb
+            // can't force a multi-GB allocation before the size check fires.
+            image = predecodedPng
+                ? m_predecoded->image
+                : inlineimage::decodeBytes(decoded, "PNG", MAX_IMAGE_DIM);
             // Image-bomb defense: PNGs can decode to far more bytes than
             // their compressed payload — measure post-decode and reject if
             // it would push us past the 256 MB per-terminal cap.

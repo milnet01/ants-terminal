@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5678 -->
+<!-- ants-roadmap-id-high-water: ANTS=5679 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85619,7 +85619,7 @@ a modern terminal" release.
   shrink does not exist. Scrollback memory is owned by ANTS-4534 (the
   64-byte Cell).
 
-- 🚧 [ANTS-1061] **Async image decoding.**
+- ✅ [ANTS-1061] **Async image decoding.**
   Hand sixel/Kitty/iTerm2 payloads to
   `QtConcurrent::run`; render a placeholder cell until `QImage`
   future resolves. Big sixel frames stop blocking the prompt.
@@ -85649,6 +85649,16 @@ a modern terminal" release.
   chunked Kitty; grid uses a matching image, ignores a mismatched one;
   VtStream ships VtBatch::images), re-measure GUI-thread time, full gate,
   CHANGELOG, commit.
+  Resolved (2026-10-13): shipped as recorded in the progress note above.
+  Re-measured with the same timer, same process, machine busy (load
+  about 5): a 4096 px PNG held the GUI thread 97-100 ms synchronously and
+  0.0-0.3 ms with the worker's image; the decode moved to the worker
+  (97-100 ms there). Tests: tests/features/inline_image_predecode
+  (INV-1 to INV-5); scrape tests image_bomb_png_header_peek and
+  terminalgrid_image_budget_hardening re-pointed at
+  src/inlineimagedecode.cpp. Not covered by a test: VtStream filling
+  VtBatch::images and onVtBatch passing them on (VtStream needs a real
+  PTY and has no test feed).
   **Layman:** Decode images in the background so a large image no longer freezes the prompt while it loads.
   Kind: refactor.
 
@@ -92670,6 +92680,16 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-10-13 (measuring ANTS-1061).
   Lanes: terminal-core.
+
+- 📋 [ANTS-5679] **image_bomb_png_header_peek/spec.md names handleKittyApc, a function that does not exist.**
+  Its Motivation says the Kitty APC path is dispatched through
+  `handleKittyApc`; the function is TerminalGrid::handleApc. doc_lint's
+  doc_symbols reports it. Found 2026-10-13; not fixed then because that
+  line was outside the ANTS-1061 edit.
+  **Layman:** A test's description names the wrong function for Kitty images.
+  Kind: doc-fix.
+  Source: in-session-2026-10-13 (doc_lint while shipping ANTS-1061).
+  Lanes: terminal-grid, tests.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

@@ -23,6 +23,10 @@
 #ifndef SRC_TERMINALGRID_HEADER
 #error "SRC_TERMINALGRID_HEADER must be baked at compile time"
 #endif
+#ifndef SRC_INLINEIMAGEDECODE_PATH
+#error "SRC_INLINEIMAGEDECODE_PATH must be baked at compile time"
+#endif
+#include <utility>
 
 namespace {
 
@@ -56,35 +60,48 @@ static int runMain() {
     if (lines.empty())
         fail("setup",
                     std::string("could not read ") + SRC_TERMINALGRID_PATH);
+    // ANTS-1061 — the decode moved into a helper the grid and VtStream's
+    // parse worker share, so its calls are checked too.
+    const auto helperLines = readLines(SRC_INLINEIMAGEDECODE_PATH);
+    if (helperLines.empty())
+        fail("setup",
+                    std::string("could not read ") + SRC_INLINEIMAGEDECODE_PATH);
 
     int loadCalls = 0;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        const std::string &l = lines[i];
-        if (l.find(".loadFromData(") == std::string::npos) continue;
-        // Skip comment-only lines (e.g. doc comments that mention the API).
-        size_t firstNonSpace = l.find_first_not_of(" \t");
-        if (firstNonSpace != std::string::npos
-            && l.compare(firstNonSpace, 2, "//") == 0) continue;
+    const std::pair<const char *, const std::vector<std::string> *> files[] = {
+        {SRC_TERMINALGRID_PATH, &lines},
+        {SRC_INLINEIMAGEDECODE_PATH, &helperLines},
+    };
+    for (const auto &[path, fileLines] : files) {
+        for (size_t i = 0; i < fileLines->size(); ++i) {
+            const std::string &l = (*fileLines)[i];
+            if (l.find(".loadFromData(") == std::string::npos) continue;
+            // Skip comment-only lines (e.g. doc comments that mention the API).
+            size_t firstNonSpace = l.find_first_not_of(" \t");
+            if (firstNonSpace != std::string::npos
+                && l.compare(firstNonSpace, 2, "//") == 0) continue;
 
-        ++loadCalls;
-        bool hasMarker = l.find("// image-peek-ok") != std::string::npos;
-        bool hasPeek = linePrecedingContainsQImageReader(lines, i, 10);
-        if (!hasMarker && !hasPeek) {
-            // Non-aborting so a second unguarded call site is also reported
-            // in one run (ANTS-1467/2065 — loop-internal abort removal).
-            ADD_FAILURE_AT(__FILE__, __LINE__)
-                << "[I1] loadFromData call at " << SRC_TERMINALGRID_PATH
-                << ":" << (i + 1) << " has no QImageReader peek in the "
-                   "preceding 10 lines and no // image-peek-ok marker. line: "
-                << l;
+            ++loadCalls;
+            bool hasMarker = l.find("// image-peek-ok") != std::string::npos;
+            bool hasPeek = linePrecedingContainsQImageReader(*fileLines, i, 10);
+            if (!hasMarker && !hasPeek) {
+                // Non-aborting so a second unguarded call site is also reported
+                // in one run (ANTS-1467/2065 — loop-internal abort removal).
+                ADD_FAILURE_AT(__FILE__, __LINE__)
+                    << "[I1] loadFromData call at " << path
+                    << ":" << (i + 1) << " has no QImageReader peek in the "
+                       "preceding 10 lines and no // image-peek-ok marker. line: "
+                    << l;
+            }
         }
     }
 
     if (loadCalls == 0)
         fail("I1 coverage",
                     "expected at least one loadFromData call in terminalgrid.cpp "
-                    "(0 found — test invariant is meaningless without a guarded "
-                    "call site; did the image-decode paths move?)");
+                    "or inlineimagedecode.cpp (0 found — test invariant is "
+                    "meaningless without a guarded call site; did the "
+                    "image-decode paths move?)");
 
     // I2 — MAX_IMAGE_DIM must be defined (header) and used (implementation).
     // Definition lives in terminalgrid.h as a static constexpr class member;

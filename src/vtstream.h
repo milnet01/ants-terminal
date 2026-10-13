@@ -36,6 +36,7 @@
 //   GUI side. The next paint always sees consistent geometry.
 
 #include "vtparser.h"
+#include "inlineimagedecode.h"  // ANTS-1061
 
 #include <QObject>
 #include <QByteArray>
@@ -77,6 +78,10 @@ struct VtBatch {
     // time. GUI uses this as the event timestamp for asciicast recording
     // (more accurate than sampling on GUI where paint latency skews it).
     qint64 wallClockMs = 0;
+    // ANTS-1061 — inline images the worker decoded, keyed by their action's
+    // index in `actions`, ascending. The GUI hands each to processAction so
+    // the image is not decoded on the GUI thread.
+    std::vector<std::pair<std::size_t, std::shared_ptr<const PredecodedImage>>> images;
 };
 using VtBatchPtr = std::shared_ptr<const VtBatch>;
 Q_DECLARE_METATYPE(VtBatchPtr)
@@ -149,6 +154,10 @@ private:
     std::vector<VtAction> m_pending;
     QByteArray m_pendingRaw;
     bool m_pendingClearSelection = false;
+    // ANTS-1061 — decodes inline images as they are parsed; the results ride
+    // in VtBatch::images.
+    inlineimage::Predecoder m_predecoder;
+    std::vector<std::pair<std::size_t, std::shared_ptr<const PredecodedImage>>> m_pendingImages;
 
     QElapsedTimer m_wallClock;               // started in start()
     bool m_flushScheduled = false;

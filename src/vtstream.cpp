@@ -56,6 +56,9 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
             return;
         }
         m_pending.push_back(a);
+        // ANTS-1061 — decode an inline image here, off the GUI thread.
+        if (auto image = m_predecoder.onAction(a))
+            m_pendingImages.emplace_back(m_pending.size() - 1, std::move(image));
     });
     connect(m_pty, &Pty::dataReceived, this, &VtStream::onPtyData);
     connect(m_pty, &Pty::finished, this, &VtStream::onPtyFinished);
@@ -183,8 +186,10 @@ void VtStream::flushBatch() {
     b->rawBytes = std::move(m_pendingRaw);
     b->clearSelectionHint = m_pendingClearSelection;
     b->wallClockMs = m_wallClock.elapsed();
+    b->images = std::move(m_pendingImages);
 
     m_pending.clear();       // ensure moved-from vector is empty
+    m_pendingImages.clear();
     m_pendingRaw.clear();
     m_pendingClearSelection = false;
 
@@ -207,7 +212,9 @@ void VtStream::onPtyFinished(int exitCode) {
         b->rawBytes = std::move(m_pendingRaw);
         b->clearSelectionHint = m_pendingClearSelection;
         b->wallClockMs = m_wallClock.elapsed();
+        b->images = std::move(m_pendingImages);
         m_pending.clear();
+        m_pendingImages.clear();
         m_pendingRaw.clear();
         m_pendingClearSelection = false;
         emit batchReady(b);

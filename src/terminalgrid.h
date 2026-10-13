@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vtparser.h"
+#include "inlineimagedecode.h"  // ANTS-1061
 #include <algorithm>
 #include <cstdint>
 #include <string>
@@ -135,7 +136,12 @@ public:
     // locale from the environment. Returns whether LC_CTYPE is UTF-8 after.
     static bool ensureUtf8CType();
 
-    void processAction(const VtAction &action);
+    // ANTS-1061 — `predecoded` is the image VtStream's parse worker already
+    // decoded from this action's payload, or null. The image handlers use it
+    // when it matches the text they would decode, and decode it themselves
+    // otherwise, so passing null is always correct, only slower.
+    void processAction(const VtAction &action,
+                       const PredecodedImage *predecoded = nullptr);
     void resize(int rows, int cols);
 
     int rows() const { return m_rows; }
@@ -823,7 +829,9 @@ private:
     std::string m_kittyChunkBuffer; // For multi-chunk transmissions
     uint32_t m_kittyChunkId = 0;
     // ANTS-5676 — the first chunk's control keys; later chunks omit them.
-    std::unordered_map<char, std::string> m_kittyChunkParams;
+    inlineimage::KittyKeys m_kittyChunkParams;
+    // ANTS-1061 — processAction's `predecoded`, for the length of that call.
+    const PredecodedImage *m_predecoded = nullptr;
 
     // Image-bomb defense (0.6.11). Tracks total decoded image bytes held by
     // this terminal across both the inline-display vector (m_inlineImages)

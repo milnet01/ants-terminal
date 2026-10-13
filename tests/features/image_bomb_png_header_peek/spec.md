@@ -34,7 +34,8 @@ function, OR is explicitly tagged `// image-peek-ok` on the same
 line to document that the caller has already validated dimensions
 through a different mechanism.**
 
-Concretely, for each `loadFromData` call in `src/terminalgrid.cpp`:
+Concretely, for each `loadFromData` call in `src/terminalgrid.cpp` and
+`src/inlineimagedecode.cpp`:
 - the call line must contain the exact string `// image-peek-ok`, OR
 - one of the 10 lines immediately preceding the call must mention
   `QImageReader` (the peek setup).
@@ -62,7 +63,9 @@ Out of scope:
 
 ## Test execution
 
-`test_image_bomb.cpp` reads `src/terminalgrid.cpp`, enumerates every
+`test_image_bomb.cpp` reads `src/terminalgrid.cpp` and
+`src/inlineimagedecode.cpp` (the decode both the grid and the parse
+worker call, ANTS-1061), enumerates every
 line containing `.loadFromData(`, and for each one verifies either
 the same-line `// image-peek-ok` marker or a `QImageReader` mention
 in the 10 preceding lines. Exit 0 on all matches, non-zero with the

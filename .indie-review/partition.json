@@ -17,6 +17,8 @@
       "name": "terminal-grid",
       "summary": "Cell grid, scrollback, cursor, modes, OSC handlers, soft-wrap reflow, streamed scrollback export, the OSC 133 signing helper.",
       "sourcePaths": [
+        "src/inlineimagedecode.cpp",
+        "src/inlineimagedecode.h",
         "src/osc133signmain.cpp",
         "src/scrollbackexporter.cpp",
         "src/scrollbackexporter.h",

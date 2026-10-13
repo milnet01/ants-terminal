@@ -24,6 +24,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Large inline images no longer freeze the window while they load.** (ANTS-1061)
+  iTerm2 and Kitty PNG images are now decoded on the tab's background
+  parse thread. A 4096-pixel image used to hold the window for about
+  100 ms; it now takes under 1 ms on the window's thread.
+
 - **roadmap_query and changelog_query now cut a page sized by an explicit `limit` to the same byte budget as an auto-sized page, with `truncated` and `next_offset`, so it fits inline instead of being saved to a side file.** (ANTS-5651)
 
 ### Removed

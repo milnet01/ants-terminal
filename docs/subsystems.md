@@ -42,6 +42,10 @@ Listed only where behavior isn't obvious from the name.
   keyboard protocol, Sixel/Kitty-APC/iTerm2 images, DA/CPR/DSR response
   callback, per-line `combining` side-table (zero cost when absent),
   soft-wrap reflow on resize.
+- `inlineimagedecode` (`ants_core_lib`) — decodes iTerm2 and Kitty PNG
+  inline images. `VtStream` runs it on the parse worker and ships each image
+  beside its batch, so the GUI thread places an image without decoding it.
+  ANTS-1061.
 - `terminalwidget` (QWidget) — QPainter + QTextLayout renderer with
   HarfBuzz ligatures. SGR mouse, focus reporting, sync output, undercurl,
   per-pixel bg alpha. (Was QOpenGLWidget pre-0.7.4; glyph-atlas

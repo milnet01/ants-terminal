@@ -774,6 +774,7 @@ add_library(ants_core_lib STATIC
     src/sessionmanager.cpp
     src/ptyhandler.cpp
     src/vtstream.cpp
+    src/inlineimagedecode.cpp # ANTS-1061
     src/appimageenv.cpp       # ANTS-5574
 )
 target_link_libraries(ants_core_lib
@@ -1714,6 +1715,7 @@ if(ANTS_TESTS)
     add_executable(bench_vt_throughput
         tests/perf/bench_vt_throughput.cpp
         src/terminalgrid.cpp
+        src/inlineimagedecode.cpp
         src/vtparser.cpp
     )
     target_link_libraries(bench_vt_throughput PRIVATE
@@ -2059,6 +2061,8 @@ if(ANTS_TESTS)
                 tests/features/osc8_apc_memory_caps/test_osc8_apc_memory_caps.cpp
                 # ANTS-5676 — a chunked Kitty image keeps its first chunk's keys.
                 tests/features/kitty_chunked_transmission/test_kitty_chunked_transmission.cpp
+                # ANTS-1061 — inline images decoded on the parse worker.
+                tests/features/inline_image_predecode/test_inline_image_predecode.cpp
                 tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
                 # ANTS-5082 — mistyped theme colours fall back; oversized theme files are skipped.
                 tests/features/user_theme_loading/test_user_theme_loading.cpp
@@ -4324,7 +4328,12 @@ if(ANTS_TESTS)
         ANTS_TESTS_DIR="${CMAKE_SOURCE_DIR}/tests")
     set_property(SOURCE tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h")
+        SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
+        # ANTS-1061 — the shared image decode the grid and VtStream call.
+        SRC_INLINEIMAGEDECODE_PATH="${CMAKE_SOURCE_DIR}/src/inlineimagedecode.cpp")
+    set_property(SOURCE tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_INLINEIMAGEDECODE_PATH="${CMAKE_SOURCE_DIR}/src/inlineimagedecode.cpp")
     set_property(SOURCE tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_VTSTREAM_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.h")
