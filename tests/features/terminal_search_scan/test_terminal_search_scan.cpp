@@ -79,7 +79,10 @@ TEST(TerminalSearchScan, ResultsMatchTheGrid) {
     EXPECT_EQ(h.count(QStringLiteral("e\\x{0301}")), 1) << "INV-2";
     EXPECT_EQ(h.count(QStringLiteral("\\x{1D400}y")), 1) << "INV-3";
     EXPECT_EQ(h.count(QStringLiteral("\\x{4E16} \\x{754C}")), 1) << "INV-4";
-    EXPECT_EQ(h.count(QStringLiteral("short +$")), 1) << "INV-5";
+    EXPECT_EQ(h.count(QStringLiteral("short$")), 1) << "INV-5";
     // An empty match at `o` comes before `one` on the same line.
     EXPECT_EQ(h.count(QStringLiteral("(?=o)|one")), 1) << "INV-6";
+    EXPECT_EQ(h.count(QStringLiteral(" $")), 0) << "INV-7: padding matched";
+    EXPECT_EQ(h.count(QStringLiteral("short +$")), 0) << "INV-7: padding matched";
+    EXPECT_EQ(h.count(QStringLiteral("NEEDLE one$")), 1) << "INV-7: line ends at its last character";
 }

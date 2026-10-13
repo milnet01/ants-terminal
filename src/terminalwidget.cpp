@@ -4691,6 +4691,13 @@ void TerminalWidget::performSearch() {
 
     for (int gl = 0; gl < totalLines; ++gl) {
         QString text = lineText(gl);
+        // ANTS-2000 — search ignores the blanks that pad a line to the grid
+        // width, so a query of spaces does not match every empty cell (user
+        // decision 2026-09-12). Trailing spaces a program printed are lost
+        // with them. Only the tail is cut, so match columns are unchanged.
+        qsizetype end = text.size();
+        while (end > 0 && text.at(end - 1) == QLatin1Char(' ')) --end;
+        text.truncate(end);
         auto it = re.globalMatch(text);
         while (it.hasNext()) {
             auto m = it.next();

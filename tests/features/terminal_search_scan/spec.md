@@ -19,18 +19,25 @@ bar's `current/total` label.
   occupies one cell, followed by `y` matches the pattern `\x{1D400}y`.
 - **INV-4 — a wide character's continuation cell reads as a space.** Two
   adjacent wide characters match the pattern with a space between them.
-- **INV-5 — a line reads as the full grid width.** A history line can store
-  fewer cells than the grid is wide: `TerminalGrid::pushScrollbackLine`, the
-  session-restore entry, keeps a saved line at its saved width. The cells past
-  what it stores read as spaces, so `short +$` matches a stored `short`.
-  `TerminalGrid::resize` pads every history line, so a resize cannot reach
-  this case.
+- **INV-5 — the cells past what a line stores read as blanks.** A history
+  line can store fewer cells than the grid is wide:
+  `TerminalGrid::pushScrollbackLine`, the session-restore entry, keeps a saved
+  line at its saved width. The cells past it read as spaces, so INV-7 drops
+  them and `short$` matches a stored `short`. `TerminalGrid::resize` pads
+  every history line, so a resize cannot reach this case.
 - **INV-6 — a zero-width match does not end the line's scan** (ANTS-5078).
   `(?=o)|one` finds an empty match at `o` before `one` on the same line; the
   `one` match is still counted.
+- **INV-7 — a search ignores the blanks after the end of each line.** A
+  query of spaces does not match the empty cells that pad a line to the grid
+  width, so ` $` and `short +$` match nothing, and `NEEDLE one$` matches
+  because the line now ends at its last character. The cost, accepted by the
+  user on 2026-09-12: trailing spaces a program really printed cannot be
+  found.
 
 ## Test
 
-`test_terminal_search_scan.cpp`. Each invariant is one assertion on the match
-total. The test pins behaviour that already exists, so it passes before the
-ANTS-2000 change; it is proven able to fail by mutating the scan.
+`test_terminal_search_scan.cpp`. Each invariant is an assertion on the match
+total. INV-1 to INV-6 pinned behaviour the 2026-09-12 scan speed-up had to
+keep, and were proven able to fail by mutating the scan. INV-5 and INV-7 as
+written failed before the 2026-10-13 change to skip trailing blanks.

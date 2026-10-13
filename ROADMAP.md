@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5684 -->
+<!-- ants-roadmap-id-high-water: ANTS=5686 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -22233,7 +22233,7 @@ under one guard). The deferrals below.
   Source: indie-review-2026-06-04.
   Lanes: terminalgrid.
 
-- 📋 [ANTS-2000] **terminalwidget: `performSearch()` scans up to 50 000 scrollback lines synchronously on every keystroke (multi-second GUI freeze).**
+- ✅ [ANTS-2000] **terminalwidget: `performSearch()` scans up to 50 000 scrollback lines synchronously on every keystroke (multi-second GUI freeze).**
   `loadHistory()` does blocking I/O + an O(N²) `QStringList::prepend`
   loop on the first autocomplete keystroke. Move off the GUI thread /
   index. Plus 4 mediums: stale search highlights after scrollback
@@ -22310,6 +22310,17 @@ under one guard). The deferrals below.
   1.04M lines/s for a literal term but 47.8k lines/s for a single-space
   query, about 20x slower. A one-character query is what the first
   keystroke sends, so it is the case this item names.
+  Resolved (2026-10-13): search ignores the blanks after each line's
+  end (user decision 2026-09-12, reconfirmed 2026-10-13). A single-space
+  search over 50,050 lines x 200 cols fell from 1139 ms to about 111 ms
+  per scan (bench_widget_search, before/after interleaved on a loaded
+  host); matches 7.73M to 369k. Pinned by terminal_search_scan INV-5/7.
+  The rest, checked against source the same day and split by the user's
+  choice: loadHistory on the GUI thread is ANTS-5685; highlights after
+  scrollback drops lines are ANTS-5686. The asciicast split-sequence loss
+  was fixed by ANTS-5078's stateful decoder; the re-run bypass by
+  ANTS-5029's confirmation for unsigned blocks; the span caches are
+  bounded by the line range and cleared on any drop, so no item.
   Source: indie-review-2026-06-04.
   Lanes: terminalwidget.
 
@@ -22532,6 +22543,32 @@ new minor item:
   Resolved (2026-06-04): directModelSwitchVisible now requires a tier token immediately after the title ('Set model to Sonnet/Opus/Haiku/Default') instead of the bare 'Set model to' substring. Note: the roadmap's suggested 'Set model to Claude' anchor was wrong — CC's banner is 'Set model to Sonnet 4.6…', verified against the model_switch_confirm feature test. Negative regression test added.
   Source: indie-review-2026-06-04.
   Lanes: modelautoswitch, claudestatuswidgets.
+
+- 📋 [ANTS-5685] **Shell history for suggestions loads off the GUI thread, with a size cap.**
+  Verified 2026-10-13: TerminalWidget::loadHistory() calls readAll() on
+  ~/.zsh_history (then bash, then fish) with no size cap, decodes and
+  splits it on the GUI thread. It runs from updateSuggestion(), which
+  onVtBatch calls, so every new tab pays it on its first output. Dedup is
+  already O(1) (ANTS-1841); the prepend is QList's, amortised constant in
+  Qt 6, so re-measure before touching it. Fix: read the tail of the file
+  up to a cap, on a worker, and publish the list back.
+  **Layman:** Opening a tab should not pause while it reads your whole shell history file.
+  Kind: perf.
+  Source: indie-review-2026-06-04, split from ANTS-2000 on 2026-10-13.
+  Lanes: terminalwidget.
+
+- 📋 [ANTS-5686] **Search highlights stay on the right lines after scrollback drops its oldest lines.**
+  Verified 2026-10-13: m_searchMatches holds global line numbers, set
+  only by performSearch. Nothing adjusts them when output arrives. Once
+  scrollback is full, each pushed line drops the oldest, so every stored
+  number now names a different line and isCellSearchMatch paints the
+  wrong rows. New lines are never matched either. Fix: shift the matches
+  by the number of lines dropped (dropping those that fell off), or
+  re-run the search, debounced, while the bar is open.
+  **Layman:** With search open on a full scrollback, new output can make the highlights jump to the wrong lines.
+  Kind: fix.
+  Source: indie-review-2026-06-04, split from ANTS-2000 on 2026-10-13.
+  Lanes: terminalwidget.
 
 ### 🔍 Indie-review #8 + audit fold-in (2026-06-26)
 

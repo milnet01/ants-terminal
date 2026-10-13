@@ -24,6 +24,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Scrollback search ignores the blank cells after the end of each line.** (ANTS-2000)
+  A search for a space now finds only spaces inside lines, so it no
+  longer freezes the window: about ten times faster over 50,000
+  lines. Trailing spaces a program really printed can no longer be
+  found.
+
 - **Eight more windows can now be resized, remember their size, and open centred on the terminal: Project Audit, AI Assistant, the Claude allowlist, projects, transcript, background-task and task-list windows, and the roadmap shortcut sheet.** (ANTS-1734)
 
 - **The Roadmap viewer's section arrows now say "open" or "closed", so a screen reader announces whether a section is open.** (ANTS-1277)
