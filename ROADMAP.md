@@ -15026,7 +15026,7 @@ class; the deferrals below cover the rest.
   a wrapped wildcardToRegularExpression, _enabled and _H_PATH to their real
   names. The 93 current findings are their own sweep.
   Resolved (2026-10-13), steps (3) and (4): twelve feature specs corrected
-  (d81b5312), after which the boundary matcher added 0 findings over 722
+  (6bbcd11f), after which the boundary matcher added 0 findings over 722
   specs. The lane now matches whole words (existsInSourceAsWord, used by
   runSpecDriftCheck only; debt-sweep and contract-doc lanes unchanged),
   pinned by feature_coverage INV-23, red before. The real lane run gave
