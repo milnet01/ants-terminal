@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5686 -->
+<!-- ants-roadmap-id-high-water: ANTS=5687 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -14918,7 +14918,7 @@ class; the deferrals below cover the rest.
   Source: in-session-2026-06-12 (discovered fixing ANTS-2108/2109).
   Resolved (2026-07-14): extracted the four egress gates (http/https scheme, URL-userinfo refusal, SSRF host-block, cleartext-remote Bearer) out of LlmClient::send into a shared static LlmClient::endpointEgressError(endpoint, apiKey) that returns a prefix-free rejection reason (empty == pass). send() now calls it (its verbatim "AI endpoint rejected — …" messages preserved), and BOTH AuditDialog AI-triage POSTs (requestAiTriage single + requestAiTriageBatch, each on a raw QNetworkAccessManager) route through it AND set QNetworkRequest::ManualRedirectPolicy — closing the SSRF/redirect/userinfo gap; they previously carried only the scheme + cleartext checks. Chose reuse-via-shared-helper (option b) over rerouting through send() (option a) since send() hardcodes stream:true / no temperature / no response_format. Tests: new llm_client INV-8 (endpointEgressError 4-gate logic + auditdialog wiring source-grep); audit_dialog_render_hardening INV-1/INV-3 updated from the old inline isPlaintextRemote pattern to the shared validator. Full suite 2656/2656.
 
-- 📋 [ANTS-2122] **featurecoverage drift lane: identifier-boundary existence match (deferred from ANTS-2113 H2).**
+- ✅ [ANTS-2122] **featurecoverage drift lane: identifier-boundary existence match (deferred from ANTS-2113 H2).**
   existsInSource() uses plain substring containment, so a short drifted token (`parse`) is masked by being a substring of an unrelated surviving identifier (`parseRequest`). The reviewer's fix is an identifier-boundary match. DEFERRED after empirical verification (ANTS-2113, 2026-06-12): on the current repo a whole-tree boundary matcher surfaces 14 findings, ~11 of which are imprecise-but-harmless spec wording where the real symbol exists under a longer name (`isCatastrophic`->`isCatastrophicRegex`, `m_currentTerminal`->a longer member, `SessionManager::saveAll`->`saveAll` renamed), NOT real drift. Adding ~11 low-value audit findings cuts against the active audit-FP-reduction effort. Re-do this WITH a spec-wording cleanup pass (fix the cited specs to the exact current identifiers) so the boundary matcher ships with a clean lane, or design a softer matcher that accepts a camelCase-aligned prefix. Whole-tree scope is correct (see ANTS-2113) — do not pair this with a tests/ exclusion.
   **Layman:** Make the spec-vs-code drift checker stricter about whole-word matches — but only after tidying loosely-worded specs, or it just adds noise.
   Kind: audit-fix.
@@ -15025,6 +15025,13 @@ class; the deferrals below cover the rest.
   SessionManager::saveAll, updateAvailableLabel, SteppedParseEqualsColdParse,
   a wrapped wildcardToRegularExpression, _enabled and _H_PATH to their real
   names. The 93 current findings are their own sweep.
+  Resolved (2026-10-13), steps (3) and (4): twelve feature specs corrected
+  (d81b5312), after which the boundary matcher added 0 findings over 722
+  specs. The lane now matches whole words (existsInSourceAsWord, used by
+  runSpecDriftCheck only; debt-sweep and contract-doc lanes unchanged),
+  pinned by feature_coverage INV-23, red before. The real lane run gave
+  the same 91 findings the harness measured. Bringing those 91 to the
+  contract's five is ANTS-5687.
 
 - ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.
@@ -15062,6 +15069,24 @@ class; the deferrals below cover the rest.
   Kind: chore.
   Source: in-session-2026-06-15 (CI Node-20 deprecation warning).
   Lanes: ci.
+
+- 📋 [ANTS-5687] **Bring the feature-spec drift lane's findings on this project down to the five its contract allows.**
+  Measured 2026-10-13 after ANTS-2122 (whole-word matching, non-name
+  shapes dropped): runSpecDriftCheck reports 91 findings over 722
+  feature specs; tests/features/feature_coverage/spec.md § Acceptance
+  expects five or fewer. Three groups, each to be read per finding:
+  outside names (konsole, pthread_exit, actionlint, evil.com,
+  img2sixel), which go to plain text under the user's 2026-10-13 rule;
+  placeholders the extractor does not drop yet (ANTS-1237-INV-N,
+  InvNShortName, X.Y.Z.md, A::B::c), an extractor rule like ANTS-2122's;
+  and real drift (mcp_orientation_install's Inv1_... test names,
+  setFileOutlineProvider, writeStalled, drainWriteQueue; handleKittyApc
+  is ANTS-5679), fixed in the spec or the code. List them with the
+  throwaway harness method in ANTS-2122's body, or run the audit.
+  **Layman:** The audit's check that specs name real code still raises about 90 warnings here; most are wording, a few are real renames.
+  Kind: audit-fix.
+  Source: in-session-2026-10-13 (left by ANTS-2122).
+  Lanes: featurecoverage.
 
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 

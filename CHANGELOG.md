@@ -24,6 +24,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The spec-drift check matches whole names only, so a renamed function is no longer hidden by a longer one that contains it.** (ANTS-2122)
+
 - **The Project Audit's spec-drift check reads file:line citations as files, and skips key:value text and test shorthand.** (ANTS-2122)
   On this project its findings fell from 165 to 93, all of the removed
   ones being citations of files that exist or report text such as

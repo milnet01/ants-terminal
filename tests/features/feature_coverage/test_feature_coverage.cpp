@@ -332,6 +332,30 @@ void testSpecDriftCitedFilenameResolves() {
           "specDrift.missingSymbolStillDrift (INV-19)");
 }
 
+// INV-23 (ANTS-2122) — a token matches as a whole word only. `onStart`
+// sits inside `SessionStart` and nowhere else, so it is drift; `render`,
+// `app.py` (a path) and the `::` tail of `Widget::render` resolve.
+void testSpecDriftWholeWord() {
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid(), "specDriftWord.tmpdir");
+    if (!tmp.isValid()) return;
+    const QString root = tmp.path();
+    writeFile(root + "/src/app.py",
+              "def render():\n    SessionStart = 1\n");
+    writeFile(root + "/tests/features/word/spec.md",
+              "# Word\n\n`onStart`, `render`, `app.py`, `Widget::render`.\n");
+
+    const QString out = FeatureCoverage::runSpecDriftCheck(root);
+    CHECK(out.contains(QStringLiteral("`onStart`")),
+          "specDriftWord.insideLongerNameIsDrift (INV-23)");
+    CHECK(!out.contains(QStringLiteral("`render`")),
+          "specDriftWord.wholeWordResolves (INV-23)");
+    CHECK(!out.contains(QStringLiteral("`app.py`")),
+          "specDriftWord.pathResolves (INV-23)");
+    CHECK(!out.contains(QStringLiteral("Widget::render")),
+          "specDriftWord.scopedTailResolves (INV-23)");
+}
+
 // INV-20 — trailing parenthesised id only; that is where changelog_log
 // writes it.
 void testChangelogEntryIdExtraction() {
@@ -488,6 +512,7 @@ static int runMain() {
     testMatchEmptyTitleList();
 
     testSpecDriftCitedFilenameResolves();
+    testSpecDriftWholeWord();
     testIndexedLookupMatchesUnindexed();
     testChangelogEntryIdExtraction();
     testChangelogCoverageByEntryId();

@@ -109,7 +109,7 @@ body.
 17. **Empty title list → false.** A bullet vs `[]` always returns
     `false` (nothing to match against).
 
-## On-disk runners (invariants 18-22)
+## On-disk runners (invariants 18-23)
 
 The two runners compose the parsers above with a real project tree.
 These invariants pin the resolution rules, which is where both lanes
@@ -148,6 +148,15 @@ have misfired on projects whose layout differs from this one's.
 22. **Fallbacks are unchanged.** A bullet whose id appears nowhere
     in the corpus is still reported, and a bullet carrying no id at
     all is matched by invariants 14-15 exactly as before.
+
+23. **A name found only inside a longer identifier is drift**
+    (ANTS-2122). `runSpecDriftCheck` matches a token as a whole word:
+    where its first or last character is an identifier character, the
+    tree's neighbouring character must not be one. A spec citing
+    `onStart` in a tree that holds only `SessionStart` is reported;
+    `render` in `def render():` and `app.py` in the path `src/app.py`
+    are not. The `::` and `.` tail fallbacks follow the same rule.
+    The debt-sweep and contract-doc lanes keep substring matching.
 
 ## Acceptance
 

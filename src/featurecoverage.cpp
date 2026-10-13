@@ -664,6 +664,29 @@ bool indexContains(const SourceIndex &ix, const QByteArray &needle) {
     return QByteArrayMatcher(needle).indexIn(ix.blob) >= 0;
 }
 
+// ANTS-2122 — indexContains, but only where the needle stands as a whole
+// word: an identifier character at either end must not touch another one.
+bool indexContainsWord(const SourceIndex &ix, const QByteArray &needle) {
+    if (needle.isEmpty()) return true;
+    // Every occurrence of an identifier-only needle lies inside one maximal
+    // identifier run, and it is a whole word exactly when it IS that run.
+    if (allChars(needle, idChar)) return ix.idSet.contains(needle);
+    const QByteArray &hay = allChars(needle, pathChar) ? ix.pathRuns : ix.blob;
+    const bool checkLeft = idChar(static_cast<unsigned char>(needle.front()));
+    const bool checkRight = idChar(static_cast<unsigned char>(needle.back()));
+    const QByteArrayMatcher matcher(needle);
+    for (qsizetype p = matcher.indexIn(hay); p >= 0; p = matcher.indexIn(hay, p + 1)) {
+        if (checkLeft && p > 0 && idChar(static_cast<unsigned char>(hay[p - 1])))
+            continue;
+        const qsizetype end = p + needle.size();
+        if (checkRight && end < hay.size()
+            && idChar(static_cast<unsigned char>(hay[end])))
+            continue;
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 SourceIndex buildSourceIndex(const QString &blob) {
@@ -692,6 +715,26 @@ bool existsInSource(const SourceIndex &ix, const QString &token) {
         const QString tail = token.mid(dotIdx + 1);
         if (tail.size() >= 4 && tail[0].isLetter()
             && indexContains(ix, tail.toUtf8()))
+            return true;
+    }
+    return false;
+}
+
+static bool existsInSourceAsWord(const SourceIndex &ix, const QString &token) {
+    // The same three tests as existsInSource, each as a whole word.
+    if (indexContainsWord(ix, token.toUtf8())) return true;
+
+    const int scopeIdx = token.lastIndexOf(QStringLiteral("::"));
+    if (scopeIdx > 0) {
+        const QString tail = token.mid(scopeIdx + 2);
+        if (tail.size() >= 3 && indexContainsWord(ix, tail.toUtf8()))
+            return true;
+    }
+    const int dotIdx = token.lastIndexOf('.');
+    if (dotIdx > 0 && dotIdx < token.size() - 1) {
+        const QString tail = token.mid(dotIdx + 1);
+        if (tail.size() >= 4 && tail[0].isLetter()
+            && indexContainsWord(ix, tail.toUtf8()))
             return true;
     }
     return false;
@@ -726,8 +769,10 @@ QString runSpecDriftCheck(const QString &projectPath) {
     // ANTS-5067 — index once, then answer every token against it. Measured on
     // this project the scan-per-token form cost 12.0 s here, on the GUI thread.
     const SourceIndex index = buildSourceIndex(sourceBlob);
+    // ANTS-2122 — whole words only, so a renamed `parse` is not hidden by a
+    // surviving `parseRequest`.
     auto resolves = [&index](const QString &tok) {
-        return existsInSource(index, tok);
+        return existsInSourceAsWord(index, tok);
     };
 
     QString out;
