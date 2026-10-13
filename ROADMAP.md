@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5687 -->
+<!-- ants-roadmap-id-high-water: ANTS=5688 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85790,6 +85790,19 @@ a modern terminal" release.
   Kind: ux.
   Source: user-request-2026-10-12.
   Lanes: tablistpanel.
+
+- ✅ [ANTS-5688] **secretredact.h calls the deprecated QRegularExpression::match(QStringView) overload.**
+  Seen 2026-10-13 building test_chrome and ants-terminal:
+  src/secretredact.h warns -Wdeprecated-declarations, "Use matchView
+  instead". matchView is Qt 6.5+, and the Qt 6.2 floor
+  (qt62-guard) lacks it, so the fix needs a QT_VERSION_CHECK branch.
+  Shipped (2026-10-13): scrubCutPemHead passes a QString, the
+  non-deprecated overload on every Qt version, so no version branch.
+  Full rebuild: 0 secretredact warnings; mcp_secret_redaction 8/8.
+  **Layman:** The build prints a deprecation warning from the secret-redaction code each time a file that uses it compiles.
+  Kind: fix.
+  Source: in-session-2026-10-13.
+  Lanes: secretredact.
 
 ### 🐛 Carried over from 0.7.x
 

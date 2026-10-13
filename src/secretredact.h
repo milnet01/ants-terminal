@@ -260,7 +260,9 @@ inline int scrubCutPemHead(QString &text)
         QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
     const QRegularExpressionMatch end = kEnd.match(text);
     if (!end.hasMatch()) return 0;
-    if (kBegin.match(QStringView(text).left(end.capturedStart())).hasMatch())
+    // A QString, not a QStringView: match(QStringView) is deprecated from Qt
+    // 6.5 and its replacement, matchView, is missing on the 6.2 floor.
+    if (kBegin.match(text.left(end.capturedStart())).hasMatch())
         return 0;   // a whole block: scrub() matches it
     text.replace(0, end.capturedEnd(), QStringLiteral("[REDACTED:private_key]"));
     return 1;
