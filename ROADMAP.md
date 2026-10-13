@@ -15009,6 +15009,10 @@ class; the deferrals below cover the rest.
   `updateAvailableLabel` (github_status_bar) exists nowhere in src/, and
   `VtStream::onStart` (shell_command_wiring) is the `SessionStart` masking
   above.
+  Decided by the user (2026-10-13), step (2): a spec names something that
+  deliberately does not exist in plain text, never in backticks. The
+  lane reads only backticked tokens, so the convention needs no lane
+  code. Next: steps (1), (3) and (4) as re-sequenced above.
 
 - ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.
@@ -22492,7 +22496,7 @@ under one guard). The deferrals below.
 
 #### 🧹 Idiom-modernization debt (batched — mechanical but large)
 
-- 📋 [ANTS-2018] **Qt/STL idiom sweep: cppcheck `useStlAlgorithm` (×156) + `constVariablePointer` (×43) + `returnByReference`/`passedByValue`.**
+- 🚫 [ANTS-2018] **Qt/STL idiom sweep: cppcheck `useStlAlgorithm` (×156) + `constVariablePointer` (×43) + `returnByReference`/`passedByValue`.**
   Clazy `range-loop-detach` (use `std::as_const` on range-for over Qt
   containers) + `qstring-arg` (multi-arg `.arg(a, b)`).
   Opinion-/perf-level, no bugs found, but a real modernization backlog.
@@ -22501,6 +22505,11 @@ under one guard). The deferrals below.
   than the latent micro-inefficiency).
   Layman: A large batch of code-modernisation fixes, to run as one tracked pass rather than piecemeal during other work.
   Kind: chore. Lanes: all. Source: audit-2026-06-04.
+  Dropped by the user (2026-10-13): style-only, the audit found no bugs in
+  these sites, and a mass rewrite of hot-path code risks new defects for
+  no visible gain. The speed-relevant classes keep their own items
+  (ANTS-4780 for clazy range-loop-detach, ANTS-5429 to ANTS-5461 for the
+  clang-tidy classes).
   Source: audit-2026-06-04.
   Lanes: all.
 
