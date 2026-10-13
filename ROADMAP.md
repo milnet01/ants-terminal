@@ -24327,6 +24327,12 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   Tab payload "index=N&split=S"; a split pane and a restored tab count.
   Left: output, line, prompt, keypress, which wait on their spec and
   review-contract gate.
+  Decided by the user (2026-10-13), for the spec: output, line and
+  keypress each need a manifest permission the user grants once
+  (read terminal output; read keystrokes), and keypress is never
+  delivered while the PTY has echo off (a password). keypress is
+  watch-only for now: no veto, so no blocking call into a worker;
+  a veto can be added later if a plugin needs one.
 
 - ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.
