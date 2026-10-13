@@ -805,6 +805,9 @@ docs/
   videos/            screen recordings and demos
 ```
 
+A new `ROADMAP.md` starts in the roadmap store, not by hand
+(`roadmap-format.md` § 3.1).
+
 ### 3.1 Naming a spec or plan
 
 ```
