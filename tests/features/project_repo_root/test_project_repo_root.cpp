@@ -152,9 +152,10 @@ TEST(ProjectRepoRoot, FindRoadmapUnder) {
     ASSERT_TRUE(writeFile(l.clone + QStringLiteral("/ROADMAP.md"), QByteArray(kRoadmap)));
 
     for (const bool outerHasOwn : {false, true}) {
-        if (outerHasOwn)
+        if (outerHasOwn) {
             ASSERT_TRUE(writeFile(l.outer + QStringLiteral("/ROADMAP.md"),
                                   QByteArray("# Outer\n")));
+        }
         QString owner;
         const QString hit = rcdetail::findRoadmapUnder(l.outer, &owner);
         EXPECT_EQ(hit, l.clone + QStringLiteral("/ROADMAP.md"))

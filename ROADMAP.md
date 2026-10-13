@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5688 -->
+<!-- ants-roadmap-id-high-water: ANTS=5689 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85803,6 +85803,17 @@ a modern terminal" release.
   Kind: fix.
   Source: in-session-2026-10-13.
   Lanes: secretredact.
+
+- ✅ [ANTS-5689] **Five compiler warnings (-Wshadow, -Wdangling-else) in the roadmap verbs and two tests.**
+  Seen 2026-10-13 in a full rebuild. Shipped the same day: renamed
+  the shadowing lambda locals in remotecontrol_roadmap_log.cpp and
+  remotecontrol_roadmap_query_verb.cpp, and braced the gtest macros
+  under a bare if in test_project_repo_root.cpp and
+  test_roadmap_pass_store_write.cpp. Rebuild: 0 warnings.
+  **Layman:** The build printed five warnings about confusable variable names and missing braces; it now prints none.
+  Kind: fix.
+  Source: in-session-2026-10-13.
+  Lanes: roadmap-verbs, tests.
 
 ### 🐛 Carried over from 0.7.x
 

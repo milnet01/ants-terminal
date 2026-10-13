@@ -359,9 +359,10 @@ TEST(RoadmapPassStoreWrite, Ants5395FlipRedatesAndKeepsTheNoteInside) {
     const qsizetype noteAt = item->body.indexOf(QStringLiteral("Closed in the shutdown hook."));
     const qsizetype ruleAt = item->body.lastIndexOf(QStringLiteral("---"));
     ASSERT_GE(noteAt, 0) << item->body.toStdString();
-    if (ruleAt >= 0)
+    if (ruleAt >= 0) {
         EXPECT_LT(noteAt, ruleAt) << "the note landed after the pass's separator:\n"
                                   << item->body.toStdString();
+    }
     // The neighbouring pass is untouched.
     EXPECT_TRUE(itemOf(QStringLiteral("PASS-59-42"), projectId)->body.contains(
         QStringLiteral("planned (2026-09-01)")));

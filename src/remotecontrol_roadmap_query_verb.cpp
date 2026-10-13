@@ -1285,24 +1285,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         && req.value(QStringLiteral("max_body_bytes")).toInt() != listBodyCap;
     // Called only where bodies are emitted: a clamp on a reply carrying none
     // would describe nothing.
-    auto announceListCap = [&](QJsonObject &out) {
+    auto announceListCap = [&](QJsonObject &reply) {
         if (!listCapClamped) return;
-        out["body_cap_clamped"]         = true;
-        out["max_body_bytes_effective"] = listBodyCap;
+        reply["body_cap_clamped"]         = true;
+        reply["max_body_bytes_effective"] = listBodyCap;
     };
     // ANTS-5477 — shorten a targeted reply's bodies before it spills. Not on
     // a single id asked for by size: ANTS-4630 made the spill the route to
     // the middle of a long body there.
-    auto shrinkToFit = [&](QJsonObject &out) {
+    auto shrinkToFit = [&](QJsonObject &reply) {
         if (!mcp::offloadRequested(req)) return;
         if (singleIdFetch && reqBodyCap > 0) return;
         const int cap = rcShrinkBodiesToFit(
-            out, idBodyCap,
+            reply, idBodyCap,
             req.value(QStringLiteral("body_from_end")).toBool(false),
             mcp::offloadThresholdFor(QStringLiteral("roadmap_query"), req));
         if (cap > 0) {
-            out["bodies_shrunk_to_fit"]      = true;
-            out["max_body_bytes_effective"] = cap;
+            reply["bodies_shrunk_to_fit"]      = true;
+            reply["max_body_bytes_effective"] = cap;
         }
     };
 

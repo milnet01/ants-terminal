@@ -3372,8 +3372,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 QStringList block = body.split(QChar('\n'));
                 block.prepend(QStringLiteral("#### Pass %1").arg(
                     PassHeadingWrite::designatorFromPassId(matchedId)));
-                const auto rec = RoadmapParse::parsePassHeadingBlock(block);
-                return rec ? rec->status : QString();
+                const auto parsed = RoadmapParse::parsePassHeadingBlock(block);
+                return parsed ? parsed->status : QString();
             };
             const auto passStatusMoved = [&](const QString &newBody) {
                 return passStore && passStatusOf(newBody) != passStatusOf(before->body);
