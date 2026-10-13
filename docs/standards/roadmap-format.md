@@ -1252,10 +1252,11 @@ the missing fields (`Kind:`, `Source:`, etc.) returned as
 empty strings rather than parse errors.
 
 **The adapter is read-side only, and one write op does not match it.**
-`roadmap_log op:"append"` and `op:"append_batch"` always write an
-ants-v1 emoji bullet, whatever dialect the file is in — so appending to
-a GFM-task-list roadmap leaves it MIXED, and the ratio moves as work is
-filed. Nothing warns. `op:"flip"` / `op:"flip_batch"` are **not** in
+On a GFM-task-list roadmap, `roadmap_log op:"append"` and
+`op:"append_batch"` write an ants-v1 emoji bullet, so appending leaves
+the file MIXED, and the ratio moves as work is filed. (A pass-headings
+roadmap is not in this class: append writes a `#### Pass` block there,
+ANTS-4117, § 3.10.5.) Nothing warns. `op:"flip"` / `op:"flip_batch"` are **not** in
 this class: they apply per the bullet's own format (**ANTS-3565**,
 `applyGfmFlip` vs `applyAntsV1Flip`), so a flip never converts a bullet
 and never changes the ratio.
