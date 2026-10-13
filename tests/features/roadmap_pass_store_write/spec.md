@@ -95,8 +95,17 @@ and `op:"amend_body"` there still refuses.
   pin: it holds before and after ANTS-5641.
   *Test:* `Ants5641UnservedPassProjectKeepsTheFileRoutes`.
 
+- **INV-14** — when `op:"amend_body"` re-wraps the line a wrapped match
+  joined, and that line opens a list item, each piece after the first
+  starts at the item's hanging indent, not at column 0 (ANTS-5677).
+  *Test:* `Ants5677RewrapKeepsTheHangingIndent`.
+- **INV-15** — `roadmap_query` by id on a store-served pass project returns
+  the block's lines after its heading as `body` (ANTS-5678).
+  *Test:* `Ants5678IdFetchReturnsThePassBody`.
+
 INV-1 to INV-4 fail against the pre-ANTS-5334 code; INV-8 to INV-12 fail
-against the pre-ANTS-5641 code.
+against the pre-ANTS-5641 code; INV-14 and INV-15 fail against the code
+before their fixes.
 
 ## Build
 

@@ -989,6 +989,9 @@ parsePassHeadingBullets(const QStringList &lines) {
         // headline only when the heading has no content beneath it
         // (keeps body non-empty, matching the prior contract).
         rec.body           = passBody.isEmpty() ? headline : passBody;
+        // ANTS-5678 — what roadmap_query emits as `body` (ANTS-4557): the
+        // block's lines after the heading, which is never one of them.
+        rec.bodyProse      = passBody;
         rec.sectionHeading = currentSectionHeading;
         rec.sectionLevel   = currentSectionLevel;
         if (!currentSectionHeading.isEmpty()) {

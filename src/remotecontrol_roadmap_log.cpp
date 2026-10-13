@@ -2754,7 +2754,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
 // times the width of its neighbours. Re-wrap that line to the width the rest
 // of the body already uses: its longest other line. A body with fewer than two
 // other lines, or one already wider than any sane wrap, has no width to infer
-// and is left alone. The line's own indentation starts every piece.
+// and is left alone. The line's own indentation starts the first piece; the
+// rest take its hanging indent — past the marker when it opens a list item
+// (ANTS-5677), its own indentation otherwise.
 static QString rlRewrapLine(const QString &body, int at) {
     QStringList lines = body.split(QChar('\n'));
     if (at < 0 || at >= lines.size())
@@ -2772,16 +2774,21 @@ static QString rlRewrapLine(const QString &body, int at) {
     int indentLen = 0;
     while (indentLen < line.size() && line.at(indentLen).isSpace()) ++indentLen;
     const QString indent = line.left(indentLen);
+    static const QRegularExpression rxMarker(QStringLiteral("^(?:[-*+]|\\d+[.)]) +"));
+    const QRegularExpressionMatch marker = rxMarker.match(line.mid(indentLen));
+    const QString hanging =
+        indent + QString(marker.hasMatch() ? marker.capturedLength() : 0, QChar(' '));
     QStringList wrapped;
     QString cur;
+    const auto prefix = [&] { return wrapped.isEmpty() ? indent : hanging; };
     for (const QString &w : line.mid(indentLen).split(QChar(' '), Qt::SkipEmptyParts)) {
-        if (!cur.isEmpty() && indent.size() + cur.size() + 1 + w.size() > width) {
-            wrapped << indent + cur;
+        if (!cur.isEmpty() && prefix().size() + cur.size() + 1 + w.size() > width) {
+            wrapped << prefix() + cur;
             cur.clear();
         }
         cur = cur.isEmpty() ? w : cur + QChar(' ') + w;
     }
-    if (!cur.isEmpty()) wrapped << indent + cur;
+    if (!cur.isEmpty()) wrapped << prefix() + cur;
     lines.removeAt(at);
     for (int k = 0; k < wrapped.size(); ++k)
         lines.insert(at + k, wrapped.at(k));

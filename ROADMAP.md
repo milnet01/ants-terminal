@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5676 -->
+<!-- ants-roadmap-id-high-water: ANTS=5678 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71551,6 +71551,38 @@ project. Reported causes are claims until checked in source.
   Kind: enhancement.
   Source: claude-config session report 2026-10-12.
   Lanes: remotecontrol.
+
+- ✅ [ANTS-5677] **amend_body's rewrap writes a continuation line at column 0 on a pass-headings roadmap.**
+  On RetroDB's `#### Pass` roadmap a wrapped-match amend_body
+  (wrapped_match:true, rewrapped:true) put the rewrapped continuation
+  line at column 0, while the body's other lines keep their two-space
+  hanging indent under `- **Verify**:`. The dry run's body_paragraph
+  already shows it. Repro: amend_body id:PASS-59-90 in RetroDB, quoted
+  in RetroDB_Ants_MCP_Feedback.md. Fix: indent each rewrapped line to
+  the hanging indent of the list item it sits in.
+  Resolved (2026-10-13): rlRewrapLine starts each piece after the first
+  at the line's hanging indent, past a list marker (`- `, `* `, `+ `,
+  `1. `, `1) `) when the line opens one. Test: roadmap_pass_store_write
+  INV-14 (Ants5677RewrapKeepsTheHangingIndent).
+  **Layman:** Editing a roadmap item's text on a pass-style roadmap can break its indentation, so the file needs a hand fix.
+  Kind: fix.
+  Source: RetroDB feedback 2026-10-13 (ANTS-5641 live test).
+  Lanes: roadmap-store, remotecontrol_roadmap_log.
+
+- ✅ [ANTS-5678] **roadmap_query by id returns no body on a pass-headings roadmap, even with include_body:true.**
+  roadmap_query id:PASS-59-90 on RetroDB returns headline, lanes and
+  status but no `body` key and no bodies_omitted flag; include_body:true
+  changes nothing. The pass block has Target, Why, Plan, Verify, Status
+  and Source lines. Fix: return the block's lines after the heading as
+  `body`, as the ants-v1 path does.
+  Resolved (2026-10-13): parsePassHeadingBullets now sets bodyProse to
+  the block's lines after the heading; it set only `body`, and since
+  ANTS-4557 the query emits bodyProse. Test: roadmap_pass_store_write
+  INV-15 (Ants5678IdFetchReturnsThePassBody).
+  **Layman:** On a pass-style roadmap, asking for one item does not return its plan text, so a session falls back to reading the file by hand.
+  Kind: fix.
+  Source: RetroDB feedback 2026-10-13 (ANTS-5641 live test).
+  Lanes: roadmap-store, remotecontrol_roadmap.
 
 ### Ants MCP feedback from CC sessions — 2026-10-12 triage
 

@@ -777,3 +777,82 @@ TEST(RoadmapPassStoreWrite, Ants5641UnservedPassProjectKeepsTheFileRoutes) {
                   .value(QStringLiteral("code")).toString(),
               QStringLiteral("unsupported_format"));
 }
+
+// ANTS-5677 / ANTS-5678 — RetroDB's Pass 59.90 shape: list items with a
+// two-space hanging indent under each `- **Key**:` line.
+namespace {
+const char *kHanging =
+    "# Demo — Roadmap\n"
+    "\n"
+    "## Phase 59\n"
+    "\n"
+    "#### Pass 59.90 CI cache and cancel settings (LOW, S)\n"
+    "- **Target**: `.github/workflows/ci.yml`, the cache and concurrency keys.\n"
+    "- **Plan**: one lever per commit. Split each cache into restore and save\n"
+    "  steps with an always condition, then fix the concurrency key.\n"
+    "- **Verify**: time a cold and a warm CI run before and after each commit and\n"
+    "  record both; compare the warm times against the cold ones in the log.\n"
+    "- **Status**: planned (2026-09-01). Lanes: ci.\n"
+    "\n"
+    "#### Pass 59.91 Pin the runner image (LOW, S)\n"
+    "- **Status**: planned (2026-09-01). Lanes: ci.\n";
+}  // namespace
+
+// INV-14
+TEST(RoadmapPassStoreWrite, Ants5677RewrapKeepsTheHangingIndent) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId, kHanging);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    QJsonObject amend = req(root, QStringLiteral("amend_body"));
+    amend[QStringLiteral("id")]       = QStringLiteral("PASS-59-90");
+    amend[QStringLiteral("old_text")] = QStringLiteral("each commit and record both;");
+    amend[QStringLiteral("new_text")] =
+        QStringLiteral("each commit, and record all four times;");
+    const QJsonObject a = rc.cmdRoadmapLogAmendBodyForTest(amend).object();
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+    ASSERT_TRUE(a.value(QStringLiteral("rewrapped")).toBool())
+        << "the case must exercise the rewrap: "
+        << QJsonDocument(a).toJson().toStdString();
+
+    const auto item = itemOf(QStringLiteral("PASS-59-90"), projectId);
+    ASSERT_TRUE(item.has_value());
+    for (const QString &line : item->body.split(QChar('\n'))) {
+        if (line.trimmed().isEmpty()) continue;
+        EXPECT_TRUE(line.startsWith(QStringLiteral("- ")) ||
+                    line.startsWith(QStringLiteral("  ")))
+            << "a continuation line lost its hanging indent: [" << line.toStdString()
+            << "]\nbody:\n" << item->body.toStdString();
+    }
+    EXPECT_TRUE(item->body.contains(QStringLiteral("record all four times;")));
+}
+
+// INV-15
+TEST(RoadmapPassStoreWrite, Ants5678IdFetchReturnsThePassBody) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, true, nullptr, kHanging);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+
+    QJsonObject q;
+    q[QStringLiteral("caller_cwd")]   = root;
+    q[QStringLiteral("id")]           = QStringLiteral("PASS-59-90");
+    q[QStringLiteral("include_body")] = true;
+    const QJsonObject r = rc.cmdRoadmapQueryForTest(q).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+    const QJsonArray bullets = r.value(QStringLiteral("bullets")).toArray();
+    ASSERT_EQ(bullets.size(), 1);
+    const QString body =
+        bullets.at(0).toObject().value(QStringLiteral("body")).toString();
+    EXPECT_TRUE(body.startsWith(QStringLiteral("- **Target**:"))) << body.toStdString();
+    EXPECT_TRUE(body.contains(QStringLiteral("  record both; compare the warm times")))
+        << body.toStdString();
+}

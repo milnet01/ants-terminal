@@ -40,6 +40,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log amend_body keeps a list item's hanging indent when it re-wraps a joined line.** (ANTS-5677)
+  On a `#### Pass` roadmap, the wrapped continuation of a `- **Key**:`
+  line now starts two spaces in, under the item's text, as the rest of
+  the block does.
+
+- **roadmap_query returns a pass block's lines as `body` on a pass-headings roadmap.** (ANTS-5678)
+  An id fetch now carries the Target, Plan, Verify and Status lines
+  under the `#### Pass` heading.
+
 - **Kitty images sent in several chunks now display.** (ANTS-5676)
   Later chunks take the first chunk's format and placement keys, as the
   Kitty graphics protocol specifies. A query sent mid-transfer is still
