@@ -21179,7 +21179,7 @@ indie-review finding.
   Kind: test.
   Source: in-session-2026-07-14 (found building test_chrome for ANTS-2119 terminalwidget bundle).
 
-- 📋 [ANTS-3515] **Fully-async indie_review_dispatch — the ANTS-2104 worker-join still freezes the GUI up to 5 min (ANTS-2119 remotecontrol M1).**
+- 🚫 [ANTS-3515] **Fully-async indie_review_dispatch — the ANTS-2104 worker-join still freezes the GUI up to 5 min (ANTS-2119 remotecontrol M1).**
   Spun out of ANTS-2119 (deferred-set, too large for the surgical sweep). ANTS-2104 fixed the CRITICAL UAF by wrapping cmdIndieReviewDispatch in a QThread::create + worker->wait() join (mainwindow.cpp:5276-5285), exactly like audit_run. But wait() is a blocking join, so the GUI event loop is frozen for the whole multi-lane LLM network fan-out — up to a 5-minute worst case (the audit_run comment already concedes this is the larger INV-9 follow-up; for indie_review_dispatch the freeze is far worse than audit_run's seconds). Fix: make the dispatch fully async — signal completion back to the MCP write path (deferred provider response) instead of a synchronous join, so the provider returns without blocking and the reply is posted when the sweep finishes. Needs a design pass: the ClaudeIntegration MCP provider contract currently returns a QString synchronously; async completion requires a deferred-response mechanism (or a queued-signal → write path). Also fold remotecontrol L3 (the static setForce*FailForTest test seams become a data race once a verb is genuinely off-thread — keep them on the write-owning thread) into the same design. Detail: .indie-review/reports-2026-06-11/remotecontrol.md M1/L3.
   **Layman:** The AI code-review sweep runs on a background thread now (so it no longer crashes), but the app window still freezes for however long the sweep takes — up to five minutes. Make it truly async so the UI stays responsive.
   Kind: enhancement.
@@ -21200,8 +21200,12 @@ indie-review finding.
   indie_review_dispatch audit_run's DeferredToolHandler (§ 2.8, INV-16),
   which is a gated direction change. Waiting on the user: build it, or
   close as superseded by ants-mcpd.
+  Closed by the user (2026-10-13) as superseded by ants-mcpd: Claude
+  Code's `ants` server is ants-mcpd, so the join no longer freezes the
+  window in normal use. The terminal-fallback case (ANTS-4932 § 8) keeps
+  the join; ANTS-2132 § 5 still records it.
 
-- 📋 [ANTS-3516] **Extract a shared ClaudeTranscriptTracker base for claudetasklist + claudebgtasks (ANTS-2119 transcript-watch dedup).**
+- ✅ [ANTS-3516] **Extract a shared ClaudeTranscriptTracker base for claudetasklist + claudebgtasks (ANTS-2119 transcript-watch dedup).**
   Spun out of ANTS-2119 (deferred-set; the reviewer explicitly said "defer-and-log rather than do mid-review"). claudetasklist.cpp and claudebgtasks.cpp duplicate rescan()/setTranscriptPath()/poll()/the watch-loss re-add block/the mtime short-circuit/the 16 MiB-cap seek-discard-partial-line preamble near-verbatim (claudetasklist.cpp:77-187 ≈ claudebgtasks.cpp:37-159), and the comments cross-reference each other by line number ("Same shape as claudebgtasks.cpp:91-95") — a maintenance smell that rots on any edit. A ClaudeTranscriptTracker<T> CRTP/template base (or a shared TranscriptWatch helper owning the QFileSystemWatcher + poll + cap-seek) would remove ~80 lines and the cross-file line-number coupling (dimension #6). ALSO fold in L1: parseTranscript's tail-liveness pass (claudebgtasks.cpp:394-410) and sweepLiveness() (:66-105) duplicate the same kStaleSecs=60 staleness predicate — extract a static isOutputStale(task, now) so the un-latch semantics stay in lockstep. Higher-risk than the surgical bundle (both trackers are live QObject file-watchers driving the UI chip), so it wants its own spec + cold-eyes + test pass before touching. Detail: .indie-review/reports-2026-06-11/claudetasklist.md L1/L2.
   Progress (2026-10-13). Since filing, the trackers came to share
   ClaudeTranscriptWatch (the watcher) and ClaudeTranscript::WalkCache /
@@ -21213,6 +21217,10 @@ indie-review finding.
   base for setTranscriptPath / rescan / poll, which now differ mostly in
   types and comparison shape. Waiting on the user: build the base, or
   close the rest as not worth the risk to two live UI watchers.
+  Closed (2026-10-13): L1 and the line-number cross-reference shipped in
+  96117f6d; the user chose not to build the shared base, since the
+  remaining wiring differs in types and comparison shape and the two
+  trackers drive live status-bar chips.
   **Layman:** Two nearly-identical file-watching helpers (one for the task list, one for background tasks) duplicate ~80 lines and cross-reference each other by line number in comments — which rot. Fold the shared machinery into one base so a fix to one can't silently miss the other.
   Kind: refactor.
   Source: indie-review-2026-06-11 (claudetasklist L1/L2) — deferred from ANTS-2119 surgical sweep 2026-07-14.
@@ -78545,7 +78553,7 @@ that needs them.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
   Resolved (2026-08-15): `docs/subsystems.md` said "7-tool allowlist"; the live predicate holds FOURTEEN entries — one more than the thirteen this item counted on 2026-07-26, because ANTS-3368 added `co_change_family` in between, which is the item's own argument made for it. Took its recommendation and dropped the count rather than re-pinning it: the entry now points at the predicate and says why no number is stated.
 
-- 📋 [ANTS-3645] **Document the token-cost table as a required MCP registration step.**
+- ✅ [ANTS-3645] **Document the token-cost table as a required MCP registration step.**
   docs/standards/mcp-tools.md has no mention of the per-verb token-cost
   table in claudeintegration.cpp, nor of `selection_hint` (the one-line
   "when to use" that tool_info {catalog:true} surfaces per verb). Both are
@@ -78629,6 +78637,15 @@ that needs them.
   mutations: that bracket restored, a bracket on the bare-literal
   descriptor `get_session_info`, and one on the inline-built
   `tool_info`. Parts (c) and (d) remain, and carry a rule 14 gate.
+  Resolved (2026-10-13): mcp-tools.md step 12 documents (d), the
+  selection_hint rules the tests enforce (required, `Use ` prefix, 240
+  chars: mcp_selection_hint HINT-1/HINT-3), and (c), the token-cost table
+  as it is (tokenCostFor; hints per ANTS-1505; a tool with no row is
+  advertised at 500/2500; no test checks rows). Not written as REQUIRED,
+  as this headline asked: measured the same day, 21 of 77 registered
+  tools have no row, so requiring one would mean inventing 21 figures.
+  Making it required, with measured figures and a test, would be a new
+  item and a gated direction change.
 
 - 💭 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
   ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not

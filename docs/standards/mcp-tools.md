@@ -497,6 +497,17 @@ place when it saves a Claude session real tokens or round-trips
     `mcp_dispatch_forward_completeness` scraper mis-counts it as a schema
     prop).
 
+12. **Give the tool a `selection_hint`; know where its token cost
+    comes from.** The `selection_hint` is the one-line
+    "when to use" that `tool_info {catalog:true}` lists per tool. It is
+    required, starts with `Use `, and stays within 240 characters:
+    `mcp_selection_hint` HINT-1 and HINT-3 fail the build otherwise. The
+    token-cost table is `tokenCostFor` in `claudeintegration.cpp`'s
+    tools/list handler. It supplies each tool's `typical_token_cost` and
+    `worst_case_tokens`, which are hints, not contracts (ANTS-1505). A
+    tool with no row is advertised at the default (500, 2500), and no
+    test checks for a row.
+
 ## Tests (required)
 
 Mirror the registration-presence + schema-validity asserts the existing
