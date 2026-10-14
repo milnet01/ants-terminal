@@ -88598,7 +88598,7 @@ here.)
   other read verb takes. Closing rather than carrying a residual whose only
   remaining value is a second way to spell an argument that now exists.
 
-- 📋 [ANTS-4409] **The corpus survey silently omits a whole project, and roadmap-data-model.md's figures rest on it.**
+- ✅ [ANTS-4409] **The corpus survey silently omits a whole project, and roadmap-data-model.md's figures rest on it.**
   `tools/roadmap-corpus-survey.py` probes each project for `ROADMAP.md` at
   its root. RetroArch keeps its roadmap at `docs/private/ROADMAP.md`, so the
   tool prints `no ROADMAP.md found under: …/RetroArch` and the project is
@@ -88629,6 +88629,15 @@ here.)
 
   Then re-run and re-state the figures the data model quotes, noting which
   moved.
+  Shipped (2026-10-14, af7fbb3c): roadmap_in() reads
+  .ants/project.json's `roadmap` key, then project_layout's candidate
+  list. Re-run over the shared root: 30 -> 32 projects (RetroArch and
+  Dantes_Inferno_Recomp were both hidden), 9504 -> 9711 items. What
+  moved: items, id-matching 8416 -> 8470, off-grammar 991 -> 1144
+  (RetroArch's 153 synthesised RETR-S ids), no-Source 19% -> 20%,
+  no-Layman 21% -> 22%. roadmap-data-model.md needed no edit: its
+  figures are dated or approximate on purpose (§ 3.3), and § 7.4's
+  "21 canonical Kind values, zero others" still holds.
   **Layman:** The tool that counts every project's roadmap items cannot find RetroArch's, so 162 items are missing from figures that claim to cover everything.
   Kind: fix.
   Source: in-session-2026-08-15 (found while writing ANTS-3807's migration briefs).
