@@ -611,8 +611,9 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     portalStatus->setWordWrap(true);
     // ANTS-5109 — status colours come from the theme (dialogs.md D1):
     // ANSI green for active, ANSI yellow for unavailable.
-    const Theme &portalTheme = Themes::byName(
-        m_config ? m_config->theme() : DialogChrome::activeTheme());
+    const QString portalThemeName =
+        m_config ? m_config->theme() : DialogChrome::activeTheme();
+    const Theme &portalTheme = Themes::byName(portalThemeName);
     if (GlobalShortcutsPortal::isAvailable()) {
         portalStatus->setText(QStringLiteral(
             "<span style='color:%1;'>&#x2713; Portal binding active</span> "
