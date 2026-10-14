@@ -88526,7 +88526,7 @@ here.)
   Lanes: mcp, roadmap.
   Resolved (2026-08-28): already fixed by ANTS-4631 + ANTS-4636; verified, not reasoned. This item asked for like-for-like comparison and both halves now are. The file side is RoadmapFoldIn::maxDeclaredId, which counts an id only on a top-level list item outside a fence, so the narrated id in ANTS-4383's body that produced the reported file_highest_id no longer contributes. The store side is max(idHighWater, maxAllocatedId), so it is the ids the store HOLDS rather than the allocator's last handout. Evidence: roadmap_query on this project emits no file_ahead_of_store at all, on a binary built after both fixes.
 
-- 📋 [ANTS-4407] **ANTS-4404 names four walkers; measured, one is not the defect it describes and one is a different job.**
+- ✅ [ANTS-4407] **ANTS-4404 names four walkers; measured, one is not the defect it describes and one is a different job.**
   ANTS-4404 said four walkers hand-roll the same naive fence test and
   stated -- correctly -- that whether they misread the file was NOT yet
   measured. Measured now; the two in `remotecontrol.cpp` were real and are
@@ -88551,6 +88551,15 @@ here.)
   So the remaining work is smaller than the bullet implies: route
   `changelogquery.cpp` through MarkdownScan for the two latent gaps, and
   decide whether the testaudit state machine is worth touching at all.
+  Resolved (2026-10-14), by work under other ids; nothing left to do.
+  Re-read today: src/changelogquery.cpp's fenceInfoOf() now calls
+  MarkdownScan::fenceOpenerChar (ANTS-4404), and its closer uses
+  MarkdownScan::fenceCloses, which refuses an info string (ANTS-4987),
+  so both latent gaps this item named are closed. The
+  testauditengine.cpp Findings(JSON) state machine was converted too:
+  it opens with fenceOpenerChar and closes with fenceCloses on the
+  opener's character and run (ANTS-4404). No walker named here still
+  hand-rolls the fence test.
   **Layman:** A filed item lists four places with the same bug; checking them found the list is wrong in two of the four.
   Kind: doc-fix.
   Source: in-session-2026-08-15.
