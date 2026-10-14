@@ -24340,6 +24340,11 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   ICANON on, keeping the user's intent. Residual: a full-screen
   password prompt (ICANON off) is not detected. Spec:
   docs/specs/ANTS-4272-plugin-io-events.md.
+  Progress (2026-10-14): spec docs/specs/ANTS-4272-plugin-io-events.md
+  accepted after review-contract loop 2 of 2 (calm cap; 2 verified,
+  2 fixed). Loop 2 settled that `line` carries the logical line
+  (soft-wrapped rows joined by PluginLineJoiner). Next: build it with
+  write-code.
 
 - ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.
