@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-4272 — Deliver the output, line, prompt and keypress plugin events
 
-**Status:** spec draft (2026-10-13).
+**Status:** accepted (2026-10-14).
 
 **Kind:** implement.
 
@@ -25,8 +25,7 @@ documentation silently never runs.
 
 Wiring them naively has three costs:
 
-1. **Privacy.** Today no plugin can read terminal content:
-   `ants.get_output()` reads `LuaEngine::m_recentOutput`, and
+1. **Privacy.** `ants.get_output()` reads `LuaEngine::m_recentOutput`, and
    `PluginManager::setRecentOutput` has no caller in `src/`. These events
    would hand every installed plugin the screen and every keystroke,
    passwords included. `TerminalWidget::keyPressEvent` already refuses to
@@ -118,8 +117,23 @@ the decoded text, escape sequences included.
 ### 2.4 `line`
 
 When the filter wants `Line`, `TerminalWidget::onGridLineCompleted` reads
-the row's text before its `m_triggerRules.empty()` early return, and emits
-`pluginLine(text)` if a new per-terminal budget allows it.
+the row's text and `TerminalGrid::screenLineWrapped(row)` before its
+`m_triggerRules.empty()` early return. `newLine()` also runs on a soft
+wrap, so the payload is the logical line, as `PLUGINS.md` promises:
+
+```cpp
+// src/pluginoutputcoalescer.h — one per terminal.
+class PluginLineJoiner {
+public:
+    // Holds a soft-wrapped row; on a row that is not, returns the held
+    // rows plus this one. Held text past PluginOutputCoalescer::kMaxChars
+    // keeps its head.
+    std::optional<QString> addRow(const QString &rowText, bool softWrapped);
+};
+```
+
+A returned line is emitted as `pluginLine(text)` if a new per-terminal
+budget allows it.
 `takeEventBudget` takes the cap as a parameter, defaulting to
 `kEventsPerSecond`; the line budget's cap is
 `kPluginLinesPerSecond = 200`. Lines past the cap in a one-second window
@@ -277,11 +291,13 @@ relaunch like any other build.
 
 - **INV-6** — `onGridLineCompleted` emits `pluginLine` before its
   trigger-rules early return, under a budget capped at
-  `kPluginLinesPerSecond`. Breaks when the emit sits after the early
-  return, or shares the trigger budget.
-  *Test:* `tests/features/plugin_io_events` source-scrape of the order,
-  and `takeEventBudget` with cap 200 refusing the 201st take in one
-  window.
+  `kPluginLinesPerSecond`, and only for a row that ends a logical line.
+  Breaks when the emit sits after the early return, shares the trigger
+  budget, or fires on a soft-wrapped row.
+  *Test:* `tests/features/plugin_io_events` source-scrape of the order;
+  `takeEventBudget` with cap 200 refusing the 201st take in one window;
+  `PluginLineJoiner` given `"ab"` soft-wrapped then `"c"` returns nothing,
+  then `"abc"`.
 
 - **INV-7** — With `ANTS_OSC133_KEY` set, a marker with a wrong `ahmac`
   reaches no prompt callback; a correct one does, as does every marker
@@ -297,7 +313,8 @@ relaunch like any other build.
   fails open.
   *Test:* `tests/features/plugin_io_events` opens a pty with `openpty`,
   sets each of the two slave states and checks
-  `keysShareable(master)`, then passes `-1`.
+  `keysShareable(master)`, then passes `-1`; a source-scrape finds
+  `sendKeyData`'s `pluginKey` emit inside a test of the sampled flag.
 
 - **INV-9** — `sendKeyData` writes the key before it emits `pluginKey`
   and consumes no result; `inputMethodEvent` and `performPaste` emit
@@ -309,7 +326,8 @@ relaunch like any other build.
 ## 4. RAM / build cost
 
 Per terminal: one coalescer, at most `kMaxChars` (16384) characters plus
-a decoder's state; three new `EventBudget`s; one 100 ms timer. No new
+a decoder's state; one line joiner, holding at most `kMaxChars`; three
+new `EventBudget`s; one 100 ms timer. No new
 build target outside the feature test, and no new dependency.
 
 ## 5. Out of scope
@@ -347,9 +365,9 @@ against the pre-change source before it passes.
 | INV-3 | `tests/features/plugin_io_events`, source-scrape |
 | INV-4 | `tests/features/plugin_io_events`, coalescer tests |
 | INV-5 | **Partial:** a source-scrape sees the timer's shape, not its rate in a running terminal |
-| INV-6 | `tests/features/plugin_io_events`, order scrape and budget test |
+| INV-6 | `tests/features/plugin_io_events`, order scrape, budget and joiner tests |
 | INV-7 | `tests/features/plugin_io_events`, OSC 133 test |
-| INV-8 | `tests/features/plugin_io_events`, pty test |
+| INV-8 | `tests/features/plugin_io_events`, pty test and `sendKeyData` scrape |
 | INV-9 | `tests/features/plugin_io_events`, source-scrape |
 | § 2.8 stale sample | **nothing** — a limit of sampling on reads, accepted in § 2.10 |
 | § 2.8 full-screen password | **nothing** — a raw-mode password prompt looks like a shell prompt; not yet queued |
