@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Plugins can react to terminal output, finished lines, shell prompts and keys** (ANTS-4272)
+  The "output", "line", "prompt" and "keypress" events now fire.
+  Output and lines need the new "terminal.read" permission and keys
+  need "input.keys", each granted once per plugin. Keys are watch-only
+  and are never passed on while a password is being typed. See
+  PLUGINS.md § Events.
+
 - **Plugins hear title changes, new tabs and closed tabs** (ANTS-4272)
   The `title_changed`, `tab_created` and `tab_closed` plugin events now
   fire. Split panes count, and the tab events carry `index=N&split=S`.

@@ -44,6 +44,7 @@
 #include <QElapsedTimer>
 #include <QMetaType>
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -105,6 +106,10 @@ public:
     // shell has been reaped.
     pid_t childPid() const;
 
+    // ANTS-4272 — false while the PTY is at a password prompt, or before the
+    // first read. Pty stores it on the worker on every read; GUI reads it.
+    bool keysShareable() const { return m_keysShareable.load(std::memory_order_relaxed); }
+
 signals:
     // Emitted from the worker thread whenever a parse batch is ready.
     // Connect with Qt::QueuedConnection to marshal onto GUI. The
@@ -149,6 +154,7 @@ private:
     void flushBatch();
 
     Pty *m_pty = nullptr;                    // heap-allocated, owned, worker-thread
+    std::atomic<bool> m_keysShareable{false};
     std::unique_ptr<VtParser> m_parser;
 
     std::vector<VtAction> m_pending;

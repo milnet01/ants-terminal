@@ -12,6 +12,7 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 #include <pwd.h>
 #include <vector>
@@ -638,6 +639,12 @@ bool Pty::foregroundReturnedToShell(pid_t fg, pid_t shellPgid,
     return previous != shellPgid && fg == shellPgid;
 }
 
+bool Pty::keysShareable(int masterFd) {
+    struct termios t {};
+    if (masterFd < 0 || ::tcgetattr(masterFd, &t) != 0) return false;
+    return !((t.c_lflag & ICANON) && !(t.c_lflag & ECHO));
+}
+
 void Pty::onReadReady() {
     // ANTS-2119 — defensive guard: a QSocketNotifier can fire once more after
     // the fd was closed (destructor / start-failure / write-error paths set
@@ -667,6 +674,11 @@ void Pty::onReadReady() {
         ANTS_LOG(DebugLog::Pty, "foreground back to shell - clearing SGR");
         emit dataReceived(QByteArrayLiteral("\033[0m"));
     }
+
+    // ANTS-4272 — sampled on the worker, beside tcgetpgrp. A password prompt
+    // is output, so the read carrying it samples the prompt's termios.
+    if (m_keysShareableSink)
+        m_keysShareableSink->store(keysShareable(m_masterFd), std::memory_order_relaxed);
 
     char buf[16384];
     while (true) {

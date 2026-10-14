@@ -1084,6 +1084,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             auto commandFinishedCb = std::move(m_commandFinishedCallback);
             auto userVarCb         = std::move(m_userVarCallback);
             auto osc133ForgeryCb   = std::move(m_osc133ForgeryCallback);
+            auto promptMarkerCb    = std::move(m_promptMarkerCallback);
             QByteArray osc133Key   = m_osc133Key;
             // ANTS-5033 — the notification budget survives too, or a stream
             // that resets before each notification would refill it every time.
@@ -1121,6 +1122,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             m_commandFinishedCallback = std::move(commandFinishedCb);
             m_userVarCallback         = std::move(userVarCb);
             m_osc133ForgeryCallback   = std::move(osc133ForgeryCb);
+            m_promptMarkerCallback    = std::move(promptMarkerCb);
             m_osc133Key               = std::move(osc133Key);
             m_notifyWindowStartMs     = notifyWindowStartMs;
             m_notifyCount             = notifyCount;
@@ -1547,6 +1549,10 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
             break;
         }
         }
+        // ANTS-4272 — after the state change, so a plugin sees the marker the
+        // grid has already applied. A forged marker returned above.
+        if (m_promptMarkerCallback)
+            m_promptMarkerCallback(marker, marker == 'D' ? m_lastExitCode : 0);
         // Cap stored prompt regions
         while (static_cast<int>(m_promptRegions.size()) > MAX_PROMPT_REGIONS)
             m_promptRegions.erase(m_promptRegions.begin());

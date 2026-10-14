@@ -184,6 +184,25 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
                 QString("exit_code=%1&duration_ms=%2").arg(exitCode).arg(durationMs));
         }
     });
+    // ANTS-4272 — output, line, prompt and keypress. The filter lets the
+    // terminal skip each emit and its work when no plugin listens with the
+    // permission the event needs.
+    terminal->setPluginEventFilter([this](PluginEvent e) {
+        return m_pluginManager && m_pluginManager->wants(e);
+    });
+    const auto forwardPluginEvent = [this](PluginEvent e) {
+        return [this, e](const QString &data) {
+            if (m_pluginManager) m_pluginManager->fireEvent(e, data);
+        };
+    };
+    connect(terminal, &TerminalWidget::pluginOutput, this,
+            forwardPluginEvent(PluginEvent::Output));
+    connect(terminal, &TerminalWidget::pluginLine, this,
+            forwardPluginEvent(PluginEvent::Line));
+    connect(terminal, &TerminalWidget::pluginPrompt, this,
+            forwardPluginEvent(PluginEvent::Prompt));
+    connect(terminal, &TerminalWidget::pluginKey, this,
+            forwardPluginEvent(PluginEvent::KeyPress));
     // user_var_changed payload: "NAME=value" (raw — names are already
     // identifier-shaped per the OSC 1337 SetUserVar spec).
     connect(terminal, &TerminalWidget::userVarChanged, this,

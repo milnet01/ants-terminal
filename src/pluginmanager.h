@@ -55,6 +55,14 @@ public:
     // if ANY plugin's handler returns false (for keypress interception).
     bool fireEvent(PluginEvent event, const QString &data = QString());
 
+    // ANTS-4272 — the permission an event needs, or empty.
+    // Output, Line -> "terminal.read"; KeyPress -> "input.keys"; else "".
+    static QString permissionFor(PluginEvent e);
+    // ANTS-4272 — true when a healthy engine handles `e` and, where
+    // permissionFor(e) is non-empty, holds that permission. Lets an emit
+    // site skip its work when nobody listens.
+    bool wants(PluginEvent e) const;
+
     // Update context for all plugins
     void setRecentOutput(const QString &output);
     void setCwd(const QString &cwd);

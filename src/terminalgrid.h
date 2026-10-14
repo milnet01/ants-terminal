@@ -363,6 +363,10 @@ public:
     // markers. `count` is the running total since process start (monotonic).
     using Osc133ForgeryCallback = std::function<void(int count)>;
     void setOsc133ForgeryCallback(Osc133ForgeryCallback cb) { m_osc133ForgeryCallback = std::move(cb); }
+    // ANTS-4272 — every OSC 133 marker that passed verifyOsc133Hmac, after
+    // its state change. `exitCode` is meaningful for 'D' only.
+    using PromptMarkerCallback = std::function<void(char marker, int exitCode)>;
+    void setPromptMarkerCallback(PromptMarkerCallback cb) { m_promptMarkerCallback = std::move(cb); }
     int osc133ForgeryCount() const { return m_osc133ForgeryCount; }
     bool osc133HmacEnforced() const { return !m_osc133Key.isEmpty(); }
     // Test-only entry point: override the key without re-reading the env.
@@ -813,6 +817,7 @@ private:
     int m_osc133ForgeryCount = 0;
     qint64 m_osc133LastForgeryNotifyMs = 0;
     Osc133ForgeryCallback m_osc133ForgeryCallback;
+    PromptMarkerCallback m_promptMarkerCallback;
     static constexpr qint64 OSC133_FORGERY_COOLDOWN_MS = 5000;
     // Helper: returns true iff the OSC 133 payload is acceptable. When the
     // verifier is disabled (no key) always returns true. Fed the marker

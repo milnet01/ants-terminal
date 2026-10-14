@@ -2,6 +2,7 @@
 #include "claudepromptdetect.h" // ANTS-1993 — permission-prompt structural gate
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
+#include "luaengine.h"  // ANTS-4272 — PluginEvent values
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
 #include "secureio.h"        // ANTS-4456 — ensurePrivateDir / setOwnerOnlyPerms
 #include "selectiontail.h"   // ANTS-5623 — tail-capped selection assembly
@@ -274,6 +275,17 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // raw PTY chunks and can't map matches to grid cells.
     m_grid->setLineCompletionCallback([this](int screenRow) {
         onGridLineCompleted(screenRow);
+    });
+    // ANTS-4272 — OSC 133 markers that passed the HMAC check reach plugins.
+    m_grid->setPromptMarkerCallback([this](char marker, int exitCode) {
+        onGridPromptMarker(marker, exitCode);
+    });
+    // ANTS-4272 — at most one `output` plugin event per 100 ms.
+    m_pluginOutputTimer = new QTimer(this);
+    m_pluginOutputTimer->setSingleShot(true);
+    m_pluginOutputTimer->setInterval(100);
+    connect(m_pluginOutputTimer, &QTimer::timeout, this, [this]() {
+        emit pluginOutput(m_pluginOutput.take());
     });
 
     // Smooth scrolling timer (16ms = ~60fps)
@@ -666,6 +678,13 @@ void TerminalWidget::sendKeyData(const QByteArray &data, const QKeyEvent *event)
     if (m_hasSelection) clearSelection();
     ptyWrite(data);
     if (m_broadcastCallback) m_broadcastCallback(this, event);
+    // ANTS-4272 — watch-only: the key is already written. Withheld while the
+    // PTY is at a password prompt, or before the first read says it is not.
+    if (event && pluginWants(PluginEvent::KeyPress) && m_vtStream
+        && m_vtStream->keysShareable()
+        && takeEventBudget(m_pluginKeyBudget, kPluginKeysPerSecond))
+        emit pluginKey(QKeySequence(event->keyCombination())
+                           .toString(QKeySequence::PortableText));
 }
 
 bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {
@@ -2274,6 +2293,12 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
             static_cast<long long>(batch->rawBytes.size())).toUtf8());
 
     m_spanCacheDirty = true;
+
+    // ANTS-4272 — coalesced `output` plugin event (one per 100 ms at most).
+    if (pluginWants(PluginEvent::Output)) {
+        m_pluginOutput.append(batch->rawBytes);
+        if (!m_pluginOutputTimer->isActive()) m_pluginOutputTimer->start();
+    }
 
     if (batch->clearSelectionHint) {
         clearSelection();
@@ -5813,14 +5838,30 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
     }
 }
 
-bool TerminalWidget::takeEventBudget(EventBudget &budget) {
+bool TerminalWidget::takeEventBudget(EventBudget &budget, int cap) {
     if (!budget.window.isValid() || budget.window.elapsed() >= 1000) {
         budget.window.start();
         budget.count = 0;
     }
-    if (budget.count >= kEventsPerSecond) return false;
+    if (budget.count >= cap) return false;
     ++budget.count;
     return true;
+}
+
+void TerminalWidget::setPluginEventFilter(std::function<bool(PluginEvent)> wants) {
+    m_pluginEventFilter = std::move(wants);
+}
+
+bool TerminalWidget::pluginWants(PluginEvent e) const {
+    return m_pluginEventFilter && m_pluginEventFilter(e);
+}
+
+void TerminalWidget::onGridPromptMarker(char marker, int exitCode) {
+    if (!pluginWants(PluginEvent::Prompt)) return;
+    if (!takeEventBudget(m_pluginPromptBudget)) return;
+    QString data = QStringLiteral("marker=") + QLatin1Char(marker);
+    if (marker == 'D') data += QStringLiteral("&exit=%1").arg(exitCode);
+    emit pluginPrompt(data);
 }
 
 void TerminalWidget::checkTriggers(const QByteArray &data) {
@@ -5867,6 +5908,17 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
 //   make_hyperlink: URL template using $0..$9 backrefs against the match
 //     capture groups — mirrors iTerm2's MakeHyperlink contract.
 void TerminalWidget::onGridLineCompleted(int screenRow) {
+    // ANTS-4272 — the `line` plugin event carries the logical line: a
+    // soft-wrapped row is held and joined with the rows after it.
+    if (pluginWants(PluginEvent::Line) && screenRow >= 0 && screenRow < m_grid->rows()) {
+        const bool wrapped = m_grid->screenLineWrapped(screenRow);
+        QString row = lineText(m_grid->scrollbackSize() + screenRow);
+        if (!wrapped)   // lineText pads to the width; a wrapped row is full
+            while (!row.isEmpty() && row.back() == QLatin1Char(' ')) row.chop(1);
+        const auto line = m_pluginLineJoiner.addRow(row, wrapped);
+        if (line && takeEventBudget(m_pluginLineBudget, kPluginLinesPerSecond))
+            emit pluginLine(*line);
+    }
     if (m_triggerRules.empty()) return;
     if (screenRow < 0 || screenRow >= m_grid->rows()) return;
 

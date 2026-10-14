@@ -365,13 +365,16 @@ void PluginManager::healthTick() {
 // names ("Plugin foo wants `delete_root`?") and let plugins claim
 // privileges they couldn't actually exercise to phish for trust.
 //
-// Keep this list in sync with luaengine.cpp's hasPermission() call
-// sites — every entry must correspond to a real gate on the Lua API
-// surface, and every gate must have a matching entry here.
+// Keep this list in sync with the gates — luaengine.cpp's hasPermission()
+// call sites and PluginManager::permissionFor(). Every entry must
+// correspond to a real gate, and every gate must have a matching entry here.
 static const QStringList &knownPermissions() {
     static const QStringList kKnown = {
         QStringLiteral("clipboard.write"),
         QStringLiteral("settings"),
+        // ANTS-4272 — gated in PluginManager::permissionFor().
+        QStringLiteral("terminal.read"),
+        QStringLiteral("input.keys"),
     };
     return kKnown;
 }
@@ -670,13 +673,37 @@ bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
     // return to the GUI event loop immediately (INV-2). No veto for async
     // events — every event fired today is fire-and-forget; the synchronous-
     // veto path is ANTS-1736 (§ 2.6). ANTS-5107 — a plugin with no handler
-    // for the event is not sent it.
+    // for the event is not sent it. ANTS-4272 — nor one lacking the
+    // permission the event needs.
+    const QString perm = permissionFor(event);
     for (auto *engine : healthyEngines()) {
         if (!engine->handlesEvent(event)) continue;
+        if (!perm.isEmpty() && !engine->hasPermission(perm)) continue;
         QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
                                   Q_ARG(int, int(event)), Q_ARG(QString, data));
     }
     return true;
+}
+
+QString PluginManager::permissionFor(PluginEvent e) {
+    switch (e) {
+    case PluginEvent::Output:
+    case PluginEvent::Line:
+        return QStringLiteral("terminal.read");
+    case PluginEvent::KeyPress:
+        return QStringLiteral("input.keys");
+    default:
+        return {};
+    }
+}
+
+bool PluginManager::wants(PluginEvent e) const {
+    const QString perm = permissionFor(e);
+    for (auto *engine : healthyEngines()) {
+        if (engine->handlesEvent(e) && (perm.isEmpty() || engine->hasPermission(perm)))
+            return true;
+    }
+    return false;
 }
 
 void PluginManager::setRecentOutput(const QString &output) {

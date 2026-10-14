@@ -102,16 +102,19 @@ Optional but strongly recommended. **Manifest v2** (shipped in 0.6.0) adds
 |-------------------|-----------------------------------------------------------|
 | `clipboard.write` | `ants.clipboard.write(text)` — write system clipboard     |
 | `settings`        | `ants.settings.get(key)` / `ants.settings.set(key, v)` — per-plugin k/v store |
+| `terminal.read`   | the `"output"` and `"line"` events — what the terminal prints |
+| `input.keys`      | the `"keypress"` event — the keys you type, never during a password |
 
 Unknown permission strings (anything outside the table above) are
 **silently dropped** by the manifest parser. A plugin that declares
 `["network"]` will see no permission prompt and no error — only the
-two values above are recognised. Adding a new permission string
+values above are recognised. Adding a new permission string
 requires a matching entry in `pluginmanager.cpp::knownPermissions()`.
 
 Un-granted permissions result in the corresponding `ants.*` table being
 **absent** (not `nil`), so plugins can feature-detect with
-`if ants.clipboard then ... end`. Grants persist in `config.json`
+`if ants.clipboard then ... end`. An event whose permission is not
+granted still registers without error; its handler simply never runs. Grants persist in `config.json`
 (`plugin_grants: {"<name>": [...]}`); subsequent loads don't re-prompt unless
 the manifest requests a new permission the user hasn't yet granted.
 
@@ -141,6 +144,7 @@ ants.on("tab_created", function(tab_info)
     ants.notify("New tab", config.message)
 end)
 
+-- "line" runs only with "terminal.read" in manifest.json's permissions
 ants.on("line", function(line)
     if line:match("error: ") then
         ants.set_status("⚠ error in recent output")
@@ -267,17 +271,15 @@ ants.log("plugin foo: loaded config from " .. cfg_path)
 ### `ants.on(event_name, handler)`
 
 Registers a callback for a named event. Handler receives event data as a
-string and may return `false` from keypress events to cancel propagation.
+string; its return value is ignored.
 Multiple handlers per event are allowed; invocation order is
 registration order. **Maximum 64 handlers per event** — exceeding the
 cap raises a Lua error (`kMaxHandlersPerEvent` in `luaengine.cpp`).
 
 ```lua
-ants.on("keypress", function(key)
-    if key == "Ctrl+Shift+G" then
-        ants.send("git status\n")
-        return false            -- consume the keypress
-    end
+ants.on("command_finished", function(payload)
+    local code = payload:match("exit_code=(%d+)")
+    if code ~= "0" then ants.notify("Command failed", payload) end
 end)
 ```
 
@@ -377,10 +379,10 @@ end
 
 | Event name                | Handler signature             | Cancellable | When it fires                                        |
 |---------------------------|-------------------------------|-------------|------------------------------------------------------|
-| `"output"` †              | `function(chunk)`             | no          | Every chunk of PTY output, post-decode, pre-display  |
-| `"line"` †                | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
-| `"prompt"` †              | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed                        |
-| `"keypress"` †            | `function(key)` returns bool? | **yes**     | User pressed a key (before the grid sees it)         |
+| `"output"` 🔒             | `function(text)`              | no          | PTY output, gathered over up to 100 ms               |
+| `"line"` 🔒               | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
+| `"prompt"`                | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed — `"marker=A"`, or `"marker=D&exit=N"` |
+| `"keypress"` 🔒           | `function(key)`               | no          | A key was sent to the shell — e.g. `"Ctrl+C"`        |
 | `"title_changed"`         | `function(new_title)`         | no          | A pane's shell title changed (OSC 0/1/2)            |
 | `"tab_created"`           | `function(payload)`           | no          | New tab or split pane — payload `"index=N&split=S"`  |
 | `"tab_closed"`            | `function(payload)`           | no          | Tab or split pane closed — payload as `tab_created`  |
@@ -394,32 +396,37 @@ end
 | `"user_var_changed"` 0.6.9 | `function(payload)`          | no          | OSC 1337 SetUserVar — payload `"NAME=value"`         |
 | `"palette_action"` 0.6.9  | `function(payload)`           | no          | Registered palette entry / `run_script` trigger fired |
 
-**† Not yet wired (0.7.92):** Events marked `†` are registered in the
-`ants.on()` API (handlers are accepted without error) but have **no
-`fireEvent` call site** in the terminal source as of 0.7.92. Handlers
-for these events will never fire in the current build. They are listed
-here as the intended API surface for a future wiring commit.
+**🔒 Needs a permission:** `"output"` and `"line"` need `terminal.read`;
+`"keypress"` needs `input.keys`. Ask for them in `manifest.json`.
+
+**Output and line payloads:** `"output"` is the decoded text, escape
+sequences included, at most 16384 characters; a burst longer than that
+keeps its newest text. `"line"` is the text alone, one event per line
+however many screen rows it wrapped across.
+
+**Keys:** `"keypress"` names the key in Qt's portable form, such as
+`"Ctrl+C"` or `"Shift+A"`. Pasted text and input-method text are not
+keys and fire nothing. While a program reads a password (echo off, line
+input on), no key is sent to any plugin. A full-screen program that asks
+for a password reads keys one at a time and is not recognised; its keys
+do reach a plugin holding `input.keys`.
 
 **Tab payload:** `index` is the tab's 0-based position; `split` is `1`
 when a split pane opened or closed, `0` for a whole tab. A restored tab
 counts as created.
 
 **Rate limits:** terminal output drives `"command_finished"` and the
-`run_script` form of `"palette_action"`, so each terminal caps them. Past
+`run_script` form of `"palette_action"`, so each terminal caps them.
+Each terminal also sends at most 10 `"output"`, 200 `"line"`,
+30 `"prompt"` and 100 `"keypress"` events a second. Past
 the cap within one second, further events are dropped, not queued.
 `command_finished` has its own budget; `run_script` shares one with every
 other trigger action. Do not rely on seeing every marker from a program
 that floods them.
 
-**Return-value contract:** only `"keypress"` acts on the return value.
-Returning `false` suppresses default handling; any other value (including
-`nil`, `true`, or omitting the return) lets the event propagate. All
-other events ignore the return value. (Note: `"keypress"` is marked `†` —
-not yet wired — so this contract applies once keypress is eventually
-wired. When wired it will use a bounded-timeout handshake: if your
-handler doesn't answer within a few milliseconds the key is sent
-un-vetoed and your plugin is downgraded to observe-only, so a slow
-keypress handler can never block input.)
+**Return-value contract:** no event acts on the return value. A
+`"keypress"` handler runs after the key has been sent, so it can watch
+keys but cannot swallow one.
 
 **Performance:** each plugin runs on its own background thread, and events
 are delivered to it asynchronously — so a slow handler **no longer stalls
@@ -630,10 +637,15 @@ ants.on("command_finished", function(payload)
 end)
 ```
 
-### Example 4 — keybinding override
+### Example 4 — keybinding
+
+```json
+{ "permissions": ["terminal.read"],
+  "keybindings": { "insert-branch": "Ctrl+Alt+B" } }
+```
 
 ```lua
--- init.lua — F5 inserts the last known git branch name
+-- init.lua — Ctrl+Alt+B inserts the last known git branch name
 local last_branch = "main"
 
 ants.on("line", function(line)
@@ -641,11 +653,8 @@ ants.on("line", function(line)
     if b then last_branch = b end
 end)
 
-ants.on("keypress", function(key)
-    if key == "F5" then
-        ants.send(last_branch)
-        return false
-    end
+ants.on("keybinding", function(action_id)
+    if action_id == "insert-branch" then ants.send(last_branch) end
 end)
 ```
 

@@ -26,6 +26,7 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     // lives on the thread that will service the event loop. Creating it
     // on another thread triggers a Qt warning on first activation.
     m_pty = new Pty(this);
+    m_pty->setKeysShareableSink(&m_keysShareable);
     m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
         // ANTS-5075 — the selection-clear hint comes from parsed actions, so a
         // clear split across two reads still counts: ED 2, ED 3, or form feed.

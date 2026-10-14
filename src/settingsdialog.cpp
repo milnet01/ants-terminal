@@ -983,6 +983,8 @@ void SettingsDialog::populatePluginsTab() {
         if (p == "clipboard.write") return "Write to the system clipboard.";
         if (p == "settings")        return "Store key/value settings under the plugin's name.";
         if (p == "net")             return "Reserved for future use (network access).";
+        if (p == "terminal.read")   return "Read what the terminal prints.";
+        if (p == "input.keys")      return "See the keys you type, never while you type a password.";
         return QString();
     };
 

@@ -43,6 +43,15 @@ public:
     static bool foregroundReturnedToShell(pid_t fg, pid_t shellPgid,
                                           pid_t &lastSeen);
 
+    // ANTS-4272 — true only when tcgetattr(fd) succeeds and the PTY is not
+    // at a password prompt: ECHO clear with ICANON set. A shell at its prompt
+    // clears both, so ECHO alone does not mark a password. On Linux a pty
+    // master reports the slave's termios.
+    static bool keysShareable(int masterFd);
+    // ANTS-4272 — where onReadReady stores keysShareable() on every read.
+    // Owned by VtStream; read on the GUI thread.
+    void setKeysShareableSink(std::atomic<bool> *sink) { m_keysShareableSink = sink; }
+
     // ANTS-5075 — true when no bytes wait in the EAGAIN queue. A paste is fed
     // one slice at a time, each only once this is true (VtStream::feedPaste).
     bool writeQueueEmpty() const { return m_pendingWrite.isEmpty(); }
@@ -85,6 +94,7 @@ private:
     // reset to -1 whenever the syscall cannot answer, which costs at most one
     // missed transition and can never invent one.
     pid_t m_lastForegroundPgid = -1;
+    std::atomic<bool> *m_keysShareableSink = nullptr;
     QSocketNotifier *m_readNotifier = nullptr;
     // ANTS-5026 — set when onReadReady handles EOF. No read, reap or
     // re-enable happens after it.

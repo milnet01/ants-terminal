@@ -4,6 +4,7 @@
 #include "scrollbackexporter.h"
 #include "vtstream.h"
 #include "shapedruncache.h"
+#include "pluginoutputcoalescer.h"
 
 #include <QWidget>
 #include <QClipboard>
@@ -31,6 +32,7 @@ class QPlainTextEdit;
 class QThread;
 class QMimeData;
 class QUrl;
+enum class PluginEvent;  // luaengine.h — Qt-only, but kept out of this header
 
 class TerminalWidget : public QWidget {
     Q_OBJECT
@@ -187,6 +189,24 @@ public:
         bool instant = false;
     };
     void setTriggerRules(const QJsonArray &rules);
+    // ANTS-4272 — asked before each plugin emit (output, line, prompt,
+    // keypress); unset or false skips the emit and the work behind it.
+    // Installed by MainWindow::connectTerminal under ANTS_LUA_PLUGINS.
+    void setPluginEventFilter(std::function<bool(PluginEvent)> wants);
+
+    // ANTS-5079 — program output drives commandFinished and every trigger
+    // dispatch, and MainWindow turns each into a shell, a notification or a
+    // plugin event. Each budget allows a burst per one-second window; the
+    // rest are dropped. Separate budgets, so one flood cannot silence the other.
+    struct EventBudget {
+        QElapsedTimer window;
+        int count = 0;
+    };
+    static constexpr int kEventsPerSecond = 30;
+    // ANTS-4272 — plugin line and key budgets.
+    static constexpr int kPluginLinesPerSecond = 200;
+    static constexpr int kPluginKeysPerSecond = 100;
+    static bool takeEventBudget(EventBudget &budget, int cap = kEventsPerSecond);
 
     // Autocomplete
     void setHistoryFile(const QString &path);
@@ -316,6 +336,11 @@ public:
 
 signals:
     void titleChanged(const QString &title);
+    // ANTS-4272 — plugin events; MainWindow forwards each to PluginManager.
+    void pluginOutput(const QString &text);
+    void pluginLine(const QString &text);
+    void pluginPrompt(const QString &markerData);
+    void pluginKey(const QString &name);
     void shellExited(int code);
     void imagePasted(const QImage &image);
     void claudePermissionDetected(const QString &rule);
@@ -848,18 +873,19 @@ private:
     // attr / hyperlink mutations directly to the grid row.
     void onGridLineCompleted(int screenRow);
 
-    // ANTS-5079 — program output drives commandFinished and every trigger
-    // dispatch, and MainWindow turns each into a shell, a notification or a
-    // plugin event. Each budget allows a burst per one-second window; the
-    // rest are dropped. Separate budgets, so one flood cannot silence the other.
-    struct EventBudget {
-        QElapsedTimer window;
-        int count = 0;
-    };
-    static constexpr int kEventsPerSecond = 30;
-    static bool takeEventBudget(EventBudget &budget);
     EventBudget m_commandFinishedBudget;
     EventBudget m_triggerDispatchBudget;
+
+    // ANTS-4272 — plugin I/O events (docs/specs/ANTS-4272-plugin-io-events.md).
+    bool pluginWants(PluginEvent e) const;
+    void onGridPromptMarker(char marker, int exitCode);
+    std::function<bool(PluginEvent)> m_pluginEventFilter;
+    PluginOutputCoalescer m_pluginOutput;
+    QTimer *m_pluginOutputTimer = nullptr;
+    PluginLineJoiner m_pluginLineJoiner;
+    EventBudget m_pluginLineBudget;
+    EventBudget m_pluginPromptBudget;
+    EventBudget m_pluginKeyBudget;
 
     // ANTS-1078 — coalesced screen-reader change notification. Connected
     // to the (throttled) outputReceived signal; emits one caret event

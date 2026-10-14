@@ -22,8 +22,8 @@ enum class PluginEvent {
     Output,       // Terminal received output data
     Line,         // Complete line received
     Prompt,       // OSC 133 prompt detected
-    KeyPress,     // Key pressed (before sending to PTY) — NOT dispatched yet
-                  // (ANTS-1736 dormant; PLUGINS.md marks "keypress" †)
+    KeyPress,     // Key sent to the PTY — watch-only, never cancels; needs
+                  // "input.keys" (ANTS-4272; the ANTS-1736 veto is unbuilt)
     TitleChanged, // Window title changed
     TabCreated,   // New tab created
     TabClosed,    // Tab closed

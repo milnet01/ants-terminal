@@ -529,6 +529,8 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
                 if (p == "clipboard.write") tip = "Write to the system clipboard.";
                 else if (p == "settings")   tip = "Store key/value settings under the plugin's name.";
                 else if (p == "net")        tip = "Reserved for future use (network access).";
+                else if (p == "terminal.read") tip = "Read what the terminal prints.";
+                else if (p == "input.keys") tip = "See the keys you type, never while you type a password.";
                 cb->setToolTip(tip);
                 layout->addWidget(cb);
                 boxes << cb;
