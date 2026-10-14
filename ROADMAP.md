@@ -24309,7 +24309,7 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
 
 ### 🔌 Plugin event wiring (cold-eyes deferred 2026-05-21)
 
-- 📋 [ANTS-4272] **[ANTS-1736] Wire 7 unwired plugin events to `fireEvent` call sites.**
+- ✅ [ANTS-4272] **[ANTS-1736] Wire 7 unwired plugin events to `fireEvent` call sites.**
   Layman: Seven plugin events (`output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed`) are accepted by `ants.on()` and documented in PLUGINS.md (marked †) but have no `fireEvent` call site in `luaengine` / `pluginmanager` — handlers registered for them will never fire in the current build.
   Kind: implement.
   Source: cold-eyes-2026-05-21.
@@ -24345,6 +24345,15 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   2 fixed). Loop 2 settled that `line` carries the logical line
   (soft-wrapped rows joined by PluginLineJoiner). Next: build it with
   write-code.
+  Shipped (2026-10-14, fdddd17c): output, line, prompt and keypress
+  fire, built from the accepted spec. terminal.read gates output and
+  line, input.keys gates keypress; keys are watch-only and withheld at
+  a password prompt (ECHO off, ICANON on). Test:
+  tests/features/plugin_io_events, 11 tests, each seen red (scrape
+  against the old source, or a mutation of its mechanism), then green;
+  ctest --preset=default 5631/5631. Accepted limits, not queued: a
+  full-screen password prompt is not detected, and a program that
+  enters a password prompt without printing is sampled late.
 
 - ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.
@@ -85828,6 +85837,10 @@ a modern terminal" release.
   remotecontrol_roadmap_query_verb.cpp, and braced the gtest macros
   under a bare if in test_project_repo_root.cpp and
   test_roadmap_pass_store_write.cpp. Rebuild: 0 warnings.
+  Follow-up (2026-10-14, a4d0d06a): a sixth warning the 2026-10-13
+  rebuild missed (-Wdangling-reference at settingsdialog.cpp, from
+  2026-10-08) surfaced when that file next recompiled. Fixed by
+  binding the theme name to a local; full build 0 warnings.
   **Layman:** The build printed five warnings about confusable variable names and missing braces; it now prints none.
   Kind: fix.
   Source: in-session-2026-10-13.
