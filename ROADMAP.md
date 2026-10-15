@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5720 -->
+<!-- ants-roadmap-id-high-water: ANTS=5721 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86381,6 +86381,21 @@ a modern terminal" release.
   Kind: feature.
   Source: user-request-2026-10-15.
   Lanes: tools.
+
+- 📋 [ANTS-5721] **The hot-reload and modularity rule is checked by tools: a required Reload section in specs, and a commit check for new source files.**
+  The rule in CLAUDE.md § "Hot reload is the design default" (user,
+  2026-09-21; modularity bullet 2026-10-15) has no check, and it slipped:
+  the ANTS-5719 spec shipped a weak reload story, and its review lanes
+  (neutral-lane) never load the project CLAUDE.md, so none could see the
+  rule. Two checks: (1) add a Reload section to the required-sections
+  block in docs/standards/specs.md, so spec_lint flags a spec without one;
+  (2) a pre-commit check refusing a commit that adds a src/ source file
+  unless its message carries a "Reload:" line. Both change what a
+  conformer does, so CLAUDE.md rule 14's gate applies.
+  **Layman:** Make the "never force a terminal restart" rule impossible to forget, by having the checks refuse work that does not say how it restarts.
+  Kind: chore.
+  Source: user-request-2026-10-15.
+  Lanes: tools, docs.
 
 ### 🐛 Carried over from 0.7.x
 
