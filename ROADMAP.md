@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5697 -->
+<!-- ants-roadmap-id-high-water: ANTS=5706 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -53239,6 +53239,9 @@ are closed inline in the feedback files rather than filed here.
   history for three or four small calls. Suggested shape: a short schema,
   per-op detail behind tool_info. See ANTS-5694 for the always-loaded
   verbs, which pay this on every request.
+  Survey 2026-10-15, measured: roadmap_log schema ~25 KB (claude-config);
+  roadmap_query+roadmap_log ~70 KB / ~17k tokens for 4 calls (vestige);
+  roadmap_query schema 15.8k chars (retroarch). Six sessions asked.
   **Layman:** Loading one roadmap command also loads the full manual for the nineteen others, and that stays in memory for the rest of the session even though it is never read.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), measured here.
@@ -72008,6 +72011,8 @@ measured Ants adding about 5,250 tokens to every request.
   sessions called the list dead weight after the first read. Inject it
   once per session id; consider a shorter list naming only the verbs not
   already visible as tools.
+  Survey 2026-10-15: kde-kwin, sift and Slipway ask to shorten or skip the
+  SessionStart verb banner itself, not only its repeat on compaction.
   **Layman:** Tell Claude about the Ants tools once, not every time it tidies its memory.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -72039,6 +72044,88 @@ measured Ants adding about 5,250 tokens to every request.
   by path, not symbol. Keep one, or emit the long form only on a zero.
   **Layman:** Drop a repeated warning from one tool's reply.
   Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5698] **A verb reports a session's context rent: tokens per request now, at the start, and what holds them.**
+  Most token cost is cache reads: every request re-reads the whole
+  context. Measured 2026-10-15: fresh sessions start at 46k-83k tokens;
+  long ones run 100-274 requests with 14M-57.7M cache reads (album-builder:
+  ~16M of 31.6M is rent on a 71k opening context). Read the session's own
+  transcript usage fields (tools/token-bench/bench.py's parser) and report
+  current and first-request context, cache read/write/output totals, and
+  the largest items (skill bodies, loaded schemas, big tool results).
+  Asked by ai-prompts, album-builder, dantes, kde-kwin, Slipway, snatch,
+  lotto-tracker. Also lets a survey read numbers without asking.
+  Synthesis: ~/.local/share/claude-handoff/token-ideas-2026-10-15/SYNTHESIS.md
+  **Layman:** Show each Claude session how much it pays per message, and for what.
+  Kind: feature.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5699] **session_message inbox shows subject lines by default; a body is fetched on demand.**
+  rolodex measured an inbox dump of 7 bodies at ~6k chars. Asked by
+  album-builder, games-hub, mame-curator, rolodex. Add snooze/deferred
+  state and auto-expiry for broadcasts, and notify only when the unread
+  count changes (contact-list, finbreak, lotto-tracker, mame-curator).
+  **Layman:** List messages by title first, so Claude reads only the ones it needs.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5700] **session_message sends one message to several projects in one call.**
+  Proposed by kde-kwin. A survey today cost 30 separate sends. `to` takes
+  an array; each recipient gets its own row.
+  **Layman:** Message several sessions at once instead of one by one.
+  Kind: enhancement.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5701] **cc-job has a summary mode: exit code, the last N lines or regex matches, and the log path.**
+  doom-ants measured 140K-185K chars of Bash output per session. Asked by
+  doom-ants, perch, snatch. e.g. `cc-job wait <name> --summary [--grep RE]`.
+  **Layman:** Report a long job's result in a few lines instead of its whole log.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: tools.
+
+- 📋 [ANTS-5702] **A peer-request turn skips Ants orientation, git context and the start-of-session reads.**
+  dantes measured ~60K tokens for an idle session to reply once. Asked by
+  mame-curator and Safari_Snap. Pairs with ANTS-5692 and ANTS-5693.
+  **Layman:** When another session asks a quick question, answer it without the full start-up routine.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: claude-hooks, mcp.
+
+- 📋 [ANTS-5703] **roadmap_query list replies default to id, status and title.**
+  doom-ants measured 6K-27K chars of roadmap_query per session. Bodies,
+  lanes and kind only on request.
+  **Layman:** Return short roadmap lists unless more is asked for.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5704] **roadmap_log dry_run returns a plan id that a second call applies, without resending the payload.**
+  UT_Ants sent a ~4K-token locator list twice (dry run, then real). Also
+  asked: a store-wide replace_text op.
+  **Layman:** Preview a roadmap change, then apply it without sending it twice.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5705] **workspace_search and codebase_index skip files a project marks as generated.**
+  finbreak: a generated 1.17 MB ROADMAP.md sits in the tree. Read the
+  mark from .ants/project.json (or .gitattributes linguist-generated).
+  **Layman:** Don't search machine-made files like the rendered roadmap.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5706] **CI verbs: a counts-only PR check summary and a compare-with-master view.**
+  retroarch: `gh pr checks` returned 22.4k chars; comparing a PR's CI with
+  master took 4 calls. Returns pass/fail/pending counts plus failing names.
+  **Layman:** Summarise CI results in a line instead of a long table.
+  Kind: feature.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
