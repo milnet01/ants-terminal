@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5696 -->
+<!-- ants-roadmap-id-high-water: ANTS=5697 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -12836,6 +12836,9 @@ they are one change.
   and no run called an Ants tool. Journal:
   docs/journal/ANTS-1120-measurement.md. Waiting on the user: thresholds,
   verdict, and whether a larger bench should measure the savings.
+  Verdict (user, 2026-10-15): inconclusive — needs deeper measurement.
+  SIGN-1's 20% threshold stands. A second, larger bench follows; the old
+  scripts/measure-companion-tokens.sh skeleton is removed.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
@@ -69030,6 +69033,17 @@ names the sign it claims (SIGN-1 to SIGN-5).
   Kind: test.
   Source: docs/design.md SIGN-5 (2026-09-28).
   Lanes: claude, dialogs.
+
+- 🚧 [ANTS-5697] **Build a second SIGN-1 token bench whose job needs code search in a larger project, so the Ants tools get used.**
+  Decided (2026-10-15, user): ANTS-1120's first measurement was
+  inconclusive because the bench's job (ANTS-5545) never reached an
+  Ants tool. Build a second bench beside the first, run with the same
+  bench.py, the same model, 3+ replays per arm, and bring the numbers
+  back. SIGN-1's 20% threshold stands. The first bench stays fixed.
+  **Layman:** A bigger practice job, where Claude has to search, to see whether Ants' tools save more than they cost.
+  Kind: test.
+  Source: user-decision-2026-10-15.
+  Lanes: tools.
 
 ## Ants MCP — lean-workflow verbs (claude-config session request 2026-09-21)
 
