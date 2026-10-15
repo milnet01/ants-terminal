@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""SIGN-1 token bench runner (ANTS-5545; measured by ANTS-1120).
+"""SIGN-1 token bench runner (ANTS-5545, ANTS-5697; measured by ANTS-1120).
 
-Gives Claude Code the fixed prompt in README.md against a fresh copy of
-project/, once per run, and records what the run cost.
+Gives Claude Code a bench's fixed prompt against a fresh copy of its
+project, once per run, and records what the run cost. Each bench's README
+names its prompt, model and bug test:
+    tally     README.md here; the project is project/.
+    pygments  pygments/README.md; pygments/setup.sh builds the project.
 
 Usage:
-    tools/token-bench/bench.py run --arm ants|plain [--runs N] [--out DIR]
-    tools/token-bench/bench.py summary [--out DIR]
+    tools/token-bench/bench.py run --arm ants|plain [--bench B] [--runs N] [--out DIR]
+    tools/token-bench/bench.py summary [--bench B] [--out DIR]
 
 The two arms differ only in Ants:
     ants   the user's Claude Code settings and MCP servers as they are, with
@@ -24,10 +27,11 @@ every assistant message's API `usage` field, one per message id (a message
 split over several transcript lines repeats its usage), including subagent
 transcripts. Cost is those counts at the published price in PRICES.
 
-After the run the pristine tests/ are copied back over the copy before the
+After the run tests/ is restored from the run's starting commit before the
 bug's test runs, so a run that edited the test cannot pass.
 
-Each run appends one JSON line to DIR/results.jsonl. `summary` reads it.
+Each run appends one JSON line to DIR/<bench>/results.jsonl. `summary`
+reads it.
 """
 from __future__ import annotations
 
@@ -35,6 +39,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -44,10 +49,8 @@ import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PROJECT = HERE / "project"
-README = HERE / "README.md"
+BENCHES = {"tally": HERE, "pygments": HERE / "pygments"}
 DEFAULT_OUT = Path("/mnt/Emulators/token-bench-runs")
-BUG_TEST = "tests.test_trip_example"
 
 # USD per million tokens. Source: platform.claude.com/docs/en/about-claude/pricing,
 # read 2026-10-15. Global routing (the default), so no regional multiplier.
@@ -64,14 +67,18 @@ ANTS_HOOK_MARKERS = ("/ants-terminal/", "/Ants Terminal/", "/hooks/ants-", "road
 ANTS_MCP_SERVER = "ants"
 
 
-def bench_config() -> tuple[str, str]:
-    """The fixed prompt and model, read from README.md so it is their one home."""
-    text = README.read_text(encoding="utf-8")
+def bench_config(bench: str) -> tuple[str, str, str]:
+    """The fixed prompt, model and bug-test command, read from the bench's
+    README so it is their one home."""
+    readme = BENCHES[bench] / "README.md"
+    text = readme.read_text(encoding="utf-8")
     model = re.search(r"^\*\*Model:\*\* `([^`]+)`", text, re.M)
+    bug_test = re.search(r"^\*\*Bug test:\*\* `([^`]+)`", text, re.M)
     prompt = re.search(r"<!-- bench-prompt -->\n```text\n(.*?)\n```", text, re.S)
-    if not model or not prompt:
-        sys.exit("bench: README.md has lost its **Model:** line or its bench-prompt block")
-    return prompt.group(1), model.group(1)
+    if not model or not bug_test or not prompt:
+        sys.exit(f"bench: {readme} has lost its **Model:** line, its **Bug test:** "
+                 "line or its bench-prompt block")
+    return prompt.group(1), model.group(1), bug_test.group(1)
 
 
 def is_ants_hook(hook: dict) -> bool:
@@ -162,23 +169,35 @@ def cost_usd(totals: dict) -> float | None:
     return round(cost, 4)
 
 
-def bug_test_passes(workdir: Path) -> bool:
-    shutil.rmtree(workdir / "tests")
-    shutil.copytree(PROJECT / "tests", workdir / "tests")
-    result = subprocess.run([sys.executable, "-m", "unittest", BUG_TEST],
-                            cwd=workdir, capture_output=True, text=True)
+def bug_test_passes(workdir: Path, start: str, bug_test: str) -> bool:
+    subprocess.run(["git", "checkout", "-q", start, "--", "tests"], cwd=workdir, check=True)
+    result = subprocess.run(shlex.split(bug_test), cwd=workdir, capture_output=True, text=True)
     return result.returncode == 0
 
 
-def run_once(arm: str, out: Path, index: int, timeout: int, budget: float) -> dict:
-    prompt, model = bench_config()
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    workdir = out / f"{arm}-{stamp}-{index}"
-    shutil.copytree(PROJECT, workdir, ignore=shutil.ignore_patterns("__pycache__"))
+def build_workdir(bench: str, workdir: Path, cache: Path) -> str:
+    """Make the run's project and commit it; return the starting commit."""
+    setup = BENCHES[bench] / "setup.sh"
+    if setup.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        subprocess.run([str(setup), str(workdir)], env=os.environ | {"BENCH_CACHE": str(cache)},
+                       check=True)
+    else:
+        shutil.copytree(BENCHES[bench] / "project", workdir,
+                        ignore=shutil.ignore_patterns("__pycache__"))
     subprocess.run(["git", "init", "-q"], cwd=workdir, check=True)
     subprocess.run(["git", "add", "-A"], cwd=workdir, check=True)
     subprocess.run(["git", "-c", "user.name=bench", "-c", "user.email=bench@localhost",
                     "commit", "-qm", "bench start"], cwd=workdir, check=True)
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=workdir, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+def run_once(bench: str, arm: str, out: Path, index: int, timeout: int, budget: float) -> dict:
+    prompt, model, bug_test = bench_config(bench)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    workdir = out / f"{arm}-{stamp}-{index}"
+    start = build_workdir(bench, workdir, out.parent / "cache")
 
     settings, removed = arm_settings(arm)
     settings_file = out / f"{workdir.name}.settings.json"
@@ -210,9 +229,9 @@ def run_once(arm: str, out: Path, index: int, timeout: int, budget: float) -> di
         cli_result = {}
     totals = usage_from_transcripts(transcript_files(session_id))
     record = {
-        "arm": arm, "model": model, "session_id": session_id, "workdir": str(workdir),
-        "started": stamp, "seconds": seconds, "exit": exit_code,
-        "bug_test_passed": bug_test_passes(workdir),
+        "bench": bench, "arm": arm, "model": model, "session_id": session_id,
+        "workdir": str(workdir), "started": stamp, "seconds": seconds, "exit": exit_code,
+        "bug_test_passed": bug_test_passes(workdir, start, bug_test),
         "tokens": totals, "cost_usd": cost_usd(totals),
         "cli_total_cost_usd": cli_result.get("total_cost_usd"),
         "cli_num_turns": cli_result.get("num_turns"),
@@ -255,18 +274,20 @@ def main() -> int:
     run = sub.add_parser("run")
     run.add_argument("--arm", choices=["ants", "plain"], required=True)
     run.add_argument("--runs", type=int, default=1)
-    run.add_argument("--out", type=Path, default=DEFAULT_OUT)
     run.add_argument("--timeout", type=int, default=1800, help="seconds per run")
     run.add_argument("--budget", type=float, default=10.0, help="USD cap per run")
     summ = sub.add_parser("summary")
-    summ.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    for p in (run, summ):
+        p.add_argument("--bench", choices=sorted(BENCHES), default="tally")
+        p.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
+    out = args.out / args.bench
     if args.cmd == "summary":
-        summary(args.out)
+        summary(out)
         return 0
-    args.out.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     for i in range(1, args.runs + 1):
-        record = run_once(args.arm, args.out, i, args.timeout, args.budget)
+        record = run_once(args.bench, args.arm, out, i, args.timeout, args.budget)
         print(json.dumps({k: record[k] for k in
                           ("arm", "started", "exit", "bug_test_passed", "cost_usd",
                            "cli_total_cost_usd", "seconds")}), flush=True)

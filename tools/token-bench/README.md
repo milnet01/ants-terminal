@@ -15,10 +15,13 @@ A change makes earlier results incomparable; it means a new bench.
   until the bug is fixed. The other tests pass either way.
 - `bench.py` — the runner. Its header says how each arm is set up and where
   the counts come from.
+- `pygments/` — a second, larger bench (ANTS-5697), with its own README.
 
 ## The fixed job
 
 **Model:** `claude-opus-5-5`, effort `high`, in both arms.
+
+**Bug test:** `python3 -m unittest tests.test_trip_example`
 
 The prompt, word for word:
 
@@ -36,8 +39,8 @@ tools/token-bench/bench.py summary
 ```
 
 - Each run copies `project/` to a new folder under
-  `/mnt/Emulators/token-bench-runs/` and runs Claude Code there.
-- A run counts only when the bug's test passes. The runner puts the original
+  `/mnt/Emulators/token-bench-runs/tally/` and runs Claude Code there.
+- A run counts only when the bug test passes. The runner puts the original
   tests back before it checks.
 - Each run costs real money. `--budget` caps one run, in US dollars.
 - `summary` prints each arm's runs, their mean cost, and how much cheaper Ants

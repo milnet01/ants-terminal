@@ -1,0 +1,13 @@
+diff --git a/pygments/style.py b/pygments/style.py
+index c766fd0..2729194 100644
+--- a/pygments/style.py
++++ b/pygments/style.py
+@@ -71,7 +71,7 @@ class StyleMeta(type):
+                 if len(col) == 6:
+                     return col
+                 elif len(col) == 3:
+-                    return col[0] * 2 + col[1] * 2 + col[2] * 2
++                    return col[0] * 2 + col[2] * 2 + col[1] * 2
+             elif text == '':
+                 return ''
+             elif text == 'transparent':
