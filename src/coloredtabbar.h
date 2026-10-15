@@ -35,7 +35,7 @@ struct ClaudeTabIndicator {
         Planning,        // cyan — plan-mode active
         Auditing,        // magenta — /audit skill in flight
         Compacting,      // violet — /compact in flight
-        AwaitingInput,   // orange — PermissionRequest pending
+        AwaitingInput,   // red — permission prompt, question or plan approval
     };
     Glyph glyph = Glyph::None;
 

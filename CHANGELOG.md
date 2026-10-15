@@ -53,6 +53,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **A tab where Claude waits on you is bright red in every tab: a permission prompt, a question with choices, or a plan to approve** (ANTS-5718)
+  It was orange, close to the yellow of a tab reading files, and a question in a background tab showed yellow.
+
 - **The note Ants prints when a Claude Code session starts is about a quarter of its old size (388 bytes, was 1391)** (ANTS-5715)
   It keeps where to start, the two traps (find_sources is C/C++ only; read_log is not git log) and the pointer to the full verb catalog.
 

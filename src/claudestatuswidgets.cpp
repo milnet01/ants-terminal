@@ -601,7 +601,7 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         if (!gen.isEmpty()) rule = gen;
 
         // Tab-glyph feedback: flag the owning tab's shell as awaiting input
-        // so its tab-bar dot turns loud/orange — ALWAYS, even for a
+        // so its tab-bar dot turns loud/red — ALWAYS, even for a
         // background-tab prompt. Only the bottom-bar message/buttons are
         // gated on belongsToFocused (the glyph IS the at-a-glance signal for
         // a prompt on a tab you're not looking at). The rule is retained so

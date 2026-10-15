@@ -27,6 +27,13 @@ Resolved forFocused(const ClaudeTabTracker *tracker,
 
 Display display(const Resolved &r) {
     if (r.awaitingInput) return Display::AwaitingInput;
+    // ANTS-5718 — a question with choices, or a plan awaiting approval,
+    // blocks on the user while it is the tool in flight. The screen scan
+    // (ANTS-1858) lights only the focused tab; this lights every tab.
+    if (r.base == ClaudeState::ToolUse
+        && (r.tool == QLatin1String("AskUserQuestion")
+            || r.tool == QLatin1String("ExitPlanMode")))
+        return Display::AwaitingInput;
     if (r.base == ClaudeState::NotRunning) return Display::Hidden;
     if (r.planMode) return Display::Planning;
     if (r.auditing) return Display::Auditing;

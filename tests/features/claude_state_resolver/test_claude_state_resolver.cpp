@@ -133,6 +133,25 @@ TEST(ClaudeStateResolver, Inv5ToolUseBashSplit) {
     EXPECT_EQ(claudestate::display(r), Display::ToolUseGeneric);
 }
 
+// ANTS-5718 — a tool call that blocks on the user's choice is
+// AwaitingInput in every tab, not ToolUse: the screen scan that lights
+// a question (ANTS-1858) only sees the focused tab. Plan approval
+// waits too, so it beats Planning.
+TEST(ClaudeStateResolver, Inv5bChoiceToolsAwaitInput) {
+    Resolved r;
+    r.base = ClaudeState::ToolUse;
+    r.tool = QStringLiteral("AskUserQuestion");
+    EXPECT_EQ(claudestate::display(r), Display::AwaitingInput);
+    r.tool = QStringLiteral("ExitPlanMode");
+    r.planMode = true;
+    EXPECT_EQ(claudestate::display(r), Display::AwaitingInput);
+    // Only while the call is in flight: the same name on another state
+    // is a finished call.
+    r.base = ClaudeState::Thinking;
+    r.planMode = false;
+    EXPECT_EQ(claudestate::display(r), Display::Thinking);
+}
+
 // INV-6 — NotRunning collapses to Hidden; awaitingInput is the one
 // signal that can fire BEFORE any transcript event lands.
 TEST(ClaudeStateResolver, Inv6NotRunningHidden) {

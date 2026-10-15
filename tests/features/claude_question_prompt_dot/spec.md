@@ -2,7 +2,7 @@
 
 ## Problem
 
-The per-tab Claude state dot only turns orange ("awaiting input") via
+The per-tab Claude state dot only turns red ("awaiting input") via
 `TerminalWidget::checkForClaudePermissionPrompt`, which anchors on the
 tool-PERMISSION footer ("Tab to accept" / "Do you want to proceed").
 An `AskUserQuestion` prompt blocks Claude on the user just the same, but
@@ -12,7 +12,7 @@ a gate). So the dot stayed grey (Idle) during a question — the user
 couldn't tell from the tab strip that Claude was waiting on them.
 
 **Follow-up (2026-05-25):** the first fix lit the dot but it never
-cleared — it stayed orange after the user answered. The clear relied
+cleared — it stayed lit after the user answered. The clear relied
 solely on the footer-gone N=3 debounce, which runs on the trailing-edge
 `m_claudeDetectTimer` (single-shot 300 ms, restarted on every PTY
 batch). Claude's spinner repaints faster than 300 ms during active work,
@@ -52,17 +52,17 @@ footer uses, so a transient TUI repaint doesn't drop the dot mid-prompt.
 ### INV-4 — mainwindow lights the dot + label, NO button
 
 The `claudeQuestionDetected` handler calls
-`markShellAwaitingInput(pid, true)` (orange dot) and
+`markShellAwaitingInput(pid, true)` (red dot) and
 `setPromptActive(true)` ("Claude: prompting" label) for the owning tab,
 and creates NO `claudeAllowBtn` / "Add to allowlist" button (a question
 has no allowlist rule). `claudeQuestionCleared` calls
 `markShellAwaitingInput(pid, false)`.
 
-### INV-5 — tracker awaiting overlay drives the orange glyph
+### INV-5 — tracker awaiting overlay drives the red glyph
 
 `markShellAwaitingInput(pid, true)` (no rule) sets
 `shellState(pid).awaitingInput == true` with an empty `awaitingRule`,
-which the glyph provider maps to `Glyph::AwaitingInput` (orange).
+which the glyph provider maps to `Glyph::AwaitingInput` (red).
 
 ### INV-6 — best-effort hook-driven clear belt
 

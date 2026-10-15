@@ -439,7 +439,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     // dot, mirroring the permission path's belt (see ~line 2302). The
     // footer-gone debounce in checkForClaudePermissionPrompt can't
     // complete while Claude streams output (the trailing-edge detect
-    // timer rarely fires N=3 times), so the dot would stay orange after
+    // timer rarely fires N=3 times), so the dot would stay red after
     // the user answered. An AskUserQuestion is a mid-turn tool call:
     // PostToolUse (→ toolFinished) fires the instant it is answered and
     // Stop (→ sessionStopped) at end-of-turn — neither fires while the

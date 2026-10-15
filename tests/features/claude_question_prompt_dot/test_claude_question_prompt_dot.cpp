@@ -144,7 +144,7 @@ TEST(ClaudeQuestionPromptDot, DetectTimerIsThrottled) {
         << "INV-8: no bare unconditional .start() on the output path";
 }
 
-// INV-5 — tracker awaiting overlay (no rule) drives the orange glyph.
+// INV-5 — tracker awaiting overlay (no rule) drives the red glyph.
 TEST(ClaudeQuestionPromptDot, AwaitingOverlayNoRule) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -163,7 +163,7 @@ TEST(ClaudeQuestionPromptDot, AwaitingOverlayNoRule) {
     tracker.markShellAwaitingInput(kPid, true);
     auto s1 = tracker.shellState(kPid);
     EXPECT_TRUE(s1.awaitingInput)
-        << "INV-5: awaitingInput overlay set (glyph provider → orange)";
+        << "INV-5: awaitingInput overlay set (glyph provider → red)";
     EXPECT_TRUE(s1.awaitingRule.isEmpty())
         << "INV-5: a question sets no awaitingRule";
 

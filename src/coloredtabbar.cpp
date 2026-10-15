@@ -67,8 +67,9 @@ constexpr double kMinContrast = 3.0;  // WCAG 1.4.11 non-text contrast.
 // Single source of truth for the per-state Claude palette. Hex values
 // match `tests/features/claude_state_dot_palette/spec.md` and are
 // theme-independent — state identity is the contract, not the
-// surrounding theme. Red is intentionally absent: AwaitingInput is a
-// normal interaction state, not an error.
+// surrounding theme. AwaitingInput is red, the one hue no other state
+// is near: orange read as the ToolUse yellow (user decision 2026-10-15,
+// ANTS-5718).
 QColor ClaudeTabIndicator::color(Glyph g) {
     switch (g) {
         case Glyph::None:           return QColor();             // invalid → callers skip
@@ -79,7 +80,7 @@ QColor ClaudeTabIndicator::color(Glyph g) {
         case Glyph::Planning:       return QColor("#5DCFCF");    // cyan
         case Glyph::Auditing:       return QColor("#C76DC7");    // magenta
         case Glyph::Compacting:     return QColor("#A87FE0");    // violet
-        case Glyph::AwaitingInput:  return QColor("#F08A4B");    // orange
+        case Glyph::AwaitingInput:  return QColor("#F04848");    // red
     }
     return QColor();
 }
@@ -99,7 +100,7 @@ QColor ClaudeTabIndicator::contrastColor(Glyph g, const QColor &background) {
     // in lightness against a light background, so binary-search the
     // highest (least-darkened) lightness <= the original that still
     // passes — black always clears a light background, so a solution
-    // exists. State hue is unchanged, so "orange = needs me" still holds.
+    // exists. State hue is unchanged, so "red = needs me" still holds.
     //
     // Precondition (true for all 11 shipped themes): every theme's
     // bgSecondary is either clearly light (lum > 0.8 — darkening the dot

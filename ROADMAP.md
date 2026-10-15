@@ -86334,13 +86334,17 @@ a modern terminal" release.
   Source: user-report-2026-10-15.
   Lanes: ui.
 
-- 🚧 [ANTS-5718] **A Claude question or plan approval shows its own red waiting colour in every tab.**
+- ✅ [ANTS-5718] **A Claude question or plan approval shows its own red waiting colour in every tab.**
   An AskUserQuestion in a background tab showed ToolUse yellow, the same
   as Read: the ANTS-1858 screen scan only lights the focused tab. The
   resolver now treats an AskUserQuestion or ExitPlanMode tool call as
   AwaitingInput, and AwaitingInput's colour moves from orange #F08A4B
   (hard to tell from yellow) to bright red. User decisions 2026-10-15:
   red; plan approval counts as waiting.
+  claudestate::display maps ToolUse + AskUserQuestion/ExitPlanMode to
+  AwaitingInput; AwaitingInput colour #F08A4B -> #F04848. Tests
+  Inv5bChoiceToolsAwaitInput and ClaudeStateDotPalette red before, green
+  after.
   **Layman:** A tab where Claude is waiting for your answer turns bright red, so it is never confused with a tab that is just reading files.
   Kind: fix.
   Source: user-report-2026-10-15.

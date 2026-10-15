@@ -148,7 +148,7 @@ public:
     // debounce in checkForClaudePermissionPrompt only completes after
     // N=3 quiet-gap scans, which the trailing-edge m_claudeDetectTimer
     // rarely delivers while Claude streams output, so the dot would
-    // otherwise stay orange forever after the user answered. Wired to
+    // otherwise stay red forever after the user answered. Wired to
     // ClaudeIntegration::toolFinished / sessionStopped (the same belt
     // the permission path uses). No-op unless a question is active.
     void clearClaudeQuestionPrompt();

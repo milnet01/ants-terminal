@@ -25,7 +25,7 @@ surfaces.
 
 The contract is a **fixed hue identity**, not a fixed RGB triple. State
 identity (the *hue*) stays constant across themes so muscle memory
-("orange = needs me") works. The hex values below are the canonical
+("red = needs me") works. The hex values below are the canonical
 **base palette**, tuned for dark backgrounds; on a light theme each dot's
 *lightness* is lowered just enough to clear the WCAG 3:1 non-text-contrast
 floor against the tab background, while its hue and saturation are kept
@@ -36,7 +36,7 @@ A single RGB value mathematically cannot clear 3:1 against both a
 near-black and a near-white background, so the dark-tuned base palette
 washed out on the Light / Catppuccin-Latte themes — 7 of 8 dots fell
 below 3:1 against `bgSecondary` (`#F5F5F5`), including the
-operationally-critical AwaitingInput orange at 2.28:1 (ANTS-1847).
+operationally-critical AwaitingInput dot (then orange) at 2.28:1 (ANTS-1847).
 
 | State          | Source signal                                    | Hex      | Name      |
 |----------------|--------------------------------------------------|----------|-----------|
@@ -47,11 +47,12 @@ operationally-critical AwaitingInput orange at 2.28:1 (ANTS-1847).
 | Planning       | Most recent permission-mode event = `plan`       | `#5DCFCF`| cyan      |
 | Auditing       | `/audit` skill in flight (latched user message)  | `#C76DC7`| magenta   |
 | Compacting     | `/compact` in flight                             | `#A87FE0`| violet    |
-| AwaitingInput  | `PermissionRequest` hook pending                 | `#F08A4B`| orange    |
+| AwaitingInput  | Permission prompt, question or plan approval     | `#F04848`| red       |
 | *(NotRunning)* | No Claude process under tab's shell              | *(hidden)*| —        |
 
-Red is intentionally absent — Claude awaiting input is a normal
-interaction state, not an error condition.
+AwaitingInput is red, the one hue no other state is near. It was orange
+until ANTS-5718 (user decision 2026-10-15): orange read as the ToolUse
+yellow, so a tab reading files looked like one waiting on the user.
 
 ## Architectural invariants
 
@@ -110,7 +111,7 @@ interaction state, not an error condition.
    when `state.auditing` is true and no higher-precedence state
    (AwaitingInput / Planning) wins.
 
-6. **Precedence.** AwaitingInput → Planning (only when underlying
+6. **Precedence.** AwaitingInput (including an AskUserQuestion or ExitPlanMode call in flight, ANTS-5718) → Planning (only when underlying
    state ≠ NotRunning) → Auditing → state-derived (Compacting,
    Bash, ToolUse, Thinking, Idle). Same chain in tab provider and
    status-bar applier so they never diverge.
@@ -167,7 +168,7 @@ source-grep cannot verify.
   `Glyph::AwaitingInput` literal in a switch/case under the helper.
 - INV-3 Hex literals match the spec table (`"#888888"`, `"#5BA0E5"`,
   `"#E5C24A"`, `"#6FCF50"`, `"#5DCFCF"`, `"#C76DC7"`, `"#A87FE0"`,
-  `"#F08A4B"`).
+  `"#F04848"`).
 - INV-4 `coloredtabbar.cpp::paintEvent` derives the dot fill via
   `ClaudeTabIndicator::contrastColor(ind.glyph, m_bg)` (no inline hex
   literals remain in the dot-rendering path; the base palette literals

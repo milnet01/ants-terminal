@@ -246,16 +246,16 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     // has a Claude Code child process draws a small state-dependent dot
     // on the tab chrome — muted grey for idle/thinking, blue for most
     // tool-use, green for Bash, cyan for plan mode, violet for
-    // compacting, and bright orange (with a white outline) for pending
-    // permission prompts. Off → the tracker isn't constructed and the
+    // compacting, and red when Claude waits on the user (a permission
+    // prompt, a question, a plan to approve; ANTS-5718). Off → the tracker isn't constructed and the
     // paint pass is skipped entirely. See
     // tests/features/claude_tab_status_indicator/spec.md.
     m_claudeTabStatusIndicator = new QCheckBox(
         "Show per-tab Claude activity dot (idle/tool/bash/awaiting-input/…)", tab);
     m_claudeTabStatusIndicator->setToolTip(
         "Renders a small coloured dot on each tab whose shell is running "
-        "Claude Code. Orange with a white outline means Claude is waiting "
-        "on you to answer a permission prompt in that tab.");
+        "Claude Code. Red means Claude is waiting on you in that tab: a "
+        "permission prompt, a question, or a plan to approve.");
     layout->addRow(m_claudeTabStatusIndicator);
 
     // ANTS-1901 — master on/off for the whole Ants MCP integration.

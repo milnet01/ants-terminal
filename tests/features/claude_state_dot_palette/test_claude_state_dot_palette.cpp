@@ -125,7 +125,7 @@ TEST(ClaudeStateDotPalette, Main) {
         {"#5DCFCF", "Planning"},
         {"#C76DC7", "Auditing"},
         {"#A87FE0", "Compacting"},
-        {"#F08A4B", "AwaitingInput"},
+        {"#F04848", "AwaitingInput"},
     };
     for (auto p : palette) {
         if (!contains(source, p.hex))
