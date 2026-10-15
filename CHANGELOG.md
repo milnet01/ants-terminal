@@ -117,6 +117,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **One click on a tab in the Tab List Panel always switches to it, the moment the button goes down** (ANTS-5717)
+
 - **The unread-mail notice no longer repeats on each prompt for mail a session was already told about** (ANTS-5716)
 
 - **workspace_search returns what it found when it runs out of time, in every mode** (ANTS-5711)

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5716 -->
+<!-- ants-roadmap-id-high-water: ANTS=5719 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86320,6 +86320,46 @@ a modern terminal" release.
   Kind: ux.
   Source: user-request-2026-10-15.
   Lanes: tabs, ui.
+
+- ✅ [ANTS-5717] **A click on a Tab List Panel row sometimes does not switch tabs.**
+  The panel switches on itemClicked (release), which needs press and
+  release on the same row. rebuild() deletes every row on any tab
+  title, colour or Claude-state change (refresh timer 50 ms), so a
+  rebuild between press and release drops the click. Fix: switch on a
+  left-button press, as QTabBar does.
+  Rows switch on the left press (eventFilter); itemClicked dropped. Test
+  Inv3ARebuildMidClickStillSwitches red before, green after.
+  **Layman:** Clicking a tab in the side list sometimes needed two or more clicks; one click should always work.
+  Kind: fix.
+  Source: user-report-2026-10-15.
+  Lanes: ui.
+
+- 🚧 [ANTS-5718] **A Claude question or plan approval shows its own red waiting colour in every tab.**
+  An AskUserQuestion in a background tab showed ToolUse yellow, the same
+  as Read: the ANTS-1858 screen scan only lights the focused tab. The
+  resolver now treats an AskUserQuestion or ExitPlanMode tool call as
+  AwaitingInput, and AwaitingInput's colour moves from orange #F08A4B
+  (hard to tell from yellow) to bright red. User decisions 2026-10-15:
+  red; plan approval counts as waiting.
+  **Layman:** A tab where Claude is waiting for your answer turns bright red, so it is never confused with a tab that is just reading files.
+  Kind: fix.
+  Source: user-report-2026-10-15.
+  Lanes: claude-status.
+
+- 📋 [ANTS-5719] **A session manager lists every Claude Code session with its state and memory, and can park idle ones.**
+  Measured 2026-10-15 (32 GB host, 9 GB available): 18 claude processes
+  5.4 GB (190-435 MB each), 18 ants-mcpd 0.9 GB, 4 clangd 2.3 GB.
+  Proposed order: (1) list sessions with state, idle time and memory
+  including child processes; (2) park an idle session (end its claude
+  process, resume the conversation in the same tab later); (3) queue
+  heavy jobs (builds, suites) so they do not all run at once; (4) warn
+  at low memory, naming what to park. Needs a spec (write-spec): several
+  subsystems, and parking must be safe mid-task. Open for the user:
+  automatic parking or click-only.
+  **Layman:** One place to see every Claude session, what it is doing and how much memory it uses, and to free memory by parking idle ones.
+  Kind: feature.
+  Source: user-request-2026-10-15.
+  Lanes: claude-status, ui.
 
 ### 🐛 Carried over from 0.7.x
 

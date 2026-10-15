@@ -169,10 +169,9 @@ TabListPanel::TabListPanel(QWidget *parent) : QWidget(parent) {
     m_tree->viewport()->installEventFilter(this);  // the close marks
     lay->addWidget(m_tree);
 
-    // A click and Enter both switch; activation alone would need a
-    // double-click on most styles.
-    connect(m_tree, &QTreeWidget::itemClicked, this,
-            [this](QTreeWidgetItem *item, int) { onItemActivated(item); });
+    // A left press (eventFilter) and Enter both switch. ANTS-5717 — not
+    // itemClicked: it needs press and release on the same row, and a
+    // rebuild between them deletes that row, so the click was lost.
     connect(m_tree, &QTreeWidget::itemActivated, this,
             [this](QTreeWidgetItem *item, int) { onItemActivated(item); });
 
@@ -246,6 +245,9 @@ bool TabListPanel::eventFilter(QObject *watched, QEvent *event) {
             if (me->button() != Qt::LeftButton) break;
             m_closePressed = closeMarkAt(me->position().toPoint());
             if (m_closePressed) return true;
+            // Switch on the press, as the tab bar does (ANTS-5717).
+            if (event->type() == QEvent::MouseButtonPress)
+                onItemActivated(m_tree->itemAt(me->position().toPoint()));
             break;
         }
         case QEvent::MouseButtonRelease: {

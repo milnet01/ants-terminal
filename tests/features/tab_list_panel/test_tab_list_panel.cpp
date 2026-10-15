@@ -49,6 +49,16 @@ QVector<QTreeWidgetItem *> tabRows(QTreeWidget *tree) {
     return rows;
 }
 
+// Shown at a fixed size so the rows have real rectangles to click.
+struct ShownPanel {
+    TabListPanel panel;
+    ShownPanel() {
+        panel.resize(300, 300);
+        panel.show();
+        QCoreApplication::processEvents();
+    }
+};
+
 }  // namespace
 
 TEST(TabListPanel, Inv1OneRowPerTabWithTheWholeTitle) {
@@ -122,24 +132,69 @@ TEST(TabListPanel, Inv2HeaderNames) {
 
 TEST(TabListPanel, Inv3ClickSwitchesAndCurrentIsSelected) {
     Pages p;
-    TabListPanel panel;
-    panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
-                      {&p.b, QStringLiteral("b"), QColor(), Glyph::None}},
-                     &p.b);
-    QTreeWidget *tree = panel.treeForTest();
+    ShownPanel s;
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::None}},
+                       &p.b);
+    QTreeWidget *tree = s.panel.treeForTest();
     const auto rows = tabRows(tree);
     ASSERT_EQ(rows.size(), 2);
     EXPECT_EQ(tree->currentItem(), rows.at(1));
 
     QVector<QWidget *> activated;
-    QObject::connect(&panel, &TabListPanel::tabActivated,
+    QObject::connect(&s.panel, &TabListPanel::tabActivated,
                      [&activated](QWidget *page) { activated << page; });
-    emit tree->itemClicked(rows.at(0), 0);
-    ASSERT_EQ(activated.size(), 1);
+    const QRect row = tree->visualItemRect(rows.at(0));
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, {},
+                      QPoint(row.left() + 20, row.center().y()));
+    ASSERT_EQ(activated.size(), 1) << "one click must switch exactly once";
     EXPECT_EQ(activated.at(0), &p.a);
     emit tree->itemActivated(rows.at(1), 0);
     ASSERT_EQ(activated.size(), 2);
     EXPECT_EQ(activated.at(1), &p.b);
+}
+
+// ANTS-5717 — the rows are rebuilt whenever any tab's title, colour or
+// Claude state changes. A rebuild between press and release must not
+// lose the click: the switch happens on the press.
+TEST(TabListPanel, Inv3ARebuildMidClickStillSwitches) {
+    Pages p;
+    ShownPanel s;
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::None}},
+                       &p.b);
+    QTreeWidget *tree = s.panel.treeForTest();
+    QVector<QWidget *> activated;
+    QObject::connect(&s.panel, &TabListPanel::tabActivated,
+                     [&activated](QWidget *page) { activated << page; });
+
+    const QRect row = tree->visualItemRect(tabRows(tree).at(0));
+    const QPoint at(row.left() + 20, row.center().y());
+    QTest::mousePress(tree->viewport(), Qt::LeftButton, {}, at);
+    // Another tab's Claude state changes while the button is down.
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::Thinking}},
+                       &p.b);
+    QTest::mouseRelease(tree->viewport(), Qt::LeftButton, {}, at);
+    ASSERT_EQ(activated.size(), 1) << "the click was lost to a rebuild";
+    EXPECT_EQ(activated.at(0), &p.a);
+}
+
+// ANTS-5717 — a right-button press opens the menu; it does not switch.
+TEST(TabListPanel, Inv3RightPressDoesNotSwitch) {
+    Pages p;
+    ShownPanel s;
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::None}},
+                       &p.b);
+    QTreeWidget *tree = s.panel.treeForTest();
+    QVector<QWidget *> activated;
+    QObject::connect(&s.panel, &TabListPanel::tabActivated,
+                     [&activated](QWidget *page) { activated << page; });
+    const QRect row = tree->visualItemRect(tabRows(tree).at(0));
+    QTest::mouseClick(tree->viewport(), Qt::RightButton, {},
+                      QPoint(row.left() + 20, row.center().y()));
+    EXPECT_TRUE(activated.isEmpty());
 }
 
 TEST(TabListPanel, Inv4StateIsNamedInWords) {
@@ -637,20 +692,6 @@ TEST(TabListPanel, Inv10ReloadPassesTheSortToThePanel) {
 
 // --------------------------------------------------------------- INV-12 -----
 // ANTS-5709 — a close mark on each tab row, clicked with a real mouse.
-
-namespace {
-
-// Shown at a fixed size so the rows have real rectangles to click.
-struct ShownPanel {
-    TabListPanel panel;
-    ShownPanel() {
-        panel.resize(300, 300);
-        panel.show();
-        QCoreApplication::processEvents();
-    }
-};
-
-}  // namespace
 
 TEST(TabListPanel, Inv12CloseMarkClosesAndDoesNotSwitch) {
     Pages p;

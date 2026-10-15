@@ -18,7 +18,9 @@ item records the user's choice of a side panel over wrapping rows.
   last, under "No colour". When no entry has a colour there are no headers.
 - **INV-3 — click to switch.** Clicking or activating a tab row emits
   `tabActivated` with that row's page. Headers cannot be selected. The
-  current tab's row is the selected row.
+  current tab's row is the selected row. A click switches on the left
+  press, so a rebuild before the release cannot lose it (ANTS-5717); a
+  right press does not switch.
 - **INV-4 — Claude state.** A row whose Claude glyph is not `None` names
   the state in words in its tooltip and accessible text, since the colour
   alone does not say it. A row with glyph `None` names no state.
