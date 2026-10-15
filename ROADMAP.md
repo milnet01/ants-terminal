@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5710 -->
+<!-- ants-roadmap-id-high-water: ANTS=5713 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69056,6 +69056,19 @@ names the sign it claims (SIGN-1 to SIGN-5).
   Source: user-decision-2026-10-15.
   Lanes: tools.
 
+- 📋 [ANTS-5713] **Build a third token bench whose job loads write-code: a small multi-file edit in a repo with a gate.**
+  claude-config (B3) is trimming the write-code skill with a run card
+  and wants the saving confirmed in tokens. Neither tools/token-bench
+  job loads write-code (16 runs, none did). The new job must: touch
+  two or more source files, change a signature or add a file (write-code's
+  triggers), and end at a gate (a build or a test suite). Same rules as
+  the other benches: fixed prompt and model after the first run, one
+  planted defect or feature with a test that fails until done.
+  **Layman:** A practice job that makes Claude use the code-editing checklist, so trimming that checklist can be measured.
+  Kind: test.
+  Source: claude-config request 2026-10-15.
+  Lanes: tools.
+
 ## Ants MCP — lean-workflow verbs (claude-config session request 2026-09-21)
 
 The ~/.claude session is building a replacement global workflow whose third tier
@@ -72066,6 +72079,13 @@ measured Ants adding about 5,250 tokens to every request.
   Asked by ai-prompts, album-builder, dantes, kde-kwin, Slipway, snatch,
   lotto-tracker. Also lets a survey read numbers without asking.
   Synthesis: ~/.local/share/claude-handoff/token-ideas-2026-10-15/SYNTHESIS.md
+  Corrections (2026-10-15) from the survey sessions: (1) snatch —
+  token_usage reports the MCP server's own savings, not a session's
+  usage; this verb sums a session transcript's usage fields. (2)
+  doom-ants — transcripts store images as base64, which swamps a
+  character count, but the API bills images by pixels (about 640 tokens
+  for 800x600). Count image blocks separately, in this verb and in
+  token_usage.
   **Layman:** Show each Claude session how much it pays per message, and for what.
   Kind: feature.
   Source: token-survey-2026-10-15.
@@ -72169,6 +72189,33 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: chore.
   Source: claude-config-CFG-0794-2026-10-15.
   Lanes: claude-hooks.
+
+- 📋 [ANTS-5711] **workspace_search keeps the files it found when it times out in files_only, matches_only or count_only mode.**
+  Reported by UT_MonsterHunt: an unscoped files_only search hard-killed
+  at 5 s, three times, while plain rg took 0.04 s. Reproduced 2026-10-15:
+  the slow runs were a cold page cache on a busy disk (the verb answered
+  in 20 ms once warm), not ignored directories; rg already prunes them.
+  The defect: the hard-kill and parse-budget guards in cmdWorkspaceSearch
+  (src/remotecontrol_workspace.cpp) test matches.isEmpty(), and those
+  three modes never fill matches[], so files already found are dropped
+  and rg_failed is returned. Test seenMatchEvents == 0 instead; the
+  reply then falls through as truncated. Saves the failed call + retry.
+  **Layman:** A search that runs out of time hands back what it already found instead of failing.
+  Kind: fix.
+  Source: UT_MonsterHunt feedback 2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5712] **find_definition include_body returns a body only for definitions in the file the caller is likely to want, or names the cost first.**
+  Measured 2026-10-15: find_definition {symbol:"start", include_body,
+  max_results:3} returned two header hits without bodies and the
+  370-line body of Pty::start (src/ptyhandler.cpp), about 6k tokens,
+  for a question about src/hostexec.h. A generic name has 140
+  definitions. Options: bodies only when definitions_count is small, a
+  body byte cap with an elision marker, or a path/lane filter.
+  **Layman:** Stop one tool from pasting a long, unrelated function into the reply.
+  Kind: perf.
+  Source: in-session-2026-10-15.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
