@@ -86360,6 +86360,10 @@ a modern terminal" release.
   at low memory, naming what to park. Needs a spec (write-spec): several
   subsystems, and parking must be safe mid-task. Open for the user:
   automatic parking or click-only.
+  Spec: docs/specs/ANTS-5719-session-manager.md, accepted 2026-10-15
+  (review-contract 2 loops, capped calm). User decisions 2026-10-15:
+  auto-park only below the critical level (2.5 GB, set in the spec),
+  Ants tabs only, warning at 4 GB, job queue split to ANTS-5720.
   **Layman:** One place to see every Claude session, what it is doing and how much memory it uses, and to free memory by parking idle ones.
   Kind: feature.
   Source: user-request-2026-10-15.
