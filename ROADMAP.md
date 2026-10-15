@@ -68904,7 +68904,7 @@ Items that deliver or measure the signs of success in docs/discovery.md.
 docs/design.md says where each sign lives and how it is measured. Each item
 names the sign it claims (SIGN-1 to SIGN-5).
 
-- 📋 [ANTS-5545] **Build the SIGN-1 token bench: a practice project with one planted bug, its test, and a fixed prompt, at tools/token-bench/.**
+- ✅ [ANTS-5545] **Build the SIGN-1 token bench: a practice project with one planted bug, its test, and a fixed prompt, at tools/token-bench/.**
   Claims SIGN-1 (docs/design.md, where each sign lives).
   The folder holds a small project, one planted bug, the test that
   fails until it is fixed, and a README naming the prompt and the
@@ -68915,6 +68915,10 @@ names the sign it claims (SIGN-1 to SIGN-5).
   too; read it before choosing where the counts come from.
   Decided (2026-10-15, user): build now, as the first half of
   ANTS-1120's measurement.
+  Shipped (2026-10-15, a9e3d70e): tools/token-bench/ holds the tally
+  project (planted bug in money.parse), its test, README.md with the fixed
+  prompt and model (claude-opus-5-5, effort high) and bench.py. Counts come
+  from the session transcript's API usage fields, as ANTS-1120 INV-3 asks.
   **Layman:** A fixed practice job so we can compare what Claude Code costs in Ants and in a plain terminal.
   Kind: test.
   Source: docs/design.md SIGN-1 (2026-09-28).
