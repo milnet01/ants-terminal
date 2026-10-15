@@ -21338,7 +21338,7 @@ indie-review finding.
   Source: in-session-2026-08-26 (ANTS-4667 residue, option (a)).
   Lanes: roadmap-store, roadmaprender.
 
-- 📋 [ANTS-4686] **get_git_status has no refusal channel, so it cannot move off the GUI thread and still blocks it for up to 2 seconds.**
+- 🚫 [ANTS-4686] **get_git_status has no refusal channel, so it cannot move off the GUI thread and still blocks it for up to 2 seconds.**
   ANTS-4682 moved the GUI-free inline handlers off the dispatch thread and
   recorded a verdict for each that stayed. This is the one whose verdict is
   a DEFECT rather than a design choice, so it is filed rather than left in
@@ -21376,6 +21376,11 @@ indie-review finding.
   6 s, not the 2 s the comment claims. waitForFinished's result and the
   exit codes are never checked, so a git status that timed out is
   returned as an empty section, which reads as a clean tree.
+  Closed (2026-10-15): resolved by removal. ANTS-5485 (0.7.113,
+  2026-10-01) removed the get_git_status verb; src/mcpdeprecation.cpp
+  now answers a call to it with a pointer to git_state, and no handler
+  remains in src/. With no handler there is no GUI-thread wait left to
+  move, so neither the refusal channel nor the off-thread move is owed.
   **Layman:** One command can freeze the window for two seconds, and fixing it needs the command to be able to report an error first.
   Kind: fix.
   Source: in-session-2026-08-26 (ANTS-4682 residue).
