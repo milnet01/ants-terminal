@@ -53246,6 +53246,26 @@ are closed inline in the feedback files rather than filed here.
   Survey 2026-10-15, measured: roadmap_log schema ~25 KB (claude-config);
   roadmap_query+roadmap_log ~70 KB / ~17k tokens for 4 calls (vestige);
   roadmap_query schema 15.8k chars (retroarch). Six sessions asked.
+  User decision (2026-10-15): "Short + detail on ask". tools/list sends
+  a lean descriptor (each parameter cut to one curated line); tool_info
+  {name} returns the full text unchanged. Measured from build/ants-mcpd
+  tools/list today: roadmap_log 46,453 bytes (45,657 in parameters),
+  roadmap_query 34,422, feedback_log 12,659, changelog_log 12,432,
+  roadmap_migrate 9,549; all 77 tools 352,227. Transcript call counts
+  over 7 days put roadmap_log 2nd and roadmap_query 4th of all verbs.
+  Plan (2026-10-15, not started): find where tools/list is assembled
+  (ants-mcpd and the in-terminal server; the anthropic/alwaysLoad _meta
+  / kEagerVerbs in src/claudeintegration.cpp is the anchor) and where
+  tool_info reads its descriptor; serve a lean copy in tools/list for
+  roadmap_log, roadmap_query, feedback_log, changelog_log and
+  roadmap_migrate, full copy from tool_info. Check first which tests
+  assert served description text (not source greps). Largest single
+  properties measured: roadmap_log op 15,895 bytes, bullets 4,081,
+  old_text 3,323, locators 2,200; roadmap_query include_body 3,385, mode
+  2,821, query 1,770, ids 1,713, check_sync 1,683; feedback_log op
+  3,035; changelog_log op 2,924; roadmap_migrate op 1,812. Measure with:
+  pipe initialize + notifications/initialized + tools/list JSON-RPC
+  lines into build/ants-mcpd and size each tool.
   **Layman:** Loading one roadmap command also loads the full manual for the nineteen others, and that stays in memory for the rest of the session even though it is never read.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), measured here.
