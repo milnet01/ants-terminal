@@ -1,4 +1,4 @@
-// ANTS-5502 TU 20/20 — the `quotation_check` handler: many quotations checked in one call.
+// ANTS-5502 TU 20/21 — the `quotation_check` handler: many quotations checked in one call.
 // Contract: docs/specs/ANTS-5502-quotation-check.md.
 //
 // Thin by design, like its run_trace and session_message siblings. The seam
