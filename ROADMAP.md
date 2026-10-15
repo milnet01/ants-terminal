@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5709 -->
+<!-- ants-roadmap-id-high-water: ANTS=5710 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72158,6 +72158,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: perf.
   Source: token-survey-2026-10-15.
   Lanes: mcp, claude-hooks.
+
+- 📋 [ANTS-5710] **The six ants-*.sh hooks in this repo's hooks/ duplicate ~/.claude/hooks; keep one home.**
+  claude-config (CFG-0794, 2026-10-15): all six ants-*.sh hooks both
+  repos carry are byte-identical today. The ~/.claude/hooks copies are
+  the ones settings.json runs, so claude-config treats them as canonical.
+  Decide whether this repo drops its copies (pointing at claude-config) or
+  becomes the source that installs them, and record it.
+  **Layman:** Two copies of the same helper scripts will drift apart; keep just one.
+  Kind: chore.
+  Source: claude-config-CFG-0794-2026-10-15.
+  Lanes: claude-hooks.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
