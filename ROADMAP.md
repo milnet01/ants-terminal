@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5689 -->
+<!-- ants-roadmap-id-high-water: ANTS=5690 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -20104,6 +20104,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: feature.
   Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
   Lanes: mcp, tests.
+
+- 📋 [ANTS-5690] **spec_log op:"set_status" cannot add a Status line to a spec that has none.**
+  Measured 2026-10-15: dry-run set_status on ANTS-1633 (no Status line)
+  and on ANTS-1014 (status written as a list item, `- **Status:**`)
+  both refuse `unrecognised_format`: no "**Status:**" line found
+  (set_status needs one to rewrite). spec_lint's `status_missing`
+  counts exactly these documents, so the verb that reports the gap
+  cannot close it, and ANTS-4413 fell back to hand edits.
+
+  Wanted: when no `**Status:**` line exists, insert one after the H1
+  (or after the header block), and report `inserted:true`. A
+  list-item or blockquote dialect line (`- **Status:**`,
+  `> **Status:**`) should be rewritten in place rather than leaving a
+  second, contradicting status beside it.
+  **Layman:** The tool that updates a design document's status refuses when the document has no status yet, which is exactly when it is most needed.
+  Kind: enhancement.
+  Source: in-session-2026-10-15 (found while working ANTS-4413).
+  Lanes: mcp-spec.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
