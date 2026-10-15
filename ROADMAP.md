@@ -72062,10 +72062,13 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5695] **roadmap_query accepts the status emoji (📋 🚧 ✅ 💭 🚫) as well as the names.**
+- ✅ [ANTS-5695] **roadmap_query accepts the status emoji (📋 🚧 ✅ 💭 🚫) as well as the names.**
   Groundwork passed status:"🚧", the symbol the rendered roadmap shows,
   and got bad_status (wants "in-progress"), costing a retry. Map each
   emoji to its name.
+  Resolved (2026-10-15): cmdRoadmapQuery maps each emoji (and a trailing
+  U+FE0F) to its name, single value or array; the schema enum lists
+  them. mcp_roadmap_status_filter.Ants5695EmojiStatusMeansItsName.
   **Layman:** Accept the status symbols the roadmap itself shows.
   Kind: enhancement.
   Source: token-survey-2026-10-15.

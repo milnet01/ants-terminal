@@ -7,6 +7,14 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 #include "../../_support/srcgrep.h"
 
 #include <string>
@@ -250,4 +258,47 @@ TEST(mcp_roadmap_status_filter, ProviderLambdaWidened) {
     expect(contains(mw, "ANTS-3422"),
            "ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-5695 — the emoji the rendered roadmap shows mean the same as the
+// names. Groundwork passed "🚧" and paid a bad_status retry.
+TEST(mcp_roadmap_status_filter, Ants5695EmojiStatusMeansItsName) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    {
+        QFile f(QDir(tmp.path()).filePath(QStringLiteral("ROADMAP.md")));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# Roadmap\n\n## Work\n\n"
+                "- \xF0\x9F\x93\x8B [ANTS-9101] **Planned.**\n"
+                "- \xF0\x9F\x9A\xA7 [ANTS-9102] **In progress.**\n"
+                "- \xE2\x9C\x85 [ANTS-9103] **Shipped.**\n"
+                "- \xF0\x9F\x92\xAD [ANTS-9104] **Considered.**\n"
+                "- \xF0\x9F\x9A\xAB [ANTS-9105] **Dropped.**\n");
+    }
+    const auto ids = [&tmp](const QJsonValue &status) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("status")] = status;
+        const QJsonObject o = rc.cmdRoadmapQuery(req).object();
+        QStringList out;
+        if (!o.value(QStringLiteral("ok")).toBool())
+            out << QStringLiteral("refused: ") + o.value(QStringLiteral("code")).toString();
+        for (const auto &v : o.value(QStringLiteral("bullets")).toArray())
+            out << v.toObject().value(QStringLiteral("id")).toString();
+        return out;
+    };
+    const struct { const char *emoji; const char *id; } cases[] = {
+        {"\xF0\x9F\x93\x8B", "ANTS-9101"}, {"\xF0\x9F\x9A\xA7", "ANTS-9102"},
+        {"\xE2\x9C\x85", "ANTS-9103"},     {"\xF0\x9F\x92\xAD", "ANTS-9104"},
+        {"\xF0\x9F\x9A\xAB", "ANTS-9105"}};
+    for (const auto &c : cases)
+        EXPECT_EQ(ids(QString::fromUtf8(c.emoji)), QStringList{QString::fromLatin1(c.id)})
+            << "status " << c.emoji;
+    // With the variation selector some keyboards add, and inside an array.
+    EXPECT_EQ(ids(QString::fromUtf8("\xE2\x9C\x85\xEF\xB8\x8F")),
+              QStringList{QStringLiteral("ANTS-9103")});
+    EXPECT_EQ(ids(QJsonArray{QString::fromUtf8("\xF0\x9F\x93\x8B"),
+                             QStringLiteral("in-progress")}),
+              (QStringList{QStringLiteral("ANTS-9101"), QStringLiteral("ANTS-9102")}));
 }

@@ -761,8 +761,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     QJsonValue statusVal = req.value(QStringLiteral("status"));
     if (!statusVal.isArray() && statusVal.toString().isEmpty())
         statusVal = req.value(QStringLiteral("filter"));
+    // ANTS-5695 — the emoji the rendered roadmap shows mean their names, so
+    // a caller copying one from the file is not refused. A trailing U+FE0F
+    // (variation selector) is ignored.
+    const auto statusName = [](QString s) {
+        s = s.trimmed();
+        if (s.endsWith(QChar(0xFE0F))) s.chop(1);
+        if (s == QString::fromUtf8("\xF0\x9F\x93\x8B")) return QStringLiteral("planned");
+        if (s == QString::fromUtf8("\xF0\x9F\x9A\xA7")) return QStringLiteral("in-progress");
+        if (s == QString::fromUtf8("\xE2\x9C\x85"))      return QStringLiteral("shipped");
+        if (s == QString::fromUtf8("\xF0\x9F\x92\xAD")) return QStringLiteral("considered");
+        if (s == QString::fromUtf8("\xF0\x9F\x9A\xAB")) return QStringLiteral("dropped");
+        return s;
+    };
     QString statusArg = statusVal.toString();
-    QString filter = statusArg.toLower();
+    QString filter = statusName(statusArg).toLower();
     if (filter.isEmpty()) filter = QStringLiteral("all");
     // ANTS-5376 — an ARRAY is the union of its elements. `filterSet` is what
     // the predicates below read; a single value is a set of one. `filter`
@@ -772,7 +785,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (statusVal.isArray()) {
         filterSet.clear();
         for (const auto &v : statusVal.toArray()) {
-            const QString s = v.toString().toLower();
+            const QString s = statusName(v.toString()).toLower();
             if (!filterSet.contains(s)) filterSet.append(s);
         }
         filter = filterSet.contains(QLatin1String("all"))

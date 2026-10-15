@@ -25,9 +25,18 @@ tool + `cmdRoadmapQuery` IPC verb (per `docs/specs/ANTS-1247.md`):
 10. **INV-11.** Error-message hygiene: 64-byte cap + `< 0x20` →
     `'?'` replacement on attacker-supplied verbatim echo.
 
+## ANTS-5695 — the status emoji are accepted
+
+`status` (and its `filter` alias), as one value or in an array, also accepts
+the emoji the rendered roadmap shows: 📋 planned, 🚧 in-progress, ✅ shipped,
+💭 considered, 🚫 dropped. Each means the same as its name, and a trailing
+variation selector (U+FE0F) is ignored. The echo names the status, not the
+emoji. *Test:* `Ants5695EmojiStatusMeansItsName`, which runs the verb
+against a seeded temp `ROADMAP.md`.
+
 ## Test shape
 
-Source-grep, no GUI, no QTemporaryDir. Slurps:
+Source-grep, no GUI, apart from the ANTS-5695 case. Slurps:
 - `src/remotecontrol.h` (signature, default param)
 - the remotecontrol TUs (filter parse, switch, response shape, INV anchors)
 - `src/claudeintegration.h` (provider signature widened)

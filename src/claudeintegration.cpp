@@ -3241,6 +3241,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     statusEnum.append("in-progress");
                     statusEnum.append("considered");
                     statusEnum.append("dropped");   // ANTS-4977
+                    // ANTS-5695 — the emoji the rendered roadmap shows.
+                    for (const char *e : {"\xF0\x9F\x93\x8B", "\xF0\x9F\x9A\xA7",
+                                          "\xE2\x9C\x85", "\xF0\x9F\x92\xAD",
+                                          "\xF0\x9F\x9A\xAB"})
+                        statusEnum.append(QString::fromUtf8(e));
                     // ANTS-5376 — one value, or an array that is their union.
                     {
                         QJsonObject one;

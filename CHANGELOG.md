@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query accepts the status emoji (📋 🚧 ✅ 💭 🚫) as well as their names** (ANTS-5695)
+
 - **Close a tab from the Tab List Panel or its right-click menu** (ANTS-5709)
   Each row in the side panel has an x, like the tab bar's. The tab
   right-click menu, on the tab bar and the panel, has a Close Tab item.
