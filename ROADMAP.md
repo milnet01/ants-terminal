@@ -12839,6 +12839,10 @@ they are one change.
   Verdict (user, 2026-10-15): inconclusive — needs deeper measurement.
   SIGN-1's 20% threshold stands. A second, larger bench follows; the old
   scripts/measure-companion-tokens.sh skeleton is removed.
+  Bench 2 (2026-10-15, ANTS-5697): Ants 17.3% dearer, again no Ants tool
+  used. Short fixed-prompt jobs measure only Ants' overhead; the cost
+  lives in long sessions (100-274 requests). Next measurement needs real
+  long sessions (ANTS-5698's context-rent read) — the user's call.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
@@ -69037,12 +69041,16 @@ names the sign it claims (SIGN-1 to SIGN-5).
   Source: docs/design.md SIGN-5 (2026-09-28).
   Lanes: claude, dialogs.
 
-- 🚧 [ANTS-5697] **Build a second SIGN-1 token bench whose job needs code search in a larger project, so the Ants tools get used.**
+- ✅ [ANTS-5697] **Build a second SIGN-1 token bench whose job needs code search in a larger project, so the Ants tools get used.**
   Decided (2026-10-15, user): ANTS-1120's first measurement was
   inconclusive because the bench's job (ANTS-5545) never reached an
   Ants tool. Build a second bench beside the first, run with the same
   bench.py, the same model, 3+ replays per arm, and bring the numbers
   back. SIGN-1's 20% threshold stands. The first bench stays fixed.
+  Shipped and measured (2026-10-15, 24fd18c6): 4 runs per arm, all fixed
+  the bug. Ants 17.3% dearer (0.1409 vs 0.1202 USD); no run called an
+  Ants tool — each found the bug with 2-5 shell commands. Journal:
+  docs/journal/ANTS-1120-measurement.md § Bench 2.
   **Layman:** A bigger practice job, where Claude has to search, to see whether Ants' tools save more than they cost.
   Kind: test.
   Source: user-decision-2026-10-15.

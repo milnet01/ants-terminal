@@ -72,6 +72,40 @@ SIGN-1 asks for Ants to be at least 20% cheaper. **Neither view meets it.**
 - INV-6 (the verdict's roadmap edit): ANTS-1120 is annotated "needs deeper
   measurement" and stays open.
 
+## Bench 2: pygments (ANTS-5697), 2026-10-15
+
+The second bench plants a bug in Pygments 2.21.0, a 343-file library
+([`tools/token-bench/pygments/`](../../tools/token-bench/pygments/README.md)).
+Four runs per arm, alternating; every run fixed the bug. Raw data:
+[`ANTS-1120-results-pygments.jsonl`](ANTS-1120-results-pygments.jsonl).
+
+| Arm | Started | Input | Cache write (1h) | Cache read | Output | Cost (USD) |
+|---|---|---|---|---|---|---|
+| ants | 10:27:24 | 12 | 12,392 | 141,410 | 1,851 | 0.1645 |
+| plain | 10:29:50 | 8 | 10,373 | 68,425 | 1,228 | 0.1213 |
+| ants | 10:30:47 | 8 | 11,527 | 89,344 | 1,163 | 0.1334 |
+| plain | 10:31:48 | 8 | 10,698 | 69,278 | 1,200 | 0.1235 |
+| ants | 10:32:59 | 10 | 11,425 | 114,422 | 1,456 | 0.1434 |
+| plain | 10:33:45 | 8 | 10,382 | 69,261 | 1,128 | 0.1195 |
+| ants | 10:34:38 | 8 | 10,670 | 88,155 | 969 | 0.1224 |
+| plain | 10:35:29 | 6 | 10,805 | 49,737 | 993 | 0.1163 |
+
+- Ants mean 0.1409 (sd 0.0179), plain mean 0.1202 (sd 0.0030): **Ants
+  costs 17.3% more.** Ratio plain/ants 0.853; conservative ratio 0.738.
+- Every run's first request read the shared prompt from the cache, so no
+  run started cold.
+- **No run called an Ants tool again.** Each found the bug with two to
+  five shell commands in three to six requests: run the tests, one text
+  search, a one-line fix. A larger codebase did not make the job need
+  code search; a failing test plus one search found it.
+
+What the two benches show together: on a short task Ants costs its fixed
+overhead (about 5,250 tokens a request) and saves nothing, because its
+tools go unused. Where Ants' tools might pay is the long session: the
+2026-10-15 token survey measured 100 to 274 requests per working
+session, where context rent, not a single fix, dominates the cost. A
+bench of one fixed prompt does not reach that.
+
 ## Verdict (user, 2026-10-15)
 
 - **Inconclusive.** SIGN-1 is not met, but this bench never reaches a tool
