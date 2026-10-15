@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5706 -->
+<!-- ants-roadmap-id-high-water: ANTS=5708 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72084,6 +72084,8 @@ measured Ants adding about 5,250 tokens to every request.
 - 📋 [ANTS-5701] **cc-job has a summary mode: exit code, the last N lines or regex matches, and the log path.**
   doom-ants measured 140K-185K chars of Bash output per session. Asked by
   doom-ants, perch, snatch. e.g. `cc-job wait <name> --summary [--grep RE]`.
+  RetroDB (2026-10-15): a wait loop re-printed a 14-line CI step list on
+  every poll; asks for `cc-job tail --last-line`.
   **Layman:** Report a long job's result in a few lines instead of its whole log.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -72128,6 +72130,26 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
+
+- 📋 [ANTS-5707] **A log-query verb greps, counts and tails a project's own logs with secrets blanked by pattern.**
+  RetroDB (2026-10-15): two raw scrape-log reads dumped whole logs into
+  context and leaked credentials into the session transcript, twice.
+  A verb that returns matching lines, counts or a tail, with known secret
+  patterns redacted, saves the dump and keeps secrets out of transcripts.
+  **Layman:** Read app logs in small pieces, with passwords hidden, instead of dumping them whole.
+  Kind: security.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5708] **Peer messages that arrive mid-task are delivered as one digest at the next idle point.**
+  Measured 2026-10-15 in ants-terminal-95: 30 one-line survey replies
+  each woke a full turn at ~200k context, and the git-context hook fired
+  on each. Proposed by RetroDB; see also the Claude Code feedback filed
+  the same day.
+  **Layman:** Bundle messages from other sessions instead of interrupting for each one.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp, claude-hooks.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
