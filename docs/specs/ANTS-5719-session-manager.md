@@ -24,7 +24,7 @@ sessions by itself, one at a time, and says which.
 
 1. **Memory runs out with many sessions open.** Measured 2026-10-15 on the
    user's 32 GB host with `ps -eo rss,comm` summed per command: 18 `claude`
-   processes held 5.4 GB (190–435 MB each), 18 `ants-mcpd` 0.9 GB and 4
+   processes held 5.4 GB (191–435 MB each), 18 `ants-mcpd` 0.9 GB and 4
    `clangd` 2.3 GB, with about 9 GB available. Sessions also start builds
    and test suites that spike memory.
 2. **Nothing in Ants measures memory.** No code under `src/` reads RSS,
@@ -64,8 +64,8 @@ earlyoom kills. Adjustable in Settings.
 `ClaudeTabTracker` already finds each tab's `claude` process
 (`ClaudeIntegration::findClaudeChildPid`), its transcript path, and keeps
 `ShellState` with `state`, `awaitingInput` and `idleSinceMs`. The session
-id is the transcript's basename (`ClaudeTabTracker::shellForSessionId`
-maps the other way). A new accessor exposes what the tracker holds
+id is the transcript's basename without `.jsonl`
+(`ClaudeTabTracker::shellForSessionId` maps the other way). A new accessor exposes what the tracker holds
 privately:
 
 ```cpp
@@ -73,7 +73,7 @@ privately:
 struct SessionFacts {
     pid_t shellPid = 0;
     pid_t claudePid = 0;        // 0 when no claude is running
-    QString sessionId;          // transcript basename, may be empty
+    QString sessionId;          // transcript basename minus .jsonl; may be empty
     QString transcriptPath;
 };
 SessionFacts sessionFacts(pid_t shellPid) const;
@@ -88,10 +88,14 @@ struct TreeSample {
     qint64 cpuTicks = 0;     // sum of utime+stime over the tree
     int processes = 0;
     bool capped = false;     // the walk hit kMaxTreePids
+    bool approximate = false; // some process fell back to VmRSS (§ 6)
 };
 constexpr int kMaxTreePids = 256;
 // Walk /proc/<pid>/task/<tid>/children breadth-first from root, root
-// included; read /proc/<p>/smaps_rollup (Pss) and /proc/<p>/stat.
+// included, then add every process whose /proc/<p>/stat ppid is already
+// in the set (a child whose forking thread exited is in no children
+// file; ClaudeIntegration::findClaudeChildPid falls back the same way).
+// Read /proc/<p>/smaps_rollup (Pss) and /proc/<p>/stat.
 TreeSample sampleTree(pid_t root, const QString &procRoot = "/proc");
 // MemAvailable from <procRoot>/meminfo, in kB; -1 when unreadable.
 qint64 memAvailableKb(const QString &procRoot = "/proc");
@@ -123,7 +127,7 @@ per tab whose shell has a running or parked Claude session:
 |---|---|
 | Tab | tab title (the full title, as `TabListPanel` shows) |
 | Project | `claude`'s cwd basename |
-| State | `claudestate::display()` in words (`TabListPanel::stateLabel`) and its colour |
+| State | `claudestate::display()` mapped to a `ClaudeTabIndicator::Glyph` as `src/claudestatuswidgets.cpp` does, in words (`TabListPanel::stateLabel`) and its colour; "Parked" for a parked tab |
 | Idle | now − `idleSinceMs`, when the state is Idle |
 | Memory | tree PSS from § 4.2, in MB |
 | Action | **Park**, **Resume** or **Go to tab** |
@@ -137,11 +141,12 @@ passes § 4.4's manual check; its tooltip says why when it is not.
 One pure function decides, so the window, the warning and auto-park agree:
 
 ```cpp
-enum class ParkVerdict { Ok, NotRunning, Busy, WaitingOnUser,
+enum class ParkVerdict { Ok, NotRunning, NoSession, Busy, WaitingOnUser,
                          DraftInComposer, ChildrenBusy, TooRecent,
                          Focused };
 struct ParkInput {
     ClaudeState state; bool awaitingInput;
+    bool resumableId;         // sessionId matches § 4.5's pattern
     qint64 idleMs;            // now - idleSinceMs; meaningless unless Idle
     bool composerEmpty;       // lastUserKeystrokeMs < idleSinceMs
     qint64 cpuMsLastMinute;   // tree cpu over the last 12 samples
@@ -151,7 +156,8 @@ ParkVerdict parkVerdict(const ParkInput &in, bool automatic,
                         qint64 minIdleMs);
 ```
 
-In order: no `claude` → `NotRunning`; awaiting input → `WaitingOnUser`;
+In order: no `claude` → `NotRunning`; no resumable session id →
+`NoSession`; awaiting input → `WaitingOnUser`;
 state not Idle → `Busy`; composer not empty → `DraftInComposer`; tree CPU
 over the last minute ≥ 1000 ms → `ChildrenBusy` (a background build or test
 is still running); then, for automatic parking only, idle under `minIdleMs`
@@ -161,18 +167,28 @@ is still running); then, for automatic parking only, idle under `minIdleMs`
 
 **Park** (manual or automatic), on a session whose verdict is `Ok`:
 
-1. Record `{sessionId, cwd, flags}` on the tab. `cwd` is
+1. Record `{sessionId, cwd, flags}` in `SessionMonitor`, keyed by shell
+   pid (`parkedRecord(shellPid)` reads it; every consumer reads it there). `cwd` is
    `/proc/<claudePid>/cwd`. `flags` are the arguments of
    `/proc/<claudePid>/cmdline` that are on an allowlist:
    `--model <v>`, `--permission-mode <v>`, `--dangerously-skip-permissions`,
    `--add-dir <v>`. Anything else is dropped.
-2. Send `SIGTERM` to `claudePid` only, never the shell. The transcript is
-   already on disk: Claude Code appends each message as it is written.
-3. The tab shows a "Parked" state (grey dot, row label "Parked") until
-   resumed.
+2. Send `SIGTERM` to `claudePid` only, never the shell, through
 
-If `claude` is still running 10 s after `SIGTERM`, the park is reported as
-failed and the record is dropped. Ants never sends `SIGKILL`.
+   ```cpp
+   enum class ParkResult { Exited, StillRunning, NoSuchProcess };
+   // SIGTERM, then poll until the pid is gone or timeoutMs passes.
+   ParkResult sessionmemory::terminateAndWait(pid_t pid, int timeoutMs);
+   ```
+
+   with `timeoutMs` 10000. The transcript is already on disk: Claude Code
+   appends each message as it is written.
+3. While a record exists, the tab-dot provider in
+   `src/claudestatuswidgets.cpp` shows `Glyph::Idle` (grey) for that shell
+   instead of hiding the dot, and the manager row reads "Parked".
+
+On `StillRunning` the park is reported as failed and the record is dropped.
+Ants never sends `SIGKILL`.
 
 **Resume**, from the row's button or from the tab's context menu: write
 `cd <cwd> && claude --resume <sessionId> <flags>` into that tab with
@@ -192,7 +208,8 @@ A state machine fed one `MemAvailable` sample per tick:
 ```cpp
 enum class MemLevel { Ok, Low, Critical };
 // Hysteresis 512 MB: Low starts below warn, ends above warn + 512 MB;
-// Critical starts below critical, ends above critical + 512 MB.
+// Critical starts below critical from any level (Ok may go straight to
+// Critical), ends above critical + 512 MB, returning to Low or Ok.
 MemLevel nextLevel(MemLevel current, qint64 availKb,
                    qint64 warnKb, qint64 criticalKb);
 ```
@@ -227,9 +244,10 @@ reaches a running terminal only through a new binary, on the next launch.
   *Test:* `tests/features/session_manager/test_session_manager.cpp`
   `SessionManager.Inv1TreeSumsEveryDescendantOnce`, against a fixture
   `procRoot` with a three-level tree whose `smaps_rollup` files carry known
-  Pss values, one process listed as a child of two parents.
-  *Breaks when:* the walk skips grandchildren, or counts the twice-listed
-  process twice.
+  Pss values, one process listed as a child of two parents, and one whose
+  only link is its `stat` ppid (in no `children` file).
+  *Breaks when:* the walk skips grandchildren or the ppid-only process, or
+  counts the twice-listed process twice.
 
 - **INV-2** — `sampleTree` stops at `kMaxTreePids` and sets `capped`.
   *Test:* same file, `Inv2WalkIsCapped`, fixture tree of 300 processes.
@@ -244,9 +262,11 @@ reaches a running terminal only through a new binary, on the next launch.
 
 - **INV-4** — Parking signals only the `claude` pid, with `SIGTERM`, and
   never `SIGKILL`.
-  *Test:* same file, `Inv4ParkSignalsClaudeOnly`: a fake shell process
-  with a child `sleep 300` standing in for `claude`; after park the child
-  has exited and the shell is alive.
+  *Test:* same file, `Inv4ParkSignalsClaudeOnly`, calling
+  `terminateAndWait`: a fake shell with a child `sleep 300` returns
+  `Exited`, the child gone and the shell alive; a child that ignores
+  `SIGTERM` (`trap '' TERM`) with a 500 ms timeout returns `StillRunning`
+  and is still alive afterwards.
   *Breaks when:* the shell or a sibling is signalled, or a stubborn child
   is killed.
 
@@ -263,8 +283,8 @@ reaches a running terminal only through a new binary, on the next launch.
   hysteresis.
   *Test:* same file, `Inv6LevelHysteresis`, a sample series crossing each
   threshold down, wobbling inside the band, then rising above it.
-  *Breaks when:* the level flaps inside the band, or skips Low on the way
-  down to Critical.
+  *Breaks when:* the level flaps inside the band, or a single sample below
+  critical taken from Ok does not return Critical.
 
 - **INV-7** — While Critical with auto-park on, each 10 s step parks
   exactly one session, the longest-idle with an `Ok` automatic verdict;
@@ -282,21 +302,25 @@ reaches a running terminal only through a new binary, on the next launch.
   *Breaks when:* a key is misspelt, a default differs, or one reload path
   is missed.
 
-- **INV-9** — Trust boundary: the values in a resume command come only
-  from `/proc` and the transcript basename, and reach the shell only
-  through INV-5's builder. This is the defence; INV-5 is its test.
-  *Test:* same as INV-5.
-  *Breaks when:* any other path writes a resume command.
+- **INV-9** — Trust boundary: the values in a parked session's resume
+  command come only from `/proc` and the transcript basename, and reach
+  the shell only through INV-5's builder.
+  *Test:* same file, `Inv9OnlyTheBuilderResumesParked`: a source check
+  that the park and resume code calls `writeCommand` only with the
+  builder's result.
+  *Breaks when:* the parked-session resume formats its own command.
 
 ## 6. Failure modes
 
 - **`smaps_rollup` unreadable** (older kernel, permission): fall back to
   `VmRSS` from `/proc/<p>/status` and mark the figure "approx." in the
   window.
-- **The tracker has no session id yet** (transcript not created): Park is
-  disabled with the tooltip "No conversation to resume yet".
+- **The tracker has no session id yet** (transcript not created): the
+  verdict is `NoSession`; the tooltip reads "No conversation to resume yet".
 - **`claude` ignores `SIGTERM`**: reported after 10 s, record dropped,
   nothing killed (§ 4.5).
+- **A child outlives `claude`** (an MCP server or `clangd` that does not
+  exit with it; unverified on this host): Ants does not kill it.
 - **The user types into a parked tab** before resuming: that is a normal
   shell; the Resume button stays until used or the tab closes.
 - **A parked session misses peer messages.** `session_message` mail waits
@@ -314,7 +338,7 @@ All in `tests/features/session_manager/` with a `spec.md` pointing here,
 compiled into the bundle `build_target_for` names, label `features`. Each
 test is seen failing against a build without the feature before it is
 counted. INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7 and INV-8 each
-have the test named in § 5; INV-9 is locked by INV-5's test.
+have the test named in § 5, and so does INV-9.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -347,7 +371,7 @@ have the test named in § 5; INV-9 is locked by INV-5's test.
 | INV-6 | `SessionManager.Inv6LevelHysteresis` |
 | INV-7 | `SessionManager.Inv7AutoParkPicksLongestIdle` |
 | INV-8 | `SessionManager.Inv8ConfigKeysAndReload` |
-| INV-9 | `SessionManager.Inv5ResumeCommand` |
+| INV-9 | `SessionManager.Inv9OnlyTheBuilderResumesParked` |
 | § 4.3 window layout | **nothing** — visual; checked by hand when built |
 
 ## 11. Cross-doc impact
