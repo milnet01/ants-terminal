@@ -39,6 +39,12 @@ deferred: most sessions call them rarely.
   carry none. `tool_info {name}` still returns the full description.
   *Test:* `Ants5694EagerDescriptionsAreShort`.
 
+- **ANTS-5714** — on every verb, the wire descriptions of `fields`,
+  `compact`, `encoding` and `etag_match` are at most 140 characters, and no
+  `caller_cwd` carries the generic "Required by the dispatcher" text. A
+  verb-specific `caller_cwd` wording is kept. `tool_info {name}` still
+  returns the full text. *Test:* `Ants5714SharedArgumentsAreShortOnEveryVerb`.
+
 - **ANTS-5271** — the same holds for five deferred verbs with the largest
   schemas: `roadmap_log`, `roadmap_query`, `feedback_log`,
   `changelog_log` and `roadmap_migrate`. Every argument description on the

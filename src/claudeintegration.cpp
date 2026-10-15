@@ -15789,7 +15789,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("caller_cwd"), QStringLiteral("Your $PWD (required); picks the project.")},
                         {QStringLiteral("compact"), QStringLiteral("Drop null, false and empty fields from the reply.")},
                         {QStringLiteral("encoding"), QStringLiteral("\"tabular\" packs object arrays as {__cols__, __rows__}; default \"json\".")},
-                        {QStringLiteral("etag_match"), QStringLiteral("Etag from an earlier call; an unchanged result returns {unchanged:true}.")},
+                        {QStringLiteral("etag_match"), QStringLiteral("Etag from an earlier call with the same arguments; an unchanged result returns {unchanged:true}.")},
                         {QStringLiteral("fields"), QStringLiteral("Return only these top-level reply fields.")},
                         {QStringLiteral("raw"), QStringLiteral("Return the file text verbatim; use it when you will Edit from the output.")},
                         {QStringLiteral("workspace_search/context"), QStringLiteral("Lines of context around each match (0-10).")},
@@ -15833,6 +15833,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // purpose, the one usage trap, and (on the two etag
                     // verbs) a one-line Etag tip. The kind prefix and the
                     // tool_info pointer are added below, as on every verb.
+                    static const QSet<QString> kSharedArgs = {
+                        QStringLiteral("fields"), QStringLiteral("compact"),
+                        QStringLiteral("encoding"), QStringLiteral("etag_match"),
+                    };
                     static const QHash<QString, QString> kEagerDescription = {
                         {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}].")},
                         {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
@@ -16004,16 +16008,33 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject t = tools.at(i).toObject();
                         const QString name =
                             t.value(QStringLiteral("name")).toString();
-                        if (!t.value(QStringLiteral("_meta")).toObject()
-                                 .value(QStringLiteral("anthropic/alwaysLoad"))
-                                 .toBool()
-                            && !kLeanVerbs.contains(name))
-                            continue;
                         QJsonObject schema =
                             t.value(QStringLiteral("inputSchema")).toObject();
                         QJsonObject props =
                             schema.value(QStringLiteral("properties")).toObject();
-                        shorten(props, name);
+                        if (t.value(QStringLiteral("_meta")).toObject()
+                                 .value(QStringLiteral("anthropic/alwaysLoad"))
+                                 .toBool()
+                            || kLeanVerbs.contains(name)) {
+                            shorten(props, name);
+                        } else {
+                            // ANTS-5714 — every other verb: only the
+                            // arguments that mean the same on every verb.
+                            // A verb-specific caller_cwd wording is kept;
+                            // only the generic dispatcher text is replaced.
+                            for (auto pit = props.begin(); pit != props.end(); ++pit) {
+                                const QString &arg = pit.key();
+                                QJsonObject p = pit.value().toObject();
+                                const bool generic =
+                                    arg == QLatin1String("caller_cwd")
+                                        ? p.value(QStringLiteral("description")).toString()
+                                              .contains(QLatin1String("Required by the dispatcher"))
+                                        : kSharedArgs.contains(arg);
+                                if (!generic) continue;
+                                applySummary(p, kArgSummary.value(arg));
+                                pit.value() = p;
+                            }
+                        }
                         schema[QStringLiteral("properties")] = props;
                         t[QStringLiteral("inputSchema")] = schema;
                         const QString desc = kEagerDescription.value(name);

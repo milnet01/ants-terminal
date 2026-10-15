@@ -50,6 +50,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Every Ants MCP tool sends one-line text for its shared options** (ANTS-5714)
+  fields, compact, encoding, etag_match and the generic caller_cwd note are one line on every tool, so each tool a session loads is smaller; the whole tool list is about a fifth smaller. tool_info still returns the full text.
+
 - **The four always-loaded Ants MCP tools send a shorter description** (ANTS-5694)
   workspace_search, find_definition, file_outline and read_region now cost about 2 KB less in every Claude Code session. tool_info still returns the full text.
 

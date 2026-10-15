@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5713 -->
+<!-- ants-roadmap-id-high-water: ANTS=5715 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72272,6 +72272,36 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Stop one tool from pasting a long, unrelated function into the reply.
   Kind: perf.
   Source: in-session-2026-10-15.
+  Lanes: mcp.
+
+- ✅ [ANTS-5714] **Every verb sends one-line text for the shared arguments fields, compact, encoding, etag_match and the generic caller_cwd.**
+  Measured 2026-10-15 with a stdio tools/list against build/ants-mcpd:
+  across 77 verbs the descriptions of fields total 31,945 bytes (up to
+  1,181 per verb), caller_cwd 16,711 (one generic 344-byte wording on
+  43 verbs), etag_match 10,441, compact 6,841, encoding 2,487. These
+  arguments mean the same on every verb. Extend the ANTS-5628/5271 wire
+  summaries to every verb for these five; keep verb-specific caller_cwd
+  wordings; tool_info keeps the full text.
+  Shipped (2026-10-15): every verb's wire copy carries the one-line
+  summary for fields, compact, encoding and etag_match, and for the
+  generic caller_cwd text; verb-specific caller_cwd wordings stay.
+  tool_info keeps the full text. Measured with a stdio tools/list against
+  build/ants-mcpd: the whole list 270,209 to 211,634 bytes. Locked by
+  mcp_eager_load Ants5714SharedArgumentsAreShortOnEveryVerb.
+  **Layman:** Every Ants tool a session loads carries the same long notes about five common options; shortening them makes each loaded tool smaller.
+  Kind: perf.
+  Source: in-session-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5715] **Shorten the Ants SessionStart orientation banner text.**
+  ANTS-5693 made the banner fire on startup and /clear only; its text
+  was not shortened (SYNTHESIS.md section C asks whether 5693/5694
+  cover the text: they do not). The banner lists verbs with hints,
+  including the four that are always loaded already. Raised by kde-kwin,
+  sift and Slipway.
+  **Layman:** The note Ants prints at the start of each session lists many tools; a shorter one costs every session less.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

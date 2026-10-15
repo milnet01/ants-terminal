@@ -198,3 +198,48 @@ TEST(McpEagerLoad, Ants5694EagerDescriptionsAreShort) {
     EXPECT_TRUE(text.contains(QStringLiteral("Hard-kill returns rg_failed")))
         << "tool_info no longer carries workspace_search's full description";
 }
+
+// ANTS-5714 — five arguments mean the same on every verb, and their long
+// notes were repeated on each one. On the wire every verb carries one line
+// for fields, compact, encoding and etag_match, and the generic caller_cwd
+// wording is one line too; a verb-specific caller_cwd wording is kept.
+// tool_info still serves the full text.
+TEST(McpEagerLoad, Ants5714SharedArgumentsAreShortOnEveryVerb) {
+    ClaudeIntegration ci;
+    const QJsonArray tools =
+        mcpCall(ci, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})")
+            .value(QStringLiteral("tools")).toArray();
+    ASSERT_FALSE(tools.isEmpty());
+
+    constexpr int kMaxArgDescription = 140;
+    const QStringList shared = {
+        QStringLiteral("fields"), QStringLiteral("compact"),
+        QStringLiteral("encoding"), QStringLiteral("etag_match")};
+    for (const auto &v : tools) {
+        const QJsonObject t = v.toObject();
+        const QString name = t.value(QStringLiteral("name")).toString();
+        const QJsonObject props = t.value(QStringLiteral("inputSchema"))
+            .toObject().value(QStringLiteral("properties")).toObject();
+        for (const QString &arg : shared) {
+            if (!props.contains(arg)) continue;
+            const int len = props.value(arg).toObject()
+                .value(QStringLiteral("description")).toString().size();
+            EXPECT_LE(len, kMaxArgDescription)
+                << name.toStdString() << "/" << arg.toStdString()
+                << " is " << len << " chars on the wire";
+        }
+        EXPECT_FALSE(props.value(QStringLiteral("caller_cwd")).toObject()
+                         .value(QStringLiteral("description")).toString()
+                         .contains(QStringLiteral("Required by the dispatcher")))
+            << name.toStdString() << " sends the generic long caller_cwd text";
+    }
+
+    const QJsonObject info = mcpCall(ci,
+        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"git_state"}}})");
+    const QString text = info.value(QStringLiteral("content")).toArray()
+        .at(0).toObject().value(QStringLiteral("text")).toString();
+    EXPECT_TRUE(text.contains(QStringLiteral("Required by the dispatcher")))
+        << "tool_info no longer carries caller_cwd's full description";
+    EXPECT_TRUE(text.contains(QStringLiteral("fields_available")))
+        << "tool_info no longer carries fields' full description";
+}
