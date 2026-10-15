@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5690 -->
+<!-- ants-roadmap-id-high-water: ANTS=5691 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -76855,7 +76855,7 @@ defect from different angles.
   Source: in-session-2026-08-14 (surfaced by the ANTS-3368 spec's mechanical pass).
   Lanes: specs, remotecontrol.
 
-- 📋 [ANTS-4413] **52 of 243 specs carry no Status line, so every status-gated check reads them as unknown rather than as shipped.**
+- ✅ [ANTS-4413] **52 of 243 specs carry no Status line, so every status-gated check reads them as unknown rather than as shipped.**
   Measured 2026-08-15 over docs/specs/: 52 of 243 documents have no
   line matching `^\*\*Status`. Found while closing ANTS-4135, and it is
   the reason that item's detector under-reported.
@@ -76905,6 +76905,15 @@ defect from different angles.
   NOT CALLABLE YET. The running Ants serves mcp__ants__* from the pre-build binary, so `status_missing` needs a relaunch. After relaunching, verify with spec_lint over docs/specs/ and expect a `status_missing` key on the envelope whether or not it is zero.
 
   STILL OPEN, unchanged and deliberately: the 51-or-so documents themselves. This item already says why that is not a bulk edit — a status is a claim about whether code exists, the honest answer per document needs the code checked, and ANTS-4135 took four investigations to settle four documents. Nothing here changes that. What changed is only that the number is now visible without a walk.
+  Resolved (2026-10-15, 3f92b755): spec_lint status_missing 52 → 0.
+  Each status was decided from the code (named files, symbols, verbs
+  and tests found in the current tree) and the first shipping release
+  in CHANGELOG.md. 27 specs had no status; 23 wrote it as a list item
+  or quote SpecParse does not read, six of those claiming "Draft" for
+  shipped code. Results: 49 shipped, ANTS-1160 partly shipped,
+  ANTS-1569 superseded. No other spec_lint count moved. Follow-ups:
+  ANTS-5690 (spec_log set_status cannot insert a line) and the
+  missing-Kind item filed beside this one.
 
 - 📋 [ANTS-4662] **Write ANTS-4348's decision into specs.md, then close the post-standard spec gaps.**
   ANTS-4348 asked which specs are worth going back to. Decided there; this is
@@ -76964,6 +76973,22 @@ defect from different angles.
   Kind: doc.
   Source: in-session-2026-08-25, the actionable half of ANTS-4348's decision.
   Lanes: specs, speclint, docs.
+
+- 📋 [ANTS-5691] **Older specs carry no parseable Kind line, so spec_query reports their kind as empty.**
+  Measured 2026-10-15 over docs/specs/, after ANTS-4413: 16 specs write
+  Kind as a list item or quote (`- **Kind:**`), which SpecParse does
+  not read, and about 60 carry no Kind line in any form. Example:
+  spec_query ANTS-1235 returns kind "". Re-measure with a loop over
+  docs/specs/*.md for `^\*\*Kind:\*\*` before starting.
+
+  Unlike Status, Kind is a category, not a claim that code exists: take
+  it from the roadmap item's own `kind` (roadmap_query ids[]), so this
+  one can be a scripted edit. Insert or rewrite one plain `**Kind:**`
+  line in the header block; leave the rest of the list alone.
+  ANTS-5690 (spec_log cannot insert a field) is the tool-side fix.
+  **Layman:** Many older design documents never say what kind of work they describe in a form the tools can read, so the tools file them as unknown.
+  Kind: doc-fix.
+  Source: in-session-2026-10-15 (found while closing ANTS-4413).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
