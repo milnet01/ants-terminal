@@ -15821,32 +15821,181 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("read_region/section"), QStringLiteral("Markdown heading text or slug; returns that section.")},
                         {QStringLiteral("find_definition/include_body"), QStringLiteral("Return each definition's body inline.")},
                     };
+                    // ANTS-5271 — the five largest schemas are deferred, but a
+                    // session that loads one carries it to the end, and most
+                    // calls use two or three of its arguments. Same treatment,
+                    // nested item fields included ("verb/parent.child" first).
+                    static const QSet<QString> kLeanVerbs = {
+                        QStringLiteral("roadmap_log"),
+                        QStringLiteral("roadmap_query"),
+                        QStringLiteral("feedback_log"),
+                        QStringLiteral("changelog_log"),
+                        QStringLiteral("roadmap_migrate"),
+                    };
+                    static const QHash<QString, QString> kLeanSummary = {
+                        {QStringLiteral("dry_run"), QStringLiteral("Preview the result without writing (default false).")},
+                        {QStringLiteral("roadmap_query/body_from_end"), QStringLiteral("id/ids fetch: keep the END of an over-cap body; max_body_bytes then sizes the tail.")},
+                        {QStringLiteral("roadmap_query/body_match"), QStringLiteral("Keep only body lines containing this text (case-insensitive); turns bodies on.")},
+                        {QStringLiteral("roadmap_query/bullet_fields"), QStringLiteral("Keep only these keys on each bullet. Not with headline_only, section_index, bundles or report.")},
+                        {QStringLiteral("roadmap_query/check_sync"), QStringLiteral("Also report whether ROADMAP.md matches the store (file_in_sync, drift_*). Not cached; ask once.")},
+                        {QStringLiteral("roadmap_query/filter"), QStringLiteral("Alias for status.")},
+                        {QStringLiteral("roadmap_query/id"), QStringLiteral("Fetch one bullet by id (case-sensitive), body included.")},
+                        {QStringLiteral("roadmap_query/ids"), QStringLiteral("Fetch up to 100 bullets by id, in document order, each with input_index; misses in missing_ids.")},
+                        {QStringLiteral("roadmap_query/include_body"), QStringLiteral("Add each bullet's body (2000-char cap on lists). id/ids fetches include it by default.")},
+                        {QStringLiteral("roadmap_query/include_narrator_bullets"), QStringLiteral("Keep id-less section-summary bullets (default false).")},
+                        {QStringLiteral("roadmap_query/include_section_etags"), QStringLiteral("section_index: add a section_etag per section, for section_etag_match.")},
+                        {QStringLiteral("roadmap_query/include_section_headers"), QStringLiteral("Keep section-rollup bullets that carry no id or headline (default false).")},
+                        {QStringLiteral("roadmap_query/kind"), QStringLiteral("Keep only bullets of this kind; an unknown kind refuses bad_kind.")},
+                        {QStringLiteral("roadmap_query/limit"), QStringLiteral("Cap on bullets[] (1-500). Omitted, a large reply downshifts to headline rows.")},
+                        {QStringLiteral("roadmap_query/max_body_bytes"), QStringLiteral("Body cap: one id up to 1 MiB, ids up to 16 KiB each; on lists it may only lower the 2000 cap.")},
+                        {QStringLiteral("roadmap_query/max_results"), QStringLiteral("Alias for limit.")},
+                        {QStringLiteral("roadmap_query/mode"), QStringLiteral("bullets (default), section_index (slugs and counts), headline_only, bundles, report, or sources.")},
+                        {QStringLiteral("roadmap_query/offset"), QStringLiteral("0-based start into the filtered bullets; use with limit to page.")},
+                        {QStringLiteral("roadmap_query/q"), QStringLiteral("Alias for query.")},
+                        {QStringLiteral("roadmap_query/query"), QStringLiteral("Case-insensitive substring filter on headline, body or id. On section_index it filters section names.")},
+                        {QStringLiteral("roadmap_query/regex"), QStringLiteral("Read query as a case-insensitive regular expression.")},
+                        {QStringLiteral("roadmap_query/scope"), QStringLiteral("mode:report only: project (default) or all registered projects.")},
+                        {QStringLiteral("roadmap_query/section"), QStringLiteral("Slug of a ## or ### heading; returns its bullets and its subsections' bullets.")},
+                        {QStringLiteral("roadmap_query/section_etag_match"), QStringLiteral("section_etag from an earlier section= call; an unchanged section returns {unchanged:true}.")},
+                        {QStringLiteral("roadmap_query/shipped_since"), QStringLiteral("YYYY-MM-DD: list items the store says shipped on or after this date. Store-backed projects only.")},
+                        {QStringLiteral("roadmap_query/shipped_until"), QStringLiteral("YYYY-MM-DD, exclusive upper bound for shipped_since (default tomorrow).")},
+                        {QStringLiteral("roadmap_query/since"), QStringLiteral("mode:report only: YYYY-MM-DD start of one custom period.")},
+                        {QStringLiteral("roadmap_query/slugs_only"), QStringLiteral("section_index only: return a flat slugs array.")},
+                        {QStringLiteral("roadmap_query/source"), QStringLiteral("Keep bullets whose Source: starts with this prefix (string or array, case-insensitive).")},
+                        {QStringLiteral("roadmap_query/source_group"), QStringLiteral("mode:sources: stem (default; drops the date onward) or exact.")},
+                        {QStringLiteral("roadmap_query/status"), QStringLiteral("active (planned + in-progress), shipped, all, one lifecycle name or emoji, or an array of them.")},
+                        {QStringLiteral("roadmap_query/version"), QStringLiteral("A release such as \"0.10.0\"; answers as section= does for that release's section.")},
+                        {QStringLiteral("roadmap_query/whole_word"), QStringLiteral("Match query on word boundaries, so a short acronym stops matching inside words.")},
+                        {QStringLiteral("roadmap_query/with_titles"), QStringLiteral("With slugs_only, also return slug_titles [{slug, headline}].")},
+                        {QStringLiteral("roadmap_log/accept_ambiguous_rematch"), QStringLiteral("convert: proceed although some bullets would be paired with stored items by order.")},
+                        {QStringLiteral("roadmap_log/accept_text_loss"), QStringLiteral("convert: proceed although the rewrite drops text the file holds.")},
+                        {QStringLiteral("roadmap_log/after_section"), QStringLiteral("create_section / move_section: the slug the new or moved section goes after.")},
+                        {QStringLiteral("roadmap_log/amendments"), QStringLiteral("amend_field_batch: [{id, field, value}] in one commit; refused entries land in skipped[].")},
+                        {QStringLiteral("roadmap_log/before_id"), QStringLiteral("amend_field field:section: file the moved items directly before this item.")},
+                        {QStringLiteral("roadmap_log/bullets"), QStringLiteral("append_batch: bullets with append's fields; {{id:N}} in text cites bullet N's new id.")},
+                        {QStringLiteral("roadmap_log/bullets.id_hint"), QStringLiteral("Explicit id number; honoured on the first bullet only (counter strategy).")},
+                        {QStringLiteral("roadmap_log/bullets.pass"), QStringLiteral("This bullet's pass designator on a pass-headings roadmap; the call-level pass is the fallback.")},
+                        {QStringLiteral("roadmap_log/bullets.section"), QStringLiteral("This bullet's section slug; the call-level section is the fallback.")},
+                        {QStringLiteral("roadmap_log/bullets.stable_id"), QStringLiteral("This bullet's id when id_strategy is stable_prefix; unique within the batch.")},
+                        {QStringLiteral("roadmap_log/bullets.status"), QStringLiteral("planned, in-progress, shipped, considered or dropped; the call-level status is the fallback.")},
+                        {QStringLiteral("roadmap_log/cells"), QStringLiteral("bundle_row: one string per table column.")},
+                        {QStringLiteral("roadmap_log/clear_placeholder_source"), QStringLiteral("repair_trailers: also blank an undated placeholder source of \"planned\".")},
+                        {QStringLiteral("roadmap_log/dry_run"), QStringLiteral("Preview without writing. The store change runs and is rolled back, so refusals still show.")},
+                        {QStringLiteral("roadmap_log/element_position"), QStringLiteral("amend/delete/promote_element: the element's position as list_elements reports it.")},
+                        {QStringLiteral("roadmap_log/evidence"), QStringLiteral("File paths (screenshots, logs) evidencing the item. Paths only: the list is comma-split.")},
+                        {QStringLiteral("roadmap_log/field"), QStringLiteral("amend_field: layman, kind, source, lanes or evidence; or section, to move the item.")},
+                        {QStringLiteral("roadmap_log/force"), QStringLiteral("append: file a bullet whose headline matches an existing item.")},
+                        {QStringLiteral("roadmap_log/header"), QStringLiteral("bundle_row: column names; creates the table when the section has none.")},
+                        {QStringLiteral("roadmap_log/id_hint"), QStringLiteral("append: explicit id number; must exceed the counter.")},
+                        {QStringLiteral("roadmap_log/id_prefix"), QStringLiteral("append: id prefix (e.g. \"DOOM\"); default sniffed from existing ids, else the folder name.")},
+                        {QStringLiteral("roadmap_log/id_strategy"), QStringLiteral("counter (default) or stable_prefix, which needs stable_id.")},
+                        {QStringLiteral("roadmap_log/intro_body"), QStringLiteral("create_section: intro prose for the new section.")},
+                        {QStringLiteral("roadmap_log/legend"), QStringLiteral("set_legend: {status: wording} for the status legend; an empty string removes one.")},
+                        {QStringLiteral("roadmap_log/locators"), QStringLiteral("Batch ops: items, each {id|anchor|headline|line_range} plus note, to_status or old_text/new_text.")},
+                        {QStringLiteral("roadmap_log/locators.note"), QStringLiteral("Note appended to this item's body; required on annotate_batch.")},
+                        {QStringLiteral("roadmap_log/locators.old_text"), QStringLiteral("amend_batch: the exact text to replace in this item's body.")},
+                        {QStringLiteral("roadmap_log/locators.to_status"), QStringLiteral("flip_batch: this item's target status; the call-level to_status is the fallback.")},
+                        {QStringLiteral("roadmap_log/max_planned"), QStringLiteral("convert: cap on ids.planned[] rows (default 200); 0 keeps only the counts.")},
+                        {QStringLiteral("roadmap_log/new_text"), QStringLiteral("amend_*, set_body, set_intro, set_preamble: the replacement text; empty deletes the match.")},
+                        {QStringLiteral("roadmap_log/note"), QStringLiteral("Prose appended to the item's body; required on annotate, optional on flip.")},
+                        {QStringLiteral("roadmap_log/old_text"), QStringLiteral("amend_body / amend_headline: exact text to replace; must occur once; matches across line wraps.")},
+                        {QStringLiteral("roadmap_log/op"), QStringLiteral("Default append. Each op's arguments, refusals and behaviour: tool_info {name:\"roadmap_log\"}.")},
+                        {QStringLiteral("roadmap_log/pass"), QStringLiteral("Pass designator (e.g. \"43.5\") for append on a pass-headings roadmap; required there.")},
+                        {QStringLiteral("roadmap_log/position"), QStringLiteral("bundle_row: end (default), or sorted by sort_col.")},
+                        {QStringLiteral("roadmap_log/return"), QStringLiteral("headline_only adds post_bullets to append/flip replies; full echoes the whole rendered bullet.")},
+                        {QStringLiteral("roadmap_log/section"), QStringLiteral("Section slug; an unknown slug refuses with candidates[].")},
+                        {QStringLiteral("roadmap_log/stable_id"), QStringLiteral("The full id when id_strategy is stable_prefix (e.g. \"Ts20-SP6\").")},
+                        {QStringLiteral("roadmap_log/status"), QStringLiteral("planned, in-progress, shipped, considered or dropped.")},
+                        {QStringLiteral("roadmap_log/strip_runs"), QStringLiteral("repair_trailers: also remove a redundant legacy trailer run that ends a body.")},
+                        {QStringLiteral("roadmap_log/targets"), QStringLiteral("link / unlink: the target ids.")},
+                        {QStringLiteral("roadmap_log/type"), QStringLiteral("link / unlink: splits-from, blocked-by, duplicate-of or supersedes.")},
+                        {QStringLiteral("roadmap_log/value"), QStringLiteral("amend_field: the new value; lanes and evidence take an array; empty clears layman.")},
+                        {QStringLiteral("feedback_log/assignments"), QStringLiteral("assign_id_batch: assign_id argument objects applied in one write; failures land in skipped[].")},
+                        {QStringLiteral("feedback_log/awaiting"), QStringLiteral("assign_id: a question for the reporter; the finding stays untriaged. One of ids/closure/awaiting.")},
+                        {QStringLiteral("feedback_log/backfill_from_tracking"), QStringLiteral("migrate_v2: fill each Proposed ID from the file's v1 tracking rows where confident.")},
+                        {QStringLiteral("feedback_log/heading"), QStringLiteral("assign_id: the finding's verbatim ### heading line.")},
+                        {QStringLiteral("feedback_log/ids"), QStringLiteral("assign_id: the ANTS-NNNN ids to assign. One of ids/closure/awaiting.")},
+                        {QStringLiteral("feedback_log/note"), QStringLiteral("Prose under the heading; on assign_id, a single Note line.")},
+                        {QStringLiteral("feedback_log/op"), QStringLiteral("Required. Contributors use append_finding; the rest are maintainer ops. Detail: tool_info.")},
+                        {QStringLiteral("feedback_log/path"), QStringLiteral("The feedback file; omitted, derived from caller_cwd's folder name at the shared root.")},
+                        {QStringLiteral("feedback_log/scope_ids"), QStringLiteral("prune_tracking: limit pruning to these ids; omit for all.")},
+                        {QStringLiteral("feedback_log/targets"), QStringLiteral("compact_shipped: blocks to collapse, each {heading, id, heading_line?, session?, date?}.")},
+                        {QStringLiteral("feedback_log/title"), QStringLiteral("set_title: the project name, replacing the text after the H1's last em dash.")},
+                        {QStringLiteral("feedback_log/version"), QStringLiteral("set_format_version: the version to stamp; refuses where the content does not match it.")},
+                        {QStringLiteral("roadmap_migrate/accept_deletions"), QStringLiteral("Allow a run deleting over a quarter of the project's items (else mass_deletion).")},
+                        {QStringLiteral("roadmap_migrate/backup"), QStringLiteral("Snapshot the store first (default true); a failed snapshot refuses.")},
+                        {QStringLiteral("roadmap_migrate/backup_to"), QStringLiteral("Snapshot path; default pre-migrate.sqlite in the snapshot folder. Overwritten each run.")},
+                        {QStringLiteral("roadmap_migrate/confirm"), QStringLiteral("deregister / reroot: confirm while the (old) project root still exists.")},
+                        {QStringLiteral("roadmap_migrate/dry_run"), QStringLiteral("Plan and report counts, then roll back.")},
+                        {QStringLiteral("roadmap_migrate/export_slug"), QStringLiteral("The project's export key, [a-z0-9-]; defaults to the slugified folder name.")},
+                        {QStringLiteral("roadmap_migrate/max_notes"), QStringLiteral("Cap on notes[] rows (default 200, clamped to 1-2000).")},
+                        {QStringLiteral("roadmap_migrate/only_ids"), QStringLiteral("Report only these ids in updated_items[]; the migration still runs whole.")},
+                        {QStringLiteral("roadmap_migrate/op"), QStringLiteral("migrate (default), deregister (delete the project), init (new roadmap) or reroot (moved root).")},
+                        {QStringLiteral("changelog_log/body"), QStringLiteral("Prose under the bullet; on add_from_roadmap it replaces the reused Layman line.")},
+                        {QStringLiteral("changelog_log/bullets"), QStringLiteral("add_subsection: bullets under the prose, each {summary, body?, id?}.")},
+                        {QStringLiteral("changelog_log/date"), QStringLiteral("add_subsection / release: YYYY-MM-DD, default today.")},
+                        {QStringLiteral("changelog_log/dated"), QStringLiteral("release: close under ## <date>, for a project with no versions.")},
+                        {QStringLiteral("changelog_log/entries"), QStringLiteral("add_batch: entries, each {summary + category|kind} or {id} alone; written in input order.")},
+                        {QStringLiteral("changelog_log/headline"), QStringLiteral("add_subsection: the dated topic headline.")},
+                        {QStringLiteral("changelog_log/max_body_bytes"), QStringLiteral("release: cap on the echoed released_body (default 16384; 0 = no cap).")},
+                        {QStringLiteral("changelog_log/op"), QStringLiteral("Default add. Each op's arguments and refusals: tool_info {name:\"changelog_log\"}.")},
+                        {QStringLiteral("changelog_log/path"), QStringLiteral("A second, existing changelog (project-relative); omit for the root CHANGELOG.md.")},
+                        {QStringLiteral("changelog_log/summary"), QStringLiteral("Bold one-line summary; on add_from_roadmap it replaces the cited headline.")},
+                        {QStringLiteral("changelog_log/version"), QStringLiteral("release: the version, without brackets.")},
+                    };
+                    // The first key with an entry wins: "verb/parent.child"
+                    // (nested only), "verb/arg", then the shared "arg".
+                    const auto summaryFor = [](const QStringList &keys) {
+                        for (const QString &key : keys) {
+                            QString s = kArgSummary.value(key);
+                            if (s.isEmpty()) s = kLeanSummary.value(key);
+                            if (!s.isEmpty()) return s;
+                        }
+                        return QString();
+                    };
+                    const auto applySummary = [](QJsonObject &p, const QString &s) {
+                        if (!s.isEmpty()
+                            && s.size() < p.value(QStringLiteral("description"))
+                                              .toString().size())
+                            p[QStringLiteral("description")] = s;
+                    };
+                    const auto shorten = [&](QJsonObject &props, const QString &name) {
+                        const QString verb = name + QLatin1Char('/');
+                        for (auto pit = props.begin(); pit != props.end(); ++pit) {
+                            QJsonObject p = pit.value().toObject();
+                            applySummary(p, summaryFor({verb + pit.key(), pit.key()}));
+                            QJsonObject items =
+                                p.value(QStringLiteral("items")).toObject();
+                            QJsonObject inner =
+                                items.value(QStringLiteral("properties")).toObject();
+                            if (!inner.isEmpty()) {
+                                for (auto iit = inner.begin(); iit != inner.end(); ++iit) {
+                                    QJsonObject q = iit.value().toObject();
+                                    applySummary(q, summaryFor(
+                                        {verb + pit.key() + QLatin1Char('.') + iit.key(),
+                                         verb + iit.key()}));
+                                    iit.value() = q;
+                                }
+                                items[QStringLiteral("properties")] = inner;
+                                p[QStringLiteral("items")] = items;
+                            }
+                            pit.value() = p;
+                        }
+                    };
                     for (int i = 0; i < tools.size(); ++i) {
                         QJsonObject t = tools.at(i).toObject();
-                        if (!t.value(QStringLiteral("_meta")).toObject()
-                                 .value(QStringLiteral("anthropic/alwaysLoad"))
-                                 .toBool())
-                            continue;
                         const QString name =
                             t.value(QStringLiteral("name")).toString();
+                        if (!t.value(QStringLiteral("_meta")).toObject()
+                                 .value(QStringLiteral("anthropic/alwaysLoad"))
+                                 .toBool()
+                            && !kLeanVerbs.contains(name))
+                            continue;
                         QJsonObject schema =
                             t.value(QStringLiteral("inputSchema")).toObject();
                         QJsonObject props =
                             schema.value(QStringLiteral("properties")).toObject();
-                        for (auto pit = props.begin(); pit != props.end(); ++pit) {
-                            QString summary = kArgSummary.value(
-                                name + QLatin1Char('/') + pit.key());
-                            if (summary.isEmpty())
-                                summary = kArgSummary.value(pit.key());
-                            QJsonObject p = pit.value().toObject();
-                            if (summary.isEmpty()
-                                || summary.size()
-                                       >= p.value(QStringLiteral("description"))
-                                              .toString().size())
-                                continue;
-                            p[QStringLiteral("description")] = summary;
-                            pit.value() = p;
-                        }
+                        shorten(props, name);
                         schema[QStringLiteral("properties")] = props;
                         t[QStringLiteral("inputSchema")] = schema;
                         tools.replace(i, t);

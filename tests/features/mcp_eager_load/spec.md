@@ -33,6 +33,14 @@ deferred: most sessions call them rarely.
   `tool_info` reads. *Test:* `Ants5628WireArgumentsAreShort` runs
   `tools/list` and `tool_info` in-process.
 
+- **ANTS-5271** — the same holds for five deferred verbs with the largest
+  schemas: `roadmap_log`, `roadmap_query`, `feedback_log`,
+  `changelog_log` and `roadmap_migrate`. Every argument description on the
+  wire, nested item fields included, is at most 140 characters, and
+  `tool_info {name}` still returns the full text. Breaks if one of the five
+  carries long argument prose on the wire, or if the shortening reaches
+  `tool_info`. *Test:* `Ants5271LeanVerbArgumentsAreShort`.
+
 ## Pre-fix check
 
 Against pre-fix code the `anthropic/alwaysLoad` field and `kEagerVerbs`

@@ -103,3 +103,55 @@ TEST(McpEagerLoad, Ants5628WireArgumentsAreShort) {
     EXPECT_TRUE(text.contains(QStringLiteral("the rg scan still runs")))
         << "tool_info no longer carries count_only's full description";
 }
+
+// ANTS-5271 — the five large roadmap and changelog verbs are deferred, not
+// always-loaded, but a session that loads one pays its whole schema for the
+// rest of the session. On the wire each argument description, nested item
+// fields included, is one line; tool_info still serves the full text.
+TEST(McpEagerLoad, Ants5271LeanVerbArgumentsAreShort) {
+    ClaudeIntegration ci;
+    const QJsonArray tools =
+        mcpCall(ci, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})")
+            .value(QStringLiteral("tools")).toArray();
+    ASSERT_FALSE(tools.isEmpty());
+
+    constexpr int kMaxArgDescription = 140;
+    const QStringList lean = {
+        QStringLiteral("roadmap_log"), QStringLiteral("roadmap_query"),
+        QStringLiteral("feedback_log"), QStringLiteral("changelog_log"),
+        QStringLiteral("roadmap_migrate")};
+    int seen = 0;
+    for (const auto &v : tools) {
+        const QJsonObject t = v.toObject();
+        const QString name = t.value(QStringLiteral("name")).toString();
+        if (!lean.contains(name)) continue;
+        ++seen;
+        const QJsonObject props = t.value(QStringLiteral("inputSchema"))
+            .toObject().value(QStringLiteral("properties")).toObject();
+        for (auto it = props.constBegin(); it != props.constEnd(); ++it) {
+            const QJsonObject p = it.value().toObject();
+            EXPECT_LE(p.value(QStringLiteral("description")).toString().size(),
+                      kMaxArgDescription)
+                << name.toStdString() << "/" << it.key().toStdString();
+            const QJsonObject inner = p.value(QStringLiteral("items"))
+                .toObject().value(QStringLiteral("properties")).toObject();
+            for (auto jt = inner.constBegin(); jt != inner.constEnd(); ++jt) {
+                EXPECT_LE(jt.value().toObject()
+                              .value(QStringLiteral("description"))
+                              .toString().size(),
+                          kMaxArgDescription)
+                    << name.toStdString() << "/" << it.key().toStdString()
+                    << "." << jt.key().toStdString();
+            }
+        }
+    }
+    EXPECT_EQ(seen, 5) << "the five lean verbs";
+
+    // The full text is one tool_info call away.
+    const QJsonObject info = mcpCall(ci,
+        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"roadmap_log"}}})");
+    const QString text = info.value(QStringLiteral("content")).toArray()
+        .at(0).toObject().value(QStringLiteral("text")).toString();
+    EXPECT_TRUE(text.contains(QStringLiteral("the preview is not a simulation")))
+        << "tool_info no longer carries dry_run's full description";
+}

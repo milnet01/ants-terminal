@@ -50,6 +50,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Ants MCP: roadmap_log, roadmap_query, feedback_log, changelog_log and roadmap_migrate load with one-line argument descriptions** (ANTS-5271)
+  The five schemas drop from 115,515 to 33,764 bytes in tools/list
+  (measured from build/ants-mcpd, 2026-10-15). tool_info {name} still
+  returns each verb's full text.
+
 - **invariant_check states the path-only warning once on a zero result** (ANTS-5696)
 
 - **The git-context note reaches Claude once per session until something changes** (ANTS-5692)
