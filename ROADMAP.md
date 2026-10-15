@@ -12830,6 +12830,12 @@ they are one change.
   first, then run the replays (N>=3 per setup) and bring the numbers
   back; the user sets the keep/drop thresholds when reviewing them. The
   replays cost real tokens and that is accepted.
+  Measured (2026-10-15): 4 runs per arm on the SIGN-1 bench (ANTS-5545),
+  all fixing the bug. All runs: Ants 12.4% dearer; warm-cache runs: 4.7%
+  cheaper. SIGN-1's 20% is not met. Ants adds ~5,250 tokens per request
+  and no run called an Ants tool. Journal:
+  docs/journal/ANTS-1120-measurement.md. Waiting on the user: thresholds,
+  verdict, and whether a larger bench should measure the savings.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
