@@ -53,46 +53,25 @@ constexpr const char *kOrientationScriptBody =
     "  exit 0   # Ants MCP not reachable; stay silent\n"
     "fi\n"
     "cat <<'EOF'\n"
-    "Ants MCP is connected. Before reaching for Edit/Write/Bash, check\n"
-    "if a dedicated MCP tool exists — they are 5–10× cheaper. Call each\n"
-    "by its full name, e.g. mcp__ants__workspace_search:\n"
-    "\n"
-    "  • session_orient     → first-call bootstrap (state + layout + codebase index)\n"
-    "  • codebase_index     → project map: symbols / lanes / files — query before grep\n"
-    "  • roadmap_query      → look up roadmap bullets by ID / status / section\n"
-    "  • roadmap_log        → ROADMAP.md append / status flip / annotate\n"
-    "  • changelog_log      → CHANGELOG.md append (Keep-a-Changelog aware)\n"
-    "  • workspace_search   → project-wide code search (saves 250–4500 tokens vs grep)\n"
-    // ANTS-4422 — "read_region(s) fetch its slices" read as though
-    // read_regions were a minor plural of read_region rather than a distinct
-    // batching win, so a session reached for N read_region calls where one
-    // read_regions would do — the exact token waste this prelude exists to
-    // prevent. Reported by a Charls_Site session that used it well once it
-    // noticed. BYTE-NEUTRAL by construction (77 bytes before and after): the
-    // prelude is capped at 1400 bytes by INV-10 of
-    // tests/features/mcp_orientation_install, `•` and `→` are 3 bytes each,
-    // and that assertion measures a QByteArray. Verified by computing both
-    // encodings rather than by counting characters.
-    "  • file_outline       → outline a file; read_regions = N slices, 1 call\n"
-    "  • find_definition    → \"where is foo defined?\" (C++/Python/Lua/sh/GLSL)\n"
-    // ANTS-3619 — the language qualifier has to be HERE, pre-call. The
-    // post-call envelope already explains the C/C++ limit, but by then a
-    // zero-result has been read as "nothing calls this" — the most
-    // dangerous possible wrong answer when checking a blast radius. The
-    // trap is the asymmetry with the line above: find_definition IS
-    // multi-language, they sit adjacent, so a reader generalises.
-    "  • find_sources       → \"who calls bar?\" (C/C++ ONLY — else use\n"
-    "                         codebase_index / workspace_search)\n"
-    "  • git_state          → status + branch + ahead/behind in one call\n"
-    "  • read_log           → Ants debug-log tail (NOT git log)\n"
-    "  • model_switch_stats → auto-switcher trust signal + near-miss breakdown\n"
-    "  • spec_log           → write a spec's Status / cold-eyes loop / INV entries\n"
-    "\n"
-    "Full catalog (every verb + one-line \"when to use\"): call tool_info\n"
-    "with {\"catalog\":true}. ToolSearch query \"mcp__ants\" loads schemas.\n"
+    // ANTS-5715 — this text rides every session's context, so it carries
+    // only what a session cannot learn from the tool list: where to start,
+    // and the traps. The four always-loaded verbs need no line here; the
+    // rest are one tool_info call away. INV-10 caps it at 500 bytes.
+    "Ants MCP is connected. Its mcp__ants__* verbs cost less than\n"
+    "Bash/grep/Read for the same job; start with session_orient.\n"
+    // ANTS-3619 — the C/C++ qualifier has to be HERE, pre-call: a zero
+    // result read as "nothing calls this" is the most dangerous wrong
+    // answer when checking a blast radius.
+    "find_sources (\"who calls?\") is C/C++ only; elsewhere use\n"
+    "codebase_index or workspace_search. read_log is the Ants debug\n"
+    // ANTS-4422 — read_regions is a distinct batching win, not a plural
+    // of read_region.
+    "log, not git log. read_regions reads N slices in one call.\n"
+    "Full catalog: tool_info {\"catalog\":true}. ToolSearch \"mcp__ants\"\n"
+    "loads a verb's schema.\n"
     "EOF\n"
     // ANTS-1971 — feedback_query / feedback_log are kept OUT of the
-    // always-on prelude (it must stay under the INV-10 1200-byte cap,
+    // always-on prelude (it must stay under the INV-10 500-byte cap,
     // ANTS-1970) and surfaced CONDITIONALLY: only when the project
     // CC launched in keeps a cross-session *_Ants_MCP_Feedback.md
     // file, point contributors at the read/write tools so they stop

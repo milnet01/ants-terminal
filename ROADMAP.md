@@ -72303,12 +72303,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5715] **Shorten the Ants SessionStart orientation banner text.**
+- ✅ [ANTS-5715] **Shorten the Ants SessionStart orientation banner text.**
   ANTS-5693 made the banner fire on startup and /clear only; its text
   was not shortened (SYNTHESIS.md section C asks whether 5693/5694
   cover the text: they do not). The banner lists verbs with hints,
   including the four that are always loaded already. Raised by kde-kwin,
   sift and Slipway.
+  Banner 1391 -> 388 bytes: start point, the find_sources and read_log
+  traps, read_regions, the catalog pointer. INV-10 cap lowered to 500
+  bytes. Installed script swapped in place 2026-10-15, so new sessions
+  get it without a relaunch.
   **Layman:** The note Ants prints at the start of each session lists many tools; a shorter one costs every session less.
   Kind: perf.
   Source: token-survey-2026-10-15.

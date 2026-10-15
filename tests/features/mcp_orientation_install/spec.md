@@ -50,7 +50,7 @@ Cases:
 - `Inv9_ScriptExitZero` — running the installed script with no
   `ANTS_MCP_SOCKET` exits 0 silently.
 - `Inv10_ScriptOutputByteCap` — running the script against a fake
-  socket prints ≤ 1200 chars.
+  socket prints ≤ 500 bytes (ANTS-5715).
 - `Inv11_SettingsPermsOwnerOnly` — settings.json is 0600 after the
   merge.
 - `Inv12_ScriptMatchesTemplate` — after a fresh install, file body

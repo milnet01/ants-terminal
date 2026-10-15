@@ -53,6 +53,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The note Ants prints when a Claude Code session starts is about a quarter of its old size (388 bytes, was 1391)** (ANTS-5715)
+  It keeps where to start, the two traps (find_sources is C/C++ only; read_log is not git log) and the pointer to the full verb catalog.
+
 - **Every Ants MCP tool sends one-line text for its shared options** (ANTS-5714)
   fields, compact, encoding, etag_match and the generic caller_cwd note are one line on every tool, so each tool a session loads is smaller; the whole tool list is about a fifth smaller. tool_info still returns the full text.
 

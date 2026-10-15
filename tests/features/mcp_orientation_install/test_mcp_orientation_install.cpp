@@ -11,7 +11,7 @@
 //   INV-6       selection_hint coverage (source-grep)
 //   INV-7       selection_hint shape (≤280 chars, "Use " prefix)
 //   INV-9       script exits 0 even when socket absent
-//   INV-10      script stdout ≤ 1400 chars (ANTS-2140 raised from 1200)
+//   INV-10      script stdout ≤ 500 bytes (ANTS-5715; was 1400)
 //   INV-11      settings.json owner-only perms
 //   INV-12      script byte-equality with template after arg()
 //   INV-13      bad settings.json — no clobber
@@ -403,7 +403,7 @@ TEST(McpOrientation_Inv9, ScriptExitZero) {
     EXPECT_EQ(p.readAllStandardOutput().size(), 0);
 }
 
-// INV-10 — running with a present socket prints ≤ 1400 chars.
+// INV-10 — running with a present socket prints ≤ 500 bytes (ANTS-5715).
 TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     QTemporaryDir tmp;
     ASSERT_TRUE(MO::installAt(tmp.path()).ok);
@@ -435,7 +435,7 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     ASSERT_TRUE(ants_test::waitForHelper(p, &why)) << qPrintable(why);
     EXPECT_EQ(p.exitCode(), 0);
     const QByteArray out = p.readAllStandardOutput();
-    EXPECT_LE(out.size(), 1400) << "stdout=" << out.size() << " bytes";
+    EXPECT_LE(out.size(), 500) << "stdout=" << out.size() << " bytes";
     // ANTS-2140 — the prelude advertises codebase_index (layer-3: query
     // the index instead of grep) so a session reaches for the verb.
     EXPECT_TRUE(out.contains("codebase_index"))
@@ -446,7 +446,7 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
 }
 
 // ANTS-1985 INV-14 — the prelude's "Full catalog:" line is repointed
-// at `tool_info {catalog:true}`. (The ≤1400 B cap itself is INV-10
+// at `tool_info {catalog:true}`. (The ≤500 B cap itself is INV-10
 // above; this locks the content of the repoint so the prelude actually
 // names the new verb.)
 TEST(McpOrientation_Inv14, FullCatalogNamesToolInfoCatalog) {
