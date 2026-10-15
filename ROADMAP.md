@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5719 -->
+<!-- ants-roadmap-id-high-water: ANTS=5720 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86364,6 +86364,19 @@ a modern terminal" release.
   Kind: feature.
   Source: user-request-2026-10-15.
   Lanes: claude-status, ui.
+
+- 📋 [ANTS-5720] **Heavy jobs (builds, full test suites) take turns, so several sessions do not run them at once.**
+  Split from ANTS-5719 (user decision 2026-10-15: a second step after the
+  session manager). cc-job (packaging/cc-job/cc-job) has no queue or
+  concurrency limit today; tools/safe-build.sh already caps one build's
+  memory with systemd-run MemoryMax. Needs its own design.
+  User (2026-10-15): the queue engages only when load is high or memory
+  is low. It lets quick jobs through, and does not hold any session's
+  job back too long (bounded wait, no starvation).
+  **Layman:** Builds and big test runs wait in line instead of all starting at once and freezing the machine.
+  Kind: feature.
+  Source: user-request-2026-10-15.
+  Lanes: tools.
 
 ### 🐛 Carried over from 0.7.x
 
