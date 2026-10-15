@@ -72078,13 +72078,22 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: claude-hooks, mcp.
 
-- 📋 [ANTS-5694] **Review the four always-loaded verbs: their full descriptions ride in every request of every session.**
+- ✅ [ANTS-5694] **Review the four always-loaded verbs: their full descriptions ride in every request of every session.**
   ANTS-2158 marks workspace_search, find_definition, file_outline and
   read_region `anthropic/alwaysLoad` (kEagerVerbs,
   src/claudeintegration.cpp). Their schemas are most of the ~5,250
   tokens the ANTS-1120 bench measured per request, and no bench run used
   them. Measure their size, trim their descriptions first (ANTS-5271),
   then decide whether each stays eager.
+  Shipped (2026-10-15, 1d819f48): all four stay eager (top-7 by use).
+  On the wire each verb's own description is now a short purpose line,
+  its one usage trap and the tool_info pointer; file_outline and
+  read_region keep a one-line Etag tip. Eight more argument notes get a
+  one-line summary. tool_info keeps the full text. Measured with a stdio
+  tools/list against build/ants-mcpd: 11,992 to 9,933 bytes. What is
+  left is mostly argument count (workspace_search has 26); cutting
+  arguments from the wire would be a design change, not a trim.
+  Locked by mcp_eager_load Ants5694EagerDescriptionsAreShort.
   **Layman:** Four Ants tools are always loaded; check they earn their cost or trim them.
   Kind: perf.
   Source: token-survey-2026-10-15.

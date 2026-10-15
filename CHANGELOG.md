@@ -50,6 +50,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The four always-loaded Ants MCP tools send a shorter description** (ANTS-5694)
+  workspace_search, find_definition, file_outline and read_region now cost about 2 KB less in every Claude Code session. tool_info still returns the full text.
+
 - **The Ants MCP banner shows once per conversation: at startup and after /clear, not again on resume or after compaction** (ANTS-5693)
   The SessionStart entry Ants writes to ~/.claude/settings.json now has
   "matcher": "startup|clear". An older entry is upgraded on the next launch.
