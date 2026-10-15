@@ -50,6 +50,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Ants MCP banner shows once per conversation: at startup and after /clear, not again on resume or after compaction** (ANTS-5693)
+  The SessionStart entry Ants writes to ~/.claude/settings.json now has
+  "matcher": "startup|clear". An older entry is upgraded on the next launch.
+
 - **Ants MCP: roadmap_log, roadmap_query, feedback_log, changelog_log and roadmap_migrate load with one-line argument descriptions** (ANTS-5271)
   The five schemas drop from 115,515 to 33,764 bytes in tools/list
   (measured from build/ants-mcpd, 2026-10-15). tool_info {name} still

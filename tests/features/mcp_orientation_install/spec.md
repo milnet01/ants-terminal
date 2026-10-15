@@ -32,6 +32,10 @@ Cases:
 - `Inv3_SweepsExistingDuplicates` — pre-existing duplicate entries
   (capital-cased `Ants Terminal` path) are swept down to one
   canonical entry on install (ANTS-1902 self-healing).
+- `Inv3_EntryFiresOnStartupAndClearOnly` — the Ants entry carries
+  `"matcher": "startup|clear"`, so it is not re-run on resume or after
+  compaction; an older entry without it is upgraded to one entry
+  (ANTS-5693).
 - `Inv3_CommandRunnableWithSpacesInPath` — the written `command` is
   bash-runnable when the install path contains a space (ANTS-1902).
 - `Inv4_SettingsMergePreservesUnrelated` — other top-level keys + a

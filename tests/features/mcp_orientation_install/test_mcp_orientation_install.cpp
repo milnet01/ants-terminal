@@ -229,6 +229,36 @@ TEST(McpOrientation_Inv3, CanonicalEntryKeepsItsPlace) {
         << "an install moved an entry that was already right";
 }
 
+// ANTS-5693 — the banner is injected when a conversation starts (startup,
+// clear), not again on resume, whose transcript already holds it, or after
+// compaction. An entry written before the matcher existed is upgraded.
+TEST(McpOrientation_Inv3, EntryFiresOnStartupAndClearOnly) {
+    const auto antsMatcher = [](const QJsonObject &root) {
+        const QString marker = MO::settingsMarkerSubstring();
+        for (const auto &outerV : root.value("hooks").toObject()
+                                      .value("SessionStart").toArray()) {
+            const QJsonObject outer = outerV.toObject();
+            for (const auto &eV : outer.value("hooks").toArray())
+                if (eV.toObject().value("command").toString().contains(marker))
+                    return outer.value("matcher").toString();
+        }
+        return QStringLiteral("<no ants entry>");
+    };
+    QTemporaryDir fresh;
+    ASSERT_TRUE(MO::installAt(fresh.path()).ok);
+    EXPECT_EQ(antsMatcher(readSettings(fresh.path())), "startup|clear");
+
+    QTemporaryDir old;
+    const QByteArray seed = QString(R"({"hooks":{"SessionStart":[
+      {"hooks":[{"type":"command","command":"bash '%1'","timeout":3}]}]}})")
+        .arg(scriptPathIn(old.path())).toUtf8();
+    ASSERT_TRUE(writeFileBytes(settingsPathIn(old.path()), seed));
+    ASSERT_TRUE(MO::installAt(old.path()).ok);
+    const QJsonObject root = readSettings(old.path());
+    EXPECT_EQ(antsMatcher(root), "startup|clear");
+    EXPECT_EQ(countAntsEntries(root), 1);
+}
+
 // ANTS-1901 — installAt must sweep ALL pre-existing marker-matching
 // entries (not just update the first one), then append a single
 // canonical entry. Mimics a settings.json that accumulated duplicates

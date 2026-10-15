@@ -334,6 +334,12 @@ MergeOutcome mergeSettings(const QString &settingsPath,
         QJsonArray inner;
         inner.append(hookCommandEntry(scriptPath));
         canonical.insert(QStringLiteral("hooks"), inner);
+        // ANTS-5693 — once per conversation: a resumed transcript already
+        // holds the banner, and a compaction is not a new conversation. An
+        // older entry without the matcher is not canonical, so it is
+        // replaced once and kept after that.
+        canonical.insert(QStringLiteral("matcher"),
+                         QStringLiteral("startup|clear"));
     }
     QJsonArray probe = sessionStart;
     const bool alreadyCanonical =
