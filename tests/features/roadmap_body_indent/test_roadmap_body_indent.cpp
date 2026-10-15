@@ -101,6 +101,10 @@ QByteArray fixture() {
         "    - a second one\n"
         "  Run it with:\n"
         "      cmake --build build --target demo\n"
+        "  Then, in order:\n"
+        "    1. a numbered step at four spaces\n"
+        "      whose continuation sits at six\n"
+        "    2. the second step\n"
         "  Kind: implement.\n"
         "  Source: seed.\n"
         "\n"
@@ -185,6 +189,10 @@ TEST(RoadmapBodyIndent, Inv1MarkdownReadKeepsRelativeIndent) {
         << "the nested bullet must keep its depth relative to the body: " << body;
     EXPECT_TRUE(has(body, "\n    cmake --build build --target demo"))
         << "the command line must keep its deeper indent: " << body;
+    // ANTS-4528: a numbered item's own continuation sits deeper than the item.
+    EXPECT_TRUE(has(body, "\n  1. a numbered step at four spaces\n"
+                          "    whose continuation sits at six"))
+        << "a numbered sub-list must keep its continuation depth: " << body;
     EXPECT_TRUE(has(body, "The steps, and their shape is the point:"));
 }
 
@@ -270,6 +278,9 @@ TEST(RoadmapBodyIndent, Inv4RerenderKeepsNestedDepth) {
         << "the re-render flattened a nested sub-bullet into the parent";
     EXPECT_TRUE(has(md, "\n      cmake --build build --target demo"))
         << "the re-render flattened an indented command line";
+    EXPECT_TRUE(has(md, "\n    1. a numbered step at four spaces\n"
+                        "      whose continuation sits at six"))
+        << "the re-render broke a numbered item's continuation out of its list";
 }
 
 // ---------------------------------------------------------------- INV-5 -----

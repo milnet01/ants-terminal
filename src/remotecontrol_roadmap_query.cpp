@@ -2083,9 +2083,10 @@ bool rcdetail::rlFlushHistory(RoadmapStore &store, HistoryContext &hist,
 // § 2.2's body append — the whole of `annotate`, and of `flip` when it carries
 // a note. Simpler on the store path than in markdown: item.body is already
 // exactly the continuation span the markdown helper has to go and find, and it
-// is held UN-INDENTED (parseBullets() builds it with body.append(cont.trimmed())),
-// so appendBodyNote()'s indent-sniffing and end-of-run walk both drop out. The
-// render's appendIndented() puts the two spaces back on the way out.
+// is held dedented to its common edge (collectBulletBody(), ANTS-4554), so
+// appendBodyNote()'s indent-sniffing and end-of-run walk both drop out. The
+// render's appendIndented() puts the two spaces back on the way out; a line
+// indented deeper than the edge keeps the difference.
 //
 // The caller scrubs and caps the note first, exactly as the markdown path does.
 QString rcdetail::rlAppendBodyNote(const QString &body, const QString &note) {

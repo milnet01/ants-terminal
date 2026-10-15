@@ -490,8 +490,9 @@ state since it was written:
   `` `query:'Source:'` `` — declares nothing at all now.
 - **`anchored` is part of the rule, not an afterthought.** A mid-sentence
   mention does not suppress; only a line-initial declaration does. Stored bodies
-  carry no indent (§ 2.1), so `anchored` is exact for all five keys — the
-  precondition ANTS-3809's loop 3 established and stated.
+  are dedented to their common edge (§ 2.1), so a declaration at that edge is
+  `anchored` for all five keys. One the author indented deeper, inside a nested
+  list, is not, and ANTS-3809 § 2.2 states that this is the wanted answer.
 
 **So the state the old rule protected against is unreachable through a
 supported write, and the one it produced — an uncorrectable column — is

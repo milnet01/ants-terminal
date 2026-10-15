@@ -69,7 +69,8 @@ The depth is recoverable only from git history.
 
 - **INV-1** — a body read through `roadmap_query include_body` keeps the
   indentation below the common edge: a four-space sub-bullet comes back
-  at two, an indented command line keeps its extra depth.
+  at two, an indented command line keeps its extra depth, and a numbered
+  item's continuation stays deeper than the item (ANTS-4528).
 - **INV-2** — the emitted body does not carry the head line: no id
   token, no bolded headline, and it begins at the first continuation
   line.
@@ -79,7 +80,8 @@ The depth is recoverable only from git history.
   well as the read.
 - **INV-4** — a re-render preserves depth: after any `roadmap_log` op on
   a migrated project the four-space sub-bullet is still at four and the
-  command line still deeper.
+  command line still deeper, and a numbered item's continuation still
+  sits inside its list item (ANTS-4528).
 - **INV-5** — and the trailer lines are still in the body, deliberately.
 - **INV-6** — a trailer line for a column the stored body does not
   declare is composed into the body, and into the rendered file with it.
