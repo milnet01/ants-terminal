@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5691 -->
+<!-- ants-roadmap-id-high-water: ANTS=5696 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -52829,6 +52829,8 @@ are closed inline in the feedback files rather than filed here.
   GENERALISE BEFORE FIXING: any verb emitting a static hint keyed on a
   project property that cannot change has this shape. spec_lint is the one
   that was measured, probably not the only one.
+  Corroborated (2026-10-15 token survey): Groundwork named spec_lint's
+  sections_source_hint and surfaces_skipped_hint as needed once only.
   **Layman:** A checking tool repeats the same two paragraphs of advice on every single run, and on some projects those paragraphs can never stop appearing.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts).
@@ -53228,6 +53230,12 @@ are closed inline in the feedback files rather than filed here.
 
   SAME SHAPE ELSEWHERE: `feedback_log` (ten ops) and `roadmap_migrate`.
   Measure those before assuming roadmap_log is the outlier.
+  Corroborated (2026-10-15 token survey): OneUp, UT_MonsterHunt and
+  Groundwork each named roadmap_log's schema (and roadmap_query's) as
+  their largest single Ants cost: thousands of tokens of per-op ANTS-####
+  history for three or four small calls. Suggested shape: a short schema,
+  per-op detail behind tool_info. See ANTS-5694 for the always-loaded
+  verbs, which pay this on every request.
   **Layman:** Loading one roadmap command also loads the full manual for the nineteen others, and that stays in memory for the rest of the session even though it is never read.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), measured here.
@@ -71962,6 +71970,63 @@ project. Reported causes are claims until checked in source.
   Kind: doc-fix.
   Source: in-session-2026-10-12 (ANTS-5672 check).
   Lanes: docs.
+
+## Ants MCP feedback from CC sessions — 2026-10-15 token survey
+
+The user asked to cut token use and to ask other sessions (2026-10-15). OneUp,
+Slipcase, UT_MonsterHunt and Groundwork answered. The SIGN-1 bench (ANTS-1120)
+measured Ants adding about 5,250 tokens to every request.
+
+- 📋 [ANTS-5692] **The git-context hook writes its block only when the branch, ahead/behind or file counts changed since its last block in that session.**
+  The UserPromptSubmit hook claude-git-context.sh (installed from
+  src/configpaths.h) emits a <git-context> block on every prompt, even
+  a one-word reply. OneUp, Slipcase, UT_MonsterHunt and Groundwork each
+  said they never acted on it: it repeated "clean, ahead 0". Remember the
+  last block per session id and stay silent when it is unchanged.
+  **Layman:** Stop repeating the same "branch is clean" note on every message.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: claude-hooks.
+
+- 📋 [ANTS-5693] **The Ants MCP orientation text is injected once per session, not again on compaction.**
+  mcp-orientation.sh (src/mcporientation.cpp) lists the verbs at
+  SessionStart; Slipcase saw it again on the compact hook, and three
+  sessions called the list dead weight after the first read. Inject it
+  once per session id; consider a shorter list naming only the verbs not
+  already visible as tools.
+  **Layman:** Tell Claude about the Ants tools once, not every time it tidies its memory.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: claude-hooks, mcp.
+
+- 📋 [ANTS-5694] **Review the four always-loaded verbs: their full descriptions ride in every request of every session.**
+  ANTS-2158 marks workspace_search, find_definition, file_outline and
+  read_region `anthropic/alwaysLoad` (kEagerVerbs,
+  src/claudeintegration.cpp). Their schemas are most of the ~5,250
+  tokens the ANTS-1120 bench measured per request, and no bench run used
+  them. Measure their size, trim their descriptions first (ANTS-5271),
+  then decide whether each stays eager.
+  **Layman:** Four Ants tools are always loaded; check they earn their cost or trim them.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5695] **roadmap_query accepts the status emoji (📋 🚧 ✅ 💭 🚫) as well as the names.**
+  Groundwork passed status:"🚧", the symbol the rendered roadmap shows,
+  and got bad_status (wants "in-progress"), costing a retry. Map each
+  emoji to its name.
+  **Layman:** Accept the status symbols the roadmap itself shows.
+  Kind: enhancement.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
+
+- 📋 [ANTS-5696] **invariant_check's `hint` and `scope_note` say nearly the same thing about path-only matching; send it once.**
+  Reported by UT_MonsterHunt. Both fields explain that specs are matched
+  by path, not symbol. Keep one, or emit the long form only on a zero.
+  **Layman:** Drop a repeated warning from one tool's reply.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
@@ -91081,6 +91146,9 @@ contributors don't duplicate research.
   context:2, whole repo, default budget. elapsed_ms 5013 and
   truncated:true, on the session's first search. A narrower lane or
   glob answered in tens of milliseconds for the rest of the session.
+  Corroborated (2026-10-15 token survey): UT_MonsterHunt hit rg_failed at
+  the 5 s default on its project root (a huge work/ folder) and needed a
+  retry with lane/glob; this session hit it once on this repo too.
 
 - ✅ [ANTS-5154] **roadmap_query has no slugs-only section list, so finding a section slug on a large roadmap costs a spill.**
   Split from ANTS-4121, whose other half (candidates on an unknown slug) shipped under ANTS-4556.
