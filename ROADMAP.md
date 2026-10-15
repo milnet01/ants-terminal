@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5708 -->
+<!-- ants-roadmap-id-high-water: ANTS=5709 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86128,6 +86128,24 @@ a modern terminal" release.
   Kind: fix.
   Source: in-session-2026-10-13.
   Lanes: roadmap-verbs, tests.
+
+- 📋 [ANTS-5709] **Tabs close from the Tab List Panel and from a Close item on the tab right-click menu; tab colours move to a sub-menu.**
+  User request (2026-10-15), three parts:
+  1. The Tab List Panel (ANTS-5645, the sidebar) has no way to close a
+     tab. The horizontal tab bar has a small x to the right of each tab;
+     the sidebar rows need the same.
+  2. The right-click menu on a tab gets a Close item, on both the
+     horizontal tab bar and the sidebar, in addition to the x.
+  3. The tab colour choices move off the top level of that right-click
+     menu into a Colour sub-menu.
+  Closing from either place must go through the same path as the tab
+  bar's x (any confirm-on-close for a running process included).
+  Hot reload: a UI change in the running binary; it ships with the next
+  build and relaunch, like any widget change.
+  **Layman:** Close any tab from the side panel, or by right-clicking it, and tidy the right-click menu.
+  Kind: ux.
+  Source: user-request-2026-10-15.
+  Lanes: tabs, ui.
 
 ### 🐛 Carried over from 0.7.x
 
