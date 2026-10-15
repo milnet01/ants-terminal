@@ -53190,7 +53190,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige).
   Lanes: mcp.
 
-- 📋 [ANTS-5271] **A verb's schema is permanent context, so a caller using one op carries every other op's rationale for the whole session.**
+- ✅ [ANTS-5271] **A verb's schema is permanent context, so a caller using one op carries every other op's rationale for the whole session.**
   THE AXIS, and ai-prompts argues it is a bigger lever than every payload
   trim filed today combined. A result payload is TRANSIENT: read it, use
   it, it ages out. A tool SCHEMA is PERMANENT — it sits in the window from
@@ -53266,6 +53266,10 @@ are closed inline in the feedback files rather than filed here.
   3,035; changelog_log op 2,924; roadmap_migrate op 1,812. Measure with:
   pipe initialize + notifications/initialized + tools/list JSON-RPC
   lines into build/ants-mcpd and size each tool.
+  Resolved (2026-10-15, 6c129477): tools/list sends a one-line summary
+  per argument (nested item fields too) for the five verbs; tool_info
+  {name} keeps the full text. Five verbs 115,515 -> 33,764 bytes; all
+  tools 352,227 -> 270,476 (build/ants-mcpd).
   **Layman:** Loading one roadmap command also loads the full manual for the nineteen others, and that stays in memory for the rest of the session even though it is never read.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), measured here.
@@ -72057,7 +72061,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: claude-hooks.
 
-- 📋 [ANTS-5693] **The Ants MCP orientation text is injected once per session, not again on compaction.**
+- ✅ [ANTS-5693] **The Ants MCP orientation text is injected once per session, not again on compaction.**
   mcp-orientation.sh (src/mcporientation.cpp) lists the verbs at
   SessionStart; Slipcase saw it again on the compact hook, and three
   sessions called the list dead weight after the first read. Inject it
@@ -72065,6 +72069,10 @@ measured Ants adding about 5,250 tokens to every request.
   already visible as tools.
   Survey 2026-10-15: kde-kwin, sift and Slipway ask to shorten or skip the
   SessionStart verb banner itself, not only its repeat on compaction.
+  Resolved (2026-10-15, 19db422d): the SessionStart entry carries
+  "matcher": "startup|clear", so resume and compaction no longer
+  re-inject the banner. Live after the next terminal launch. Shortening
+  the banner itself (kde-kwin, sift, Slipway) is not done here.
   **Layman:** Tell Claude about the Ants tools once, not every time it tidies its memory.
   Kind: perf.
   Source: token-survey-2026-10-15.
