@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-5719 — Claude Code session manager: see, park and resume sessions by memory
 
-**Status:** spec draft (2026-10-15).
+**Status:** accepted (2026-10-15) — review-contract capped at loop 2; the loop-2 fixes were read by no lane.
 **Kind:** feature.
 **Source:** ROADMAP ANTS-5719 (user request 2026-10-15).
 **Blocker for:** ANTS-5720 (heavy jobs take turns).
@@ -91,12 +91,13 @@ struct TreeSample {
     bool approximate = false; // some process fell back to VmRSS (§ 6)
 };
 constexpr int kMaxTreePids = 256;
-// Walk /proc/<pid>/task/<tid>/children breadth-first from root, root
-// included, then add every process whose /proc/<p>/stat ppid is already
-// in the set (a child whose forking thread exited is in no children
-// file; ClaudeIntegration::findClaudeChildPid falls back the same way).
-// Read /proc/<p>/smaps_rollup (Pss) and /proc/<p>/stat.
-TreeSample sampleTree(pid_t root, const QString &procRoot = "/proc");
+// One pass per tick for every root: read /proc/<p>/stat once for every
+// process to build a ppid map, then collect each root's descendants from
+// it, root included (this also finds a child whose forking thread exited,
+// which is in no task/<tid>/children file). Read /proc/<p>/smaps_rollup
+// (Pss) for the collected processes only.
+QHash<pid_t, TreeSample> sampleTrees(const QList<pid_t> &roots,
+                                     const QString &procRoot = "/proc");
 // MemAvailable from <procRoot>/meminfo, in kB; -1 when unreadable.
 qint64 memAvailableKb(const QString &procRoot = "/proc");
 }
@@ -159,7 +160,7 @@ ParkVerdict parkVerdict(const ParkInput &in, bool automatic,
 In order: no `claude` → `NotRunning`; no resumable session id →
 `NoSession`; awaiting input → `WaitingOnUser`;
 state not Idle → `Busy`; composer not empty → `DraftInComposer`; tree CPU
-over the last minute ≥ 1000 ms → `ChildrenBusy` (a background build or test
+over the last minute ≥ `session_manager_busy_cpu_ms` → `ChildrenBusy` (a background build or test
 is still running); then, for automatic parking only, idle under `minIdleMs`
 → `TooRecent` and the focused tab → `Focused`. Otherwise `Ok`.
 
@@ -183,9 +184,11 @@ is still running); then, for automatic parking only, idle under `minIdleMs`
 
    with `timeoutMs` 10000. The transcript is already on disk: Claude Code
    appends each message as it is written.
-3. While a record exists, the tab-dot provider in
-   `src/claudestatuswidgets.cpp` shows `Glyph::Idle` (grey) for that shell
-   instead of hiding the dot, and the manager row reads "Parked".
+3. While a record exists and the tracker reports `NotRunning`, the
+   tab-dot provider in `src/claudestatuswidgets.cpp` shows `Glyph::Idle`
+   (grey) for that shell instead of hiding the dot, and the manager row
+   reads "Parked". The record is dropped when the tracker finds a new
+   `claudePid` for that shell.
 
 On `StillRunning` the park is reported as failed and the record is dropped.
 Ants never sends `SIGKILL`.
@@ -232,6 +235,11 @@ MemLevel nextLevel(MemLevel current, qint64 availKb,
 | `session_manager_critical_mb` | `2560` | Critical below this |
 | `session_manager_auto_park` | `true` | park by itself while Critical |
 | `session_manager_auto_park_min_idle_min` | `10` | auto-park only after this idle time |
+| `session_manager_busy_cpu_ms` | `1000` | tree CPU per minute at or above which a session is `ChildrenBusy` |
+
+The busy default rests on one measurement (2026-10-15, 60 s per Claude
+tab tree): eight trees used 380–720 ms, ten used 2560–11400 ms; which
+were idle was not recorded. Re-measure on idle tabs when building.
 
 Values are read when `MainWindow::onConfigFileChanged` and the Settings
 dialog's Apply path run, so a change applies without a relaunch. The rest
@@ -239,7 +247,7 @@ reaches a running terminal only through a new binary, on the next launch.
 
 ## 5. Invariants
 
-- **INV-1** — `sampleTree` returns the PSS sum of the root and every
+- **INV-1** — `sampleTrees` returns, per root, the PSS sum of the root and every
   descendant, each process once.
   *Test:* `tests/features/session_manager/test_session_manager.cpp`
   `SessionManager.Inv1TreeSumsEveryDescendantOnce`, against a fixture
@@ -249,7 +257,7 @@ reaches a running terminal only through a new binary, on the next launch.
   *Breaks when:* the walk skips grandchildren or the ppid-only process, or
   counts the twice-listed process twice.
 
-- **INV-2** — `sampleTree` stops at `kMaxTreePids` and sets `capped`.
+- **INV-2** — `sampleTrees` stops a root's tree at `kMaxTreePids` and sets its `capped`.
   *Test:* same file, `Inv2WalkIsCapped`, fixture tree of 300 processes.
   *Breaks when:* the walk follows a cycle or runs unbounded.
 
@@ -266,7 +274,9 @@ reaches a running terminal only through a new binary, on the next launch.
   `terminateAndWait`: a fake shell with a child `sleep 300` returns
   `Exited`, the child gone and the shell alive; a child that ignores
   `SIGTERM` (`trap '' TERM`) with a 500 ms timeout returns `StillRunning`
-  and is still alive afterwards.
+  and is still alive afterwards. The park path, driven with a fake
+  `SessionFacts` and a recording terminate function, passes `claudePid`
+  and never `shellPid`.
   *Breaks when:* the shell or a sibling is signalled, or a stubborn child
   is killed.
 
@@ -294,7 +304,7 @@ reaches a running terminal only through a new binary, on the next launch.
   *Breaks when:* two sessions park in one step, the focused tab parks, or
   the config key is ignored.
 
-- **INV-8** — The five config keys exist with § 4.7's defaults and are
+- **INV-8** — The six config keys exist with § 4.7's defaults and are
   applied on both reload paths.
   *Test:* same file, `Inv8ConfigKeysAndReload`: round-trip through
   `Config`, and a source check that `onConfigFileChanged` and the Settings
@@ -325,12 +335,11 @@ reaches a running terminal only through a new binary, on the next launch.
   shell; the Resume button stays until used or the tab closes.
 - **A parked session misses peer messages.** `session_message` mail waits
   in the store and is read on resume; a `SendMessage` to a parked session
-  finds no live session. The status bar names parked sessions so the user
-  knows.
+  finds no live session.
 - **Auto-park cannot free enough** (every session busy): the warning stays
   and "nothing parkable" is announced once; earlyoom remains the backstop.
-- **Many tabs**: a sample is two small file reads per process; at 18
-  sessions of about 10 processes, 360 reads every 5 s.
+- **Many tabs**: each 5 s tick reads one `stat` file per process on the
+  system, once, plus one `smaps_rollup` per process in a tracked tree.
 
 ## 7. Tests
 
@@ -377,7 +386,7 @@ have the test named in § 5, and so does INV-9.
 ## 11. Cross-doc impact
 
 - `docs/subsystems.md`: add `sessionmemory` and `SessionManagerDialog`.
-- `docs/standards/mcp-config-keys.md` is for MCP keys only; the five keys
+- `docs/standards/mcp-config-keys.md` is for MCP keys only; the six keys
   go in the user-facing config documentation.
 - CHANGELOG under `[Unreleased]` when it ships.
 
