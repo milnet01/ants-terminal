@@ -1,6 +1,7 @@
 #include "tablistpanel.h"
 
 #include <QCollator>
+#include <QMouseEvent>
 #include <QHeaderView>
 #include <QPainter>
 #include <QPixmap>
@@ -17,6 +18,7 @@ namespace {
 constexpr int kPageRole     = Qt::UserRole + 1;
 constexpr int kGlyphRole    = Qt::UserRole + 2;  // tab rows only
 constexpr int kTabColorRole = Qt::UserRole + 3;  // tab rows only
+constexpr int kCloseHoverRole = Qt::UserRole + 4;  // set while the mouse is on the x
 
 QColor inkOn(const QColor &fill) {
     const QColor black(Qt::black), white(Qt::white);
@@ -53,7 +55,9 @@ public:
 
         QFont f = opt.font;
         f.setBold(current);
-        const QRect textRect = r.adjusted(stripe + pad, 0, -pad, 0);
+        // ANTS-5709 — the name stops short of the close mark.
+        const QRect mark = TabListPanel::closeButtonRect(r);
+        const QRect textRect = r.adjusted(stripe + pad, 0, -(r.right() - mark.left() + pad), 0);
         const QFontMetrics fm(f);
         const QString name = fm.elidedText(index.data(Qt::DisplayRole).toString(),
                                            Qt::ElideRight, textRect.width());
@@ -76,6 +80,24 @@ public:
         p->setFont(f);
         p->setPen(rp.ink);
         p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, name);
+
+        // The close mark, drawn as the tab bar's x is (makeCloseIcon), in
+        // the row's ink. Under the mouse it sits on a faint ink square.
+        p->setRenderHint(QPainter::Antialiasing, true);
+        if (index.data(kCloseHoverRole).toBool()) {
+            QColor wash = rp.ink;
+            wash.setAlpha(60);
+            p->setPen(Qt::NoPen);
+            p->setBrush(wash);
+            p->drawRoundedRect(mark, 3, 3);
+        }
+        QPen pen(rp.ink, 1.6);
+        pen.setCapStyle(Qt::RoundCap);
+        p->setPen(pen);
+        const QRectF x = QRectF(mark).adjusted(mark.width() / 4.0, mark.height() / 4.0,
+                                               -mark.width() / 4.0, -mark.height() / 4.0);
+        p->drawLine(x.topLeft(), x.bottomRight());
+        p->drawLine(x.topRight(), x.bottomLeft());
         p->restore();
     }
 
@@ -144,6 +166,7 @@ TabListPanel::TabListPanel(QWidget *parent) : QWidget(parent) {
     m_tree->setAccessibleName(QStringLiteral("Open tabs"));
     m_tree->setItemDelegate(new TabRowDelegate(m_tree));
     m_tree->setMouseTracking(true);  // hover state for TabRowDelegate
+    m_tree->viewport()->installEventFilter(this);  // the close marks
     lay->addWidget(m_tree);
 
     // A click and Enter both switch; activation alone would need a
@@ -184,6 +207,63 @@ bool TabListPanel::startRename(QWidget *page) {
         return true;
     }
     return false;
+}
+
+QRect TabListPanel::closeButtonRect(const QRect &row) {
+    const int side = qBound(8, row.height() - 4, 16);
+    const int pad = 4;
+    return QRect(row.right() - pad - side + 1, row.top() + (row.height() - side) / 2, side, side);
+}
+
+QTreeWidgetItem *TabListPanel::closeMarkAt(const QPoint &pos) const {
+    QTreeWidgetItem *item = m_tree->itemAt(pos);
+    if (!item || !item->data(0, kGlyphRole).isValid()) return nullptr;  // a header
+    return closeButtonRect(m_tree->visualItemRect(item)).contains(pos) ? item : nullptr;
+}
+
+void TabListPanel::setCloseHover(QTreeWidgetItem *item) {
+    if (item == m_closeHover) return;
+    if (m_closeHover) m_closeHover->setData(0, kCloseHoverRole, QVariant());
+    m_closeHover = item;
+    if (m_closeHover) m_closeHover->setData(0, kCloseHoverRole, true);
+}
+
+// ANTS-5709 — a click on a close mark closes the tab and never reaches the
+// tree, so it neither selects nor switches. Press and release must both
+// land on the same mark, as a button needs.
+bool TabListPanel::eventFilter(QObject *watched, QEvent *event) {
+    if (watched != m_tree->viewport()) return QWidget::eventFilter(watched, event);
+    switch (event->type()) {
+        case QEvent::MouseMove:
+            setCloseHover(closeMarkAt(static_cast<QMouseEvent *>(event)->position().toPoint()));
+            break;
+        case QEvent::Leave:
+            setCloseHover(nullptr);
+            break;
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonDblClick: {
+            auto *me = static_cast<QMouseEvent *>(event);
+            if (me->button() != Qt::LeftButton) break;
+            m_closePressed = closeMarkAt(me->position().toPoint());
+            if (m_closePressed) return true;
+            break;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto *me = static_cast<QMouseEvent *>(event);
+            if (me->button() != Qt::LeftButton || !m_closePressed) break;
+            QTreeWidgetItem *pressed = m_closePressed;
+            m_closePressed = nullptr;
+            if (closeMarkAt(me->position().toPoint()) == pressed) {
+                auto *page =
+                    qobject_cast<QWidget *>(pressed->data(0, kPageRole).value<QObject *>());
+                if (page) emit tabCloseRequested(page);
+            }
+            return true;
+        }
+        default:
+            break;
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void TabListPanel::onEditorClosed(bool submitted) {
@@ -276,6 +356,9 @@ QString TabListPanel::stateLabel(ClaudeTabIndicator::Glyph glyph) {
 
 void TabListPanel::rebuild() {
     const int scroll = m_tree->verticalScrollBar() ? m_tree->verticalScrollBar()->value() : 0;
+    // clear() deletes every row, so drop the pointers into them first.
+    m_closePressed = nullptr;
+    m_closeHover = nullptr;
     m_tree->clear();
     if (m_entries.isEmpty()) return;
 

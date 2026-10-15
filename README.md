@@ -143,7 +143,7 @@ Even with Claude out of the picture, it's a fast, capable terminal:
   (Ctrl+Alt+R). This needs shell integration, which the welcome window sets
   up for bash or zsh.
 - **Tell tabs apart** — View → Give Each Tab a Different Colour, or
-  right-click a tab to rename it or pick its colour.
+  right-click a tab to rename it, pick its colour or close it.
 - **Save your SSH connections** — File → SSH Manager.
 - **Keep a record** — record a session (Ctrl+Shift+R), log each tab to its
   own file, or export the scrollback as text or HTML (Settings menu).

@@ -88,6 +88,11 @@ public:
     // not rebuilt while it is open. Returns false when no row shows `page`.
     bool startRename(QWidget *page);
 
+    // ANTS-5709 — where a tab row's close mark sits, given the row's
+    // rectangle in viewport coordinates: a square at its right edge, the
+    // size of the tab bar's x.
+    static QRect closeButtonRect(const QRect &row);
+
     QTreeWidget *treeForTest() const { return m_tree; }
 
 signals:
@@ -96,11 +101,19 @@ signals:
     void tabContextMenuRequested(QWidget *page);
     // The rename editor closed with a changed name. Escape sends nothing.
     void tabRenamed(QWidget *page, const QString &name);
+    // ANTS-5709 — a left click on a tab row's close mark.
+    void tabCloseRequested(QWidget *page);
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void rebuild();
     void onItemActivated(QTreeWidgetItem *item);
     void onEditorClosed(bool submitted);
+    // The tab row whose close mark is at `pos`, or null.
+    QTreeWidgetItem *closeMarkAt(const QPoint &pos) const;
+    void setCloseHover(QTreeWidgetItem *item);
 
     QTreeWidget *m_tree = nullptr;
     QVector<TabListEntry> m_entries;
@@ -110,4 +123,6 @@ private:
     QTreeWidgetItem *m_renaming = nullptr;  // the row being renamed
     QString m_renameFrom;                   // its title when the editor opened
     QPointer<QWidget> m_renamePage;         // null if the tab closes mid-edit
+    QTreeWidgetItem *m_closePressed = nullptr;  // pressed on its close mark
+    QTreeWidgetItem *m_closeHover = nullptr;    // mouse over its close mark
 };

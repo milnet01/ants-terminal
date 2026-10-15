@@ -67,6 +67,16 @@ item records the user's choice of a side panel over wrapping rows.
   `tab_list_panel_hides_tab_bar` set. `MainWindow::updateTabBarVisibility`
   is the only code that shows or hides it, and every change to the tab
   count or the panel settings calls it.
+- **INV-12 — close from the panel (ANTS-5709).** Every tab row draws a
+  close mark at its right edge, in `TabListPanel::closeButtonRect` of the
+  row's rectangle. A left click there emits `tabCloseRequested` with the
+  row's page and does not emit `tabActivated`. A click elsewhere on the row
+  switches as INV-3 says and closes nothing. Headers have no close mark.
+  The MainWindow answers `tabCloseRequested` with `closeTab`, the tab bar's
+  x path, so confirm-on-close still applies.
+- **INV-13 — the tab menu (ANTS-5709).** `showTabColorMenu`, shared by the
+  tab bar and the panel, has a "Close Tab" item that calls `closeTab`. Its
+  colour choices sit in a "Colour" sub-menu, not on the top level.
 
 ## Test
 

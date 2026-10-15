@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Close a tab from the Tab List Panel or its right-click menu** (ANTS-5709)
+  Each row in the side panel has an x, like the tab bar's. The tab
+  right-click menu, on the tab bar and the panel, has a Close Tab item.
+  Both ask first when a program is still running, as the tab bar's x does.
+  The tab colours now sit in a Colour sub-menu.
+
 - **A token bench at tools/token-bench/ compares what Claude Code costs in Ants against a plain terminal** (ANTS-5545)
   A small practice project with one planted bug and its test, a README
   naming the fixed prompt and model, and bench.py, which runs Claude

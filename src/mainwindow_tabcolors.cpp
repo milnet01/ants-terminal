@@ -71,7 +71,9 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
         });
     });
 
-    menu.addSeparator();
+    // ANTS-5709 — the colours sit in their own sub-menu, so the top level
+    // stays short: Rename, Colour, Close.
+    QMenu *colourMenu = menu.addMenu(QStringLiteral("Colour"));
 
     // ANTS-1374 / ANTS-4689 — the tab-tag palette: 25 colours plus "None".
     // The 14 Catppuccin Mocha accents, ordered warm→cool, with six pastels
@@ -158,7 +160,7 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
     const QString kActiveSuffix = QString::fromUtf8("   \u2713");
 
     for (const auto &ce : colors) {
-        QAction *a = menu.addAction(ce.name);
+        QAction *a = colourMenu->addAction(ce.name);
         const bool active = sameColor(ce.color, currentColor);
         if (ce.color.isValid()) {
             if (active) {
@@ -199,8 +201,8 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
     // the exact same in-session (setTabColor) + persist (persistTabColor)
     // path as the presets above, so a custom pick survives restart and
     // drag-reorder identically — persistTabColor already stores HexArgb.
-    menu.addSeparator();
-    QAction *customAction = menu.addAction("Custom colour...");
+    colourMenu->addSeparator();
+    QAction *customAction = colourMenu->addAction("Custom colour...");
     // A colour set from the picker matches no preset, so mark THIS entry
     // instead — otherwise a custom-coloured tab shows nothing checked at
     // all, which reads as "None".
@@ -224,6 +226,25 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
         if (!chosen.isValid()) return;  // user cancelled
         m_coloredTabBar->setTabColor(idx, chosen);
         persistTabColor(tabWidget, chosen);
+    });
+    // The current colour shows on the sub-menu too, so it reads without
+    // opening it.
+    if (currentColor.isValid()) {
+        QPixmap px(12, 12);
+        px.fill(currentColor);
+        colourMenu->setIcon(QIcon(px));
+    }
+
+    // ANTS-5709 — Close, through the tab bar's x path (closeTab), so
+    // confirm-on-close still asks. Run after the menu has closed, so a
+    // confirm dialog does not open under it.
+    menu.addSeparator();
+    QAction *closeAction = menu.addAction(QStringLiteral("Close Tab"));
+    connect(closeAction, &QAction::triggered, this, [this, page = QPointer<QWidget>(tabWidget)] {
+        QTimer::singleShot(0, this, [this, page] {
+            const int idx = page ? m_tabWidget->indexOf(page) : -1;
+            if (idx >= 0) closeTab(idx);
+        });
     });
 
     menu.exec(QCursor::pos());

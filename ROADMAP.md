@@ -86140,7 +86140,7 @@ a modern terminal" release.
   Source: in-session-2026-10-13.
   Lanes: roadmap-verbs, tests.
 
-- 📋 [ANTS-5709] **Tabs close from the Tab List Panel and from a Close item on the tab right-click menu; tab colours move to a sub-menu.**
+- ✅ [ANTS-5709] **Tabs close from the Tab List Panel and from a Close item on the tab right-click menu; tab colours move to a sub-menu.**
   User request (2026-10-15), three parts:
   1. The Tab List Panel (ANTS-5645, the sidebar) has no way to close a
      tab. The horizontal tab bar has a small x to the right of each tab;
@@ -86153,6 +86153,10 @@ a modern terminal" release.
   bar's x (any confirm-on-close for a running process included).
   Hot reload: a UI change in the running binary; it ships with the next
   build and relaunch, like any widget change.
+  Resolved (2026-10-15): TabListPanel draws an x per tab row and emits
+  tabCloseRequested; showTabColorMenu gains Close Tab and a Colour
+  sub-menu; both close through closeTab. tests/features/tab_list_panel
+  INV-12, INV-13.
   **Layman:** Close any tab from the side panel, or by right-clicking it, and tidy the right-click menu.
   Kind: ux.
   Source: user-request-2026-10-15.

@@ -44,6 +44,12 @@ void MainWindow::applyTabListPanelConfig() {
                     const int i = m_tabWidget->indexOf(page);
                     if (i >= 0) showTabColorMenu(i, true);
                 });
+        // ANTS-5709 — the row's x closes through the tab bar's x path,
+        // confirm-on-close included.
+        connect(m_tabListPanel, &TabListPanel::tabCloseRequested, this, [this](QWidget *page) {
+            const int i = m_tabWidget->indexOf(page);
+            if (i >= 0) closeTab(i);
+        });
         // Same pin as the tab bar's Rename; an empty name clears it.
         connect(m_tabListPanel, &TabListPanel::tabRenamed, this,
                 [this](QWidget *page, const QString &name) {

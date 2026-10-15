@@ -15,6 +15,7 @@
 #include <QPainter>
 #include <QStyleOptionViewItem>
 #include <QTemporaryDir>
+#include <QTest>
 #include <QTreeWidget>
 #include <QWidget>
 
@@ -632,4 +633,99 @@ TEST(TabListPanel, Inv10ReloadPassesTheSortToThePanel) {
     ASSERT_FALSE(apply.empty());
     EXPECT_NE(apply.find("setSortMode("), std::string::npos);
     EXPECT_NE(apply.find("tabListPanelSort()"), std::string::npos);
+}
+
+// --------------------------------------------------------------- INV-12 -----
+// ANTS-5709 — a close mark on each tab row, clicked with a real mouse.
+
+namespace {
+
+// Shown at a fixed size so the rows have real rectangles to click.
+struct ShownPanel {
+    TabListPanel panel;
+    ShownPanel() {
+        panel.resize(300, 300);
+        panel.show();
+        QCoreApplication::processEvents();
+    }
+};
+
+}  // namespace
+
+TEST(TabListPanel, Inv12CloseMarkClosesAndDoesNotSwitch) {
+    Pages p;
+    ShownPanel s;
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::None},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::None}},
+                       &p.a);
+    QTreeWidget *tree = s.panel.treeForTest();
+    const auto rows = tabRows(tree);
+    ASSERT_EQ(rows.size(), 2);
+    QVector<QWidget *> closed, activated;
+    QObject::connect(&s.panel, &TabListPanel::tabCloseRequested,
+                     [&closed](QWidget *page) { closed << page; });
+    QObject::connect(&s.panel, &TabListPanel::tabActivated,
+                     [&activated](QWidget *page) { activated << page; });
+
+    const QRect row = tree->visualItemRect(rows.at(1));
+    ASSERT_TRUE(row.isValid());
+    const QRect mark = TabListPanel::closeButtonRect(row);
+    ASSERT_TRUE(row.contains(mark)) << "the close mark lies outside its row";
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, {}, mark.center());
+    ASSERT_EQ(closed.size(), 1);
+    EXPECT_EQ(closed.at(0), &p.b);
+    EXPECT_TRUE(activated.isEmpty()) << "a click on the close mark also switched tabs";
+
+    // The rest of the row still switches, and closes nothing.
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, {},
+                      QPoint(row.left() + 20, row.center().y()));
+    EXPECT_EQ(closed.size(), 1);
+    ASSERT_EQ(activated.size(), 1);
+    EXPECT_EQ(activated.at(0), &p.b);
+}
+
+TEST(TabListPanel, Inv12HeadersHaveNoCloseMark) {
+    Pages p;
+    ShownPanel s;
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), paletteColor(0), Glyph::None}}, &p.a);
+    QTreeWidget *tree = s.panel.treeForTest();
+    QTreeWidgetItem *header = tree->topLevelItem(0);
+    ASSERT_NE(header, nullptr);
+    ASSERT_GT(header->childCount(), 0) << "expected a colour header";
+    int closed = 0;
+    QObject::connect(&s.panel, &TabListPanel::tabCloseRequested,
+                     [&closed](QWidget *) { ++closed; });
+    const QRect mark = TabListPanel::closeButtonRect(tree->visualItemRect(header));
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, {}, mark.center());
+    EXPECT_EQ(closed, 0);
+}
+
+TEST(TabListPanel, Inv12MainWindowClosesThroughCloseTab) {
+    const std::string src = ants_test::slurpMainWindow();
+    ASSERT_FALSE(src.empty());
+    const std::string apply =
+        ants_test::slurpFunctionBody(src, "void MainWindow::applyTabListPanelConfig(");
+    ASSERT_FALSE(apply.empty());
+    const auto at = apply.find("&TabListPanel::tabCloseRequested");
+    ASSERT_NE(at, std::string::npos) << "the panel's close request is not connected";
+    EXPECT_NE(apply.find("closeTab(", at), std::string::npos)
+        << "the panel must close through closeTab, the tab bar's x path";
+}
+
+// --------------------------------------------------------------- INV-13 -----
+
+TEST(TabListPanel, Inv13MenuHasCloseAndAColourSubMenu) {
+    const std::string src = ants_test::slurpMainWindow();
+    ASSERT_FALSE(src.empty());
+    const std::string body = ants_test::slurpFunctionBody(src, "void MainWindow::showTabColorMenu(");
+    ASSERT_FALSE(body.empty());
+    const auto close = body.find("\"Close Tab\"");
+    ASSERT_NE(close, std::string::npos) << "the tab menu has no Close Tab item";
+    EXPECT_NE(body.find("closeTab(", close), std::string::npos)
+        << "Close Tab must call closeTab";
+    const auto sub = body.find("addMenu(");
+    ASSERT_NE(sub, std::string::npos) << "the colours are not in a sub-menu";
+    EXPECT_NE(body.find("\"Colour\"", sub), std::string::npos);
+    EXPECT_EQ(body.find("menu.addAction(ce.name)"), std::string::npos)
+        << "a colour is still on the top level of the menu";
 }
