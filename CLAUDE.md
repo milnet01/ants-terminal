@@ -112,6 +112,12 @@ and why. A relaunch kills every Claude Code session in its tabs (`~Pty`,
   reads routed by `tab` or `caller_cwd`; adding a verb to it switches on a
   refusal.
 - A new module states its reload story in its design.
+- **Build every new feature as modular as possible (user, 2026-10-15).** It
+  can be stopped and started on its own while the terminal runs, tearing
+  down and rebuilding its state, so a stuck feature never needs a relaunch.
+  Where its code can run in its own process (the `ants-mcpd` model), a new
+  build reaches a running terminal by restarting that process alone. The
+  design names its stop/start control.
 
 It does not apply to a bug fix, a test, a document or a version bump.
 Retrofitting is a roadmap item, never an obligation. Models to copy:
