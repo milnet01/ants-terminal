@@ -131,6 +131,10 @@ tmp/
 # Local design-synthesis scratch (multi-model brainstorm dumps)
 RoadMap_Design/
 
+# Local-only archive: old roadmap-store backups, feedback-file backups and
+# review scratch with no other copy. Its README.md says where each came from.
+local-archive/
+
 # Indie-review sidecar reports (transient, regenerated per sweep).
 # partition.json is the exception and is TRACKED: it is a declaration, not
 # a sweep artifact — indie_review_partition reads it as an override, its own
