@@ -12826,6 +12826,10 @@ they are one change.
   Kind: research. Source: cold-eyes-review-2026-04-30.
   Serves SIGN-1 (docs/discovery.md, 2026-09-28): token-spend
   measurement. The bench is ANTS-5545.
+  Decided (2026-10-15, user): do it now. Build the bench (ANTS-5545)
+  first, then run the replays (N>=3 per setup) and bring the numbers
+  back; the user sets the keep/drop thresholds when reviewing them. The
+  replays cost real tokens and that is accepted.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
@@ -29811,7 +29815,7 @@ template / mutate this state atomically" → movable. If it's
   Source: Cold-eyes 2026-05-18 (plugins lane).
   Lanes: plugins.
 
-- 📋 [ANTS-1537] **ANTS-1160 P1 — remaining doc-tree edits for prefix relaxation.**
+- 🚫 [ANTS-1537] **ANTS-1160 P1 — remaining doc-tree edits for prefix relaxation.**
   Cold-eyes spec/ANTS-1160 lane. §12 P1 enumerated 7 doc-tree
   edits (ROADMAP.md format marker, README.md ROADMAP_FORMAT v1
   text, CLAUDE.md `[ANTS-NNNN]` IDs phrasing, etc) to follow the
@@ -29825,6 +29829,8 @@ template / mutate this state atomically" → movable. If it's
   Lanes: roadmap-format, claude-md, readme.
   Source: Cold-eyes 2026-05-18 (spec/ANTS-1160 lane).
   Re-examined 2026-06-02 — NOT applying the §12 P1 edits this pass. Verified current state: (d) README has no ROADMAP_FORMAT line (already moot); (b) documentation.md:110-118 already references roadmap-format.md §3.2 for the phase-ID scheme (the stale FP##/DS##/DOC##/R## line is already gone). The remaining edits — (a) bump data marker ants-roadmap-format to ":2", (c) change CLAUDE.md to "new bullets use [TASK-NNNN]", (e) bump ROADMAP.md header to v2 — are all gated on the unshipped v2/TASK- migration. roadmap_log still allocates [ANTS-NNNN] (verified: this session allocated ANTS-1953), and the format is internally consistent at v1 (data marker ":1", spec-doc marker ":1.1"). Applying the v2 marker bumps now would assert a format/prefix migration that has not shipped — drift in the wrong direction. Stays 📋, correctly gated on "when the next format change ships" per the original bundle note. Reduce scope to (a)/(c)/(e) only when v2 adoption lands.
+  Dropped (2026-10-15, user decision): the v2 format and TASK- ids this
+  item waited on never shipped, and the roadmap store overtook that plan.
 
 - ✅ [ANTS-1866] **roadmap-format.md Kind table is stale vs the live roadmap_log/validKinds enum (missing feature, enhancement, optimize, investigate, accessibility, package, marketing).**
   roadmap-format.md §3.5.3's "Recognised Kind: values" table lists
@@ -68907,6 +68913,8 @@ names the sign it claims (SIGN-1 to SIGN-5).
   type from the session transcript, and whether the bug's test passed.
   Overlap: ANTS-1120 (companion instrumentation) measures token spend
   too; read it before choosing where the counts come from.
+  Decided (2026-10-15, user): build now, as the first half of
+  ANTS-1120's measurement.
   **Layman:** A fixed practice job so we can compare what Claude Code costs in Ants and in a plain terminal.
   Kind: test.
   Source: docs/design.md SIGN-1 (2026-09-28).
@@ -80312,6 +80320,9 @@ roughly-priority order.
   (token_usage telemetry) so we can quote real numbers.
   **Layman:** get Ants Terminal listed on the community indexes
   that Claude Code / MCP fans actually read.
+  Decided (2026-10-15, user): submit after the next release. Draft each
+  entry for the user's approval first; nothing is sent without it.
+  Applies to ANTS-1313 to 1317.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
@@ -80328,6 +80339,8 @@ roughly-priority order.
   channels.
   **Layman:** a 60-second video that shows Claude using fewer
   tokens with Ants vs without is worth a thousand README lines.
+  Decided (2026-10-15, user): after the next release, drafts approved
+  first. See ANTS-1313.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
@@ -80348,6 +80361,8 @@ roughly-priority order.
   click after the Discussion will be the GitHub front page).
   **Layman:** post a showcase on Anthropic's own GitHub Discussion
   + Discord, where their engineers actually look.
+  Decided (2026-10-15, user): after the next release, drafts approved
+  first. See ANTS-1313.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
@@ -80365,6 +80380,8 @@ roughly-priority order.
   by distro-search engines + recommended-installer integrations.
   **Layman:** "pacman -S ants-terminal" beats "git clone, install
   deps, cmake build, hope it works."
+  Decided (2026-10-15, user): after the next release, drafts approved
+  first. See ANTS-1313.
   Kind: package.
   Source: indie-review-2026-05-13.
 
@@ -80383,6 +80400,8 @@ roughly-priority order.
   pieces line up" capstone.
   **Layman:** when the project is polished enough (video, easy
   install, clean README), do a one-shot HN launch.
+  Decided (2026-10-15, user): after the next release, drafts approved
+  first. See ANTS-1313.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
@@ -90368,6 +90387,8 @@ here.)
   Re-scoped by measurement at the same time -- the feature-test corpus
   is now 566 spec dirs against the roughly 190 this item was filed
   against, so the audit is materially larger than its estimate.
+  Re-confirmed (2026-10-15, user): stays deferred until the fix queue is
+  near empty.
   Source: user-2026-05-02.
 
 - 📋 [ANTS-1086] **Documentation pass.**
