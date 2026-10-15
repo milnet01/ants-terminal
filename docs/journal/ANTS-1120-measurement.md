@@ -1,6 +1,6 @@
 # ANTS-1120 — Token measurement, 2026-10-15
 
-**Status:** measured; the verdict waits on the user (spec INV-5).
+**Status:** measured; verdict inconclusive (user, 2026-10-15).
 
 ## What was measured
 
@@ -68,12 +68,14 @@ SIGN-1 asks for Ants to be at least 20% cheaper. **Neither view meets it.**
 - INV-4 (point and conservative ratios): met, above.
 - INV-1 (the task exercises the audit, roadmap-query and ID surfaces): not
   met. The SIGN-1 job touches none of them.
-- INV-5 and INV-6 (the user's verdict and its roadmap edits): pending.
+- INV-5 (the user's verdict): met, below.
+- INV-6 (the verdict's roadmap edit): ANTS-1120 is annotated "needs deeper
+  measurement" and stays open.
 
-## For the user to decide
+## Verdict (user, 2026-10-15)
 
-1. The keep / drop thresholds, and the verdict.
-2. Whether this bench measures what SIGN-1 is for. Its job never reaches a
-   tool Ants adds, so it measures only Ants' fixed overhead. A bench whose
-   job needs searching a larger codebase would measure the savings too. By
-   the bench's own rule that is a new bench, not a change to this one.
+- **Inconclusive.** SIGN-1 is not met, but this bench never reaches a tool
+  Ants adds, so it measures only Ants' fixed overhead.
+- **Threshold:** SIGN-1's own 20%, unchanged.
+- **Next:** a second, larger bench whose job needs code search, measured
+  the same way. The first bench stays as it is.
