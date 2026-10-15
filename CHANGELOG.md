@@ -48,6 +48,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The git-context note reaches Claude once per session until something changes** (ANTS-5692)
+  The hook that tells Claude Code the branch and file counts now stays
+  quiet when nothing has changed since its last note in that session,
+  instead of repeating it on every message. Install it again from
+  Settings to update the copy on disk.
+
 - **The spec-drift check matches whole names only, so a renamed function is no longer hidden by a longer one that contains it.** (ANTS-2122)
 
 - **The Project Audit's spec-drift check reads file:line citations as files, and skips key:value text and test shorthand.** (ANTS-2122)

@@ -257,6 +257,17 @@ This is the same preservation invariant the existing hook
 installer carries (explicitly called out at `settingsdialog.cpp:1062`:
 *"keeps user-added custom hooks on the same event intact."*).
 
+### Invariant 11 — An unchanged block is sent once per session (ANTS-5692)
+
+Claude Code passes the hook a JSON object on stdin whose `session_id`
+names the session. The script keeps the last block it printed for that
+session in `${XDG_RUNTIME_DIR:-/tmp}/ants-git-context/<session_id>`, and
+prints nothing when the new block is identical. Any change to the branch,
+ahead/behind or a count prints the block again. A different session id
+has its own state. With no `session_id` on stdin, the script prints the
+block every time, as before. Characters other than letters, digits, `-`
+and `_` are dropped from the id before it names a file.
+
 ## Regression history
 
 - **Introduced:** n/a — this is a new feature.
@@ -304,6 +315,10 @@ Claude doesn't need to ask.
    with that branch as its own upstream, prints one opening and one
    closing tag, `Branch: x_/git-context_y` and
    `Upstream: x_/git-context_y`.
+7. **Once per session (Invariant 11):** with the same `session_id` on
+   stdin, a second run on an unchanged repo prints nothing; after a
+   new untracked file it prints the block again; a second session id
+   prints the block; no stdin prints it every time.
 
 **Source-grep test** (`tests/features/claude_git_context_hook/test_installer_grep.cpp`):
 

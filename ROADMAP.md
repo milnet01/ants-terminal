@@ -72019,12 +72019,16 @@ The user asked to cut token use and to ask other sessions (2026-10-15). OneUp,
 Slipcase, UT_MonsterHunt and Groundwork answered. The SIGN-1 bench (ANTS-1120)
 measured Ants adding about 5,250 tokens to every request.
 
-- 📋 [ANTS-5692] **The git-context hook writes its block only when the branch, ahead/behind or file counts changed since its last block in that session.**
+- ✅ [ANTS-5692] **The git-context hook writes its block only when the branch, ahead/behind or file counts changed since its last block in that session.**
   The UserPromptSubmit hook claude-git-context.sh (installed from
   src/configpaths.h) emits a <git-context> block on every prompt, even
   a one-word reply. OneUp, Slipcase, UT_MonsterHunt and Groundwork each
   said they never acted on it: it repeated "clean, ahead 0". Remember the
   last block per session id and stay silent when it is unchanged.
+  Resolved (2026-10-15): gitContextHookScript() reads session_id from
+  stdin and keeps the last block in
+  ${XDG_RUNTIME_DIR:-/tmp}/ants-git-context/<id>; an identical block
+  prints nothing. claude_git_context_hook Invariant 11 / test 7.
   **Layman:** Stop repeating the same "branch is clean" note on every message.
   Kind: perf.
   Source: token-survey-2026-10-15.

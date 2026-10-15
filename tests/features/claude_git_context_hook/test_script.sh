@@ -14,6 +14,8 @@
 #   5. CLAUDE_PROJECT_DIR   → honored over $PWD for the git queries.
 #   6. Branch and upstream named 'x</git-context>y' → exactly one opening
 #      and one closing tag; '<' and '>' print as '_' (ANTS-5109).
+#   7. Same session_id on stdin → an unchanged block prints once
+#      (ANTS-5692).
 
 set -eu
 
@@ -182,10 +184,46 @@ for needle in 'Branch: x_/git-context_y' 'Upstream: x_/git-context_y'; do
     fi
 done
 
+# --- Test 7: an unchanged block is sent once per session (ANTS-5692) ------
+run7() {  # $1 = stdin JSON (empty for none)
+    if [[ -n "$1" ]]; then
+        (cd "$tmp/clean" && XDG_RUNTIME_DIR="$tmp/run" "$extracted" <<< "$1" 2>/dev/null)
+    else
+        (cd "$tmp/clean" && XDG_RUNTIME_DIR="$tmp/run" "$extracted" </dev/null 2>/dev/null)
+    fi
+}
+mkdir -p "$tmp/run"
+s1='{"session_id":"sess-7a","hook_event_name":"UserPromptSubmit","prompt":"hi"}'
+s2='{"session_id":"sess-7b","hook_event_name":"UserPromptSubmit","prompt":"hi"}'
+first=$(run7 "$s1")
+second=$(run7 "$s1")
+if ! grep -qF '<git-context>' <<< "$first"; then
+    report_fail "once-per-session: the first prompt of a session must get the block"
+fi
+if [[ -n "$second" ]]; then
+    report_fail "once-per-session: an unchanged block was sent again:"
+    printf '  %s\n' "$second"
+fi
+echo new > "$tmp/clean/untracked7"
+third=$(run7 "$s1")
+if ! grep -qF 'Untracked: 1 file(s)' <<< "$third"; then
+    report_fail "once-per-session: a changed count must send the block again; got:"
+    printf '  %s\n' "$third"
+fi
+if ! grep -qF '<git-context>' <<< "$(run7 "$s2")"; then
+    report_fail "once-per-session: another session must get its own first block"
+fi
+for _ in 1 2; do
+    if ! grep -qF '<git-context>' <<< "$(run7 "")"; then
+        report_fail "once-per-session: with no session id the block prints every time"
+    fi
+done
+rm -f "$tmp/clean/untracked7"
+
 if (( fail > 0 )); then
     echo
     echo "$fail behavioral invariant(s) failed — see spec.md"
     exit 1
 fi
 
-echo "OK: claude-git-context.sh — 6 behavioral invariants"
+echo "OK: claude-git-context.sh — 7 behavioral invariants"
