@@ -77379,7 +77379,7 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502.
   Lanes: roadmap.
 
-- 📋 [ANTS-4528] **Continuation indent is destroyed at PARSE, so a nested list cannot survive a render.**
+- ✅ [ANTS-4528] **Continuation indent is destroyed at PARSE, so a nested list cannot survive a render.**
   The ANTS-4506 write-up names the RENDERER -- "emits every continuation
   line of a body at exactly two spaces". True, but the cause is upstream:
   `parseBullets()` builds the body with `body.append(cont.trimmed())`
@@ -77405,6 +77405,16 @@ assistant suggestions, accepted by the user for filing.
 
   Do it as one contract pass over those three specs, not as a patch to
   the parser.
+  Resolved (2026-10-15, e1bbc047): the cause was already gone. ANTS-4554
+  (2026-08-20) replaced the per-line trim with a dedent to the block's
+  common edge, and updated ANTS-3808 § 2.1 and ANTS-3809 § 2.2 with it,
+  including the deeper-indented `anchored` case this item worried about.
+  So no parser change and no contract pass were left. This commit pins
+  the item's own shape in tests/features/roadmap_body_indent: a numbered
+  item at four spaces with its continuation at six survives the read
+  (INV-1) and a re-render (INV-4). Seen red by putting the per-line trim
+  back, green after restoring. Also fixed: one stale ANTS-3808 sentence
+  and one stale code comment that still described the old trim.
   **Layman:** A roadmap entry containing a numbered sub-list comes back flat after a save, so the list breaks apart.
   Kind: fix.
   Source: in-session-2026-08-19, split out of ANTS-4506 during its contract pass.
