@@ -72121,7 +72121,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5698] **A verb reports a session's context rent: tokens per request now, at the start, and what holds them.**
+- ✅ [ANTS-5698] **A verb reports a session's context rent: tokens per request now, at the start, and what holds them.**
   Most token cost is cache reads: every request re-reads the whole
   context. Measured 2026-10-15: fresh sessions start at 46k-83k tokens;
   long ones run 100-274 requests with 14M-57.7M cache reads (album-builder:
@@ -72139,6 +72139,16 @@ measured Ants adding about 5,250 tokens to every request.
   character count, but the API bills images by pixels (about 640 tokens
   for 800x600). Count image blocks separately, in this verb and in
   token_usage.
+  Shipped (2026-10-15) as the session_cost verb, in ants-mcpd (rebuild +
+  /mcp, no relaunch). Reads a transcript and reports requests, context at
+  first request / now / peak, token totals, the start-up payload from the
+  first api-request-shape line (system prompt bytes, tool definitions
+  largest first) and the largest items held (tool results by tool, text
+  blocks); images counted, not sized. Without session_id it reads the
+  newest transcript and says session_inferred. Contract:
+  tests/features/session_cost/spec.md. Found on first use: Artifact's
+  tool definition was ~37 KB per request in every interactive session;
+  the user turned Artifact, Workflow and SendFeedback off globally.
   **Layman:** Show each Claude session how much it pays per message, and for what.
   Kind: feature.
   Source: token-survey-2026-10-15.

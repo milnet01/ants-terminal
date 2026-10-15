@@ -308,6 +308,9 @@ Listed only where behavior isn't obvious from the name.
 - `remotecontrol_quotation_check` — thin handler for `quotation_check`, which
   checks many quotations in one call; the seam is `quotationcheckverb`
   (ANTS-5502).
+- `remotecontrol_session_cost` — thin handler for `session_cost`, which
+  reports a session's context rent from its transcript; the seam is
+  `sessioncostverb` (ANTS-5698).
   (`remotecontrol_roadmap_migrate` is the remaining TU and has its own entry
   further down.)
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

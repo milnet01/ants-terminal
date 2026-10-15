@@ -164,6 +164,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("quotation_check",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdQuotationCheck));
+    // ANTS-5698 — session_cost: a session's context rent, read from its
+    // transcript. Required: the caller's cwd names the transcript folder.
+    sink.registerToolProvider("session_cost",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdSessionCost));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     sink.registerToolProvider("changelog_log",

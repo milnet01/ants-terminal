@@ -14213,6 +14213,61 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5698 — session_cost: a session's context rent, read from
+                // its transcript. Every property below is read by cmdSessionCost
+                // (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "session_cost";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to see what this session pays per request and what "
+                        "holds its context, before deciding to /clear or start fresh.");
+                    t["description"] = QStringLiteral(
+                        "Report a Claude Code session's context rent from its "
+                        "transcript: requests, context size at the first request, "
+                        "now and at peak (tokens), token totals, the start-up "
+                        "payload (system prompt and tool definitions, in bytes, "
+                        "largest tools first) and the largest items the session "
+                        "holds (tool results by tool, text blocks; bytes). Images "
+                        "are counted, not sized. Without session_id it reads the "
+                        "newest transcript for caller_cwd and says "
+                        "session_inferred. Refusals: bad_args, not_found, "
+                        "no_project. caller_cwd Required.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD (required); picks the transcript folder.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "The session to read (its transcript's file name); "
+                            "default the newest one.");
+                        props["session_id"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 50;
+                        p["default"] = 8;
+                        p["description"] = QStringLiteral("Cap on each list.");
+                        props["top"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-5502 — quotation_check: many quotations verified in one
                 // call. Every property below is read by cmdQuotationCheck (ANTS-4621).
                 {
@@ -15494,6 +15549,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         return QStringLiteral("terminal");
                     if (name == QLatin1String("tool_info") ||
                         name == QLatin1String("token_usage") ||
+                        name == QLatin1String("session_cost") ||  // ANTS-5698
                         name == QLatin1String("mcp_trace") ||
                         name == QLatin1String("caller_cwd_info"))
                         return QStringLiteral("meta");
@@ -17129,6 +17185,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("run_trace"))          return C::Required;
     // ANTS-5502 — quotation_check reads files under the caller's project root.
     if (toolName == QStringLiteral("quotation_check"))    return C::Required;
+    // ANTS-5698 — session_cost reads the transcript folder named by the cwd.
+    if (toolName == QStringLiteral("session_cost"))       return C::Required;
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;

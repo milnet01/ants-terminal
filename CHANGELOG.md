@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **New session_cost tool shows what a Claude Code session pays per message, and for what** (ANTS-5698)
+  It reads the session's transcript and reports how large the context was at the start and is now, the session's token totals, the start-up payload by tool, and the largest items the session holds.
+
 - **roadmap_query accepts the status emoji (📋 🚧 ✅ 💭 🚫) as well as their names** (ANTS-5695)
 
 - **Close a tab from the Tab List Panel or its right-click menu** (ANTS-5709)

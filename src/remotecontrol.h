@@ -1111,6 +1111,10 @@ public:
     // Seam: src/quotationcheckverb.h.
     QJsonDocument cmdQuotationCheck(const QJsonObject &req);
 
+    // ANTS-5698 — session_cost: a session's context rent from its transcript.
+    // Seam: src/sessioncostverb.h.
+    QJsonDocument cmdSessionCost(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by
