@@ -1,0 +1,7 @@
+date,payer,amount,participants,note
+2026-07-01,Ana,120.00,Ana;Ben;Cy,cabin deposit
+2026-07-01,Ben,40.5,Ana;Ben;Cy,groceries
+2026-07-02,Cy,12.8,Ana;Cy,fuel
+2026-07-02,Ana,9.99,Ben,ferry ticket
+2026-07-03,Ben,60,Ana;Ben;Cy;Dee,dinner
+2026-07-03,Dee,33.33,Ana;Ben;Cy;Dee,breakfast

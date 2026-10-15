@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **A token bench at tools/token-bench/ compares what Claude Code costs in Ants against a plain terminal** (ANTS-5545)
+  A small practice project with one planted bug and its test, a README
+  naming the fixed prompt and model, and bench.py, which runs Claude
+  Code on it with and without the Ants MCP server and hooks and records
+  each run's token counts by type, its cost, and whether the bug's test
+  passed.
+
 - **Plugins can react to terminal output, finished lines, shell prompts and keys** (ANTS-4272)
   The "output", "line", "prompt" and "keypress" events now fire.
   Output and lines need the new "terminal.read" permission and keys
