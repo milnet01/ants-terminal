@@ -395,7 +395,8 @@ Five rules, each of which exists because its absence shipped a defect:
   that failed or could not run: one cited a section that did not exist, one
   returned six files where it claimed five, one was a tautology over a
   gitignored path. All three die in seconds when the clause is executed;
-  reading them caught none. `write-spec` Step 3 owns *when* to run it.
+  reading them caught none. `write-spec` Step 3 (its
+  `references/writing-the-spec.md`) owns *when* to run it.
 - **Every invariant names what breaks it.** State the concrete input or
   state that makes the assertion fail. If the honest answer is *nothing
   can*, the invariant is not a contract — it is a tautology, and you have
@@ -535,7 +536,7 @@ second copy of the one-copy rule would be its own counterexample.
 
 Spec-side application: when a review's findings are mostly "§A and §B
 disagree", delete N−1 and leave a pointer rather than reconciling the
-copies. `review-contract` Phase 4 explains why that shortens the whole run.
+copies. `review-contract` Phase 4 (`references/fix.md`) explains why that shortens the whole run.
 
 ### 5.3 Brevity
 
@@ -558,7 +559,8 @@ is a better next reviewer than another cold read — `review-contract` routes a
 spec to implementation at the cap and never to a split, so **nothing splits a
 spec after the loops begin.**
 
-**`write-spec` Step 4 makes the pre-loop call.** It is the only actor holding
+**`write-spec` Step 4 (its `references/writing-the-spec.md`) makes the
+pre-loop call.** It is the only actor holding
 the spec before dispatch. And `review-contract` § At the cap routes an
 oversized spec to implementation rather than to a split, so the gate has said
 in writing that it will not make this call.

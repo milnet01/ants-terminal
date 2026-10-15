@@ -557,7 +557,7 @@ easiest to delete, which is rarely what should go.
 **Everything above in this section is an authoring obligation, never a
 review question**
 (§9.4). **The delete-first rules below are not** — those fire at a review's
-fix pass, and `review-contract` 4a-min cites them there.
+fix pass, and `review-contract` 4a-min (`references/fix.md`) cites them there.
 
 **Writing is the other half, and there the bias runs the other way: if it
 fits in one paragraph, write one.** Not a target — a consequence. Every
