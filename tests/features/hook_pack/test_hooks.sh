@@ -725,6 +725,21 @@ STUB
         fi
         out="$(post 3 0)"
         if [ -z "$out" ]; then pass "ANTS-5619 PostToolUse announces new mail once"; else fail "ANTS-5619 PostToolUse repeated: $out"; fi
+        # ANTS-5716 — UserPromptSubmit follows the same rule: no second
+        # notice for mail this session was already told about.
+        prompt() {  # $1 = unread count
+            (cd "$ib_tmp" && printf '%s\n' '{"hook_event_name":"UserPromptSubmit","session_id":"s5619"}' \
+                | ANTS_MCPD="$stub" STUB_REPLY="{\"ok\":true,\"unacked_count\":$1}" \
+                  XDG_RUNTIME_DIR="$ib_tmp/run" HOME="$ib_tmp" timeout 5 bash "$INBOX")
+        }
+        out="$(prompt 3)"
+        if [ -z "$out" ]; then pass "ANTS-5716 UserPromptSubmit silent on mail already announced"; else fail "ANTS-5716 UserPromptSubmit repeated old mail: $out"; fi
+        out="$(prompt 4)"
+        if printf '%s' "$out" | jq -e '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' >/dev/null 2>&1; then
+            pass "ANTS-5716 UserPromptSubmit announces newly arrived mail"
+        else
+            fail "ANTS-5716 UserPromptSubmit did not announce new mail: $out"
+        fi
         rm -f "$ib_tmp/argv"
         out="$(post 9 3600)"
         if [ -z "$out" ] && [ ! -e "$ib_tmp/argv" ]; then

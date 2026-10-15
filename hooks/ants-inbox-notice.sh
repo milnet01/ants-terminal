@@ -10,10 +10,11 @@
 # saw it, and mail arriving mid-session waited for the user's next prompt.
 # When the payload names its event the hook now answers in JSON: a
 # `systemMessage` the user sees, plus `additionalContext` telling Claude to
-# read the mail before anything else. On PostToolUse it speaks only when the
-# count has RISEN since this session was last told, and asks ants-mcpd at most
-# once per ANTS_INBOX_INTERVAL seconds (default 30). A payload with no event
-# gets the plain line, as before.
+# read the mail before anything else. On PostToolUse and (ANTS-5716)
+# UserPromptSubmit it speaks only when the count has RISEN since this session
+# was last told; PostToolUse also asks ants-mcpd at most once per
+# ANTS_INBOX_INTERVAL seconds (default 30). A payload with no event gets the
+# plain line, as before.
 #
 # Unlike the rest of the pack it is NOT gated on `.ants-project`: the store
 # mailbox serves every registered project. ants-mcpd decides which project the
@@ -105,7 +106,9 @@ if [ "$count" = 0 ]; then
     exit 0
 fi
 # Mid-session, speak only about mail that arrived since this session was told.
-if [ "$event" = "PostToolUse" ] && [ "$count" -le "$told" ]; then
+# ANTS-5716: UserPromptSubmit too; only SessionStart repeats a known count.
+if { [ "$event" = "PostToolUse" ] || [ "$event" = "UserPromptSubmit" ]; } \
+    && [ "$count" -le "$told" ]; then
     remember "$count"
     exit 0
 fi

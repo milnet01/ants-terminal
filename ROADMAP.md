@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5715 -->
+<!-- ants-roadmap-id-high-water: ANTS=5716 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72313,6 +72313,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: perf.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
+
+- ✅ [ANTS-5716] **The inbox notice speaks on UserPromptSubmit only when mail arrived since the session was last told.**
+  hooks/ants-inbox-notice.sh announced the same unread count at
+  SessionStart and again on UserPromptSubmit. UserPromptSubmit now follows
+  PostToolUse's rule: it speaks only when the count is above the count this
+  session was last told. SessionStart still announces any non-zero count.
+  Locked by tests/features/hook_pack/test_hooks.sh (ANTS-5716 cases).
+  **Layman:** Sessions no longer get the same "you have mail" note twice.
+  Kind: fix.
+  Source: claude-config request 2026-10-15 (CFG-0794).
+  Lanes: hooks.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

@@ -114,6 +114,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The unread-mail notice no longer repeats on each prompt for mail a session was already told about** (ANTS-5716)
+
 - **workspace_search returns what it found when it runs out of time, in every mode** (ANTS-5711)
   A files-only, matches-only or count-only search that hits its time
   budget now hands back the results it already had, marked truncated,
