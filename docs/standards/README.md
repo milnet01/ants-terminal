@@ -86,6 +86,8 @@ spec shape itself in `specs.md`. Nor is a path that leaves `standards/`.
 **Two files here are NOT deltas, deliberately.** `roadmap-format.md` is
 **upstream of** its global copy (CFG-0069, 2026-08-12) — the parser, the store
 and the migration live here, so where the two disagree this one governs.
+`tools/check-roadmap-format-containment.sh` fails when the global copy lacks
+a section heading this one has (ANTS-4618).
 `specs.md` is a full standard; its § 0 records why.
 
 Sub-spec (upstream of the global copy — see above):

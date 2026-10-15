@@ -105,6 +105,7 @@ if [[ "$mode" == docs ]]; then
     if grep -q '^docs/standards/' <<<"$changed"; then
         tools/check-standard-mirrors.sh || doc_rc=1
         tools/check-standards-index.sh || doc_rc=1
+        tools/check-roadmap-format-containment.sh || doc_rc=1
     fi
     # These tests read CLAUDE.md's text. Run them against the existing build/ —
     # they read the file at run time, so no rebuild is needed.

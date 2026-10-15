@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-commit gate. Two checks, both about docs/standards/, both cheap.
+# Pre-commit gate. Three checks, all about docs/standards/, all cheap.
 #
 # ANTS-4133 — a mirrored global standard must still match its owner. Each
 # mirrored file in docs/standards/ carries a verbatim copy of its owner so a
@@ -14,11 +14,14 @@
 # it, or a session has no route to one and cannot tell it has breached. Needs
 # no owner tree, so it runs everywhere.
 #
-# Both run even when the first fails, so one commit reports both problems.
+# ANTS-4618 — the global copy of roadmap-format.md must still carry every
+# section of this project's copy, which owns it. Reads the owner tree, so it
+# shares the mirror check's switch and skips where that tree is absent.
+#
+# All run even when one fails, so one commit reports every problem.
 #
 # Bypass (use sparingly): `git commit --no-verify`, or ANTS_PRECOMMIT_NO_MIRRORS=1
-# for the mirror check alone — which is the one that reads a tree this repo
-# does not control.
+# for the two checks that read a tree this repo does not control.
 set -uo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
@@ -28,6 +31,11 @@ rc=0
 if [ "${ANTS_PRECOMMIT_NO_MIRRORS:-0}" != "1" ] &&
    [ -x "$repo_root/tools/check-standard-mirrors.sh" ]; then
     "$repo_root/tools/check-standard-mirrors.sh" || rc=1
+fi
+
+if [ "${ANTS_PRECOMMIT_NO_MIRRORS:-0}" != "1" ] &&
+   [ -x "$repo_root/tools/check-roadmap-format-containment.sh" ]; then
+    "$repo_root/tools/check-roadmap-format-containment.sh" || rc=1
 fi
 
 if [ -x "$repo_root/tools/check-standards-index.sh" ]; then
