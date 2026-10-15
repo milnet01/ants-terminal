@@ -242,7 +242,9 @@ def summary(out: Path) -> None:
             print(f"  mean ${means[arm][0]:.4f}  sd ${sd:.4f}")
     if len(means) == 2:
         (a, sa), (p, sp) = means["ants"], means["plain"]
-        print(f"\nAnts vs plain: {100 * (p - a) / p:+.1f}% cheaper (SIGN-1 asks for at least 20%)")
+        saving = 100 * (p - a) / p
+        print(f"\nAnts costs {abs(saving):.1f}% {'less' if saving >= 0 else 'more'} than plain"
+              " (SIGN-1 asks for at least 20% less)")
         print(f"plain/ants ratio {p / a:.3f}; conservative (plain-1sd)/(ants+1sd) "
               f"{(p - sp) / (a + sa):.3f}")
 

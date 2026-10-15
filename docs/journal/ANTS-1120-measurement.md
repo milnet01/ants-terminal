@@ -1,54 +1,79 @@
-# ANTS-1120 — Companion-instrumentation measurement (placeholder)
+# ANTS-1120 — Token measurement, 2026-10-15
 
-**Status:** Not yet run. This file is the placeholder per
-`docs/specs/ANTS-1120.md` § Deliverables; it gets populated in-place
-when the measurement run actually executes.
+**Status:** measured; the verdict waits on the user (spec INV-5).
 
-## Why this file exists empty
+## What was measured
 
-Running the measurement burns Claude API tokens and requires a
-scripted task plus stub captures. v1 of ANTS-1120 lands the
-infrastructure (this placeholder + `scripts/measure-companion-tokens.sh`
-+ `scripts/measure-companion-stubs/`) so the actual run is a single
-script invocation when the user is ready, not a "build the harness
-first" lift.
+The SIGN-1 bench in [`tools/token-bench/`](../../tools/token-bench/README.md),
+as the user decided on 2026-10-15: one fixed prompt, Claude Code in Ants
+against Claude Code with Ants taken out. This replaces the spec's
+stub-based configurations.
 
-## What lands here when the run executes
+- **Job:** fix the planted bug in `tally`. Prompt and model are in the
+  bench README: `claude-opus-5-5`, effort `high`.
+- **Arms:** `ants` has the Ants MCP server and Ants hooks; `plain` has
+  neither. `bench.py`'s header lists the rest.
+- **Runs:** four per arm, alternating, all on 2026-10-15. Every run fixed
+  the bug.
+- **Counts:** each assistant message's API `usage` field in the session
+  transcript. Cost is those counts at the published Opus 5.5 price. Each
+  run's cost equals Claude Code's own `total_cost_usd` for it.
+- **Raw data:** [`ANTS-1120-results.jsonl`](ANTS-1120-results.jsonl), one
+  line per run. `tools/token-bench/bench.py summary` reprints the tables.
 
-Per `docs/specs/ANTS-1120.md` § Deliverables:
+## Per run
 
-1. **Per-prompt, per-run token counts** for both Configuration A
-   (baseline — Claude reads stdout directly) and Configuration B
-   (instrumented — stubbed `audit-run` / `roadmap-query` /
-   `id-allocate`). N ≥ 3 replays per configuration (INV-2).
-2. **Composite token totals** per run, mean + standard deviation
-   across the N runs per configuration (INV-3).
-3. **Measured ratio** (`baseline_mean / instrumented_mean`) and a
-   **conservative ratio** (1σ pessimistic on baseline, 1σ optimistic
-   on instrumented) (INV-4).
-4. **Per-downstream-bullet verdict** (keep / iterate / drop /
-   inconclusive) chosen by the user *after* reading the
-   measurement, with one-line justifications. The user picks the
-   keep/iterate/drop thresholds at this point (INV-5).
-5. **ROADMAP edits** reflecting the verdicts back into the
-   long-form bullets (ANTS-1110 / 1111 / 1112 / 1113 / 1114 / 1116
-   v2 / 1117 v2). "Drop" gets a `**Retired:**` annotation; "iterate"
-   gets a `Source: measurement-ANTS-1120-<date>` line on the trimmed
-   body (INV-6).
+Tokens by type. No run wrote to the 5-minute cache.
 
-## Pre-requisites before running
+| Arm | Started | Input | Cache write (1h) | Cache read | Output | Cost (USD) |
+|---|---|---|---|---|---|---|
+| ants | 09:50:32 | 12 | 32,565 | 145,245 | 1,940 | 0.3284 |
+| plain | 09:51:00 | 12 | 15,519 | 126,616 | 1,928 | 0.1881 |
+| ants | 09:51:28 | 12 | 13,945 | 145,830 | 1,757 | 0.1759 |
+| plain | 09:51:56 | 10 | 15,052 | 100,399 | 1,944 | 0.1794 |
+| ants | 09:52:23 | 12 | 16,265 | 157,084 | 1,867 | 0.1989 |
+| plain | 09:52:50 | 14 | 18,026 | 157,418 | 1,970 | 0.2151 |
+| ants | 09:54:01 | 12 | 16,208 | 156,997 | 1,851 | 0.1981 |
+| plain | 09:54:32 | 12 | 18,939 | 134,021 | 2,046 | 0.2193 |
 
-- A representative scripted Claude task that exercises at least
-  three of the instrumented surfaces (audit, roadmap query, ID
-  allocation). The task script shape is TBD — pick the workload
-  before scheduling the measurement.
-- One stub capture per surface in
-  `scripts/measure-companion-stubs/`, taken from production
-  tooling output against the current tree at the time of capture.
-- A working `claude` CLI with API key in env.
+## Totals
 
-## Cross-refs
+| | Ants mean (sd) | Plain mean (sd) | Ants against plain |
+|---|---|---|---|
+| All runs, 4 each | 0.2253 (0.0695) | 0.2005 (0.0197) | 12.4% more |
+| Warm-cache runs | 0.1910 (0.0131), 3 runs | 0.2005 (0.0197), 4 runs | 4.7% less |
 
-- Spec: [`docs/specs/ANTS-1120.md`](../specs/ANTS-1120.md)
-- ADR: [ADR-0002 § Decision 5](../decisions/0002-cold-eyes-companion-cleanup.md)
-- Harness: [`scripts/measure-companion-tokens.sh`](../../scripts/measure-companion-tokens.sh)
+Ratio plain/ants over all runs: 0.890. Conservative ratio
+(plain − 1 sd) / (ants + 1 sd): 0.613.
+
+SIGN-1 asks for Ants to be at least 20% cheaper. **Neither view meets it.**
+
+## What explains the numbers
+
+- **The first Ants run started on a cold cache.** Its first request wrote
+  23,719 tokens and read none. Every other run's first request read the
+  shared prompt from the cache. That one run is why "all runs" shows Ants
+  dearer; "warm-cache runs" leaves it out.
+- **Ants adds about 5,250 tokens to every request.** A run's first request
+  holds 23,718 tokens in the Ants arm and 18,462 in the plain arm. That is
+  the Ants tool list and the context Ants hooks add.
+- **No run called an Ants tool.** Each run finished in five to seven
+  requests: run the tests, read a file, fix it, run the tests again. The job
+  is too small to need code search, so Ants' tools had nothing to save.
+
+## Against the spec
+
+- INV-2 (three or more runs per arm, same prompt): met, four each.
+- INV-3 (counts from API `usage`): met.
+- INV-4 (point and conservative ratios): met, above.
+- INV-1 (the task exercises the audit, roadmap-query and ID surfaces): not
+  met. The SIGN-1 job touches none of them.
+- INV-5 and INV-6 (the user's verdict and its roadmap edits): pending.
+
+## For the user to decide
+
+1. The keep / drop thresholds, and the verdict.
+2. Whether this bench measures what SIGN-1 is for. Its job never reaches a
+   tool Ants adds, so it measures only Ants' fixed overhead. A bench whose
+   job needs searching a larger codebase would measure the savings too. By
+   the bench's own rule that is a new bench, not a change to this one.
