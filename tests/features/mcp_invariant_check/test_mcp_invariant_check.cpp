@@ -626,3 +626,23 @@ TEST(McpInvariantCheck, Ants4972ScopeNoteSaysPathOnlyOnAHit) {
     EXPECT_FALSE(env.contains("path_match_only"))
         << "ANTS-4742's flag stays zero-only";
 }
+
+// ANTS-5696 — a zero carries the path-only warning in `hint`; `scope_note`
+// does not repeat it there, and keeps its roadmap sentence.
+TEST(McpInvariantCheck, Ants5696ZeroSaysPathOnlyOnce) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0031"),
+             QStringLiteral("services/other_module.py"));
+    const QJsonObject env = runCheck(
+        dir.path(), QStringLiteral("services/vault_migration.py"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 0);
+    ASSERT_TRUE(env.value("path_match_only").toBool());
+    EXPECT_TRUE(env.value("hint").toString().contains(QStringLiteral("SYMBOL")))
+        << "the zero's hint carries the path-only warning";
+    const QString note = env.value("scope_note").toString();
+    EXPECT_FALSE(note.contains(QStringLiteral("SYMBOL")))
+        << "the warning is sent twice: " << note.toStdString();
+    EXPECT_TRUE(note.contains(QStringLiteral("roadmap_query")))
+        << "the roadmap half stays: " << note.toStdString();
+}

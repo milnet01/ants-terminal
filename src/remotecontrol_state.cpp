@@ -2794,14 +2794,21 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // non-zero result is where that hides a spec: one incidental path hit read
     // as the answer while the governing spec cited the module only by symbol.
     // path_match_only stays zero-only (ANTS-4742); this is not a second flag.
-    result["scope_note"] = QStringLiteral(
+    // ANTS-5696 — that zero's hint already says it, so there the note keeps
+    // its roadmap sentence only.
+    const bool pathOnlyZero =
+        matched.isEmpty() && (specsScanned + phasesScanned) > 0 && nearMiss.isEmpty();
+    QString scopeNote = QStringLiteral(
         "scope: %1 + docs/phases only — the ROADMAP was NOT consulted, so work "
         "already planned there will not appear here. Use roadmap_query "
-        "(query=<keyword>) or task_priors for that. Specs are matched by PATH "
-        "only, so a spec that cites this module by SYMBOL (a class or function "
-        "name) does not appear even beside a match: search the module's stem "
-        "across %1 with workspace_search before treating these results as the "
-        "whole contract.").arg(specsDir);
+        "(query=<keyword>) or task_priors for that.").arg(specsDir);
+    if (!pathOnlyZero)
+        scopeNote += QStringLiteral(
+            " Specs are matched by PATH only, so a spec that cites this module by "
+            "SYMBOL (a class or function name) does not appear even beside a "
+            "match: search the module's stem across %1 with workspace_search "
+            "before treating these results as the whole contract.").arg(specsDir);
+    result["scope_note"] = scopeNote;
 
     // Hints compose: a fallback hit in summary mode owes the caller both
     // messages, and neither may displace the other.
@@ -2825,8 +2832,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // weaker match into `matched_specs`, where a caller cannot tell it apart
     // from a path hit — the same collision `basename_matches` is deliberately
     // reported-and-never-merged to avoid.
-    if (matched.isEmpty() && (specsScanned + phasesScanned) > 0 &&
-        nearMiss.isEmpty()) {
+    if (pathOnlyZero) {
         result["path_match_only"] = true;
         hints << QStringLiteral(
             "specs WERE read and none mentioned these paths. Matching is by "

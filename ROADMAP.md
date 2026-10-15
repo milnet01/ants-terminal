@@ -69068,6 +69068,9 @@ names the sign it claims (SIGN-1 to SIGN-5).
   at ~/.claude commit c19b5e4; the rebuild merges first. The bench needs
   a config-dir option so the "before" arm can run against a ~/.claude
   worktree at c19b5e4. Merge sha to follow.
+  claude-config (2026-10-15): write-code run card merged. Before =
+  ~/.claude c19b5e4, after = 8f9dae1; SKILL.md 82,179 to 47,276 bytes,
+  detail loads on demand from references/.
   **Layman:** A practice job that makes Claude use the code-editing checklist, so trimming that checklist can be measured.
   Kind: test.
   Source: claude-config request 2026-10-15.
@@ -72068,9 +72071,11 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5696] **invariant_check's `hint` and `scope_note` say nearly the same thing about path-only matching; send it once.**
+- ✅ [ANTS-5696] **invariant_check's `hint` and `scope_note` say nearly the same thing about path-only matching; send it once.**
   Reported by UT_MonsterHunt. Both fields explain that specs are matched
   by path, not symbol. Keep one, or emit the long form only on a zero.
+  Resolved (2026-10-15): on a path_match_only zero, scope_note keeps its
+  roadmap sentence only; McpInvariantCheck.Ants5696ZeroSaysPathOnlyOnce.
   **Layman:** Drop a repeated warning from one tool's reply.
   Kind: perf.
   Source: token-survey-2026-10-15.

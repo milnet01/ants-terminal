@@ -58,3 +58,7 @@ a spec citing the module by symbol does not appear even beside a match, and
 names `workspace_search` as the fallback. `path_match_only` is unchanged: it
 still fires only on a zero (ANTS-4742). *Test:*
 `McpInvariantCheck.Ants4972ScopeNoteSaysPathOnlyOnAHit`.
+
+ANTS-5696 — a zero that sets `path_match_only` already says this in its
+`hint`, so on that reply `scope_note` keeps only its roadmap sentence. *Test:*
+`McpInvariantCheck.Ants5696ZeroSaysPathOnlyOnce`.

@@ -48,6 +48,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **invariant_check states the path-only warning once on a zero result** (ANTS-5696)
+
 - **The git-context note reaches Claude once per session until something changes** (ANTS-5692)
   The hook that tells Claude Code the branch and file counts now stays
   quiet when nothing has changed since its last note in that session,
