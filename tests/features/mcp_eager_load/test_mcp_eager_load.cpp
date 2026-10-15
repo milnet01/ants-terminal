@@ -155,3 +155,46 @@ TEST(McpEagerLoad, Ants5271LeanVerbArgumentsAreShort) {
     EXPECT_TRUE(text.contains(QStringLiteral("the preview is not a simulation")))
         << "tool_info no longer carries dry_run's full description";
 }
+
+// ANTS-5694 — the four always-loaded verbs keep a short description on the
+// wire: purpose, the one usage trap, and the tool_info pointer. The two
+// etag verbs keep a one-line "Etag tip:" (mcp_etag_tip_memo INV-1), and
+// tool_info still serves the long text.
+TEST(McpEagerLoad, Ants5694EagerDescriptionsAreShort) {
+    ClaudeIntegration ci;
+    const QJsonArray tools =
+        mcpCall(ci, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})")
+            .value(QStringLiteral("tools")).toArray();
+    ASSERT_FALSE(tools.isEmpty());
+
+    constexpr int kMaxDescriptionBytes = 400;
+    const QStringList etag = {QStringLiteral("file_outline"),
+                              QStringLiteral("read_region")};
+    int eager = 0;
+    for (const auto &v : tools) {
+        const QJsonObject t = v.toObject();
+        if (!t.value(QStringLiteral("_meta")).toObject()
+                 .value(QStringLiteral("anthropic/alwaysLoad")).toBool())
+            continue;
+        ++eager;
+        const QString name = t.value(QStringLiteral("name")).toString();
+        const QString desc = t.value(QStringLiteral("description")).toString();
+        EXPECT_LE(desc.toUtf8().size(), kMaxDescriptionBytes)
+            << name.toStdString() << " description is "
+            << desc.toUtf8().size() << " bytes on the wire";
+        EXPECT_TRUE(desc.contains(
+            QStringLiteral("tool_info {name:\"%1\"}").arg(name)))
+            << name.toStdString() << " lost its tool_info pointer";
+        EXPECT_EQ(desc.contains(QStringLiteral("Etag tip:")),
+                  etag.contains(name))
+            << name.toStdString() << " Etag tip presence";
+    }
+    EXPECT_EQ(eager, 4) << "the four always-loaded verbs";
+
+    const QJsonObject info = mcpCall(ci,
+        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"workspace_search"}}})");
+    const QString text = info.value(QStringLiteral("content")).toArray()
+        .at(0).toObject().value(QStringLiteral("text")).toString();
+    EXPECT_TRUE(text.contains(QStringLiteral("Hard-kill returns rg_failed")))
+        << "tool_info no longer carries workspace_search's full description";
+}

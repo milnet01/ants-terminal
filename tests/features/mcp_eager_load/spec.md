@@ -33,6 +33,12 @@ deferred: most sessions call them rarely.
   `tool_info` reads. *Test:* `Ants5628WireArgumentsAreShort` runs
   `tools/list` and `tool_info` in-process.
 
+- **ANTS-5694** — on the wire, each always-loaded verb's own description
+  is at most 400 bytes and keeps its `tool_info {name:"…"}` pointer.
+  `file_outline` and `read_region` keep an `Etag tip:` line; the other two
+  carry none. `tool_info {name}` still returns the full description.
+  *Test:* `Ants5694EagerDescriptionsAreShort`.
+
 - **ANTS-5271** — the same holds for five deferred verbs with the largest
   schemas: `roadmap_log`, `roadmap_query`, `feedback_log`,
   `changelog_log` and `roadmap_migrate`. Every argument description on the

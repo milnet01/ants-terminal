@@ -15820,6 +15820,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("read_region/max_line_bytes"), QStringLiteral("Clip each line to N bytes.")},
                         {QStringLiteral("read_region/section"), QStringLiteral("Markdown heading text or slug; returns that section.")},
                         {QStringLiteral("find_definition/include_body"), QStringLiteral("Return each definition's body inline.")},
+                        {QStringLiteral("workspace_search/include_hidden"), QStringLiteral("Also search dotfile paths (never .git/).")},
+                        {QStringLiteral("file_outline/path"), QStringLiteral("File path, repo-relative or absolute, under the project.")},
+                        {QStringLiteral("read_region/start_line"), QStringLiteral("1-based first line.")},
+                        {QStringLiteral("read_region/end_line"), QStringLiteral("1-based last line, inclusive (default start_line).")},
+                        {QStringLiteral("read_region/symbol"), QStringLiteral("Return this symbol's body.")},
+                        {QStringLiteral("read_region/max_bytes"), QStringLiteral("Cap on lines[] bytes (default 512 KiB); keeps the head.")},
+                        {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
+                        {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
+                    };
+                    // ANTS-5694 — the same verbs' own descriptions: the
+                    // purpose, the one usage trap, and (on the two etag
+                    // verbs) a one-line Etag tip. The kind prefix and the
+                    // tool_info pointer are added below, as on every verb.
+                    static const QHash<QString, QString> kEagerDescription = {
+                        {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}].")},
+                        {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
+                        {QStringLiteral("file_outline"), QStringLiteral("Outline a file (header comment + symbols {line, kind, name, signature}) instead of a full Read; paths:[...] outlines several. caller_cwd required, or \"~global\". Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
+                        {QStringLiteral("read_region"), QStringLiteral("Return an exact slice of a file instead of a Read: a line range, a symbol's body, or a markdown section; exactly one. caller_cwd required, or \"~global\" for ~/.claude/. Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
                     };
                     // ANTS-5271 — the five largest schemas are deferred, but a
                     // session that loads one carries it to the end, and most
@@ -15998,6 +16016,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         shorten(props, name);
                         schema[QStringLiteral("properties")] = props;
                         t[QStringLiteral("inputSchema")] = schema;
+                        const QString desc = kEagerDescription.value(name);
+                        if (!desc.isEmpty())
+                            t[QStringLiteral("description")] =
+                                QStringLiteral("[%1] %2 Full per-op detail via "
+                                               "tool_info {name:\"%3\"}.")
+                                    .arg(kindForName(name), desc, name);
                         tools.replace(i, t);
                     }
                 }
