@@ -88895,7 +88895,7 @@ here.)
   Lanes: mcp, roadmap-store.
   Resolved (2026-08-28): closed to ANTS-4636. A project with no id_prefix row now reports the ids its items hold instead of 0, so the flag no longer fires on a synced store. The item proposed seeding id_prefix at migration as the preferred repair; the shipped fix takes the other route and derives the mark, which needs no migration and cannot go stale. Verified on Contact_List and MAME_Curator, both of which still carry NO id_prefix row: each answers source:store with no file_ahead_of_store. Count correction for the record: the body says 10 of 14 projects lacked a row and the progress note re-measured 8 of 14; today it is 3 of 19.
 
-- 📋 [ANTS-4618] **The downstream global copy of roadmap-format.md has structurally diverged, and nothing catches it.**
+- ✅ [ANTS-4618] **The downstream global copy of roadmap-format.md has structurally diverged, and nothing catches it.**
   CFG-0069 (user decision 2026-08-12) makes THIS project upstream of
   `~/.claude/standards/roadmap-format.md`: the parser, the store and the
   migration live here, so where the two disagree this copy governs and the
@@ -88937,6 +88937,12 @@ here.)
   copy's section set stops being contained in the global one -- real
   drift caught, no structure imposed. A full mirror check remains wrong
   here, because the two bodies legitimately differ in extent.
+  Resolved (2026-10-15, ddf81920): tools/check-roadmap-format-containment.sh,
+  run by the pre-commit hook and by local CI's docs leg. It fails when a
+  section heading of this copy (## to ####, outside code blocks) is missing
+  from the global roadmap-format.md plus changelog-format.md, and skips
+  where the global tree is absent. Passes today with 30 sections; seen
+  failing on a copy of the global tree with one section removed.
   **Layman:** Two copies of the same rulebook have drifted apart and no check notices.
   Kind: doc-fix.
   Source: in-session-2026-08-21 (noticed while landing ANTS-3771's cross-doc impact).
