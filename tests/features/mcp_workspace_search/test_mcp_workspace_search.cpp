@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -579,4 +580,71 @@ TEST(McpWorkspaceSearch, Ants5117SlashGlobResolvesUnderLane) {
                      {QStringLiteral("glob"), QStringLiteral("*.cpp")}}),
               3)
         << "a glob with no slash still matches at any depth";
+}
+
+// ANTS-5711 — a search that times out keeps what it found, in every mode.
+// A fake rg on PATH prints one file's begin + match events, then hangs past
+// the 1 s budget, so the hard kill lands with a result already parsed.
+// files_only, matches_only and count_only build no matches[] rows, and the
+// hard-kill guard tested matches[] alone, so they answered rg_failed.
+TEST(McpWorkspaceSearch, Ants5711HardKillKeepsPartialResultsInEveryMode) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString hit = root + QStringLiteral("/a.txt");
+    {
+        QFile f(hit);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("needle_5711\n");
+    }
+    QTemporaryDir shimDir;
+    ASSERT_TRUE(shimDir.isValid());
+    {
+        QFile s(shimDir.path() + QStringLiteral("/rg"));
+        ASSERT_TRUE(s.open(QIODevice::WriteOnly));
+        const QString path = QStringLiteral("{\"text\":\"%1\"}").arg(hit);
+        s.write(QStringLiteral(
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' '{\"type\":\"begin\",\"data\":{\"path\":%1}}'\n"
+                    "printf '%s\\n' '{\"type\":\"match\",\"data\":{\"path\":%1,"
+                    "\"lines\":{\"text\":\"needle_5711\\\\n\"},\"line_number\":1,"
+                    "\"absolute_offset\":0,\"submatches\":[{\"match\":{\"text\":"
+                    "\"needle_5711\"},\"start\":0,\"end\":11}]}}'\n"
+                    "exec sleep 30\n")
+                    .arg(path)
+                    .toUtf8());
+        s.close();
+        s.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                         | QFileDevice::ExeOwner);
+    }
+    const QByteArray oldPath = qgetenv("PATH");
+    qputenv("PATH", shimDir.path().toUtf8() + ":" + oldPath);
+
+    const auto run = [&root](const char *mode) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("pattern")] = QStringLiteral("needle_5711");
+        req[QStringLiteral("timeout_sec")] = 1;
+        if (mode) req[QString::fromLatin1(mode)] = true;
+        RemoteControl rc(nullptr);
+        return rc.cmdWorkspaceSearch(req).object();
+    };
+    for (const char *mode : {static_cast<const char *>(nullptr), "files_only",
+                             "matches_only", "count_only"}) {
+        const QJsonObject o = run(mode);
+        const char *name = mode ? mode : "rows";
+        EXPECT_TRUE(o.value(QStringLiteral("ok")).toBool())
+            << name << ": a timed-out search with a result in hand failed: "
+            << QJsonDocument(o).toJson(QJsonDocument::Compact).constData();
+        EXPECT_TRUE(o.value(QStringLiteral("truncated")).toBool())
+            << name << ": a cut-short answer must say it is cut short";
+    }
+    const QJsonObject files = run("files_only");
+    ASSERT_EQ(files.value(QStringLiteral("files")).toArray().size(), 1);
+    EXPECT_EQ(files.value(QStringLiteral("files")).toArray().at(0).toObject()
+                  .value(QStringLiteral("file")).toString(),
+              QStringLiteral("a.txt"));
+    EXPECT_EQ(run("count_only").value(QStringLiteral("count")).toInt(), 1);
+
+    qputenv("PATH", oldPath);
 }

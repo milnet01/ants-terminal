@@ -799,10 +799,14 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
         return QJsonDocument(o);
     }
+    // ANTS-5711 — "nothing parsed" is counted on match events, not on
+    // matches[]: files_only, matches_only and count_only build no rows, so
+    // an empty matches[] dropped the results those modes had already found.
+    const bool nothingFound = seenMatchEvents == 0;
     // rg exit codes: 0 = matches found, 1 = no matches (still ok),
     // 2 = error. Anything ≥ 2 (or hard-kill) is treated as failure
     // only when no matches were parsed.
-    if (run.exitCode >= 2 && matches.isEmpty() && !hardKilled) {
+    if (run.exitCode >= 2 && nothingFound && !hardKilled) {
         QJsonObject o = wsErr("rg_failed",
             QStringLiteral("workspace-search: rg returned non-zero exit code %1")
                 .arg(run.exitCode));
@@ -812,7 +816,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // A REAL hard kill only: a run stopped at the output ceiling (ANTS-5052)
     // has output, just not all of it, and falls through to a truncated reply
     // — reporting it as a wall-budget timeout would name the wrong limit.
-    if (run.hardKilled && matches.isEmpty()) {
+    if (run.hardKilled && nothingFound) {
         // No partial results — surface the hard kill rather than
         // pretending the search finished cleanly. ANTS-1565-INV-3/4 —
         // include the effective budget and a fallback hint so callers
@@ -829,7 +833,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // ANTS-3405 — parse budget blown with no partial results: return the
     // same soft rg_failed envelope (never a raw transport timeout). With
     // partial results, fall through and flag truncated below.
-    if (parseBudgetExceeded && matches.isEmpty()) {
+    if (parseBudgetExceeded && nothingFound) {
         QJsonObject o = wsErr("rg_failed",
             QStringLiteral("workspace-search: match stream too large to parse "
                            "within %1 s wall budget").arg(budgetSec));

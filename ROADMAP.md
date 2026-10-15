@@ -69064,6 +69064,10 @@ names the sign it claims (SIGN-1 to SIGN-5).
   triggers), and end at a gate (a build or a test suite). Same rules as
   the other benches: fixed prompt and model after the first run, one
   planted defect or feature with a test that fails until done.
+  claude-config (2026-10-15): the old write-code is skills/write-code/
+  at ~/.claude commit c19b5e4; the rebuild merges first. The bench needs
+  a config-dir option so the "before" arm can run against a ~/.claude
+  worktree at c19b5e4. Merge sha to follow.
   **Layman:** A practice job that makes Claude use the code-editing checklist, so trimming that checklist can be measured.
   Kind: test.
   Source: claude-config request 2026-10-15.
@@ -72190,7 +72194,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-CFG-0794-2026-10-15.
   Lanes: claude-hooks.
 
-- 📋 [ANTS-5711] **workspace_search keeps the files it found when it times out in files_only, matches_only or count_only mode.**
+- ✅ [ANTS-5711] **workspace_search keeps the files it found when it times out in files_only, matches_only or count_only mode.**
   Reported by UT_MonsterHunt: an unscoped files_only search hard-killed
   at 5 s, three times, while plain rg took 0.04 s. Reproduced 2026-10-15:
   the slow runs were a cold page cache on a busy disk (the verb answered
@@ -72200,6 +72204,10 @@ measured Ants adding about 5,250 tokens to every request.
   three modes never fill matches[], so files already found are dropped
   and rg_failed is returned. Test seenMatchEvents == 0 instead; the
   reply then falls through as truncated. Saves the failed call + retry.
+  Resolved (2026-10-15): the three guards in cmdWorkspaceSearch test
+  seenMatchEvents == 0.
+  McpWorkspaceSearch.Ants5711HardKillKeepsPartialResultsInEveryMode
+  (fake rg) red before, green after.
   **Layman:** A search that runs out of time hands back what it already found instead of failing.
   Kind: fix.
   Source: UT_MonsterHunt feedback 2026-10-15.

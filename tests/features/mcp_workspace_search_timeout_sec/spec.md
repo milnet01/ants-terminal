@@ -18,8 +18,9 @@ fallback hint.
   against `kWorkspaceSearchMinBudgetMs` (1000) /
   `kWorkspaceSearchMaxBudgetMs` (30000); out-of-range falls back to
   default.
-- **INV-3** — the hard-kill error envelope (when matches.isEmpty())
-  carries a `hint` field naming the three viable next steps.
+- **INV-3** — the hard-kill error envelope (sent only when no match was
+  parsed, in any mode — ANTS-5711) carries a `hint` field naming the
+  three viable next steps.
 - **INV-4** — the ok:true and hard-kill envelopes both carry the
   effective `timeout_sec` field (in seconds).
 - **INV-5** — the `workspace_search` inputSchema in

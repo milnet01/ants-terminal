@@ -86,6 +86,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **workspace_search returns what it found when it runs out of time, in every mode** (ANTS-5711)
+  A files-only, matches-only or count-only search that hits its time
+  budget now hands back the results it already had, marked truncated,
+  so the caller does not need a second call.
+
 - **The roadmap store refuses to file an item into another project's section on every path, not only when the item is created.** (ANTS-3760)
 
 - **The context gauge moves as soon as a tool's output lands, with an estimate the hover text marks, instead of waiting for Claude's next reply** (ANTS-5682)
