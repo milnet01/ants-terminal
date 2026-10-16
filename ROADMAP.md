@@ -72521,7 +72521,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-request-2026-10-16.
   Lanes: mcp-tools.
 
-- 🚧 [ANTS-5733] **After a relaunch that restores tabs, the focused tab's Claude session drives the context gauge without a tab switch.**
+- ✅ [ANTS-5733] **After a relaunch that restores tabs, the focused tab's Claude session drives the context gauge without a tab switch.**
   Found 2026-10-16 recording trailer clip 3: in a restored single tab the
   gauge never appeared. restoreSessions (mainwindow_sessions.cpp) makes the
   tab current before startShell, so the tab-switch handler calls
@@ -72532,6 +72532,10 @@ measured Ants adding about 5,250 tokens to every request.
   Fix: setShellPid(focused tab's PID) after the restore loop. Test:
   claude_dot_restored_tabs WI-3.
   Reload: a bug fix; reaches a running terminal with its next relaunch.
+  Shipped 2026-10-16: restoreSessions calls setShellPid for the focused
+  tab once the shells run. Verified on screen: in the demo (which
+  restores a saved tab), the gauge never appeared before the fix and
+  appears about 1 s after Claude's first tool call with it.
   **Layman:** After reopening the terminal, the bar showing how full Claude's memory is now appears without having to click to another tab and back.
   Kind: fix.
   Source: in-session-2026-10-16 (trailer clip 3 recording).

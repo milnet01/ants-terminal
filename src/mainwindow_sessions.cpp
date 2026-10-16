@@ -306,6 +306,13 @@ void MainWindow::restoreSessions() {
                 m_claudeStatusBarController->trackBgShell(tab.terminal->shellPid());
         }
 
-        if (auto *t = focusedTerminal()) t->setFocus();
+        // ANTS-5733 — setCurrentIndex ran before any shell started, so the
+        // tab-switch handler gave ClaudeIntegration PID 0 and its poll
+        // stopped. Wire the focused tab now that its shell has a PID.
+        if (auto *t = focusedTerminal()) {
+            if (m_claudeIntegration && t->shellPid() > 0)
+                m_claudeIntegration->setShellPid(t->shellPid());
+            t->setFocus();
+        }
     });
 }

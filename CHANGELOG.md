@@ -126,6 +126,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **After the terminal reopens its saved tabs, the context gauge appears for the focused tab's Claude session without switching tabs.** (ANTS-5733)
+
 - **The context gauge appears as soon as a Claude session is found, even when the transcript ends with a long run of non-reply records.** (ANTS-5731)
   The transcript reader now keeps widening its window until it reaches the newest reply that carries a token count.
 
