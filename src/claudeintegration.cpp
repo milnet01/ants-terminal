@@ -881,16 +881,20 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // belong to a child task, not the main session. A sidechain end_turn must
     // not flip the main session to Idle while the outer Task tool_use is still
     // in flight. Mirror the filter already present in claudebgtasks.cpp.
-    QList<QJsonObject> events;
-    for (const QByteArray &raw : tail.split('\n')) {
-        const QByteArray line = raw.trimmed();
-        if (line.isEmpty()) continue;
-        const QJsonDocument doc = QJsonDocument::fromJson(line);
-        if (!doc.isObject()) continue;
-        const QJsonObject obj = doc.object();
-        if (obj.value(QStringLiteral("isSidechain")).toBool()) continue;
-        events.append(obj);
-    }
+    const auto parseEvents = [](const QByteArray &buf) {
+        QList<QJsonObject> out;
+        for (const QByteArray &raw : buf.split('\n')) {
+            const QByteArray line = raw.trimmed();
+            if (line.isEmpty()) continue;
+            const QJsonDocument doc = QJsonDocument::fromJson(line);
+            if (!doc.isObject()) continue;
+            const QJsonObject obj = doc.object();
+            if (obj.value(QStringLiteral("isSidechain")).toBool()) continue;
+            out.append(obj);
+        }
+        return out;
+    };
+    const QList<QJsonObject> events = parseEvents(tail);
 
     if (events.isEmpty()) return snap;
     snap.hasEvents = true;
@@ -912,38 +916,55 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // so the context is the sum of all three input fields.
     // ANTS-5631 — a compact boundary newer than every usage event is the
     // reading: Claude Code records the post-compact size on it.
-    for (int i = events.size() - 1; i >= 0; --i) {
-        const QJsonObject usage = events[i].value("message").toObject()
-                                           .value("usage").toObject();
-        qint64 tokens =
-            usage.value("input_tokens").toInteger()
-            + usage.value("cache_creation_input_tokens").toInteger()
-            + usage.value("cache_read_input_tokens").toInteger();
-        const bool isCompact = events[i].value("subtype").toString()
-                == QLatin1String("compact_boundary");
-        if (isCompact)
-            tokens = events[i].value("compactMetadata").toObject()
-                         .value("postTokens").toInteger();
-        if (tokens > 0 && !isCompact) {
-            // ANTS-5682 — the reply itself joins the context, and so does
-            // every user or tool-result record written after it. Those carry
-            // no usage, so estimate them at four bytes a token until the
-            // next reply reports the real figure.
-            tokens += usage.value("output_tokens").toInteger();
-            qint64 laterBytes = 0;
-            for (int j = i + 1; j < events.size(); ++j)
-                if (events[j].value("type").toString() == QLatin1String("user"))
-                    laterBytes += userRecordTextBytes(events[j]);
-            if (laterBytes > 0) {
-                tokens += laterBytes / 4;
-                snap.contextEstimated = true;
+    const auto readContext = [&snap](const QList<QJsonObject> &evs) {
+        for (int i = evs.size() - 1; i >= 0; --i) {
+            const QJsonObject usage = evs[i].value("message").toObject()
+                                            .value("usage").toObject();
+            qint64 tokens =
+                usage.value("input_tokens").toInteger()
+                + usage.value("cache_creation_input_tokens").toInteger()
+                + usage.value("cache_read_input_tokens").toInteger();
+            const bool isCompact = evs[i].value("subtype").toString()
+                    == QLatin1String("compact_boundary");
+            if (isCompact)
+                tokens = evs[i].value("compactMetadata").toObject()
+                             .value("postTokens").toInteger();
+            if (tokens > 0 && !isCompact) {
+                // ANTS-5682 — the reply itself joins the context, and so
+                // does every user or tool-result record written after it.
+                // Those carry no usage, so estimate them at four bytes a
+                // token until the next reply reports the real figure.
+                tokens += usage.value("output_tokens").toInteger();
+                qint64 laterBytes = 0;
+                for (int j = i + 1; j < evs.size(); ++j)
+                    if (evs[j].value("type").toString() == QLatin1String("user"))
+                        laterBytes += userRecordTextBytes(evs[j]);
+                if (laterBytes > 0) {
+                    tokens += laterBytes / 4;
+                    snap.contextEstimated = true;
+                }
+            }
+            if (tokens > 0) {
+                snap.contextTokens = tokens;
+                snap.contextPercent = static_cast<int>(std::min<qint64>(
+                    100, tokens * 100 / kDefaultContextWindowTokens));
+                return true;
             }
         }
-        if (tokens > 0) {
-            snap.contextTokens = tokens;
-            snap.contextPercent = static_cast<int>(std::min<qint64>(
-                100, tokens * 100 / kDefaultContextWindowTokens));
-            break;
+        return false;
+    };
+    // ANTS-5731 — the window above stops at two newlines, and a session can
+    // end with more metadata than that (attachments, last-prompt, mode
+    // records). Keep doubling, for the context reading only, until a usage
+    // record or compact boundary is in the window.
+    if (!readContext(events)) {
+        while (window < kMaxWindow && window < size) {
+            window = std::min(window * 2, kMaxWindow);
+            const qint64 start = std::max(qint64(0), size - window);
+            if (!file.seek(start)) break;
+            QByteArray wider = file.read(size - start);
+            if (start > 0) wider.remove(0, wider.indexOf('\n') + 1);
+            if (readContext(parseEvents(wider))) break;
         }
     }
 

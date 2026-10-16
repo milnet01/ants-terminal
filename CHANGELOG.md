@@ -126,6 +126,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The context gauge appears as soon as a Claude session is found, even when the transcript ends with a long run of non-reply records.** (ANTS-5731)
+  The transcript reader now keeps widening its window until it reaches the newest reply that carries a token count.
+
 - **One click on a tab in the Tab List Panel always switches to it, the moment the button goes down** (ANTS-5717)
 
 - **The unread-mail notice no longer repeats on each prompt for mail a session was already told about** (ANTS-5716)

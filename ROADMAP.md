@@ -72477,7 +72477,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-16 trailer recording.
   Lanes: claude-integration.
 
-- 📋 [ANTS-5731] **The context gauge finds the latest usage record however much non-usage data the transcript ends with.**
+- ✅ [ANTS-5731] **The context gauge finds the latest usage record however much non-usage data the transcript ends with.**
   User report 2026-10-16 (screenshot): after a relaunch, a long Claude session
   showed "Claude: thinking" and the saved chip but no context gauge.
   Diagnosis, measured on that session's transcript (34 MB): the last 32,
@@ -72496,6 +72496,11 @@ measured Ants adding about 5,250 tokens to every request.
   with one usage record followed by > 32 KB and > 2 lines of non-usage
   records; contextTokens > 0. Red first.
   Reload: none needed beyond the new binary (a bug fix).
+  Shipped 2026-10-16: the context walk keeps doubling the window to the
+  record cap until it finds a usage record or compact boundary. The
+  "keep the last known value" half needed no change:
+  parseTranscriptForState already updates only on a non-zero reading.
+  Test: ClaudeContextMeter.Inv10UsageFoundPastTrailingMetadata.
   **Layman:** The bar showing how full Claude's memory is can take a long time to appear; it gives up looking too early.
   Kind: fix.
   Source: user-report-2026-10-16.
