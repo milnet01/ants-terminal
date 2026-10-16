@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5744 -->
+<!-- ants-roadmap-id-high-water: ANTS=5745 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94968,6 +94968,21 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   **Layman:** A new user without Claude Code can install it from the welcome window in one click, and is told it needs a paid Claude plan.
   Kind: feature.
   Source: user-request-2026-10-16.
+  Lanes: ui.
+
+- 📋 [ANTS-5745] **Under Flatpak, the welcome dialog's Claude Code setup reaches the host's claude and ~/.claude.**
+  Found 2026-10-16 by the review-contract gate on the ANTS-5744
+  amendment (loop 3, both lanes). registerMcp and mcpStatus run and look
+  up `claude` inside the sandbox (QProcess, QStandardPaths), with no
+  HostExec / flatpak-spawn --host routing, so under Flatpak the "Connect
+  Ants MCP" row cannot reach a host-installed claude. Detection of
+  ~/.claude likewise depends on the manifest sharing the home directory.
+  Fix: route the claude calls through HostExec::wrap (src/hostexec.h) and
+  state the Flatpak behaviour in docs/specs/ANTS-5558-welcome-dialog.md
+  § 2.4. Reload: nothing; dialog built per open.
+  **Layman:** The Flatpak version of Ants can connect its tools to Claude Code from the welcome window, as the other versions can.
+  Kind: review-fix.
+  Source: review-contract-2026-10-16 ANTS-5558 loop 3.
   Lanes: ui.
 
 ## How to propose a roadmap item
