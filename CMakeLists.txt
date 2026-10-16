@@ -4531,7 +4531,12 @@ if(ANTS_TESTS)
                 ants_trace_lib ants_mcpcore_lib ants_audit_lib ants_roadmapstore_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
                 -Wl,--end-group
-        SOURCES tests/features/trace/test_trace_languages.cpp)
+        SOURCES tests/features/trace/test_trace_languages.cpp
+                tests/features/trace/test_trace_serve.cpp)
+    set_property(SOURCE tests/features/trace/test_trace_serve.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # Spec § 3 — the fixture project each case copies to a temporary dir.
+        TRACE_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/features/trace/fixture")
 
     # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
     # gtest test names do not exist at configure time, so the properties are
