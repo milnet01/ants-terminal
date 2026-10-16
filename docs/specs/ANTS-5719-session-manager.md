@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-5719 — Claude Code session manager: see, park and resume sessions by memory
 
-**Status:** accepted (2026-10-15) — review-contract capped at loop 2; the loop-2 fixes were read by no lane.
+**Status:** accepted (2026-10-16) — amended with § 14 Reload and INV-10; review-contract capped at loop 4; the loop-4 fixes were read by no lane.
 **Kind:** feature.
 **Source:** ROADMAP ANTS-5719 (user request 2026-10-15).
 **Blocker for:** ANTS-5720 (heavy jobs take turns).
@@ -168,7 +168,7 @@ is still running); then, for automatic parking only, idle under `minIdleMs`
 
 **Park** (manual or automatic), on a session whose verdict is `Ok`:
 
-1. Record `{sessionId, cwd, flags}` in `SessionMonitor`, keyed by shell
+1. Record `{sessionId, cwd, flags, claudePid}` in `SessionMonitor`, keyed by shell
    pid (`parkedRecord(shellPid)` reads it; every consumer reads it there). `cwd` is
    `/proc/<claudePid>/cwd`. `flags` are the arguments of
    `/proc/<claudePid>/cmdline` that are on an allowlist:
@@ -190,18 +190,19 @@ is still running); then, for automatic parking only, idle under `minIdleMs`
 3. While a record exists and the tracker reports `NotRunning`, the
    tab-dot provider in `src/claudestatuswidgets.cpp` shows `Glyph::Idle`
    (grey) for that shell instead of hiding the dot, and the manager row
-   reads "Parked". The record is dropped when the tracker finds a new
-   `claudePid` for that shell.
+   reads "Parked".
 
-On `StillRunning` the park is reported as failed and the record is dropped.
-Ants never sends `SIGKILL`.
+**The record is dropped on any of:** Resume; the tracker reporting a
+non-zero `claudePid` for that shell that differs from the recorded one (a
+`claude` started by hand); the shell being untracked or its tab closing;
+`setEnabled(false)` (§ 14); and a `StillRunning` result, which is reported
+as a failed park. Ants never sends `SIGKILL`.
 
 **Resume**, from the row's button or from the tab's context menu: write
 `cd <cwd> && claude --resume <sessionId> <flags>` into that tab with
 `TerminalWidget::writeCommand`, every value through `shellQuote`, as
 `openClaudeProjectsDialog` does. A session id that does not match
 `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` is refused.
-Resume clears the record.
 
 A parked record lives in memory only. After Ants restarts, a parked tab is
 a plain shell; the session is still resumable from Projects & Sessions
@@ -333,10 +334,11 @@ call `SessionManagerController::applyConfig` (§ 14).
   config. No relaunch is involved.
   *Test:* same file, `Inv10EnabledStopsAndStarts`: enable, park a fake
   session through a recording terminate function, disable — `monitor()`
-  is null; enable — `monitor()` is non-null, a different object, holding
-  no parked record, its timer active.
-  *Breaks when:* the monitor or its parked records survive a disable, or
-  an enable reuses the old monitor.
+  is null and an open `SessionManagerDialog` has been destroyed; enable —
+  `monitor()` is non-null, a different object, holding no parked record,
+  its timer active.
+  *Breaks when:* the monitor, its parked records or the window survive a
+  disable, or an enable reuses the old monitor.
 
 ## 6. Failure modes
 
@@ -350,7 +352,7 @@ call `SessionManagerController::applyConfig` (§ 14).
 - **A child outlives `claude`** (an MCP server or `clangd` that does not
   exit with it; unverified on this host): Ants does not kill it.
 - **The user types into a parked tab** before resuming: that is a normal
-  shell; the Resume button stays until used or the tab closes.
+  shell; the Resume button stays until a drop condition in § 4.5 fires.
 - **A parked session misses peer messages.** `session_message` mail waits
   in the store and is read on resume; a `SendMessage` to a parked session
   finds no live session.
