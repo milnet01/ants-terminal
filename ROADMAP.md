@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5726 -->
+<!-- ants-roadmap-id-high-water: ANTS=5729 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72384,7 +72384,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config request 2026-10-15 (CFG-0794).
   Lanes: hooks.
 
-- 💭 [ANTS-5725] **Show the four always-loaded verbs' rarely used arguments only through tool_info, so each schema is about 600 bytes on the wire.**
+- 📋 [ANTS-5725] **Show the four always-loaded verbs' rarely used arguments only through tool_info, so each schema is about 600 bytes on the wire.**
   claude-config measured 8.4 KB on every request for workspace_search
   (3,240 B), file_outline (2,237), read_region (1,888) and find_definition
   (1,089), with session_cost startup.largest_tools. That is after ANTS-5628
@@ -72397,6 +72397,9 @@ measured Ants adding about 5,250 tokens to every request.
   (measure use from the transcripts), and whether Claude Code accepts an
   argument the schema does not list. Check: session_cost
   startup.largest_tools before and after.
+  Decision (user, via claude-config, 2026-10-16): yes. Keep every argument
+  used in at least 5% of calls visible. First confirm Claude Code passes an
+  argument the wire schema does not list; if it does not, drop the idea.
   **Layman:** Four Ants tools are loaded into every Claude request; listing only their common options would make every request lighter.
   Kind: perf.
   Source: claude-config request 2026-10-16.
@@ -72412,6 +72415,51 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: perf.
   Source: claude-config request 2026-10-16.
   Lanes: mcp.
+
+- 📋 [ANTS-5727] **The Roadmap window hides HTML comments in a ROADMAP.md file, as Markdown does.**
+  Seen 2026-10-16 recording trailer clips: a project whose ROADMAP.md
+  opens with `<!-- ants-roadmap-format: 1 -->` (the line roadmap-format.md
+  puts first) and has no store entry shows that comment as visible text
+  above the title in RoadmapDialog's Full roadmap tab. The `**Legend**`
+  block and the `---` rule also render as stray lines above the sections.
+  Repro: a folder with only that ROADMAP.md, git init, open Ants there,
+  click Roadmap in the status bar.
+  **Layman:** The roadmap window showed an invisible formatting note as visible text at the top.
+  Kind: fix.
+  Source: in-session-2026-10-16 trailer recording.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5728] **A project can opt in to Claude in Chrome, so Ants starts its Claude sessions with --chrome and the global default can be off.**
+  claude-config request, the user's choice (2026-10-16): Claude in Chrome
+  costs about 6 KB per message and is on in every session
+  (claudeInChromeDefaultEnabled). The user wants it off by default and on
+  for Groundwork and demoreel; OneUp, Deedbox, RetroDB and Pressless will
+  type /chrome when needed. Add an opt-in key to .ants/project.json
+  (e.g. "claude_chrome": true, edited by project_settings), and make every
+  Ants path that starts claude for a project add --chrome when it is set:
+  the Projects & Sessions dialog (new, --continue, --resume) and any
+  other launcher found. First list every place Ants writes a claude
+  command. Tell claude-config when it ships; they walk the user through
+  /chrome. Reload: the key is read from project.json at each launch, so a
+  running terminal picks it up with no relaunch.
+  **Layman:** Claude's browser tools cost tokens in every session; only the projects that use them will turn them on.
+  Kind: feature.
+  Source: claude-config request 2026-10-16 (user decision).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-5729] **Find out why a restored tab showed no earlier output after a quit and relaunch, though the session file saves the grid and scrollback.**
+  Seen 2026-10-16 recording trailer clips (build 0.7.114 from main, empty
+  config, private X display): in a tab, ran a command that printed five
+  lines, quit with Ctrl+Shift+Q, relaunched. All six tabs, titles and
+  colours came back; the tab showed only a fresh prompt, and Shift+PgUp
+  showed nothing above it. mainwindow_sessions.cpp is said to save the
+  grid with scrollback in each session_<uuid>.dat. Settle first whether
+  restoring screen content is promised (CHANGELOG, README), then whether
+  the content is saved, restored, or cleared by the new shell.
+  **Layman:** After a restart, tabs came back but the text that was in them did not.
+  Kind: investigate.
+  Source: in-session-2026-10-16 trailer recording.
+  Lanes: sessions.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
