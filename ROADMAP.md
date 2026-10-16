@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5749 -->
+<!-- ants-roadmap-id-high-water: ANTS=5750 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -68865,7 +68865,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: in-session-2026-10-10 (ut-monsterhunt report after ANTS-5366).
   Lanes: roadmapstore, mcp.
 
-- 📋 [ANTS-5723] **CLAUDE.md's verb bullet names the code lists a new MCP verb must join and every window dependency it must avoid.**
+- ✅ [ANTS-5723] **CLAUDE.md's verb bullet names the code lists a new MCP verb must join and every window dependency it must avoid.**
   review-contract on CLAUDE.md (2026-10-16, two lanes, both raised it;
   outside the armed change, so filed rather than fixed in the run).
   § Hot reload's verb bullet says a window-free verb "adds no new call
@@ -68881,6 +68881,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   with no forwarder.
   Fix: name both functions, and ANTS-4932 § 1's three forms as the check.
   Owes rule 14's gate (direction change).
+  Shipped 2026-10-16 (80ebfc81, 12012595, 57c1bcdc): the verb bullet
+  names mcp::registerProjectScopedVerbs(), mcp::registerMcpdOnlyVerbs(),
+  ANTS-4932 § 1's three forms and mcp::terminalScopedVerbNames(). Rule
+  14 gate: review-contract, loops 13–15 in
+  docs/reviews/CLAUDE-md-review-contract-2026-08-31.md, cap reached,
+  calm. Three ANTS-4932 findings filed as ANTS-5750.
   **Layman:** The project rules for adding an MCP tool point at the wrong list and miss one way a tool can break without the terminal window.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16.
@@ -68931,6 +68937,24 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   **Layman:** The project's spec rules and the shared spec rules disagree on two points, so a writer can follow one and break the other.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 loop 9.
+
+- 📋 [ANTS-5750] **ANTS-4932's spec matches the code on mcpd-only verbs, reconnects and the terminal-scoped list.**
+  Found by review-contract on CLAUDE.md (2026-10-16, loop 15; outside
+  that subject, so filed). All three in
+  docs/specs/ANTS-4932-standalone-mcp-server.md:
+  [Q2] INV-2 says registerToolProvider is called for a non-terminal
+  verb "from src/mcptoolregistry.cpp and from no other translation
+  unit"; trace registers from src/trace/traceverb.cpp via
+  mcp::registerMcpdOnlyVerbs. Scope INV-2 to shared verbs, as INV-3 was.
+  [Q1] § 2.1: changing a verb's behaviour "needs neither" a reconnect
+  nor a relaunch; a rebuilt ants-mcpd reaches a client only on reconnect.
+  [Q1] § 2.3's terminal-scoped list names the get_git_status lambda;
+  mcp::terminalScopedVerbNames() (src/mcptoolregistry.cpp) does not.
+  Owes rule 14's gate (spec amendment; the third may be the exemption
+  for recording existing code).
+  **Layman:** The design document for the standalone MCP server has fallen behind the code in three places.
+  Kind: doc-fix.
+  Source: review-contract CLAUDE.md 2026-10-16 loop 15.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
