@@ -97,9 +97,10 @@ from `build_target_for`; check `ctest -N -R <name>` moved after building it.**
 ## Hot reload is the design default (user standing rule)
 
 **Every new feature states how it reaches a running terminal without a
-relaunch.** Acceptable answers: nothing; a re-read of a file; a client
-reconnect; a restart of the feature's own process. Where "restart the terminal" is unavoidable, the design says so
-and why. A relaunch kills every Claude Code session in its tabs (`~Pty`,
+relaunch**, in its design, or in its commit message where it has none.
+Acceptable answers: nothing; a re-read of a file; a client reconnect; a
+restart of the feature's own process. Where "restart the terminal" is
+unavoidable, it says so and why. A relaunch kills every Claude Code session in its tabs (`~Pty`,
 `src/ptyhandler.cpp`).
 
 - Behaviour that is data — a rule pack, schema, description, theme, keymap,
@@ -115,10 +116,11 @@ and why. A relaunch kills every Claude Code session in its tabs (`~Pty`,
 - **Build every new feature as modular as possible (user, 2026-10-15).** It
   can be stopped and started on its own while the terminal runs, tearing
   down and rebuilding its state, so a stuck feature never needs a relaunch.
-  Where its code can run in its own process (the `ants-mcpd` model), a new
-  build reaches a running terminal by restarting that process alone. The
-  design names its stop/start control, as well as its reload answer. A
-  feature that holds no running state says so instead.
+  The same statement says whether its code runs in its own process (the
+  `ants-mcpd` model, where a new build reaches a running terminal by
+  restarting that process alone), and why. It names its stop/start control
+  as well as its reload answer, or says why it has none: it holds no
+  running state, or a terminal restart is unavoidable.
 
 It does not apply to a bug fix, a test, a document or a version bump.
 Retrofitting is a roadmap item, never an obligation. Models to copy:
