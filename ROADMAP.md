@@ -72704,6 +72704,10 @@ measured Ants adding about 5,250 tokens to every request.
   ants-mcpd is rebuilt from it and a client reconnects. Still open in
   ship 3: php (ANTS-5751), generated_by vs vendor script before swift
   (ANTS-5752), and the rest of § 2.3's ship-3 list.
+  2026-10-16: ship-1 notice sent to claude-config (session_message 717,
+  with ANTS-5735's), after server_build showed 35198ade live. The ship-3
+  first-batch notice to groundwork waits on an ants-mcpd built from
+  f1ea7d5c or later.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
