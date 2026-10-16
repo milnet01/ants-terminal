@@ -112,9 +112,9 @@ qint64 memAvailableKb(const QString &procRoot = "/proc");
 - A process that exits mid-walk is skipped, not an error.
 
 A `SessionMonitor` (`QObject`, in the same module) samples every tracked
-shell plus `MemAvailable` every 5 seconds on a `QTimer`, only while the
-manager window is open or a threshold is armed (always, while
-`session_manager_enabled` is true). It keeps the last 12 samples per shell
+shell plus `MemAvailable` every 5 seconds on a `QTimer`, while
+`session_manager_enabled` is true. While it is false there is no monitor
+(§ 14), and the "Session Manager…" menu item is disabled. It keeps the last 12 samples per shell
 (one minute) and emits `sampled()`.
 
 ### 4.3 The manager window — new `SessionManagerDialog`
@@ -182,7 +182,10 @@ is still running); then, for automatic parking only, idle under `minIdleMs`
    ParkResult sessionmemory::terminateAndWait(pid_t pid, int timeoutMs);
    ```
 
-   with `timeoutMs` 10000. The transcript is already on disk: Claude Code
+   with `timeoutMs` 10000, run off the GUI thread (`QtConcurrent::run`).
+   `SessionMonitor` emits `parkFinished(shellPid, ParkResult)` on the GUI
+   thread; the dialog, the status-bar message and the next auto-park step
+   all wait for it. The transcript is already on disk: Claude Code
    appends each message as it is written.
 3. While a record exists and the tracker reports `NotRunning`, the
    tab-dot provider in `src/claudestatuswidgets.cpp` shows `Glyph::Idle`
@@ -255,10 +258,11 @@ call `SessionManagerController::applyConfig` (§ 14).
   *Test:* `tests/features/session_manager/test_session_manager.cpp`
   `SessionManager.Inv1TreeSumsEveryDescendantOnce`, against a fixture
   `procRoot` with a three-level tree whose `smaps_rollup` files carry known
-  Pss values, one process listed as a child of two parents, and one whose
-  only link is its `stat` ppid (in no `children` file).
-  *Breaks when:* the walk skips grandchildren or the ppid-only process, or
-  counts the twice-listed process twice.
+  Pss values, a second root that is a descendant of the first, and two
+  processes whose `stat` ppids point at each other.
+  *Breaks when:* the walk skips grandchildren, leaves the nested root's
+  processes out of the outer root's sum, counts a process twice within
+  one root, or loops on the ppid cycle.
 
 - **INV-2** — `sampleTrees` stops a root's tree at `kMaxTreePids` and sets its `capped`.
   *Test:* same file, `Inv2WalkIsCapped`, fixture tree of 300 processes.
