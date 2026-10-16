@@ -22,10 +22,11 @@ PIDs, and `shellState(pid)` falls through to the default
 the indicator-provider lambda translates to `Glyph::None` (no
 dot).
 
-The bottom-bar still works because the tab-switch handler at
-`mainwindow.cpp:4340` calls `m_claudeIntegration->setShellPid(...)`
-on focus, wiring up `ClaudeIntegration` independently of the
-tracker.
+The same path also never wired `ClaudeIntegration` (ANTS-5733).
+It makes the tab current before its shell starts, so the tab-switch
+handler passes `setShellPid` a PID of 0 and the poll stops. The status
+label survived through the tracker, but the context gauge stayed hidden
+until a tab switch.
 
 Fix: one line. After `startShell` succeeds in `restoreSessions`,
 call `trackShell(terminal->shellPid())` (same shape as `newTab`).
@@ -42,3 +43,6 @@ Source-grep on `MainWindow::restoreSessions` body via the
   against accidental hoist of the trackShell call out of the
   restoredTabs loop (where it must run AFTER startShell sets the
   shell PID).
+- **WI-3** body calls `setShellPid(` after `startShell(` — without
+  this, `ClaudeIntegration` never polls the restored focused tab and
+  the context gauge stays hidden (ANTS-5733).

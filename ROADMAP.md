@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5732 -->
+<!-- ants-roadmap-id-high-water: ANTS=5733 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72520,6 +72520,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: claude-config-request-2026-10-16.
   Lanes: mcp-tools.
+
+- 🚧 [ANTS-5733] **After a relaunch that restores tabs, the focused tab's Claude session drives the context gauge without a tab switch.**
+  Found 2026-10-16 recording trailer clip 3: in a restored single tab the
+  gauge never appeared. restoreSessions (mainwindow_sessions.cpp) makes the
+  tab current before startShell, so the tab-switch handler calls
+  setShellPid(0) and ClaudeIntegration's poll stops; after startShell only
+  trackShell/trackBgShell run, never setShellPid(realPid). The label and
+  model chips still work (tracker path), which hid it. Likely the main
+  cause of the ANTS-5731 user report ("after a relaunch ... no gauge").
+  Fix: setShellPid(focused tab's PID) after the restore loop. Test:
+  claude_dot_restored_tabs WI-3.
+  Reload: a bug fix; reaches a running terminal with its next relaunch.
+  **Layman:** After reopening the terminal, the bar showing how full Claude's memory is now appears without having to click to another tab and back.
+  Kind: fix.
+  Source: in-session-2026-10-16 (trailer clip 3 recording).
+  Lanes: claude-integration.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

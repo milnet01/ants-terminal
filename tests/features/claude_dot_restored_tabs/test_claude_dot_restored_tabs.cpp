@@ -39,6 +39,17 @@ void testWiring() {
     // run AFTER startShell has set the shell PID).
     expect(body.find("startShell(") != std::string::npos,
            "WI-2 restoreSessions still calls startShell");
+
+    // WI-3 (ANTS-5733) — once the shells run, the focused tab's shell
+    // PID reaches ClaudeIntegration. The tab is made current before its
+    // shell starts, so the tab-switch handler saw PID 0 and stopped the
+    // poll; without this the context gauge never appeared after a
+    // relaunch until the user switched tabs.
+    const size_t start = body.find("startShell(");
+    const size_t wire = body.find("setShellPid(");
+    expect(wire != std::string::npos && start != std::string::npos
+               && wire > start,
+           "WI-3 restoreSessions calls setShellPid after startShell");
 }
 
 int runMain() {
