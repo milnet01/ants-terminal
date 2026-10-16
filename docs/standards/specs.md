@@ -199,7 +199,7 @@ the bullet form** — it is what the overwhelming majority of specs use
 and what reviewers expect:
 
 ```
-- **INV-1** — <one testable claim>. *Test:* <test surface>.
+- **INV-1** — <one testable claim>. *Test:* <test surface; a command adds its result>.
   *Breaks when:* <the input or state that makes it fail>.
 - **INV-2** — <…>. *Test:* <…>. *Breaks when:* <…>.
 ```
@@ -528,7 +528,7 @@ Copy this to start a new spec:
 
 ## 3. Invariants
 
-- **INV-1** — <testable claim>. *Test:* <feature test / grep / recipe>.
+- **INV-1** — <testable claim>. *Test:* <feature test / recipe / grep and its result>.
   *Breaks when:* <input or state>.
 - **INV-2** — <…>. *Test:* <…>. *Breaks when:* <…>.
 
