@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Commit-message gate. One check.
+#
+# ANTS-5721 — a commit that adds a source file under src/ carries a line
+# `Reload: <how it reaches a running terminal>`. CLAUDE.md § "Hot reload is
+# the design default" asks every new feature to say that, and nothing checked
+# it. A new source file is the cheapest sign of a new feature; a commit that
+# only edits or deletes files is not asked. Contract:
+# tests/features/commit_msg_reload/spec.md.
+#
+# Runs here, not in pre-commit, because pre-commit runs before the message
+# exists. Bypass: `git commit --no-verify`, which needs the user.
+set -uo pipefail
+
+msg_file="${1:?commit-msg: no message file}"
+
+added="$(git diff --cached --name-only --diff-filter=A -- \
+    'src/*.cpp' 'src/*.h' 'src/*.c' 'src/*.cc' 'src/*.hpp')"
+[ -z "$added" ] && exit 0
+
+if grep -Eq '^Reload:[[:space:]]*[^[:space:]]' "$msg_file"; then
+    exit 0
+fi
+
+{
+    echo "commit-msg: this commit adds source files under src/:"
+    printf '%s\n' "$added" | sed 's/^/    /'
+    echo "Add a line saying how the change reaches a running terminal without"
+    echo "a relaunch (CLAUDE.md § \"Hot reload is the design default\"), e.g."
+    echo "    Reload: re-read of config.json on change"
+    echo "    Reload: n/a — bug fix, no new feature"
+} >&2
+exit 1

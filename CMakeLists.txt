@@ -1634,6 +1634,13 @@ if(ANTS_TESTS)
         TIMEOUT 60
         SKIP_RETURN_CODE 77)
 
+    # ANTS-5721 — a commit adding a src/ source file carries a Reload: line.
+    add_test(NAME commit_msg_reload
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/commit_msg_reload/test_commit_msg_reload.sh")
+    set_tests_properties(commit_msg_reload PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 30)
+
     # The OSC 133 shell integration still emits under set -u / nounset,
     # in bash and in zsh (audit TL-27).
     add_test(NAME osc133_nounset
