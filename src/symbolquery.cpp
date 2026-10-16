@@ -3,6 +3,7 @@
 
 #include "symbolquery.h"
 #include "boundedreadline.h"
+#include "walkrules.h"
 
 #include <QDir>
 #include <QFile>
@@ -798,27 +799,16 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     f.close();
 }
 
-// The entries walk() visits in one directory, in the order it visits them.
-QFileInfoList walkEntries(const QString &dirPath) {
-    return QDir(dirPath).entryInfoList(
-        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable,
-        QDir::Name);
-}
-
-// A directory walk() does not enter.
-bool skippedDir(const QFileInfo &fi) {
-    const QString name = fi.fileName();
-    return name.startsWith(QLatin1Char('.'))
-        || name == QLatin1String("build") || name.startsWith(QLatin1String("build-"))
-        || name == QLatin1String("node_modules");
-}
+// ANTS-5734 — the entry order, the skipped directories and the symlink rule
+// are src/walkrules.h's, shared with the trace engine.
+using walkrules::skippedDir;
 
 void walk(ScanState &st, const QString &dirPath) {
     if (st.walkCapped) return;
-    const QFileInfoList entries = walkEntries(dirPath);
+    const QFileInfoList entries = walkrules::entries(dirPath);
     for (const QFileInfo &fi : entries) {
         if (st.walkCapped) return;
-        if (fi.isSymLink()) continue;  // never follow symlinks out of root
+        if (!walkrules::followed(fi)) continue;  // never out of root
 
         if (fi.isDir()) {
             if (skippedDir(fi)) continue;
@@ -871,8 +861,8 @@ void describeCap(const QString &root, const QString &stoppedAt,
     const QString top = stoppedAt.section(QLatin1Char('/'), 0, 0);
     if (stoppedAt.contains(QLatin1Char('/'))) *stoppedIn = top;
     bool past = false;
-    for (const QFileInfo &fi : walkEntries(root)) {
-        if (past && fi.isDir() && !fi.isSymLink() && !skippedDir(fi))
+    for (const QFileInfo &fi : walkrules::entries(root)) {
+        if (past && fi.isDir() && walkrules::followed(fi) && !skippedDir(fi))
             *unreached << fi.fileName();
         if (fi.fileName() == top) past = true;
     }

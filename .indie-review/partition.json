@@ -445,6 +445,7 @@
         "src/symbolquery.h",
         "src/trace/languages.cpp",
         "src/trace/languages.h",
+        "src/walkrules.h",
         "src/wrapmatch.cpp",
         "src/wrapmatch.h"
       ]
