@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5746 -->
+<!-- ants-roadmap-id-high-water: ANTS=5747 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -83548,6 +83548,26 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: investigate.
   Source: in-session-2026-10-13 (split from ANTS-5683).
   Lanes: claudeintegration, statusbar.
+
+- 📋 [ANTS-5747] **Each tab keeps its own context-gauge reading, so a tab switch shows it at once and an idle tab keeps it.**
+  Today one reading serves the whole window. ClaudeIntegration::setShellPid
+  zeroes it on every tab switch and resetForTabSwitch hides the bar
+  (src/claudestatuswidgets.cpp). It comes back only after the Claude
+  process, its transcript and a usage record are found again.
+  ClaudeTabTracker already watches every tab's transcript but stores no
+  token count.
+  Design (user decision 2026-10-16, chosen over a separate helper
+  process): ClaudeTabTracker keeps each tab's last context reading,
+  updated from its own transcript watches; a tab switch shows the stored
+  value instead of zero. Build after ANTS-5734 stage 4 (user, 2026-10-16).
+  May close ANTS-5663; check it against this once built.
+  Reload: lives in the terminal process, so it needs one terminal
+  restart; it holds no state beyond the per-tab readings, which rebuild
+  from the transcripts.
+  **Layman:** The context gauge appears straight away when you switch to a Claude tab, and stops vanishing on tabs you have not looked at for a while.
+  Kind: enhancement.
+  Source: user-request-2026-10-16.
+  Lanes: claude-integration.
 
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
