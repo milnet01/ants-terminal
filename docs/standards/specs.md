@@ -88,7 +88,7 @@ already required by this section or by § 4, and it is deliberately a
 
 - **§ 3.1 Title and § 3.2 Header block are absent** because they are an
   `#` heading and bold key-value lines, not `##` sections, so the check
-  cannot address them. `spec_query` already fails loudly on both.
+  cannot address them.
 - **§ RAM / build cost is absent** because § 4 requires it *conditionally*
   ("whenever its trigger applies"), and a flat list cannot carry a
   condition. Listing it would convert a conditional rule into an
@@ -205,8 +205,8 @@ and what reviewers expect:
 ```
 
 The GFM table form (`| INV-1 | claim | test surface |`) is also parsed
-by `spec_query` and acceptable, but the bullet form is the default;
-don't introduce a table without reason.
+by `spec_query`, but it has no column for the *Breaks when:* clause
+below, so a new invariant uses the bullet form.
 
 Rules for invariants:
 
@@ -227,7 +227,8 @@ Rules for invariants:
   last such span — `` `grep -c foo src/` `` alone is reported by
   `spec_lint`'s `command_test_no_expectation`, where "3 hits" after it
   is not. Trailing punctuation does not count. The corpus habit of an
-  arrow (`→ 3 hits`) reads well and is not required.
+  arrow (`→ 3 hits`) reads well and is not required. State the result
+  before any *Breaks when:*.
 - Number them `INV-1`, `INV-2`, … and **never renumber** once the spec
   is referenced elsewhere — invariants are cited by id from CHANGELOG,
   CLAUDE.md, and other specs. Add `INV-14`, don't reflow.
@@ -498,7 +499,7 @@ To stay parseable, keep:
 - the `**Status:**` and `**Kind:**` header lines as the first bold
   key-values,
 - invariants in the bullet form `- **INV-N** — body` (or the GFM
-  table form). A `*Test:*` / trailing `— test surface` clause is
+  table form). A `*Test:*` clause is
   surfaced as `test_surface`.
 
 Authors should `spec_query` their own draft once written to confirm it
@@ -569,9 +570,9 @@ its stop/start control, or why it has none>
 |---|---|
 | § 2 the `<ID>-<topic>.md` filename shape | **nothing** — `spec_query` resolves the bare `<ID>.md` too, so a missing slug is invisible to it; the corpus sweep is ANTS-3755 |
 | § 3 the required sections are present | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading § 3's own block. It tests presence, never ORDER, though § 3 fixes their relative order — **nothing** catches a spec whose sections are all present and out of sequence |
-| § 3.2 the header block stays parseable | **`Partial:`** `spec_query`, a parse check that fails loudly on a broken header — but nothing runs it. § 6 asks the author to |
+| § 3.2 the header block stays parseable | **`Partial:`** `spec_query`, a parse check that returns an empty `title`, `status` or `kind` for a broken header, not an error — and nothing runs it. § 6 asks the author to |
 | § 3.5 every invariant carries a test surface | `spec_lint` `invariant_no_test`, a per-invariant clause-presence check. A tombstone is exempt, so a MALFORMED one — the dash in `*withdrawn — …*` is load-bearing — surfaces here as an untested invariant rather than as itself |
-| § 3.5 a command test clause states a result | `spec_lint` `command_test_no_expectation`, a candidate check over the clause's code spans |
+| § 3.5 a command test clause states a result | **`Partial:`** `spec_lint` `command_test_no_expectation`, a candidate check over the clause's code spans. The clause runs to the end of its paragraph, so a *Breaks when:* after the command counts as its result: **nothing** catches a missing result there |
 | § 3.5 / § 5.5 ids are never renumbered | **`Partial:`** `spec_lint` `invariant_id_gap`, a candidate id-sequence check. It sees a HOLE; a list renumbered contiguously leaves none, so **nothing** catches the renumbering this rule actually forbids |
 | § 3.5.1 a pattern invariant is runnable | **`Partial:`** `spec_conformance`, a pattern-execution check reporting a pattern that disagrees with its own example. The three mistakes § 3.5.1 calls invisible are reported by **nothing**, and nothing makes an author run the verb |
 | § 3.6 a named test surface resolves | `spec_lint` `test_surface_absent` / `test_surface_unresolved` / `test_surface_unwired`, disk- and CMake-resolution checks, gated on a `tests/features/<name>/` directory being named. Prose surfaces and wildcards are left alone by design |
