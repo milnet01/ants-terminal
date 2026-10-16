@@ -68895,6 +68895,14 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Fix: "Every spec carries these in this relative order; § 4's sections
   may sit between them." Low stakes: nothing checks order.
   Owes rule 14's gate (wording a conformer orders sections by).
+  Loop 8 of the same run (both lanes), also outside the span: [Q3] § 4's
+  "§ RAM / build cost — required for any feature that holds state" reads
+  as any state at all or as state that can grow (the gloss: "no unbounded
+  growth ships without a named cap"), and What checks this has no row for
+  it. Fix: "holds state that can grow at runtime (a cache, queue, history
+  or index)", plus a row: "§ 4 RAM / build cost when triggered |
+  **nothing** — the trigger is a judgement, and missing_section cannot
+  carry a condition (§ 3)".
   **Layman:** The spec template and the spec rules disagree about the order of sections.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16.
