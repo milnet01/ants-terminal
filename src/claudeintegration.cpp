@@ -12210,12 +12210,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     sourceProp["type"]      = "string";
                     sourceProp["maxLength"] = 200;
                     sourceProp["description"] = QStringLiteral(
-                        "Provenance (e.g. \"user-request-2026-05-16\", "
-                        "\"in-session-2026-05-16\", "
-                        "\"indie-review-2026-05-14 lane-2 M3\"). Under "
-                        "op:\"append_batch\" the call-level value is the "
-                        "fallback for any bullet that carries none, as "
-                        "`status` is (ANTS-5722).");
+                        "Provenance (e.g. \"user-request-2026-05-16\"). "
+                        "Under op:\"append_batch\" the call-level value is "
+                        "the fallback for a bullet without one.");
 
                     QJsonObject bodyProp;
                     bodyProp["type"]      = "string";
