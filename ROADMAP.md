@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5748 -->
+<!-- ants-roadmap-id-high-water: ANTS=5749 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -68885,7 +68885,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16.
 
-- 📋 [ANTS-5724] **specs.md § 3 lets § 4's sections sit between the four core sections, as its skeleton already does.**
+- ✅ [ANTS-5724] **specs.md § 3 lets § 4's sections sit between the four core sections, as its skeleton already does.**
   review-contract on docs/standards/specs.md (2026-10-16, one lane;
   outside the ANTS-5721 change, so filed rather than fixed in the run).
   [Q2] § 3 says "Every spec opens with these, in this order", which reads
@@ -68903,9 +68903,34 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   or index)", plus a row: "§ 4 RAM / build cost when triggered |
   **nothing** — the trigger is a judgement, and missing_section cannot
   carry a condition (§ 3)".
+  Shipped 2026-10-16 (7cb0b78f): § 3 fixes the four core sections'
+  relative order and lets § 4's sit between; § 4's RAM trigger names
+  state that can grow; What checks this gains a RAM row. review-contract
+  converged (specs-review-log loop 9, 2 lanes, no finding in the span);
+  two pre-existing findings filed as ANTS-5749.
   **Layman:** The spec template and the spec rules disagree about the order of sections.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16.
+
+- 📋 [ANTS-5749] **specs.md agrees with spec-format.md on what belongs in docs/specs/ and on the Breaks-when clause.**
+  review-contract on docs/standards/specs.md (2026-10-16, loop 9, both
+  lanes raised both; outside the ANTS-5724 change, so filed).
+  [Q2] specs.md § 1 keeps docs/specs/ "for contracts that span
+  subsystems"; spec-format.md § 1 says it is "the trigger list above,
+  not a subsystem count". The same work is gated under one and not the
+  other. Fix: "for work that fires one of spec-format.md § 1's
+  triggers".
+  [Q3] specs.md § 3.5's invariant form, its rules and the § 7 skeleton
+  omit spec-format.md § 3.7's "Breaks when:" clause, and the precedence
+  paragraph reads both ways. Fix: say once in § 3.5 whether it is
+  required, then add it to the form and skeleton or name the omission
+  as a deliberate difference.
+  Also seen: src/speclint.cpp's comment that specs.md "does not
+  mention" the → arrow is stale; § 3.5 now does.
+  Owes rule 14's gate (direction change).
+  **Layman:** The project's spec rules and the shared spec rules disagree on two points, so a writer can follow one and break the other.
+  Kind: doc-fix.
+  Source: review-contract specs.md 2026-10-16 loop 9.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 

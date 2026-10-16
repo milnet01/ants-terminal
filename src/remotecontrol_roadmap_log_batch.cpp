@@ -2753,6 +2753,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         // every bullet refused bad_status for a value the caller did supply.
         if (!b.contains(QStringLiteral("status")) && req.contains(QStringLiteral("status")))
             b[QStringLiteral("status")] = req.value(QStringLiteral("status"));
+        // ANTS-5722 — `source` falls back the same way. Without it, a batch
+        // whose bullets left provenance to the call skipped every one.
+        if (!b.contains(QStringLiteral("source")) && req.contains(QStringLiteral("source")))
+            b[QStringLiteral("source")] = req.value(QStringLiteral("source"));
         auto skip = [&](const QString &code, const QString &msg) {
             QJsonObject s;
             s["bullet_index"] = i;
@@ -2999,6 +3003,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["ids"]           = QJsonArray();
         out["applied_count"] = 0;
         rcSetAllRefusedSkipped(out, skipped);
+        // ANTS-5722 — `warning` survives a `fields=` narrowing (ANTS-4698's
+        // diagnostic floor), so {ok:true, ids:[]} can no longer read as a
+        // clean batch that happened to be empty.
+        if (!skipped.isEmpty())
+            out["warning"] = QStringLiteral(
+                "no bullet was filed: all %1 skipped (see skipped[])")
+                    .arg(skipped.size());
         // ANTS-3793 INV-2's declared field difference: a store has no lines and
         // no spliced byte count.
         if (!writeTarget) {

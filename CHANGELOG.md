@@ -137,6 +137,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log append_batch takes the call-level source for any bullet without its own, and a batch that files nothing says so in a warning that survives fields** (ANTS-5722)
+
 - **The context gauge shows a tab's reading as soon as you switch to it, and keeps it on tabs left idle.** (ANTS-5747)
   Each tab now keeps its own last context reading. Switching tabs shows that tab's figure at once, instead of a blank gauge until Claude's next reply.
 

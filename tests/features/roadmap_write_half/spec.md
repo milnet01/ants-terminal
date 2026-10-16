@@ -282,6 +282,17 @@ Shipped 2026-09-21 (fcc4daf5) without a test; this case was added
 **Would break this:** reading each bullet's status without the call-level
 fallback, which refused every such bullet `bad_status`.
 
+### ANTS-5722 — append_batch falls back to the call-level source, and says when it filed nothing
+
+| Case | Asserts |
+|---|---|
+| `Ants5722CallLevelSourceIsTheFallback` | An `append_batch` with a call-level `source` files a bullet that carries none with that source, and a bullet carrying its own with its own; nothing lands in `skipped[]`. |
+| `Ants5722NothingFiledWarnsThroughFields` | A batch whose only bullet is skipped returns `applied_count` 0 and a string `warning` naming the skip; `projectFields` narrowed to `["ok","ids"]` still carries that `warning`. |
+
+**Would break this:** reading each bullet's source without the call-level
+fallback, which skipped every such bullet `missing_field`; or an all-skipped
+reply with no `warning`, which `fields` narrowed to `{ok:true, ids:[]}`.
+
 ### ANTS-5358 — flip_batch takes a per-locator to_status
 
 | Case | Asserts |

@@ -13,6 +13,7 @@
 #include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
+#include "mcpprojection.h"
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
@@ -2897,6 +2898,101 @@ TEST(RoadmapWriteHalf, Ants4982CallLevelStatusIsTheFallback) {
     ASSERT_EQ(ids.size(), 2);
     EXPECT_EQ(statusOf(ids.at(0).toString(), projectId), QStringLiteral("planned"));
     EXPECT_EQ(statusOf(ids.at(1).toString(), projectId), QStringLiteral("in-progress"));
+}
+
+// ------------------------------------------------------------- ANTS-5722 -----
+
+namespace {
+QJsonObject bulletNoSource(const QString &headline) {
+    QJsonObject b;
+    b[QStringLiteral("headline")] = headline;
+    b[QStringLiteral("kind")]     = QStringLiteral("implement");
+    b[QStringLiteral("layman")]   = QStringLiteral("A new thing.");
+    return b;
+}
+}  // namespace
+
+// append_batch's call-level `source` is the fallback for a bullet that carries
+// none, as `status` is; a bullet's own source still wins. Before, every such
+// bullet was skipped missing_field and the batch filed nothing.
+TEST(RoadmapWriteHalf, Ants5722CallLevelSourceIsTheFallback) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject own = bulletNoSource(QStringLiteral("Carries its own source."));
+    own[QStringLiteral("source")] = QStringLiteral("own-source");
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("source")]     = QStringLiteral("call-source");
+        req[QStringLiteral("bullets")]    =
+            QJsonArray{bulletNoSource(QStringLiteral("Takes the call-level source.")), own};
+        resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped")).toArray().isEmpty()) << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 2) << QJsonDocument(resp).toJson().toStdString();
+
+    auto sourceOf = [projectId](const QString &id) {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return QString();
+        QString err;
+        const auto pk = store->findItem(projectId, id, &err);
+        if (!pk) return QString();
+        const auto item = store->readItem(*pk, &err);
+        return item ? item->source : QString();
+    };
+    EXPECT_EQ(sourceOf(ids.at(0).toString()), QStringLiteral("call-source"));
+    EXPECT_EQ(sourceOf(ids.at(1).toString()), QStringLiteral("own-source"));
+}
+
+// A batch that files nothing says so in a `warning`, and the `fields=`
+// projection keeps a `warning` whatever the caller names (ANTS-4698). Before,
+// fields:["ok","ids"] narrowed it to {ok:true, ids:[]}: no sign of a skip.
+TEST(RoadmapWriteHalf, Ants5722NothingFiledWarnsThroughFields) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        QJsonObject bad = bulletNoSource(QStringLiteral("Has an unknown kind."));
+        bad[QStringLiteral("kind")]   = QStringLiteral("no-such-kind");
+        bad[QStringLiteral("source")] = QStringLiteral("test");
+        req[QStringLiteral("bullets")] = QJsonArray{bad};
+        resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    }
+    ASSERT_EQ(resp.value(QStringLiteral("applied_count")).toInt(-1), 0) << QJsonDocument(resp).toJson().toStdString();
+    ASSERT_TRUE(resp.value(QStringLiteral("warning")).isString()) << QJsonDocument(resp).toJson().toStdString();
+
+    const QString narrowed = mcp::projectFields(
+        QString::fromUtf8(QJsonDocument(resp).toJson(QJsonDocument::Compact)),
+        QJsonArray{QStringLiteral("ok"), QStringLiteral("ids")});
+    const QJsonObject n = QJsonDocument::fromJson(narrowed.toUtf8()).object();
+    ASSERT_TRUE(n.value(QStringLiteral("warning")).isString()) << narrowed.toStdString();
+    EXPECT_TRUE(n.value(QStringLiteral("warning")).toString()
+                    .contains(QStringLiteral("skipped")))
+        << narrowed.toStdString();
 }
 
 // ------------------------------------------------------------- ANTS-5358 -----
