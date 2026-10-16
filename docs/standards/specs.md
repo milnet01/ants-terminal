@@ -76,7 +76,8 @@ required set as absent, which is not a defect in that file.
 
 ## 3. Required structure
 
-Every spec opens with these, in this order. They are not the whole
+Every spec carries these in this relative order; § 4's sections may sit
+between them. They are not the whole
 required set — § 4 carries three more: **§ RAM / build cost** when its
 trigger applies, and **§ Reload** and **§ Cold-eyes loop log** always.
 
@@ -322,7 +323,8 @@ trigger applies, and **§ Reload** and **§ Cold-eyes loop log** on every
 spec without exception.
 
 - **§ RAM / build cost** — **required** for any feature that holds state
-  or adds a build target. State the memory budget and eviction policy at
+  that can grow at runtime (a cache, queue, history or index), or adds a
+  build target. State the memory budget and eviction policy at
   design time (the project's standing rule: no unbounded growth ships
   without a named cap). Note new external libraries (prefer none).
 - **§ Reload** — **required on every spec.** It states everything
@@ -561,13 +563,14 @@ its stop/start control, or why it has none>
 | Rule | What catches a breach |
 |---|---|
 | § 2 the `<ID>-<topic>.md` filename shape | **nothing** — `spec_query` resolves the bare `<ID>.md` too, so a missing slug is invisible to it; the corpus sweep is ANTS-3755 |
-| § 3 the required sections are present | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading § 3's own block. It tests presence, never ORDER, though § 3 says "in this order" — **nothing** catches a spec whose sections are all present and out of sequence |
+| § 3 the required sections are present | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading § 3's own block. It tests presence, never ORDER, though § 3 fixes their relative order — **nothing** catches a spec whose sections are all present and out of sequence |
 | § 3.2 the header block stays parseable | **`Partial:`** `spec_query`, a parse check that fails loudly on a broken header — but nothing runs it. § 6 asks the author to |
 | § 3.5 every invariant carries a test surface | `spec_lint` `invariant_no_test`, a per-invariant clause-presence check. A tombstone is exempt, so a MALFORMED one — the dash in `*withdrawn — …*` is load-bearing — surfaces here as an untested invariant rather than as itself |
 | § 3.5 a command test clause states a result | `spec_lint` `command_test_no_expectation`, a candidate check over the clause's code spans |
 | § 3.5 / § 5.5 ids are never renumbered | **`Partial:`** `spec_lint` `invariant_id_gap`, a candidate id-sequence check. It sees a HOLE; a list renumbered contiguously leaves none, so **nothing** catches the renumbering this rule actually forbids |
 | § 3.5.1 a pattern invariant is runnable | **`Partial:`** `spec_conformance`, a pattern-execution check reporting a pattern that disagrees with its own example. The three mistakes § 3.5.1 calls invisible are reported by **nothing**, and nothing makes an author run the verb |
 | § 3.6 a named test surface resolves | `spec_lint` `test_surface_absent` / `test_surface_unresolved` / `test_surface_unwired`, disk- and CMake-resolution checks, gated on a `tests/features/<name>/` directory being named. Prose surfaces and wildcards are left alone by design |
+| § 4 § RAM / build cost is present where its trigger applies | **nothing** — the trigger is a judgement, and `missing_section` cannot carry a condition (§ 3) |
 | § 4 a § Reload section is present | `spec_lint` `missing_section`, via § 3's block. Whether its answer is true or well chosen: **nothing mechanical** — the review gate's cold lanes. A commit adding a `src/` source file is checked separately by `tools/hooks/commit-msg`, which wants a `Reload:` line |
 | § 5.1 every path, symbol and constant is grounded | **`Partial:`** `check-doc-facts` `paths` and `symbols`, resolution checks emitting candidates. Whether a symbol that RESOLVES supports the claim made about it is **nothing mechanical** — the review gate's cold lanes |
 | § 5.2 the Layman line | **nothing** — no check knows whether a given spec describes user-facing behaviour, which is what triggers the rule |
