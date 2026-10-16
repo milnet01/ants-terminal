@@ -34,6 +34,13 @@ within each bullet.
   where that bug is most likely.
 - **INV-6** — present but empty, or present and not a string or array of
   strings, refuses `bad_args` rather than being ignored.
+- **INV-7** (ANTS-5703) — a list reply with neither `bullet_fields` nor
+  `include_body` carries the lean four keys `id`, `status`,
+  `headline_oneline` and `section_slug`, on the full-file and the `section=`
+  paths alike. `include_body:true` still returns the wide row with `kind`.
+  The reply says how to get the other keys. Breaks when: a default list row
+  carries `kind`, `lanes`, `source` or `headline`, or `include_body` loses
+  them.
 
 ## Notes
 

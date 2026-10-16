@@ -409,6 +409,10 @@ server-controllable beyond this per-tool hint.
   Applied before pagination on the list paths, on ANTS-3577's reasoning —
   the soft-cap measure then weighs the rows actually emitted, so a narrow
   projection fits more rows per page.
+  **ANTS-5703: a plain list is lean by default.** With neither
+  `bullet_fields` nor `include_body`, list rows take the four-key shape
+  before pagination, on both list paths. The wide row is one argument away,
+  and an `id`/`ids` fetch keeps it. `bodies_omitted_reason` says so.
   Contract: `tests/features/roadmap_query_bullet_fields/spec.md`.
 - **`read_log`** — filters a log file (the Ants debug log or a
   `caller_cwd` path) to matching lines via the pure `ReadLog::filter`

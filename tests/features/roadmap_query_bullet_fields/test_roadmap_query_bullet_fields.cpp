@@ -195,3 +195,41 @@ TEST(RoadmapQueryBulletFields, Inv6EmptyOrMistypedRefuses) {
     EXPECT_EQ(b.value(QStringLiteral("code")).toString().toStdString(),
               std::string("bad_args"));
 }
+
+// INV-7 (ANTS-5703) — a plain list reply is lean by default, on both list
+// paths; the wide row stays one argument away and the reply says which.
+TEST(RoadmapQueryBulletFields, Inv7PlainListIsLeanByDefault) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedRoot(tmp);
+    ASSERT_FALSE(root.isEmpty());
+
+    const std::string lean("headline_oneline,id,section_slug,status");
+
+    const QJsonObject full = queryWith(root, QJsonObject{});
+    ASSERT_TRUE(full.value(QStringLiteral("ok")).toBool())
+        << full.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_EQ(full.value(QStringLiteral("bullets")).toArray().size(), 2);
+    EXPECT_EQ(keysOfFirstBullet(full).join(QStringLiteral(",")).toStdString(),
+              lean);
+    EXPECT_TRUE(full.value(QStringLiteral("bodies_omitted_reason")).toString()
+                    .contains(QStringLiteral("bullet_fields")))
+        << "the reply must say how to get kind, lanes or source";
+
+    QJsonObject sec;
+    sec[QStringLiteral("section")] = QStringLiteral("work");
+    const QJsonObject inSection = queryWith(root, sec);
+    ASSERT_TRUE(inSection.value(QStringLiteral("ok")).toBool())
+        << inSection.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(keysOfFirstBullet(inSection).join(QStringLiteral(","))
+                  .toStdString(), lean);
+
+    QJsonObject wide;
+    wide[QStringLiteral("include_body")] = true;
+    const QJsonObject withBody = queryWith(root, wide);
+    ASSERT_TRUE(withBody.value(QStringLiteral("ok")).toBool());
+    const QJsonArray wb = withBody.value(QStringLiteral("bullets")).toArray();
+    ASSERT_FALSE(wb.isEmpty());
+    EXPECT_EQ(wb.first().toObject().value(QStringLiteral("kind")).toString()
+                  .toStdString(), std::string("review-fix"));
+}

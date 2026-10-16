@@ -3112,8 +3112,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // AFTER the fat measure, dropping more rows than the lean shape needs.
         // filtered's only post-pageBullets use is .isEmpty() (below), which an
         // in-place projection leaves unchanged.
+        // ANTS-5703 — a plain list (no include_body, no bullet_fields) takes
+        // the same lean shape: kind, lanes, source and the duplicate headline
+        // are on request only.
         if (mode == QLatin1String("headline_only"))
             rcProjectHeadlineOnly(filtered);
+        else if (!includeBody && bulletFields.isEmpty())
+            rcProjectListDefault(filtered);
         // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
         // this ceiling on the way in; now that bodies are read whole (ANTS-5094:
         // the cache holds none, so a body-wanting call builds afresh), the
@@ -3168,7 +3173,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "a filtered bullets query withholds bodies by default because "
                 "the filter can match the whole roadmap; pass "
                 "include_body:true to get them (an id/ids fetch returns them "
-                "without asking)");
+                "without asking). Rows carry id, status, headline_oneline and "
+                "section_slug unless bullet_fields names others (kind, lanes, "
+                "source)");
         }
         out["path"] = path;
         out["count"] = page.slice.size();
@@ -3850,8 +3857,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // measured the fat row then projected page.slice, dropping more than
     // needed. filtered's only later use is .isEmpty() (below), unaffected by an
     // in-place projection.
+    // ANTS-5703 — and a plain list too; see the section branch.
     if (mode == QLatin1String("headline_only"))
         rcProjectHeadlineOnly(filtered);
+    else if (!includeBody && bulletFields.isEmpty())
+        rcProjectListDefault(filtered);
     // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
     // this ceiling on the way in; now that it keeps bodies whole, the
     // soft-cap measure would weigh a body far larger than anything this path
@@ -3896,7 +3906,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["bodies_omitted_reason"] = QStringLiteral(
             "a filtered bullets query withholds bodies by default because the "
             "filter can match the whole roadmap; pass include_body:true to get "
-            "them (an id/ids fetch returns them without asking)");
+            "them (an id/ids fetch returns them without asking). Rows carry "
+            "id, status, headline_oneline and section_slug unless "
+            "bullet_fields names others (kind, lanes, source)");
     }
     out["path"] = path;
     // ANTS-1247-INV-10: count is post-filter post-pagination size.

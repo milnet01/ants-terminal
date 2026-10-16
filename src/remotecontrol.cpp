@@ -920,6 +920,27 @@ void rcProjectHeadlineOnly(QJsonArray &arr) {
     }
 }
 
+// ANTS-5703 — the default list row: the four headline_only keys plus the
+// gated keys that warn a caller, kept only where the row carries them. A
+// synthetic or inferred id is not one to cite, and headline_full is the
+// title the 120-character headline cut. headline_only keeps its exact four
+// keys (ANTS-1881 INV-2), so this is a separate projector.
+void rcProjectListDefault(QJsonArray &arr) {
+    static const char *const kGated[] = {"headline_full", "synthetic",
+                                         "id_inferred"};
+    for (int i = 0; i < arr.size(); ++i) {
+        const QJsonObject src = arr.at(i).toObject();
+        QJsonArray one{src};
+        rcProjectHeadlineOnly(one);
+        QJsonObject p = one.at(0).toObject();
+        for (const char *k : kGated) {
+            const QString key = QLatin1String(k);
+            if (src.contains(key)) p[key] = src.value(key);
+        }
+        arr.replace(i, p);
+    }
+}
+
 // ANTS-3576 — project each changelog entry object to the lean
 // mode:"headline_only" shape {version, category, ids, text_oneline}.
 // Mutates in place. Mirrors cmdChangelogQuery's entryToJson headlineOnly

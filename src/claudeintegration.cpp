@@ -3028,8 +3028,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // trimmed (full per-op detail is in `detail` below / via
                 // tool_info {name:"roadmap_query"}).
                 roadmapTool["description"] = QStringLiteral(
-                    "Query ROADMAP.md as structured bullets {id, status, "
-                    "headline, headline_oneline, kind, lanes}. Filters: "
+                    "Query ROADMAP.md as structured bullets; a list row is "
+                    "{id, status, headline_oneline, section_slug}. Filters: "
                     "status (all|active|shipped), section=<slug>, "
                     "query=<keyword>, id / "
                     "ids[]. mode: "
@@ -3116,8 +3116,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "ANTS-3771 (declare the project's id format) is the "
                     "fix for that, and this flag is only the warning. "
                     "Query the active tab's ROADMAP.md as structured "
-                    "bullets. Each bullet: {id, status, headline, "
-                    "headline_oneline, kind, lanes}. `headline_oneline` "
+                    "bullets. ANTS-5703 — a list row is {id, status, "
+                    "headline_oneline, section_slug}; `include_body` or "
+                    "`bullet_fields` gives the wide row {id, status, "
+                    "headline, headline_oneline, kind, lanes, source, "
+                    "section_slug}, and an id/ids fetch always does. "
+                    "`headline_oneline` "
                     "(ANTS-1521) is `headline` with newlines + "
                     "whitespace runs collapsed to a single space — safe "
                     "to concatenate into a summary without post-"
