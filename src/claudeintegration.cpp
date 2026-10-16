@@ -1152,6 +1152,15 @@ void ClaudeIntegration::clearContextReading() {
     emit contextUpdated(0);
 }
 
+void ClaudeIntegration::seedContextReading(qint64 tokens, bool estimated) {
+    if (tokens <= 0) return;
+    m_contextTokens = tokens;
+    m_contextEstimated = estimated;
+    m_contextPercent = static_cast<int>(std::min<qint64>(
+        100, m_contextTokens * 100 / m_contextWindowTokens));
+    emit contextUpdated(m_contextPercent);
+}
+
 void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     // Re-add the watch — QFileSystemWatcher can drop it after atomic saves
     if (!m_transcriptWatcher.files().contains(path))

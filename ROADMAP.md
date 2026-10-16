@@ -83482,6 +83482,10 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   comes from elsewhere. The Ants debug log ends 2026-10-09, so it says
   nothing about 2026-10-12. Next sighting: turn on the Claude debug
   category and read its "hook recv" and "hook-drop" lines for that tab.
+  2026-10-16: ANTS-5747 seeds the meter from the tab tracker's kept
+  reading on a tab switch. If this report was a switched-to tab whose
+  transcript tail held no usage record, that closes it. Check after the
+  next terminal relaunch.
   **Layman:** The 'Context %' reading in the bottom bar took a long time to show up for one tab, even though Claude had been working there for minutes.
   Kind: fix.
   Source: user-report-2026-10-12.
@@ -83558,7 +83562,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: in-session-2026-10-13 (split from ANTS-5683).
   Lanes: claudeintegration, statusbar.
 
-- 📋 [ANTS-5747] **Each tab keeps its own context-gauge reading, so a tab switch shows it at once and an idle tab keeps it.**
+- ✅ [ANTS-5747] **Each tab keeps its own context-gauge reading, so a tab switch shows it at once and an idle tab keeps it.**
   Today one reading serves the whole window. ClaudeIntegration::setShellPid
   zeroes it on every tab switch and resetForTabSwitch hides the bar
   (src/claudestatuswidgets.cpp). It comes back only after the Claude
@@ -83573,6 +83577,13 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Reload: lives in the terminal process, so it needs one terminal
   restart; it holds no state beyond the per-tab readings, which rebuild
   from the transcripts.
+  2026-10-16: built. ClaudeTabTracker::ShellState keeps contextTokens
+  and contextEstimated per shell, cleared when that shell's Claude
+  exits; refreshStatusBarForActiveTab seeds the meter through
+  ClaudeIntegration::seedContextReading when it has no reading after
+  setShellPid. Tests: claude_context_meter INV-11 to INV-13, each seen
+  failing on its assertion first. Reaches the user's terminal on its
+  next relaunch.
   **Layman:** The context gauge appears straight away when you switch to a Claude tab, and stops vanishing on tabs you have not looked at for a while.
   Kind: enhancement.
   Source: user-request-2026-10-16.

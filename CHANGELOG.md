@@ -137,6 +137,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The context gauge shows a tab's reading as soon as you switch to it, and keeps it on tabs left idle.** (ANTS-5747)
+  Each tab now keeps its own last context reading. Switching tabs shows that tab's figure at once, instead of a blank gauge until Claude's next reply.
+
 - **After the terminal reopens its saved tabs, the context gauge appears for the focused tab's Claude session without switching tabs.** (ANTS-5733)
 
 - **The context gauge appears as soon as a Claude session is found, even when the transcript ends with a long run of non-reply records.** (ANTS-5731)

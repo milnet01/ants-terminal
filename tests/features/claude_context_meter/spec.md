@@ -48,6 +48,20 @@ partially sighted, so the meter must be large and readable.
 - **INV-10** — INV-1's newest usage event is found however much non-usage
   data follows it, up to the transcript record cap. *Test:*
   `Inv10UsageFoundPastTrailingMetadata`. (ANTS-5731)
+- **INV-11** — `ClaudeTabTracker` keeps each tracked shell's latest
+  reading (tokens, and whether it is estimated) from its own transcript
+  parses. A parse that finds no usage keeps the previous reading. The
+  reading is cleared when that shell's Claude exits. *Tests:*
+  `Inv11TrackerKeepsEachShellsReading` and `Inv11TrackerClearsOnExit`
+  (source scrape of `detectClaudeChild`, which walks `/proc`). (ANTS-5747)
+- **INV-12** — `ClaudeIntegration::seedContextReading` sets the reading
+  and emits `contextUpdated` with its percentage. A seed of zero or less
+  changes nothing. *Test:* `Inv12SeedSetsTheReading`. (ANTS-5747)
+- **INV-13** — on a tab switch, when the focused tab's Claude has no
+  reading of its own after `setShellPid`, the status bar is seeded from
+  the tracker, so the meter shows at once. *Test:*
+  `Inv13TabSwitchSeedsFromTheTracker` (source scrape of
+  `refreshStatusBarForActiveTab`). (ANTS-5747)
 
 ## Reload
 

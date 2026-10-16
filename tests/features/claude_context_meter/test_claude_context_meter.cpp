@@ -5,6 +5,7 @@
 
 #include "claudeintegration.h"
 #include "claudestatuswidgets.h"
+#include "claudetabtracker.h"
 #include "config.h"
 
 #include <gtest/gtest.h>
@@ -20,6 +21,9 @@
 #endif
 #ifndef SRC_CLAUDEINTEGRATION_CPP_PATH
 #  error "SRC_CLAUDEINTEGRATION_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_CLAUDETABTRACKER_CPP_PATH
+#  error "SRC_CLAUDETABTRACKER_CPP_PATH compile definition required"
 #endif
 
 namespace {
@@ -296,4 +300,73 @@ TEST(ClaudeContextMeter, Inv6ReadableMeter) {
     EXPECT_NE(src.find("strokePath"), std::string::npos)
         << "the text needs a dark outline drawn under it";
     EXPECT_NE(src.find("setFixedSize(160, 22)"), std::string::npos);
+}
+
+// INV-11 — the tracker keeps each shell's reading, and a parse with no
+// usage does not erase it.
+TEST(ClaudeContextMeter, Inv11TrackerKeepsEachShellsReading) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ClaudeTabTracker tracker;
+    constexpr pid_t kShell = 424242;   // never a real child: the test seam
+    tracker.forceRefreshForTest(kShell, writeTranscript(tmp));
+    EXPECT_EQ(tracker.shellState(kShell).contextTokens, 457127);
+    EXPECT_FALSE(tracker.shellState(kShell).contextEstimated);
+
+    // A transcript whose tail carries no usage keeps the last reading.
+    const QString quiet = tmp.path() + "/quiet.jsonl";
+    QFile f(quiet);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(R"({"type":"user","message":{"role":"user","content":"hi"}})" "\n");
+    f.close();
+    tracker.forceRefreshForTest(kShell, quiet);
+    EXPECT_EQ(tracker.shellState(kShell).contextTokens, 457127);
+
+    // Another shell has none of its own.
+    EXPECT_LE(tracker.shellState(kShell + 1).contextTokens, 0);
+}
+
+// INV-11 — Claude exiting clears the shell's reading. Source scrape:
+// detectClaudeChild walks /proc for a real child, which a test cannot stage.
+TEST(ClaudeContextMeter, Inv11TrackerClearsOnExit) {
+    const std::string src = ants_test::slurpFile(SRC_CLAUDETABTRACKER_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const size_t at = src.find("void ClaudeTabTracker::detectClaudeChild(");
+    ASSERT_NE(at, std::string::npos);
+    const size_t gone = src.find("if (found == 0) {", at);
+    ASSERT_NE(gone, std::string::npos);
+    const std::string block = src.substr(gone, src.find("return;", gone) - gone);
+    EXPECT_NE(block.find("contextTokens = -1;"), std::string::npos)
+        << "Claude exited, but the tab keeps its reading";
+}
+
+// INV-12
+TEST(ClaudeContextMeter, Inv12SeedSetsTheReading) {
+    ClaudeIntegration ci;
+    QSignalSpy spy(&ci, &ClaudeIntegration::contextUpdated);
+    ci.seedContextReading(250'000, true);
+    EXPECT_EQ(ci.contextTokens(), 250'000);
+    EXPECT_TRUE(ci.contextEstimated());
+    EXPECT_EQ(ci.contextPercent(), 25);
+    ASSERT_EQ(spy.count(), 1);
+    EXPECT_EQ(spy.takeFirst().at(0).toInt(), 25);
+    ci.seedContextReading(0, false);
+    EXPECT_EQ(ci.contextTokens(), 250'000);
+    EXPECT_EQ(spy.count(), 0);
+}
+
+// INV-13 — the tab switch seeds the meter from the tracker after
+// setShellPid, and only when the integration has no reading of its own.
+TEST(ClaudeContextMeter, Inv13TabSwitchSeedsFromTheTracker) {
+    const std::string mw = ants_test::slurpMainWindow();
+    const size_t at = mw.find("void MainWindow::refreshStatusBarForActiveTab() {");
+    ASSERT_NE(at, std::string::npos);
+    const std::string body = mw.substr(at, mw.find("\n}\n", at) - at);
+    const size_t set = body.find("m_claudeIntegration->setShellPid(t->shellPid());");
+    ASSERT_NE(set, std::string::npos);
+    const size_t seed = body.find("seedContextReading(", set);
+    EXPECT_NE(seed, std::string::npos) << "no seed after setShellPid";
+    const size_t guard = body.find("contextTokens() <= 0", set);
+    EXPECT_TRUE(guard != std::string::npos && guard < seed)
+        << "the seed must not overwrite a reading the integration already has";
 }

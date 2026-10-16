@@ -2495,6 +2495,16 @@ void MainWindow::refreshStatusBarForActiveTab() {
     //     probe confirms the new tab's cwd is a git repo.
     if (m_claudeIntegration)
         m_claudeIntegration->setShellPid(t->shellPid());
+    // ANTS-5747 — setShellPid drops the meter's reading, and the tail it
+    // re-reads may hold no usage. The tracker kept this tab's last reading,
+    // so the meter shows it at once instead of waiting for Claude's next
+    // reply.
+    if (m_claudeIntegration && m_claudeTabTracker &&
+        m_claudeIntegration->contextTokens() <= 0) {
+        const ClaudeTabTracker::ShellState st =
+            m_claudeTabTracker->shellState(t->shellPid());
+        m_claudeIntegration->seedContextReading(st.contextTokens, st.contextEstimated);
+    }
     // Plan / auditing flags are derived from the transcript and will
     // be refreshed by the next ClaudeIntegration stateChanged signal,
     // but clear them now so the wrong-tab's flags don't briefly show

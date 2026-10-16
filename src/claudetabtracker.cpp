@@ -171,6 +171,9 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
         }
         entry.state.state = ClaudeState::NotRunning;
         entry.state.tool.clear();
+        // ANTS-5747 — the reading belonged to the session that ended.
+        entry.state.contextTokens = -1;
+        entry.state.contextEstimated = false;
         // Plan-mode latch doesn't survive Claude exiting — next session
         // starts fresh.
         entry.state.planMode = false;
@@ -251,6 +254,12 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
     }
     it->state.planMode = snap.planMode;
     it->state.auditing = snap.auditing;
+    // ANTS-5747 — keep the newest reading; a tail with no usage keeps the
+    // last one, as ClaudeIntegration::parseTranscriptForState does.
+    if (snap.contextTokens > 0) {
+        it->state.contextTokens = snap.contextTokens;
+        it->state.contextEstimated = snap.contextEstimated;
+    }
 
     // ANTS-1735 §2.4 — stamp idleSinceMs on every transition INTO Idle
     // (not just the first one) so each turn boundary reopens the empty-

@@ -56,6 +56,12 @@ public:
         // Initial 0 with TerminalWidget::lastUserKeystrokeMs() default
         // -1 makes a fresh post-turn composer read empty.
         qint64 idleSinceMs = 0;
+        // ANTS-5747 — this shell's latest context reading, from its own
+        // transcript parses: tokens (-1 when none seen yet) and whether
+        // they include ClaudeIntegration's estimate. A tab switch seeds
+        // the status-bar meter from it, so the meter shows at once.
+        qint64 contextTokens = -1;
+        bool contextEstimated = false;
     };
 
     explicit ClaudeTabTracker(QObject *parent = nullptr);

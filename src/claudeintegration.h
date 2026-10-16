@@ -144,6 +144,10 @@ public:
     // ANTS-5683 — drop the reading when the Claude it came from is gone
     // (exited or replaced), and emit contextUpdated(0) so the meter hides.
     void clearContextReading();
+    // ANTS-5747 — set the reading from one kept elsewhere (the tab tracker's
+    // copy for the newly focused tab) and emit contextUpdated. A seed of zero
+    // or less changes nothing.
+    void seedContextReading(qint64 tokens, bool estimated);
     bool planMode() const { return m_planMode; }
 
     // session_id from the most recent hook event. Updated before any
