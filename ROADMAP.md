@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5747 -->
+<!-- ants-roadmap-id-high-water: ANTS=5748 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72726,6 +72726,23 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user decision).
   Lanes: mcp-tools.
+
+- 📋 [ANTS-5748] **trace's walk skips git-ignored files and binaries, so it covers a large repository's source before reaching its file cap.**
+  Measured 2026-10-16, first live call (trace symbol:seedContextReading
+  on this repo): scanned.files 5000 with walk_capped:true. The walk
+  (walkrules, SymbolQuery's rules) skips dot-dirs, build, build-* and
+  node_modules only, so local-archive/ and other git-ignored trees use
+  up the 5000-file cap and later source can be missed. Also,
+  not_covered listed libants_core_lib.a and several .sqlite backups as
+  file_too_large: the 2 MiB check runs before the binary sniff in
+  trace::serve. Fix: honour .gitignore in trace's walk (git ls-files,
+  or rg --files as workspace_search does), and drop binary files before
+  the size check so they are neither parsed nor reported. Spec
+  ANTS-5734 § 2.5 states the walk rules, so the fix amends it.
+  **Layman:** The code lookup tool stops wasting its file budget on archives and build leftovers, so it sees all of a big project's real code.
+  Kind: fix.
+  Source: in-session-2026-10-16 (first live trace call).
+  Lanes: code-index-search.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
