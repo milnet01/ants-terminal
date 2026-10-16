@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5724 -->
+<!-- ants-roadmap-id-high-water: ANTS=5726 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72383,6 +72383,35 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: claude-config request 2026-10-15 (CFG-0794).
   Lanes: hooks.
+
+- 💭 [ANTS-5725] **Show the four always-loaded verbs' rarely used arguments only through tool_info, so each schema is about 600 bytes on the wire.**
+  claude-config measured 8.4 KB on every request for workspace_search
+  (3,240 B), file_outline (2,237), read_region (1,888) and find_definition
+  (1,089), with session_cost startup.largest_tools. That is after ANTS-5628
+  and ANTS-5694, which trimmed every description already (the running
+  ants-mcpd includes both). What is left is mostly the argument list:
+  workspace_search has 26. Reaching ~600 B each means leaving rarely used
+  arguments out of the wire schema while the verb still accepts them, and
+  tool_info documenting them. That changes what a session can see and
+  call, so it needs a design decision first: which arguments stay visible
+  (measure use from the transcripts), and whether Claude Code accepts an
+  argument the schema does not list. Check: session_cost
+  startup.largest_tools before and after.
+  **Layman:** Four Ants tools are loaded into every Claude request; listing only their common options would make every request lighter.
+  Kind: perf.
+  Source: claude-config request 2026-10-16.
+  Lanes: mcp.
+
+- 📋 [ANTS-5726] **Cut invariant_check's hint text, which is 17% of its replies against 1-2% for every other verb.**
+  claude-config measured hint fields at 17% of invariant_check reply bytes
+  over 491 calls, against 1-2% for every other verb (1.7% across all
+  28,767 Ants replies, which they judged not worth touching). Find which
+  hint repeats on every call and send it once, or only when the reply is
+  empty or ambiguous.
+  **Layman:** One Ants tool repeats long tips in its answers; shortening them saves tokens.
+  Kind: perf.
+  Source: claude-config request 2026-10-16.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
