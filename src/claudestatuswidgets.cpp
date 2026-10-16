@@ -989,6 +989,11 @@ void ClaudeStatusBarController::pinSlots() {
                           "searching", "browsing", "delegating", "compacting"})
         states << QStringLiteral("Claude: %1").arg(QLatin1String(s));
 
+    const Config &cfg = cachedConfig();
+    const bool autoOn = cfg.claudeAutoModel().value("switch_enabled").toBool();
+
+    // The "(auto → X)" suffix shows only while auto-switch is on, so it
+    // widens the slot only then.
     QStringList modelState;
     for (const QString &t : tiers)
         for (const char *lvl : {"", "ultrathink", "think hard", "think",
@@ -996,6 +1001,7 @@ void ClaudeStatusBarController::pinSlots() {
             QString base = t;
             if (*lvl) base += QStringLiteral(" · ") + QLatin1String(lvl);
             modelState << base;
+            if (!autoOn) continue;
             for (const QString &to : tiers)
                 modelState << base + QStringLiteral(" (auto → ") + to
                                    + QStringLiteral(")");
@@ -1003,9 +1009,6 @@ void ClaudeStatusBarController::pinSlots() {
 
     QStringList undo;
     for (const QString &t : tiers) undo << tr("Undo: back to %1").arg(t);
-
-    const Config &cfg = cachedConfig();
-    const bool autoOn = cfg.claudeAutoModel().value("switch_enabled").toBool();
 
     statusbarslot::pin(m_statusLabel, states);
     statusbarslot::setRetain(m_contextBar, true);
@@ -1884,7 +1887,15 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         emit firstRunNudgeRequested();
     }
 
-    if (!enabled) return;
+    // A queued switch dies with the setting: the model pill's slot is sized
+    // without the "(auto → X)" suffix while auto-switch is off (pinSlots).
+    if (!enabled) {
+        if (!m_autoSwitchPendingTier.isEmpty()) {
+            m_autoSwitchPendingTier.clear();
+            refreshModelStateChip();
+        }
+        return;
+    }
 
     // indie-review 2026-06-04 — never actuate when the focused tab has no live
     // Claude session (NotRunning ⇒ a /model injection lands in a bare shell) or
