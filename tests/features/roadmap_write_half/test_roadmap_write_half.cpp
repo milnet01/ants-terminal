@@ -3053,6 +3053,65 @@ TEST(RoadmapWriteHalf, Ants5735RepeatedSingleWritesHintTheBatchOp) {
     EXPECT_TRUE(flipHint.toString().contains(QStringLiteral("flip_batch")));
 }
 
+// A dry run returns a `plan_id`; a call carrying only that id applies the
+// previewed request, once. Before, applying a preview meant sending the whole
+// payload a second time.
+TEST(RoadmapWriteHalf, Ants5704PlanIdAppliesTheDryRun) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    auto bodyOf = [projectId]() {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return QString();
+        QString err;
+        const auto pk = store->findItem(projectId, QStringLiteral("DEMO-0007"), &err);
+        const auto item = pk ? store->readItem(*pk, &err) : std::nullopt;
+        return item ? item->body : QString();
+    };
+    const QString note = QStringLiteral("Applied through a plan.");
+
+    RemoteControl rc(nullptr);
+    QJsonObject preview;
+    preview[QStringLiteral("caller_cwd")] = root;
+    preview[QStringLiteral("op")]         = QStringLiteral("annotate");
+    preview[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    preview[QStringLiteral("note")]       = note;
+    preview[QStringLiteral("dry_run")]    = true;
+    const QJsonObject dry = rc.cmdRoadmapLog(preview).object();
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool()) << QJsonDocument(dry).toJson().toStdString();
+    const QString planId = dry.value(QStringLiteral("plan_id")).toString();
+    ASSERT_FALSE(planId.isEmpty()) << QJsonDocument(dry).toJson().toStdString();
+    EXPECT_FALSE(bodyOf().contains(note));
+
+    QJsonObject apply;
+    apply[QStringLiteral("caller_cwd")] = root;
+    apply[QStringLiteral("plan_id")]    = planId;
+
+    // A payload argument beside plan_id refuses, and leaves the plan usable.
+    QJsonObject mixed = apply;
+    mixed[QStringLiteral("note")] = QStringLiteral("Something else.");
+    const QJsonObject mixedResp = rc.cmdRoadmapLog(mixed).object();
+    EXPECT_FALSE(mixedResp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(mixedResp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+
+    const QJsonObject applied = rc.cmdRoadmapLog(apply).object();
+    ASSERT_TRUE(applied.value(QStringLiteral("ok")).toBool()) << QJsonDocument(applied).toJson().toStdString();
+    EXPECT_FALSE(applied.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_FALSE(applied.contains(QStringLiteral("plan_id")));
+    EXPECT_TRUE(bodyOf().contains(note));
+
+    // One use: the same id again, or an id never issued, refuses plan_not_found.
+    EXPECT_EQ(rc.cmdRoadmapLog(apply).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("plan_not_found"));
+    apply[QStringLiteral("plan_id")] = QStringLiteral("0000000000000000");
+    EXPECT_EQ(rc.cmdRoadmapLog(apply).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("plan_not_found"));
+}
+
 // A batch that files nothing says so in a `warning`, and the `fields=`
 // projection keeps a `warning` whatever the caller names (ANTS-4698). Before,
 // fields:["ok","ids"] narrowed it to {ok:true, ids:[]}: no sign of a skip.

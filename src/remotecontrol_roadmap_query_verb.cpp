@@ -22,6 +22,10 @@
 #include <QFileInfo>
 #include <QHash>       // ANTS-4119 — the sources rollup
 #include <QMutex>      // ANTS-5735 — the batch hint's last-write times
+#include <QDir>
+#include <QRandomGenerator>   // ANTS-5704 — plan ids
+#include <QSet>
+#include <optional>
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
 
 using namespace rcdetail;  // ANTS-3833
@@ -4104,21 +4108,134 @@ QString rlBatchHint(const QString &cwd, const QString &op) {
                           "op:\"%2\" files many in one call, which costs less.")
         .arg(op, *batch);
 }
+
+// ANTS-5704 — a dry run's request, kept so a second call naming its plan_id
+// applies it without the payload being sent again. In memory only and used
+// once: an ants-mcpd restart forgets every plan, and the apply then refuses
+// plan_not_found, which costs one resend. The apply re-runs every check the
+// preview ran, so a write landing in between is caught as it would be anyway.
+constexpr qint64 kPlanTtlMs = 15 * 60 * 1000;
+constexpr int    kMaxPlans  = 64;
+
+struct RlPlan {
+    QJsonObject req;
+    qint64 createdMs = 0;
+};
+
+QMutex &rlPlanMutex() { static QMutex m; return m; }
+QHash<QString, RlPlan> &rlPlans() { static QHash<QString, RlPlan> h; return h; }
+
+// Caller holds rlPlanMutex().
+void rlDropExpiredPlans(qint64 now) {
+    auto &plans = rlPlans();
+    for (auto it = plans.begin(); it != plans.end();) {
+        if (now - it->createdMs > kPlanTtlMs) it = plans.erase(it);
+        else ++it;
+    }
+}
+
+QString rlStashPlan(QJsonObject req) {
+    req.remove(QStringLiteral("dry_run"));
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QString id = QStringLiteral("%1").arg(
+        QRandomGenerator::global()->generate64(), 16, 16, QChar(u'0'));
+    const QMutexLocker lock(&rlPlanMutex());
+    auto &plans = rlPlans();
+    rlDropExpiredPlans(now);
+    if (plans.size() >= kMaxPlans) {
+        auto oldest = plans.begin();
+        for (auto it = plans.begin(); it != plans.end(); ++it)
+            if (it->createdMs < oldest->createdMs) oldest = it;
+        plans.erase(oldest);
+    }
+    plans.insert(id, RlPlan{req, now});
+    return id;
+}
+
+// Resolves a plan_id call to the stored plan and removes it, so two applies
+// cannot both run it; or sets *refusal and leaves the plan in place.
+std::optional<RlPlan> rlTakePlan(const QJsonObject &req, QJsonObject *refusal) {
+    auto refuse = [refusal](const QString &code, const QString &message) {
+        (*refusal)[QStringLiteral("ok")]    = false;
+        (*refusal)[QStringLiteral("code")]  = code;
+        (*refusal)[QStringLiteral("error")] = message;
+        return std::nullopt;
+    };
+    // The reply-shaping arguments the MCP layer reads are allowed beside it.
+    static const QSet<QString> kAllowed = {
+        QStringLiteral("caller_cwd"), QStringLiteral("plan_id"),
+        QStringLiteral("fields"), QStringLiteral("compact"),
+        QStringLiteral("encoding"),
+    };
+    QStringList extra;
+    for (auto it = req.begin(); it != req.end(); ++it)
+        if (!kAllowed.contains(it.key())) extra << it.key();
+    if (!extra.isEmpty()) {
+        extra.sort();
+        return refuse(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: plan_id applies the previewed request "
+                           "as it was sent, so it takes only caller_cwd beside "
+                           "it. Drop: %1. To change the request, dry-run it "
+                           "again.").arg(extra.join(QStringLiteral(", "))));
+    }
+    const QString id = req.value(QStringLiteral("plan_id")).toString();
+    const QString cwd = QDir::cleanPath(req.value(QStringLiteral("caller_cwd")).toString());
+    const QMutexLocker lock(&rlPlanMutex());
+    auto &plans = rlPlans();
+    rlDropExpiredPlans(QDateTime::currentMSecsSinceEpoch());
+    const auto it = plans.find(id);
+    if (it == plans.end())
+        return refuse(QStringLiteral("plan_not_found"),
+            QStringLiteral("roadmap_log: no plan \"%1\". A plan is used once, "
+                           "lasts 15 minutes and is forgotten when the server "
+                           "restarts; send the request again.").arg(id));
+    if (QDir::cleanPath(it->req.value(QStringLiteral("caller_cwd")).toString()) != cwd)
+        return refuse(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: plan \"%1\" was made for another "
+                           "caller_cwd.").arg(id));
+    const RlPlan plan = *it;
+    plans.erase(it);
+    return plan;
+}
+
+// An apply that did not land puts its plan back, so a busy refusal costs a
+// retry rather than a resend.
+void rlRestorePlan(const QString &id, const RlPlan &plan) {
+    const QMutexLocker lock(&rlPlanMutex());
+    rlPlans().insert(id, plan);
+}
 }  // namespace
 
 QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     // ANTS-5086 — the busy guard's shared hold, for the whole call and before
     // any other refusal, so a migration cannot read this project's roadmap
-    // while the write is under way (ANTS-2132 § 2.10). Every op writes.
+    // while the write is under way (ANTS-2132 § 2.10). Every op writes. A
+    // plan's caller_cwd must equal this one, so the hold covers its project.
     const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
     if (!writeHold.held())
         return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_log")));
-    QJsonDocument doc = cmdRoadmapLogDispatch(req);
+    std::optional<RlPlan> plan;
+    if (req.contains(QStringLiteral("plan_id"))) {
+        QJsonObject refusal;
+        plan = rlTakePlan(req, &refusal);
+        if (!plan) return QJsonDocument(refusal);
+    }
+    const QJsonObject &opReq = plan ? plan->req : req;
+    QJsonDocument doc = cmdRoadmapLogDispatch(opReq);
+    if (plan && !doc.object().value(QStringLiteral("ok")).toBool())
+        rlRestorePlan(req.value(QStringLiteral("plan_id")).toString(), *plan);
+    // ANTS-5704 — a successful preview names the plan that applies it.
+    if (opReq.value(QStringLiteral("dry_run")).toBool() &&
+        doc.object().value(QStringLiteral("ok")).toBool()) {
+        QJsonObject env = doc.object();
+        env[QStringLiteral("plan_id")] = rlStashPlan(opReq);
+        doc = QJsonDocument(env);
+    }
     // ANTS-5359 — a literal backslash-n in a scalar text field is stored as
     // two characters while the write reports ok. Said once here rather than
     // at each op's success envelopes. Advisory only: a quoted regex carries one.
     QJsonObject env = doc.object();
-    const QStringList literal = RoadmapParse::literalEscapeFields(req);
+    const QStringList literal = RoadmapParse::literalEscapeFields(opReq);
     if (env.value(QStringLiteral("ok")).toBool() && !literal.isEmpty()) {
         QJsonObject warn;
         warn[QStringLiteral("code")]    = QStringLiteral("literal_escape_sequences");
@@ -4136,7 +4253,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         // request's op stands in, with `add` and the default read as append.
         QString op = env.value(QStringLiteral("op")).toString();
         if (op.isEmpty()) {
-            op = req.value(QStringLiteral("op")).toString(QStringLiteral("append"));
+            op = opReq.value(QStringLiteral("op")).toString(QStringLiteral("append"));
             if (op == QStringLiteral("add")) op = QStringLiteral("append");
         }
         const QString hint = rlBatchHint(

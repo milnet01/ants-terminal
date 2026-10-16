@@ -305,6 +305,15 @@ call-level fallback, which skipped a kind-less bullet `bad_kind` and filed a
 lane-less one with no lanes; or a single-item write with no `batch_hint`
 when the same op wrote to the same project minutes before.
 
+### ANTS-5704 — a dry run's plan_id applies it without resending it
+
+| Case | Asserts |
+|---|---|
+| `Ants5704PlanIdAppliesTheDryRun` | A dry-run `annotate` returns a `plan_id` and leaves the body unchanged. `plan_id` with a payload argument beside it refuses `bad_args`. `caller_cwd` plus `plan_id` alone then writes the note, with no `dry_run` and no `plan_id` in the reply. The same id again, and an id never issued, refuse `plan_not_found`. |
+
+**Would break this:** a dry run with no `plan_id`, a plan that applies twice,
+or one that runs with arguments the preview never saw.
+
 ### ANTS-5358 — flip_batch takes a per-locator to_status
 
 | Case | Asserts |

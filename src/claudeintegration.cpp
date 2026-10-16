@@ -13456,6 +13456,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["stable_id"]     = stableIdProp;    // ANTS-1905
                     props["id_prefix"]     = idPrefixProp;    // ANTS-2076
                     props["dry_run"]       = dryRunProp;      // ANTS-2077
+                    {   // ANTS-5704
+                        QJsonObject planIdProp;
+                        planIdProp["type"] = QStringLiteral("string");
+                        planIdProp["description"] = QStringLiteral(
+                            "Apply a dry run without resending it: a successful "
+                            "dry run returns `plan_id`, and a call carrying only "
+                            "caller_cwd and that id runs the previewed request "
+                            "for real, re-running every check. Any other payload "
+                            "argument refuses bad_args. A plan is used once, by "
+                            "an apply that lands; it lasts 15 minutes and a "
+                            "server restart forgets it, both refusing "
+                            "plan_not_found.");
+                        props["plan_id"] = planIdProp;
+                    }
                     props["return"]        = returnProp;      // ANTS-2080
                     props["pass"]          = passProp;        // ANTS-2126
                     {   // ANTS-4487 § 4.5
@@ -16100,7 +16114,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_log/note"), QStringLiteral("Prose appended to the item's body; required on annotate, optional on flip.")},
                         {QStringLiteral("roadmap_log/old_text"), QStringLiteral("amend_body / amend_headline: exact text to replace; must occur once; matches across line wraps.")},
                         {QStringLiteral("roadmap_log/op"), QStringLiteral("Default append. Each op's arguments, refusals and behaviour: tool_info {name:\"roadmap_log\"}.")},
-                        {QStringLiteral("roadmap_log/pass"), QStringLiteral("Pass designator (e.g. \"43.5\") for append on a pass-headings roadmap; required there.")},
+                        {QStringLiteral("roadmap_log/plan_id"), QStringLiteral("A dry run's plan_id: applies that request without resending it. Used once; lasts 15 minutes.")},
+                        {QStringLiteral("roadmap_log/pass"),QStringLiteral("Pass designator (e.g. \"43.5\") for append on a pass-headings roadmap; required there.")},
                         {QStringLiteral("roadmap_log/position"), QStringLiteral("bundle_row: end (default), or sorted by sort_col.")},
                         {QStringLiteral("roadmap_log/return"), QStringLiteral("headline_only adds post_bullets to append/flip replies; full echoes the whole rendered bullet.")},
                         {QStringLiteral("roadmap_log/section"), QStringLiteral("Section slug; an unknown slug refuses with candidates[].")},
