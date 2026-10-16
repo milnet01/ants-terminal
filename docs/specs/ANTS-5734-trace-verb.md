@@ -61,7 +61,8 @@ Exactly one of `symbol` and `path` is required. These refuse the call with `bad_
   "references": [
     {"kind": "string_or_config", "file": "tests/coverage-map.json", "line": 12, "text": "..."}
   ],
-  "tests": [{"file": "tests/features/workspace_search/test_ws.cpp", "ctest_pattern": "WorkspaceSearch", "via": "coverage_map"}],
+  "tests": {"files": ["tests/features/workspace_search/test_ws.cpp"],
+            "ctest_patterns": ["WorkspaceSearch"], "selection": "map"},
   "docs": [
     {"file": "docs/specs/ANTS-1248.md", "heading": "4.2 The rg call", "heading_line": 40, "line": 52}
   ],
@@ -145,7 +146,7 @@ The source copies live in `assets/trace-queries/` and install to `<prefix>/share
 
 ### 2.6 Tests
 
-A test file is one under the project's `test_roots` (`.ants/project.json`, else the `project_layout` default). Each test file with a `test`-kind row, a call or an import of the symbol gets one `tests[]` entry. Its `ctest_pattern` comes from `FocusedTest::resolve` where that answers (`via:"coverage_map"` or `via:"heuristic"`), and is absent otherwise (`via:"reference"`).
+A test file is one under the project's `test_roots` (`.ants/project.json`, else the `project_layout` default). `tests.files[]` lists each test file holding a `test`-kind row for the symbol. `tests.ctest_patterns` is `FocusedTest::resolve` run over the files holding the symbol's definitions, with `tests.selection` set to `map` or `heuristic`. Where `resolve` falls back to the full suite, both are absent: "run everything" says nothing about this symbol.
 
 ### 2.7 Documents, specs, roadmap and path mode
 
@@ -153,7 +154,7 @@ A test file is one under the project's `test_roots` (`.ants/project.json`, else 
 - **`spec_invariants[]`**: each invariant whose body, as `specparse` returns it, contains the symbol as a whole word.
 - **`roadmap_items[]`**: each bullet in the project's roadmap whose headline or body contains the symbol as a whole word, with its id and headline.
 
-**Path mode** (`path` given) skips definitions, callers and callees. It searches for the file's project-relative path, and for its basename where the basename is unique in the project. It returns `references`, `tests`, `docs`, `spec_invariants` and `roadmap_items` under the same rules. A basename that is not unique is reported in `not_covered` as `ambiguous_basename` and not searched.
+**Path mode** (`path` given) skips definitions, callers and callees. It searches for the file's project-relative path, and for its basename where the basename is unique in the project. It returns `references`, `tests`, `docs`, `spec_invariants` and `roadmap_items` under the same rules, except that `FocusedTest::resolve` runs over the path itself. A basename that is not unique is reported in `not_covered` as `ambiguous_basename` and not searched.
 
 ### 2.8 Registration
 
@@ -182,7 +183,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-8** — A capped reply is never trimmed silently, and paging rebuilds the whole answer. *Test:* `tests/features/trace/` traces `pagedProbe`, named on 300 fixture lines, with a `max_bytes` that fits about 50 rows, and follows `next_offset` to the end. It expects `truncated:true` on every page but the last, no row cut mid-way, and the pages joined equal to one uncapped call in the same order. *Breaks when:* the order is not total, so two rows on one line swap between calls, or the cap drops rows without setting `next_offset`.
 - **INV-9** — A source file in a language with no grammar is never dropped. *Test:* `tests/features/trace/` traces `kindProbe` and expects `not_covered` to hold `{reason:"no_grammar", lang:"zig", files:1}`, alongside INV-5's `unparsed` row. *Breaks when:* files of an unknown language are skipped by the walk.
 - **INV-10** — A trace that finds nothing says what it looked at. *Test:* `tests/features/trace/` traces `noSuchSymbol`, expecting `ok:true`, every section empty, `scanned.files` above zero and `scanned.languages` listing the fixture's languages. *Breaks when:* an empty answer omits `scanned`, or refuses `not_found`.
-- **INV-11** — Path mode finds the tests, documents and config that name a file, and refuses a path outside the root. *Test:* `tests/features/trace/` calls with `path:"units/probe.service"`, named in `fixture/tests/test_units.py` and `fixture/docs/guide.md`, expecting one `tests` entry and one `docs` row. A call with `path:"../../etc/passwd"` expects `bad_path`. *Breaks when:* a non-unique basename is searched, or path validation is skipped.
+- **INV-11** — Path mode finds the tests, documents and config that name a file, and refuses a path outside the root. *Test:* `tests/features/trace/` calls with `path:"units/probe.service"`, named in `fixture/tests/test_units.py` and `fixture/docs/guide.md`, expecting one `tests.files` entry and one `docs` row. A call with `path:"../../etc/passwd"` expects `bad_path`. *Breaks when:* a non-unique basename is searched, or path validation is skipped.
 - **INV-12** — The walk never follows a symlink. *Test:* `tests/features/trace/` adds a symlink to a temporary copy of the fixture, pointing at a directory outside it whose file names `kindProbe`, and expects no row from that directory. *Breaks when:* the walk follows a symlink into a directory.
 - **INV-13** — `ants-mcpd` lists and serves `trace`; the terminal's in-process server lists none. *Test:* `tests/features/trace/` builds the `tools/list` reply through `ClaudeIntegration` once with `mcp::registerMcpdOnlyVerbs` run and once without, expecting `trace` in the first and absent from the second. *Breaks when:* the descriptor is emitted unconditionally, which advertises a verb the terminal cannot run.
 - **INV-14** — An edited query file changes the next answer without a restart. *Test:* `tests/features/trace/` points `XDG_DATA_HOME` at a temporary directory, traces `queryProbe` once, then writes a `python.scm` there that drops `@reference.call`, and traces again in the same process. It expects callers on the first call and none on the second. *Breaks when:* query files are loaded once at start-up, or the cache key leaves out the query hash.
