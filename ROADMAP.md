@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5733 -->
+<!-- ants-roadmap-id-high-water: ANTS=5739 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72540,6 +72540,100 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-10-16 (trailer clip 3 recording).
   Lanes: claude-integration.
+
+- 📋 [ANTS-5734] **A `trace` verb answers "where is this symbol, who uses it, and what documents it" in one call, for every modern language.**
+  Measured by claude-config 2026-10-16 over 200 transcripts: ~2,680
+  single-symbol grep calls against 23 tracing-verb calls; reading and
+  searching ~1.45B tokens re-sent. One reply carries: definition
+  (file:line, signature, overloads); callers to depth N (default 1, cap
+  ~3) with the calling line; callees; references split import /
+  string-or-config / test / docs; tests that exercise it; and (user
+  requirement 1) the doc sections that describe it (file, heading, line)
+  plus spec invariants and roadmap items citing it, composed from
+  doc_citations / cited_by / spec_query. A byte cap with an offset, never
+  a silent trim, and a `not_covered` list (pointer calls, signals, a
+  language with no grammar). User requirement 2: all modern languages for
+  every Ants Terminal user, not only this machine. Engine to decide in the
+  spec; claude-config recommends tree-sitter, with an LSP server where
+  installed for precision. The spec names the language list and how a
+  missing grammar is reported. Ship order: definition + depth-1 callers +
+  reference kinds + docs first; depth-N and callees second; more grammars
+  third. On ship: add `trace` to the always-loaded set (ANTS-5725) and
+  name it in hooks/ants-session-preamble.sh; tell claude-config, which
+  routes ants-verb-redirect.sh, write-code and locate-defect to it.
+  Reload: runs in ants-mcpd; clients pick it up on their next reconnect,
+  no terminal relaunch. Needs a spec (write-spec).
+  More from peers, 2026-10-16 (via claude-config): (a) the definition's
+  END line too, so a review packet can cut a window from it (demoreel
+  and pressless each run ~40 grep -n per review), plus a CLI form for
+  scripts such as packet-build.sh; (b) accept a non-code path: "which
+  tests read or pin this file" (oneup: a systemd unit); (c) which spec
+  sections mention it (pressless; covered by requirement 1).
+  **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
+  Kind: feature.
+  Source: claude-config-request-2026-10-16 (user requirements relayed).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5735] **roadmap_log tells a session that files items one at a time to use the batch ops.**
+  claude-config 2026-10-16: 1,072 roadmap_log calls (217M tokens
+  re-sent) over 200 transcripts, mostly one item per call, though
+  append_batch, flip_batch and annotate_batch exist. Add a reply hint on
+  a single append/flip/annotate naming the batch op, at least when the
+  same session made a single-item write in the last few minutes. Also:
+  append_batch takes section and status from the call level but not
+  source, kind or lanes; a call-level source refused every bullet
+  (missing_field) on 2026-10-16. Let those fall back too.
+  Reload: runs in ants-mcpd; next reconnect.
+  **Layman:** When Claude adds roadmap items one by one, the tool suggests doing them all in one step, which costs less.
+  Kind: enhancement.
+  Source: claude-config-request-2026-10-16.
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5736] **A project's most-used Ants verbs arrive loaded, so a session does not spend a ToolSearch call to reach them.**
+  claude-config census 2026-10-16: 621 ToolSearch calls (87M tokens
+  re-sent) over 200 transcripts, just to load deferred verbs. Most named:
+  roadmap_query, roadmap_log, changelog_log, session_message, spec_log,
+  invariant_check. Ideas: preload the verbs a project's CLAUDE.md names, or
+  the ones it used last session. First establish what Claude Code allows
+  (the ANTS-5694 always-loaded mechanism) and the per-request byte cost of
+  each added verb (ANTS-5725 trims schemas; this widens the set), then
+  pick. Reload: runs in ants-mcpd; next reconnect.
+  **Layman:** The Ants tools a project uses most are ready from the start instead of being fetched one at a time.
+  Kind: perf.
+  Source: claude-config-request-2026-10-16 (demoreel, oneup, census).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5737] **`cc-job summary <job>` reports passed, failed and the failing lines of a finished build or test job.**
+  oneup (twice) and demoreel 2026-10-16 read whole job logs by hand.
+  Return {passed, failed, fail_lines} using a per-project parser (ctest,
+  pytest, cargo, gtest first; demoreel's ./ci.sh --summary is the model),
+  and a log-triage mode: error-shaped lines minus a known-noise list.
+  packaging/cc-job is this repo's. Reload: a script, re-read per call.
+  **Layman:** After a long build or test run, one short command says how many passed and failed and shows only the failures.
+  Kind: feature.
+  Source: claude-config-request-2026-10-16 (oneup, demoreel).
+  Lanes: packaging.
+
+- 📋 [ANTS-5738] **changelog_query answers whether a claim shipped in a given release, quoting the matching CHANGELOG lines.**
+  The website session checks 2-3 claims a session by hand. Given
+  {repo or project, tag/version, text}, return the CHANGELOG lines at that
+  release that match, or not_found. Likely a changelog_query mode rather
+  than a new verb. Reload: runs in ants-mcpd; next reconnect.
+  **Layman:** One question tells the website whether a feature it wants to mention really shipped in a given version.
+  Kind: feature.
+  Source: claude-config-request-2026-10-16 (ants-projects-hub-website).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5739] **The session preamble names apply_edits for multi-file replacements and file_outline paths:[...] for headings across files.**
+  pressless 2026-10-16 hand-wrote a Python multi-replace and grep '^### '
+  across specs; apply_edits and file_outline paths:[...] already do both.
+  Name them in hooks/ants-session-preamble.sh (ours), and consider a
+  workspace_search reply hint when the pattern is a heading anchor.
+  Reload: the hook is re-read at each session start.
+  **Layman:** Claude is told up front about two existing Ants tools that replace hand-written scripts.
+  Kind: enhancement.
+  Source: claude-config-request-2026-10-16 (pressless).
+  Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
