@@ -72679,6 +72679,15 @@ measured Ants adding about 5,250 tokens to every request.
   client reconnects (/mcp). Still owed: tell claude-config (CFG-0816,
   CFG-0818); the user's installed hooks need tools/install-hooks.sh for
   the preamble line. Ships 2 and 3 remain.
+  Ship 3 request (user via groundwork, 2026-10-16): build most of C,
+  C++, Python, bash, Rust, Lua, JSON, GLSL, QML (qmljs), Make, Meson,
+  YAML, TOML, XML, Markdown, JavaScript, TypeScript, HTML, CSS, Go,
+  Java, C#, Ruby, PHP; the leave-outs are this session's call. Decided
+  2026-10-16: leave out Markdown (trace's docs pass already reads it),
+  XML and HTML (no symbols a trace could define; text references already
+  find their names). Add c_sharp, ruby, php, qmljs, make, meson, json,
+  yaml, toml, css, each under § 2.3's admission rule. The spec's § 2.3
+  language list changes, so it owes review-contract before building.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
