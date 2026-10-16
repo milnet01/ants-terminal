@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5752 -->
+<!-- ants-roadmap-id-high-water: ANTS=5754 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92257,6 +92257,32 @@ contributors don't duplicate research.
   Kind: package.
   Source: user-question-2026-09-29.
   Lanes: packaging, claude-integration.
+
+- 📋 [ANTS-5753] **Every Claude status-bar pill keeps a fixed slot, wide enough for its longest text, so nothing beside it moves.**
+  User 2026-10-16, with a screenshot: the right-hand group (Claude state,
+  Context %, tokens-saved, Review Changes, the model-suggestion chip,
+  the model button, Roadmap, version) shifts as texts change length and
+  chips show or hide, which makes it hard to read. Each widget gets a
+  fixed width sized to its longest possible text in the current font; a
+  hidden chip keeps its slot. Hot reload: GUI code, so it reaches a
+  running terminal only on relaunch (unavoidable: the status bar lives
+  in the terminal process).
+  **Layman:** The pills at the bottom right stop jumping around as their text changes or they appear and disappear.
+  Kind: ux.
+  Source: user-request-2026-10-16.
+  Lanes: statusbar.
+
+- 📋 [ANTS-5754] **A setting turns off the status-bar model-suggestion chip ("→ Haiku") without turning on automatic model switching.**
+  User 2026-10-16 could not find a way to hide it. Today
+  ClaudeStatusBarController::refreshModelChip (src/claudestatuswidgets.cpp)
+  hides the chip only when claude.auto_model_switch is on, which the user
+  turned off on purpose. Add a config key and a Settings checkbox beside
+  the auto-switch one. Hot reload: the chip reads cachedConfig() each
+  tick, so the setting applies live; the code itself needs a relaunch.
+  **Layman:** You can hide the "→ Haiku / → Opus" suggestion button without letting Ants switch models for you.
+  Kind: feature.
+  Source: user-request-2026-10-16.
+  Lanes: statusbar.
 
 ### Opt-in usage telemetry and crash reports (user request 2026-09-27)
 
