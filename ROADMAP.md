@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5731 -->
+<!-- ants-roadmap-id-high-water: ANTS=5732 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72505,6 +72505,21 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: user-report-2026-10-16.
   Lanes: claude-integration.
+
+- 📋 [ANTS-5732] **quotation_check flags a quote found far from the line its finding cites.**
+  claude-config, 2026-10-16: review lanes cite file:line, and a quote far
+  from its citation is a stale or wrong finding. Today quotation_check
+  answers hit/miss per {path, text, ref?} only. Add an optional per-item
+  `line` and a call-level or per-item `tolerance` (default to decide in
+  design). A hit outside line ± tolerance reports its own outcome (e.g.
+  `hit_displaced`) with the found line, so a caller can batch-check every
+  lane finding in one call. Absent `line` keeps today's reply unchanged.
+  Reload: none beyond rebuilding ants-mcpd; clients pick it up on their
+  next reconnect.
+  **Layman:** Checking a reviewer's quotes can also say when a quote is in the file but not where the reviewer said it was.
+  Kind: enhancement.
+  Source: claude-config-request-2026-10-16.
+  Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
