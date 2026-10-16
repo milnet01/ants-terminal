@@ -239,11 +239,14 @@ MemLevel nextLevel(MemLevel current, qint64 availKb,
 
 The busy default rests on one measurement (2026-10-15, 60 s per Claude
 tab tree): eight trees used 380–720 ms, ten used 2560–11400 ms; which
-were idle was not recorded. Re-measure on idle tabs when building.
+were idle was not recorded. A second (2026-10-16, 60 s, `/proc/<p>/stat`
+utime+stime summed over the tree) had no tab in the Idle state: two trees
+waiting on the user used 510 and 8120 ms, and a shell with no `claude`
+used 0. Re-measure on Idle tabs when building.
 
 Values are read when `MainWindow::onConfigFileChanged` and the Settings
-dialog's Apply path run, so a change applies without a relaunch. The rest
-reaches a running terminal only through a new binary, on the next launch.
+dialog's Apply path run, so a change applies without a relaunch. Both
+call `SessionManagerController::applyConfig` (§ 14).
 
 ## 5. Invariants
 
@@ -308,7 +311,7 @@ reaches a running terminal only through a new binary, on the next launch.
   applied on both reload paths.
   *Test:* same file, `Inv8ConfigKeysAndReload`: round-trip through
   `Config`, and a source check that `onConfigFileChanged` and the Settings
-  apply path both call the monitor's `applyConfig`.
+  apply path both call `SessionManagerController::applyConfig`.
   *Breaks when:* a key is misspelt, a default differs, or one reload path
   is missed.
 
@@ -319,6 +322,17 @@ reaches a running terminal only through a new binary, on the next launch.
   that the park and resume code calls `writeCommand` only with the
   builder's result.
   *Breaks when:* the parked-session resume formats its own command.
+
+- **INV-10** — `SessionManagerController::setEnabled(false)` destroys the
+  monitor, with its timer, samples and parked records, and closes the
+  manager window; `setEnabled(true)` builds a fresh one from the current
+  config. No relaunch is involved.
+  *Test:* same file, `Inv10EnabledStopsAndStarts`: enable, park a fake
+  session through a recording terminate function, disable — `monitor()`
+  is null; enable — `monitor()` is non-null, a different object, holding
+  no parked record, its timer active.
+  *Breaks when:* the monitor or its parked records survive a disable, or
+  an enable reuses the old monitor.
 
 ## 6. Failure modes
 
@@ -347,7 +361,7 @@ All in `tests/features/session_manager/` with a `spec.md` pointing here,
 compiled into the bundle `build_target_for` names, label `features`. Each
 test is seen failing against a build without the feature before it is
 counted. INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7 and INV-8 each
-have the test named in § 5, and so does INV-9.
+have the test named in § 5, and so do INV-9 and INV-10.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -381,6 +395,7 @@ have the test named in § 5, and so does INV-9.
 | INV-7 | `SessionManager.Inv7AutoParkPicksLongestIdle` |
 | INV-8 | `SessionManager.Inv8ConfigKeysAndReload` |
 | INV-9 | `SessionManager.Inv9OnlyTheBuilderResumesParked` |
+| INV-10 | `SessionManager.Inv10EnabledStopsAndStarts` |
 | § 4.3 window layout | **nothing** — visual; checked by hand when built |
 
 ## 11. Cross-doc impact
@@ -398,3 +413,29 @@ Rows live in `../reviews/ANTS-5719-session-manager-loop-log.md`.
 
 Per tracked shell: 12 samples of three integers. One `QTimer` at 5 s.
 No new dependencies.
+
+## 14. Reload
+
+- **Settings** reach a running terminal on a config re-read or the
+  Settings dialog's Apply (§ 4.7).
+- **A code change** needs a terminal relaunch. The feature reads tab state
+  (`ClaudeTabTracker`) and writes into tabs (`writeCommand`, the tab-dot
+  provider), and both live in the terminal process.
+- **Own process: no**, for the same reason. Sampling `/proc` could run
+  outside, but every verdict needs the tracker and every park or resume
+  needs a tab, so the terminal-side half would still need a relaunch.
+- **Stop/start control: `session_manager_enabled`.** One owner holds the
+  feature's state, so turning the key off tears it all down and turning
+  it on rebuilds it (INV-10). A stuck monitor is restarted by turning the
+  key off and on. Disabling drops parked records; those sessions stay
+  resumable from Projects & Sessions (§ 4.5).
+
+```cpp
+// sessionmemory.h — owned by MainWindow
+class SessionManagerController : public QObject {
+public:
+    void applyConfig(const Config &cfg); // setEnabled, then the monitor's own keys
+    void setEnabled(bool on);            // false: delete monitor, close window
+    SessionMonitor *monitor() const;     // null while disabled
+};
+```
