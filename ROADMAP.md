@@ -92317,7 +92317,7 @@ contributors don't duplicate research.
   Source: user-question-2026-09-29.
   Lanes: packaging, claude-integration.
 
-- 📋 [ANTS-5753] **Every Claude status-bar pill keeps a fixed slot, wide enough for its longest text, so nothing beside it moves.**
+- ✅ [ANTS-5753] **Every Claude status-bar pill keeps a fixed slot, wide enough for its longest text, so nothing beside it moves.**
   User 2026-10-16, with a screenshot: the right-hand group (Claude state,
   Context %, tokens-saved, Review Changes, the model-suggestion chip,
   the model button, Roadmap, version) shifts as texts change length and
@@ -92326,6 +92326,12 @@ contributors don't duplicate research.
   hidden chip keeps its slot. Hot reload: GUI code, so it reaches a
   running terminal only on relaunch (unavoidable: the status bar lives
   in the terminal process).
+  Shipped 2026-10-16 (9e005eea): statusbarslot::pin fixes each Claude
+  pill's width to its longest text and keeps hidden slots;
+  Settings-disabled pills give theirs back; overlong state text elided
+  with tooltip; allowlist prompt inserted at the left end. Needs a
+  terminal relaunch to load. Not done: the left-side git branch label
+  still sizes to its text (it moves the stretchy message area only).
   **Layman:** The pills at the bottom right stop jumping around as their text changes or they appear and disappear.
   Kind: ux.
   Source: user-request-2026-10-16.

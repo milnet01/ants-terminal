@@ -77,6 +77,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Status-bar pills keep fixed positions: each has a fixed width for its longest text and keeps its place when hidden** (ANTS-5753)
+  A pill switched off in Settings gives its space back; an overlong Claude state is shortened with "…" and shown in full on hover.
+
 - **roadmap_query list replies carry id, status, title and section by default; kind, lanes and source come with include_body or bullet_fields** (ANTS-5703)
 
 - **The project spec standard now requires a *Breaks when:* clause on each invariant and defers to spec-format.md § 1 on what belongs in docs/specs/** (ANTS-5749)
