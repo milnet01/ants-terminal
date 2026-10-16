@@ -3011,6 +3011,48 @@ TEST(RoadmapWriteHalf, Ants5735CallLevelKindAndLanesAreTheFallback) {
     EXPECT_EQ(second->lanes, QStringList{QStringLiteral("own-lane")});
 }
 
+// A second single-item write of the same op on one project, minutes after the
+// first, names that op's batch form in `batch_hint`; the first write does not.
+// Before, nothing pointed a session filing items one at a time at the batch ops.
+TEST(RoadmapWriteHalf, Ants5735RepeatedSingleWritesHintTheBatchOp) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const auto write = [&](const QString &op, const QString &key, const QString &value) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = op;
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+        req[key]                          = value;
+        return rc.cmdRoadmapLog(req).object();
+    };
+    const auto hintOf = [](const QJsonObject &r) {
+        EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().toStdString();
+        return r.value(QStringLiteral("batch_hint"));
+    };
+
+    const QString noteKey = QStringLiteral("note");
+    EXPECT_TRUE(hintOf(write(QStringLiteral("annotate"), noteKey, QStringLiteral("First note."))).isUndefined());
+    const QJsonValue annotateHint =
+        hintOf(write(QStringLiteral("annotate"), noteKey, QStringLiteral("Second note.")));
+    ASSERT_TRUE(annotateHint.isString());
+    EXPECT_TRUE(annotateHint.toString().contains(QStringLiteral("annotate_batch")));
+
+    // A different op is its own count: the first flip after two annotates
+    // carries no hint, the second names flip_batch.
+    const QString toKey = QStringLiteral("to_status");
+    EXPECT_TRUE(hintOf(write(QStringLiteral("flip"), toKey, QStringLiteral("in-progress"))).isUndefined());
+    const QJsonValue flipHint =
+        hintOf(write(QStringLiteral("flip"), toKey, QStringLiteral("planned")));
+    ASSERT_TRUE(flipHint.isString());
+    EXPECT_TRUE(flipHint.toString().contains(QStringLiteral("flip_batch")));
+}
+
 // A batch that files nothing says so in a `warning`, and the `fields=`
 // projection keeps a `warning` whatever the caller names (ANTS-4698). Before,
 // fields:["ok","ids"] narrowed it to {ok:true, ids:[]}: no sign of a skip.

@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **A single `roadmap_log` `append`, `flip` or `annotate` that repeats the same op on a project within 5 minutes carries a `batch_hint` naming its batch op.** (ANTS-5735)
+
 - **A `trace` MCP verb answers "where is this symbol, who uses it, and what documents it" in one call.** (ANTS-5734)
   It returns a symbol's definitions with their full line span, the lines that call it, every other mention sorted by kind, the tests that touch it, and the documents, spec rules and roadmap items that name it. Given a file path instead, it lists what names that file. It understands C, C++, Python, Bash, Lua, GLSL, JavaScript, TypeScript, TSX, Rust, Go and Java, using parsers built into `ants-mcpd`, so it works the same on every system. Served by `ants-mcpd` only; a client picks it up on its next reconnect, with no terminal restart.
 

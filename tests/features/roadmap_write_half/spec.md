@@ -298,10 +298,12 @@ reply with no `warning`, which `fields` narrowed to `{ok:true, ids:[]}`.
 | Case | Asserts |
 |---|---|
 | `Ants5735CallLevelKindAndLanesAreTheFallback` | An `append_batch` with a call-level `kind` and `lanes` files a bullet that carries neither with those values, and a bullet carrying its own with its own; nothing lands in `skipped[]`. |
+| `Ants5735RepeatedSingleWritesHintTheBatchOp` | On one project, the first `annotate` carries no `batch_hint` and the second carries a string naming `annotate_batch`. The first `flip` after them carries none and the second names `flip_batch`. |
 
 **Would break this:** reading each bullet's kind and lanes without the
 call-level fallback, which skipped a kind-less bullet `bad_kind` and filed a
-lane-less one with no lanes.
+lane-less one with no lanes; or a single-item write with no `batch_hint`
+when the same op wrote to the same project minutes before.
 
 ### ANTS-5358 — flip_batch takes a per-locator to_status
 

@@ -21,6 +21,7 @@
 #include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
 #include <QFileInfo>
 #include <QHash>       // ANTS-4119 — the sources rollup
+#include <QMutex>      // ANTS-5735 — the batch hint's last-write times
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
 
 using namespace rcdetail;  // ANTS-3833
@@ -4064,6 +4065,35 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 // ANTS-1428 — adapter mode adds `op:"flip"` for GFM-format
 // roadmaps. Default `op:"append"` preserves the ANTS-1424 path
 // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
+namespace {
+// ANTS-5735 — a session filing items one call at a time pays for the whole
+// reply each time. When a single-item op lands on a project where the same op
+// landed within the window, name its batch form. Keyed by caller_cwd and op,
+// in memory only: an ants-mcpd restart forgets it, which costs one hint.
+constexpr qint64 kBatchHintWindowMs = 5 * 60 * 1000;
+
+QString rlBatchHint(const QString &cwd, const QString &op) {
+    static const QHash<QString, QString> kBatchOf = {
+        {QStringLiteral("append"),   QStringLiteral("append_batch")},
+        {QStringLiteral("flip"),     QStringLiteral("flip_batch")},
+        {QStringLiteral("annotate"), QStringLiteral("annotate_batch")},
+    };
+    const auto batch = kBatchOf.constFind(op);
+    if (batch == kBatchOf.cend()) return {};
+    static QMutex mutex;
+    static QHash<QString, qint64> lastWriteMs;
+    const QString key = cwd + QChar(u'\n') + op;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QMutexLocker lock(&mutex);
+    const qint64 last = lastWriteMs.value(key, -1);
+    lastWriteMs.insert(key, now);
+    if (last < 0 || now - last > kBatchHintWindowMs) return {};
+    return QStringLiteral("Another `%1` landed here in the last 5 minutes. "
+                          "op:\"%2\" files many in one call, which costs less.")
+        .arg(op, *batch);
+}
+}  // namespace
+
 QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     // ANTS-5086 — the busy guard's shared hold, for the whole call and before
     // any other refusal, so a migration cannot read this project's roadmap
@@ -4087,6 +4117,22 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         warn[QStringLiteral("fields")]  = QJsonArray::fromStringList(literal);
         rlAddWarning(env, warn);
         doc = QJsonDocument(env);
+    }
+    if (env.value(QStringLiteral("ok")).toBool() &&
+        !env.value(QStringLiteral("dry_run")).toBool()) {
+        // The reply names the canonical op; an append reply may not, so the
+        // request's op stands in, with `add` and the default read as append.
+        QString op = env.value(QStringLiteral("op")).toString();
+        if (op.isEmpty()) {
+            op = req.value(QStringLiteral("op")).toString(QStringLiteral("append"));
+            if (op == QStringLiteral("add")) op = QStringLiteral("append");
+        }
+        const QString hint = rlBatchHint(
+            req.value(QStringLiteral("caller_cwd")).toString(), op);
+        if (!hint.isEmpty()) {
+            env[QStringLiteral("batch_hint")] = hint;
+            doc = QJsonDocument(env);
+        }
     }
     return doc;
 }
