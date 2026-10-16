@@ -1263,7 +1263,13 @@ void MainWindow::showWelcome() {
         m_welcomeDialog->activateWindow();
         return;
     }
-    auto *dlg = new WelcomeDialog(QString(), WelcomeDialog::detect(), this);
+    WelcomeDialog::Options opts = WelcomeDialog::detect();
+    // ANTS-5744 — the Claude Code installer runs in a new tab, typed into the
+    // user's shell; the trailing newline runs it.
+    opts.openInstallTab = [this](const QString &command) {
+        newTabForRemote(QString(), command + QStringLiteral("\n"));
+    };
+    auto *dlg = new WelcomeDialog(QString(), opts, this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     m_welcomeDialog = dlg;
     dlg->show();

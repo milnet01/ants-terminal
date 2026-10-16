@@ -76,7 +76,6 @@ TEST(ScrollAreaThemeBackground, Inv1PlainScrollArea) {
 TEST(ScrollAreaThemeBackground, Inv2WelcomeDialog) {
     AppSheet sheet;
     WelcomeDialog::Options opts;
-    opts.claudeDetected = false;
     WelcomeDialog dlg(QStringLiteral("Dark"), opts);
     auto *scroll = dlg.findChild<QScrollArea *>();
     ASSERT_NE(scroll, nullptr);

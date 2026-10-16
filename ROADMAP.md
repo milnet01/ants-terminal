@@ -94955,7 +94955,7 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: in-session-2026-09-29.
   Lanes: ui.
 
-- 📋 [ANTS-5744] **The welcome dialog offers to install Claude Code when it is missing.**
+- ✅ [ANTS-5744] **The welcome dialog offers to install Claude Code when it is missing.**
   User decisions 2026-10-16: install with Anthropic's own installer
   (https://claude.ai/install.sh: no password, any distro, updates itself),
   not the system package manager; after it installs, open a new Ants tab
@@ -94965,6 +94965,8 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Contract: amends docs/specs/ANTS-5558-welcome-dialog.md (§ 2.8, INV-11
   onward). Reload: the dialog is built on each open; nothing new runs in
   the background, so no relaunch.
+  Shipped 2026-10-16 to spec ANTS-5558 § 2.8 (INV-11 to INV-14 tested in
+  tests/features/welcome_dialog/).
   **Layman:** A new user without Claude Code can install it from the welcome window in one click, and is told it needs a paid Claude plan.
   Kind: feature.
   Source: user-request-2026-10-16.

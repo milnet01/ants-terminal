@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **The welcome window offers to install Claude Code when it is missing** (ANTS-5744)
+  An Install Claude Code button shows the exact command first, then runs Anthropic's installer in a new tab and starts Claude Code there for sign-in. A note says Claude Code needs a paid Claude plan or an Anthropic API account. The window notices the install when you return to it, and Ants now also finds Claude Code in ~/.local/bin.
+
 - **The hot-reload rule is now checked: every spec carries a Reload section, and a commit that adds a src/ source file carries a "Reload:" line** (ANTS-5721)
   `spec_lint` reports a spec with no `## Reload` section, and
   `tools/hooks/commit-msg` refuses a commit adding a `.cpp`, `.h`, `.c`, `.cc`

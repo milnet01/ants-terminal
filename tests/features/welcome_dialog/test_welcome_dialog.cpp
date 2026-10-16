@@ -5,10 +5,17 @@
 // INV-2  — Help carries `Show &Welcome...` after `About &Qt...`.
 // INV-3  — DialogChrome::install resizable + key "WelcomeDialog", a
 //          QScrollArea body, non-modal.
-// INV-4  — the Claude Code section follows detection.
+// INV-4  — the Claude Code section follows detection; the install button
+//          stands in its place when Claude Code is missing.
 // INV-9  — the CLAUDE.md and shell buttons write nothing until the preview
 //          is accepted.
 // INV-10 — the three donation links, in the dialog and in the Donate menu.
+// INV-11 — the install offer and the paid-plan note show only when Claude
+//          Code is missing.
+// INV-12 — the install command reaches openInstallTab once, after the
+//          preview is accepted, and equals the spec § 2.8 line.
+// INV-13 — window activation re-reads detection.
+// INV-14 — MainWindow::showWelcome binds openInstallTab to newTabForRemote.
 //
 // Why this exists: a first-run dialog that shows on every launch (or never),
 // a modal one that drops clicks on KWin/Wayland, or a setup button that
@@ -34,6 +41,8 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QDialog>
+#include <QEvent>
+#include <QLabel>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -257,7 +266,6 @@ TEST(WelcomeDialog, ChromeAndNonModal) {
     // --- behaviour: constructed offscreen.
     {
         WelcomeDialog::Options opts;
-        opts.claudeDetected = false;
         opts.claudeMdPath = sb.home + QStringLiteral("/.claude/CLAUDE.md");
         WelcomeDialog dlg(QStringLiteral("Dark"), opts);
         expect(dlg.findChild<QScrollArea *>() != nullptr,
@@ -307,25 +315,25 @@ TEST(WelcomeDialog, ClaudeSectionFollowsDetection) {
                      bool *sectionVisible, bool *hintVisible,
                      WelcomeDialog *&dlgOut) {
         WelcomeDialog::Options opts;
-        opts.claudeDetected = detected;
+        opts.detectClaude = [detected] { return detected; };
         opts.claudeMdPath = sb.home + QStringLiteral("/.claude/CLAUDE.md");
         dlgOut = new WelcomeDialog(QStringLiteral("Dark"), opts);
         *section = dlgOut->findChild<QWidget *>(QStringLiteral("welcomeClaudeSection"));
-        *hint = dlgOut->findChild<QWidget *>(QStringLiteral("welcomeClaudeMissingHint"));
+        *hint = dlgOut->findChild<QWidget *>(QStringLiteral("welcomeInstallClaudeButton"));
         *sectionVisible = *section && (*section)->isVisibleTo(dlgOut);
         *hintVisible = *hint && (*hint)->isVisibleTo(dlgOut);
     };
 
-    // Detection injected false: the hint shows, the section does not.
+    // Detection injected false: the install button shows, the section does not.
     {
         QWidget *section = nullptr, *hint = nullptr;
         bool sectionVisible = false, hintVisible = false;
         WelcomeDialog *dlg = nullptr;
         probe(false, &section, &hint, &sectionVisible, &hintVisible, dlg);
-        expect(hint != nullptr, "INV4a/hint-exists-when-not-detected",
-               QStringLiteral("no widget named welcomeClaudeMissingHint"));
-        expect(hintVisible, "INV4b/hint-visible-when-not-detected",
-               QStringLiteral("detection false: expected the hint line visible, "
+        expect(hint != nullptr, "INV4a/install-button-exists-when-not-detected",
+               QStringLiteral("no widget named welcomeInstallClaudeButton"));
+        expect(hintVisible, "INV4b/install-button-visible-when-not-detected",
+               QStringLiteral("detection false: expected the install button visible, "
                               "actual %1").arg(hint ? QStringLiteral("hidden")
                                                     : QStringLiteral("missing")));
         expect(!sectionVisible, "INV4c/section-hidden-when-not-detected",
@@ -334,7 +342,7 @@ TEST(WelcomeDialog, ClaudeSectionFollowsDetection) {
         delete dlg;
     }
 
-    // Detection injected true: the section shows, the hint does not.
+    // Detection injected true: the section shows, the install button does not.
     {
         QWidget *section = nullptr, *hint = nullptr;
         bool sectionVisible = false, hintVisible = false;
@@ -346,8 +354,8 @@ TEST(WelcomeDialog, ClaudeSectionFollowsDetection) {
                QStringLiteral("detection true: expected the Claude section "
                               "visible, actual %1")
                    .arg(section ? QStringLiteral("hidden") : QStringLiteral("missing")));
-        expect(!hintVisible, "INV4f/hint-hidden-when-detected",
-               QStringLiteral("detection true: the hint line must not be shown; "
+        expect(!hintVisible, "INV4f/install-button-hidden-when-detected",
+               QStringLiteral("detection true: the install button must not be shown; "
                               "it is visible"));
         delete dlg;
     }
@@ -377,7 +385,7 @@ TEST(WelcomeDialog, ConfirmBeforeWriting) {
     ASSERT_TRUE(writeFile(bashrc, rcSeed));
 
     WelcomeDialog::Options opts;
-    opts.claudeDetected = true;
+    opts.detectClaude = [] { return true; };
     opts.shellScriptDirs = {fx};
     opts.claudeMdPath = claudeMd;
     WelcomeDialog dlg(QStringLiteral("Dark"), opts);
@@ -501,6 +509,160 @@ TEST(WelcomeDialog, DonationLinks) {
                QStringLiteral("`Tip via &PayBru...` goes after the Patreon "
                               "item; patreonIdx=%1 paybruIdx=%2").arg(pat).arg(pay));
     }
+
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ---------------------------------------------------------------- INV-11 ----
+
+namespace {
+// The § 2.8 line, written out so a changed claudeInstallCommand() fails here.
+const QString kInstallLine = QStringLiteral(
+    "curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude");
+
+bool visibleIn(QWidget *w, QWidget *dlg) { return w && w->isVisibleTo(dlg); }
+}  // namespace
+
+TEST(WelcomeDialog, InstallOfferAndPlanNote) {
+    expect_reset();
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+
+    for (const bool detected : {false, true}) {
+        WelcomeDialog::Options opts;
+        opts.detectClaude = [detected] { return detected; };
+        opts.openInstallTab = [](const QString &) {};
+        opts.claudeMdPath = sb.home + QStringLiteral("/.claude/CLAUDE.md");
+        WelcomeDialog dlg(QStringLiteral("Dark"), opts);
+        auto *button = dlg.findChild<QAbstractButton *>(
+            QStringLiteral("welcomeInstallClaudeButton"));
+        auto *note = dlg.findChild<QLabel *>(QStringLiteral("welcomeClaudePlanNote"));
+        if (!detected) {
+            expect(visibleIn(button, &dlg), "INV11a/install-button-visible",
+                   QStringLiteral("detection false: welcomeInstallClaudeButton "
+                                  "must be visible; it is %1")
+                       .arg(button ? QStringLiteral("hidden") : QStringLiteral("missing")));
+            expect(visibleIn(note, &dlg), "INV11b/plan-note-visible",
+                   QStringLiteral("detection false: welcomeClaudePlanNote must be "
+                                  "visible; it is %1")
+                       .arg(note ? QStringLiteral("hidden") : QStringLiteral("missing")));
+            const QString text = note ? note->text() : QString();
+            expect(text.contains(QStringLiteral("paid")) &&
+                       text.contains(QStringLiteral("free plan")),
+                   "INV11c/plan-note-names-paid-and-free",
+                   QStringLiteral("the plan note must say a paid plan is needed and "
+                                  "the free plan does not work; actual: %1").arg(text));
+        } else {
+            expect(!visibleIn(button, &dlg), "INV11d/install-button-hidden",
+                   QStringLiteral("detection true: the install button must be hidden"));
+            expect(!visibleIn(note, &dlg), "INV11e/plan-note-hidden",
+                   QStringLiteral("detection true: the plan note must be hidden"));
+        }
+    }
+
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ---------------------------------------------------------------- INV-12 ----
+
+TEST(WelcomeDialog, InstallRunsOnlyAfterPreview) {
+    expect_reset();
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+
+    QStringList ran;
+    WelcomeDialog::Options opts;
+    opts.detectClaude = [] { return false; };
+    opts.openInstallTab = [&ran](const QString &command) { ran << command; };
+    opts.claudeMdPath = sb.home + QStringLiteral("/.claude/CLAUDE.md");
+    WelcomeDialog dlg(QStringLiteral("Dark"), opts);
+
+    auto *button = dlg.findChild<QAbstractButton *>(
+        QStringLiteral("welcomeInstallClaudeButton"));
+    ASSERT_TRUE(button != nullptr) << "no button named welcomeInstallClaudeButton";
+    expect(button->isEnabled(), "INV12a/button-enabled-with-a-tab-opener",
+           QStringLiteral("with openInstallTab set the install button must be "
+                          "enabled"));
+
+    button->click();
+    pump();
+    QPointer<QDialog> preview = findVisiblePreview();
+    expect(!preview.isNull(), "INV12b/click-opens-a-preview",
+           QStringLiteral("clicking the install button must open a visible "
+                          "dialog named welcomePreview; none is open"));
+    expect(ran.isEmpty(), "INV12c/nothing-runs-while-preview-open",
+           QStringLiteral("nothing may reach openInstallTab before the preview "
+                          "is accepted; recorded %1").arg(ran.join(QStringLiteral(" | "))));
+    if (preview) preview->accept();
+    pump();
+
+    expect(ran.size() == 1, "INV12d/runs-once-after-accept",
+           QStringLiteral("after accept openInstallTab must be called once; "
+                          "called %1 times").arg(ran.size()));
+    const QString got = ran.value(0);
+    expect(got == kInstallLine, "INV12e/command-is-the-spec-line",
+           QStringLiteral("expected %1, actual %2").arg(kInstallLine, got));
+    expect(ants::claude_setup::claudeInstallCommand() == kInstallLine,
+           "INV12f/claudeInstallCommand-is-the-spec-line",
+           QStringLiteral("claudeInstallCommand() must return %1; actual %2")
+               .arg(kInstallLine, ants::claude_setup::claudeInstallCommand()));
+
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ---------------------------------------------------------------- INV-13 ----
+
+TEST(WelcomeDialog, ReDetectsOnActivate) {
+    expect_reset();
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+
+    bool installed = false;
+    WelcomeDialog::Options opts;
+    opts.detectClaude = [&installed] { return installed; };
+    opts.openInstallTab = [](const QString &) {};
+    opts.claudeMdPath = sb.home + QStringLiteral("/.claude/CLAUDE.md");
+    WelcomeDialog dlg(QStringLiteral("Dark"), opts);
+    auto *section = dlg.findChild<QWidget *>(QStringLiteral("welcomeClaudeSection"));
+    auto *button = dlg.findChild<QWidget *>(QStringLiteral("welcomeInstallClaudeButton"));
+    ASSERT_TRUE(section != nullptr) << "no widget named welcomeClaudeSection";
+    ASSERT_TRUE(button != nullptr) << "no widget named welcomeInstallClaudeButton";
+    expect(!section->isVisibleTo(&dlg) && button->isVisibleTo(&dlg),
+           "INV13a/starts-with-the-install-offer",
+           QStringLiteral("detection false at construction: the install button "
+                          "shows and the section does not"));
+
+    installed = true;
+    QEvent activate(QEvent::WindowActivate);
+    QCoreApplication::sendEvent(&dlg, &activate);
+    pump();
+    expect(section->isVisibleTo(&dlg), "INV13b/section-shows-after-activate",
+           QStringLiteral("after detection turns true and the window activates, "
+                          "the setup section must show; it is hidden"));
+    expect(!button->isVisibleTo(&dlg), "INV13c/install-button-hides-after-activate",
+           QStringLiteral("after detection turns true and the window activates, "
+                          "the install button must hide; it is visible"));
+
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ---------------------------------------------------------------- INV-14 ----
+
+TEST(WelcomeDialog, MainWindowOpensInstallTab) {
+    expect_reset();
+    const QString src = mainWindowSource();
+    ASSERT_FALSE(src.isEmpty());
+    const QString body =
+        stripComments(functionBody(src, "void MainWindow::showWelcome()"));
+    expect(!body.isEmpty(), "INV14a/showWelcome-located",
+           QStringLiteral("could not locate MainWindow::showWelcome()'s body"));
+    static const QRegularExpression bindRe(QStringLiteral(
+        "openInstallTab\\s*=[^;]*newTabForRemote\\s*\\(\\s*QString\\(\\)\\s*,"
+        "\\s*\\w+\\s*\\+\\s*(QStringLiteral\\(\\s*)?\"\\\\n\""));
+    expect(bindRe.match(body).hasMatch(), "INV14b/binds-newTabForRemote",
+           QStringLiteral("showWelcome must set openInstallTab to call "
+                          "newTabForRemote(QString(), command + \"\\n\"); no "
+                          "such binding found"));
 
     ASSERT_EQ(0, expect_finish());
 }

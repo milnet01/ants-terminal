@@ -26,8 +26,14 @@ struct Outcome {
     QString message;
 };
 
-// Claude Code is present when `claude` is on PATH or ~/.claude exists.
+// The `claude` program: on PATH, else ~/.local/bin/claude when executable
+// (where Anthropic's installer puts it), else empty.
+QString claudeProgram();
+// Claude Code is present when claudeProgram() is not empty or ~/.claude exists.
 bool claudeCodeDetected();
+// The one-line install command the welcome dialog runs in a new tab
+// (spec § 2.8): Anthropic's installer, then Claude Code for its sign-in.
+QString claudeInstallCommand();
 
 // The status-bar hooks (formerly SettingsDialog::installClaudeHooks).
 Status  statusHooksStatus();

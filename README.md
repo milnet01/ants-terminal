@@ -252,7 +252,9 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 1. **Open Ants Terminal.** It works like any terminal straight away. The
    first time, a welcome window explains the features and offers one-click
    setup. Anything that would edit your own files shows the exact change
-   first.
+   first. If Claude Code is not installed, the window offers to install it
+   in a new tab. Claude Code needs a paid Claude plan or an Anthropic API
+   account; the free plan does not work.
 2. **Connect Claude Code to it — once per computer.** Claude Code talks to
    Ants through a small helper program, `ants-mcpd`. The welcome window that
    opens on first launch has a button that connects it; reopen that window

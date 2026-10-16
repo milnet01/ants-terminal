@@ -204,8 +204,22 @@ constexpr char kShEnd[]   = "# <<< ants-terminal shell integration <<<";
 
 }  // namespace
 
+QString claudeProgram() {
+    const QString onPath = QStandardPaths::findExecutable(QStringLiteral("claude"));
+    if (!onPath.isEmpty()) return onPath;
+    // Anthropic's installer puts it here, which may not be on the PATH Ants
+    // started with (spec § 2.4 Detection).
+    const QFileInfo local(QDir::homePath() + QStringLiteral("/.local/bin/claude"));
+    return local.isFile() && local.isExecutable() ? local.absoluteFilePath() : QString();
+}
+
+QString claudeInstallCommand() {
+    return QStringLiteral(
+        "curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude");
+}
+
 bool claudeCodeDetected() {
-    return !QStandardPaths::findExecutable(QStringLiteral("claude")).isEmpty() ||
+    return !claudeProgram().isEmpty() ||
            QFileInfo(QDir::homePath() + QStringLiteral("/.claude")).isDir();
 }
 
@@ -512,8 +526,8 @@ QStringList thisBuildLaunch() {
 }  // namespace
 
 Status mcpStatus() {
-    if (QStandardPaths::findExecutable(QStringLiteral("claude")).isEmpty())
-        return {State::Unavailable, QStringLiteral("the claude program is not on PATH")};
+    if (claudeProgram().isEmpty())
+        return {State::Unavailable, QStringLiteral("the claude program was not found")};
     const QStringList launch = thisBuildLaunch();
     if (launch.isEmpty())
         return {State::Unavailable,
@@ -537,8 +551,8 @@ Status mcpStatus() {
 }
 
 Outcome registerMcp() {
-    const QString claude = QStandardPaths::findExecutable(QStringLiteral("claude"));
-    if (claude.isEmpty()) return fail(QStringLiteral("the claude program is not on PATH"));
+    const QString claude = claudeProgram();
+    if (claude.isEmpty()) return fail(QStringLiteral("the claude program was not found"));
     const QStringList launch = thisBuildLaunch();
     if (launch.isEmpty())
         return fail(QStringLiteral("no ants-mcpd was found beside Ants Terminal or on PATH"));

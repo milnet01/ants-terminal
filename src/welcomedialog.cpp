@@ -12,6 +12,7 @@
 #include "dialogchrome.h"
 
 #include <QDesktopServices>
+#include <QEvent>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -52,7 +53,7 @@ struct Row {
 
 WelcomeDialog::Options WelcomeDialog::detect() {
     Options o;
-    o.claudeDetected  = cs::claudeCodeDetected();
+    o.detectClaude    = &cs::claudeCodeDetected;
     o.shellScriptDirs = cs::defaultShellScriptDirs();
     o.claudeMdPath    = cs::defaultClaudeMdPath();
     return o;
@@ -93,8 +94,10 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
         "MCP toolkit, which gives Claude cheaper ways to read and search your "
         "project.</p>"), body));
 
-    // Each row reads its state now and again after its action.
-    auto addRow = [this](QVBoxLayout *into, QWidget *owner, const QString &title,
+    // Each row reads its state now and again after its action. `rows` keeps
+    // a re-read of each, for when detection turns true (INV-13).
+    std::vector<std::function<void()>> rows;
+    auto addRow = [this, &rows](QVBoxLayout *into, QWidget *owner, const QString &title,
                          const QString &buttonName,
                          std::function<cs::Status()> status,
                          std::function<void(const Row &)> onClick) {
@@ -111,6 +114,7 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
         into->addLayout(line);
         Row row{button, state, std::move(status)};
         row.refresh();
+        rows.emplace_back([row] { row.refresh(); });
         connect(button, &QPushButton::clicked, this,
                 [row, onClick = std::move(onClick)] { onClick(row); });
     };
@@ -123,43 +127,54 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
                 row.state->setText(o.message.isEmpty() ? row.state->text() : o.message);
         };
     };
+    // A non-modal preview owned by this dialog; `onAccept` runs only from
+    // its accept handler (INV-9, INV-12).
+    auto openPreview = [this, themeName](const QString &title, const QString &intro,
+                                         const QString &text,
+                                         const QString &acceptLabel,
+                                         std::function<void()> onAccept) {
+        auto *dlg = new QDialog(this);
+        dlg->setObjectName(QStringLiteral("welcomePreview"));
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle(title);
+        auto c = DialogChrome::install(dlg, themeName, /*resizable=*/true,
+                                       QStringLiteral("WelcomePreview"));
+        auto *lay = new QVBoxLayout(c.contentArea);
+        lay->addWidget(wrapped(intro, dlg));
+        auto *view = new QPlainTextEdit(text, dlg);
+        view->setReadOnly(true);
+        lay->addWidget(view, 1);
+        auto *buttons = new QHBoxLayout;
+        buttons->addStretch();
+        auto *cancel = new QPushButton(tr("Cancel"), dlg);
+        auto *accept = new QPushButton(acceptLabel, dlg);
+        buttons->addWidget(cancel);
+        buttons->addWidget(accept);
+        lay->addLayout(buttons);
+        connect(cancel, &QPushButton::clicked, dlg, &QDialog::reject);
+        connect(accept, &QPushButton::clicked, dlg, &QDialog::accept);
+        connect(dlg, &QDialog::accepted, this, std::move(onAccept));
+        dlg->show();
+        dlg->raise();
+        dlg->activateWindow();
+    };
     // Shows the exact change first; the writer runs only on accept (INV-9).
-    auto runAfterPreview = [this, themeName](std::function<QString()> preview,
-                                             std::function<cs::Outcome()> action) {
-        return [this, themeName, preview = std::move(preview),
+    auto runAfterPreview = [openPreview](std::function<QString()> preview,
+                                         std::function<cs::Outcome()> action) {
+        return [openPreview, preview = std::move(preview),
                 action = std::move(action)](const Row &row) {
-            auto *dlg = new QDialog(this);
-            dlg->setObjectName(QStringLiteral("welcomePreview"));
-            dlg->setAttribute(Qt::WA_DeleteOnClose);
-            dlg->setWindowTitle(tr("Before anything is written"));
-            auto c = DialogChrome::install(dlg, themeName, /*resizable=*/true,
-                                           QStringLiteral("WelcomePreview"));
-            auto *lay = new QVBoxLayout(c.contentArea);
-            lay->addWidget(wrapped(tr("This is exactly what will be written:"), dlg));
-            auto *text = new QPlainTextEdit(preview(), dlg);
-            text->setReadOnly(true);
-            lay->addWidget(text, 1);
-            auto *buttons = new QHBoxLayout;
-            buttons->addStretch();
-            auto *cancel = new QPushButton(tr("Cancel"), dlg);
-            auto *write = new QPushButton(tr("Write it"), dlg);
-            buttons->addWidget(cancel);
-            buttons->addWidget(write);
-            lay->addLayout(buttons);
-            connect(cancel, &QPushButton::clicked, dlg, &QDialog::reject);
-            connect(write, &QPushButton::clicked, dlg, &QDialog::accept);
-            connect(dlg, &QDialog::accepted, this, [row, action] {
-                const cs::Outcome o = action();
-                row.refresh();
-                if (!o.message.isEmpty()) row.state->setText(o.message);
-            });
-            dlg->show();
-            dlg->raise();
-            dlg->activateWindow();
+            openPreview(tr("Before anything is written"),
+                        tr("This is exactly what will be written:"), preview(),
+                        tr("Write it"), [row, action] {
+                            const cs::Outcome o = action();
+                            row.refresh();
+                            if (!o.message.isEmpty()) row.state->setText(o.message);
+                        });
         };
     };
 
-    // 3. Claude Code, only where it is installed (spec § 2.4).
+    // 3. Claude Code, only where it is installed (spec § 2.4); otherwise the
+    // install offer (§ 2.8) stands in its place.
     auto *claude = new QGroupBox(tr("Set up with Claude Code"), body);
     claude->setObjectName(QStringLiteral("welcomeClaudeSection"));
     auto *cv = new QVBoxLayout(claude);
@@ -184,12 +199,38 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
                },
                [mdPath] { return cs::installClaudeMdNote(mdPath); }));
     v->addWidget(claude);
-    auto *hint = wrapped(tr("Using Claude Code? Install it, then reopen this "
-                            "from Help → Show Welcome."), body);
-    hint->setObjectName(QStringLiteral("welcomeClaudeMissingHint"));
-    v->addWidget(hint);
-    claude->setVisible(opts.claudeDetected);
-    hint->setVisible(!opts.claudeDetected);
+
+    // The installer runs in a new tab the user watches, and only after they
+    // accept a preview naming the URL and the whole command.
+    auto *offer = new QGroupBox(tr("Claude Code"), body);
+    auto *ov = new QVBoxLayout(offer);
+    auto *note = wrapped(tr("Claude Code needs a paid Claude plan, such as Pro, "
+                            "Max or Enterprise, or an Anthropic API account. It "
+                            "does not work with the free plan."), offer);
+    note->setObjectName(QStringLiteral("welcomeClaudePlanNote"));
+    note->setTextFormat(Qt::PlainText);
+    ov->addWidget(note);
+    auto *installLine = new QHBoxLayout;
+    auto *install = new QPushButton(tr("Install Claude Code"), offer);
+    install->setObjectName(QStringLiteral("welcomeInstallClaudeButton"));
+    install->setEnabled(static_cast<bool>(opts.openInstallTab));
+    installLine->addWidget(install);
+    installLine->addStretch();
+    ov->addLayout(installLine);
+    v->addWidget(offer);
+    connect(install, &QPushButton::clicked, this,
+            [openPreview, openTab = opts.openInstallTab] {
+                const QString command = cs::claudeInstallCommand();
+                openPreview(tr("Before anything runs"),
+                            tr("This is what will run in a new tab:"),
+                            tr("Anthropic's installer, from "
+                               "https://claude.ai/install.sh, then Claude Code "
+                               "for its one-time sign-in:\n\n%1").arg(command),
+                            tr("Install"), [openTab, command] { openTab(command); });
+            });
+    m_detectClaude = opts.detectClaude;
+    m_claudeSection = claude;
+    m_installOffer = offer;
 
     // 4. Shell integration (spec § 2.6).
     auto *shell = new QGroupBox(tr("Shell integration"), body);
@@ -237,8 +278,27 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
     bottom->addWidget(close);
     outer->addLayout(bottom);
 
+    // The rows were read as they were built, so this first call re-reads
+    // none; later calls re-read them all when detection turns true.
+    applyDetection();
+    m_refreshRows = std::move(rows);
+
     setMinimumSize(560, 420);
     resize(680, 640);
+}
+
+bool WelcomeDialog::event(QEvent *e) {
+    if (e->type() == QEvent::WindowActivate) applyDetection();
+    return QDialog::event(e);
+}
+
+void WelcomeDialog::applyDetection() {
+    const bool detected = m_detectClaude && m_detectClaude();
+    if (detected && !m_detected)
+        for (const auto &refresh : m_refreshRows) refresh();
+    m_detected = detected;
+    m_claudeSection->setVisible(detected);
+    m_installOffer->setVisible(!detected);
 }
 
 namespace welcome {

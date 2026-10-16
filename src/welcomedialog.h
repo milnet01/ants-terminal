@@ -4,7 +4,8 @@
 //
 // Object names the tests and the source checks read:
 //   welcomeClaudeSection      the "Set up with Claude Code" group
-//   welcomeClaudeMissingHint  the one-line hint shown instead of it
+//   welcomeInstallClaudeButton  the Install Claude Code button shown instead
+//   welcomeClaudePlanNote     the paid-plan note beside it (spec § 2.8)
 //   welcomeClaudeMdButton     the optional CLAUDE.md note row's button
 //   welcomeShellButton        the shell-integration row's button
 //   welcomePreview            the non-modal preview a writing row opens
@@ -17,6 +18,7 @@
 #include <QStringList>
 
 #include <functional>
+#include <vector>
 
 class Config;
 
@@ -25,7 +27,11 @@ class WelcomeDialog : public QDialog {
 public:
     // What the dialog reads from the machine, injectable for tests.
     struct Options {
-        bool        claudeDetected = false;
+        // Called at construction and on each window activation; empty
+        // counts as not detected.
+        std::function<bool()> detectClaude;
+        // Opens a tab running `command`; empty disables the install button.
+        std::function<void(const QString &)> openInstallTab;
         QStringList shellScriptDirs;   // the shell-integration search list
         QString     claudeMdPath;      // the CLAUDE.md the note row edits
     };
@@ -35,6 +41,21 @@ public:
 
     WelcomeDialog(const QString &themeName, const Options &opts,
                   QWidget *parent = nullptr);
+
+protected:
+    // Re-reads Claude Code detection on QEvent::WindowActivate (INV-13).
+    bool event(QEvent *e) override;
+
+private:
+    // Shows the setup section or the install offer; when detection turns
+    // true, every setup row re-reads its state.
+    void applyDetection();
+
+    std::function<bool()> m_detectClaude;
+    QWidget *m_claudeSection = nullptr;
+    QWidget *m_installOffer = nullptr;
+    std::vector<std::function<void()>> m_refreshRows;
+    bool m_detected = false;
 };
 
 namespace welcome {
