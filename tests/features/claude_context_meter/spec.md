@@ -45,6 +45,9 @@ partially sighted, so the meter must be large and readable.
   counted. The next usage event replaces the estimate. A compact boundary's
   `postTokens` gets no estimate. *Test:*
   `Inv9EstimatesRecordsAfterTheLastReply`. (ANTS-5682)
+- **INV-10** — INV-1's newest usage event is found however much non-usage
+  data follows it, up to the transcript record cap. *Test:*
+  `Inv10UsageFoundPastTrailingMetadata`. (ANTS-5731)
 
 ## Reload
 

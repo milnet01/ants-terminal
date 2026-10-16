@@ -119,6 +119,36 @@ TEST(ClaudeContextMeter, Inv9EstimatesRecordsAfterTheLastReply) {
     EXPECT_FALSE(snap.contextEstimated);
 }
 
+// INV-10 (ANTS-5731) — the newest usage record is found however much
+// non-usage data follows it. The real case (2026-10-16): after a relaunch, a
+// long session's last 128 KB held only metadata records, and the meter
+// stayed hidden until the next reply.
+TEST(ClaudeContextMeter, Inv10UsageFoundPastTrailingMetadata) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = writeTranscript(tmp);   // 457127 with output
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::Append));
+        f.write("\n");
+        const QByteArray pad(1500, 'p');
+        // About 300 KB: past the 32 KB first window and several doublings.
+        for (int i = 0; i < 200; ++i)
+            f.write(R"({"type":"attachment","attachment":{"type":"note","text":")"
+                    + pad + R"("}})" "\n"
+                    R"({"type":"last-prompt","lastPrompt":"look"})" "\n");
+    }
+    const auto snap = ClaudeIntegration::parseTranscriptTail(path, false);
+    EXPECT_EQ(snap.contextTokens, 457127)
+        << "the window stopped growing before it reached a usage record";
+    EXPECT_FALSE(snap.contextEstimated);
+
+    // The same transcript read the way a relaunched terminal reads it.
+    ClaudeIntegration ci;
+    ci.parseTranscriptForState(path);
+    EXPECT_EQ(ci.contextTokens(), 457127);
+}
+
 // INV-8 (ANTS-5683) — clearing the reading zeroes it and tells the meter.
 TEST(ClaudeContextMeter, Inv8ClearContextReadingHidesTheMeter) {
     QTemporaryDir tmp;
