@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5755 -->
+<!-- ants-roadmap-id-high-water: ANTS=5758 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -68918,7 +68918,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16.
 
-- 📋 [ANTS-5749] **specs.md agrees with spec-format.md on what belongs in docs/specs/ and on the Breaks-when clause.**
+- ✅ [ANTS-5749] **specs.md agrees with spec-format.md on what belongs in docs/specs/ and on the Breaks-when clause.**
   review-contract on docs/standards/specs.md (2026-10-16, loop 9, both
   lanes raised both; outside the ANTS-5724 change, so filed).
   [Q2] specs.md § 1 keeps docs/specs/ "for contracts that span
@@ -68934,6 +68934,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Also seen: src/speclint.cpp's comment that specs.md "does not
   mention" the → arrow is stale; § 3.5 now does.
   Owes rule 14's gate (direction change).
+  Shipped 2026-10-16 (973caf50; review fixes 531e94c0, 2a3cabda,
+  fedff584). review-contract --genre standard ran 3 loops to the cap:
+  calm cap, 8 verified, 5 fixed, 3 filed as ANTS-5756..5758, none open
+  in the amendment's span. Log: docs/reviews/specs-review-log.md rows
+  10-12.
   **Layman:** The project's spec rules and the shared spec rules disagree on two points, so a writer can follow one and break the other.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 loop 9.
@@ -68960,6 +68965,42 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   **Layman:** The design document for the standalone MCP server has fallen behind the code in three places.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16 loop 15.
+
+- 📋 [ANTS-5756] **specs.md § 3.6 and spec_lint agree on which tests/features/<name> forms resolve.**
+  [Q1] specs.md § 3.6 says spec_lint resolves tests/features/<name>, but
+  surfaceRe in src/speclint.cpp captures only lowercase snake_case
+  (tests/features/([a-z0-9]+(?:_[a-z0-9]+)*)(?!\w|\*)). A hyphenated
+  name is cut short (spec-lint reads as spec), giving a false
+  test_surface_absent FINDING; a capitalised one is never read.
+  tests/features/README.md writes <feature-name>. No directory has a
+  hyphen or capital today. Fix the doc (state snake_case) or the regex.
+  **Layman:** The spec rules and the spec checker disagree about how test folder names may be spelled.
+  Kind: doc-fix.
+  Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
+
+- 📋 [ANTS-5757] **specs.md says whether the required § Reload section binds specs written before it.**
+  [Q3] specs.md § 4 § Reload is "required on every spec" with no line on
+  specs written before the requirement; § 5.7 has a "binds new logs"
+  clause and § Reload has none. A conformer acting on spec_lint's
+  missing_section output cannot tell whether an old or shipped spec is
+  in breach.
+  **Layman:** The spec rules do not say whether older specs must add a newer required section.
+  Kind: doc-fix.
+  Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
+
+- 📋 [ANTS-5758] **spec_query's test_surface ends at a *Breaks when:* or *Broken by:* marker.**
+  SpecParse::parseSpecBody lifts the whole *Test:* paragraph into
+  test_surface, so a *Breaks when:* continuation counts as the command's
+  result and command_test_no_expectation never fires on specs.md § 7's
+  skeleton form (scratch-spec repro, 2026-10-16). Ending test_surface at
+  the marker lets the check see the real clause; 49 specs carry one of
+  the two markers. After it ships, revisit specs.md's What-checks-this
+  Partial: row and the § 3.5 ordering sentence. Hot reload: spec_lint
+  and spec_query are mcpd-served; rebuild ants-mcpd and reconnect.
+  **Layman:** The spec checker reads a spec's "what breaks it" note as the test's expected result, so it misses a missing result.
+  Kind: fix.
+  Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
+  Lanes: mcp.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
@@ -72302,9 +72343,13 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: claude-hooks, mcp.
 
-- 📋 [ANTS-5703] **roadmap_query list replies default to id, status and title.**
+- ✅ [ANTS-5703] **roadmap_query list replies default to id, status and title.**
   doom-ants measured 6K-27K chars of roadmap_query per session. Bodies,
   lanes and kind only on request.
+  Shipped 2026-10-16 (43b755d1): plain list rows are id, status,
+  headline_oneline, section_slug, plus headline_full / synthetic /
+  id_inferred where present; include_body or bullet_fields for the wide
+  row. Live after an ants-mcpd rebuild and /mcp reconnect.
   **Layman:** Return short roadmap lists unless more is asked for.
   Kind: perf.
   Source: token-survey-2026-10-15.

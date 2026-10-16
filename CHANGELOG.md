@@ -77,6 +77,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query list replies carry id, status, title and section by default; kind, lanes and source come with include_body or bullet_fields** (ANTS-5703)
+
+- **The project spec standard now requires a *Breaks when:* clause on each invariant and defers to spec-format.md § 1 on what belongs in docs/specs/** (ANTS-5749)
+
 - **`roadmap_log op:"append_batch"` takes the call-level `kind` and `lanes` for any bullet that gives none, as it already does for `section`, `status` and `source`.** (ANTS-5735)
 
 - **A tab where Claude waits on you is bright red in every tab: a permission prompt, a question with choices, or a plan to approve** (ANTS-5718)
