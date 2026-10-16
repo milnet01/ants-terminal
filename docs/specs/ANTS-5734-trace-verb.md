@@ -125,6 +125,8 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   Ship 3 lands in batches. The first adds `c_sharp`, `ruby`, `php`, `qmljs`, `make` and `css` (the user's request through Groundwork, 2026-10-16). `php` is the grammar for PHP mixed with HTML, from tree-sitter-php's `php` subdirectory. `qmljs` comes from `yuja/tree-sitter-qmljs`, a personal repository: no tree-sitter organisation hosts a QML grammar (`gh api repos/tree-sitter-grammars/tree-sitter-qmljs` → 404, 2026-10-16).
 
+  Two of the batch need files the vendoring rules above do not place. tree-sitter-php's `php/src/scanner.c` includes `../../common/scanner.h`, the path tree-sitter-typescript's `extra` already fills (`third_party/tree-sitter-grammars/common/scanner.h`), so the two files must be vendored to different paths. tree-sitter-qmljs's `src/scanner.c` includes `typescript-scanner.h`, which sits in its own `src/` (read from both repositories, 2026-10-16).
+
   Ship 1 covers every language `SymbolQuery::Lang` names except its `Generic` brace family, plus the most used modern languages. A ship-3 grammar is added only after its upstream repository has been checked as maintained, MIT- or Apache-licensed, and buildable from vendored sources. One that fails stays `no_grammar` and gets a roadmap note. A language with files present but no grammar is reported, never dropped (INV-9).
 
 ### 2.4 Queries are data
@@ -229,7 +231,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 ## 5. RAM / build cost
 
 - **Disk.** The installed system grammar libraries for the ship-1 languages total 12.0 MB; those for `c_sharp`, `kotlin`, `swift`, `php` and `ruby` total 15.5 MB (`stat -c %s /usr/lib64/tree-sitter/libtree-sitter-<lang>.so`, summed, 2026-10-16). Vendored grammars compiled into `ants-mcpd` are expected near those figures. `ants-mcpd` is 13.0 MB today (`build/ants-mcpd`, Release, 2026-10-16). Grammar data is paged in only for the languages a call parses.
-- **Build.** The C++ grammar's generated `parser.c` is 17 MB. It compiled in 1.24 s at `-O2` with a 169 MB peak (`/usr/bin/time cc -O2 -c parser.c`, 2026-10-16). The largest ship-3 one, C#'s, is 29.7 MB (`gh api repos/tree-sitter/tree-sitter-c-sharp/contents/src/parser.c?ref=v0.23.5`, `size`, 2026-10-16).
+- **Build.** The C++ grammar's generated `parser.c` is 17 MB. It compiled in 1.24 s at `-O2` with a 169 MB peak (`/usr/bin/time cc -O2 -c parser.c`, 2026-10-16). C#'s is 29.7 MB (`gh api repos/tree-sitter/tree-sitter-c-sharp/contents/src/parser.c?ref=v0.23.5`, `size`, 2026-10-16).
 - **Memory.** The row cache (§ 2.5) is capped at 64 MiB and evicts the least recently used file first. It lives in memory and goes when `ants-mcpd` exits. A tree is freed once its rows are extracted. A cold `trace` parses every file once: the CLI parsed all of `src/` (396 files, 11 MB) in 1.44 s with a 22 MB peak (`/usr/bin/time tree-sitter parse --quiet --stat … src/*.cpp src/*.h`, 2026-10-16).
 - **New dependencies.** tree-sitter (MIT) and one grammar per language, each licence recorded in `MANIFEST.json`, all vendored. No new build-time or run-time package.
 
