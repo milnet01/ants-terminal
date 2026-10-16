@@ -5,6 +5,7 @@
 // Contract: docs/specs/ANTS-5734-trace-verb.md.
 
 #include "trace/languages.h"
+#include "trace/queries.h"
 
 #include <tree_sitter/api.h>
 
@@ -46,4 +47,17 @@ TEST(TraceGrammars, EveryShipOneLanguageLoads) {
         EXPECT_EQ(trace::languageFor(QString::fromLatin1(l.id)), lang);
     }
     EXPECT_EQ(trace::languageFor(QStringLiteral("zig")), nullptr);
+}
+
+// § 2.4 — every built-in query file compiles against its vendored grammar,
+// and carries the `;; limits:` sentence the not_covered entry reads.
+TEST(TraceGrammars, EveryBuiltinQueryCompiles) {
+    for (const trace::Language &l : trace::languages()) {
+        SCOPED_TRACE(l.id);
+        const QString id = QString::fromLatin1(l.id);
+        EXPECT_FALSE(trace::builtinQueryText(id).isEmpty()) << "no built-in query";
+        const trace::Query q = trace::queryFor(id);
+        EXPECT_NE(q.query, nullptr) << q.error.toStdString();
+        EXPECT_FALSE(q.limits.isEmpty()) << "no ;; limits: line";
+    }
 }

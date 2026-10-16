@@ -72597,6 +72597,27 @@ measured Ants adding about 5,250 tokens to every request.
   test: `tree-sitter parse --lib-path
   /usr/lib64/tree-sitter/libtree-sitter-python.so --lang-name python
   <file>` returns function_definition.
+  Ship 1 progress, 2026-10-16. Done and pushed: stage 1 (vendored
+  runtime v0.27.1 + 12 grammars, ants_treesitter_lib, test_trace load
+  test), stage 2 (walk rules in src/walkrules.h). Committed, NOT yet
+  tested: stage 3a, the engine draft in src/trace/ (queries.cpp,
+  extract.cpp, trace.cpp) and assets/trace-queries/*.scm; all 12 queries
+  compile (TraceGrammars.EveryBuiltinQueryCompiles). Next: stage 3b, the
+  fixture tests/features/trace/fixture/ and one test per INV-1..12,
+  14..16, 18, each seen red first; stage 4, registerMcpdOnlyVerbs +
+  tools/list descriptor (emitted only when registered) +
+  callerCwdContractFor + offloadThresholdFor exemption + kEagerVerbs +
+  preamble line + INV-13/17/21 + docs/standards/mcp-behavioural-notes.md
+  + licence install. Engine decisions made while building (record in the
+  spec at stage 4 as build-settled): only files whose text holds the
+  name as a whole word are parsed, so scanned.files_parsed counts those;
+  trace::serve takes an Env whose roadmapBullets ants-mcpd binds to
+  RemoteControl::roadmapBullets (tests parse ROADMAP.md); a lang filter
+  skips other grammar-language files but still searches docs and config;
+  test roots copy codebaseindex.cpp's rule (declared roots that exist,
+  else "tests"); spec id is the file stem's leading PREFIX-NNNN; files
+  over 2 MiB of any kind are reported file_too_large; tests.files and
+  every section page under one row offset.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).

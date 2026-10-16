@@ -1293,12 +1293,27 @@ set_target_properties(ants_treesitter_lib PROPERTIES
 
 add_library(ants_trace_lib STATIC
     src/trace/languages.cpp
+    src/trace/queries.cpp
+    src/trace/extract.cpp
+    src/trace/trace.cpp
 )
 target_include_directories(ants_trace_lib PUBLIC src)
+# ProjectSettings, FocusedTest, SpecParse, PathValidation and RoadmapParse
+# are ants_mcpcore_lib's; nothing there links back to this library.
 target_link_libraries(ants_trace_lib
-    PUBLIC  ants_treesitter_lib Qt6::Core
+    PUBLIC  ants_treesitter_lib ants_mcpcore_lib Qt6::Core
     PRIVATE ants_warnings)
 set_target_properties(ants_trace_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# § 2.4 — the built-in query files, as :/trace-queries/<lang>.scm. The target
+# form links an object library, so the resources survive static linking.
+set(_ants_trace_queries)
+foreach(_g IN LISTS _ants_ts_grammars)
+    list(APPEND _ants_trace_queries assets/trace-queries/${_g}.scm)
+endforeach()
+qt_add_resources(ants_trace_lib "trace_queries"
+    PREFIX "/trace-queries"
+    BASE "assets/trace-queries"
+    FILES ${_ants_trace_queries})
 
 # ANTS-4932 — ants-mcpd: the project-scoped MCP verbs over stdio. The MCP client
 # launches it, so a rebuild reaches a session on its next reconnect with no
@@ -4512,7 +4527,10 @@ if(ANTS_TESTS)
     # ANTS-5734 — the trace verb's engine, grammars and fixture project.
     # Links ants_trace_lib, which no other bundle carries (spec § 2.3).
     ants_add_core_bundle(test_trace
-        LIBS    ants_trace_lib
+        LIBS    -Wl,--start-group
+                ants_trace_lib ants_mcpcore_lib ants_audit_lib ants_roadmapstore_lib
+                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+                -Wl,--end-group
         SOURCES tests/features/trace/test_trace_languages.cpp)
 
     # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
