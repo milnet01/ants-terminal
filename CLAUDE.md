@@ -98,7 +98,7 @@ from `build_target_for`; check `ctest -N -R <name>` moved after building it.**
 
 **Every new feature states how it reaches a running terminal without a
 relaunch.** Acceptable answers: nothing; a re-read of a file; a client
-reconnect. Where "restart the terminal" is unavoidable, the design says so
+reconnect; a restart of the feature's own process. Where "restart the terminal" is unavoidable, the design says so
 and why. A relaunch kills every Claude Code session in its tabs (`~Pty`,
 `src/ptyhandler.cpp`).
 
@@ -117,7 +117,8 @@ and why. A relaunch kills every Claude Code session in its tabs (`~Pty`,
   down and rebuilding its state, so a stuck feature never needs a relaunch.
   Where its code can run in its own process (the `ants-mcpd` model), a new
   build reaches a running terminal by restarting that process alone. The
-  design names its stop/start control.
+  design names its stop/start control, as well as its reload answer. A
+  feature that holds no running state says so instead.
 
 It does not apply to a bug fix, a test, a document or a version bump.
 Retrofitting is a roadmap item, never an obligation. Models to copy:

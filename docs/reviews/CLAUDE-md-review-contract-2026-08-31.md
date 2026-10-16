@@ -139,3 +139,16 @@ nothing in them. Every finding outside them is filed on ANTS-5581 at the
 detail a lane gave, not fixed and not lost. The subject's size remains what
 the earlier outcomes record: each loop found one or two contradictions
 between sections that do not cite each other.
+
+## Fourth run — 2026-10-16 (modularity bullet)
+
+Trigger: global `CLAUDE.md` rule 14 — commit `4e9374ef` added the bullet
+"Build every new feature as modular as possible (user, 2026-10-15)" to
+§ Hot reload is the design default. A conformer now designs a stop/start
+control into every new feature, so the gate is owed. Gated span: that
+bullet. Lanes ran through `neutral-lane`, so neither arrived holding the
+project `CLAUDE.md`; both disclosed only the global file.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
+| 10 | 2026-10-16 | 2, cold, every lane held every question — packet: ANTS-4932 §§ 1, 2.1, 2.3, 6.2, `~Pty`, `CallerCwdContract` | 0 | 1 | 2 | n/a | **Three verified, one fixed, two filed; none dismissed.** Fixed, inside the span (both lanes): the acceptable reload answers omitted a restart of the feature's own process, and did not say whether the stop/start control comes on top of the reload answer. Filed as ANTS-5723, outside the span (both lanes): the verb bullet bans only "a call" into `MainWindow`, missing ANTS-4932 § 1's `if (!m_main)` refusal and the registration site; and "the enumeration in ANTS-4932" does not name `mcp::terminalScopedVerbNames()` or `mcp::registerProjectScopedVerbs()`. |

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5722 -->
+<!-- ants-roadmap-id-high-water: ANTS=5723 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -68864,6 +68864,26 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: ux.
   Source: in-session-2026-10-10 (ut-monsterhunt report after ANTS-5366).
   Lanes: roadmapstore, mcp.
+
+- 📋 [ANTS-5723] **CLAUDE.md's verb bullet names the code lists a new MCP verb must join and every window dependency it must avoid.**
+  review-contract on CLAUDE.md (2026-10-16, two lanes, both raised it;
+  outside the armed change, so filed rather than fixed in the run).
+  § Hot reload's verb bullet says a window-free verb "adds no new call
+  into MainWindow" from two file globs, and that a terminal-scoped verb
+  "reuses, or adds to, the enumeration in ANTS-4932".
+  [Q3] An `if (!m_main)` refusal is not a call, yet ANTS-4932 § 1 names it
+  as one of three window dependencies; an inline lambda in
+  MainWindow::setupClaudeMcpProviders() also passes. Either leaves a verb
+  ants-mcpd cannot serve.
+  [Q3] "the enumeration" reads as the spec's prose list or as the code:
+  mcp::terminalScopedVerbNames() and mcp::registerProjectScopedVerbs()
+  (src/mcptoolregistry.cpp). Editing only the spec list leaves ants-mcpd
+  with no forwarder.
+  Fix: name both functions, and ANTS-4932 § 1's three forms as the check.
+  Owes rule 14's gate (direction change).
+  **Layman:** The project rules for adding an MCP tool point at the wrong list and miss one way a tool can break without the terminal window.
+  Kind: doc-fix.
+  Source: review-contract CLAUDE.md 2026-10-16.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
