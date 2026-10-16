@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5739 -->
+<!-- ants-roadmap-id-high-water: ANTS=5740 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72569,6 +72569,9 @@ measured Ants adding about 5,250 tokens to every request.
   scripts such as packet-build.sh; (b) accept a non-code path: "which
   tests read or pin this file" (oneup: a systemd unit); (c) which spec
   sections mention it (pressless; covered by requirement 1).
+  Priority (user, via claude-config, 2026-10-16): ahead of the other
+  token-survey items and of the ANTS-5719 build. On ship, claude-config
+  does CFG-0816 and CFG-0818.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
@@ -72633,6 +72636,17 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Claude is told up front about two existing Ants tools that replace hand-written scripts.
   Kind: enhancement.
   Source: claude-config-request-2026-10-16 (pressless).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5740] **roadmap_query warns when a bullet_fields name matches no field, instead of dropping it silently.**
+  OneUp 2026-10-16 asked for bullet_fields:["section"]; the real key is
+  section_slug, and the unknown name dropped with no notice, so it fell back
+  to awk. Report unmatched names (e.g. unknown_bullet_fields[] plus the
+  nearest valid key) without failing the call.
+  Reload: runs in ants-mcpd; next reconnect.
+  **Layman:** If Claude asks the roadmap tool for a field that does not exist, the tool now says so instead of quietly leaving it out.
+  Kind: fix.
+  Source: claude-config-request-2026-10-16 (oneup).
   Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
