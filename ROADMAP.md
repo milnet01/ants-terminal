@@ -72684,7 +72684,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5735] **roadmap_log tells a session that files items one at a time to use the batch ops.**
+- ✅ [ANTS-5735] **roadmap_log tells a session that files items one at a time to use the batch ops.**
   claude-config 2026-10-16: 1,072 roadmap_log calls (217M tokens
   re-sent) over 200 transcripts, mostly one item per call, though
   append_batch, flip_batch and annotate_batch exist. Add a reply hint on
@@ -72694,6 +72694,10 @@ measured Ants adding about 5,250 tokens to every request.
   source, kind or lanes; a call-level source refused every bullet
   (missing_field) on 2026-10-16. Let those fall back too.
   Reload: runs in ants-mcpd; next reconnect.
+  Shipped 2026-10-16: append_batch falls back to the call-level kind and
+  lanes (999b6ff8); a repeated single append, flip or annotate on one
+  project within 5 minutes carries batch_hint naming the batch op
+  (228d364b).
   **Layman:** When Claude adds roadmap items one by one, the tool suggests doing them all in one step, which costs less.
   Kind: enhancement.
   Source: claude-config-request-2026-10-16.
