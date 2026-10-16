@@ -73,7 +73,8 @@ bool isCommentType(const QByteArray &t) { return t.contains("comment"); }
 bool isStringType(const QByteArray &t) {
     return t.endsWith("string") || t.endsWith("string_literal") ||
            t == "template_string" || t == "char_literal" || t == "heredoc_body" ||
-           t == "system_lib_string" || t == "raw_string";
+           t == "system_lib_string" || t == "raw_string" ||
+           t == "string_value";   // CSS
 }
 
 // Comment and string ranges, outermost only (a string inside a comment is

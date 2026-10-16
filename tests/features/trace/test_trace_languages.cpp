@@ -16,13 +16,14 @@
 #include <vector>
 
 TEST(TraceGrammars, EveryShipOneLanguageLoads) {
-    // § 2.3's ship-1 table, in order.
+    // § 2.3's ship-1 table, then ship 3's first batch, in order.
     const std::vector<std::string> expected = {
         "c", "cpp", "python", "bash", "lua", "glsl",
-        "javascript", "typescript", "tsx", "rust", "go", "java"};
+        "javascript", "typescript", "tsx", "rust", "go", "java",
+        "c_sharp", "ruby", "qmljs", "make", "css"};
     std::vector<std::string> ids;
     for (const trace::Language &l : trace::languages()) ids.emplace_back(l.id);
-    EXPECT_EQ(expected, ids) << "the vendored set must be § 2.3's ship-1 list";
+    EXPECT_EQ(expected, ids) << "the vendored set must be § 2.3's ship-1 list and ship-3 batch";
 
     for (const trace::Language &l : trace::languages()) {
         SCOPED_TRACE(l.id);

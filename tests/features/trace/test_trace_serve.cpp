@@ -297,7 +297,9 @@ TEST_F(TraceServe, Inv10EmptyAnswerSaysWhatItScanned) {
         QStringLiteral("c"),          QStringLiteral("cpp"),  QStringLiteral("python"),
         QStringLiteral("bash"),       QStringLiteral("lua"),  QStringLiteral("glsl"),
         QStringLiteral("javascript"), QStringLiteral("typescript"), QStringLiteral("tsx"),
-        QStringLiteral("rust"),       QStringLiteral("go"),   QStringLiteral("java")};
+        QStringLiteral("rust"),       QStringLiteral("go"),   QStringLiteral("java"),
+        QStringLiteral("c_sharp"),    QStringLiteral("ruby"), QStringLiteral("qmljs"),
+        QStringLiteral("make"),       QStringLiteral("css")};
     EXPECT_EQ(langs, fixtureLangs) << dump(scanned);
 }
 
@@ -421,4 +423,39 @@ TEST_F(TraceServe, Inv18ShipOneRefusesDepthAndCallees) {
         EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool(true));
         EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
     }
+}
+
+// § 2.3, ship 3's first batch — each new grammar yields shipThreeProbe's
+// definition in its own file, and each language with calls yields a caller
+// row there. A name in a CSS string is a string_or_config reference.
+TEST_F(TraceServe, Ship3BatchDefinitionsAndCallers) {
+    const QJsonObject r = traceSymbol(QStringLiteral("shipThreeProbe"));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    QSet<QString> defFiles, callerFiles;
+    for (const QJsonValue &v : arr(r, "definitions"))
+        defFiles.insert(v.toObject().value(QStringLiteral("file")).toString());
+    for (const QJsonValue &v : arr(r, "callers"))
+        callerFiles.insert(v.toObject().value(QStringLiteral("file")).toString());
+    EXPECT_EQ(defFiles, (QSet<QString>{QStringLiteral("Probe.cs"), QStringLiteral("probe.rb"),
+                                       QStringLiteral("Probe.qml"), QStringLiteral("Makefile"),
+                                       QStringLiteral("probe.css")}))
+        << dump(arr(r, "definitions"));
+    EXPECT_EQ(callerFiles, (QSet<QString>{QStringLiteral("Probe.cs"), QStringLiteral("probe.rb"),
+                                          QStringLiteral("Probe.qml"), QStringLiteral("Makefile")}))
+        << dump(arr(r, "callers"));
+    EXPECT_EQ(rowsWhere(arr(r, "references"), [](const QJsonObject &o) {
+                  return o.value(QStringLiteral("file")).toString() == QLatin1String("probe.css") &&
+                         o.value(QStringLiteral("kind")).toString() ==
+                             QLatin1String("string_or_config");
+              }).size(),
+              1)
+        << dump(arr(r, "references"));
+    const QSet<QString> batch{QStringLiteral("c_sharp"), QStringLiteral("ruby"),
+                              QStringLiteral("qmljs"), QStringLiteral("make"),
+                              QStringLiteral("css")};
+    for (const QJsonValue &v : arr(r, "not_covered"))
+        EXPECT_FALSE(v.toObject().value(QStringLiteral("reason")).toString() ==
+                         QLatin1String("no_grammar") &&
+                     batch.contains(v.toObject().value(QStringLiteral("lang")).toString()))
+            << dump(v);
 }

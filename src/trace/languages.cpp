@@ -20,6 +20,11 @@ const TSLanguage *tree_sitter_tsx();
 const TSLanguage *tree_sitter_rust();
 const TSLanguage *tree_sitter_go();
 const TSLanguage *tree_sitter_java();
+const TSLanguage *tree_sitter_c_sharp();
+const TSLanguage *tree_sitter_ruby();
+const TSLanguage *tree_sitter_qmljs();
+const TSLanguage *tree_sitter_make();
+const TSLanguage *tree_sitter_css();
 }
 
 namespace trace {
@@ -38,6 +43,12 @@ const std::vector<Language> &languages() {
         {"rust", &tree_sitter_rust},
         {"go", &tree_sitter_go},
         {"java", &tree_sitter_java},
+        // Ship 3, first batch.
+        {"c_sharp", &tree_sitter_c_sharp},
+        {"ruby", &tree_sitter_ruby},
+        {"qmljs", &tree_sitter_qmljs},
+        {"make", &tree_sitter_make},
+        {"css", &tree_sitter_css},
     };
     return all;
 }
@@ -73,12 +84,16 @@ const QHash<QString, QString> &extensionMap() {
         add("rust", {"rs"});
         add("go", {"go"});
         add("java", {"java"});
-        // Ship 3: known, not yet vendored, so reported as no_grammar.
+        // Ship 3, first batch.
         add("c_sharp", {"cs"});
+        add("make", {"mk", "mak"});
+        add("css", {"css"});
+        add("ruby", {"rb"});
+        add("qmljs", {"qml"});
+        // Ship 3: known, not yet vendored, so reported as no_grammar.
         add("kotlin", {"kt", "kts"});
         add("swift", {"swift"});
         add("php", {"php"});
-        add("ruby", {"rb"});
         add("cmake", {"cmake"});
         add("scala", {"scala", "sc"});
         add("dart", {"dart"});
@@ -90,7 +105,6 @@ const QHash<QString, QString> &extensionMap() {
         add("r", {"r"});
         add("julia", {"jl"});
         add("nix", {"nix"});
-        add("qmljs", {"qml"});
         add("sql", {"sql"});
         add("perl", {"pl", "pm"});
         return m;
@@ -108,6 +122,9 @@ bool isKnownLanguage(const QString &id) {
 
 QString languageForFile(const QString &fileName, const QByteArray &head) {
     if (fileName == QLatin1String("CMakeLists.txt")) return QStringLiteral("cmake");
+    if (fileName == QLatin1String("Makefile") || fileName == QLatin1String("makefile") ||
+        fileName == QLatin1String("GNUmakefile"))
+        return QStringLiteral("make");
     const qsizetype dot = fileName.lastIndexOf(QLatin1Char('.'));
     if (dot > 0)
         return extensionMap().value(fileName.mid(dot + 1).toLower());

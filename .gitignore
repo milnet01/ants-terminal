@@ -11,6 +11,8 @@ moc_*
 CMakeFiles/
 CMakeCache.txt
 Makefile
+# ANTS-5734: the trace fixture's Makefile is source, not build output.
+!tests/features/trace/fixture/Makefile
 compile_commands.json
 CMakeLists.txt.user*
 *.pro.user*

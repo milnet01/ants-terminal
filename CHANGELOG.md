@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`trace` reads C#, Ruby, QML, Make and CSS: definitions and callers in each, imports in C#, QML, Make and CSS, and Makefiles found by name.** (ANTS-5734)
+
 - **A single `roadmap_log` `append`, `flip` or `annotate` that repeats the same op on a project within 5 minutes carries a `batch_hint` naming its batch op.** (ANTS-5735)
 
 - **A `trace` MCP verb answers "where is this symbol, who uses it, and what documents it" in one call.** (ANTS-5734)

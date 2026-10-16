@@ -124,6 +124,50 @@
       "sha256": "39dea56cc3bb5fb1658f79b195a92b6f08885886bca636adf2dc6243af641c47",
       "license": "MIT",
       "generated_by": "upstream"
+    },
+    {
+      "lang": "c_sharp",
+      "repo": "https://github.com/tree-sitter/tree-sitter-c-sharp",
+      "tag": "v0.23.5",
+      "commit": "cac6d5fb595f5811a076336682d5d595ac1c9e85",
+      "sha256": "e4cd8a1c118a1e176931e9e0a635fc55e3d0f69e1649e40b74d72bda918e948d",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "ruby",
+      "repo": "https://github.com/tree-sitter/tree-sitter-ruby",
+      "commit": "ad907a69da0c8a4f7a943a7fe012712208da6dee",
+      "sha256": "f7aa2408f1b39922f85add38cacd60b59828a8222c609a240f08779d46d079d9",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "qmljs",
+      "repo": "https://github.com/yuja/tree-sitter-qmljs",
+      "tag": "0.3.1",
+      "commit": "de96ed62abded51fcdfcbeaaa120e0dd0d20c697",
+      "sha256": "740bdbbdef7e4f09860afb43a14d43de370ff20ebec632695076cde071f34de0",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "make",
+      "repo": "https://github.com/tree-sitter-grammars/tree-sitter-make",
+      "tag": "v1.1.1",
+      "commit": "5e9e8f8ff3387b0edcaa90f46ddf3629f4cfeb1d",
+      "sha256": "4fbeedc40982964d357f79eb27de65065b561904de16d07b15ee155c67bfc85c",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "css",
+      "repo": "https://github.com/tree-sitter/tree-sitter-css",
+      "tag": "v0.25.0",
+      "commit": "dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f",
+      "sha256": "c47392e483feb9137d8f0acf9ca6e916b820122c260324454a9980c75c98c3c5",
+      "license": "MIT",
+      "generated_by": "upstream"
     }
   ]
 }

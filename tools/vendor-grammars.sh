@@ -11,8 +11,8 @@
 # Each pinned commit's tarball is fetched into a fresh temporary directory,
 # its sha256 checked, and only the files the build needs are copied:
 #   runtime  lib/src, lib/include, LICENSE  -> third_party/tree-sitter/
-#   grammar  [subdir/]src/parser.c, src/scanner.c where present,
-#            src/tree_sitter/*.h, LICENSE (or "license_file"), and any
+#   grammar  [subdir/]src/parser.c, src/scanner.c where present, any other
+#            src/*.h, src/tree_sitter/*.h, LICENSE (or "license_file"), and any
 #            "extra" paths
 #            -> third_party/tree-sitter-grammars/<lang>/
 # The build itself never fetches anything.
@@ -101,6 +101,8 @@ for ((i = 0; i < count; i++)); do
     mkdir -p "$dest/src/tree_sitter"
     cp "$gsrc/parser.c" "$dest/src/"
     [ -f "$gsrc/scanner.c" ] && cp "$gsrc/scanner.c" "$dest/src/"
+    # A scanner may include a header beside it (qmljs: typescript-scanner.h).
+    for h in "$gsrc"/*.h; do [ -f "$h" ] && cp "$h" "$dest/src/"; done
     cp "$gsrc"/tree_sitter/*.h "$dest/src/tree_sitter/"
     lic=$(jq -r ".grammars[$i].license_file // \"LICENSE\"" "$manifest")
     cp "$src/$lic" "$dest/LICENSE"
