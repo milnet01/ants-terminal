@@ -94994,6 +94994,9 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   (showAboutAnts), src/welcomedialog.cpp ("What it does") and README.md
   "What is this?". The website session wants the release version once it
   ships.
+  2026-10-16, user follow-up: also in the man page
+  (packaging/linux/ants-terminal.1, AUTHORS) and the --help text
+  (src/main.cpp). The project has no other manual or help pages.
   **Layman:** The About window, the welcome window and the README now say Ants Terminal is not made by, affiliated with or endorsed by Anthropic.
   Kind: doc.
   Source: user-request-2026-10-16 via ants-projects-hub-website.

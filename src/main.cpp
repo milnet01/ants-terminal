@@ -275,7 +275,10 @@ int main(int argc, char *argv[]) {
 
     // CLI parsing — handles --help / --version / --new-plugin before GUI init.
     QCommandLineParser parser;
-    parser.setApplicationDescription("Ants Terminal — a modern, themeable terminal emulator.");
+    parser.setApplicationDescription(
+        "Ants Terminal — a modern, themeable terminal emulator.\n\n"
+        "Ants Terminal is an independent project. It is not made by, "
+        "affiliated with or endorsed by Anthropic, the maker of Claude Code.");
     parser.addHelpOption();
     parser.addVersionOption();
     QCommandLineOption quakeOpt({"quake", "dropdown"}, "Run in Quake / drop-down mode.");

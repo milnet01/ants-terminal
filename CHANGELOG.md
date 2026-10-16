@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **The man page and `ants-terminal --help` carry the same independence statement** (ANTS-5746)
+
 - **The About window, the welcome window and the README say Ants Terminal is an independent project** (ANTS-5746)
   They state that it is not made by, affiliated with or endorsed by Anthropic, the maker of Claude Code.
 
