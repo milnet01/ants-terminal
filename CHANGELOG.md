@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **The hot-reload rule is now checked: every spec carries a Reload section, and a commit that adds a src/ source file carries a "Reload:" line** (ANTS-5721)
+  `spec_lint` reports a spec with no `## Reload` section, and
+  `tools/hooks/commit-msg` refuses a commit adding a `.cpp`, `.h`, `.c`, `.cc`
+  or `.hpp` file under `src/` until its message says how the change reaches a
+  running terminal.
+
 - **New session_cost tool shows what a Claude Code session pays per message, and for what** (ANTS-5698)
   It reads the session's transcript and reports how large the context was at the start and is now, the session's token totals, the start-up payload by tool, and the largest items the session holds.
 

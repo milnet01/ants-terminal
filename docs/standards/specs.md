@@ -77,8 +77,8 @@ required set as absent, which is not a defect in that file.
 ## 3. Required structure
 
 Every spec opens with these, in this order. They are not the whole
-required set — § 4 carries two more: **§ RAM / build cost** when its
-trigger applies, and **§ Cold-eyes loop log** always.
+required set — § 4 carries three more: **§ RAM / build cost** when its
+trigger applies, and **§ Reload** and **§ Cold-eyes loop log** always.
 
 The block below is that rule in the form `spec_lint`'s `missing_section`
 check reads (ANTS-4345). It **adds no obligation** — every entry is
@@ -106,6 +106,7 @@ already required by this section or by § 4, and it is deliberately a
 ## Surface
 ## Invariants
 ## Tests
+## Reload
 ## Cold-eyes loop log
 ```
 
@@ -316,14 +317,20 @@ as a family and is not resolved. No existing clause is invalidated.
 ## 4. Recommended sections
 
 Add these when they carry weight; omit when they would be empty — with
-two exceptions, marked below: **§ RAM / build cost** whenever its
-trigger applies, and **§ Cold-eyes loop log** on every spec without
-exception.
+three exceptions, marked below: **§ RAM / build cost** whenever its
+trigger applies, and **§ Reload** and **§ Cold-eyes loop log** on every
+spec without exception.
 
 - **§ RAM / build cost** — **required** for any feature that holds state
   or adds a build target. State the memory budget and eviction policy at
   design time (the project's standing rule: no unbounded growth ships
   without a named cap). Note new external libraries (prefer none).
+- **§ Reload** — **required on every spec.** It answers `CLAUDE.md`
+  § "Hot reload is the design default": how the feature reaches a running
+  terminal without a relaunch, whether its code runs in its own process
+  and why, and its stop/start control or why it has none. A spec that
+  rule does not reach — a bug fix, a test, a document, a version bump —
+  says so in one line.
 - **§ Out of scope** — the spec's edges, stated so they read as decisions
   rather than omissions. Two kinds of line live here and they carry
   different obligations:
@@ -531,7 +538,12 @@ Copy this to start a new spec:
 Feature test: `tests/features/<name>/`. Covers INV-1..N. Label
 `features;fast`. Verify each test fails against pre-fix source first.
 
-## 7. Cross-doc impact
+## 7. Reload
+
+<how it reaches a running terminal; own process or not, and why;
+its stop/start control, or why it has none>
+
+## 8. Cross-doc impact
 
 <CLAUDE.md / CHANGELOG / README / sibling specs touched this release>
 
@@ -555,6 +567,7 @@ Feature test: `tests/features/<name>/`. Covers INV-1..N. Label
 | § 3.5 / § 5.5 ids are never renumbered | **`Partial:`** `spec_lint` `invariant_id_gap`, a candidate id-sequence check. It sees a HOLE; a list renumbered contiguously leaves none, so **nothing** catches the renumbering this rule actually forbids |
 | § 3.5.1 a pattern invariant is runnable | **`Partial:`** `spec_conformance`, a pattern-execution check reporting a pattern that disagrees with its own example. The three mistakes § 3.5.1 calls invisible are reported by **nothing**, and nothing makes an author run the verb |
 | § 3.6 a named test surface resolves | `spec_lint` `test_surface_absent` / `test_surface_unresolved` / `test_surface_unwired`, disk- and CMake-resolution checks, gated on a `tests/features/<name>/` directory being named. Prose surfaces and wildcards are left alone by design |
+| § 4 a § Reload section is present | `spec_lint` `missing_section`, via § 3's block. Whether its answer is true or well chosen: **nothing mechanical** — the review gate's cold lanes. A commit adding a `src/` source file is checked separately by `tools/hooks/commit-msg`, which wants a `Reload:` line |
 | § 5.1 every path, symbol and constant is grounded | **`Partial:`** `check-doc-facts` `paths` and `symbols`, resolution checks emitting candidates. Whether a symbol that RESOLVES supports the claim made about it is **nothing mechanical** — the review gate's cold lanes |
 | § 5.2 the Layman line | **nothing** — no check knows whether a given spec describes user-facing behaviour, which is what triggers the rule |
 | § 5.3 brevity, § 5.4 security boundaries | **nothing mechanical** — the review gate's cold lanes, and the reader of the resulting document |

@@ -133,8 +133,8 @@ TEST(SpecLint, Inv1SectionListIsReadNotAssumed) {
     //     reading the marked block.
     //
     //     ANTS-4345 (2026-08-14) added that block, so this flipped from "the
-    //     list is empty and the check skips" to naming the five entries. They
-    //     are UNNUMBERED on purpose: this standard does not fix section
+    //     list is empty and the check skips" to naming its entries; ANTS-5721
+    //     (2026-10-16) added `## Reload`. They are UNNUMBERED on purpose: this standard does not fix section
     //     numbers, and an exact-match list built from § 7's skeleton was
     //     measured firing on 188 of 243 specs, almost none of it real.
     const QString real = slurp(DOCS_STANDARDS_SPECS_MD_PATH);
@@ -144,6 +144,7 @@ TEST(SpecLint, Inv1SectionListIsReadNotAssumed) {
                                     QStringLiteral("## Surface"),
                                     QStringLiteral("## Invariants"),
                                     QStringLiteral("## Tests"),
+                                    QStringLiteral("## Reload"),
                                     QStringLiteral("## Cold-eyes loop log")}))
         << "specs.md § 3's <!-- required-sections --> block is the list; it is "
            "a deliberate SUBSET of § 3 + § 4 (no Title/Header block — not `##` "
