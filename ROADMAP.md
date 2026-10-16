@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5721 -->
+<!-- ants-roadmap-id-high-water: ANTS=5722 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72039,6 +72039,19 @@ project. Reported causes are claims until checked in source.
   Kind: doc-fix.
   Source: in-session-2026-10-12 (ANTS-5672 check).
   Lanes: docs.
+
+- 📋 [ANTS-5722] **roadmap_log append_batch reports success while filing nothing when bullets lack their own source.**
+  append_batch falls back to the call-level section and status but not
+  source, so each bullet without its own source is skipped (missing_field).
+  With fields:["ok","ids"] the reply is {ok:true, ids:[]}: 12 bullets
+  went unfiled with no visible error.
+  Fix: make source fall back like section and status; and return ok:false,
+  or always keep skipped_count in the reply, when applied_count is 0
+  whatever fields asks for.
+  **Layman:** Filing a batch of roadmap items could silently file none of them while saying it worked.
+  Kind: fix.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-16.
+  Lanes: mcp-roadmap.
 
 ## Ants MCP feedback from CC sessions — 2026-10-15 token survey
 
