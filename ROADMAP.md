@@ -72586,6 +72586,17 @@ measured Ants adding about 5,250 tokens to every request.
   covers CMake, vendor a CMake grammar; claude-config names
   uyha/tree-sitter-cmake (unverified: check it is maintained and has
   tags queries before choosing it).
+  Installed and checked by claude-config 2026-10-16: tree-sitter CLI and
+  libtree-sitter 0.27.0; grammar libraries at
+  /usr/lib64/tree-sitter/libtree-sitter-<lang>.so; grammar sources under
+  /usr/include/tree-sitter/grammars/. tags.scm ships for c, cpp,
+  c_sharp, go, java, javascript, typescript, tsx, lua, php, python,
+  ruby, rust, swift only. None for bash, glsl, kotlin, json, yaml, toml,
+  markdown, html, css, xml, make or regex, so the spec writes its own
+  definition and reference queries for any of those it covers. Parse
+  test: `tree-sitter parse --lib-path
+  /usr/lib64/tree-sitter/libtree-sitter-python.so --lang-name python
+  <file>` returns function_definition.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
