@@ -12,6 +12,12 @@
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
+#ifndef SRC_CONFIG_CPP_PATH
+#error "SRC_CONFIG_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_SETTINGSDIALOG_CPP
+#error "SRC_SETTINGSDIALOG_CPP compile definition required"
+#endif
 
 namespace {
 
@@ -72,6 +78,42 @@ TEST(ModelAutoSwitchActuator, Inv14ChipSuppressedWhenEnabled) {
     ASSERT_NE(scorePos, std::string::npos);
     EXPECT_LT(switchPos, scorePos)
         << "INV-14(b): suppression gate must precede ModelRecommender::score";
+}
+
+// ANTS-5754 — the suggestion chip has its own off switch, independent of
+// the autonomous switcher, read before any scoring work.
+TEST(ModelAutoSwitchActuator, SuggestionChipHasOwnOffSwitch) {
+    const std::string cfg = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
+    const std::string getter = between(
+        cfg, "bool Config::claudeModelSuggestionChipEnabled() const", "}");
+    ASSERT_FALSE(getter.empty())
+        << "Config::claudeModelSuggestionChipEnabled() not found";
+    EXPECT_NE(getter.find("\"claude.model_suggestion_chip_enabled\""),
+              std::string::npos)
+        << "getter must read claude.model_suggestion_chip_enabled";
+    EXPECT_NE(getter.find("toBool(true)"), std::string::npos)
+        << "the chip must stay on by default";
+
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string body = between(
+        src, "void ClaudeStatusBarController::refreshModelChip()",
+        "void ClaudeStatusBarController::refreshAutoModelSwitch");
+    ASSERT_FALSE(body.empty()) << "refreshModelChip body not found";
+    const auto gatePos = body.find("claudeModelSuggestionChipEnabled()");
+    const auto scorePos = body.find("ModelRecommender::score(");
+    ASSERT_NE(gatePos, std::string::npos)
+        << "refreshModelChip must read claudeModelSuggestionChipEnabled()";
+    ASSERT_NE(scorePos, std::string::npos);
+    EXPECT_LT(gatePos, scorePos)
+        << "the off switch must be read before ModelRecommender::score";
+
+    const std::string dlg = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP);
+    EXPECT_NE(dlg.find("m_config->claudeModelSuggestionChipEnabled()"),
+              std::string::npos)
+        << "Settings must load the setting";
+    EXPECT_NE(dlg.find("m_config->setClaudeModelSuggestionChipEnabled("),
+              std::string::npos)
+        << "Settings must save the setting";
 }
 
 // INV-14 (c) — the 2 s status timer drives the actuator.

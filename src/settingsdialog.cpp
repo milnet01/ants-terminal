@@ -286,6 +286,16 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "hides the pill — the running totals keep accruing.");
     layout->addRow(m_claudeTokensSavedChip);
 
+    // ANTS-5754 — the model-suggestion chip, on its own. Independent of the
+    // auto-switcher below, which hides the chip anyway while it is on.
+    m_claudeModelSuggestionChip = new QCheckBox(
+        "Show model suggestions in the status bar", tab);
+    m_claudeModelSuggestionChip->setToolTip(
+        "When on, a button such as \"→ Haiku\" appears in the status bar "
+        "when Ants thinks a different Claude model suits the current work. "
+        "Clicking it switches; nothing switches on its own. On by default.");
+    layout->addRow(m_claudeModelSuggestionChip);
+
     // ANTS-1735 §2.7 — single prominent toggle for the autonomous
     // model switcher. Quietly swaps Claude Code between Haiku /
     // Sonnet / Opus at turn boundaries so the user never has to
@@ -476,6 +486,8 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_notificationTimeout->setValue(5);
         m_claudeTabStatusIndicator->setChecked(true);
         if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setChecked(false);
+        if (m_claudeModelSuggestionChip)  // ANTS-5754 default on
+            m_claudeModelSuggestionChip->setChecked(true);
         // ANTS-1974 — home tier default Sonnet.
         if (m_claudeAutoModelHomeTier)
             m_claudeAutoModelHomeTier->setCurrentIndex(
@@ -1134,6 +1146,9 @@ void SettingsDialog::loadSettings() {
         m_claudeAutoModelChipPulse->setChecked(m_config->claudeAutoModelChipPulseEnabled());
     if (m_claudeAutoModelUndo)
         m_claudeAutoModelUndo->setChecked(m_config->claudeAutoModelUndoEnabled());
+    if (m_claudeModelSuggestionChip)  // ANTS-5754
+        m_claudeModelSuggestionChip->setChecked(
+            m_config->claudeModelSuggestionChipEnabled());
     if (m_claudeTokensSavedChip)  // ANTS-3572
         m_claudeTokensSavedChip->setChecked(m_config->claudeTokensSavedChipEnabled());
     if (m_claudeMcpEnabled)
@@ -1273,6 +1288,9 @@ void SettingsDialog::applySettings() {
         m_config->setClaudeAutoModelChipPulseEnabled(m_claudeAutoModelChipPulse->isChecked());
     if (m_claudeAutoModelUndo)
         m_config->setClaudeAutoModelUndoEnabled(m_claudeAutoModelUndo->isChecked());
+    if (m_claudeModelSuggestionChip)  // ANTS-5754
+        m_config->setClaudeModelSuggestionChipEnabled(
+            m_claudeModelSuggestionChip->isChecked());
     if (m_claudeTokensSavedChip)  // ANTS-3572
         m_config->setClaudeTokensSavedChipEnabled(m_claudeTokensSavedChip->isChecked());
     if (m_claudeMcpOrientation) {

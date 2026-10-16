@@ -14,6 +14,12 @@ must:
    surface that pushed them to autonomy in the first place.
 3. **Run on the 2 s status timer** — `mainwindow.cpp` wires the
    actuator to `m_statusTimer::timeout` alongside `refreshModelChip`.
+4. **The chip has its own off switch (ANTS-5754)** — config key
+   `claude.model_suggestion_chip_enabled`, default true.
+   `refreshModelChip()` hides `m_modelBtn` and returns when it is false,
+   before `ModelRecommender::score`, whatever `switch_enabled` says. The
+   Settings dialog loads and saves it. Breaks when: the key defaults
+   false, the gate moves after scoring, or Settings drops either half.
 
 Source-grep test — the actuator's `decide()` payload is exercised by
 `tests/features/model_auto_switch/`; this test locks the controller-

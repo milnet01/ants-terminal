@@ -618,6 +618,15 @@ void Config::setClaudeAutoModelToastEnabled(bool enabled) {
     save();
 }
 
+bool Config::claudeModelSuggestionChipEnabled() const {
+    return m_data.value("claude.model_suggestion_chip_enabled").toBool(true);
+}
+
+void Config::setClaudeModelSuggestionChipEnabled(bool enabled) {
+    if (!storeIfChanged("claude.model_suggestion_chip_enabled", enabled)) return;
+    save();
+}
+
 bool Config::claudeAutoModelChipPulseEnabled() const {
     return m_data.value("claude.auto_model_chip_pulse_enabled").toBool(true);
 }

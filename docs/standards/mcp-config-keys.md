@@ -95,6 +95,10 @@ tuning keys:
   switch-event surfacing: status-bar toast on each live auto-switch.
 - `claude.auto_model_chip_pulse_enabled` (bool, default true) — ANTS-1893:
   per-tab model chip pulses for ~0.6 s on each switch.
+- `claude.model_suggestion_chip_enabled` (bool, default true) — ANTS-5754:
+  shows the status-bar model-suggestion chip ("→ Haiku"); Settings
+  "Show model suggestions in the status bar". Independent of the master
+  gate, which hides the chip while it is on.
 - `claude.auto_model_undo_enabled` (bool, default true) — ANTS-1893: 10 s
   "Undo: back to <Tier>" button in the status bar after each switch; click
   seeds the ANTS-1890 cool-down so the same pick won't immediately re-fire.

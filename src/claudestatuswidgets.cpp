@@ -1597,6 +1597,14 @@ void ClaudeStatusBarController::refreshModelChip()
         m_modelBtn->hide();
         return;
     }
+    // ANTS-5754 — the user's own off switch for the chip. Clearing the
+    // cached path makes the next tick re-score once it is switched back on,
+    // rather than waiting for the transcript to change.
+    if (!cfg.claudeModelSuggestionChipEnabled()) {
+        m_modelBtn->hide();
+        m_modelChipPath.clear();
+        return;
+    }
 
     // Resolve transcript path — same pattern as refreshTasksButton.
     QString cwd;

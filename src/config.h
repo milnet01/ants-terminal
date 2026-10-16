@@ -152,6 +152,12 @@ public:
     bool claudeAutoModelUndoEnabled() const;
     void setClaudeAutoModelUndoEnabled(bool enabled);
 
+    // ANTS-5754 — the status-bar model-suggestion chip ("→ Haiku") on its
+    // own, independent of the autonomous switcher. Key
+    // claude.model_suggestion_chip_enabled, default true.
+    bool claudeModelSuggestionChipEnabled() const;
+    void setClaudeModelSuggestionChipEnabled(bool enabled);
+
     // ANTS-1951 — auto-confirm CC's "Switch model?" dialog for user-typed
     // /model commands too (the auto-switch/chip paths already confirm via
     // performModelSwitchHandshake). Config-file-only key

@@ -3280,6 +3280,8 @@ if(ANTS_TESTS)
         # claudeintegration.h; ClaudeIntegration keeps aliases for them.
         SRC_MCP_TOOL_SINK_H_PATH="${CMAKE_SOURCE_DIR}/src/mcptoolsink.h"
         SRC_SETTINGSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        # ANTS-5754 — the model-suggestion chip's off switch.
+        SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
         SRC_CLAUDESETUP_CPP="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
