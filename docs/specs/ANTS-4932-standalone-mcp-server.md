@@ -96,7 +96,9 @@ designed:
 **What this does NOT achieve, stated as a bound.** An MCP client caches
 `tools/list` at connect. **Adding** a verb or changing its arguments still
 needs a client reconnect. This removes the *terminal relaunch*, not every
-restart. Changing a verb's **behaviour** needs neither.
+restart. A rebuilt `ants-mcpd` reaches a client only when it reconnects, so
+changing the **behaviour** of a verb `ants-mcpd` serves needs that reconnect
+and no relaunch.
 
 ### 2.2 The library split
 
@@ -207,8 +209,8 @@ Assigned by this spec:
 
 - **Terminal-scoped:** every `cmd*` in `remotecontrol_terminal.cpp` except
   `cmdFindSources`, which reads no tab state and moves to the workspace TU; the
-  inline `get_cwd`, `get_scrollback`, `get_last_command`, `get_environment`,
-  `get_git_status` and `tab_list` lambdas; `token_usage` (it reads the terminal's own counters,
+  inline `get_cwd`, `get_scrollback`, `get_last_command`, `get_environment`
+  and `tab_list` lambdas; `token_usage` (it reads the terminal's own counters,
   so its body moves from `remotecontrol_review.cpp` to the GUI side);
   `get_session_info`, dispatched inline by the pipeline.
 - **Served by `ants-mcpd`:** `caller_cwd_info`, whose lambda moves to
@@ -426,8 +428,10 @@ INV-9 locks the writes and INV-13 locks the hold.
   is the test's positive control. Broken by: adding a source to
   `ants_mcpcore_lib` that pulls in a widget.
 - **INV-2** — There is exactly ONE enumeration of the project-scoped verb set.
-  `registerToolProvider` is called for a non-terminal verb from
-  `src/mcptoolregistry.cpp` and from no other translation unit. *Test:*
+  `registerToolProvider` is called for a shared verb from
+  `src/mcptoolregistry.cpp` and from no other translation unit. A verb only
+  `ants-mcpd` serves registers in `mcp::registerMcpdOnlyVerbs`
+  (`src/trace/traceverb.cpp`). *Test:*
   `tests/features/standalone_mcp_server/` runs
   `mcp::registerProjectScopedVerbs` against a recording `ToolSink` and asserts
   none of the recorded names is in `mcp::terminalScopedVerbNames()`. It then
@@ -657,5 +661,6 @@ is a one-way door across every project on the machine.
 |---|---|---|---|---|---|---|---|
 | 1 | 2026-09-24 | 3, every lane held Q1–Q4 | 5 | 7 | 3 | 3 | Verified 18, fixed 18, dismissed 2 (INV-12's test directory; the verb-count label). Largest: the `MainWindow` coupling was undercounted (`!m_main` refusals and resolver reads missed), and the library split could not link. Design choices taken at the gate are recorded in § 9. |
 | 2 | 2026-09-24 | 3, every lane held Q1–Q4 | 0 | 5 | 6 | 2 | Verified 13, fixed 13, dismissed 0. Cap reached (2 for a spec); shipped to implementation. Twelve of the thirteen anchored on text loop 1 wrote. The document was new, so that share cannot separate a calm cap from a violent one. Read by substance, they were consequences of loop 1's design choices not yet carried through (the shared pipeline against the forwarder, the `Required` gate against the fallback, the terminal-scoped definition), not repairs of repairs. Deferral filed: ANTS-5311. Disclosure: every lane's git snapshot named loop 1's commit and its finding count. |
+| impl | 2026-10-16 | none dispatched | - | - | - | - | ANTS-5750 fold-back, not a review. Brought three passages in line with existing code: INV-2 scoped to shared verbs (trace registers in mcp::registerMcpdOnlyVerbs), § 2.1 now says a rebuilt ants-mcpd needs a client reconnect, § 2.3 drops get_git_status (now a deprecated alias of git_state). No gate: the amendment only records built code. |
 
 <!-- one row per review loop; written as the loops happen, never back-filled -->

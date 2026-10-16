@@ -68938,7 +68938,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 loop 9.
 
-- 📋 [ANTS-5750] **ANTS-4932's spec matches the code on mcpd-only verbs, reconnects and the terminal-scoped list.**
+- ✅ [ANTS-5750] **ANTS-4932's spec matches the code on mcpd-only verbs, reconnects and the terminal-scoped list.**
   Found by review-contract on CLAUDE.md (2026-10-16, loop 15; outside
   that subject, so filed). All three in
   docs/specs/ANTS-4932-standalone-mcp-server.md:
@@ -68952,6 +68952,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   mcp::terminalScopedVerbNames() (src/mcptoolregistry.cpp) does not.
   Owes rule 14's gate (spec amendment; the third may be the exemption
   for recording existing code).
+  Shipped 2026-10-16: INV-2 scoped to shared verbs and names
+  mcp::registerMcpdOnlyVerbs; § 2.1 says behaviour changes need a client
+  reconnect; § 2.3 drops get_git_status (a deprecated alias of git_state
+  since mcpdeprecation.cpp). No gate: records existing code only (rule
+  14 code-already-exists exception).
   **Layman:** The design document for the standalone MCP server has fallen behind the code in three places.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16 loop 15.
