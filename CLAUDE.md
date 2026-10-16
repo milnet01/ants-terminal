@@ -106,7 +106,9 @@ session in its tabs (`~Pty`, `src/ptyhandler.cpp`).
 - Behaviour that is data — a rule pack, schema, description, theme, keymap,
   template — lives in a file the process re-reads.
 - A verb that needs no tab or terminal state is registered in
-  `mcp::registerProjectScopedVerbs()` (`src/mcptoolregistry.cpp`). Its body
+  `mcp::registerProjectScopedVerbs()` (`src/mcptoolregistry.cpp`), or in
+  `mcp::registerMcpdOnlyVerbs()` (`src/trace/traceverb.h`) when only
+  `ants-mcpd` serves it. Its body
   reaches `MainWindow` in none of ANTS-4932 § 1's three forms: a direct call,
   a call inside the root resolver, or an `if (!m_main)` refusal.
 - A verb that needs that state names its `MainWindow` method in its design

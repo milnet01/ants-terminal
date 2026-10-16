@@ -164,3 +164,24 @@ the run's 8 verified findings lie in or beside the gated bullet. The other
 2 are filed on ANTS-5723. Loop 12's two fixes were read by no lane;
 ANTS-5721's spec and commit checks, built next under this rule, are their
 first reader.
+
+## Fifth run — 2026-10-16 (ANTS-5723, verb-registration bullets)
+
+Genre: **standard** (pinned). Cap 3.
+
+Trigger: global `CLAUDE.md` rule 14 — commit `80ebfc81` replaced the verb
+bullet in § Hot reload is the design default with two bullets. They name
+`mcp::registerProjectScopedVerbs()`, ANTS-4932 § 1's three `MainWindow`
+forms, and `mcp::terminalScopedVerbNames()`. A verb author now checks
+different code lists and three window-dependency forms, so the gate is
+owed. Gated span: those two bullets.
+
+Lanes ran through `~/.claude/tools/neutral-lane`. Each disclosed holding
+only the global `CLAUDE.md`, so the subject did not reach them unscrubbed.
+The 1d pass was the project's `doc_symbols` and `doc_integrity`: 0
+findings; the four unresolved symbols are external names, a CMake
+variable and an enum member. Not covered: quotations, versions and counts.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
+| 13 | 2026-10-16 | 2, cold, every lane held every question — packet: ANTS-4932 §§ 1, 2.3, 2.5, 3 (INV-1 to INV-5), `mcptoolregistry.h/.cpp`, `mcpdmain.cpp` registration, `mcpdcall.cpp` `runCall`, `setupClaudeMcpProviders`, `traceverb.h`, `CallerCwdContract`, `~Pty` | 0 | 1 | 0 | n/a | **One verified, one fixed; one dismissed.** [Q2] (both lanes) the bullet sent every verb needing no terminal state to `registerProjectScopedVerbs`, against `registerMcpdOnlyVerbs` for a verb only `ants-mcpd` serves: the bullet now names both. Dismissed [Q3], one lane: the three forms miss state outside `MainWindow`; not material, since the bullet's condition is the state itself and its example, `token_usage`, reaches `m_main` in `RemoteControl::cmdTokenUsage`. Five open questions resolved clean. Inside the span. No earlier loop of this run. Loop 14 dispatched. |
