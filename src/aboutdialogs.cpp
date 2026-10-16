@@ -187,6 +187,9 @@ void showAboutAnts(QWidget *parent, const QList<TabShells> &tabs) {
         "<b>Qt runtime:</b> %2%3%4%5</p>"
         "<p>A modern, themeable terminal emulator with Lua "
         "plugins. MIT-licensed.</p>"
+        "<p>Ants Terminal is an independent project. It is not made by, "
+        "affiliated with or endorsed by Anthropic, the maker of Claude "
+        "Code.</p>"
         "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
         "https://github.com/milnet01/ants-terminal</a></p>")
         .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine, buildLine,

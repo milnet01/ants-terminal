@@ -92,7 +92,10 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
         "<p><b>Built for Claude Code:</b> a live status bar showing what Claude "
         "is doing, session and permission tools, Review Changes, and the Ants "
         "MCP toolkit, which gives Claude cheaper ways to read and search your "
-        "project.</p>"), body));
+        "project.</p>"
+        "<p>Ants Terminal is an independent project. It is not made by, "
+        "affiliated with or endorsed by Anthropic, the maker of Claude "
+        "Code.</p>"), body));
 
     // Each row reads its state now and again after its action. `rows` keeps
     // a re-read of each, for when detection turns true (INV-13).

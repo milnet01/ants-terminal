@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5745 -->
+<!-- ants-roadmap-id-high-water: ANTS=5746 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94986,6 +94986,17 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Kind: review-fix.
   Source: review-contract-2026-10-16 ANTS-5558 loop 3.
   Lanes: ui.
+
+- ✅ [ANTS-5746] **State in the app and the README that Ants Terminal is independent of Anthropic.**
+  Wording is the site's house style, used unchanged: "Ants Terminal is an
+  independent project. It is not made by, affiliated with or endorsed by
+  Anthropic, the maker of Claude Code." In src/aboutdialogs.cpp
+  (showAboutAnts), src/welcomedialog.cpp ("What it does") and README.md
+  "What is this?". The website session wants the release version once it
+  ships.
+  **Layman:** The About window, the welcome window and the README now say Ants Terminal is not made by, affiliated with or endorsed by Anthropic.
+  Kind: doc.
+  Source: user-request-2026-10-16 via ants-projects-hub-website.
 
 ## How to propose a roadmap item
 

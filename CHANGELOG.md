@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **The About window, the welcome window and the README say Ants Terminal is an independent project** (ANTS-5746)
+  They state that it is not made by, affiliated with or endorsed by Anthropic, the maker of Claude Code.
+
 - **The welcome window offers to install Claude Code when it is missing** (ANTS-5744)
   An Install Claude Code button shows the exact command first, then runs Anthropic's installer in a new tab and starts Claude Code there for sign-in. A note says Claude Code needs a paid Claude plan or an Anthropic API account. The window notices the install when you return to it, and Ants now also finds Claude Code in ~/.local/bin.
 

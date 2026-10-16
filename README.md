@@ -52,6 +52,9 @@ graphics toolkit most Linux desktops already have), so it's quick and light.
 Its tools for Claude run **on your own machine** — they send nothing
 anywhere.
 
+Ants Terminal is an independent project. It is not made by, affiliated with
+or endorsed by Anthropic, the maker of Claude Code.
+
 ## Why use it with Claude Code
 
 Claude Code charges by the **token** — think of a token as a small chunk of
