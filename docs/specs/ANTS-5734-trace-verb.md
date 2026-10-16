@@ -102,7 +102,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 ### 2.3 The engine
 
 - **Runtime.** tree-sitter 0.27.1, vendored under `third_party/tree-sitter/` (its `lib/src` and `lib/include`, with its MIT `LICENSE`).
-- **Grammars.** Each one is vendored under `third_party/tree-sitter-grammars/<lang>/`: the generated `src/parser.c`, `src/scanner.c` where upstream has one, `src/tree_sitter/*.h`, and the grammar's `LICENSE`. Every grammar is pinned in `third_party/tree-sitter-grammars/MANIFEST.json`:
+- **Grammars.** Each one is vendored under `third_party/tree-sitter-grammars/<lang>/`: the generated `src/parser.c`, `src/scanner.c` where upstream has one, any other `src/*.h` beside it, `src/tree_sitter/*.h`, and the grammar's `LICENSE`. Every grammar is pinned in `third_party/tree-sitter-grammars/MANIFEST.json`:
 
 ```json
 {"lang": "cpp", "repo": "https://github.com/tree-sitter/tree-sitter-cpp",
@@ -112,7 +112,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   The manifest's `runtime` entry pins tree-sitter itself the same way. A grammar entry may also carry `subdir` (where one repository holds two grammars, as tree-sitter-typescript holds `typescript` and `tsx`), `extra` (shared files copied beside the grammars, such as that repository's `common/scanner.h`) and `license_file` (where the licence is not named `LICENSE`).
 
-  A grammar is pinned to its latest release, or to a later commit where that commit fixes a defect the release still has. tree-sitter-ruby is pinned to `ad907a69`, which fixes heredoc serialization buffer overflows in its scanner (committed 2026-03-10; its latest release, v0.23.1, is from 2024-11).
+  A grammar is pinned to its latest release (its latest tag where it publishes no release), or to a later commit where that commit fixes a defect the release still has. tree-sitter-ruby is pinned to `ad907a69`, which fixes heredoc serialization buffer overflows in its scanner (committed 2026-03-10; its latest release, v0.23.1, is from 2024-11).
 
   `generated_by` is `upstream` when the repository commits `parser.c`. Otherwise it names the tree-sitter CLI version that generated the file (tree-sitter-swift does not commit its `parser.c`). The runtime accepts grammar ABI 13 to 15 (`TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION` and `TREE_SITTER_LANGUAGE_VERSION` in `api.h`). A refresh script, `tools/vendor-grammars.sh`, fetches each pinned commit, checks its hash, and copies the files. Nothing in the build fetches anything.
 - **Build.** A static C library, `ants_treesitter_lib`, holds the runtime and the grammars. A Qt6::Core library, `ants_trace_lib`, holds the engine (`src/trace/`). Both link into `ants-mcpd` and the trace test bundle only, never into `ants-terminal`.
@@ -125,7 +125,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   Ship 3 lands in batches. The first adds `c_sharp`, `ruby`, `php`, `qmljs`, `make` and `css` (the user's request through Groundwork, 2026-10-16). `php` is the grammar for PHP mixed with HTML, from tree-sitter-php's `php` subdirectory. `qmljs` comes from `yuja/tree-sitter-qmljs`, a personal repository: no tree-sitter organisation hosts a QML grammar (`gh api repos/tree-sitter-grammars/tree-sitter-qmljs` → 404, 2026-10-16).
 
-  Two of the batch need files the vendoring rules above do not place. tree-sitter-php's `php/src/scanner.c` includes `../../common/scanner.h`, the path tree-sitter-typescript's `extra` already fills (`third_party/tree-sitter-grammars/common/scanner.h`), so the two files must be vendored to different paths. tree-sitter-qmljs's `src/scanner.c` includes `typescript-scanner.h`, which sits in its own `src/` (read from both repositories, 2026-10-16).
+  tree-sitter-php's `php/src/scanner.c` includes `../../common/scanner.h`, the path tree-sitter-typescript's `extra` already fills (`third_party/tree-sitter-grammars/common/scanner.h`; read from both repositories, 2026-10-16). The two files must be vendored to different paths, and how is open (§ 12).
 
   Ship 1 covers every language `SymbolQuery::Lang` names except its `Generic` brace family, plus the most used modern languages. A ship-3 grammar is added only after its upstream repository has been checked as maintained, MIT- or Apache-licensed, and buildable from vendored sources. One that fails stays `no_grammar` and gets a roadmap note. A language with files present but no grammar is reported, never dropped (INV-9).
 
@@ -306,6 +306,7 @@ The fixture's `.zig` file is never parsed; it exists to be reported.
 ## 12. Open questions
 
 - **LSP.** This spec defers it (§ 9.2). The user may want it in ship 2 instead.
+- **Where tree-sitter-php's `common/scanner.h` is vendored** (§ 2.3). The layout, the `MANIFEST.json` field that places it, `tools/vendor-grammars.sh` and `CMakeLists.txt` must agree, and `php` waits on the answer.
 - **The CMake grammar.** `uyha/tree-sitter-cmake` is claude-config's suggestion. Whether it is maintained and licensed for vendoring is unchecked; ship 3's admission rule (§ 2.3) decides it.
 
 ## Cold-eyes loop log
