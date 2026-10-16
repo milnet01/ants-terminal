@@ -335,7 +335,8 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         // layout principle as the branch chip / Claude status label
         // introduced on 2026-04-18.
         addBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        statusBar()->addPermanentWidget(addBtn);
+        // ANTS-5753 — at the left end, so the pills do not shift.
+        statusBar()->insertPermanentWidget(0, addBtn);
 
         // Scroll-scan permission detection always belongs to the terminal
         // whose scrollback was scanned — `terminal` here is a direct

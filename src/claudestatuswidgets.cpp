@@ -18,12 +18,14 @@
 #include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QStatusBar>
 #include <QString>
 #include <QStringLiteral>
 #include <QTabWidget>
 #include <QTimer>
 #include <QWidget>
+#include <algorithm>   // ANTS-5753 — std::max in statusbarslot::pin
 #include <memory>
 // ANTS-1893 — ::kill(pid, 0) ESRCH dead-pid probe in onUndoSwitchClicked.
 #include <sys/types.h>
@@ -690,7 +692,8 @@ void ClaudeStatusBarController::showPermissionPrompt(pid_t awaitingPid,
         btnLayout->addWidget(allowBtn);
         btnLayout->addWidget(denyBtn);
         btnLayout->addWidget(addBtn);
-        m_statusBar->addPermanentWidget(btnWidget);
+        // ANTS-5753 — at the left end, so the pills do not shift.
+        m_statusBar->insertPermanentWidget(0, btnWidget);
 
         // ANTS-1873 — the tracker was set true by the caller
         // (permissionRequested slot or MainWindow scroll-scan); apply()
@@ -971,6 +974,56 @@ void ClaudeStatusBarController::applyTheme(const QString &themeName) {
                      th.textPrimary.name()));
     if (m_mailChip)   // ANTS-5620
         m_mailChip->setStyleSheet(mailChipStyle(th));
+    pinSlots();   // ANTS-5753 — after the stylesheets the measure counts
+}
+
+void ClaudeStatusBarController::pinSlots() {
+    // Candidates are each pill's longest texts; numbers use '8', the widest
+    // digit in most fonts. Keep in step with the setText sites.
+    const QStringList tiers{QStringLiteral("Haiku"), QStringLiteral("Sonnet"),
+                            QStringLiteral("Opus")};
+
+    QStringList states;
+    for (const char *s : {"prompting", "planning", "auditing", "idle",
+                          "thinking", "bash", "reading a file", "editing",
+                          "searching", "browsing", "delegating", "compacting"})
+        states << QStringLiteral("Claude: %1").arg(QLatin1String(s));
+
+    QStringList modelState;
+    for (const QString &t : tiers)
+        for (const char *lvl : {"", "ultrathink", "think hard", "think",
+                                "standard"}) {
+            QString base = t;
+            if (*lvl) base += QStringLiteral(" · ") + QLatin1String(lvl);
+            modelState << base;
+            for (const QString &to : tiers)
+                modelState << base + QStringLiteral(" (auto → ") + to
+                                   + QStringLiteral(")");
+        }
+
+    QStringList undo;
+    for (const QString &t : tiers) undo << tr("Undo: back to %1").arg(t);
+
+    const Config &cfg = cachedConfig();
+    const bool autoOn = cfg.claudeAutoModel().value("switch_enabled").toBool();
+
+    statusbarslot::pin(m_statusLabel, states);
+    statusbarslot::setRetain(m_contextBar, true);
+    statusbarslot::pin(m_tokensSavedChip,
+                       {QStringLiteral("↓ 888.8M saved"),
+                        QStringLiteral("↓ 888.8B saved")},
+                       cfg.claudeTokensSavedChipEnabled());
+    statusbarslot::pin(m_mailChip, {tr("✉ %1 unread").arg(888)});
+    statusbarslot::pin(m_reviewBtn, {QStringLiteral("Review Changes")});
+    statusbarslot::pin(m_bgTasksBtn, {tr("Background Tasks (%1)").arg(88)});
+    statusbarslot::pin(m_tasksBtn, {QStringLiteral("☰ 88/88")});
+    statusbarslot::pin(m_modelBtn,
+                       {tr("→ Haiku"), tr("→ Opus"), tr("→ Sonnet")},
+                       cfg.claudeModelSuggestionChipEnabled() && !autoOn);
+    statusbarslot::pin(m_modelStateBtn, modelState);
+    statusbarslot::pin(m_undoSwitchBtn, undo,
+                       autoOn && cfg.claudeAutoModelUndoEnabled());
+    statusbarslot::pin(m_errorLabel, {QStringLiteral("Exit 888")});
 }
 
 void ClaudeStatusBarController::refreshBgTasksButton() {
@@ -1374,7 +1427,19 @@ void ClaudeStatusBarController::apply() {
     // active tab's dot resolve to the same colour on every theme.
     const QColor bg = Themes::byName(m_currentThemeName).bgSecondary;
     const QColor color = ClaudeTabIndicator::contrastColor(glyph, bg);
-    m_statusLabel->setText(text);
+    // ANTS-5753 — the slot is pinned to the known vocabulary (pinSlots), so
+    // a raw tool name wider than it is elided, full name in the tooltip.
+    // The text room is the pinned width less statusStyle's 8px padding each
+    // side and pin()'s one-character slack.
+    QString shown = text;
+    if (m_statusLabel->maximumWidth() < QWIDGETSIZE_MAX) {
+        const QFontMetrics fm = m_statusLabel->fontMetrics();
+        const int room = m_statusLabel->maximumWidth() - 16
+                       - fm.averageCharWidth();
+        shown = fm.elidedText(text, Qt::ElideRight, room);
+    }
+    m_statusLabel->setToolTip(shown == text ? QString() : text);
+    m_statusLabel->setText(shown);
     m_statusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
     // 0.7.54 (2026-04-27 indie-review WCAG) — keep the accessible
@@ -1491,6 +1556,8 @@ void ClaudeStatusBarController::refreshMailChip()
 void ClaudeStatusBarController::refreshTokensSavedChip()
 {
     const Config &cfg = cachedConfig();
+    // ANTS-5753 — a pill switched off in Settings gives its slot back.
+    statusbarslot::setRetain(m_tokensSavedChip, cfg.claudeTokensSavedChipEnabled());
     if (!cfg.claudeTokensSavedChipEnabled()) { m_tokensSavedChip->hide(); return; }
 
     // Focused project root — same static canonicalisation the attribution uses
@@ -1593,6 +1660,10 @@ void ClaudeStatusBarController::refreshModelChip()
     // reintroduces the manual-decision surface that pushed the user to
     // autonomy in the first place.
     const Config &cfg = cachedConfig();  // ANTS-2116 — mtime-guarded reuse
+    // ANTS-5753 — the slot is kept only while the chip can appear.
+    statusbarslot::setRetain(
+        m_modelBtn, cfg.claudeModelSuggestionChipEnabled()
+                    && !cfg.claudeAutoModel().value("switch_enabled").toBool());
     if (cfg.claudeAutoModel().value("switch_enabled").toBool()) {
         m_modelBtn->hide();
         return;
@@ -2946,6 +3017,47 @@ qint64 ClaudeStatusBarController::lastOverrideMsForProject(
 {
     return m_lastOverrideMsByProject.value(project, -1);
 }
+
+namespace statusbarslot {
+
+// Measured through sizeHint(), not font metrics alone, so stylesheet
+// padding, borders and button margins are counted. The slack of one
+// average character covers a style that changes the font by state (the
+// Review button's italic :disabled look).
+void pin(QWidget *w, const QStringList &candidates, bool retainWhenHidden) {
+    if (!w) return;
+    auto *label  = qobject_cast<QLabel *>(w);
+    auto *button = qobject_cast<QAbstractButton *>(w);
+    if (!label && !button) return;
+    const auto textOf = [&]() { return label ? label->text() : button->text(); };
+    const auto setTextOf = [&](const QString &t) {
+        if (label) label->setText(t); else button->setText(t);
+    };
+
+    w->ensurePolished();
+    w->setMinimumWidth(0);
+    w->setMaximumWidth(QWIDGETSIZE_MAX);
+    const QString own = textOf();
+    int widest = 0;
+    for (const QString &c : candidates) {
+        setTextOf(c);
+        widest = std::max(widest, w->sizeHint().width());
+    }
+    setTextOf(own);
+    if (widest > 0)
+        w->setFixedWidth(widest + w->fontMetrics().averageCharWidth());
+    setRetain(w, retainWhenHidden);
+}
+
+void setRetain(QWidget *w, bool retain) {
+    if (!w) return;
+    QSizePolicy sp = w->sizePolicy();
+    if (sp.retainSizeWhenHidden() == retain) return;
+    sp.setRetainSizeWhenHidden(retain);
+    w->setSizePolicy(sp);
+}
+
+}  // namespace statusbarslot
 
 QString contextMeterTooltip(qint64 tokens, qint64 window, int percent,
                             bool estimated) {

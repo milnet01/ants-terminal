@@ -1840,6 +1840,9 @@ void MainWindow::setupStatusBarChrome() {
     // objectName to open the Roadmap dialog; smoke case 3).
     m_roadmapBtn->setObjectName(QStringLiteral("roadmapButton"));
     m_roadmapBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    // ANTS-5753 — its text never changes, so keeping its slot when hidden
+    // is all it needs for the pills to its left to stay put.
+    statusbarslot::setRetain(m_roadmapBtn, true);
     m_roadmapBtn->hide();
     statusBar()->addPermanentWidget(m_roadmapBtn);
     connect(m_roadmapBtn, &QPushButton::clicked,

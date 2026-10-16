@@ -17,6 +17,7 @@
 #include <QHash>
 #include <QPointer>   // ANTS-1920 — pollModelSwitchConfirm parameter type
 #include <QString>
+#include <QStringList>   // ANTS-5753 — statusbarslot::pin candidates
 #include <functional>
 #include <memory>     // ANTS-5620 — the mail chip's store handle
 
@@ -53,6 +54,19 @@ struct Theme;
 // the count includes records Claude has not yet reported on (ANTS-5682).
 QString contextMeterTooltip(qint64 tokens, qint64 window, int percent,
                             bool estimated = false);
+
+class QWidget;
+
+// ANTS-5753 — fixed status-bar slots, so a pill changing its text or
+// hiding never moves its neighbours.
+namespace statusbarslot {
+// Fix w's width to the widest sizeHint() among `candidates` in its current
+// style and font, restore w's own text, and keep its slot when hidden.
+// w is a QLabel or a QAbstractButton; any other widget is left alone.
+void pin(QWidget *w, const QStringList &candidates, bool retainWhenHidden = true);
+// Keep (true) or give back (false) a hidden widget's slot.
+void setRetain(QWidget *w, bool retain);
+}  // namespace statusbarslot
 
 class ClaudeStatusBarController : public QObject {
     Q_OBJECT
@@ -91,6 +105,11 @@ public:
     // Stores the theme name on the controller so the contextUpdated
     // handler can read it on every percentage tick.
     void applyTheme(const QString &themeName);
+
+    // ANTS-5753 — fix every variable-text pill's width to its longest text,
+    // keeping its slot when hidden. applyTheme calls it, since the theme's
+    // stylesheets set the padding the measure counts.
+    void pinSlots();
 
     // External refresh entry-points called from MainWindow's
     // tab/timer plumbing (status timer pulse, onTabChanged,

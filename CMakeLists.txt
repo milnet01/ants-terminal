@@ -3255,7 +3255,10 @@ if(ANTS_TESTS)
                 # (named+init container, INT/TERM/HUP trap around the
                 # compile, interrupted marker, --warm-only skip) source
                 # scrape lock.
-                tests/features/qt62_guard_interrupt/test_qt62_guard_interrupt.cpp)
+                tests/features/qt62_guard_interrupt/test_qt62_guard_interrupt.cpp
+                # ANTS-5753 — fixed status-bar slots: the pin helper on real
+                # widgets, and which pills are pinned (source scrape).
+                tests/features/status_bar_fixed_slots/test_status_bar_fixed_slots.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
