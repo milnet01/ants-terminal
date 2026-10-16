@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5723 -->
+<!-- ants-roadmap-id-high-water: ANTS=5724 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -68884,6 +68884,20 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   **Layman:** The project rules for adding an MCP tool point at the wrong list and miss one way a tool can break without the terminal window.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16.
+
+- 📋 [ANTS-5724] **specs.md § 3 lets § 4's sections sit between the four core sections, as its skeleton already does.**
+  review-contract on docs/standards/specs.md (2026-10-16, one lane;
+  outside the ANTS-5721 change, so filed rather than fixed in the run).
+  [Q2] § 3 says "Every spec opens with these, in this order", which reads
+  as Problem, Surface, Invariants and Tests back to back; § 7's skeleton
+  puts RAM / build cost and Out of scope between Invariants and Tests, and
+  § 3 itself says § 4's sections "are inserted wherever they read best".
+  Fix: "Every spec carries these in this relative order; § 4's sections
+  may sit between them." Low stakes: nothing checks order.
+  Owes rule 14's gate (wording a conformer orders sections by).
+  **Layman:** The spec template and the spec rules disagree about the order of sections.
+  Kind: doc-fix.
+  Source: review-contract specs.md 2026-10-16.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 

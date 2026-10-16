@@ -325,10 +325,11 @@ spec without exception.
   or adds a build target. State the memory budget and eviction policy at
   design time (the project's standing rule: no unbounded growth ships
   without a named cap). Note new external libraries (prefer none).
-- **§ Reload** — **required on every spec.** It answers `CLAUDE.md`
-  § "Hot reload is the design default": how the feature reaches a running
-  terminal without a relaunch, whether its code runs in its own process
-  and why, and its stop/start control or why it has none. A spec that
+- **§ Reload** — **required on every spec.** It states everything
+  `CLAUDE.md` § "Hot reload is the design default" asks of a design,
+  including how the feature reaches a running terminal without a
+  relaunch, whether its code runs in its own process and why, and its
+  stop/start control or why it has none. A spec that
   rule does not reach — a bug fix, a test, a document, a version bump —
   says so in one line.
 - **§ Out of scope** — the spec's edges, stated so they read as decisions
