@@ -122,7 +122,7 @@ session in its tabs (`~Pty`, `src/ptyhandler.cpp`).
   down and rebuilding its state, so a stuck feature never needs a relaunch.
   The same statement says whether its code runs in its own process, and
   why. In the `ants-mcpd` model a new build reaches clients on their next
-  reconnect, with no terminal relaunch; code the terminal also hosts still
+  reconnect, with no terminal relaunch; code only the terminal serves still
   needs one. The statement also names the feature's stop/start control, or
   says why it has none: it holds no running state, or a terminal restart
   is unavoidable.
