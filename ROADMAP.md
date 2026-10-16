@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5750 -->
+<!-- ants-roadmap-id-high-water: ANTS=5752 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72695,6 +72695,10 @@ measured Ants adding about 5,250 tokens to every request.
   `string_or_config` references, which is what a trace needs. Left out:
   Markdown, XML, HTML, JSON, YAML, TOML. This batch adds c_sharp, ruby,
   php, qmljs, make, meson and css.
+  2026-10-16: review-contract on the ship-3 amendment capped calm (log
+  rows 3-4). php split to ANTS-5751 (its common/scanner.h collides with
+  typescript's); generated_by vs vendor-grammars.sh filed as ANTS-5752.
+  This batch now vendors c_sharp, ruby, qmljs, make and css.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
@@ -72820,6 +72824,31 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-10-16 (first live trace call).
   Lanes: code-index-search.
+
+- 📋 [ANTS-5751] **trace vendors tree-sitter-php, whose scanner needs its own common/scanner.h beside typescript's.**
+  php/src/scanner.c includes ../../common/scanner.h, the path
+  typescript's `extra` already fills with a different file (spec § 2.3,
+  § 12 first open question). Recommended route: vendor the repository
+  under its own directory keeping upstream's layout, with a MANIFEST
+  field naming the grammar's source path for CMake. Patching the include
+  would break generated_by:"upstream" and the hash pin. Needs a spec
+  amendment and its gate. Split from ANTS-5734's first ship-3 batch.
+  Reload: runs in ants-mcpd; next reconnect.
+  **Layman:** Claude's code lookup learns PHP once a file-placement clash between two grammars is solved.
+  Kind: feature.
+  Source: review-contract-ANTS-5734-2026-10-16.
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5752] **The spec lets generated_by name a CLI version, but tools/vendor-grammars.sh cannot generate a parser.c.**
+  Spec § 2.3 allows generated_by to name a tree-sitter CLI version for a
+  repository with no committed parser.c (tree-sitter-swift). The script
+  exits 1 on a missing parser.c and has no generate step. Settle before
+  swift's batch: add the step, or narrow the spec. Raised by both lanes
+  of review-contract on ANTS-5734 (log rows 3-4).
+  **Layman:** A grammar repository that does not ship its generated parser cannot be vendored yet, though the design says it can.
+  Kind: review-fix.
+  Source: review-contract-ANTS-5734-2026-10-16.
+  Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

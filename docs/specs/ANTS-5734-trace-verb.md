@@ -123,7 +123,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 | 1 | `c`, `cpp`, `python`, `bash`, `lua`, `glsl`, `javascript`, `typescript`, `tsx`, `rust`, `go`, `java` |
 | 3 | `c_sharp`, `kotlin`, `swift`, `php`, `ruby`, `cmake`, `scala`, `dart`, `zig`, `elixir`, `haskell`, `ocaml`, `objc`, `r`, `julia`, `nix`, `qmljs`, `sql`, `perl`, `make`, `css` |
 
-  Ship 3 lands in batches. The first adds `c_sharp`, `ruby`, `php`, `qmljs`, `make` and `css` (the user's request through Groundwork, 2026-10-16). `php` is the grammar for PHP mixed with HTML, from tree-sitter-php's `php` subdirectory. `qmljs` comes from `yuja/tree-sitter-qmljs`, a personal repository: no tree-sitter organisation hosts a QML grammar (`gh api repos/tree-sitter-grammars/tree-sitter-qmljs` → 404, 2026-10-16).
+  Ship 3 lands in batches. The first adds `c_sharp`, `ruby`, `qmljs`, `make` and `css` (the user's request through Groundwork, 2026-10-16). `php` follows once § 12's first open question is settled (ANTS-5751); it is the grammar for PHP mixed with HTML, from tree-sitter-php's `php` subdirectory. `qmljs` comes from `yuja/tree-sitter-qmljs`, a personal repository: no tree-sitter organisation hosts a QML grammar (`gh api repos/tree-sitter-grammars/tree-sitter-qmljs` → 404, 2026-10-16).
 
   `tools/vendor-grammars.sh` does not yet copy the other `src/*.h` files; this batch adds that, for qmljs's `typescript-scanner.h`. tree-sitter-php's `php/src/scanner.c` includes `../../common/scanner.h`, the path tree-sitter-typescript's `extra` already fills (`third_party/tree-sitter-grammars/common/scanner.h`; read from both repositories, 2026-10-16). The two files must be vendored to different paths, and how is open (§ 12).
 
