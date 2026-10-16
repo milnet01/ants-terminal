@@ -46,7 +46,7 @@ rather than deciding from this file.
 What this file adds is where the contract lives: a `spec.md` under
 `tests/features/<name>/` (the feature-conformance contract) is the right
 home for a small, single-invariant behaviour, and `docs/specs/` is for
-contracts that span subsystems. **§§ 2-7 bind the second only.** A
+work that fires one of `spec-format.md` § 1's triggers. **§§ 2-7 bind the second only.** A
 feature-test contract follows `tests/features/README.md`, carries no
 loop log, and is not gated. A default `spec_lint` run walks `docs/specs/`
 and never reaches it; pointed at one directly it reports the whole
@@ -200,7 +200,8 @@ and what reviewers expect:
 
 ```
 - **INV-1** — <one testable claim>. *Test:* <test surface>.
-- **INV-2** — <…>. *Test:* <…>.
+  *Breaks when:* <the input or state that makes it fail>.
+- **INV-2** — <…>. *Test:* <…>. *Breaks when:* <…>.
 ```
 
 The GFM table form (`| INV-1 | claim | test surface |`) is also parsed
@@ -216,6 +217,9 @@ Rules for invariants:
 - Each carries a **test surface** (the `*Test:*` clause) — the feature
   test, source-grep, or manual recipe that locks it. An invariant with
   no test surface is a wish, not a contract.
+- Each names **what breaks it**, in a *Breaks when:* clause:
+  `spec-format.md` § 3.7's rule, required here too. An older spec's
+  `Broken by:` is the same clause. `spec_lint` does not check it.
 - **A command clause states what the command should return.** Where the
   clause holds a code span opening with a command word — `grep`, `rg`,
   `ctest`, `sed` and the rest of a closed list `spec_lint` owns — text
@@ -524,7 +528,8 @@ Copy this to start a new spec:
 ## 3. Invariants
 
 - **INV-1** — <testable claim>. *Test:* <feature test / grep / recipe>.
-- **INV-2** — <…>. *Test:* <…>.
+  *Breaks when:* <input or state>.
+- **INV-2** — <…>. *Test:* <…>. *Breaks when:* <…>.
 
 ## 4. RAM / build cost
 
