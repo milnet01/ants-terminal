@@ -153,3 +153,14 @@ project `CLAUDE.md`; both disclosed only the global file.
 |------|------|-------|----|----|----|----|---------|
 | 10 | 2026-10-16 | 2, cold, every lane held every question — packet: ANTS-4932 §§ 1, 2.1, 2.3, 6.2, `~Pty`, `CallerCwdContract` | 0 | 1 | 2 | n/a | **Three verified, one fixed, two filed; none dismissed.** Fixed, inside the span (both lanes): the acceptable reload answers omitted a restart of the feature's own process, and did not say whether the stop/start control comes on top of the reload answer. Filed as ANTS-5723, outside the span (both lanes): the verb bullet bans only "a call" into `MainWindow`, missing ANTS-4932 § 1's `if (!m_main)` refusal and the registration site; and "the enumeration in ANTS-4932" does not name `mcp::terminalScopedVerbNames()` or `mcp::registerProjectScopedVerbs()`. |
 | 11 | 2026-10-16 | 2, cold, every lane held every question — identical brief, packet rebuilt from disk, ANTS-5723 listed as already filed | 0 | 1 | 2 | n/a | **Three verified, three fixed; none dismissed.** All inside or beside the span. [Q3] a feature with no design had no home for its reload statement: now its commit message. [Q2] a justified "restart the terminal" answer against the required stop/start control: the bullet now names that as a reason to have none. [Q3] "where its code can run in its own process" had no test: the statement now says whether it does, and why. |
+| 12 | 2026-10-16 | 2, cold, every lane held every question — identical brief, packet rebuilt from disk, ANTS-5723 listed as already filed | 1 | 1 | 0 | n/a | **Two verified, two fixed; none dismissed. CAP REACHED (3 for a standard), CALM.** [Q1] (both lanes) "the `ants-mcpd` model, where a new build reaches a running terminal by restarting that process alone" was false: the client starts `ants-mcpd`, so a new build reaches clients on reconnect, and code the terminal also hosts still needs a relaunch. Reworded. [Q2] "A new module states its reload story in its design" against loop 11's commit-message home: deleted, the section's opening sentence covers it. Three NEEDS MEASUREMENT claims outside the span (test preset `-j4`, `JOB_POOLS` Ninja-only, the push hook's clean-tree refusal) were run and hold. |
+
+## Outcome — fourth run: cap reached, CALM
+
+Own-fix share of the final loop: 1 of 2. The `[Q2]` landed on loop 11's
+edit. The `[Q1]` was the armed draft's own claim, which loop 11 carried
+over. That is one repair of a repair, not oscillation. Second share: 6 of
+the run's 8 verified findings lie in or beside the gated bullet. The other
+2 are filed on ANTS-5723. Loop 12's two fixes were read by no lane;
+ANTS-5721's spec and commit checks, built next under this rule, are their
+first reader.
