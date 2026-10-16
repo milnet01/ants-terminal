@@ -52,7 +52,7 @@ struct Outcome { bool ok; QString message; };
 
 ### 2.4 The Claude Code actions
 
-**Detection.** `cs::claudeProgram()` returns `QStandardPaths::findExecutable("claude")`, else `$HOME/.local/bin/claude` when that file is executable, else empty. The second place is where § 2.8's installer puts it, and it may not be on the `PATH` Ants started with. Claude Code is present when `claudeProgram()` is not empty or `~/.claude` exists. Read on each open.
+**Detection** (amended by ANTS-5744)**.** `cs::claudeProgram()`, new with ANTS-5744, returns `QStandardPaths::findExecutable("claude")`, else `$HOME/.local/bin/claude` when that file is executable, else empty. The second place is where § 2.8's installer puts it, and it may not be on the `PATH` Ants started with. Claude Code is present when `claudeProgram()` is not empty or `~/.claude` exists. Read on each open.
 
 Four rows:
 
@@ -64,7 +64,7 @@ Four rows:
    - A per-project registration named `ants` (`projects.<dir>.mcpServers.ants` in `~/.claude.json`, which the README's old command created) wins over the user one in its project. The row's detail says how many exist; the dialog does not remove them.
    - A non-zero exit shows the command's stderr. Success says the toolkit reaches Claude Code sessions started from then on, and running ones after `/mcp` reconnects.
    - `mcpd`'s file-local `registeredCommand` becomes a declared function in `mcpdversion.h` returning the command and its `args`. A new `mcpd::locateLaunch(claudeJsonPath, appDir)` returns a program and its args: the registration's args when the registered command is the program chosen, none when a fallback is. The About dialog's version query runs `<program> <args...> --version`, so an AppImage registration is asked `$APPIMAGE --mcpd --version` rather than starting the terminal.
-   - The `claude` this row runs is `cs::claudeProgram()`. Claude Code detected but `claudeProgram()` empty: this row is `Unavailable`, "the claude program was not found".
+   - The `claude` this row runs is `cs::claudeProgram()` (ANTS-5744: `claudeCodeDetected`, `mcpStatus` and `registerMcp` change from `findExecutable` to it). Claude Code detected but `claudeProgram()` empty: this row is `Unavailable`, "the claude program was not found".
 3. **Git-context hook.** `installGitContextHook()` / `gitContextStatus()`: the moved `installClaudeGitContextHook` work.
 4. **Ants notes in CLAUDE.md** (optional). `installClaudeMdNote()` / `claudeMdNoteStatus()` / `removeClaudeMdNote()`.
    - The button first shows the exact text to be written and the file path, and writes nothing unless the user confirms.
@@ -108,7 +108,7 @@ curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude
 
   Anthropic's installer puts `claude` in `~/.local/bin` without a password, and Claude Code then updates itself. The second half starts Claude Code for its one-time sign-in.
 - **Preview first.** The button opens a § 2.2 preview showing the URL and the whole command, worded for a command that runs rather than a file write: "This is what will run in a new tab:", with an **Install** button. Accepting it is the only path that runs anything. Choosing installer and sign-in tab were the user's decisions, 2026-10-16.
-- **It runs in a new tab.** On accept the dialog calls `Options::openInstallTab(command)`. `MainWindow::showWelcome` binds that to `newTabForRemote(QString(), command + "\n")`, which opens a tab and types the line into the user's shell. Ants does not download or run the script itself. Under Flatpak the tab's shell already runs on the host (`src/ptyhandler.cpp`), so Claude Code lands on the host.
+- **It runs in a new tab.** On accept the dialog calls `Options::openInstallTab(command)`. `MainWindow::showWelcome` binds that to `newTabForRemote(QString(), command + "\n")`, which opens a tab and types the line into the user's shell. Ants does not download or run the script itself. Under Flatpak the tab's shell already runs on the host (`src/ptyhandler.cpp`), so Claude Code lands on the host. Seeing and running that host install from inside the sandbox is ANTS-5745's; until it ships, a Flatpak dialog may keep offering the install after it has succeeded.
 - **The dialog notices the install.** `Options` replaces `bool claudeDetected` with `std::function<bool()> detectClaude`, and gains `std::function<void(const QString &)> openInstallTab`. `WelcomeDialog::detect()` binds `detectClaude` to `cs::claudeCodeDetected`; tests inject their own. The dialog calls it at construction and on each `QEvent::WindowActivate`. When it turns true, the install button and note hide, the setup section shows, and every setup row re-reads its state. An empty `detectClaude` counts as not detected; an empty `openInstallTab` disables the install button.
 - **Trust boundary.** The script comes over HTTPS from the URL Anthropic publishes. Defence: nothing runs until the user accepts a preview naming that URL and the full command, and it runs unprivileged in a tab the user can watch.
 
