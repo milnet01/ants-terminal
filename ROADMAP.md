@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5740 -->
+<!-- ants-roadmap-id-high-water: ANTS=5742 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72661,6 +72661,29 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** If Claude asks the roadmap tool for a field that does not exist, the tool now says so instead of quietly leaving it out.
   Kind: fix.
   Source: claude-config-request-2026-10-16 (oneup).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5741] **session_message sends one message to every registered project's mailbox in a single call.**
+  User decision 2026-10-16 (via claude-config): project mailboxes, not a
+  live-session registry, so nothing needs clearing when a session closes.
+  Add to:"*" on op:"send" (or a broadcast op): one copy per registered
+  project, the sender's own project excluded unless asked. Report the
+  recipients and any refused (inbox_full). Priority: after ANTS-5734.
+  Reload: runs in ants-mcpd; next reconnect.
+  **Layman:** A message meant for all projects reaches every project's mailbox at once, including projects with no session open yet.
+  Kind: feature.
+  Source: claude-config-request-2026-10-16 (user decision).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5742] **A new session is told at start when its project has unread mail.**
+  hooks/ants-session-preamble.sh (ours) prints one line when the project
+  has unacked session_message mail: "N unread messages: session_message
+  inbox". Silent at zero. Today a session that starts after a broadcast
+  never learns its mail is waiting. Priority: after ANTS-5734.
+  Reload: the hook is re-read at each session start.
+  **Layman:** When Claude starts in a project, it is told if other sessions left it messages, so none are missed.
+  Kind: feature.
+  Source: claude-config-request-2026-10-16 (user decision).
   Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
