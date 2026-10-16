@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log: a dry run returns a plan_id, and a call with only that id applies the preview without resending it** (ANTS-5704)
+
 - **Settings can hide the status-bar model suggestion ("→ Haiku") without turning on automatic model switching** (ANTS-5754)
   Settings > General > "Show model suggestions in the status bar" (on by default).
 

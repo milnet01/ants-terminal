@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5758 -->
+<!-- ants-roadmap-id-high-water: ANTS=5760 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72355,9 +72355,14 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5704] **roadmap_log dry_run returns a plan id that a second call applies, without resending the payload.**
+- ✅ [ANTS-5704] **roadmap_log dry_run returns a plan id that a second call applies, without resending the payload.**
   UT_Ants sent a ~4K-token locator list twice (dry run, then real). Also
   asked: a store-wide replace_text op.
+  Shipped 2026-10-16 (12fe91ac): a successful dry run returns plan_id; a
+  call with only caller_cwd and plan_id applies it. Used once by an
+  apply that lands, 15 minutes, 64 kept, in ants-mcpd memory. The
+  store-wide replace_text op asked for alongside is not part of this
+  item.
   **Layman:** Preview a roadmap change, then apply it without sending it twice.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -72921,6 +72926,16 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The "where is this defined and who uses it" tool stops searching backup folders and looks at real project files first.
   Kind: fix.
   Source: claude-config feedback 2026-10-16.
+  Lanes: mcp.
+
+- 📋 [ANTS-5760] **roadmap_log op:replace_text replaces one string across every matching item body in one call.**
+  Split from ANTS-5704: UT_Ants asked for it alongside the plan id, after
+  sending a long locator list to change one phrase across many items.
+  Open design point: whether it takes a scope (section, status) and
+  whether dry_run lists every match first.
+  **Layman:** Change the same words in many roadmap items at once instead of listing each item.
+  Kind: perf.
+  Source: token-survey-2026-10-15.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
@@ -92352,6 +92367,17 @@ contributors don't duplicate research.
   Kind: feature.
   Source: user-request-2026-10-16.
   Lanes: statusbar.
+
+- 🚧 [ANTS-5759] **Clicking a status-bar pill with no click action opens a window showing its tooltip text, kept up to date, with an OK button.**
+  User decisions (2026-10-16): only pills that do nothing on a plain click
+  get it; pills with a click action (Review Changes, the model pill,
+  Background Tasks) keep their action and their tooltip. The window uses
+  the normal font and sizes itself so all of the text is visible.
+  Hot reload: terminal-only UI; reaches a running terminal at its next
+  relaunch.
+  **Layman:** Tooltips are too big for the magnifier, so a click on the context gauge or tokens-saved pill shows the same text in a window you can read at leisure.
+  Kind: accessibility.
+  Source: user-request-2026-10-16.
 
 ### Opt-in usage telemetry and crash reports (user request 2026-09-27)
 
