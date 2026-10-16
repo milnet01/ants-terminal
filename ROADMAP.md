@@ -72699,6 +72699,11 @@ measured Ants adding about 5,250 tokens to every request.
   rows 3-4). php split to ANTS-5751 (its common/scanner.h collides with
   typescript's); generated_by vs vendor-grammars.sh filed as ANTS-5752.
   This batch now vendors c_sharp, ruby, qmljs, make and css.
+  2026-10-16: ship 3's first batch shipped in f1ea7d5c (c_sharp, ruby,
+  qmljs, make, css; ctest -R Trace 55/55; push gate green). Live once
+  ants-mcpd is rebuilt from it and a client reconnects. Still open in
+  ship 3: php (ANTS-5751), generated_by vs vendor script before swift
+  (ANTS-5752), and the rest of § 2.3's ship-3 list.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
