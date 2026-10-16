@@ -72107,7 +72107,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-10-12 (ANTS-5672 check).
   Lanes: docs.
 
-- 📋 [ANTS-5722] **roadmap_log append_batch reports success while filing nothing when bullets lack their own source.**
+- ✅ [ANTS-5722] **roadmap_log append_batch reports success while filing nothing when bullets lack their own source.**
   append_batch falls back to the call-level section and status but not
   source, so each bullet without its own source is skipped (missing_field).
   With fields:["ok","ids"] the reply is {ok:true, ids:[]}: 12 bullets
@@ -72115,6 +72115,9 @@ project. Reported causes are claims until checked in source.
   Fix: make source fall back like section and status; and return ok:false,
   or always keep skipped_count in the reply, when applied_count is 0
   whatever fields asks for.
+  Shipped 2026-10-16 (6f0f5897): call-level source is the per-bullet
+  fallback; an all-skipped batch carries a `warning` that survives
+  fields=. RoadmapWriteHalf.Ants5722* red before, green after.
   **Layman:** Filing a batch of roadmap items could silently file none of them while saying it worked.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-16.
