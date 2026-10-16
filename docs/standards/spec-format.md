@@ -390,7 +390,11 @@ Five rules, each of which exists because its absence shipped a defect:
 - **A `*Test:*` that is a command states what it should output.** The
   command is the test surface; the expected result is what turns running it
   into a comparison rather than a judgement — and a clause with nothing to
-  compare against is one that can only be read. Three of the eight
+  compare against is one that can only be read. The result sits on the
+  *Test:* clause itself, after the arrow: `spec_lint` reads the whole
+  paragraph as the test surface, so a missing result there takes the
+  *Breaks when:* line as its result and draws no finding (reproduced by Ants
+  Terminal 2026-10-16; ANTS-5758 will fix the read). Three of the eight
   invariants in the first spec to adopt this standard shipped with clauses
   that failed or could not run: one cited a section that did not exist, one
   returned six files where it claimed five, one was a tautology over a
