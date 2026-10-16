@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.114 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.114 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1260,6 +1260,45 @@ target_link_options(ants-terminal PRIVATE
     -Wl,-z,noexecstack
 )
 set_target_properties(ants-terminal PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ANTS-5734 § 2.3 — the vendored tree-sitter runtime and grammars, and the
+# trace engine. Both link into ants-mcpd and test_trace only, never
+# ants-terminal, so a grammar fix needs no terminal relaunch. The vendored
+# files are refreshed by tools/vendor-grammars.sh; the build fetches nothing.
+# Generated C we do not maintain: no ants_warnings, -w, no unity batching
+# (each parser.c defines the same static names).
+set(_ants_ts_grammars c cpp python bash lua glsl javascript typescript tsx rust go java)
+set(_ants_ts_sources third_party/tree-sitter/lib/src/lib.c)
+foreach(_g IN LISTS _ants_ts_grammars)
+    list(APPEND _ants_ts_sources third_party/tree-sitter-grammars/${_g}/src/parser.c)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-grammars/${_g}/src/scanner.c")
+        list(APPEND _ants_ts_sources third_party/tree-sitter-grammars/${_g}/src/scanner.c)
+        # typescript and tsx share ../../common/scanner.h, which includes
+        # "tree_sitter/parser.h" as though it sat in the grammar's src/.
+        set_source_files_properties(third_party/tree-sitter-grammars/${_g}/src/scanner.c
+            PROPERTIES INCLUDE_DIRECTORIES
+            "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-grammars/${_g}/src")
+    endif()
+endforeach()
+add_library(ants_treesitter_lib STATIC ${_ants_ts_sources})
+target_include_directories(ants_treesitter_lib
+    PUBLIC  third_party/tree-sitter/lib/include
+    PRIVATE third_party/tree-sitter/lib/src)
+target_compile_definitions(ants_treesitter_lib PRIVATE
+    _POSIX_C_SOURCE=200112L _DEFAULT_SOURCE)
+target_compile_options(ants_treesitter_lib PRIVATE
+    -w -fstack-protector-strong -fstack-clash-protection -fcf-protection)
+set_target_properties(ants_treesitter_lib PROPERTIES
+    C_STANDARD 11 UNITY_BUILD OFF POSITION_INDEPENDENT_CODE ON)
+
+add_library(ants_trace_lib STATIC
+    src/trace/languages.cpp
+)
+target_include_directories(ants_trace_lib PUBLIC src)
+target_link_libraries(ants_trace_lib
+    PUBLIC  ants_treesitter_lib Qt6::Core
+    PRIVATE ants_warnings)
+set_target_properties(ants_trace_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ANTS-4932 — ants-mcpd: the project-scoped MCP verbs over stdio. The MCP client
 # launches it, so a rebuild reaches a session on its next reconnect with no
@@ -4469,6 +4508,12 @@ if(ANTS_TESTS)
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
         SRC_DEBTSWEEPENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/debtsweepengine.cpp")
+
+    # ANTS-5734 — the trace verb's engine, grammars and fixture project.
+    # Links ants_trace_lib, which no other bundle carries (spec § 2.3).
+    ants_add_core_bundle(test_trace
+        LIBS    ants_trace_lib
+        SOURCES tests/features/trace/test_trace_languages.cpp)
 
     # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
     # gtest test names do not exist at configure time, so the properties are

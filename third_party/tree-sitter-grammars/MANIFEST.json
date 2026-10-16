@@ -1,0 +1,129 @@
+{
+  "runtime": {
+    "name": "tree-sitter",
+    "repo": "https://github.com/tree-sitter/tree-sitter",
+    "tag": "v0.27.1",
+    "commit": "10eb5ac119eec9cb4267a8e035066473983f5f3a",
+    "sha256": "71bbc0a7a98013b519b104e281e6ad98524a438c8c822a095e6f27de05d15562",
+    "license": "MIT"
+  },
+  "grammars": [
+    {
+      "lang": "c",
+      "repo": "https://github.com/tree-sitter/tree-sitter-c",
+      "tag": "v0.24.2",
+      "commit": "b780e47fc780ddc8da13afa35a3f4ed5c157823d",
+      "sha256": "dc3979e40fce678c27273ba8ab93b48b5acd6b91d1dfde6a4451222d366d689f",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "cpp",
+      "repo": "https://github.com/tree-sitter/tree-sitter-cpp",
+      "tag": "v0.23.4",
+      "commit": "f41e1a044c8a84ea9fa8577fdd2eab92ec96de02",
+      "sha256": "ad4b9b56602e9b14082637988f0042521006819960ed8c308bc24ded9ceb9331",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "python",
+      "repo": "https://github.com/tree-sitter/tree-sitter-python",
+      "tag": "v0.25.0",
+      "commit": "293fdc02038ee2bf0e2e206711b69c90ac0d413f",
+      "sha256": "b74d8ba6730535354175436208fe1452fd464f235263959ca40b8bf32cb23dc6",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "bash",
+      "repo": "https://github.com/tree-sitter/tree-sitter-bash",
+      "tag": "v0.25.1",
+      "commit": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
+      "sha256": "879e8951ea2cc82455407e3eda0293319657ec53e83191e0fb5a67430d10d804",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "lua",
+      "repo": "https://github.com/tree-sitter-grammars/tree-sitter-lua",
+      "tag": "v0.5.0",
+      "commit": "10fe0054734eec83049514ea2e718b2a56acd0c9",
+      "sha256": "82c3ca5808de02addd9c7fb5275d89260c6557019aa6e40ca52c0595bf1d33cd",
+      "license": "MIT",
+      "generated_by": "upstream",
+      "license_file": "LICENSE.md"
+    },
+    {
+      "lang": "glsl",
+      "repo": "https://github.com/tree-sitter-grammars/tree-sitter-glsl",
+      "tag": "v0.2.0",
+      "commit": "e47b8b62b59d0e3529f1c31b03e025d6bd475044",
+      "sha256": "96d7ffe13d29698001901806b586adafec236be2078ec66fb7a8eba691d175db",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "javascript",
+      "repo": "https://github.com/tree-sitter/tree-sitter-javascript",
+      "tag": "v0.25.0",
+      "commit": "44c892e0be055ac465d5eeddae6d3e194424e7de",
+      "sha256": "a13fa28148e41bb939b2c2b8cd73c4b4295273b70cbac55a7a589020f52b9611",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "typescript",
+      "repo": "https://github.com/tree-sitter/tree-sitter-typescript",
+      "tag": "v0.23.2",
+      "commit": "f975a621f4e7f532fe322e13c4f79495e0a7b2e7",
+      "sha256": "4de2e82e557810eecb93cb3b31fbb3bd28ba4c91ba9a6c6164bcaa074125b7b5",
+      "license": "MIT",
+      "generated_by": "upstream",
+      "subdir": "typescript",
+      "extra": [
+        "common/scanner.h"
+      ]
+    },
+    {
+      "lang": "tsx",
+      "repo": "https://github.com/tree-sitter/tree-sitter-typescript",
+      "tag": "v0.23.2",
+      "commit": "f975a621f4e7f532fe322e13c4f79495e0a7b2e7",
+      "sha256": "4de2e82e557810eecb93cb3b31fbb3bd28ba4c91ba9a6c6164bcaa074125b7b5",
+      "license": "MIT",
+      "generated_by": "upstream",
+      "subdir": "tsx",
+      "extra": [
+        "common/scanner.h"
+      ]
+    },
+    {
+      "lang": "rust",
+      "repo": "https://github.com/tree-sitter/tree-sitter-rust",
+      "tag": "v0.24.2",
+      "commit": "77a3747266f4d621d0757825e6b11edcbf991ca5",
+      "sha256": "dee82ddfd01bfc3a8ed201cc03b56448107d3217a4b3a7a8fc7fa6bc32b2405b",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "go",
+      "repo": "https://github.com/tree-sitter/tree-sitter-go",
+      "tag": "v0.25.0",
+      "commit": "1547678a9da59885853f5f5cc8a99cc203fa2e2c",
+      "sha256": "a71543d63f82b917457f47a3f6dbecd8087592fabc49a757da82c3e00c0e93de",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "java",
+      "repo": "https://github.com/tree-sitter/tree-sitter-java",
+      "tag": "v0.23.5",
+      "commit": "94703d5a6bed02b98e438d7cad1136c01a60ba2c",
+      "sha256": "39dea56cc3bb5fb1658f79b195a92b6f08885886bca636adf2dc6243af641c47",
+      "license": "MIT",
+      "generated_by": "upstream"
+    }
+  ]
+}

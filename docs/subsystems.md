@@ -341,6 +341,14 @@ Listed only where behavior isn't obvious from the name.
   (`src/rootprovider.h`). A rebuilt `ants-mcpd` reaches a session on its
   next MCP reconnect, with no terminal relaunch. Spec:
   `docs/specs/ANTS-4932-standalone-mcp-server.md`.
+- `trace` (ANTS-5734) — the engine behind the `trace` verb, in `src/trace/`
+  (`ants_trace_lib`). It parses code with tree-sitter: the runtime is
+  vendored in `third_party/tree-sitter/` and the grammars in
+  `third_party/tree-sitter-grammars/`, pinned in that directory's
+  `MANIFEST.json` and refreshed by `tools/vendor-grammars.sh`. Both
+  libraries link into `ants-mcpd` and the `test_trace` bundle only, never
+  `ants-terminal`. `src/trace/languages.cpp` lists the vendored languages.
+  Spec: `docs/specs/ANTS-5734-trace-verb.md`.
 - `claudeintegration` — singleton owning the Claude Code hook server
   (one UDS shared across all tabs), `m_pollTimer` (2 s) PID detection,
   `sessionPathForCwd` (project-scoped JSONL resolver, ANTS-1163),

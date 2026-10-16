@@ -101,7 +101,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
 ### 2.3 The engine
 
-- **Runtime.** tree-sitter 0.27.0, vendored under `third_party/tree-sitter/` (its `lib/src` and `lib/include`, with its MIT `LICENSE`).
+- **Runtime.** tree-sitter 0.27.1, vendored under `third_party/tree-sitter/` (its `lib/src` and `lib/include`, with its MIT `LICENSE`).
 - **Grammars.** Each one is vendored under `third_party/tree-sitter-grammars/<lang>/`: the generated `src/parser.c`, `src/scanner.c` where upstream has one, `src/tree_sitter/*.h`, and the grammar's `LICENSE`. Every grammar is pinned in `third_party/tree-sitter-grammars/MANIFEST.json`:
 
 ```json
@@ -109,6 +109,8 @@ The values in that example are illustrative, not measured. Rules on the shape:
  "commit": "<sha>", "sha256": "<of the fetched tarball>", "license": "MIT",
  "generated_by": "upstream"}
 ```
+
+  The manifest's `runtime` entry pins tree-sitter itself the same way. A grammar entry may also carry `subdir` (where one repository holds two grammars, as tree-sitter-typescript holds `typescript` and `tsx`), `extra` (shared files copied beside the grammars, such as that repository's `common/scanner.h`) and `license_file` (where the licence is not named `LICENSE`).
 
   `generated_by` is `upstream` when the repository commits `parser.c`. Otherwise it names the tree-sitter CLI version that generated the file (tree-sitter-swift does not commit its `parser.c`). The runtime accepts grammar ABI 13 to 15 (`TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION` and `TREE_SITTER_LANGUAGE_VERSION` in `api.h`). A refresh script, `tools/vendor-grammars.sh`, fetches each pinned commit, checks its hash, and copies the files. Nothing in the build fetches anything.
 - **Build.** A static C library, `ants_treesitter_lib`, holds the runtime and the grammars. A Qt6::Core library, `ants_trace_lib`, holds the engine (`src/trace/`). Both link into `ants-mcpd` and the trace test bundle only, never into `ants-terminal`.
@@ -272,7 +274,7 @@ The fixture's `.zig` file is never parsed; it exists to be reported.
 ## 11. Cross-doc impact
 
 - `docs/subsystems.md`: a new trace subsystem (`src/trace/`, `third_party/`).
-- `.indie-review/partition.json`: `src/trace/` joins the `mcp-tools` lane.
+- `.indie-review/partition.json`: `src/trace/` joins the `code-index-search` lane, beside `SymbolQuery`.
 - `docs/standards/mcp-behavioural-notes.md`: a `trace` entry.
 - `CHANGELOG.md`: one entry per ship.
 - Packaging (`packaging/*`): the vendored licences, where a package lists third-party licences.

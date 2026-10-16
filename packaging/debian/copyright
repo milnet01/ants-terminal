@@ -11,6 +11,14 @@ Files: third_party/demoreel/*
 Copyright: 2026 Anthony Schemel
 License: MIT
 
+Files: third_party/tree-sitter/*
+Copyright: 2018 Max Brunsfeld
+License: MIT
+
+Files: third_party/tree-sitter-grammars/*
+Copyright: tree-sitter grammar authors; see each grammar's LICENSE
+License: MIT
+
 Files: debian/*
 Copyright: 2026 Ants Terminal Contributors
 License: MIT
