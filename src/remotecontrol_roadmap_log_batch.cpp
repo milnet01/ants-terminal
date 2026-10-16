@@ -2757,6 +2757,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         // whose bullets left provenance to the call skipped every one.
         if (!b.contains(QStringLiteral("source")) && req.contains(QStringLiteral("source")))
             b[QStringLiteral("source")] = req.value(QStringLiteral("source"));
+        // ANTS-5735 — and so do `kind` and `lanes`.
+        for (const QString &k : {QStringLiteral("kind"), QStringLiteral("lanes")})
+            if (!b.contains(k) && req.contains(k)) b[k] = req.value(k);
         auto skip = [&](const QString &code, const QString &msg) {
             QJsonObject s;
             s["bullet_index"] = i;

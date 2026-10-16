@@ -70,6 +70,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log op:"append_batch"` takes the call-level `kind` and `lanes` for any bullet that gives none, as it already does for `section`, `status` and `source`.** (ANTS-5735)
+
 - **A tab where Claude waits on you is bright red in every tab: a permission prompt, a question with choices, or a plan to approve** (ANTS-5718)
   It was orange, close to the yellow of a tab reading files, and a question in a background tab showed yellow.
 

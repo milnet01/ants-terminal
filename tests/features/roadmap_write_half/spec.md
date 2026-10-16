@@ -293,6 +293,16 @@ fallback, which refused every such bullet `bad_status`.
 fallback, which skipped every such bullet `missing_field`; or an all-skipped
 reply with no `warning`, which `fields` narrowed to `{ok:true, ids:[]}`.
 
+### ANTS-5735 — append_batch falls back to the call-level kind and lanes
+
+| Case | Asserts |
+|---|---|
+| `Ants5735CallLevelKindAndLanesAreTheFallback` | An `append_batch` with a call-level `kind` and `lanes` files a bullet that carries neither with those values, and a bullet carrying its own with its own; nothing lands in `skipped[]`. |
+
+**Would break this:** reading each bullet's kind and lanes without the
+call-level fallback, which skipped a kind-less bullet `bad_kind` and filed a
+lane-less one with no lanes.
+
 ### ANTS-5358 — flip_batch takes a per-locator to_status
 
 | Case | Asserts |

@@ -2957,6 +2957,60 @@ TEST(RoadmapWriteHalf, Ants5722CallLevelSourceIsTheFallback) {
     EXPECT_EQ(sourceOf(ids.at(1).toString()), QStringLiteral("own-source"));
 }
 
+// `kind` and `lanes` fall back to the call level the same way, and a bullet's
+// own values still win. Before, a bullet with no kind was skipped bad_kind and
+// a bullet with no lanes filed none.
+TEST(RoadmapWriteHalf, Ants5735CallLevelKindAndLanesAreTheFallback) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject bare;
+    bare[QStringLiteral("headline")] = QStringLiteral("Takes the call-level kind and lanes.");
+    bare[QStringLiteral("layman")]   = QStringLiteral("A new thing.");
+    QJsonObject own = bulletNoSource(QStringLiteral("Carries its own kind and lanes."));
+    own[QStringLiteral("lanes")] = QJsonArray{QStringLiteral("own-lane")};
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("source")]     = QStringLiteral("call-source");
+        req[QStringLiteral("kind")]       = QStringLiteral("fix");
+        req[QStringLiteral("lanes")]      = QJsonArray{QStringLiteral("call-lane")};
+        req[QStringLiteral("bullets")]    = QJsonArray{bare, own};
+        resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped")).toArray().isEmpty()) << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 2) << QJsonDocument(resp).toJson().toStdString();
+
+    auto itemOf = [projectId](const QString &id) {
+        std::optional<RoadmapStore::ItemWrite> out;
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return out;
+        QString err;
+        const auto pk = store->findItem(projectId, id, &err);
+        if (pk) out = store->readItem(*pk, &err);
+        return out;
+    };
+    const auto first  = itemOf(ids.at(0).toString());
+    const auto second = itemOf(ids.at(1).toString());
+    ASSERT_TRUE(first && second);
+    EXPECT_EQ(first->kind,  QStringLiteral("fix"));
+    EXPECT_EQ(first->lanes, QStringList{QStringLiteral("call-lane")});
+    EXPECT_EQ(second->kind,  QStringLiteral("implement"));
+    EXPECT_EQ(second->lanes, QStringList{QStringLiteral("own-lane")});
+}
+
 // A batch that files nothing says so in a `warning`, and the `fields=`
 // projection keeps a `warning` whatever the caller names (ANTS-4698). Before,
 // fields:["ok","ids"] narrowed it to {ok:true, ids:[]}: no sign of a skip.

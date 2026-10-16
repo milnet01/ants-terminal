@@ -12204,7 +12204,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     kindEnum.append("ux");
                     kindProp["enum"] = kindEnum;
                     kindProp["description"] = QStringLiteral(
-                        "Work category — see roadmap-format.md § 3.5.3.");
+                        "Work category (roadmap-format.md § 3.5.3). "
+                        "Under op:\"append_batch\" the call-level value is "
+                        "the fallback for a bullet without one.");
 
                     QJsonObject sourceProp;
                     sourceProp["type"]      = "string";
@@ -12235,8 +12237,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     laneItem["type"] = "string";
                     lanesProp["items"] = laneItem;
                     lanesProp["description"] = QStringLiteral(
-                        "Optional subsystem owners. Emitted as a "
-                        "`Lanes: a, b, c` line.");
+                        "Optional subsystem owners (a `Lanes:` line). "
+                        "Under op:\"append_batch\" the call-level value is "
+                        "the fallback for a bullet without one.");
 
                     // ANTS-3382 — optional evidence file paths for
                     // image/log-driven bullets (e.g. a bug diagnosed from
