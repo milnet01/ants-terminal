@@ -72751,6 +72751,11 @@ measured Ants adding about 5,250 tokens to every request.
   to awk. Report unmatched names (e.g. unknown_bullet_fields[] plus the
   nearest valid key) without failing the call.
   Reload: runs in ants-mcpd; next reconnect.
+  2026-10-16: already shipped by ANTS-4837 (5334b852, 2026-09-20).
+  Checked live on build 89d8caf8: bullet_fields:["id","section"] returns
+  bullet_fields_unmatched:["section"] and bullet_fields_available
+  listing section_slug. The near-miss suggestion is covered by that
+  list. Recommendation: close as done; do not add more reply text.
   **Layman:** If Claude asks the roadmap tool for a field that does not exist, the tool now says so instead of quietly leaving it out.
   Kind: fix.
   Source: claude-config-request-2026-10-16 (oneup).
