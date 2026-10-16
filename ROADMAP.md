@@ -92368,13 +92368,15 @@ contributors don't duplicate research.
   Source: user-request-2026-10-16.
   Lanes: statusbar.
 
-- 🚧 [ANTS-5759] **Clicking a status-bar pill with no click action opens a window showing its tooltip text, kept up to date, with an OK button.**
+- ✅ [ANTS-5759] **Clicking a status-bar pill with no click action opens a window showing its tooltip text, kept up to date, with an OK button.**
   User decisions (2026-10-16): only pills that do nothing on a plain click
   get it; pills with a click action (Review Changes, the model pill,
   Background Tasks) keep their action and their tooltip. The window uses
   the normal font and sizes itself so all of the text is visible.
   Hot reload: terminal-only UI; reaches a running terminal at its next
   relaunch.
+  Shipped 2026-10-16 (db742ceb): src/statusinfowindow.h, attached to ten
+  pills. Not yet seen on screen; needs a terminal relaunch.
   **Layman:** Tooltips are too big for the magnifier, so a click on the context gauge or tokens-saved pill shows the same text in a window you can read at leisure.
   Kind: accessibility.
   Source: user-request-2026-10-16.

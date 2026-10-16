@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **Click a status-bar pill such as the context gauge or tokens saved to read its tooltip in a window that stays up to date, with an OK button** (ANTS-5759)
+
 - **roadmap_log: a dry run returns a plan_id, and a call with only that id applies the preview without resending it** (ANTS-5704)
 
 - **Settings can hide the status-bar model suggestion ("→ Haiku") without turning on automatic model switching** (ANTS-5754)
