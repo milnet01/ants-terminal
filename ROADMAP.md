@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5743 -->
+<!-- ants-roadmap-id-high-water: ANTS=5744 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94953,6 +94953,21 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   **Layman:** When you open a menu or click the update notice, its label becomes hard to read against the highlight.
   Kind: fix.
   Source: in-session-2026-09-29.
+  Lanes: ui.
+
+- 📋 [ANTS-5744] **The welcome dialog offers to install Claude Code when it is missing.**
+  User decisions 2026-10-16: install with Anthropic's own installer
+  (https://claude.ai/install.sh: no password, any distro, updates itself),
+  not the system package manager; after it installs, open a new Ants tab
+  running Claude Code so the one-time sign-in starts. The offer says
+  Claude Code needs a paid plan (Pro, Max, Enterprise and the like) or an
+  Anthropic API account, and does not work on the free plan.
+  Contract: amends docs/specs/ANTS-5558-welcome-dialog.md (§ 2.8, INV-11
+  onward). Reload: the dialog is built on each open; nothing new runs in
+  the background, so no relaunch.
+  **Layman:** A new user without Claude Code can install it from the welcome window in one click, and is told it needs a paid Claude plan.
+  Kind: feature.
+  Source: user-request-2026-10-16.
   Lanes: ui.
 
 ## How to propose a roadmap item

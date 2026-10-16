@@ -3,6 +3,7 @@
 **Status:** accepted (2026-09-29), review-contract loops 1 + 2 folded, cap reached.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5558 (user-request-2026-09-29; decisions recorded in the item's body and its 2026-09-29 note).
+**Amended by:** ANTS-5744 (install Claude Code from the dialog: § 2.8, INV-11 to INV-14).
 **Composes with:** `tests/features/help_about_menu/spec.md` (the Help and Donate menus), `docs/standards/dialogs.md` (D1 to D6), ANTS-4932 (`ants-mcpd`), `packaging/shell-integration/README.md` (the OSC 133 hook).
 
 **Layman:** The first time Ants Terminal opens, a window thanks the user, says briefly what the terminal can do, sets up the Claude Code extras and shell integration in one click each, and invites a donation.
@@ -26,7 +27,7 @@ One window, `WelcomeDialog`, built through `DialogChrome::install(this, themeNam
 
 1. **Thanks.** A heading welcoming the user and thanking them for using Ants Terminal.
 2. **What it does.** A short grouped list of features: the terminal itself (tabs and splits, ligatures and images, search, command palette, themes, session restore, Lua plugins, the project audit) and, for Claude Code users, the live status bar, session and permission tools, Review Changes, and the Ants MCP toolkit.
-3. **Set up with Claude Code** (§ 2.4). Shown only when Claude Code is detected; otherwise one line reads "Using Claude Code? Install it, then reopen this from Help → Show Welcome."
+3. **Set up with Claude Code** (§ 2.4). Shown only when Claude Code is detected; otherwise the install offer of § 2.8 takes its place.
 4. **Shell integration** (§ 2.6).
 5. **Support Ants Terminal.** A sentence saying donations keep the project improving, and three buttons: GitHub Sponsors (`https://github.com/sponsors/milnet01`), Patreon (`https://www.patreon.com/c/AntsProjectsHub`) and PayBru (`https://paybru.co.za/tip/ants-projects-hub`), each opened with `QDesktopServices::openUrl`.
 6. A Close button (a plain `QPushButton`, as the About dialog uses).
@@ -92,19 +93,42 @@ The dialog is built on every open, so every state it shows is read fresh. Its te
 - **Welcome text in a data file the dialog re-reads.** Rejected: the app has no lookup for shipped data files yet, and the text changes only with a release, which replaces the binary anyway.
 - **Calling the `SettingsDialog` installers from the welcome dialog.** Rejected: they are private, report through their own message boxes, and write status into that dialog's labels.
 - **Writing `~/.claude.json` directly instead of running `claude mcp add`.** Rejected: that file belongs to Claude Code, which rewrites it while running; its own command is the supported writer.
+- **Installing Claude Code through the system package manager** (Anthropic's signed zypper, apt and dnf repositories). Rejected by the user, 2026-10-16: it asks for a password, does not update itself, and covers only some distributions.
+- **Running the installer in a hidden `QProcess`.** Rejected: the user would not see its progress or the sign-in, and under Flatpak it would need its own host routing. A tab gives both.
+
+### 2.8 Installing Claude Code (ANTS-5744)
+
+When Claude Code is not detected, an **Install Claude Code** button (`welcomeInstallClaudeButton`) stands where the setup section would be, with a note (`welcomeClaudePlanNote`): "Claude Code needs a paid Claude plan, such as Pro, Max or Enterprise, or an Anthropic API account. It does not work with the free plan."
+
+- **The command** is `ants::claude_setup::claudeInstallCommand()`, one line valid in bash, zsh and fish:
+
+```sh
+curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude
+```
+
+  Anthropic's installer puts `claude` in `~/.local/bin` without a password, and Claude Code then updates itself. The second half starts Claude Code for its one-time sign-in.
+- **Preview first.** The button opens the § 2.2 preview showing the URL and the whole command. Accepting it is the only path that runs anything. Choosing installer and sign-in tab were the user's decisions, 2026-10-16.
+- **It runs in a new tab.** On accept the dialog calls `Options::openInstallTab(command)`. `MainWindow::showWelcome` binds that to `newTabForRemote(QString(), command + "\n")`, which opens a tab and types the line into the user's shell. Ants does not download or run the script itself. Under Flatpak the tab's shell already runs on the host (`src/ptyhandler.cpp`), so Claude Code lands on the host.
+- **The dialog notices the install.** Detection is read through `Options::detectClaude` each time the dialog is activated. Once Claude Code is found, the install button and note hide and the setup section shows.
+- **Trust boundary.** The script comes over HTTPS from the URL Anthropic publishes. Defence: nothing runs until the user accepts a preview naming that URL and the full command, and it runs unprivileged in a tab the user can watch.
 
 ## 3. Invariants
 
 - **INV-1** — The dialog opens automatically once: with `ui.welcome_shown` false or absent, `welcome::maybeAutoShow` calls its `show` callback and the key becomes true; with it true it does not. `MainWindow` calls it from its first show. Broken by showing it on every launch, or never. *Test:* `WelcomeFirstRun.AutoShowOnceThenLatched` calls `maybeAutoShow` twice against a temporary config with a counting callback: one call counted, and the key reads true; a source check asserts `MainWindow`'s first-show path calls it.
 - **INV-2** — Help carries `Show &Welcome...` after `About &Qt...`, and it opens the dialog however the key is set. Donate stays the last menu. Broken by a Help block missing the action, or a Donate menu added before Help. *Test:* `WelcomeDialog.HelpMenuActionOpensIt` extends the `help_about_menu` source checks: the action string inside the Help block, after the About Qt one, and `addMenu(tr("&Donate"))` still after `addMenu("&Help")`.
 - **INV-3** — The dialog is built by `DialogChrome::install` with `resizable` true and size key `"WelcomeDialog"`, its body is in a `QScrollArea`, and it is opened without `exec()` or `setModal(true)`. Broken by a fixed-size or modal dialog. *Test:* `WelcomeDialog.ChromeAndNonModal` constructs it offscreen and asserts the `QScrollArea` child and `isModal()` false; a source check asserts the `DialogChrome::install` call with that key and no `exec(` in `welcomedialog.cpp`.
-- **INV-4** — The Claude Code section is shown only when Claude Code is detected. Broken by detection ignored in either direction. *Test:* `WelcomeDialog.ClaudeSectionFollowsDetection` constructs the dialog with detection injected false, then true, and asserts the section's visibility and the hint line's.
+- **INV-4** — *Amended by ANTS-5744: the hint line is now § 2.8's install button and note.* The Claude Code section is shown only when Claude Code is detected. Broken by detection ignored in either direction. *Test:* `WelcomeDialog.ClaudeSectionFollowsDetection` constructs the dialog with detection injected false, then true, and asserts the section's visibility and the hint line's.
 - **INV-5** — The moved hook installers behave as before: under a temporary `HOME`, `installStatusHooks()` writes all seven events and a second run adds no duplicate; a `settings.json` that does not parse is copied aside by `rotateCorruptFileAside` and left unwritten; `installGitContextHook()` adds one `UserPromptSubmit` entry, once. Broken by the move changing what is written. *Test:* `ClaudeSetup.HookInstallersIdempotentAndRefuseCorrupt`.
 - **INV-6** — `registerMcp` runs `claude mcp add --scope user ants -- <command...>` as an argv list, with `<command...>` `$APPIMAGE --mcpd` when `APPIMAGE` is set, else the located `ants-mcpd`; it runs `claude mcp remove --scope user ants` first when a registration exists. `mcpd::locateLaunch` carries the registration's args only when the registered command is the program it returns, and the About query runs `<program> <args...> --version`. Broken by a shell string, a missing `--scope user`, the wrong command under an AppImage, or an About query that drops `--mcpd`. *Test:* `ClaudeSetup.McpRegistrationArgv` calls the argv builder with each case, and `locateLaunch` with an executable `$APPIMAGE --mcpd` registration (args kept) and with a registration whose command is missing (the sibling binary, no args).
 - **INV-7** — The CLAUDE.md note lives between its markers: installing twice leaves one block, remove leaves no marker, and bytes outside the block are unchanged in both. Broken by appending a second block or rewriting the user's text. *Test:* `ClaudeSetup.ClaudeMdNoteBlockIsReplacedNotAppended` works on a temporary file holding user text above and below.
 - **INV-8** — Shell integration writes its two blocks idempotently and keeps an existing key: a reinstall leaves one block per file and the same key; bytes outside the blocks are unchanged; an unsupported shell or a missing script yields `Unavailable` and writes nothing. Broken by appending on every click, regenerating the key, or writing when unavailable. *Test:* `ClaudeSetup.ShellIntegrationBlocksAndKey` under a temporary `HOME`, with the search list pointed at a fixture directory, with `SHELL` set to bash, then to `fish`; with `APPIMAGE` set, the sourced path is the per-user copy.
 - **INV-9** — Nothing is written by the CLAUDE.md or shell-integration buttons until the user accepts the preview. Broken by writing on click. *Test:* `WelcomeDialog.ConfirmBeforeWriting` clicks each button under a temporary `HOME`, the shell search list pointed at a fixture directory: the target files are unchanged while the preview is open, and written after it is accepted.
 - **INV-10** — The dialog and the Donate menu each offer all three donation links, and the Donate menu keeps `Sponsor on &GitHub...` first. Broken by a missing link. *Test:* `WelcomeDialog.DonationLinks` asserts the three URLs in the dialog's buttons and in `setupDonateMenu()`, with the GitHub action before the other two.
+
+- **INV-11** — With Claude Code not detected, the install button and the plan note show; the note names a paid plan and says the free plan does not work. With it detected, neither shows. Broken by a missing note, or the offer shown to someone who has Claude Code. *Test:* `WelcomeDialog.InstallOfferAndPlanNote` constructs the dialog with detection false, then true, and reads `welcomeInstallClaudeButton` and `welcomeClaudePlanNote`: visible with text containing "paid" and "free plan", then both hidden.
+- **INV-12** — The install command reaches `openInstallTab` only after the preview is accepted, once, and equal to `claudeInstallCommand()`, which is the § 2.8 line. Broken by running on click, running twice, or a different command. *Test:* `WelcomeDialog.InstallRunsOnlyAfterPreview` clicks the button with a recording `openInstallTab`: nothing recorded while the preview is open; one entry, equal to the § 2.8 line, after accept.
+- **INV-13** — Activating the dialog re-reads detection and swaps the install offer for the setup section once Claude Code is found. Broken by reading detection only at construction. *Test:* `WelcomeDialog.ReDetectsOnActivate` gives `detectClaude` a flag that starts false, sets it true, sends `QEvent::WindowActivate`, and expects the setup section visible and the install button hidden.
+- **INV-14** — `MainWindow::showWelcome` binds `openInstallTab` to `newTabForRemote` with the command and a trailing newline. Broken by binding nothing, which leaves the button doing nothing. *Test:* `WelcomeDialog.MainWindowOpensInstallTab`, a source check on `showWelcome` in `src/mainwindow.cpp`.
 
 ## 4. RAM / build cost
 
@@ -126,6 +150,10 @@ The dialog exists only while open. One new translation unit for the dialog and o
 | INV-8 | `ClaudeSetup.ShellIntegrationBlocksAndKey` |
 | INV-9 | `WelcomeDialog.ConfirmBeforeWriting` |
 | INV-10 | `WelcomeDialog.DonationLinks` |
+| INV-11 | `WelcomeDialog.InstallOfferAndPlanNote` |
+| INV-12 | `WelcomeDialog.InstallRunsOnlyAfterPreview` |
+| INV-13 | `WelcomeDialog.ReDetectsOnActivate` |
+| INV-14 | `WelcomeDialog.MainWindowOpensInstallTab` |
 
 The source-scrape tests anchored on the moved `SettingsDialog` bodies keep what each protects, and each check follows the text it reads: file work to `src/claudesetup.cpp`, button wiring and message boxes staying in `settingsdialog.cpp`. Where the move changes the text's form, the pattern changes with it — `settings_parse_failure_mirror`'s "`return;` after the rotation" becomes the module's early return of a failed `Outcome`. The tests: `hook_events_wired`, `claude_git_context_hook` (`test_installer_grep.cpp`, `test_script.sh`), `git_optional_locks`, `concurrent_writer_lock`, `persistence_post_rename_chmod`, `settings_parse_failure_mirror` and `secureio_configbackup_split`.
 
@@ -133,6 +161,7 @@ The source-scrape tests anchored on the moved `SettingsDialog` bodies keep what 
 
 - `README.md` "Getting started" says the MCP helper is not in a released package. The release workflow installs the whole tree into the AppImage (`cmake --install`), so it ships `ants-mcpd` and the shell-integration scripts. The README section gains the welcome dialog as the way to connect, the stale claim is corrected, and its command gains `--scope user`.
 - `tests/features/help_about_menu/spec.md` gains the Help item and the third Donate item.
+- ANTS-5744: `README.md` "Getting started" says the welcome dialog can install Claude Code, and that it needs a paid plan.
 - The About dialog's Ants MCP line reads the registration's args as § 2.4 says, which changes how it queries an AppImage registration.
 - `docs/subsystems.md` and `.indie-review/partition.json` list `src/welcomedialog.{h,cpp}` and `src/claudesetup.{h,cpp}`.
 
