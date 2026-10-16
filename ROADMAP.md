@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5754 -->
+<!-- ants-roadmap-id-high-water: ANTS=5755 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72863,6 +72863,20 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: review-fix.
   Source: review-contract-ANTS-5734-2026-10-16.
   Lanes: mcp-tools.
+
+- 📋 [ANTS-5755] **trace skips gitignored files and walks tracked files first, so a capped walk still finds the definition.**
+  claude-config 2026-10-16: trace {caller_cwd:~/.claude, symbol:
+  ants_is_source_search} walks gitignored file-history/ and projects/
+  first, hits walk_capped at 5,000 files with 6 parsed, and returns no
+  definition (real one: hooks/_common.sh:69). Callers come back only
+  from file-history/ backups. Fix: respect .gitignore as
+  workspace_search does, walk tracked files first, and say in the hint
+  when walk_capped may have hidden the definition. Hot reload: trace is
+  mcpd-only, so an ants-mcpd rebuild and client reconnect.
+  **Layman:** The "where is this defined and who uses it" tool stops searching backup folders and looks at real project files first.
+  Kind: fix.
+  Source: claude-config feedback 2026-10-16.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

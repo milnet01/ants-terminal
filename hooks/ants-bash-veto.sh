@@ -47,7 +47,7 @@ if ants_is_source_search "$cmd"; then
     fi
     ants_grep_nudge_record "$nudge_tool" true
     # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
-    ctx='Ants tip: that was a raw source search. Prefer mcp__ants__workspace_search (project-wide code search) / find_definition / find_sources — indexed, far fewer tokens than streaming grep/find output back. Append `# ants-bypass` to silence.'
+    ctx='Ants tip: that was a raw source search. Prefer mcp__ants__workspace_search (project-wide code search) / find_definition (where it is defined) / trace (who calls it) — indexed, far fewer tokens than streaming grep/find output back. Append `# ants-bypass` to silence.'
     jq -nc --arg c "$ctx" \
         '{hookSpecificOutput:{hookEventName:"PreToolUse", additionalContext:$c}}'
     exit 0
