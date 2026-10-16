@@ -72688,6 +72688,13 @@ measured Ants adding about 5,250 tokens to every request.
   find their names). Add c_sharp, ruby, php, qmljs, make, meson, json,
   yaml, toml, css, each under § 2.3's admission rule. The spec's § 2.3
   language list changes, so it owes review-contract before building.
+  Correction, 2026-10-16, same session: JSON, YAML and TOML are left out
+  too. A grammar would make every config key a `definition`, so tracing
+  a common code name (`source`, `id`) would list hundreds of keys beside
+  its real definitions; today those matches already arrive as
+  `string_or_config` references, which is what a trace needs. Left out:
+  Markdown, XML, HTML, JSON, YAML, TOML. This batch adds c_sharp, ruby,
+  php, qmljs, make, meson and css.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).

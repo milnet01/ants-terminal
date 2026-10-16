@@ -88,7 +88,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 | `import` | An include, import, use or require naming the symbol or its file. |
 | `code` | An identifier in parsed code that is neither a definition, a call nor an import: a type use, a function pointer, a Qt `&Class::method`. |
 | `comment` | A comment node in parsed code. |
-| `string_or_config` | A string literal in parsed code, or a whole-word match in any other file that is neither Markdown nor in a § 2.3 language: JSON, YAML, TOML, INI, XML, Make, `.desktop`, systemd units and the like. |
+| `string_or_config` | A string literal in parsed code, or a whole-word match in any other file that is neither Markdown nor in a § 2.3 language: JSON, YAML, TOML, INI, XML, HTML, Meson, `.desktop`, systemd units and the like (§ 9.2 says why these get no grammar). |
 | `test` | Any of the above inside a test file (§ 2.6). |
 | `unparsed` | A whole-word match in a file of a § 2.3 language whose grammar has not shipped yet, such as CMake before ship 3. |
 
@@ -112,14 +112,18 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   The manifest's `runtime` entry pins tree-sitter itself the same way. A grammar entry may also carry `subdir` (where one repository holds two grammars, as tree-sitter-typescript holds `typescript` and `tsx`), `extra` (shared files copied beside the grammars, such as that repository's `common/scanner.h`) and `license_file` (where the licence is not named `LICENSE`).
 
+  A grammar is pinned to its latest release, or to a later commit where that commit fixes a defect the release still has. tree-sitter-ruby is pinned to `ad907a69`, which fixes heredoc serialization buffer overflows in its scanner (committed 2026-03-10; its latest release, v0.23.1, is from 2024-11).
+
   `generated_by` is `upstream` when the repository commits `parser.c`. Otherwise it names the tree-sitter CLI version that generated the file (tree-sitter-swift does not commit its `parser.c`). The runtime accepts grammar ABI 13 to 15 (`TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION` and `TREE_SITTER_LANGUAGE_VERSION` in `api.h`). A refresh script, `tools/vendor-grammars.sh`, fetches each pinned commit, checks its hash, and copies the files. Nothing in the build fetches anything.
 - **Build.** A static C library, `ants_treesitter_lib`, holds the runtime and the grammars. A Qt6::Core library, `ants_trace_lib`, holds the engine (`src/trace/`). Both link into `ants-mcpd` and the trace test bundle only, never into `ants-terminal`.
-- **Languages.** A language is identified by file extension, then by a shebang line for files with no extension. `.c` is `c`. Every other extension `SymbolQuery`'s `langForExt` maps to `Lang::Cpp`, `.h` included, is `cpp`.
+- **Languages.** A language is identified by file name, then by file extension, then by a shebang line for files with no extension. The names are `CMakeLists.txt` (`cmake`) and `Makefile`, `makefile` and `GNUmakefile` (`make`); `.mk` and `.mak` are `make` too. `.c` is `c`. Every other extension `SymbolQuery`'s `langForExt` maps to `Lang::Cpp`, `.h` included, is `cpp`.
 
 | Ship | Languages (ids) |
 |---|---|
 | 1 | `c`, `cpp`, `python`, `bash`, `lua`, `glsl`, `javascript`, `typescript`, `tsx`, `rust`, `go`, `java` |
-| 3 | `c_sharp`, `kotlin`, `swift`, `php`, `ruby`, `cmake`, `scala`, `dart`, `zig`, `elixir`, `haskell`, `ocaml`, `objc`, `r`, `julia`, `nix`, `qmljs`, `sql`, `perl` |
+| 3 | `c_sharp`, `kotlin`, `swift`, `php`, `ruby`, `cmake`, `scala`, `dart`, `zig`, `elixir`, `haskell`, `ocaml`, `objc`, `r`, `julia`, `nix`, `qmljs`, `sql`, `perl`, `make`, `css` |
+
+  Ship 3 lands in batches. The first adds `c_sharp`, `ruby`, `php`, `qmljs`, `make` and `css` (the user's request through Groundwork, 2026-10-16). `php` is the grammar for PHP mixed with HTML, from tree-sitter-php's `php` subdirectory. `qmljs` comes from `yuja/tree-sitter-qmljs`, a personal repository: no tree-sitter organisation hosts a QML grammar (`gh api repos/tree-sitter-grammars/tree-sitter-qmljs` → 404, 2026-10-16).
 
   Ship 1 covers every language `SymbolQuery::Lang` names except its `Generic` brace family, plus the most used modern languages. A ship-3 grammar is added only after its upstream repository has been checked as maintained, MIT- or Apache-licensed, and buildable from vendored sources. One that fails stays `no_grammar` and gets a roadmap note. A language with files present but no grammar is reported, never dropped (INV-9).
 
@@ -225,7 +229,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 ## 5. RAM / build cost
 
 - **Disk.** The installed system grammar libraries for the ship-1 languages total 12.0 MB; those for `c_sharp`, `kotlin`, `swift`, `php` and `ruby` total 15.5 MB (`stat -c %s /usr/lib64/tree-sitter/libtree-sitter-<lang>.so`, summed, 2026-10-16). Vendored grammars compiled into `ants-mcpd` are expected near those figures. `ants-mcpd` is 13.0 MB today (`build/ants-mcpd`, Release, 2026-10-16). Grammar data is paged in only for the languages a call parses.
-- **Build.** The C++ grammar's generated `parser.c` is 17 MB. It compiled in 1.24 s at `-O2` with a 169 MB peak (`/usr/bin/time cc -O2 -c parser.c`, 2026-10-16).
+- **Build.** The C++ grammar's generated `parser.c` is 17 MB. It compiled in 1.24 s at `-O2` with a 169 MB peak (`/usr/bin/time cc -O2 -c parser.c`, 2026-10-16). The largest ship-3 one, C#'s, is 29.7 MB (`gh api repos/tree-sitter/tree-sitter-c-sharp/contents/src/parser.c?ref=v0.23.5`, `size`, 2026-10-16).
 - **Memory.** The row cache (§ 2.5) is capped at 64 MiB and evicts the least recently used file first. It lives in memory and goes when `ants-mcpd` exits. A tree is freed once its rows are extracted. A cold `trace` parses every file once: the CLI parsed all of `src/` (396 files, 11 MB) in 1.44 s with a 22 MB peak (`/usr/bin/time tree-sitter parse --quiet --stat … src/*.cpp src/*.h`, 2026-10-16).
 - **New dependencies.** tree-sitter (MIT) and one grammar per language, each licence recorded in `MANIFEST.json`, all vendored. No new build-time or run-time package.
 
@@ -273,6 +277,8 @@ The fixture's `.zig` file is never parsed; it exists to be reported.
 - **WebAssembly grammars through tree-sitter's wasm runtime.** It adds a WebAssembly engine as a dependency to solve a portability problem vendored C sources already solve.
 - **LSP servers where installed** (claude-config's recommendation). Deferred, not rejected. Each language needs its own server process, lifecycle and project setup (clangd needs `compile_commands.json`), and first answers wait on indexing. Answers would also differ between machines with and without a server, which works against "every user". A later item can add LSP as a layer that refines `precision:"syntactic"` rows where a server answers.
 - **Extending `SymbolQuery`'s regex scanner.** It has no node ranges (so no `end_line`), no scopes, and no comment or string boundaries: the three things this verb adds.
+- **Grammars for data and markup formats** (JSON, YAML, TOML, XML, HTML, Markdown). Their keys and elements would become `definitions`, so tracing a common code name such as `id` or `source` would list every config key of that name beside its real definitions. A whole-word match in those files already arrives as a `string_or_config` reference, and Markdown goes to `docs[]`. Decided by this session 2026-10-16, on the user's leave to choose.
+- **A Meson grammar.** The one the tree-sitter-grammars organisation hosts, `tree-sitter-meson`, says in its README that a comment can break the parse (v1.3.0). Meson files stay `string_or_config`.
 - **Compiling the grammars into both binaries.** It adds about 12 MB to `ants-terminal` in ship 1, and a grammar fix would then need a terminal relaunch.
 
 ## 10. What checks this
