@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5742 -->
+<!-- ants-roadmap-id-high-water: ANTS=5743 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86771,6 +86771,20 @@ a modern terminal" release.
   Kind: chore.
   Source: user-request-2026-10-15.
   Lanes: tools, docs.
+
+- 📋 [ANTS-5743] **The packages declare ripgrep and git, which the search and git verbs run.**
+  Found 2026-10-16 while answering Groundwork (GRND-0081).
+  packaging/opensuse/ants-terminal.spec Requires only hicolor-icon-theme
+  and qt6-sql-sqlite, yet workspace_search and cited_by shell out to rg
+  (src/rgdiagnosis.h explains the refusal when it is missing) and many
+  verbs run git. Add ripgrep and git as Requires (or Recommends, if the
+  terminal must install without them) in the openSUSE spec, and the
+  matching lines in packaging/debian, archlinux, flatpak and appimage.
+  Reload: nothing; packaging only.
+  **Layman:** Installing Ants Terminal also installs the two small tools its search features need.
+  Kind: fix.
+  Source: in-session-2026-10-16 (Groundwork GRND-0081 question).
+  Lanes: packaging.
 
 ### 🐛 Carried over from 0.7.x
 
