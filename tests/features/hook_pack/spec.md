@@ -202,6 +202,22 @@ ants-hook-pack-out.XXXXXX`; the install-hooks round-trip uses a
 separate `ants-hook-install.XXXXXX` template. Either prefix means
 a stale fixture from a crashed run is isolated from the next.
 
+## CFG-0656 (b) and CFG-0706 — whose roadmap the bash veto routes
+
+Taken over from claude-config's `bash-veto-roadmap-target` test on
+2026-10-16. Run from a fixture project carrying `.ants-project`.
+
+| # | Asserts |
+|---|---------|
+| V1–V6 | A grep or cat of this project's own `ROADMAP.md` blocks, by bare, `./` and absolute path, piped, and after a newline. |
+| V7–V10 | A grep of other projects' roadmaps (`*/ROADMAP.md`, a case glob, `../Other/`, an absolute glob) does not block. |
+| V11 | `grep -v ROADMAP.md` (ANTS-2169's exclusion) does not block. |
+| V12–V17 | Naming the file without reading it (`stat`, `ls -l`, `git add`) and a path-scoped `git diff` do not block. |
+| V18 | `git diff --stat -- a.sh` blocks. |
+
+Every allow is paired with a block: allows alone pass against a hook
+that blocks nothing.
+
 ## Skip behaviour
 
 If `jq` is not on PATH, the harness skips: INV-4 + bash-veto

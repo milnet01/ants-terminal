@@ -224,6 +224,51 @@ if [ "$have_jq" -eq 1 ]; then
         fi
     done
 
+    # CFG-0656 (b) and CFG-0706, taken over from claude-config's
+    # bash-veto-roadmap-target test. Every allow is paired with a block, since
+    # allows alone pass against a hook that blocks nothing. Run from a fixture
+    # project, with HOME inside it so the nudge throttle stays out of the real
+    # one. "pass" means warned or silent.
+    rt_work="$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/ants-tests-XXXXXX")"
+    rt_proj="$rt_work/proj"
+    mkdir -p "$rt_proj"
+    touch "$rt_proj/.ants-project" "$rt_proj/ROADMAP.md"
+    rt_check() {
+        local id="$1" expected="$2" cmd="$3" out actual=pass
+        out=$(jq -nc --arg c "$cmd" '{tool_input:{command:$c}}' \
+              | ( cd "$rt_proj" && HOME="$rt_work" bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null ))
+        case "$out" in *'"block"'*) actual=block ;; esac
+        if [ "$actual" = "$expected" ]; then
+            pass "CFG-0656 $id $expected :: $cmd"
+        else
+            fail "CFG-0656 $id expected $expected, got $actual :: $cmd"
+        fi
+    }
+    # V1-V6: this project's own roadmap still goes to roadmap_query.
+    rt_check V1 block 'grep foo ROADMAP.md'
+    rt_check V2 block 'grep -n foo ./ROADMAP.md'
+    rt_check V3 block "grep foo $rt_proj/ROADMAP.md"
+    rt_check V4 block 'cat ROADMAP.md | grep foo'
+    rt_check V5 block 'cat ROADMAP.md|grep foo'
+    rt_check V6 block "$(printf 'cd .\ngrep foo "ROADMAP.md"')"
+    # V7-V10: other projects' roadmaps have no verb to go to.
+    rt_check V7  pass 'grep -c foo */ROADMAP.md'
+    rt_check V8  pass 'grep -c foo */[Rr][Oo][Aa][Dd][Mm][Aa][Pp].md'
+    rt_check V9  pass 'grep -c foo ../Other/ROADMAP.md'
+    rt_check V10 pass 'grep -l foo /mnt/Games/Scripts/Linux/*/ROADMAP.md'
+    # V11: ANTS-2169's exclusion still stands.
+    rt_check V11 pass 'git ls-files | grep -v ROADMAP.md'
+    # V12-V17 (CFG-0706): naming the file is not reading it, and a path-scoped
+    # diff shows changed lines. V1 and V18 are the blocks these pair with.
+    rt_check V12 pass 'stat ROADMAP.md'
+    rt_check V13 pass 'ls -l ROADMAP.md'
+    rt_check V14 pass 'git add ROADMAP.md'
+    rt_check V15 pass 'git diff -- hooks/x.sh'
+    rt_check V16 pass 'git diff ROADMAP.md'
+    rt_check V17 pass 'git diff HEAD -- a.sh b.sh'
+    rt_check V18 block 'git diff --stat -- a.sh'
+    rm -rf "$rt_work"
+
     # A --stat diff asks for CHANGED LINES. get_git_status has no field for
     # them, so routing there is a dead end that ends in `# ants-bypass` — the
     # raw command the veto exists to prevent. The reason must name git_state.
