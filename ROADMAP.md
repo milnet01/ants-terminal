@@ -86437,7 +86437,7 @@ a modern terminal" release.
   Source: user-request-2026-10-15.
   Lanes: tools.
 
-- 📋 [ANTS-5721] **The hot-reload and modularity rule is checked by tools: a required Reload section in specs, and a commit check for new source files.**
+- ✅ [ANTS-5721] **The hot-reload and modularity rule is checked by tools: a required Reload section in specs, and a commit check for new source files.**
   The rule in CLAUDE.md § "Hot reload is the design default" (user,
   2026-09-21; modularity bullet 2026-10-15) has no check, and it slipped:
   the ANTS-5719 spec shipped a weak reload story, and its review lanes
@@ -86447,6 +86447,13 @@ a modern terminal" release.
   (2) a pre-commit check refusing a commit that adds a src/ source file
   unless its message carries a "Reload:" line. Both change what a
   conformer does, so CLAUDE.md rule 14's gate applies.
+  Shipped 2026-10-16. docs/standards/specs.md § 4 requires § Reload, and its
+  required-sections block lists it, so spec_lint reports a spec without one.
+  The commit check is tools/hooks/commit-msg, not pre-commit: pre-commit runs
+  before the message exists. Test: tests/features/commit_msg_reload.
+  CLAUDE.md § Hot reload was gated first (review-contract loops 10–12, calm
+  cap); specs.md converged at loop 8. Filed from the gates: ANTS-5723,
+  ANTS-5724.
   **Layman:** Make the "never force a terminal restart" rule impossible to forget, by having the checks refuse work that does not say how it restarts.
   Kind: chore.
   Source: user-request-2026-10-15.
