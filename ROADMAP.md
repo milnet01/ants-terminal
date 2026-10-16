@@ -72582,6 +72582,10 @@ measured Ants adding about 5,250 tokens to every request.
   with a not_covered report per missing grammar. Provisional lean: link
   the C library, vendor each grammar's parser.c and tags.scm into the
   build, and use system packages only for development.
+  2026-10-16: Tumbleweed has no tree-sitter-cmake package. If the spec
+  covers CMake, vendor a CMake grammar; claude-config names
+  uyha/tree-sitter-cmake (unverified: check it is maintained and has
+  tags queries before choosing it).
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
