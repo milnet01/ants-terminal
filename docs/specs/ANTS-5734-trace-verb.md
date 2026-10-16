@@ -1,6 +1,6 @@
 # ANTS-5734 — Answer "where is it, who uses it, what documents it" in one call: `trace`
 
-**Status:** spec draft (2026-10-16).
+**Status:** accepted (2026-10-16).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5734 (claude-config-request-2026-10-16, user requirements relayed; peer asks from demoreel, pressless and oneup).
 **Pairs with:** ANTS-5725 (the always-loaded set `trace` joins on ship).
@@ -23,15 +23,15 @@ What is missing today:
 
 ### 2.1 The verb
 
-`trace`, project-scoped, `CallerCwdContract::Required`, with its entry in `ClaudeIntegration::callerCwdContractFor`. Read-only. Its handler is `trace::serve(const QJsonObject &args)` in `ants_trace_lib`, not a `RemoteControl` method: `RemoteControl` is in `ants_mcpcore_lib`, which `ants-terminal` also links. `serve` resolves `caller_cwd` through the `ants::ServerCwdRootProvider` that `src/mcpdmain.cpp` already builds. It registers as an `mcp::RcHandler` constructed directly, with `lane = DispatchLane::Bulk`, so a long parse runs on the bulk worker and does not hold up other verbs.
+`trace`, project-scoped, `CallerCwdContract::Required`, with its entry in `ClaudeIntegration::callerCwdContractFor`. Read-only. Its engine entry is `QJsonObject trace::serve(const QJsonObject &args, const QString &rootCanonical)` in `ants_trace_lib`, not a `RemoteControl` method: `RemoteControl` is in `ants_mcpcore_lib`, which `ants-terminal` also links. `void mcp::registerMcpdOnlyVerbs(ToolSink &sink, const RegistryHost &host)` registers the verb. Its handler resolves `caller_cwd` through `host.roots`, the root provider `src/mcpdmain.cpp` already hands `registerProjectScopedVerbs`, then calls `serve`. The handler is an `mcp::RcHandler` constructed directly, with `lane = DispatchLane::Bulk`, so a long parse runs on the bulk worker and does not hold up other verbs.
 
 | Argument | Shape | Meaning |
 |---|---|---|
 | `caller_cwd` | string, required | Resolves the project root. |
-| `symbol` | string | The name to trace. Either a bare name matching `^[A-Za-z_][A-Za-z0-9_]{0,127}$` (the `SymbolQuery` boundary), or up to four such segments joined by `::` or `.`. The last segment is the name. The others must equal the definition's innermost enclosing scopes, in order, so `Foo::bar` matches `ns::Foo::bar` and `ns::bar` does not. |
+| `symbol` | string | The name to trace. Either a bare name matching `^[A-Za-z_][A-Za-z0-9_]{0,127}$` (the `SymbolQuery` boundary), or up to four such segments joined by `::` or `.`. The last segment is the name. The others must equal the definition's innermost enclosing scopes, in order, so `Foo::bar` matches `ns::Foo::bar` and `ns::bar` does not. The scopes narrow `definitions` only; every other section matches the last segment. |
 | `path` | string | A project-relative or absolute path to any file. Selects path mode (§ 2.7). |
 | `lang` | string, optional | Restrict parsing to one language id from § 2.3. |
-| `include` | array, optional | A subset of `definitions`, `callers`, `callees`, `references`, `tests`, `docs`. Default: all that the current ship supports. |
+| `include` | array, optional | A subset of `definitions`, `callers`, `callees`, `references`, `tests`, `docs`, `spec_invariants`, `roadmap_items`. Default: all that the current ship supports. |
 | `depth` | integer 1–3, optional | Caller and callee depth. Default 1. |
 | `max_bytes` | integer, optional | The standard response cap, default 512 KiB. |
 | `offset` | integer, optional | Row cursor from a previous reply's `next_offset`. |
@@ -112,7 +112,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   `generated_by` is `upstream` when the repository commits `parser.c`. Otherwise it names the tree-sitter CLI version that generated the file (tree-sitter-swift does not commit its `parser.c`). The runtime accepts grammar ABI 13 to 15 (`TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION` and `TREE_SITTER_LANGUAGE_VERSION` in `api.h`). A refresh script, `tools/vendor-grammars.sh`, fetches each pinned commit, checks its hash, and copies the files. Nothing in the build fetches anything.
 - **Build.** A static C library, `ants_treesitter_lib`, holds the runtime and the grammars. A Qt6::Core library, `ants_trace_lib`, holds the engine (`src/trace/`). Both link into `ants-mcpd` and the trace test bundle only, never into `ants-terminal`.
-- **Languages.** A language is identified by file extension, then by a shebang line for files with no extension.
+- **Languages.** A language is identified by file extension, then by a shebang line for files with no extension. `.c` is `c`. Every other extension `SymbolQuery`'s `langForExt` maps to `Lang::Cpp`, `.h` included, is `cpp`.
 
 | Ship | Languages (ids) |
 |---|---|
@@ -135,11 +135,11 @@ Each language has one query file, `trace-queries/<lang>.scm`, using these captur
 
 A leading comment line `;; limits: <sentence>` supplies the language's `not_covered` `limits` entry. Where upstream ships a `tags.scm`, the file starts from it. Upstream's are not used as shipped: the C++ one has no call pattern, and its `function_declarator` pattern also matches prototypes (read from `/usr/share/tree-sitter/queries/cpp/tags.scm`, 2026-10-16).
 
-The source copies live in `assets/trace-queries/` and are compiled into `ants-mcpd` as Qt resources, so an uninstalled build and the test bundle have them. At call time a file in `${XDG_DATA_HOME:-~/.local/share}/ants-terminal/trace-queries/` is read first, then the built-in copy. A file in that directory is re-read when its mtime or size changes. A query file that fails to compile makes that language `no_grammar`, with `detail` naming the query error; the call does not fail.
+The source copies live in `assets/trace-queries/` and are compiled into `ants-mcpd` as Qt resources, so an uninstalled build and the test bundle have them. At call time a file in `${XDG_DATA_HOME:-~/.local/share}/ants-terminal/trace-queries/` replaces the built-in copy for that language where it exists. A file in that directory is re-read when its mtime or size changes. A query file that fails to compile makes that language `no_grammar`, with `detail` naming the query error; the call does not fail.
 
 ### 2.5 The walk, the parse and the cache
 
-- **The walk** reuses `SymbolQuery`'s rules: it skips dot-directories, `build`, `build-*` and `node_modules`, never follows a symlink, and stops at 5000 files (`walk_capped:true`). Those rules (`skippedDir` and the symlink test in `walk`, `src/symbolquery.cpp`) move to a shared header so the two walks cannot drift.
+- **The walk** reuses `SymbolQuery`'s rules: it skips dot-directories, `build`, `build-*` and `node_modules`, never follows a symlink, and stops after visiting 5000 regular files of any kind (`walk_capped:true`). Those rules (`skippedDir` and the symlink test in `walk`, `src/symbolquery.cpp`) move to a shared header so the two walks cannot drift.
 - **The parse.** A file over 2 MiB is not parsed (`file_too_large`). A parse is abandoned after 2 seconds through `TSParseOptions::progress_callback` (`parse_timeout`). A tree with error nodes is still queried, and the file is counted in `files_with_parse_errors`. Measured 2026-10-16 with the CLI and the system C++ grammar: 90 of the 396 files in `src/` parse with errors, and files with errors yield definitions at the same rate as clean ones. In the 72 `.cpp` files with errors, a `function_definition` query found 604 definitions against 618 column-0 closing braces; in 60 clean ones, 1054 against 1100. Recipe: `tree-sitter parse --stat`, then `tree-sitter query` with that pattern.
 - **The cache** keeps, per file, the extracted rows (definitions, calls, imports, identifier hits), never the tree. It is keyed by path, mtime, size and the query file's hash. Budget and eviction are § 5's.
 - **Name matching is syntactic.** A caller is any call whose `@name` text equals the symbol's last segment. No type resolution is done, so two unrelated functions with one name share callers. That is why the reply says `precision:"syntactic"`, and why `scope` lets a caller narrow the definitions.
@@ -166,12 +166,12 @@ A test file is one under the project's `test_roots` (`.ants/project.json`, else 
 | Ship | Adds |
 |---|---|
 | 1 | The verb; `definitions`, depth-1 `callers`, `references`, `tests`, `docs`, `spec_invariants`, `roadmap_items`, path mode; ship-1 languages. |
-| 2 | `depth` 2–3 and `callees`. A depth-N walk resolves each caller's name to its definitions and repeats. It visits each definition once and stops at 200 caller rows, while `counts.callers.total` keeps counting. Callees are the `@reference.call` names inside a definition's byte range, each with its resolved definitions. |
+| 2 | `depth` 2–3 and `callees`. A depth-N walk resolves each caller's name to its definitions and repeats. Every call site is a row, but each definition is expanded once, the traced definitions counting as already expanded. The walk stops at 200 caller rows, while `counts.callers.total` keeps counting. Callees are the `@reference.call` names inside a definition's byte range, each with its resolved definitions. |
 | 3 | The ship-3 grammars, each with its query file. |
 
 ## 3. Invariants
 
-Fixtures live in `tests/features/trace/fixture/`, a small project with one file per ship-1 language, a test directory, docs, a spec and a roadmap file.
+Fixtures live in `tests/features/trace/fixture/`, a small project with one file per ship-1 language, a test directory, docs, a spec and a roadmap file. Each case copies it into a temporary directory outside any repository and passes that directory as `caller_cwd` (`rootCanonical` for a direct `serve` call). Inside this repository, this spec's own text would match the fixture names.
 
 - **INV-1** — Exactly one of `symbol` and `path` is accepted, and a `symbol` outside the § 2.1 shape refuses `bad_args`. *Test:* `tests/features/trace/` calls with neither, with both, and with `symbol:"a b"`, expecting `bad_args` each time. *Breaks when:* a missing selector defaults to an empty-name scan, or a space reaches the walk.
 - **INV-2** — A definition's `line` and `end_line` are the first and last lines of the whole definition node. *Test:* `tests/features/trace/` traces `spanFn` in `fixture/span.cpp`, a function that opens on line 3 and closes on line 9, expecting `line:3, end_line:9`. *Breaks when:* the range is taken from the `@name` node, which gives `end_line:3`.
@@ -190,10 +190,10 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-15** — A file whose parse has errors still yields its definitions, and is counted. *Test:* `tests/features/trace/` traces `afterError` in `fixture/broken.cpp`, which defines it after a `signals:` block, expecting one definition and `files_with_parse_errors` of at least 1. *Breaks when:* a tree with error nodes is discarded.
 - **INV-16** — A file over 2 MiB is reported, not parsed. *Test:* `tests/features/trace/` writes a 3 MiB `.py` file naming `kindProbe` into a temporary copy of the fixture, expecting a `not_covered` entry `{reason:"file_too_large"}` naming it and no row from it. *Breaks when:* the size check runs after the parse.
 - **INV-17** — `ants-mcpd` carries the vendored runtime and links no shared tree-sitter library. *Test:* `nm build/ants-mcpd | grep -c ' T ts_parser_new$'` → `1`, and `ldd build/ants-mcpd | grep -c tree-sitter` → `0`. Today's build gives `0` for the first. A binary linked with `-ltree-sitter` gives `0` for the first and `1` for the second. *Breaks when:* the build links the system `libtree-sitter` in place of the vendored runtime. A `dlopen` of a system grammar is outside what this test sees.
-- **INV-18** — In ship 1, `depth` above 1 and `include:["callees"]` refuse `bad_args`. Ship 2 withdraws this and adds INV-19 and INV-20. *Test:* `tests/features/trace/` calls with `depth:2`, expecting `bad_args`. *Breaks when:* the deeper request is accepted and answered at depth 1.
-- **INV-19** — (Ship 2.) A depth-2 trace returns callers of callers with `depth:2`, and terminates on recursion. *Test:* `tests/features/trace/` traces `leaf` in `fixture/chain.py` (`top` calls `mid`, `mid` calls `leaf`, `leaf` calls `mid`), expecting `mid` at depth 1, `top` and `leaf` at depth 2, and no row beyond. *Breaks when:* a visited definition is walked again.
+- **INV-18** — In ship 1, `depth` above 1 and `include:["callees"]` refuse `bad_args`. Ship 2 withdraws this and adds INV-19 and INV-20. *Test:* `tests/features/trace/` calls once with `depth:2` and once with `include:["callees"]`, expecting `bad_args` both times. *Breaks when:* the deeper request is accepted and answered at depth 1.
+- **INV-19** — (Ship 2.) A depth-2 trace returns callers of callers with `depth:2`, and terminates on recursion. *Test:* `tests/features/trace/` traces `leaf` with `depth:3` in `fixture/chain.py` (`top` calls `mid`, `mid` calls `leaf`, `leaf` calls `mid`), expecting `mid` at depth 1, `top` and `leaf` at depth 2, and no depth-3 row: `leaf` is the traced definition, so it is not expanded again. *Breaks when:* a visited definition is walked again.
 - **INV-20** — (Ship 2.) Callees are the calls inside a definition's own range. *Test:* `tests/features/trace/` traces `mid` with `include:["callees"]`, expecting `leaf` and not `top`. *Breaks when:* the range is the whole file.
-- **INV-21** — The script form reaches `trace`. *Test:* `tests/features/trace/` runs `ants-mcpd --call trace '{"symbol":"spanFn","include":["definitions"]}'` from the fixture root, expecting exit `0` and one definition with `end_line:9`. *Breaks when:* `mcp::registerMcpdOnlyVerbs` runs after the `--call` early return in `src/mcpdmain.cpp`.
+- **INV-21** — The script form reaches `trace`. *Test:* `tests/features/trace/` runs `ants-mcpd --call trace '{"symbol":"spanFn","include":["definitions"]}'` from the fixture's temporary copy, expecting exit `0` and one definition with `end_line:9`. *Breaks when:* `mcp::registerMcpdOnlyVerbs` runs after the `--call` early return in `src/mcpdmain.cpp`.
 
 ## 4. Failure modes
 
