@@ -51,6 +51,7 @@
 #include "themes.h"
 #include "roadmapsource.h"         // ANTS-5620 — storeFor(), the mail chip's store
 #include "roadmapstore.h"          // ANTS-5620 — projectIdContaining / mailSummaryFor
+#include "statusinfowindow.h"      // ANTS-5759 — a pill's tooltip in a window
 
 // ANTS-1146 — extracted from mainwindow.cpp by Bundle G Tier 3.
 // See docs/specs/ANTS-1146.md for the design rationale, the
@@ -359,6 +360,15 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // Styled dynamically by applyTheme()
     m_errorLabel->hide();
     m_statusBar->addPermanentWidget(m_errorLabel);
+
+    // ANTS-5759 — the pills with no click action open their tooltip in a
+    // window on a click; the others keep their action.
+    statusinfo::attach(m_statusLabel,     tr("Claude status"));
+    statusinfo::attach(m_contextBar,      tr("Context"));
+    statusinfo::attach(m_tokensSavedChip, tr("Tokens saved"));
+    statusinfo::attach(m_mailChip,        tr("Mail"));
+    statusinfo::attach(m_modelStateBtn,   tr("Model"));
+    statusinfo::attach(m_errorLabel,      tr("Last command error"));
 }
 
 void ClaudeStatusBarController::attach(ClaudeIntegration *integration,

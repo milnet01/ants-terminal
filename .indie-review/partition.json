@@ -70,6 +70,7 @@
         "src/commandpalette.cpp",
         "src/commandpalette.h",
         "src/elidedlabel.h",
+        "src/statusinfowindow.h",
         "src/globalshortcutsportal.cpp",
         "src/globalshortcutsportal.h",
         "src/kwinpositiontracker.cpp",

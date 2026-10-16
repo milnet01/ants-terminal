@@ -2244,6 +2244,7 @@ if(ANTS_TESTS)
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/tab_rename_persist/test_tab_rename_persist.cpp
                 tests/features/status_bar_elision/test_status_bar_elision.cpp
+                tests/features/status_info_window/test_status_info_window.cpp
                 tests/features/review_changes_click/test_review_changes_click.cpp
                 tests/features/tab_color/test_tab_color.cpp
                 # ANTS-5645 — the side tab list panel.

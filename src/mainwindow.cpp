@@ -63,6 +63,7 @@
 #include "indiereviewdialog.h"  // ANTS-1258 — native independent code review.
 #include "shellutils.h"
 #include "elidedlabel.h"
+#include "statusinfowindow.h"   // ANTS-5759 — a pill's tooltip in a window
 #include "globalshortcutsportal.h"
 #include "debuglog.h"
 #include "dialogshowtracer.h"
@@ -761,6 +762,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     m_repoVisibilityLabel->setAccessibleName(tr("GitHub repository visibility"));
     m_repoVisibilityLabel->hide();
     statusBar()->addWidget(m_repoVisibilityLabel);
+    statusinfo::attach(m_repoVisibilityLabel, tr("Repository"));   // ANTS-5759
 
     // ANTS-5223 — red chip while broadcast input is on, so a mode that copies
     // typing into other panes is never invisible. refreshBroadcastChip()
@@ -774,6 +776,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
            "Turn it off under Settings → Broadcast Input."));
     m_broadcastChip->hide();
     statusBar()->addWidget(m_broadcastChip);
+    statusinfo::attach(m_broadcastChip, tr("Broadcast"));   // ANTS-5759
 
     // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
     // blends into the status bar background on low-contrast themes (Gruvbox
@@ -798,6 +801,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
         m_statusMessage = lbl;
     }
     m_statusMessage->setAccessibleName(tr("Status notification"));
+    statusinfo::attach(m_statusMessage, tr("Status message"));   // ANTS-5759
     statusBar()->addWidget(m_statusMessage, 1);
 
     m_statusProcess = new QLabel(this);
@@ -1871,6 +1875,7 @@ void MainWindow::setupStatusBarChrome() {
                  QString::fromLatin1(ANTS_BUILD_COMMIT)));
         versionChip->setAccessibleName(tr("Ants Terminal build"));
         statusBar()->addPermanentWidget(versionChip);
+        statusinfo::attach(versionChip, tr("Version"));   // ANTS-5759
     }
 
     // (0.7.45 repo visibility badge moved to the LEFT side next to the
