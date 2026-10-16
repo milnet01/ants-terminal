@@ -23,12 +23,12 @@ What is missing today:
 
 ### 2.1 The verb
 
-`trace`, project-scoped, `CallerCwdContract::Required`, with its entry in `ClaudeIntegration::callerCwdContractFor`. Read-only. It runs off the GUI thread like every `rcDelegate` registration.
+`trace`, project-scoped, `CallerCwdContract::Required`, with its entry in `ClaudeIntegration::callerCwdContractFor`. Read-only. Its handler is `trace::serve(const QJsonObject &args)` in `ants_trace_lib`, not a `RemoteControl` method: `RemoteControl` is in `ants_mcpcore_lib`, which `ants-terminal` also links. `serve` resolves `caller_cwd` through the `ants::ServerCwdRootProvider` that `src/mcpdmain.cpp` already builds. It registers as an `mcp::RcHandler` constructed directly, with `lane = DispatchLane::Bulk`, so a long parse runs on the bulk worker and does not hold up other verbs.
 
 | Argument | Shape | Meaning |
 |---|---|---|
 | `caller_cwd` | string, required | Resolves the project root. |
-| `symbol` | string | The name to trace. Either a bare name matching `^[A-Za-z_][A-Za-z0-9_]{0,127}$` (the `SymbolQuery` boundary), or up to four such segments joined by `::` or `.`. The last segment is the name; the others must match the enclosing scopes of a definition, innermost last. |
+| `symbol` | string | The name to trace. Either a bare name matching `^[A-Za-z_][A-Za-z0-9_]{0,127}$` (the `SymbolQuery` boundary), or up to four such segments joined by `::` or `.`. The last segment is the name. The others must equal the definition's innermost enclosing scopes, in order, so `Foo::bar` matches `ns::Foo::bar` and `ns::bar` does not. |
 | `path` | string | A project-relative or absolute path to any file. Selects path mode (§ 2.7). |
 | `lang` | string, optional | Restrict parsing to one language id from § 2.3. |
 | `include` | array, optional | A subset of `definitions`, `callers`, `callees`, `references`, `tests`, `docs`. Default: all that the current ship supports. |
@@ -88,11 +88,11 @@ The values in that example are illustrative, not measured. Rules on the shape:
 | `import` | An include, import, use or require naming the symbol or its file. |
 | `code` | An identifier in parsed code that is neither a definition, a call nor an import: a type use, a function pointer, a Qt `&Class::method`. |
 | `comment` | A comment node in parsed code. |
-| `string_or_config` | A string literal in parsed code, or a whole-word match in a file outside the docs set and with no grammar that is not a source file: JSON, YAML, TOML, INI, XML, CMake, Make, `.desktop`, systemd units and the like. |
+| `string_or_config` | A string literal in parsed code, or a whole-word match in any other file that is neither Markdown nor in a § 2.3 language: JSON, YAML, TOML, INI, XML, Make, `.desktop`, systemd units and the like. |
 | `test` | Any of the above inside a test file (§ 2.6). |
-| `unparsed` | A whole-word match in a source file whose language has no grammar (§ 2.3). |
+| `unparsed` | A whole-word match in a file of a § 2.3 language whose grammar has not shipped yet, such as CMake before ship 3. |
 
-  Markdown and other document files are not `references`; they go to `docs[]`.
+  Markdown files are not `references`; they go to `docs[]` (§ 2.7).
 - **`counts`** carries `{total, returned}` for every section, so a capped reply says how much it left out.
 - **`not_covered[]`** names what the answer could not see: `no_grammar` (a language with files present but no grammar), `file_too_large`, `parse_timeout`, `ambiguous_basename` (§ 2.7), `source_unreadable` (§ 4), and `limits` (a fixed sentence per language from its query file, such as "calls through function pointers and Qt signal connections are not followed").
 - **`scanned`** is the "a zero says what it looked at" block (`docs/standards/mcp-tools.md` step 5a).
@@ -135,7 +135,7 @@ Each language has one query file, `trace-queries/<lang>.scm`, using these captur
 
 A leading comment line `;; limits: <sentence>` supplies the language's `not_covered` `limits` entry. Where upstream ships a `tags.scm`, the file starts from it. Upstream's are not used as shipped: the C++ one has no call pattern, and its `function_declarator` pattern also matches prototypes (read from `/usr/share/tree-sitter/queries/cpp/tags.scm`, 2026-10-16).
 
-The source copies live in `assets/trace-queries/` and install to `<prefix>/share/ants-terminal/trace-queries/`. At call time a file in `${XDG_DATA_HOME:-~/.local/share}/ants-terminal/trace-queries/` is read first, then the installed copy. A query file is re-read when its mtime or size changes. A query file that fails to compile makes that language `no_grammar`, with `detail` naming the query error; the call does not fail.
+The source copies live in `assets/trace-queries/` and are compiled into `ants-mcpd` as Qt resources, so an uninstalled build and the test bundle have them. At call time a file in `${XDG_DATA_HOME:-~/.local/share}/ants-terminal/trace-queries/` is read first, then the built-in copy. A file in that directory is re-read when its mtime or size changes. A query file that fails to compile makes that language `no_grammar`, with `detail` naming the query error; the call does not fail.
 
 ### 2.5 The walk, the parse and the cache
 
@@ -146,19 +146,19 @@ The source copies live in `assets/trace-queries/` and install to `<prefix>/share
 
 ### 2.6 Tests
 
-A test file is one under the project's `test_roots` (`.ants/project.json`, else the `project_layout` default). `tests.files[]` lists each test file holding a `test`-kind row for the symbol. `tests.ctest_patterns` is `FocusedTest::resolve` run over the files holding the symbol's definitions, with `tests.selection` set to `map` or `heuristic`. Where `resolve` falls back to the full suite, both are absent: "run everything" says nothing about this symbol.
+A test file is one under the project's `test_roots` (`.ants/project.json`, else the `project_layout` default). `tests.files[]` lists each test file holding a `callers` row or a `references` row for the symbol. `tests.ctest_patterns` is `FocusedTest::resolve` run over the files holding the symbol's definitions, with `tests.selection` set to `map` or `heuristic`. Where `resolve` falls back to the full suite, both are absent: "run everything" says nothing about this symbol.
 
 ### 2.7 Documents, specs, roadmap and path mode
 
-- **`docs[]`**: every Markdown file in the `cited_by` default scope (the docs dir, `README.md`, `CLAUDE.md`), which includes `docs/specs/`. A whole-word match outside a fenced block, or any match inside a code span, gives one row per line. The row carries the nearest heading above it and that heading's line.
+- **`docs[]`**: every Markdown file the walk (§ 2.5) reaches. A whole-word match outside a fenced block, or any match inside a code span, gives one row per line. The row carries the nearest heading above it and that heading's line.
 - **`spec_invariants[]`**: each invariant whose body, as `specparse` returns it, contains the symbol as a whole word.
-- **`roadmap_items[]`**: each bullet in the project's roadmap whose headline or body contains the symbol as a whole word, with its id and headline.
+- **`roadmap_items[]`**: each bullet, read the way `roadmap_query` reads it (the store where the project has been migrated into it, else its roadmap file), whose headline or body contains the symbol as a whole word, with its id and headline.
 
 **Path mode** (`path` given) skips definitions, callers and callees. It searches for the file's project-relative path, and for its basename where the basename is unique in the project. It returns `references`, `tests`, `docs`, `spec_invariants` and `roadmap_items` under the same rules, except that `FocusedTest::resolve` runs over the path itself. A basename that is not unique is reported in `not_covered` as `ambiguous_basename` and not searched.
 
 ### 2.8 Registration
 
-- `trace` registers in `src/mcpdmain.cpp`, after `mcp::registerProjectScopedVerbs`, through a new `mcp::registerMcpdOnlyVerbs`. Its `tools/list` descriptor is emitted only by a process that registered it. The Lua-only `project_query` descriptor, guarded by `ANTS_LUA_PLUGINS`, is the compile-time precedent. This one is decided at run time, because one library serves both binaries.
+- `trace` registers through a new `mcp::registerMcpdOnlyVerbs`, in `ants_trace_lib`. `src/mcpdmain.cpp` calls it after `mcp::registerProjectScopedVerbs` and before the `--call` early return, so `ants-mcpd --call trace` reaches it (INV-21). Its `tools/list` descriptor is emitted only by a process that registered it. The Lua-only `project_query` descriptor, guarded by `ANTS_LUA_PLUGINS`, is the compile-time precedent. This one is decided at run time, because one library serves both binaries.
 - **On ship 1**, `trace` joins `kEagerVerbs` (`src/claudeintegration.cpp`), and a line in `hooks/ants-session-preamble.sh` names it within that hook's 500-byte stdout cap (ANTS-1252 INV-3). claude-config is then told, so it can do CFG-0816 and CFG-0818.
 
 ### 2.9 Ships
@@ -178,21 +178,22 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-3** — A C++ prototype and its definition are both listed, told apart by `is_declaration`, and two overloads give two entries. *Test:* `tests/features/trace/` traces `overloaded` in `fixture/overloads.{h,cpp}`, expecting one declaration entry and two definition entries. *Breaks when:* entries are de-duplicated by name, or the prototype pattern is captured as `@definition`.
 - **INV-4** — Each call site is one `callers` row, whose `caller` is the innermost enclosing definition. *Test:* `tests/features/trace/` traces `callee` in `fixture/calls.py`, where `outer` calls it twice and a nested `inner` once, expecting three rows: two naming `outer`, one naming `inner`. *Breaks when:* rows are merged per caller, or the outermost definition is chosen.
 - **INV-5** — Each occurrence gets exactly one `references` kind from § 2.2. *Test:* `tests/features/trace/` traces `kindProbe`, which the fixture names once in each of: an `#include`, a type use, a comment, a string literal, `fixture/config.json`, a file under `fixture/tests/`, and `fixture/script.zig`. It expects one row each of `import`, `code`, `comment`, `test` and `unparsed`, and two of `string_or_config`. *Breaks when:* a test file's hit is classed by its node type instead of `test`, or a config hit is dropped because the file is not parsed.
-- **INV-6** — A document match carries its nearest heading and that heading's line. *Test:* `tests/features/trace/` traces `docProbe`, which `fixture/docs/guide.md` names under `## Setup`, expecting `heading:"Setup"` and its line. *Breaks when:* the heading is taken from the file's first heading, or a match inside a fenced block is counted.
+- **INV-6** — A document match carries its nearest heading and that heading's line. *Test:* `tests/features/trace/` traces `docProbe`, which `fixture/docs/guide.md` names once under `## Setup` and once inside a fenced block, expecting exactly one `docs` row, with `heading:"Setup"` and its line. *Breaks when:* the heading is taken from the file's first heading, or a match inside a fenced block is counted.
 - **INV-7** — A spec invariant and a roadmap bullet naming the symbol are returned by id. *Test:* `tests/features/trace/` traces `specProbe`, named in INV-2 of `fixture/docs/specs/FIX-0001-probe.md` and in bullet `FIX-0002` of the fixture roadmap, expecting `{spec:"FIX-0001", inv:"INV-2"}` and `{id:"FIX-0002"}`. *Breaks when:* only the spec's header is searched, or the roadmap read is skipped.
 - **INV-8** — A capped reply is never trimmed silently, and paging rebuilds the whole answer. *Test:* `tests/features/trace/` traces `pagedProbe`, named on 300 fixture lines, with a `max_bytes` that fits about 50 rows, and follows `next_offset` to the end. It expects `truncated:true` on every page but the last, no row cut mid-way, and the pages joined equal to one uncapped call in the same order. *Breaks when:* the order is not total, so two rows on one line swap between calls, or the cap drops rows without setting `next_offset`.
 - **INV-9** — A source file in a language with no grammar is never dropped. *Test:* `tests/features/trace/` traces `kindProbe` and expects `not_covered` to hold `{reason:"no_grammar", lang:"zig", files:1}`, alongside INV-5's `unparsed` row. *Breaks when:* files of an unknown language are skipped by the walk.
-- **INV-10** — A trace that finds nothing says what it looked at. *Test:* `tests/features/trace/` traces `noSuchSymbol`, expecting `ok:true`, every section empty, `scanned.files` above zero and `scanned.languages` listing the fixture's languages. *Breaks when:* an empty answer omits `scanned`, or refuses `not_found`.
-- **INV-11** — Path mode finds the tests, documents and config that name a file, and refuses a path outside the root. *Test:* `tests/features/trace/` calls with `path:"units/probe.service"`, named in `fixture/tests/test_units.py` and `fixture/docs/guide.md`, expecting one `tests.files` entry and one `docs` row. A call with `path:"../../etc/passwd"` expects `bad_path`. *Breaks when:* a non-unique basename is searched, or path validation is skipped.
+- **INV-10** — A trace that finds nothing says what it looked at. *Test:* `tests/features/trace/` traces `noSuchSymbol`, expecting `ok:true`; `definitions`, `callers`, `references`, `tests.files`, `docs`, `spec_invariants` and `roadmap_items` empty; `scanned.files` above zero and `scanned.languages` listing the fixture's languages. *Breaks when:* an empty answer omits `scanned`, or refuses `not_found`.
+- **INV-11** — Path mode finds the tests, documents and config that name a file, and refuses a path outside the root. *Test:* `tests/features/trace/` calls with `path:"units/probe.service"`, named in `fixture/tests/test_units.py` and `fixture/docs/guide.md`, expecting one `tests.files` entry and one `docs` row. A call with `path:"../../etc/passwd"` expects `bad_path`. In a temporary copy of the fixture with a second `probe.service` under another directory, the first call expects a `not_covered` entry `{reason:"ambiguous_basename"}` and no row matched by the basename alone. *Breaks when:* a non-unique basename is searched, or path validation is skipped.
 - **INV-12** — The walk never follows a symlink. *Test:* `tests/features/trace/` adds a symlink to a temporary copy of the fixture, pointing at a directory outside it whose file names `kindProbe`, and expects no row from that directory. *Breaks when:* the walk follows a symlink into a directory.
 - **INV-13** — `ants-mcpd` lists and serves `trace`; the terminal's in-process server lists none. *Test:* `tests/features/trace/` builds the `tools/list` reply through `ClaudeIntegration` once with `mcp::registerMcpdOnlyVerbs` run and once without, expecting `trace` in the first and absent from the second. *Breaks when:* the descriptor is emitted unconditionally, which advertises a verb the terminal cannot run.
 - **INV-14** — An edited query file changes the next answer without a restart. *Test:* `tests/features/trace/` points `XDG_DATA_HOME` at a temporary directory, traces `queryProbe` once, then writes a `python.scm` there that drops `@reference.call`, and traces again in the same process. It expects callers on the first call and none on the second. *Breaks when:* query files are loaded once at start-up, or the cache key leaves out the query hash.
 - **INV-15** — A file whose parse has errors still yields its definitions, and is counted. *Test:* `tests/features/trace/` traces `afterError` in `fixture/broken.cpp`, which defines it after a `signals:` block, expecting one definition and `files_with_parse_errors` of at least 1. *Breaks when:* a tree with error nodes is discarded.
 - **INV-16** — A file over 2 MiB is reported, not parsed. *Test:* `tests/features/trace/` writes a 3 MiB `.py` file naming `kindProbe` into a temporary copy of the fixture, expecting a `not_covered` entry `{reason:"file_too_large"}` naming it and no row from it. *Breaks when:* the size check runs after the parse.
-- **INV-17** — `ants-mcpd` loads no system tree-sitter library. *Test:* `ldd build/ants-mcpd | grep -c tree-sitter` → `0`. *Breaks when:* the build links the system `libtree-sitter` in place of the vendored runtime.
+- **INV-17** — `ants-mcpd` carries the vendored runtime and links no shared tree-sitter library. *Test:* `nm build/ants-mcpd | grep -c ' T ts_parser_new$'` → `1`, and `ldd build/ants-mcpd | grep -c tree-sitter` → `0`. Today's build gives `0` for the first. A binary linked with `-ltree-sitter` gives `0` for the first and `1` for the second. *Breaks when:* the build links the system `libtree-sitter` in place of the vendored runtime. A `dlopen` of a system grammar is outside what this test sees.
 - **INV-18** — In ship 1, `depth` above 1 and `include:["callees"]` refuse `bad_args`. Ship 2 withdraws this and adds INV-19 and INV-20. *Test:* `tests/features/trace/` calls with `depth:2`, expecting `bad_args`. *Breaks when:* the deeper request is accepted and answered at depth 1.
 - **INV-19** — (Ship 2.) A depth-2 trace returns callers of callers with `depth:2`, and terminates on recursion. *Test:* `tests/features/trace/` traces `leaf` in `fixture/chain.py` (`top` calls `mid`, `mid` calls `leaf`, `leaf` calls `mid`), expecting `mid` at depth 1, `top` and `leaf` at depth 2, and no row beyond. *Breaks when:* a visited definition is walked again.
 - **INV-20** — (Ship 2.) Callees are the calls inside a definition's own range. *Test:* `tests/features/trace/` traces `mid` with `include:["callees"]`, expecting `leaf` and not `top`. *Breaks when:* the range is the whole file.
+- **INV-21** — The script form reaches `trace`. *Test:* `tests/features/trace/` runs `ants-mcpd --call trace '{"symbol":"spanFn","include":["definitions"]}'` from the fixture root, expecting exit `0` and one definition with `end_line:9`. *Breaks when:* `mcp::registerMcpdOnlyVerbs` runs after the `--call` early return in `src/mcpdmain.cpp`.
 
 ## 4. Failure modes
 
@@ -224,10 +225,11 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 
 Feature test: `tests/features/trace/`, label `features`, its bundle taken from `build_target_for` once it exists. Every case runs against `tests/features/trace/fixture/`. Each case is run against the code before the change that makes it pass, and is seen to fail there.
 
-- INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16 and INV-18: one case each, calling the verb through `RemoteControl` as the other feature bundles do.
+- INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16 and INV-18: one case each, calling `trace::serve` directly.
 - INV-13: builds two `ClaudeIntegration` pipelines and compares their `tools/list` replies.
 - INV-14: the query re-read case, with `XDG_DATA_HOME` set for the test process.
-- INV-17: the `ldd` command, run by the bundle against the built `ants-mcpd`.
+- INV-17: the `nm` and `ldd` commands, run by the bundle against the built `ants-mcpd`.
+- INV-21: runs the built `ants-mcpd` with `--call`.
 - INV-19 and INV-20: added with ship 2.
 - A load test sets each vendored language on a parser once. It locks the ABI failure mode in § 4, not an invariant.
 
@@ -236,7 +238,7 @@ The fixture's `.zig` file is never parsed; it exists to be reported.
 ## 8. Reload
 
 - **Own process.** `trace` runs in `ants-mcpd` only (§ 2.8), so its grammars stay out of the terminal binary and a grammar fix never needs a terminal relaunch, which would end every Claude Code session in its tabs.
-- **Reaching a running terminal.** A new `ants-mcpd` build reaches clients on their next reconnect (`/mcp`), with no terminal relaunch. Query files are re-read on change (§ 2.4), so a query fix needs no rebuild at all.
+- **Reaching a running terminal.** A new `ants-mcpd` build reaches clients on their next reconnect (`/mcp`), with no terminal relaunch. A query file placed in the user directory is re-read on change (§ 2.4), so a query fix can be tried with no rebuild.
 - **Stop/start control.** The only running state is the row cache. It goes when `ants-mcpd` restarts, so a reconnect is the stop/start control and no separate one is needed.
 
 ## 9. Decisions and alternatives
@@ -261,7 +263,8 @@ The fixture's `.zig` file is never parsed; it exists to be reported.
 | Rule | What catches a breach |
 |------|----------------------|
 | INV-1 to INV-16, INV-18 | `tests/features/trace/` |
-| INV-17 | `tests/features/trace/` (the `ldd` check) |
+| INV-17 | **Partial:** `tests/features/trace/` (the `nm` and `ldd` checks) catches a shared link; nothing catches a `dlopen` of a system grammar |
+| INV-21 | `tests/features/trace/` |
 | INV-19, INV-20 | `tests/features/trace/`, from ship 2 |
 | § 2.3 grammar pins match the vendored files | **nothing** — `tools/vendor-grammars.sh` checks hashes only when it runs; deferred; not yet queued |
 | § 2.8 preamble stays within 500 bytes | ANTS-1252 INV-3's test |
