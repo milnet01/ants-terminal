@@ -451,6 +451,8 @@
         "src/trace/queries.h",
         "src/trace/trace.cpp",
         "src/trace/trace.h",
+        "src/trace/traceverb.cpp",
+        "src/trace/traceverb.h",
         "src/walkrules.h",
         "src/wrapmatch.cpp",
         "src/wrapmatch.h"

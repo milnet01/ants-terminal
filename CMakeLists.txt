@@ -1296,6 +1296,7 @@ add_library(ants_trace_lib STATIC
     src/trace/queries.cpp
     src/trace/extract.cpp
     src/trace/trace.cpp
+    src/trace/traceverb.cpp
 )
 target_include_directories(ants_trace_lib PUBLIC src)
 # ProjectSettings, FocusedTest, SpecParse, PathValidation and RoadmapParse
@@ -1322,6 +1323,7 @@ qt_add_resources(ants_trace_lib "trace_queries"
 add_executable(ants-mcpd src/mcpdmain.cpp)
 target_link_libraries(ants-mcpd PRIVATE
     -Wl,--start-group
+    ants_trace_lib   # ANTS-5734 — trace: mcpd-only, never ants-terminal
     ants_mcpcore_lib
     ants_audit_lib
     ants_roadmapstore_lib
@@ -1413,6 +1415,17 @@ install(FILES packaging/shell-integration/ants-osc133.bash
               packaging/shell-integration/ants-osc133.zsh
               packaging/shell-integration/README.md
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/shell-integration)
+
+# ANTS-5734 § 5 — ants-mcpd carries the vendored tree-sitter runtime and
+# grammars, and MIT asks for each notice to travel with the copy.
+install(FILES third_party/tree-sitter/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/licenses
+        RENAME LICENSE.tree-sitter)
+foreach(_g IN LISTS _ants_ts_grammars)
+    install(FILES third_party/tree-sitter-grammars/${_g}/LICENSE
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/licenses
+            RENAME LICENSE.tree-sitter-${_g})
+endforeach()
 
 # ANTS-5617 — demoreel, the headless demo recorder, shipped whole and pinned.
 # Vendored rather than fetched: OBS and Flathub build with no network. Outside
@@ -3255,6 +3268,8 @@ if(ANTS_TESTS)
         # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
         # verbs through this list, so ants_test::slurpMainWindow() reads it too.
         ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
+        # ANTS-5734 § 2.8 — the verbs only ants-mcpd registers.
+        SRC_TRACE_VERB_CPP_PATH="${CMAKE_SOURCE_DIR}/src/trace/traceverb.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
@@ -4532,11 +4547,18 @@ if(ANTS_TESTS)
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
                 -Wl,--end-group
         SOURCES tests/features/trace/test_trace_languages.cpp
-                tests/features/trace/test_trace_serve.cpp)
+                tests/features/trace/test_trace_serve.cpp
+                tests/features/trace/test_trace_registration.cpp)
     set_property(SOURCE tests/features/trace/test_trace_serve.cpp
+                        tests/features/trace/test_trace_registration.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # Spec § 3 — the fixture project each case copies to a temporary dir.
         TRACE_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/features/trace/fixture")
+    # INV-17 and INV-21 run the built ants-mcpd.
+    set_property(SOURCE tests/features/trace/test_trace_registration.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_MCPD_BIN="$<TARGET_FILE:ants-mcpd>")
+    add_dependencies(test_trace ants-mcpd)
 
     # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
     # gtest test names do not exist at configure time, so the properties are

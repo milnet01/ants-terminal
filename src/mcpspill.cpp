@@ -4,6 +4,7 @@
 #include "secureio.h"   // ensurePrivateDir (0700) + setOwnerOnlyPerms (0600)
 
 #include <atomic>
+#include <limits>
 #include <iterator>   // std::size — ANTS-4474's head ladder
 
 #include <QByteArray>
@@ -139,6 +140,10 @@ bool shouldOffload(qint64 bodyBytes, qint64 thresholdBytes) {
 }
 
 qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args) {
+    // ANTS-5734 § 2.2 — trace pages itself under its own max_bytes, so a
+    // spill would only hide rows its next_offset already reaches.
+    if (toolName == QLatin1String("trace"))
+        return std::numeric_limits<qint64>::max();
     const qint64 base = offloadThresholdBytes();
     const QJsonValue cap = args.value(QStringLiteral("max_body_bytes"));
     if (toolName != QLatin1String("roadmap_query") || !cap.isDouble())

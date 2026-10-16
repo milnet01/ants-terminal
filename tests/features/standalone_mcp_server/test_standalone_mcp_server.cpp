@@ -190,16 +190,24 @@ TEST(StandaloneMcpServer, Inv3ToolsListAgreesWithTheTerminalPipeline) {
     for (const QJsonValue &v : local)
         localByName.insert(v.toObject().value(QStringLiteral("name")).toString(),
                            v.toObject());
-    EXPECT_EQ(remote.size(), local.size());
+    // The verbs only ants-mcpd registers, which the terminal's list omits
+    // by design (ANTS-5734 INV-13). INV-3 binds the shared verbs.
+    const QSet<QString> mcpdOnly{QStringLiteral("trace")};
+    int remoteOnly = 0;
     for (const QJsonValue &v : remote) {
         const QJsonObject t = v.toObject();
         const QString name = t.value(QStringLiteral("name")).toString();
+        if (mcpdOnly.contains(name) && !localByName.contains(name)) {
+            ++remoteOnly;
+            continue;
+        }
         ASSERT_TRUE(localByName.contains(name)) << name.toStdString()
             << " is listed by ants-mcpd only";
         EXPECT_EQ(t.value(QStringLiteral("inputSchema")),
                   localByName.value(name).value(QStringLiteral("inputSchema")))
             << name.toStdString() << ": the input schemas differ";
     }
+    EXPECT_EQ(remote.size() - remoteOnly, local.size());
 }
 
 // INV-5 — with no terminal, a forwarded verb refuses no_terminal and a

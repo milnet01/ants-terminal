@@ -403,6 +403,8 @@ cd ..
 # — every entry must be matched by a line in this section.
 %dir %{_datadir}/%{name}
 %{_datadir}/%{name}/shell-integration
+# ANTS-5734 — the vendored tree-sitter runtime's and grammars' licences.
+%license %{_datadir}/%{name}/licenses
 # ANTS-5617 — demoreel, outside PATH.
 %dir %{_libexecdir}/%{name}
 %{_libexecdir}/%{name}/demoreel

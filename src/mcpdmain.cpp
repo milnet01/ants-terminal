@@ -24,6 +24,7 @@
 #include "rootprovider.h"
 #include "secureio.h"
 #include "tokenusageengine.h"
+#include "trace/traceverb.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -119,6 +120,14 @@ int main(int argc, char **argv) {
         return projectQuery;
     };
     mcp::registerProjectScopedVerbs(pipeline, [&rc] { return &rc; }, host);
+    // ANTS-5734 § 2.8 — the verbs only this process serves, registered before
+    // the `--call` return so the script form reaches them (INV-21). trace reads
+    // roadmap_items the way roadmap_query does: the store, else the file.
+    trace::Env traceEnv;
+    traceEnv.roadmapBullets = [&rc](const QString &root, QString *error) {
+        return rc.roadmapBulletsForTrace(root, error);
+    };
+    mcp::registerMcpdOnlyVerbs(pipeline, host, std::move(traceEnv));
 
     // ANTS-5506 — everything above is shared with stdio mode. `--call` builds
     // no forwarder and no usage snapshot, which is why it returns here.

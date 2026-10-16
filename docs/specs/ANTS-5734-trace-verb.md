@@ -23,7 +23,7 @@ What is missing today:
 
 ### 2.1 The verb
 
-`trace`, project-scoped, `CallerCwdContract::Required`, with its entry in `ClaudeIntegration::callerCwdContractFor`. Read-only. Its engine entry is `QJsonObject trace::serve(const QJsonObject &args, const QString &rootCanonical)` in `ants_trace_lib`, not a `RemoteControl` method: `RemoteControl` is in `ants_mcpcore_lib`, which `ants-terminal` also links. `void mcp::registerMcpdOnlyVerbs(ToolSink &sink, const RegistryHost &host)` registers the verb. Its handler resolves `caller_cwd` through `host.roots`, the root provider `src/mcpdmain.cpp` already hands `registerProjectScopedVerbs`, then calls `serve`. The handler is an `mcp::RcHandler` constructed directly, with `lane = DispatchLane::Bulk`, so a long parse runs on the bulk worker and does not hold up other verbs.
+`trace`, project-scoped, `CallerCwdContract::Required`, with its entry in `ClaudeIntegration::callerCwdContractFor`. Read-only. Its engine entry is `QJsonObject trace::serve(const QJsonObject &args, const QString &rootCanonical)` in `ants_trace_lib`, not a `RemoteControl` method: `RemoteControl` is in `ants_mcpcore_lib`, which `ants-terminal` also links. `void mcp::registerMcpdOnlyVerbs(ToolSink &sink, const RegistryHost &host, trace::Env env = {})` registers the verb. Its handler resolves `caller_cwd` through `host.roots`, the root provider `src/mcpdmain.cpp` already hands `registerProjectScopedVerbs`, takes the nearest folder above it holding `.git` (`RunTraceVerb::projectRootFor`), and calls `serve` there. The handler is an `mcp::RcHandler` constructed directly, with `lane = DispatchLane::Bulk`, so a long parse runs on the bulk worker and does not hold up other verbs.
 
 | Argument | Shape | Meaning |
 |---|---|---|
@@ -36,7 +36,7 @@ What is missing today:
 | `max_bytes` | integer, optional | The standard response cap, default 512 KiB. |
 | `offset` | integer, optional | Row cursor from a previous reply's `next_offset`. |
 
-Exactly one of `symbol` and `path` is required. These refuse the call with `bad_args`: neither or both given, a malformed `symbol`, an unknown `include` member, an unknown `lang`, or `depth` outside 1–3. A `path` that `PathValidation::validatePath` rejects refuses with `bad_path`. In ship 1, `depth` above 1 and `include:["callees"]` refuse with `bad_args` naming ship 2, rather than silently answering at depth 1.
+Exactly one of `symbol` and `path` is required. These refuse the call with `bad_args`: neither or both given, a malformed `symbol`, an unknown `include` member, an unknown `lang`, or `depth` outside 1–3. A `path` that `PathValidation::validatePath` rejects refuses with `bad_path`. A `caller_cwd` that does not resolve to a directory refuses with `no_project`. In ship 1, `depth` above 1 and `include:["callees"]` refuse with `bad_args` naming ship 2, rather than silently answering at depth 1.
 
 `ants-mcpd --call trace '<json>'` (ANTS-5506) is the script form. That path strips `fields` (ANTS-5506 INV-9), so `include` is the way a script asks for definitions only: `ants-mcpd --call trace '{"symbol":"rcRunRg","include":["definitions"]}'`.
 
@@ -170,6 +170,21 @@ A test file is one under the project's `test_roots` (`.ants/project.json`, else 
 | 1 | The verb; `definitions`, depth-1 `callers`, `references`, `tests`, `docs`, `spec_invariants`, `roadmap_items`, path mode; ship-1 languages. |
 | 2 | `depth` 2–3 and `callees`. A depth-N walk resolves each caller's name to its definitions and repeats. Every call site is a row, but each definition is expanded once, the traced definitions counting as already expanded. The walk stops at 200 caller rows, while `counts.callers.total` keeps counting. Callees are the `@reference.call` names inside a definition's byte range, each with its resolved definitions. |
 | 3 | The ship-3 grammars, each with its query file. |
+
+### 2.10 Settled while building
+
+Ship 1's build settled these. Each is what the code in `src/trace/` does.
+
+- **Only files that hold the name are parsed.** A file whose text has no whole-word match is read and skipped, so `scanned.files_parsed` counts the files parsed for this name, not every file in a vendored language.
+- **The roadmap read is the host's.** `serve` takes a `trace::Env`. `ants-mcpd` binds its `roadmapBullets` to `RemoteControl::roadmapBulletsForTrace`, which reads the store where the project is migrated, else the roadmap file. Without a binding, `serve` parses the roadmap file named by `.ants/project.json`'s `roadmap`, else `ROADMAP.md`.
+- **`lang` filters parsing only.** Files in other § 2.3 languages are skipped; Markdown and files in no § 2.3 language are still searched.
+- **Test roots** follow `codebaseindex.cpp`: the declared `test_roots` that exist, else `tests`.
+- **A spec's id** is its file stem's leading `PREFIX-NNNN`, else the whole stem.
+- **The 2 MiB limit applies to every file**, Markdown and config included, each reported `file_too_large`.
+- **One offset spans every section.** `tests.files` rows and every other section's rows share one row sequence, in § 2.2's section order.
+- **The descriptor** carries a short `description` and a `detail` that `tool_info` serves, since an always-loaded verb's wire description is capped (`tests/features/mcp_eager_load/`). Its kind prefix is `[symbol]`, as `find_definition`'s.
+- **Licences** install to `share/ants-terminal/licenses/` as `LICENSE.tree-sitter` and `LICENSE.tree-sitter-<lang>`.
+- **The fixture's roadmap** is `docs/roadmap.md`, named in its `.ants/project.json`, because a hook refuses a new file called `ROADMAP.md`.
 
 ## 3. Invariants
 

@@ -52,6 +52,9 @@ fi
 {
     printf '[ants:project] branch=%s ahead=%s behind=%s last="%s"\n' \
         "$branch" "${ahead:-0}" "${behind:-0}" "$last_log"
+    # ANTS-5734 § 2.8 — the one-call symbol lookup, named early so the cap
+    # never cuts it.
+    printf '[ants:verbs] trace: definition, callers, refs, tests, docs in 1 call\n'
     # ANTS-4516 — the installed pack silently drifting from this repo is
     # worth a line: a hook fix here has no effect on the machine until the
     # installer runs, and nothing runs it. Emitted before the softer lines

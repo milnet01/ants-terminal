@@ -72541,7 +72541,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-16 (trailer clip 3 recording).
   Lanes: claude-integration.
 
-- 📋 [ANTS-5734] **A `trace` verb answers "where is this symbol, who uses it, and what documents it" in one call, for every modern language.**
+- 🚧 [ANTS-5734] **A `trace` verb answers "where is this symbol, who uses it, and what documents it" in one call, for every modern language.**
   Measured by claude-config 2026-10-16 over 200 transcripts: ~2,680
   single-symbol grep calls against 23 tracing-verb calls; reading and
   searching ~1.45B tokens re-sent. One reply carries: definition
@@ -72618,6 +72618,15 @@ measured Ants adding about 5,250 tokens to every request.
   else "tests"); spec id is the file stem's leading PREFIX-NNNN; files
   over 2 MiB of any kind are reported file_too_large; tests.files and
   every section page under one row offset.
+  2026-10-16: ship 1 built and tested (stages 3b and 4). Every ship-1
+  invariant has a test in tests/features/trace/, and each was seen to fail
+  under the fault its Breaks-when names. trace is registered by
+  mcp::registerMcpdOnlyVerbs in ants-mcpd only, is always loaded there
+  (kEagerVerbs), and has a preamble line. Spec § 2.10 records what the
+  build settled. Live once ants-mcpd is rebuilt from this commit and a
+  client reconnects (/mcp). Still owed: tell claude-config (CFG-0816,
+  CFG-0818); the user's installed hooks need tools/install-hooks.sh for
+  the preamble line. Ships 2 and 3 remain.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).

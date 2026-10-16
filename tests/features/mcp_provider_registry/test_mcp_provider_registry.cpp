@@ -156,9 +156,11 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
     // Every tool name in the tools/list schema builder
     // (`<toolVar>["name"] = "<name>"`) other than get_session_info
     // must have a matching registerToolProvider("<name>", …) call
-    // in mainwindow.cpp.
+    // in mainwindow.cpp, mcptoolregistry.cpp or, for the verbs only
+    // ants-mcpd serves (ANTS-5734 § 2.8), src/trace/traceverb.cpp.
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw = ants_test::slurpMainWindow();
+    const std::string mw = ants_test::slurpMainWindow() +
+                           ants_test::slurpFile(SRC_TRACE_VERB_CPP_PATH);
     // Custom raw-string delimiter ("rx") because the regex literal
     // itself contains `)"` which would close the default `R"(…)"` form.
     std::regex schemaRe(R"rx(\["name"\]\s*=\s*"([a-z_]+)")rx");

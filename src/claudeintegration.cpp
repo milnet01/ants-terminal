@@ -14289,6 +14289,88 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5734 — trace: a symbol's definitions, callers,
+                // references, tests, documents, spec invariants and roadmap
+                // items in one call. Listed only by a process that registered
+                // it (INV-13): ants-mcpd does, the terminal cannot, since it
+                // does not link the parser. Every property below is read by
+                // trace::serve (ANTS-4621).
+                if (m_toolProviders.count(QStringLiteral("trace"))) {
+                    QJsonObject t;
+                    t["name"] = "trace";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use instead of grep + Read to learn where a symbol is "
+                        "defined, who calls it, and which tests and documents "
+                        "name it.");
+                    t["description"] = QStringLiteral(
+                        "One call for a symbol: definitions with end_line, depth-1 "
+                        "callers, references by kind, tests, doc lines, spec "
+                        "invariants and roadmap items. path= traces a file instead. "
+                        "Syntactic; not_covered says what it missed. Refusals: "
+                        "bad_args, bad_path, no_project. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "One call for a symbol: definitions (file, line, end_line, "
+                        "signature, kind, scope, is_declaration), depth-1 callers "
+                        "with the calling line, every other reference by kind "
+                        "(import, code, comment, string_or_config, test, unparsed), "
+                        "the test files that hit it with ctest patterns, doc lines "
+                        "with their nearest heading, spec invariants and roadmap "
+                        "items naming it. With path instead of symbol: the tests, "
+                        "docs and config that name that file. Matching is syntactic "
+                        "(tree-sitter queries, no type resolution), so precision is "
+                        "\"syntactic\". not_covered lists languages with no "
+                        "grammar, files too large or timed out, an ambiguous "
+                        "basename, an unreadable roadmap or spec, and each "
+                        "language's limits. Rows page under max_bytes: pass "
+                        "next_offset back as offset. depth above 1 and "
+                        "include:[\"callees\"] refuse bad_args until ship 2. "
+                        "Refusals: bad_args, bad_path, no_project. caller_cwd "
+                        "Required. Spec: docs/specs/ANTS-5734-trace-verb.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    const auto str = [](const char *d) {
+                        return QJsonObject{{"type", "string"},
+                                           {"description", QString::fromUtf8(d)}};
+                    };
+                    props["caller_cwd"] = str("Your $PWD (required); picks the project.");
+                    props["symbol"] = str(
+                        "A name, or up to four joined by :: or . (Foo::bar); "
+                        "the leading parts narrow definitions by scope.");
+                    props["path"] = str(
+                        "A file to trace instead of a symbol: what tests, docs and "
+                        "config name it.");
+                    props["lang"] = str(
+                        "Parse only this language id (cpp, python, ...).");
+                    {
+                        QJsonArray members;
+                        for (const char *m : {"definitions", "callers", "references",
+                                              "tests", "docs", "spec_invariants",
+                                              "roadmap_items"})
+                            members.append(QString::fromLatin1(m));
+                        props["include"] = QJsonObject{
+                            {"type", "array"},
+                            {"items", QJsonObject{{"type", "string"}, {"enum", members}}},
+                            {"description", QStringLiteral(
+                                 "Only these sections; default all.")}};
+                    }
+                    props["depth"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1}, {"maximum", 3},
+                        {"default", 1},
+                        {"description", QStringLiteral("Caller depth; only 1 is served yet.")}};
+                    props["max_bytes"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1},
+                        {"description", QStringLiteral("Reply cap (default 512 KiB).")}};
+                    props["offset"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 0},
+                        {"description", QStringLiteral(
+                             "Row cursor: pass back next_offset.")}};
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-5502 — quotation_check: many quotations verified in one
                 // call. Every property below is read by cmdQuotationCheck (ANTS-4621).
                 {
@@ -15550,6 +15632,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         return QStringLiteral("test");
                     // ANTS-1303 — symbol queries.
                     if (name == QLatin1String("find_definition") ||
+                        name == QLatin1String("trace") ||   // ANTS-5734
                         name == QLatin1String("find_caller"))
                         return QStringLiteral("symbol");
                     // ANTS-1305 — shape matcher.
@@ -15763,6 +15846,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     static const QSet<QString> kEagerVerbs = {
                         QStringLiteral("workspace_search"),
                         QStringLiteral("find_definition"),
+                        // ANTS-5734 § 2.8 — listed only where registered.
+                        QStringLiteral("trace"),
                         QStringLiteral("file_outline"),
                         QStringLiteral("read_region"),
                     };
@@ -17208,6 +17293,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("quotation_check"))    return C::Required;
     // ANTS-5698 — session_cost reads the transcript folder named by the cwd.
     if (toolName == QStringLiteral("session_cost"))       return C::Required;
+    // ANTS-5734 — trace walks and parses the caller's project.
+    if (toolName == QStringLiteral("trace"))              return C::Required;
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;

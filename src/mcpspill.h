@@ -68,7 +68,8 @@ bool shouldOffload(qint64 bodyBytes);
 // ANTS-5364 — the threshold for ONE call. roadmap_query's explicit
 // max_body_bytes raises it to that size plus kExplicitSizeHeadroomBytes,
 // capped at kExplicitSizeCeilingBytes, so a caller who sized the reply gets
-// it inline. It never lowers the configured threshold; every other verb gets
+// it inline. It never lowers the configured threshold. trace (ANTS-5734)
+// never offloads: it pages under its own max_bytes. Every other verb gets
 // offloadThresholdBytes(). The two-argument shouldOffload applies it.
 constexpr qint64 kExplicitSizeHeadroomBytes = 4096;
 constexpr qint64 kExplicitSizeCeilingBytes  = 64LL * 1024;

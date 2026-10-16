@@ -229,7 +229,9 @@ always-loaded
 (`kEagerVerbs` in `claudeintegration.cpp`) is deliberately small — each
 always-loaded tool costs context in every session — and covers the
 verbs that most directly replace the always-loaded grep / Read:
-`workspace_search`, `find_definition`, `file_outline`, `read_region`.
+`workspace_search`, `find_definition`, `file_outline`, `read_region`,
+and `trace` where it is listed: `ants-mcpd` registers it and the
+terminal's in-process server does not (ANTS-5734 § 2.8).
 `roadmap_log` and `changelog_log` are deferred like every other verb:
 most sessions call them rarely, and one `ToolSearch` loads them. There
 is **no** server-wide "eager-load the whole
@@ -239,6 +241,17 @@ themselves. Deferral itself is a Claude Code architectural choice, not
 server-controllable beyond this per-tool hint.
 
 ## Read / incremental verbs
+
+- **`trace` is served by `ants-mcpd` only** (ANTS-5734). It is registered
+  by `mcp::registerMcpdOnlyVerbs`, not `registerProjectScopedVerbs`,
+  because its parser library is linked into `ants-mcpd` and never into
+  `ants-terminal`. So it is not in `terminalScopedVerbNames()`, and the
+  terminal's own `tools/list` omits it. It runs on the Bulk lane. It
+  pages under its own `max_bytes` with `next_offset`, so it is exempt
+  from result offload (`mcp::offloadThresholdFor`). Matching is
+  syntactic: two functions with one name share callers, and
+  `precision:"syntactic"` says so. Contract:
+  [`docs/specs/ANTS-5734-trace-verb.md`](../specs/ANTS-5734-trace-verb.md).
 
 - **`roadmap_query` `mode:"section_index"` — the counts of a LEVEL-2
   section are ROLLUPS of its level-3 children, so summing `sections[]`

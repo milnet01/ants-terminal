@@ -507,6 +507,12 @@ public:
     // MainWindow's Roadmap button asks this, so it shows exactly where
     // roadmap_query finds a roadmap.
     static QString roadmapFileFor(const QString &canonicalDir);
+    // ANTS-5734 § 2.7 — the bullets roadmap_query reads for `rootCanonical`,
+    // for trace's roadmap_items: the store where the project is migrated, else
+    // its roadmap file. nullopt with `*error` set: the source refused.
+    // nullopt with no error: no roadmap file.
+    std::optional<QVector<RoadmapParse::BulletRecord>>
+    roadmapBulletsForTrace(const QString &rootCanonical, QString *error) const;
     // ANTS-1922 — test-only soft-cap override for the bundles branch
     // (0 = use PaginationEngine::softCapBytes()). The pure builder above
     // takes the cap directly; this lets a live-verb path force truncation.

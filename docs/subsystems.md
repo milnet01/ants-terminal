@@ -128,6 +128,12 @@ Listed only where behavior isn't obvious from the name.
   distinct needle. REPORT-ONLY — no severity, nothing auto-fixable; a needle
   the run never looked up is `not_checked`, never `unresolved`. Powers the
   `doc_symbols` MCP verb. ANTS-3661.
+- `trace` (`src/trace/`, `ants_trace_lib`) — the `trace` MCP verb's engine:
+  walks the project, parses each file naming the symbol with the vendored
+  tree-sitter grammars (`third_party/`, `ants_treesitter_lib`) and its
+  `assets/trace-queries/<lang>.scm` query, and joins docs, spec invariants
+  and roadmap items. Linked into `ants-mcpd` and `test_trace` only, never
+  `ants-terminal`. ANTS-5734.
 - `speclint` (Qt6::Core, `ants_core_lib`) — the greppable half of the
   spec-format contract, which `/cold-eyes` § 1e hand-rolls every pass:
   `invariant_no_test`, `invariant_id_gap`, `loop_row_no_outcome`,

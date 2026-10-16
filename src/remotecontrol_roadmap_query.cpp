@@ -976,6 +976,22 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
         text.full(), ProjectSettings::idFormatFor(projectRoot));
 }
 
+std::optional<QVector<RoadmapParse::BulletRecord>>
+RemoteControl::roadmapBulletsForTrace(const QString &rootCanonical, QString *error) const {
+    if (error) error->clear();
+    const QString path = findRoadmapUnder(rootCanonical);
+    if (path.isEmpty()) return std::nullopt;
+    auto text = RoadmapSource::RoadmapText::fromFile(path);
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString err;
+    auto bullets = roadmapBullets(rootCanonical, text, /*includeArchive=*/false, &why, &err);
+    if (why != RoadmapSource::ReadError::None || text.openFailed()) {
+        if (error) *error = err.isEmpty() ? QStringLiteral("could not read %1").arg(path) : err;
+        return std::nullopt;
+    }
+    return bullets;
+}
+
 // ANTS-3793 § 2.2 rules 1 and 2, discharged once for both readers above. The
 // decision itself lives in the free storeFor() so INV-1's two unmigrated cases
 // have a driver that needs no RemoteControl; this member owns only the caching.
