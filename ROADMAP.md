@@ -91278,6 +91278,12 @@ here.)
   src/settingsdialog.cpp. Wrap them when the translation pipeline
   lands; with no .ts files in the tree, wrapping now changes nothing
   a user sees.
+  User guidance, 2026-10-16: check translations the way Groundwork and
+  demoreel do. Use Chrome (Claude in Chrome) to ask Gemini and DeepSeek
+  to review them; DeepSeek should help most with Asian languages. Ask
+  either session how they ran it before starting. This sends UI strings
+  to those services, which the user has allowed for translation review;
+  never send anything else.
 
 - 💭 [ANTS-1081] **Right-to-left text support.**
   Bidirectional text in the grid.
