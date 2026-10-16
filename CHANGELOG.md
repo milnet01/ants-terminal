@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Settings can hide the status-bar model suggestion ("→ Haiku") without turning on automatic model switching** (ANTS-5754)
+  Settings > General > "Show model suggestions in the status bar" (on by default).
+
 - **`trace` reads C#, Ruby, QML, Make and CSS: definitions and callers in each, imports in C#, QML, Make and CSS, and Makefiles found by name.** (ANTS-5734)
 
 - **A single `roadmap_log` `append`, `flip` or `annotate` that repeats the same op on a project within 5 minutes carries a `batch_hint` naming its batch op.** (ANTS-5735)

@@ -92272,13 +92272,17 @@ contributors don't duplicate research.
   Source: user-request-2026-10-16.
   Lanes: statusbar.
 
-- 📋 [ANTS-5754] **A setting turns off the status-bar model-suggestion chip ("→ Haiku") without turning on automatic model switching.**
+- ✅ [ANTS-5754] **A setting turns off the status-bar model-suggestion chip ("→ Haiku") without turning on automatic model switching.**
   User 2026-10-16 could not find a way to hide it. Today
   ClaudeStatusBarController::refreshModelChip (src/claudestatuswidgets.cpp)
   hides the chip only when claude.auto_model_switch is on, which the user
   turned off on purpose. Add a config key and a Settings checkbox beside
   the auto-switch one. Hot reload: the chip reads cachedConfig() each
   tick, so the setting applies live; the code itself needs a relaunch.
+  Shipped 2026-10-16 (865dcffc): Settings > General "Show model
+  suggestions in the status bar", key
+  claude.model_suggestion_chip_enabled. Needs a terminal relaunch to
+  load.
   **Layman:** You can hide the "→ Haiku / → Opus" suggestion button without letting Ants switch models for you.
   Kind: feature.
   Source: user-request-2026-10-16.
