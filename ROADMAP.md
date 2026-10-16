@@ -72572,6 +72572,16 @@ measured Ants adding about 5,250 tokens to every request.
   Priority (user, via claude-config, 2026-10-16): ahead of the other
   token-survey items and of the ANTS-5719 build. On ship, claude-config
   does CFG-0816 and CFG-0818.
+  2026-10-16: the user had claude-config install tree-sitter on this
+  machine (openSUSE packages: libtree-sitter + headers + CLI; grammar +
+  -devel + -queries for c, cpp, python, bash, lua, glsl, javascript,
+  typescript, rust, go, java, c-sharp, kotlin, swift, php, ruby, json,
+  yaml, toml, markdown, html, css, xml, make, regex). The spec must
+  decide, for every Ants Terminal user (other distros, Flatpak):
+  vendored grammars compiled in, wasm grammars, or a declared dependency
+  with a not_covered report per missing grammar. Provisional lean: link
+  the C library, vendor each grammar's parser.c and tags.scm into the
+  build, and use system packages only for development.
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
