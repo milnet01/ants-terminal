@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5729 -->
+<!-- ants-roadmap-id-high-water: ANTS=5731 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72460,6 +72460,46 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: investigate.
   Source: in-session-2026-10-16 trailer recording.
   Lanes: sessions.
+
+- 📋 [ANTS-5730] **The MCP orientation hook lives in ~/.config/ants-terminal/hooks with the other hooks, not in a second "Ants Terminal" folder.**
+  mcporientation.cpp resolveScriptPath() takes
+  QStandardPaths::AppConfigLocation, which here is "~/.config/Ants Terminal"
+  (with a space). Its comment says that matches ~/.config/ants-terminal;
+  it does not. config.json and the Welcome window's hooks live in
+  ~/.config/ants-terminal. Both folders exist on the user's machine
+  (~/.config/Ants Terminal holds hooks/ and verify-trust.json), and a fresh
+  profile creates both. Settle which other files use AppConfigLocation
+  (verify-trust.json), pick one folder, and move existing files with a
+  migration that rewrites the hook command in settings files that name the
+  old path.
+  **Layman:** One helper script is saved in a second, oddly named settings folder instead of with the rest.
+  Kind: fix.
+  Source: in-session-2026-10-16 trailer recording.
+  Lanes: claude-integration.
+
+- 📋 [ANTS-5731] **The context gauge finds the latest usage record however much non-usage data the transcript ends with.**
+  User report 2026-10-16 (screenshot): after a relaunch, a long Claude session
+  showed "Claude: thinking" and the saved chip but no context gauge.
+  Diagnosis, measured on that session's transcript (34 MB): the last 32,
+  64 and 128 KB hold 8 lines (last-prompt, ai-title, mode, permission-mode,
+  atis-latch, attachment, queue-operation) and no main-chain assistant
+  record with message.usage; the last 256 KB holds 3.
+  Cause: parseTranscriptTail (claudeintegration.cpp, the tail-window loop
+  near :852) stops growing the window once it holds 2 newlines, and the
+  context walk (:911-945) then finds no usage; contextUpdated hides the
+  gauge when contextTokens <= 0 (claudestatuswidgets.cpp:504-532), and
+  parseTranscriptForState emits only when > 0, so it waits for a later reply
+  to land in the window.
+  Fix: for the context walk, keep doubling the window (to kMaxWindow) until
+  a main-chain usage record is found; and keep the last known value instead
+  of hiding on a miss. Test: tests/features/claude_context_meter fixture
+  with one usage record followed by > 32 KB and > 2 lines of non-usage
+  records; contextTokens > 0. Red first.
+  Reload: none needed beyond the new binary (a bug fix).
+  **Layman:** The bar showing how full Claude's memory is can take a long time to appear; it gives up looking too early.
+  Kind: fix.
+  Source: user-report-2026-10-16.
+  Lanes: claude-integration.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
