@@ -288,7 +288,8 @@ const QColor kLightBg(0xef, 0xf1, 0xf5);
 
 const Glyph kAllGlyphs[] = {Glyph::None,     Glyph::Idle,      Glyph::Thinking,
                             Glyph::ToolUse,  Glyph::Bash,      Glyph::Planning,
-                            Glyph::Auditing, Glyph::Compacting, Glyph::AwaitingInput};
+                            Glyph::Auditing, Glyph::Compacting, Glyph::AwaitingInput,
+                            Glyph::Background};
 
 // Paints one row through the tree's own delegate, as the view would.
 QImage paintRow(TabListPanel &panel, QTreeWidgetItem *row, QStyle::State extra) {

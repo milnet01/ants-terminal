@@ -9,26 +9,16 @@
 
 #include "claudetranscriptwalker.h"
 
-// One Claude Code background task, derived from a transcript scan.
-//
-// Background tasks are launched by the assistant invoking `Bash` or `Task`
-// with `input.run_in_background: true`. Claude Code records the launch as
-// an `assistant` event whose `message.content[]` contains a `tool_use`
-// block with that flag, and the immediate user-side `tool_result` carries
-// `toolUseResult.backgroundTaskId` plus a path of the form
+// One Claude Code background task, derived from a transcript scan: a
+// background shell, an async agent or a monitor. The records that start and
+// end one are listed above applyBgEvent in claudebgtasks.cpp (ANTS-5773
+// spec § 2.1). A shell streams its output to
 //   /tmp/claude-$UID/<encoded-project>/<session-uuid>/tasks/<id>.output
-// to which stdout/stderr is streamed.
-//
-// A task is considered finished when the transcript later contains a
-// BashOutput tool_result whose `toolUseResult.status == "completed"` for
-// the same backgroundTaskId, or a KillShell tool_use referencing the same
-// id, or when the session is replayed and the originating session is no
-// longer the most recent one for the project. In MVP scope we treat the
-// presence of a "completed"/"killed" event in the same transcript as the
-// only finish signal — out-of-band kills (Claude Code crash, /tmp purge)
-// will simply leave the task in `finished == false` until the next
-// rescan after the user reopens the project, which is acceptable.
+// and a task whose output file is gone counts as finished.
 struct ClaudeBackgroundTask {
+    // ANTS-5773 — what kind of background work this is; the per-tab counts
+    // are taken by it.
+    enum class Kind { Shell, Agent, Monitor };
     QString id;             // backgroundTaskId, matches <id>.output basename stem
     QString tool;           // "Bash" / "Task" / etc.
     QString description;    // input.description (Bash) or input.subagent_type (Task)
@@ -36,12 +26,28 @@ struct ClaudeBackgroundTask {
     QString outputPath;     // /tmp/claude-$UID/.../<id>.output
     QDateTime startedAt;    // assistant event timestamp
     bool finished = false;  // a completion or kill event was seen for this id
-    // ANTS-1840 — true only when `finished` was inferred by the output-file
-    // liveness heuristic (file gone / mtime stale > 60 s), NOT by an
-    // authoritative transcript completion/kill event. sweepLiveness may
-    // un-latch a liveness-finish if the output file resumes writing; a
+    // ANTS-1840 — true only when `finished` was inferred from the output
+    // file being gone, NOT by an authoritative transcript completion/kill
+    // event. sweepLiveness un-latches it if the file reappears; a
     // transcript-finish is permanent.
     bool finishedByLiveness = false;
+    Kind kind = Kind::Shell;
+};
+
+// ANTS-5773 — a tool_use that may start a background task, remembered until
+// its tool_result arrives.
+struct ClaudeBgPendingCall {
+    QString name;
+    QString description;
+    QString command;
+    QDateTime startedAt;
+};
+
+// ANTS-5773 — running tasks by kind.
+struct ClaudeBgPendingCounts {
+    int shells = 0;
+    int agents = 0;
+    int monitors = 0;
 };
 
 // ANTS-5050 — the parse state that survives between incremental walks.
@@ -55,6 +61,7 @@ struct ClaudeBgTaskAccum {
     QList<ClaudeBackgroundTask> raw;
     QHash<QString, int>         idxByToolUseId;  // tool_use_id → index
     QHash<QString, int>         idxByBgId;       // backgroundTaskId → index
+    QHash<QString, ClaudeBgPendingCall> calls;   // ANTS-5773 — tool_use_id → call
 };
 
 // Per-session tracker for Claude Code background tasks.
@@ -91,9 +98,22 @@ public:
     // it into `acc`, and return the tracker's visible list. The caller must
     // call ClaudeTranscript::canResume first and, on false, reset BOTH
     // `cursor` and `acc`.
+    //
+    // ANTS-5773 — a task whose startedAt precedes processStartMs is not
+    // running: it belonged to an earlier Claude process. 0 = unknown; the
+    // rule is skipped.
     static QList<ClaudeBackgroundTask> parseIncremental(
         const QString &path, ClaudeTranscript::Cursor &cursor,
-        ClaudeBgTaskAccum &acc);
+        ClaudeBgTaskAccum &acc, qint64 processStartMs = 0);
+    // The end-of-parse filters over an accumulator, re-runnable without a
+    // walk; applies the processStartMs rule above.
+    static QList<ClaudeBackgroundTask> finalize(const ClaudeBgTaskAccum &acc,
+                                                qint64 processStartMs = 0);
+    static ClaudeBgPendingCounts pendingCounts(const QList<ClaudeBackgroundTask> &tasks);
+
+    // The start time of the Claude process this tracker's transcript belongs
+    // to, passed to parseIncremental and finalize. 0 = unknown.
+    void setProcessStartMs(qint64 ms);
 
 signals:
     void tasksChanged();
@@ -106,7 +126,7 @@ public slots:
 
     // 0.7.55 (2026-04-27 indie-review) — lightweight liveness sweep,
     // separate from rescan(). Walks m_tasks only and updates the
-    // `finished` flag based on each task's output-file mtime. NO
+    // `finished` flag based on whether each task's output file exists. NO
     // transcript reparse — costs N stat() calls instead of a 16 MiB
     // file read. Called from the status-bar 2 s timer
     // (mainwindow.cpp::refreshBgTasksButton); rescan() continues to
@@ -149,6 +169,7 @@ private:
     // background-task tracker.
     static ClaudeTranscript::WalkCache<ClaudeBgTaskAccum> &walkCache();
 
+    qint64 m_processStartMs = 0;  // ANTS-5773
     qint64 m_lastRescanMtimeMs = 0;
     // ANTS-1458 phase 2 — mirror ClaudeTaskListTracker: size is a second
     // change-signal so poll() re-parses on a same-mtime append.

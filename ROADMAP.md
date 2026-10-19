@@ -3191,7 +3191,7 @@ remainder, captured so they don't drop on the floor.
   `focusedTerminal()->shellCwd()`.
   Kind: implement.
 
-- 🚧 [ANTS-5773] **"Claude: idle" means nothing is pending; otherwise the tab shows it is waiting on background work.**
+- ✅ [ANTS-5773] **"Claude: idle" means nothing is pending; otherwise the tab shows it is waiting on background work.**
   User decisions (2026-10-19):
   - Counts: background shells, background agents, monitors. Scheduled
     or recurring jobs do not count.
@@ -3229,6 +3229,11 @@ remainder, captured so they don't drop on the floor.
   docs/specs/ANTS-5773-idle-means-nothing-pending.md, after
   review-contract capped at 2 loops (9 verified findings, all fixed;
   calm cap; user rulings untouched). Next: build with write-code.
+  Shipped 2026-10-19: § 2.1–2.6 built; 12 new tests, full suite green.
+  Reaches a running terminal only after a relaunch (spec § 8). Also
+  fixed: the shell result's output path now ends at ".output" — the
+  newer result text continues past the path, so the old parse never
+  found the file.
   **Layman:** The status bar stops saying Claude is idle while a background shell, helper agent or monitor it started is still running.
   Kind: feature.
   Source: user-request-2026-10-19.

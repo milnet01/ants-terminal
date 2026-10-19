@@ -101,10 +101,11 @@ TEST(ClaudeStateDotPalette, Main) {
     if (!contains(header, "static QColor color(Glyph g)"))
         { fail("INV-1", "ClaudeTabIndicator::color(Glyph) static method missing"); FAIL(); }
 
-    // INV-2: all eight non-None glyph cases under helper switch
+    // INV-2: all nine non-None glyph cases under helper switch
     const char *glyphs[] = {
         "Glyph::Idle", "Glyph::Thinking", "Glyph::ToolUse", "Glyph::Bash",
         "Glyph::Planning", "Glyph::Auditing", "Glyph::Compacting", "Glyph::AwaitingInput",
+        "Glyph::Background",
     };
     for (const char *g : glyphs) {
         // Each appears in the helper definition (source) at least once.
@@ -126,6 +127,7 @@ TEST(ClaudeStateDotPalette, Main) {
         {"#C76DC7", "Auditing"},
         {"#A87FE0", "Compacting"},
         {"#F04848", "AwaitingInput"},
+        {"#F07AB4", "Background"},   // ANTS-5773
     };
     for (auto p : palette) {
         if (!contains(source, p.hex))
@@ -200,7 +202,8 @@ TEST(ClaudeStateDotPalette, ContrastAdaptation) {
     using Ind = ClaudeTabIndicator;
     using G = Ind::Glyph;
     const G glyphs[] = {G::Idle,     G::Thinking,  G::ToolUse,    G::Bash,
-                        G::Planning, G::Auditing,  G::Compacting, G::AwaitingInput};
+                        G::Planning, G::Auditing,  G::Compacting, G::AwaitingInput,
+                        G::Background};
 
     // Light themes: bgSecondary of "Light" (#F5F5F5) + "Catppuccin Latte"
     // (#E6E9EF) — the surfaces the dot/label actually paint on.
@@ -245,3 +248,19 @@ TEST(ClaudeStateDotPalette, ContrastAdaptation) {
         << "ring on a dark theme must be lighter than the background";
 }
 
+
+// ANTS-5773 INV-10 — the Background glyph is pink, and its hue differs from
+// the prompt red and the auditing magenta, before and after adaptation.
+TEST(ClaudeStateDotPalette, Ants5773BackgroundIsItsOwnPink) {
+    using Ind = ClaudeTabIndicator;
+    using G = Ind::Glyph;
+    EXPECT_EQ(Ind::color(G::Background), QColor("#F07AB4"));
+    for (const QColor &bg : {QColor("#F5F5F5"), QColor("#E6E9EF"), QColor("#1E1E1E")}) {
+        const QColor pink = Ind::contrastColor(G::Background, bg);
+        for (G other : {G::AwaitingInput, G::Auditing}) {
+            EXPECT_NE(pink.hslHue(), Ind::contrastColor(other, bg).hslHue())
+                << "Background shares a hue with glyph " << static_cast<int>(other)
+                << " on " << bg.name().toStdString();
+        }
+    }
+}

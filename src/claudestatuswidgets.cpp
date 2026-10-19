@@ -431,6 +431,8 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
                     ind.glyph = ClaudeTabIndicator::Glyph::ToolUse; break;
                 case claudestate::Display::Compacting:
                     ind.glyph = ClaudeTabIndicator::Glyph::Compacting; break;
+                case claudestate::Display::Background:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Background; break;
             }
             return ind;
         });
@@ -461,7 +463,14 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
                     tip = tr("Claude: auditing");
                 } else switch (st.state) {
                     case ClaudeState::NotRunning: tip.clear(); break;
-                    case ClaudeState::Idle:       tip = tr("Claude: idle"); break;
+                    case ClaudeState::Idle: {
+                        // ANTS-5773 — the dot is pink while work is pending.
+                        const claudestate::Resolved r = claudestate::fromShell(st);
+                        tip = r.backgroundPending > 0
+                            ? claudestate::backgroundTooltip(r)
+                            : tr("Claude: idle");
+                        break;
+                    }
                     case ClaudeState::Thinking:   tip = tr("Claude: thinking…"); break;
                     case ClaudeState::Compacting: tip = tr("Claude: compacting…"); break;
                     case ClaudeState::ToolUse:
@@ -998,7 +1007,8 @@ void ClaudeStatusBarController::pinSlots() {
     QStringList states;
     for (const char *s : {"prompting", "planning", "auditing", "idle",
                           "thinking", "bash", "reading a file", "editing",
-                          "searching", "browsing", "delegating", "compacting"})
+                          "searching", "browsing", "delegating", "compacting",
+                          "waiting (88 bg)"})
         states << QStringLiteral("Claude: %1").arg(QLatin1String(s));
 
     const Config &cfg = cachedConfig();
@@ -1074,6 +1084,13 @@ void ClaudeStatusBarController::refreshBgTasksButton() {
     QString path;
     if (m_integration) path = m_integration->activeSessionPath(cwd);
     const QString prevPath = tracker->transcriptPath();
+    // ANTS-5773 § 2.3 — the focused tab's Claude start time retires tasks an
+    // earlier process left, but only on that tab's own transcript: `path`
+    // can be another tab's session, whose tasks it would wrongly retire.
+    // Set before the path, so a re-bind's rescan already uses it.
+    tracker->setProcessStartMs(
+        m_tracker && !path.isEmpty() && path == m_tracker->transcriptPath(focusedPid)
+            ? m_tracker->shellState(focusedPid).claudeStartMs : 0);
     tracker->setTranscriptPath(path);
     // 0.7.55 — sweep liveness only on unchanged path, not full rescan.
     // setTranscriptPath() triggers a full rescan only when the path changes.
@@ -1364,6 +1381,7 @@ void ClaudeStatusBarController::apply() {
     }
 
     QString text;
+    QString tip;   // ANTS-5773 — a state's own tooltip, if it has one
     ClaudeTabIndicator::Glyph glyph = ClaudeTabIndicator::Glyph::Idle;
 
     // Status text vocabulary (user spec 2026-04-18):
@@ -1428,6 +1446,11 @@ void ClaudeStatusBarController::apply() {
             text = QStringLiteral("Claude: compacting");
             glyph = ClaudeTabIndicator::Glyph::Compacting;
             break;
+        case claudestate::Display::Background:
+            text = claudestate::backgroundLabel(r);
+            tip = claudestate::backgroundTooltip(r);
+            glyph = ClaudeTabIndicator::Glyph::Background;
+            break;
     }
 
     // ANTS-1847 — same contrast adaptation as the tab dot, against the
@@ -1447,7 +1470,8 @@ void ClaudeStatusBarController::apply() {
                        - fm.averageCharWidth();
         shown = fm.elidedText(text, Qt::ElideRight, room);
     }
-    m_statusLabel->setToolTip(shown == text ? QString() : text);
+    if (tip.isEmpty() && shown != text) tip = text;
+    m_statusLabel->setToolTip(tip);
     m_statusLabel->setText(shown);
     m_statusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));

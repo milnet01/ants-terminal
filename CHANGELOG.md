@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **"Claude: waiting (N bg)" and a pink tab dot while background work is still running** (ANTS-5773)
+  When Claude's turn ends but a background shell, helper agent or monitor it started is still running, the status bar reads "Claude: waiting (N bg)" and the tab dot turns pink, on every tab. The tooltip names each kind. "Claude: idle" now means nothing is pending. A quiet shell is no longer counted as finished after 60 seconds; tasks left by an earlier Claude process are not counted.
+
 - **Click a status-bar pill such as the context gauge or tokens saved to read its tooltip in a window that stays up to date, with an OK button** (ANTS-5759)
 
 - **roadmap_log: a dry run returns a plan_id, and a call with only that id applies the preview without resending it** (ANTS-5704)

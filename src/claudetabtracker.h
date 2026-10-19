@@ -1,5 +1,6 @@
 #pragma once
 
+#include "claudebgtasks.h"
 #include "claudeintegration.h"
 
 #include <QObject>
@@ -62,6 +63,12 @@ public:
         // the status-bar meter from it, so the meter shows at once.
         qint64 contextTokens = -1;
         bool contextEstimated = false;
+        // ANTS-5773 § 2.3 — pending background tasks by kind, for this
+        // tab's Claude process, from its own transcript.
+        int backgroundShells = 0;
+        int backgroundAgents = 0;
+        int backgroundMonitors = 0;
+        qint64 claudeStartMs = 0;   // processStartTimeMs of the tab's Claude; 0 = unknown
     };
 
     explicit ClaudeTabTracker(QObject *parent = nullptr);
@@ -93,6 +100,10 @@ public:
     // hook handler to flag the right tab.
     pid_t shellForSessionId(const QString &sessionId) const;
 
+    // The transcript bound to this shell's Claude session; empty when none
+    // or untracked (ANTS-5773 § 2.3).
+    QString transcriptPath(pid_t shellPid) const;
+
     // Number of currently tracked shells (for tests + introspection).
     int trackedCount() const { return m_shells.size(); }
 
@@ -120,10 +131,17 @@ private:
         int   orphanScanCountdown = 0;   // ANTS-5089 — see detectClaudeChild
         QString transcriptPath;
         ShellState state;
+        // ANTS-5773 — this shell's own background-task parse state.
+        ClaudeTranscript::Cursor bgCursor;
+        ClaudeBgTaskAccum bgAcc;
     };
 
     void detectClaudeChild(ShellEntry &entry);
     void reparseTranscript(pid_t shellPid);
+    // ANTS-5773 — store the pending counts from a task list.
+    static void setBackgroundCounts(ShellEntry &entry,
+                                    const QList<ClaudeBackgroundTask> &tasks);
+    static void resetBackground(ShellEntry &entry);
     void releaseWatch(const QString &path);
     void maybeEmit(pid_t shellPid, const ShellState &before);
 

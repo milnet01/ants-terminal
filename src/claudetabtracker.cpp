@@ -84,6 +84,11 @@ void ClaudeTabTracker::markShellAwaitingInput(pid_t shellPid, bool awaiting,
     maybeEmit(shellPid, before);
 }
 
+QString ClaudeTabTracker::transcriptPath(pid_t shellPid) const {
+    auto it = m_shells.constFind(shellPid);
+    return it == m_shells.constEnd() ? QString() : it->transcriptPath;
+}
+
 ClaudeTabTracker::ShellState ClaudeTabTracker::shellState(pid_t shellPid) const {
     auto it = m_shells.constFind(shellPid);
     return it == m_shells.constEnd() ? ShellState{} : it->state;
@@ -138,6 +143,11 @@ void ClaudeTabTracker::pollAllShells() {
         if (it == m_shells.end()) continue;
         const ShellState before = it->state;
         detectClaudeChild(*it);
+        // ANTS-5773 — re-run the filters so a deleted output file is
+        // noticed without a transcript write.
+        if (!it->transcriptPath.isEmpty())
+            setBackgroundCounts(*it, ClaudeBgTaskTracker::finalize(
+                                         it->bgAcc, it->state.claudeStartMs));
         maybeEmit(pid, before);
     }
 }
@@ -171,6 +181,7 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
         }
         entry.state.state = ClaudeState::NotRunning;
         entry.state.tool.clear();
+        resetBackground(entry);  // ANTS-5773 — the tasks belonged to that process
         // ANTS-5747 — the reading belonged to the session that ended.
         entry.state.contextTokens = -1;
         entry.state.contextEstimated = false;
@@ -180,9 +191,13 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
         return;
     }
 
-    if (entry.claudePid == 0) {
+    if (entry.claudePid != found) {
+        if (entry.claudePid == 0) entry.state.state = ClaudeState::Idle;
         entry.claudePid = found;
-        entry.state.state = ClaudeState::Idle;
+        // ANTS-5773 § 2.3 — a new Claude PID starts a new count, and its
+        // start time retires tasks an earlier process left behind.
+        resetBackground(entry);
+        entry.state.claudeStartMs = ClaudeIntegration::processStartTimeMs(found);
     }
 
     // ANTS-5156 — resolve on first detection AND on every poll while no
@@ -244,9 +259,23 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
     }
 
     const ShellState before = it->state;
+
+    // ANTS-5773 § 2.3 — this shell's background tasks, from its own
+    // transcript. Cursor and accumulator reset together whenever the
+    // cursor cannot be trusted; see ClaudeTranscript::canResume.
+    if (!ClaudeTranscript::canResume(it->transcriptPath, it->bgCursor)) {
+        it->bgCursor = {};
+        it->bgAcc = {};
+    }
+    setBackgroundCounts(*it, ClaudeBgTaskTracker::parseIncremental(
+        it->transcriptPath, it->bgCursor, it->bgAcc, it->state.claudeStartMs));
+
     const ClaudeTranscriptSnapshot snap =
         ClaudeIntegration::parseTranscriptTail(it->transcriptPath, it->state.planMode);
-    if (!snap.hasEvents) return;
+    if (!snap.hasEvents) {
+        maybeEmit(shellPid, before);
+        return;
+    }
 
     if (snap.stateDetermined) {
         it->state.state = snap.state;
@@ -272,6 +301,23 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
     maybeEmit(shellPid, before);
 }
 
+void ClaudeTabTracker::setBackgroundCounts(ShellEntry &entry,
+                                           const QList<ClaudeBackgroundTask> &tasks) {
+    const ClaudeBgPendingCounts c = ClaudeBgTaskTracker::pendingCounts(tasks);
+    entry.state.backgroundShells = c.shells;
+    entry.state.backgroundAgents = c.agents;
+    entry.state.backgroundMonitors = c.monitors;
+}
+
+void ClaudeTabTracker::resetBackground(ShellEntry &entry) {
+    entry.bgCursor = {};
+    entry.bgAcc = {};
+    entry.state.backgroundShells = 0;
+    entry.state.backgroundAgents = 0;
+    entry.state.backgroundMonitors = 0;
+    entry.state.claudeStartMs = 0;
+}
+
 void ClaudeTabTracker::releaseWatch(const QString &path) {
     if (m_watcher.files().contains(path))
         m_watcher.removePath(path);
@@ -286,7 +332,10 @@ void ClaudeTabTracker::maybeEmit(pid_t shellPid, const ShellState &before) {
         before.tool == after.tool &&
         before.planMode == after.planMode &&
         before.awaitingInput == after.awaitingInput &&
-        before.auditing == after.auditing) {
+        before.auditing == after.auditing &&
+        before.backgroundShells == after.backgroundShells &&
+        before.backgroundAgents == after.backgroundAgents &&
+        before.backgroundMonitors == after.backgroundMonitors) {
         return;
     }
     emit shellStateChanged(shellPid);

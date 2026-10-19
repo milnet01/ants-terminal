@@ -36,6 +36,7 @@ struct ClaudeTabIndicator {
         Auditing,        // magenta — /audit skill in flight
         Compacting,      // violet — /compact in flight
         AwaitingInput,   // red — permission prompt, question or plan approval
+        Background,      // pink — idle, background work still running (ANTS-5773)
     };
     Glyph glyph = Glyph::None;
 

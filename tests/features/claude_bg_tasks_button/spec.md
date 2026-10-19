@@ -38,6 +38,9 @@ Three pieces:
      for tracked ids.
    - `assistant` events whose `tool_use.name == "KillShell"` →
      finished by `shell_id`.
+   - ANTS-5773 § 2.1 adds the records today's Claude Code writes: a
+     shell moved to the background on timeout, an async agent, a
+     monitor, `<task-notification>` ends, and `TaskStop`.
 
 2. **Status-bar button** — `m_bgTasksBtn` on the
    `ClaudeStatusBarController` (post-ANTS-1146; pre-1146 it was
@@ -71,10 +74,10 @@ Three pieces:
 Source-grep harness, no Qt link. Each invariant pins one piece of
 the wire-up that, if reverted, breaks the user-visible behavior.
 
-- **INV-1** (parser detects `run_in_background`):
-  `claudebgtasks.cpp` references the `run_in_background` JSON key
-  inside `parseTranscript`. Without it the parser never sees any
-  starts and the tracker is permanently empty.
+- **INV-1** (parser detects starts): `claudebgtasks.cpp` recognises
+  ANTS-5773 § 2.1's start records, `run_in_background` among them.
+  Without them the tracker is permanently empty. Behavioural:
+  `Ants5773TimedOutShellStartsTask`, `Ants5773AgentAndMonitorKinds`.
 
 - **INV-2** (parser correlates by `backgroundTaskId`):
   `claudebgtasks.cpp` references `backgroundTaskId` to finalize
@@ -160,10 +163,12 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   running-count chip on the status bar. The fix adds a liveness
   sweep at the end of `parseTranscript`: for each unfinished task
   with a non-empty `outputPath`, mark it finished if (a) the
-  output file no longer exists OR (b) its mtime is older than a
-  60 s staleness window. Pieces:
+  output file no longer exists. Condition (b), a 60 s staleness
+  window, is withdrawn (ANTS-5773 § 2.6): a quiet shell is still
+  running. The process-start rule (ANTS-5773 § 2.2) retires the
+  phantoms instead. Pieces:
   1. `claudebgtasks.cpp::parseTranscript` references
-     `lastModified()` AND `QFileInfo::exists()` (or `fi.exists()`).
+     `QFileInfo::exists()` (or `fi.exists()`).
   2. `ClaudeBgTaskTracker::rescan` is exposed in `public slots:`
      so the periodic-tick path can call it directly.
      `setTranscriptPath` short-circuits when the path is
@@ -172,18 +177,15 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   3. `ClaudeStatusBarController::refreshBgTasksButton` (moved
      from MainWindow by ANTS-1146) calls `m_bgTasks->sweepLiveness()`
      whenever the resolved transcript path is the same as the
-     previous one (forcing the staleness check to re-run). The 2 s
+     previous one (forcing the liveness check to re-run). The 2 s
      status timer drives `refreshBgTasksButton` directly on the
      controller (post-1146 connect target), so the sweep keeps
      firing while the transcript itself is silent.
 
-  Without the sweep, the user sees stale running-counts that
-  only clear on app restart or transcript-rotate; with it, the
-  chip falls to 0 within ~60 s of the last task going idle.
 
 - **INV-13** (liveness un-latch, ANTS-1840 — indie-review #6
   2026-05-22): the INV-12 sweep flips `finished` to `true` from a
-  *heuristic* (output file gone / stale > 60 s), but `sweepLiveness`
+  *heuristic* (output file gone), but `sweepLiveness`
   used to `continue` past any finished task and so never reconsidered
   it. A long build that goes quiet > 60 s (CMake configure, slow link)
   was flagged finished and stayed finished even after it resumed
@@ -194,7 +196,8 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   transcript-authoritative one (BashOutput `completed`/`killed`/
   `failed`, `KillShell`). `sweepLiveness` now re-derives liveness for
   finished tasks too: a `finishedByLiveness` task whose output file
-  exists and is fresh again flips back to running; a
+  exists again flips back to running (ANTS-5773: only a missing file
+  finishes one now); a
   transcript-authoritative finish is permanent and never reconsidered.
   Behavioral (link-based): `SweepLivenessUnlatchesResumedTask` and
   `SweepLivenessKeepsTranscriptFinish`.

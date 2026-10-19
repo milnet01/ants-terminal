@@ -2,6 +2,8 @@
 
 #include "terminalwidget.h"
 
+#include <QStringList>
+
 namespace claudestate {
 
 Resolved fromShell(const ClaudeTabTracker::ShellState &s) {
@@ -11,6 +13,10 @@ Resolved fromShell(const ClaudeTabTracker::ShellState &s) {
     r.planMode = s.planMode;
     r.auditing = s.auditing;
     r.awaitingInput = s.awaitingInput;
+    r.backgroundShells = s.backgroundShells;
+    r.backgroundAgents = s.backgroundAgents;
+    r.backgroundMonitors = s.backgroundMonitors;
+    r.backgroundPending = s.backgroundShells + s.backgroundAgents + s.backgroundMonitors;
     return r;
 }
 
@@ -44,7 +50,10 @@ Display display(const Resolved &r) {
     // Q_UNREACHABLE()) would suppress that warning and let a new state reach the
     // trailing `return Display::Hidden` unnoticed. Leave it defaultless.
     switch (r.base) {
-        case ClaudeState::Idle: return Display::Idle;
+        // ANTS-5773 — Claude's turn is over but it is still waiting on work
+        // it started. The overlays above outrank this.
+        case ClaudeState::Idle:
+            return r.backgroundPending > 0 ? Display::Background : Display::Idle;
         case ClaudeState::Thinking: return Display::Thinking;
         case ClaudeState::ToolUse:
             return r.tool.compare(QLatin1String("Bash"),
@@ -55,6 +64,25 @@ Display display(const Resolved &r) {
         case ClaudeState::NotRunning: return Display::Hidden;
     }
     return Display::Hidden;
+}
+
+QString backgroundLabel(const Resolved &r) {
+    return QStringLiteral("Claude: waiting (%1 bg)").arg(r.backgroundPending);
+}
+
+QString backgroundTooltip(const Resolved &r) {
+    QStringList kinds;
+    const auto add = [&kinds](int n, const char *one, const char *many) {
+        if (n > 0)
+            kinds << QStringLiteral("%1 %2").arg(n).arg(QLatin1String(n == 1 ? one : many));
+    };
+    add(r.backgroundShells, "shell", "shells");
+    add(r.backgroundAgents, "agent", "agents");
+    add(r.backgroundMonitors, "monitor", "monitors");
+    return QStringLiteral("%1 background %2 running: %3")
+        .arg(r.backgroundPending)
+        .arg(QLatin1String(r.backgroundPending == 1 ? "task" : "tasks"),
+             kinds.join(QStringLiteral(", ")));
 }
 
 }  // namespace claudestate

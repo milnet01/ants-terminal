@@ -48,6 +48,7 @@ operationally-critical AwaitingInput dot (then orange) at 2.28:1 (ANTS-1847).
 | Auditing       | `/audit` skill in flight (latched user message)  | `#C76DC7`| magenta   |
 | Compacting     | `/compact` in flight                             | `#A87FE0`| violet    |
 | AwaitingInput  | Permission prompt, question or plan approval     | `#F04848`| red       |
+| Background     | Idle, but a background shell, agent or monitor is still running (ANTS-5773) | `#F07AB4`| pink |
 | *(NotRunning)* | No Claude process under tab's shell              | *(hidden)*| —        |
 
 AwaitingInput is red, the one hue no other state is near. It was orange
@@ -113,7 +114,7 @@ yellow, so a tab reading files looked like one waiting on the user.
 
 6. **Precedence.** AwaitingInput (including an AskUserQuestion or ExitPlanMode call in flight, ANTS-5718) → Planning (only when underlying
    state ≠ NotRunning) → Auditing → state-derived (Compacting,
-   Bash, ToolUse, Thinking, Idle). Same chain in tab provider and
+   Bash, ToolUse, Thinking, Background, Idle). Same chain in tab provider and
    status-bar applier so they never diverge.
 
 7. **Toggle gate retained.** `claude_tab_status_indicator = false`
@@ -129,7 +130,7 @@ yellow, so a tab reading files looked like one waiting on the user.
    saturation — until the 3:1 floor is met. Contrast is monotonic in
    lightness against a light background and black always clears a light
    background, so a solution always exists. On the Light and
-   Catppuccin-Latte themes all eight dots clear 3:1 against `bgSecondary`
+   Catppuccin-Latte themes all nine dots clear 3:1 against `bgSecondary`
    after adaptation; on dark themes the shipped appearance is unchanged
    (the base hex literals still render verbatim).
 
@@ -162,13 +163,14 @@ source-grep cannot verify.
 
 - INV-1 Helper exists at the documented header path with the documented
   signature (`QColor Claude::stateColor(ClaudeTabIndicator::Glyph)`).
-- INV-2 Helper covers all eight non-None glyph values: source-grep finds
+- INV-2 Helper covers all nine non-None glyph values: source-grep finds
   each `Glyph::Idle`, `Glyph::Thinking`, `Glyph::ToolUse`, `Glyph::Bash`,
   `Glyph::Planning`, `Glyph::Auditing`, `Glyph::Compacting`,
-  `Glyph::AwaitingInput` literal in a switch/case under the helper.
+  `Glyph::AwaitingInput`, `Glyph::Background` literal in a switch/case
+  under the helper.
 - INV-3 Hex literals match the spec table (`"#888888"`, `"#5BA0E5"`,
   `"#E5C24A"`, `"#6FCF50"`, `"#5DCFCF"`, `"#C76DC7"`, `"#A87FE0"`,
-  `"#F04848"`).
+  `"#F04848"`, `"#F07AB4"`).
 - INV-4 `coloredtabbar.cpp::paintEvent` derives the dot fill via
   `ClaudeTabIndicator::contrastColor(ind.glyph, m_bg)` (no inline hex
   literals remain in the dot-rendering path; the base palette literals

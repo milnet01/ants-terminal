@@ -337,12 +337,13 @@ TEST(ClaudeBgTasksButton, Main) {
     // `finished == false` forever, producing a phantom running-count on
     // the status-bar chip (12-task report from a session with zero
     // genuinely-running tasks). The sweep cross-checks each unfinished
-    // task against its on-disk output file: if the file is gone OR its
-    // mtime is older than a 60 s staleness window, mark finished.
+    // task against its on-disk output file: if the file is gone, mark
+    // finished. ANTS-5773 withdrew the 60 s mtime window (a quiet shell is
+    // still running); the process-start rule retires the phantoms instead.
     //
     // Three pieces:
-    //   (a) parseTranscript references `lastModified` (the mtime check)
-    //       AND `QFileInfo::exists` / `fi.exists()` (the file-gone path)
+    //   (a) parseTranscript references `QFileInfo::exists` / `fi.exists()`
+    //       (the file-gone path)
     //   (b) ClaudeBgTaskTracker::rescan is exposed in `public slots:`
     //       so the status-tick path can drive periodic rescans (the
     //       liveness sweep needs to fire even when the transcript has
@@ -350,12 +351,6 @@ TEST(ClaudeBgTasksButton, Main) {
     //   (c) MainWindow::refreshBgTasksButton calls `m_claudeBgTasks->
     //       rescan()` when the path is unchanged, AND the 2 s status
     //       timer drives refreshBgTasksButton.
-    if (bgcpp.find("lastModified") == std::string::npos) {
-        fail("INV-12(a): parseTranscript must call `lastModified()` on "
-             "each task's outputPath — without the mtime check, "
-             "tasks whose completion was never polled stay 'running' "
-             "forever (2026-04-27 phantom-12-tasks bug)");
-    }
     if (bgcpp.find("fi.exists()") == std::string::npos
             && bgcpp.find("QFileInfo::exists") == std::string::npos) {
         fail("INV-12(a): parseTranscript must check whether each "
@@ -547,7 +542,7 @@ void writeBgTranscript(const QString &transcriptPath, const QString &outPath,
 }  // namespace
 
 // ANTS-1840 — a task flipped finished by the liveness heuristic must
-// un-latch when its output file resumes writing. Without the fix the
+// un-latch when its output file reappears. Without the fix the
 // running-count chip stays at 0 forever (poll() skips rescan while the
 // transcript is unchanged, and sweepLiveness used to `continue` past any
 // finished task).
@@ -568,17 +563,22 @@ TEST(ClaudeBgTasksButton, SweepLivenessUnlatchesResumedTask) {
     ASSERT_EQ(tracker.tasks().size(), 1);
     EXPECT_EQ(tracker.runningCount(), 1) << "fresh output → running";
 
-    // Quiet > 60 s → liveness flips finished.
-    setOutputMtime(outPath, 120);
+    // Output file gone → liveness flips finished (ANTS-5773: silence no
+    // longer does).
+    ASSERT_TRUE(QFile::remove(outPath));
     tracker.sweepLiveness();
     EXPECT_EQ(tracker.runningCount(), 0)
-        << "stale output must be flagged finished by liveness";
+        << "a gone output file must be flagged finished by liveness";
 
-    // Producer resumes writing → un-latch (the ANTS-1840 fix).
-    setOutputMtime(outPath, 0);
+    // The file reappears → un-latch (the ANTS-1840 fix).
+    {
+        QFile f(outPath);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("progress\n");
+    }
     tracker.sweepLiveness();
     EXPECT_EQ(tracker.runningCount(), 1)
-        << "resumed output must un-latch the liveness-finish";
+        << "a reappeared output file must un-latch the liveness-finish";
 }
 
 // ANTS-1840 — a transcript-authoritative finish (BashOutput status
@@ -709,3 +709,313 @@ TEST(ClaudeBgTasksButton, RefreshAfterTrackerDestroyedDoesNotCrash) {
     delete dlg;
 }
 
+
+// --- ANTS-5773: the records today's Claude Code writes ------------------
+//
+// Fixture shapes are copied from a real 2026-10-19 transcript, trimmed to
+// the fields the parser reads.
+
+namespace {
+
+QString jsonLine(const QJsonObject &o) {
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)) +
+           QStringLiteral("\n");
+}
+
+QJsonObject assistantToolUse(const QString &ts, const QString &name,
+                             const QString &toolUseId, const QJsonObject &input) {
+    return QJsonObject{
+        {"type", "assistant"}, {"timestamp", ts},
+        {"message", QJsonObject{{"content", QJsonArray{QJsonObject{
+            {"type", "tool_use"}, {"name", name}, {"id", toolUseId},
+            {"input", input}}}}}}};
+}
+
+QJsonObject userToolResult(const QString &ts, const QString &toolUseId,
+                           const QJsonObject &tur, const QString &text) {
+    return QJsonObject{
+        {"type", "user"}, {"timestamp", ts}, {"toolUseResult", tur},
+        {"message", QJsonObject{{"role", "user"}, {"content", QJsonArray{QJsonObject{
+            {"type", "tool_result"}, {"tool_use_id", toolUseId},
+            {"content", text}}}}}}};
+}
+
+QString notification(const QString &taskId, const QString &status) {
+    QString s = QStringLiteral("<task-notification>\n<task-id>%1</task-id>\n").arg(taskId);
+    if (!status.isEmpty())
+        s += QStringLiteral("<status>%1</status>\n").arg(status);
+    s += QStringLiteral("<summary>Background command finished</summary>\n</task-notification>");
+    return s;
+}
+
+QJsonObject userNotification(const QString &ts, const QString &taskId,
+                             const QString &status) {
+    return QJsonObject{
+        {"type", "user"}, {"timestamp", ts},
+        {"message", QJsonObject{{"role", "user"},
+                                {"content", notification(taskId, status)}}}};
+}
+
+QJsonObject queueNotification(const QString &ts, const QString &taskId,
+                              const QString &status) {
+    return QJsonObject{
+        {"type", "queue-operation"}, {"operation", "enqueue"}, {"timestamp", ts},
+        {"content", notification(taskId, status)}};
+}
+
+// The shell result text as Claude Code writes it: the path is followed by
+// more prose, not by the end of the string.
+QString shellResultText(const QString &id, const QString &outPath) {
+    return QStringLiteral("Command did not complete within its 600s timeout and "
+                          "was moved to the background (ID: %1). Output is being "
+                          "written to: %2. You will be notified when it completes.")
+        .arg(id, outPath);
+}
+
+void writeLines(const QString &path, const QList<QJsonObject> &events) {
+    QString body;
+    for (const QJsonObject &e : events) body += jsonLine(e);
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(body.toUtf8());
+}
+
+void touchFile(const QString &path) {
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("x\n");
+}
+
+// A foreground Bash moved to the background on timeout: no
+// run_in_background on its tool_use, a backgroundTaskId on its result.
+QList<QJsonObject> timedOutShell(const QString &outPath) {
+    return {
+        assistantToolUse("2026-10-19T10:31:21.000Z", "Bash", "toolu_017V",
+                         QJsonObject{{"command", "cc-job wait build"},
+                                     {"description", "Full build"},
+                                     {"timeout", 600000}}),
+        userToolResult("2026-10-19T10:41:21.109Z", "toolu_017V",
+                       QJsonObject{{"backgroundTaskId", "bwmysc2h1"},
+                                   {"timedOutAfterMs", 600000}},
+                       shellResultText("bwmysc2h1", outPath)),
+    };
+}
+
+}  // namespace
+
+// ANTS-5773 INV-2 — an unflagged shell moved to the background is a task.
+TEST(ClaudeBgTasksButton, Ants5773TimedOutShellStartsTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, timedOutShell(out));
+
+    const auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(tasks.size(), 1);
+    EXPECT_EQ(tasks[0].id, QStringLiteral("bwmysc2h1"));
+    EXPECT_EQ(tasks[0].outputPath, out) << "the path ends at .output";
+    EXPECT_FALSE(tasks[0].finished);
+}
+
+// ANTS-5773 INV-4 — a monitor's status-less events end nothing; its status
+// block ends it. A shell ended only by a queue-operation record ends.
+TEST(ClaudeBgTasksButton, Ants5773TaskNotificationEndsTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString tp = dir.filePath(QStringLiteral("m.jsonl"));
+    QList<QJsonObject> ev{
+        assistantToolUse("2026-10-19T12:42:55.000Z", "Monitor", "toolu_01UH",
+                         QJsonObject{{"description", "watch build"},
+                                     {"command", "tail -f log"}}),
+        userToolResult("2026-10-19T12:42:55.917Z", "toolu_01UH",
+                       QJsonObject{{"taskId", "by0xmc6tr"}, {"timeoutMs", 20000},
+                                   {"persistent", false}},
+                       "Monitor started (task by0xmc6tr, expires in 20s)."),
+        queueNotification("2026-10-19T12:43:00.000Z", "by0xmc6tr", {}),
+        userNotification("2026-10-19T12:43:00.100Z", "by0xmc6tr", {}),
+        userNotification("2026-10-19T12:43:05.000Z", "by0xmc6tr", {}),
+    };
+    writeLines(tp, ev);
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(tracker.runningCount(), 1) << "status-less events end nothing";
+
+    ev << userNotification("2026-10-19T12:43:15.000Z", "by0xmc6tr", "completed");
+    writeLines(tp, ev);
+    EXPECT_EQ(ClaudeBgTaskTracker::parseTranscript(tp).value(0).finished, true)
+        << "a status block ends the monitor";
+
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    touchFile(out);
+    const QString tp2 = dir.filePath(QStringLiteral("q.jsonl"));
+    QList<QJsonObject> ev2 = timedOutShell(out);
+    ev2 << queueNotification("2026-10-19T10:41:39.026Z", "bwmysc2h1", "completed");
+    writeLines(tp2, ev2);
+    const auto t2 = ClaudeBgTaskTracker::parseTranscript(tp2);
+    ASSERT_EQ(t2.size(), 1);
+    EXPECT_TRUE(t2[0].finished) << "a queue-operation notification ends it";
+}
+
+// ANTS-5773 INV-5 — TaskStop ends the task named by task_id or shell_id.
+TEST(ClaudeBgTasksButton, Ants5773TaskStopEndsTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    touchFile(out);
+    for (const char *key : {"task_id", "shell_id"}) {
+        const QString tp = dir.filePath(QStringLiteral("t-%1.jsonl").arg(key));
+        QList<QJsonObject> ev = timedOutShell(out);
+        ev << assistantToolUse("2026-10-19T10:50:00.000Z", "TaskStop", "toolu_stop",
+                               QJsonObject{{QLatin1String(key), "bwmysc2h1"}});
+        writeLines(tp, ev);
+        const auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+        ASSERT_EQ(tasks.size(), 1) << key;
+        EXPECT_TRUE(tasks[0].finished) << "TaskStop " << key;
+    }
+}
+
+// ANTS-5773 INV-6 — silence does not end a task, in the parse or the sweep.
+TEST(ClaudeBgTasksButton, Ants5773SilentTaskStaysPending) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    touchFile(out);
+    setOutputMtime(out, 600);  // unwritten for 10 minutes
+    // A flagged launch, which the old rules start too, so only the
+    // silence rule can end it.
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeBgTranscript(tp, out, /*withCompletion=*/false);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(tracker.runningCount(), 1) << "finalize must not age it out";
+    tracker.sweepLiveness();
+    EXPECT_EQ(tracker.runningCount(), 1) << "sweepLiveness must not age it out";
+}
+
+// ANTS-5773 INV-7 (guard) — a missing output file still ends a task.
+TEST(ClaudeBgTasksButton, Ants5773MissingOutputEndsTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeBgTranscript(tp, out, /*withCompletion=*/false);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    ASSERT_EQ(tracker.runningCount(), 1);
+    QFile::remove(out);
+    tracker.sweepLiveness();
+    EXPECT_EQ(tracker.runningCount(), 0) << "sweep: file gone ends it";
+    EXPECT_TRUE(ClaudeBgTaskTracker::parseTranscript(tp).value(0).finished)
+        << "finalize: file gone ends it";
+}
+
+// ANTS-5773 INV-3 — an async agent and a monitor each start a task of their
+// own kind, and count in their own field.
+TEST(ClaudeBgTasksButton, Ants5773AgentAndMonitorKinds) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString agentOut = dir.filePath(QStringLiteral("ae93281591ee723b6.output"));
+    touchFile(agentOut);
+
+    const QString agentTp = dir.filePath(QStringLiteral("a.jsonl"));
+    writeLines(agentTp, {
+        assistantToolUse("2026-10-19T12:35:00.000Z", "Agent", "toolu_011i",
+                         QJsonObject{{"description", "Map idle state"},
+                                     {"prompt", "Read-only investigation."},
+                                     {"subagent_type", "Explore"}}),
+        userToolResult("2026-10-19T12:35:06.405Z", "toolu_011i",
+                       QJsonObject{{"isAsync", true}, {"status", "async_launched"},
+                                   {"agentId", "ae93281591ee723b6"},
+                                   {"outputFile", agentOut}},
+                       "Async agent launched successfully."),
+    });
+    const auto agent = ClaudeBgTaskTracker::parseTranscript(agentTp);
+    ASSERT_EQ(agent.size(), 1);
+    EXPECT_EQ(agent[0].id, QStringLiteral("ae93281591ee723b6"));
+    EXPECT_EQ(agent[0].kind, ClaudeBackgroundTask::Kind::Agent);
+    EXPECT_FALSE(agent[0].finished);
+    EXPECT_EQ(agent[0].startedAt,
+              QDateTime::fromString("2026-10-19T12:35:00.000Z", Qt::ISODateWithMs))
+        << "startedAt comes from the remembered tool_use";
+
+    const QString monTp = dir.filePath(QStringLiteral("m.jsonl"));
+    writeLines(monTp, {
+        assistantToolUse("2026-10-19T12:42:55.000Z", "Monitor", "toolu_01UH",
+                         QJsonObject{{"description", "watch build"}}),
+        userToolResult("2026-10-19T12:42:55.917Z", "toolu_01UH",
+                       QJsonObject{{"taskId", "by0xmc6tr"}, {"timeoutMs", 20000}},
+                       "Monitor started (task by0xmc6tr)."),
+    });
+    const auto mon = ClaudeBgTaskTracker::parseTranscript(monTp);
+    ASSERT_EQ(mon.size(), 1);
+    EXPECT_EQ(mon[0].kind, ClaudeBackgroundTask::Kind::Monitor);
+
+    QList<ClaudeBackgroundTask> all = agent;
+    all << mon;
+    const ClaudeBgPendingCounts c = ClaudeBgTaskTracker::pendingCounts(all);
+    EXPECT_EQ(c.shells, 0);
+    EXPECT_EQ(c.agents, 1);
+    EXPECT_EQ(c.monitors, 1);
+
+    // A flagged launch takes the result's id; it is not a second task.
+    const QString flaggedTp = dir.filePath(QStringLiteral("f.jsonl"));
+    writeLines(flaggedTp, {
+        assistantToolUse("2026-10-19T12:35:00.000Z", "Agent", "toolu_f",
+                         QJsonObject{{"description", "helper"},
+                                     {"run_in_background", true}}),
+        userToolResult("2026-10-19T12:35:06.000Z", "toolu_f",
+                       QJsonObject{{"status", "async_launched"},
+                                   {"agentId", "a2edc071661148bec"},
+                                   {"outputFile", agentOut}},
+                       "Async agent launched successfully."),
+    });
+    const auto flagged = ClaudeBgTaskTracker::parseTranscript(flaggedTp);
+    ASSERT_EQ(flagged.size(), 1);
+    EXPECT_EQ(flagged[0].kind, ClaudeBackgroundTask::Kind::Agent);
+}
+
+// ANTS-5773 INV-8 — a task started before the Claude process did is not
+// pending; a 0 start time skips the rule.
+TEST(ClaudeBgTasksButton, Ants5773ProcessStartRetiresOldTasks) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString oldOut = dir.filePath(QStringLiteral("old.output"));
+    const QString newOut = dir.filePath(QStringLiteral("new.output"));
+    touchFile(oldOut);
+    touchFile(newOut);
+    const auto shell = [](const QString &ts, const QString &tu, const QString &id,
+                          const QString &out) {
+        return QList<QJsonObject>{
+            assistantToolUse(ts, "Bash", tu, QJsonObject{{"command", "sleep 1000"}}),
+            userToolResult(ts, tu, QJsonObject{{"backgroundTaskId", id}},
+                           shellResultText(id, out))};
+    };
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, shell("2026-10-19T09:00:00.000Z", "toolu_old", "bold", oldOut)
+                   + shell("2026-10-19T11:00:00.000Z", "toolu_new", "bnew", newOut));
+    const qint64 start =
+        QDateTime::fromString("2026-10-19T10:00:00.000Z", Qt::ISODateWithMs)
+            .toMSecsSinceEpoch();
+
+    ClaudeTranscript::Cursor cursor;
+    ClaudeBgTaskAccum acc;
+    const auto tasks = ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc, start);
+    ASSERT_EQ(tasks.size(), 2);
+    EXPECT_TRUE(tasks[0].finished) << "an hour before the start: not pending";
+    EXPECT_FALSE(tasks[1].finished) << "after the start: pending";
+
+    const auto skipped = ClaudeBgTaskTracker::finalize(acc, 0);
+    EXPECT_FALSE(skipped[0].finished) << "0 = unknown, the rule is skipped";
+    EXPECT_FALSE(skipped[1].finished);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(tracker.runningCount(), 2);
+    tracker.setProcessStartMs(start);
+    EXPECT_EQ(tracker.runningCount(), 1) << "the setter re-applies the rule";
+}

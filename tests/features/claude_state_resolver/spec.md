@@ -21,3 +21,8 @@ See `docs/specs/ANTS-1873.md` for the full contract.
   `src/claudestatuswidgets.cpp`.
 - INV-11 — regression-locked by the existing claude-status test
   suites continuing to pass.
+- ANTS-5773 INV-1 — `display()` returns `Background` iff the base is
+  Idle, `backgroundPending > 0` and no overlay is set
+  (`Ants5773BackgroundOnlyOverIdle`). ANTS-5773 INV-12 — `ClaudeState`
+  gains no value (`Ants5773ClaudeStateUnchanged`). Contract:
+  [`docs/specs/ANTS-5773-idle-means-nothing-pending.md`](../../../docs/specs/ANTS-5773-idle-means-nothing-pending.md).

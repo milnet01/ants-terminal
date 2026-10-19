@@ -81,6 +81,9 @@ QColor ClaudeTabIndicator::color(Glyph g) {
         case Glyph::Auditing:       return QColor("#C76DC7");    // magenta
         case Glyph::Compacting:     return QColor("#A87FE0");    // violet
         case Glyph::AwaitingInput:  return QColor("#F04848");    // red
+        // ANTS-5773 — pink (user, 2026-10-19): never the prompt red or the
+        // idle grey, and orange read as the ToolUse yellow.
+        case Glyph::Background:     return QColor("#F07AB4");    // pink
     }
     return QColor();
 }

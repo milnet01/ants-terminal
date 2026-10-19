@@ -11,6 +11,8 @@
 // Exit 0 = all assertions hold. Non-zero = regression.
 
 #include "claudeintegration.h"
+#include "claudestateresolver.h"
+#include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
 #include <QCoreApplication>
@@ -233,3 +235,24 @@ TEST(ClaudeStatusBar, ContextPercent) {
     ASSERT_EQ(runContextPercent(), 0);
 }
 
+
+// ANTS-5773 INV-11 — the waiting label and its per-kind tooltip, and the
+// pinned slot that keeps the pill from clipping it.
+TEST(ClaudeStatusBar, Ants5773WaitingLabel) {
+    claudestate::Resolved r;
+    r.base = ClaudeState::Idle;
+    r.backgroundShells = 1;
+    r.backgroundAgents = 2;
+    r.backgroundPending = 3;
+    EXPECT_EQ(claudestate::backgroundLabel(r), QStringLiteral("Claude: waiting (3 bg)"));
+    EXPECT_EQ(claudestate::backgroundTooltip(r),
+              QStringLiteral("3 background tasks running: 1 shell, 2 agents"))
+        << "a zero kind is omitted";
+
+    const std::string csw = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    EXPECT_NE(csw.find("\"waiting (88 bg)\""), std::string::npos)
+        << "pinSlots must list the waiting label";
+    EXPECT_NE(csw.find("text = claudestate::backgroundLabel(r);"), std::string::npos);
+    EXPECT_NE(csw.find("tip = claudestate::backgroundTooltip(r);"), std::string::npos);
+    EXPECT_NE(csw.find("glyph = ClaudeTabIndicator::Glyph::Background;"), std::string::npos);
+}

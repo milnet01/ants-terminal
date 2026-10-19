@@ -27,13 +27,11 @@ QString squashOneLine(QString s, int maxLen = 200) {
 
 // ANTS-3516 — the one liveness rule both passes apply, so the parse-time
 // pass and sweepLiveness() cannot drift apart: a task whose output file is
-// gone, or has not been written for 60 s, has no producer attached. The
-// window is generous on purpose: a long build can be silent for 30 s or
-// more (CMake configure, a slow link).
-bool outputLooksStale(const QString &outputPath, const QDateTime &now) {
-    constexpr qint64 kStaleSecs = 60;
-    const QFileInfo fi(outputPath);
-    return !fi.exists() || fi.lastModified().toUTC().secsTo(now) > kStaleSecs;
+// gone has no producer attached. ANTS-5773 — silence is not an end: a shell
+// waiting on a long job can write nothing for minutes. The phantoms the old
+// 60 s window retired are now retired by the process-start rule (finalize).
+bool outputGone(const QString &outputPath) {
+    return !QFileInfo::exists(outputPath);
 }
 
 } // namespace
@@ -87,10 +85,38 @@ int ClaudeBgTaskTracker::runningCount() const {
     return n;
 }
 
+ClaudeBgPendingCounts ClaudeBgTaskTracker::pendingCounts(
+        const QList<ClaudeBackgroundTask> &tasks) {
+    ClaudeBgPendingCounts c;
+    for (const auto &t : tasks) {
+        if (t.finished) continue;
+        switch (t.kind) {
+            case ClaudeBackgroundTask::Kind::Shell:   ++c.shells; break;
+            case ClaudeBackgroundTask::Kind::Agent:   ++c.agents; break;
+            case ClaudeBackgroundTask::Kind::Monitor: ++c.monitors; break;
+        }
+    }
+    return c;
+}
+
+// ANTS-5773 § 2.2 — re-applies the filters with the new start time, so a
+// change takes effect without waiting for a transcript write.
+void ClaudeBgTaskTracker::setProcessStartMs(qint64 ms) {
+    if (ms == m_processStartMs) return;
+    m_processStartMs = ms;
+    if (m_transcriptPath.isEmpty()) return;
+    QList<ClaudeBackgroundTask> next = finalize(m_acc, m_processStartMs);
+    bool same = (next.size() == m_tasks.size());
+    for (int i = 0; same && i < next.size(); ++i)
+        same = next[i].id == m_tasks[i].id && next[i].finished == m_tasks[i].finished;
+    m_tasks = std::move(next);
+    if (!same) emit tasksChanged();
+}
+
 // 0.7.55 (2026-04-27 indie-review) — liveness sweep without reparse.
-// Walks m_tasks and flips `finished` when the output file is gone or
-// stale (mtime > 60 s old). Same staleness logic as parseTranscript's
-// liveness pass, but skips the 16 MiB transcript walk — the status-
+// Walks m_tasks and flips `finished` when the output file is gone. Same
+// rule as parseTranscript's liveness pass, but skips the 16 MiB
+// transcript walk — the status-
 // bar 2 s timer calls this instead of rescan() so every tick costs
 // N stat() calls rather than a full transcript read.
 //
@@ -98,29 +124,25 @@ int ClaudeBgTaskTracker::runningCount() const {
 // flipped, mirroring rescan()'s no-op-no-emit behaviour so a settled
 // status bar doesn't repaint each tick.
 void ClaudeBgTaskTracker::sweepLiveness() {
-    const QDateTime now = QDateTime::currentDateTimeUtc();
     bool changed = false;
     for (auto &t : m_tasks) {
         if (t.outputPath.isEmpty()) continue;
         // ANTS-1840 — a task flipped finished by THIS heuristic (not by an
-        // authoritative transcript event) must un-latch when its output file
-        // resumes writing: a long build can go quiet > 60 s (CMake configure,
-        // slow link), get flagged finished, then start printing again. Since
-        // poll() skips rescan() while the transcript mtime is unchanged, this
-        // sweep is the only thing that re-derives liveness — without the
-        // un-latch the running-count chip stays wrong until the next genuine
-        // transcript change. A transcript-finish (finishedByLiveness == false)
-        // is permanent and never reconsidered here.
+        // authoritative transcript event) un-latches when its output file
+        // reappears. Since poll() skips rescan() while the transcript mtime
+        // is unchanged, this sweep is the only thing that re-derives
+        // liveness. A transcript-finish (finishedByLiveness == false) is
+        // permanent and never reconsidered here.
         if (t.finished) {
             if (!t.finishedByLiveness) continue;
-            if (!outputLooksStale(t.outputPath, now)) {
+            if (!outputGone(t.outputPath)) {
                 t.finished = false;
                 t.finishedByLiveness = false;
                 changed = true;
             }
             continue;
         }
-        if (outputLooksStale(t.outputPath, now)) {
+        if (outputGone(t.outputPath)) {
             t.finished = true;
             t.finishedByLiveness = true;
             changed = true;
@@ -154,7 +176,7 @@ void ClaudeBgTaskTracker::rescan() {
             m_cursor = {};
             m_acc = {};
         }
-        next = parseIncremental(m_transcriptPath, m_cursor, m_acc);
+        next = parseIncremental(m_transcriptPath, m_cursor, m_acc, m_processStartMs);
         walkCache().store(m_transcriptPath, m_cursor, m_acc);  // ANTS-5050 INV-9
     }
 
@@ -204,41 +226,110 @@ void ClaudeBgTaskTracker::poll() {
 }
 
 // Pure parser. Walks the transcript line by line, accumulating a map of
-// id → ClaudeBackgroundTask. Recognized events:
+// id → ClaudeBackgroundTask. Recognized events (ANTS-5773 spec § 2.1):
 //
-//   1. `assistant` with content[].type == "tool_use" and
-//      input.run_in_background == true:
-//      → start a partial entry keyed by tool_use_id (the "toolu_…" id).
-//
-//   2. `user` with content[].type == "tool_result" and
-//      toolUseResult.backgroundTaskId set:
-//      → finalize the entry by mapping tool_use_id → backgroundTaskId
-//      and recording the output path (parsed from the tool_result text).
-//
-//   3. `user` with content[].type == "tool_result" whose
-//      toolUseResult.status == "completed" / "killed" / "failed":
-//      → mark matching id finished. Look up by tool_use_id which for
-//      BashOutput refs the original tool_use; we also accept matches by
-//      bash_id / backgroundTaskId text-match where the tool_result body
-//      mentions the id.
-//
-//   4. `assistant` with tool_use.name == "KillShell" referencing an id:
-//      → mark that id finished.
+//   1. `assistant` tool_use named Bash / Agent / Task / Monitor: remembered
+//      by tool_use_id until its tool_result arrives. With
+//      input.run_in_background it also starts a partial entry at once.
+//   2. `user` tool_result for that call:
+//      • toolUseResult.backgroundTaskId → a shell (also a foreground
+//        command moved to the background on timeout, which has no flag);
+//      • status "async_launched" + agentId → an agent;
+//      • toolUseResult.taskId on a Monitor call → a monitor.
+//      A flagged launch for the same tool_use_id takes the id rather than
+//      a second task being started.
+//   3. `user` tool_result whose toolUseResult.status is completed / killed
+//      / failed → mark the matching id finished (BashOutput's era).
+//   4. A <task-notification> with a non-empty <status>, in a user record's
+//      own text or a queue-operation record's content → end that id.
+//   5. `assistant` tool_use KillShell (shell_id) or TaskStop (task_id, or
+//      the deprecated shell_id) → end that id.
 //
 // Out-of-scope (deliberate MVP limits):
 //   • Cross-session correlation (each session is parsed in isolation).
 //   • Recovering output paths after /tmp purge (we trust the transcript).
 namespace {
 
-// ANTS-5050 — fold one event into the accumulator. Extracted verbatim from
-// parseTranscript's walk handler so the full and incremental paths share one
-// implementation; nothing about the per-event semantics changed.
+// The shell's tool_result reads "... Output is being written to: <path>.
+// You will be notified ..." — the path ends at its ".output" suffix. Older
+// text ended at the path, so with no suffix the rest of the text is taken.
+QString outputPathFromResult(const QString &resultText) {
+    const int marker = resultText.indexOf(QStringLiteral("written to: "));
+    if (marker < 0) return {};
+    QString p = resultText.mid(marker + 12);
+    const int suffix = p.indexOf(QStringLiteral(".output"));
+    if (suffix >= 0) return p.left(suffix + 7);
+    p = p.trimmed();
+    while (p.endsWith('.') || p.endsWith(' ')) p.chop(1);
+    return p;
+}
+
+void finishById(ClaudeBgTaskAccum &acc, const QString &id) {
+    auto it = acc.idxByBgId.constFind(id);
+    if (it != acc.idxByBgId.constEnd()) acc.raw[it.value()].finished = true;
+}
+
+// ANTS-5773 — end every task a <task-notification> block with a non-empty
+// <status> names. A block without one (a monitor's per-event notice) ends
+// nothing.
+void applyNotifications(ClaudeBgTaskAccum &acc, const QString &text) {
+    if (!text.contains(QLatin1String("<task-notification>"))) return;
+    static const QRegularExpression block(
+        QStringLiteral("<task-notification>(.*?)</task-notification>"),
+        QRegularExpression::DotMatchesEverythingOption);
+    static const QRegularExpression idRx(QStringLiteral("<task-id>\\s*([^<\\s]+)\\s*</task-id>"));
+    static const QRegularExpression statusRx(QStringLiteral("<status>\\s*([^<]*?)\\s*</status>"));
+    for (auto m = block.globalMatch(text); m.hasNext();) {
+        const QString body = m.next().captured(1);
+        const QString status = statusRx.match(body).captured(1);
+        if (status.isEmpty()) continue;
+        finishById(acc, idRx.match(body).captured(1));
+    }
+}
+
+// ANTS-5773 — start a task from a remembered call, or give the id to the
+// flagged launch already started for this tool_use_id.
+ClaudeBackgroundTask &startTask(ClaudeBgTaskAccum &acc, const QString &tuId,
+                                const ClaudeBgPendingCall &call,
+                                const QString &fallbackTs,
+                                ClaudeBackgroundTask::Kind kind,
+                                const QString &id) {
+    auto it = acc.idxByToolUseId.constFind(tuId);
+    int idx;
+    if (it != acc.idxByToolUseId.constEnd()) {
+        idx = it.value();
+    } else {
+        ClaudeBackgroundTask t;
+        t.tool = call.name;
+        t.description = call.description.isEmpty() ? call.command : call.description;
+        t.command = call.command;
+        t.startedAt = call.startedAt.isValid()
+            ? call.startedAt : QDateTime::fromString(fallbackTs, Qt::ISODateWithMs);
+        acc.raw.append(t);
+        idx = acc.raw.size() - 1;
+        if (!tuId.isEmpty()) acc.idxByToolUseId.insert(tuId, idx);
+    }
+    ClaudeBackgroundTask &t = acc.raw[idx];
+    t.id = id;
+    t.kind = kind;
+    acc.idxByBgId.insert(id, idx);
+    return t;
+}
+
+// ANTS-5050 — fold one event into the accumulator. The full and incremental
+// paths share this one implementation.
 void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
     QList<ClaudeBackgroundTask> &out = acc.raw;
     QHash<QString, int> &idxByToolUseId = acc.idxByToolUseId;
     QHash<QString, int> &idxByBgId = acc.idxByBgId;
 
     const QString type = ev.value(QStringLiteral("type")).toString();
+    const QString ts = ev.value(QStringLiteral("timestamp")).toString();
+
+    if (type == QLatin1String("queue-operation")) {
+        applyNotifications(acc, ev.value(QStringLiteral("content")).toString());
+        return;
+    }
 
     if (type == QLatin1String("assistant")) {
         const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
@@ -251,32 +342,46 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
             const QString toolUseId = c.value(QStringLiteral("id")).toString();
             const QJsonObject input = c.value(QStringLiteral("input")).toObject();
 
-            // KillShell — finishes a tracked task by id.
-            if (toolName == QLatin1String("KillShell")) {
-                const QString killId = input.value(QStringLiteral("shell_id")).toString();
-                auto it = idxByBgId.find(killId);
-                if (it != idxByBgId.end()) {
-                    out[it.value()].finished = true;
-                }
+            // KillShell / TaskStop — finish a tracked task by id.
+            if (toolName == QLatin1String("KillShell")
+                || toolName == QLatin1String("TaskStop")) {
+                QString killId = input.value(QStringLiteral("task_id")).toString();
+                if (killId.isEmpty())
+                    killId = input.value(QStringLiteral("shell_id")).toString();
+                finishById(acc, killId);
                 continue;
             }
 
+            const bool mayStart = toolName == QLatin1String("Bash")
+                || toolName == QLatin1String("Agent")
+                || toolName == QLatin1String("Task")
+                || toolName == QLatin1String("Monitor");
+            const bool flagged = input.value(QStringLiteral("run_in_background")).toBool();
+            if (!mayStart && !flagged) continue;
+
+            ClaudeBgPendingCall call;
+            call.name = toolName;
+            call.description = input.value(QStringLiteral("description")).toString();
+            call.command = input.value(QStringLiteral("command")).toString();
+            if (call.command.isEmpty())
+                call.command = input.value(QStringLiteral("prompt")).toString();
+            call.command = squashOneLine(call.command, 400);
+            if (call.description.isEmpty()) {
+                // Task tool: description fallback to subagent_type.
+                call.description = input.value(QStringLiteral("subagent_type")).toString();
+            }
+            call.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
+            if (!toolUseId.isEmpty()) acc.calls.insert(toolUseId, call);
+
             // BackgroundTask launch.
-            if (input.value(QStringLiteral("run_in_background")).toBool()) {
+            if (flagged) {
                 ClaudeBackgroundTask t;
-                t.tool = toolName;
-                t.description = input.value(QStringLiteral("description")).toString();
-                t.command = input.value(QStringLiteral("command")).toString();
-                if (t.command.isEmpty())
-                    t.command = input.value(QStringLiteral("prompt")).toString();
-                t.command = squashOneLine(t.command, 400);
-                if (t.description.isEmpty()) {
-                    // Task tool: description fallback to subagent_type.
-                    t.description = input.value(QStringLiteral("subagent_type")).toString();
-                }
-                if (t.description.isEmpty()) t.description = t.command;
-                const QString ts = ev.value(QStringLiteral("timestamp")).toString();
-                t.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
+                t.tool = call.name;
+                t.description = call.description.isEmpty() ? call.command : call.description;
+                t.command = call.command;
+                t.startedAt = call.startedAt;
+                if (toolName == QLatin1String("Agent") || toolName == QLatin1String("Task"))
+                    t.kind = ClaudeBackgroundTask::Kind::Agent;
                 out.append(t);
                 if (!toolUseId.isEmpty())
                     idxByToolUseId.insert(toolUseId, out.size() - 1);
@@ -284,35 +389,47 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
         }
     } else if (type == QLatin1String("user")) {
         const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
-        const QJsonArray content = msg.value(QStringLiteral("content")).toArray();
+        const QJsonValue contentValue = msg.value(QStringLiteral("content"));
+        // ANTS-5773 — a notification arrives as the user record's own text:
+        // a string, or text blocks. Text inside a tool_result is a tool's
+        // output (a file that quotes a notification) and is not read.
+        if (contentValue.isString()) {
+            applyNotifications(acc, contentValue.toString());
+            return;
+        }
+        const QJsonArray content = contentValue.toArray();
         const QJsonObject tur = ev.value(QStringLiteral("toolUseResult")).toObject();
         const QString bgId = tur.value(QStringLiteral("backgroundTaskId")).toString();
         const QString trStatus = tur.value(QStringLiteral("status")).toString();
         for (const QJsonValue &cv : content) {
             const QJsonObject c = cv.toObject();
-            if (c.value(QStringLiteral("type")).toString() != QLatin1String("tool_result"))
+            const QString blockType = c.value(QStringLiteral("type")).toString();
+            if (blockType == QLatin1String("text")) {
+                applyNotifications(acc, c.value(QStringLiteral("text")).toString());
+                continue;
+            }
+            if (blockType != QLatin1String("tool_result"))
                 continue;
             const QString tuId = c.value(QStringLiteral("tool_use_id")).toString();
+            const ClaudeBgPendingCall call = acc.calls.take(tuId);
 
-            // Confirmation of a launched background task.
             if (!bgId.isEmpty()) {
-                auto it = idxByToolUseId.find(tuId);
-                if (it != idxByToolUseId.end()) {
-                    ClaudeBackgroundTask &t = out[it.value()];
-                    t.id = bgId;
-                    // The tool_result text is "Command running in
-                    // background with ID: <id>. Output is being
-                    // written to: <path>". Extract the path.
-                    const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
-                    const int marker = resultText.indexOf(QStringLiteral("written to: "));
-                    if (marker >= 0) {
-                        QString p = resultText.mid(marker + 12).trimmed();
-                        // Strip trailing punctuation if any.
-                        while (p.endsWith('.') || p.endsWith(' ')) p.chop(1);
-                        t.outputPath = p;
-                    }
-                    idxByBgId.insert(bgId, it.value());
-                }
+                // A shell: flagged, or moved to the background on timeout.
+                ClaudeBackgroundTask &t = startTask(acc, tuId, call, ts,
+                    ClaudeBackgroundTask::Kind::Shell, bgId);
+                const QString p = outputPathFromResult(
+                    ClaudeContent::toText(c.value(QStringLiteral("content"))));
+                if (!p.isEmpty()) t.outputPath = p;
+            } else if (trStatus == QLatin1String("async_launched")
+                       && !tur.value(QStringLiteral("agentId")).toString().isEmpty()) {
+                ClaudeBackgroundTask &t = startTask(acc, tuId, call, ts,
+                    ClaudeBackgroundTask::Kind::Agent,
+                    tur.value(QStringLiteral("agentId")).toString());
+                t.outputPath = tur.value(QStringLiteral("outputFile")).toString();
+            } else if (call.name == QLatin1String("Monitor")
+                       && !tur.value(QStringLiteral("taskId")).toString().isEmpty()) {
+                startTask(acc, tuId, call, ts, ClaudeBackgroundTask::Kind::Monitor,
+                          tur.value(QStringLiteral("taskId")).toString());
             }
 
             // BashOutput / Task tool_result with a completion status.
@@ -363,11 +480,14 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
     }
 }
 
+}  // namespace
+
 // ANTS-5050 — the end-of-parse filters. Re-runnable over the accumulator on
 // every emit: the id filter cannot be baked in (the backgroundTaskId arrives
-// in a later event than the launch), and the liveness sweep reads wall clock
-// and the output files, so its answer legitimately changes between walks.
-QList<ClaudeBackgroundTask> finalizeBgTasks(const ClaudeBgTaskAccum &acc) {
+// in a later event than the launch), and the liveness pass reads the output
+// files, so its answer legitimately changes between walks.
+QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::finalize(
+        const ClaudeBgTaskAccum &acc, qint64 processStartMs) {
 
     // Drop entries that never received a backgroundTaskId — those are
     // launches that crashed before the user-side confirmation, and we
@@ -381,37 +501,24 @@ QList<ClaudeBackgroundTask> finalizeBgTasks(const ClaudeBgTaskAccum &acc) {
         if (!t.id.isEmpty()) filtered.append(t);
     }
 
-    // Liveness sweep — bug 2026-04-27.
-    // The transcript-based completion detection (KillShell event,
-    // BashOutput tool_result with status=completed/killed/failed) only
-    // catches tasks whose completion was *observed* by Claude Code via
-    // a follow-up tool call. Background tasks that were spawned and
-    // never polled, or whose completion landed after the assistant
-    // moved on, leave entries with `finished == false` indefinitely —
-    // resulting in a stale running-count chip on the status bar
-    // (12-task report from a session with zero genuinely-running
-    // tasks).
-    //
-    // Fix: cross-check each unfinished task against its on-disk output
-    // file. Claude Code writes background-task stdout/stderr to
-    // `/tmp/claude-$UID/<encoded-project>/<session>/tasks/<id>.output`
-    // and stops touching the file the moment the underlying process
-    // exits. We treat a task as finished when:
-    //   • the file no longer exists (most likely /tmp purge after a
-    //     reboot, but also fires if the file was reaped),
-    //   • OR the file's mtime is older than the staleness window
-    //     below (60 s of no writes ⇒ the producer is gone).
-    //
-    // outputLooksStale() holds the 60 s window and why it is generous.
-    // False-negatives (a real running task flagged finished) are corrected
-    // by sweepLiveness() once the file writes again — but in practice the
-    // assistant polls long-running tasks via BashOutput well before the
-    // window elapses.
-    const QDateTime now = QDateTime::currentDateTimeUtc();
+    // Liveness — bug 2026-04-27: tasks whose end was never recorded
+    // lingered as phantoms on the running-count chip. Two rules retire
+    // them (ANTS-5773 § 2.2):
+    //   • a task started before this Claude process did belongs to an
+    //     earlier process, and is not running. Old sessions' output files
+    //     persist in /tmp, so "the file is gone" alone cannot retire them;
+    //   • a task whose output file is gone has no producer (a /tmp purge
+    //     after a reboot, or the file was reaped). sweepLiveness un-latches
+    //     it if the file reappears.
     for (auto &t : filtered) {
         if (t.finished) continue;
+        if (processStartMs > 0 && t.startedAt.isValid()
+            && t.startedAt.toMSecsSinceEpoch() < processStartMs) {
+            t.finished = true;
+            continue;
+        }
         if (t.outputPath.isEmpty()) continue;  // can't tell — leave alone
-        if (outputLooksStale(t.outputPath, now)) {
+        if (outputGone(t.outputPath)) {
             t.finished = true;
             t.finishedByLiveness = true;  // ANTS-1840: heuristic, not transcript
         }
@@ -420,14 +527,12 @@ QList<ClaudeBackgroundTask> finalizeBgTasks(const ClaudeBgTaskAccum &acc) {
     return filtered;
 }
 
-}  // namespace
-
 QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseIncremental(
         const QString &path, ClaudeTranscript::Cursor &cursor,
-        ClaudeBgTaskAccum &acc) {
+        ClaudeBgTaskAccum &acc, qint64 processStartMs) {
     ClaudeTranscript::walkFrom(path, cursor,
         [&acc](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); });
-    return finalizeBgTasks(acc);
+    return finalize(acc, processStartMs);
 }
 
 QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &path) {

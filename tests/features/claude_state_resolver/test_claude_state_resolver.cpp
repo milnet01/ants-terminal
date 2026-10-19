@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include <cctype>
 #include <string>
 
 #include "claudestateresolver.h"
@@ -54,6 +55,18 @@ TEST(ClaudeStateResolver, Inv1FromShellLossless) {
     EXPECT_TRUE(r.planMode);
     EXPECT_FALSE(r.auditing);
     EXPECT_TRUE(r.awaitingInput);
+
+    // ANTS-5773 — the adapter also carries the background counts and
+    // their sum.
+    auto bg = makeShell(ClaudeState::Idle);
+    bg.backgroundShells = 1;
+    bg.backgroundAgents = 2;
+    bg.backgroundMonitors = 4;
+    const Resolved rb = claudestate::fromShell(bg);
+    EXPECT_EQ(rb.backgroundShells, 1);
+    EXPECT_EQ(rb.backgroundAgents, 2);
+    EXPECT_EQ(rb.backgroundMonitors, 4);
+    EXPECT_EQ(rb.backgroundPending, 7);
 }
 
 // INV-2 — awaitingInput wins over every other field.
@@ -260,4 +273,66 @@ TEST(ClaudeStateResolver, Inv10ShellStateChangedTriggersApply) {
         << "INV-10: shellStateChanged handler must call apply() so the "
            "status bar refreshes when the focused tab's tracker state "
            "changes (the bidirectional desync fix).";
+}
+
+// ANTS-5773 INV-1 — Background iff base == Idle, work is pending, and no
+// overlay is set. With nothing pending every case reads as before.
+TEST(ClaudeStateResolver, Ants5773BackgroundOnlyOverIdle) {
+    struct Overlay { bool awaiting, plan, audit; };
+    const Overlay overlays[] = {{false, false, false}, {true, false, false},
+                                {false, true, false},  {false, false, true}};
+    for (auto base : {ClaudeState::NotRunning, ClaudeState::Idle,
+                      ClaudeState::Thinking, ClaudeState::ToolUse,
+                      ClaudeState::Compacting}) {
+        for (const Overlay &o : overlays) {
+            Resolved r;
+            r.base = base;
+            r.tool = QStringLiteral("Read");
+            r.awaitingInput = o.awaiting;
+            r.planMode = o.plan;
+            r.auditing = o.audit;
+            const claudestate::Display without = claudestate::display(r);
+            EXPECT_NE(without, Display::Background);
+            r.backgroundShells = 2;
+            r.backgroundPending = 2;
+            const claudestate::Display with = claudestate::display(r);
+            const bool expectBg = base == ClaudeState::Idle
+                && !o.awaiting && !o.plan && !o.audit;
+            if (expectBg) {
+                EXPECT_EQ(without, Display::Idle);
+                EXPECT_EQ(with, Display::Background);
+            } else {
+                EXPECT_EQ(with, without)
+                    << "the count changed base=" << int(base)
+                    << " awaiting=" << o.awaiting << " plan=" << o.plan
+                    << " audit=" << o.audit;
+            }
+        }
+    }
+}
+
+// ANTS-5773 INV-12 (guard) — ClaudeState gains no value, so tab_list,
+// ModelAutoSwitch and idleSinceMs still see Idle for a waiting tab.
+TEST(ClaudeStateResolver, Ants5773ClaudeStateUnchanged) {
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const auto at = h.find("enum class ClaudeState");
+    ASSERT_NE(at, std::string::npos);
+    const auto open = h.find('{', at);
+    const auto close = h.find('}', open);
+    ASSERT_NE(close, std::string::npos);
+    std::string body = h.substr(open + 1, close - open - 1);
+    // Strip comments, then collect the identifiers.
+    std::string names;
+    for (size_t i = 0; i < body.size(); ++i) {
+        if (body.compare(i, 2, "//") == 0) {
+            i = body.find('\n', i);
+            if (i == std::string::npos) break;
+            continue;
+        }
+        const char c = body[i];
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') names += c;
+        else if (c == ',' ) names += ',';
+    }
+    if (!names.empty() && names.back() == ',') names.pop_back();
+    EXPECT_EQ(names, "NotRunning,Idle,Thinking,ToolUse,Compacting");
 }

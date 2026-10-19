@@ -8,9 +8,13 @@
 // Exit 0 = all invariants hold. Non-zero = regression.
 
 #include "claudeintegration.h"
+#include "claudestateresolver.h"
+#include "claudetabtracker.h"
 
 #include <gtest/gtest.h>
 #include <QCoreApplication>
+#include <QFile>
+#include <QTemporaryDir>
 #include <QJsonObject>
 #include <QSignalSpy>
 #include <QString>
@@ -212,3 +216,51 @@ TEST(ClaudeStatusBarPerTab, ColdStartPermissionRequestDropped) {
     ASSERT_EQ(runColdStartPermissionRequestDropped(), 0);
 }
 
+
+// ANTS-5773 INV-9 — each tracked shell's counts come from its own
+// transcript: a tab that was never focused still shows Background.
+TEST(ClaudeStatusBarPerTab, Ants5773UnfocusedTabCountsItsOwnTasks) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    {
+        QFile f(out);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("x\n");
+    }
+    // A timed-out shell moved to the background, then the turn ends.
+    const QString busy = dir.filePath(QStringLiteral("busy.jsonl"));
+    {
+        QFile f(busy);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(
+            R"({"type":"assistant","timestamp":"2026-10-19T10:31:21.000Z","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash","id":"toolu_017V","input":{"command":"cc-job wait build","timeout":600000}}]}})" "\n"
+            R"({"type":"user","timestamp":"2026-10-19T10:41:21.109Z","toolUseResult":{"backgroundTaskId":"bwmysc2h1","timedOutAfterMs":600000},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_017V","content":"Command did not complete within its 600s timeout and was moved to the background (ID: bwmysc2h1). Output is being written to: )");
+        f.write(out.toUtf8());
+        f.write(
+            R"(. You will be notified when it completes."}]}})" "\n"
+            R"({"type":"assistant","timestamp":"2026-10-19T10:41:30.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Waiting on the build."}]}})" "\n");
+    }
+    const QString quiet = dir.filePath(QStringLiteral("quiet.jsonl"));
+    {
+        QFile f(quiet);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(R"({"type":"assistant","timestamp":"2026-10-19T10:41:30.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Done."}]}})" "\n");
+    }
+
+    ClaudeTabTracker tracker;
+    const pid_t focusedPid = 990001, otherPid = 990002;
+    tracker.forceRefreshForTest(focusedPid, quiet);
+    tracker.forceRefreshForTest(otherPid, busy);   // never focused
+
+    const auto other = tracker.shellState(otherPid);
+    EXPECT_EQ(other.backgroundShells, 1);
+    EXPECT_EQ(claudestate::display(claudestate::fromShell(other)),
+              claudestate::Display::Background);
+    EXPECT_EQ(tracker.transcriptPath(otherPid), busy);
+
+    const auto focused = tracker.shellState(focusedPid);
+    EXPECT_EQ(focused.backgroundShells, 0);
+    EXPECT_EQ(claudestate::display(claudestate::fromShell(focused)),
+              claudestate::Display::Idle);
+}
