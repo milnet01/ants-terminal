@@ -41,24 +41,11 @@ Pty::~Pty() {
         int status = 0;
         if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
             // Child still running — synchronous SIGTERM → 500 ms wait
-            // → SIGKILL escalation on the calling thread.
-            //
-            // ANTS-1189 (2026-05-08): pre-fix code spawned a detached
-            // worker here to keep the GUI responsive when N split
-            // panes closed together. That worker outlived the
-            // destructor and raced main-thread Qt teardown, producing
-            // reproducible `_int_free_chunk` SIGABRT crashes in
-            // `~TerminalWidget` on app exit (3 user repros, identical
-            // fingerprint).
-            //
-            // The 0.7.33 "GUI freezes 500 ms × N panes" concern no
-            // longer applies: in the threaded VtStream architecture
-            // (0.7.0+) `~Pty` runs on the parse-worker thread (see
-            // `VtStream::~VtStream`), not the GUI thread. The GUI
-            // blocks at most on `m_parseThread->wait(2000)` in
-            // `TerminalWidget::~TerminalWidget`, which already caps
-            // its own wait at 2 s. The worker thread blocks here,
-            // never the GUI thread.
+            // → SIGKILL escalation on the calling thread. Never a
+            // detached worker: one that outlives the destructor races
+            // Qt teardown (ANTS-1189). Blocking is safe because ~Pty
+            // runs on the parse-worker thread (VtStream::~VtStream),
+            // and the GUI caps its own wait on that thread at 2 s.
             ::kill(m_childPid, SIGTERM);
             // SIGCONT alongside SIGTERM: if the shell is stopped (Ctrl-Z'd
             // job or its own process group suspended), SIGTERM won't be
@@ -71,19 +58,12 @@ Pty::~Pty() {
             }
             if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
                 ::kill(m_childPid, SIGKILL);
-                // Bounded reap — SIGKILL almost always reaches the
-                // process within microseconds, but a process stuck
-                // in uninterruptible sleep (broken NFS, wedged kernel
-                // I/O) can defer signal delivery briefly. Cap at 1 s
-                // so total destructor budget stays ≤ 1.5 s, comfortably
-                // within `m_parseThread->wait(2000)` in
-                // `~TerminalWidget`. Pre-fix used a blocking
-                // `waitpid(pid, &st, 0)` here — unbounded wait could
-                // hang the worker thread, time out the GUI's wait(),
-                // and trigger Qt's "destroying a running QThread
-                // aborts the program" assertion. On bounded-loop
-                // timeout we leak a zombie; init reaps it on app
-                // exit, which is the acceptable degradation path.
+                // Bounded reap, never a blocking waitpid: a process in
+                // uninterruptible sleep can defer SIGKILL, and an
+                // unbounded wait outlasts the GUI's 2 s wait on this
+                // thread, which aborts the program. The 1 s cap keeps
+                // the destructor within 1.5 s. On timeout we leak a
+                // zombie for init to reap.
                 for (int i = 0; i < 100; ++i) {
                     if (::waitpid(m_childPid, &status, WNOHANG) != 0) break;
                     ::usleep(10000);  // 10 ms × 100 = 1 s total
@@ -118,19 +98,12 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
 
-    // ANTS-1046 indie-review-2026-04-27: pre-fork the flatpak-spawn
-    // argv and the version/directory string buffers so the child
-    // does no `std::string` / `std::vector` allocation between
-    // forkpty and execvp. The previous post-fork build relied on
-    // the glibc malloc fork-handler — usually safe, not strictly
-    // POSIX async-signal-safe in a multithreaded program (the
-    // parent has the audit pipeline, AI dialog, and Lua VMs
-    // threaded by the time forkpty fires). snprintf is on the
-    // POSIX async-signal-safe list (§ 2.4.3) and writes into
-    // these stack buffers without touching the heap. The argv
-    // pointers reference the parent's stack; forkpty's COW
-    // semantics make them readable in the child until execvp
-    // replaces the address space.
+    // The rule for everything up to the fork (ANTS-1046, ANTS-1135):
+    // the child must not allocate between forkpty and exec. This process
+    // is multithreaded, and malloc after fork can deadlock on an arena
+    // lock another thread held. So every buffer the child reads — argv,
+    // envp, paths — is built here, in the parent, and the child reads
+    // them through fork's copy-on-write until exec replaces it.
     const bool inFlatpak =
         ::getenv("FLATPAK_ID") != nullptr ||
         ::access("/.flatpak-info", F_OK) == 0;
@@ -169,16 +142,8 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         }
     }
 
-    // ANTS-1135 — pre-fork envp build for the non-flatpak shell
-    // launch. Pre-fix code called ::setenv() five times in the
-    // child, but setenv is NOT on POSIX's async-signal-safe list
-    // (§ 2.4.3) — it can call realloc() to grow `environ`. The
-    // CLAUDE.md contract claims "child only does execvp" and the
-    // flatpak path already pays the engineering cost to prep argv
-    // pre-fork; this closes the same hole on the non-flatpak
-    // path. Stack-allocated buffers + pointer table; the child
-    // reads the parent's stack via fork's COW semantics until
-    // execle replaces the address space.
+    // ANTS-1135 — the child's envp, built here rather than by setenv() in
+    // the child, because setenv can realloc `environ`.
     char termProgramVerArg[128];
     (void)::snprintf(termProgramVerArg, sizeof(termProgramVerArg),
                      "TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
@@ -282,7 +247,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     // ANTS-1751 — set FD_CLOEXEC on the master as the FIRST parent action
     // after the fork. forkpty has no atomic O_CLOEXEC variant, so the
     // master comes back inheritable; doing this here (rather than after
-    // the ~140-line child/parent setup below) shrinks to a few
+    // the child/parent setup below) shrinks to a few
     // instructions the window in which a concurrent fork on another
     // thread (e.g. an audit QProcess) could inherit the PTY master.
     // The residual window cannot be closed without serialising every
@@ -343,6 +308,8 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
                 // hardened-server profiles where rlim_cur is in the
                 // hundreds of thousands.
                 if (cur > 65536) cur = 65536;
+                // Never below 1024: an fd inherited from a parent with a
+                // higher limit can sit above this process's rlim_cur.
                 if (cur > 1024) maxFd = static_cast<int>(cur);
                 else            maxFd = 1024;
             }
@@ -359,19 +326,12 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             if (::chdir(workDirBytesPre.constData()) != 0) {
                 // Fall back to home directory — resolved pre-fork (ANTS-2204) so
                 // no async-signal-unsafe getenv() runs between fork and exec.
-                if (!homeBytesPre.isEmpty() &&
-                    ::chdir(homeBytesPre.constData()) != 0) { /* last-resort fallback, ignore failure */ }
+                // Last resort; if this fails too, the shell starts in the
+                // inherited cwd.
+                if (!homeBytesPre.isEmpty())
+                    (void)::chdir(homeBytesPre.constData());
             }
         }
-
-        // ANTS-1135 — env passed via execle's envp arg below; the
-        // 5 setenv() calls that used to live here have been
-        // moved to the pre-fork prep block (which is signal-safe
-        // because the parent isn't post-fork). Pre-fix: child
-        // called setenv() ×5, which can realloc(environ) — not
-        // on POSIX's async-signal-safe list. CLAUDE.md asserts
-        // "child only does execvp"; this matches the flatpak
-        // path's pre-fork-allocation discipline.
 
         // Flatpak: execute the user's shell on the host via
         // `flatpak-spawn --host` so the sandbox doesn't cut off $PATH,
@@ -565,8 +525,8 @@ void Pty::onWriteReady() {
             // ANTS-4456: the pre-fix code shared the EAGAIN break here
             // under a comment claiming the fatal case was handled below.
             // Nothing handled it. The notifier is disarmed only when the
-            // queue empties, and a dead master stays write-ready (see
-            // Pty::start), so the slot re-fired forever: write fails,
+            // queue empties, and a dead master keeps the write notifier
+            // firing, so the slot re-fired forever: write fails,
             // nothing is consumed, event loop spins at 100% CPU for the
             // life of the process with no error surfaced.
             fatalErrno = errno;
@@ -693,8 +653,8 @@ void Pty::onReadReady() {
                 break;
         } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
             // n == 0 → EOF (child closed the PTY).
-            // n < 0  → read error; EAGAIN/EINTR hit the final else below,
-            //          anything else means the child has exited.
+            // n < 0  → read error other than EAGAIN/EINTR: the child has
+            //          exited.
             m_readEof = true;
             m_readNotifier->setEnabled(false);
             int status = 0;
@@ -722,7 +682,9 @@ void Pty::onReadReady() {
             emit finished(exitCode);
             break;
         } else {
-            // EAGAIN — no more data right now
+            // EAGAIN or EINTR — stop for now. Unlike the write loops, an
+            // interrupted read needs no retry: the level-triggered read
+            // notifier fires again while data is waiting.
             break;
         }
     }

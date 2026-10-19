@@ -3,7 +3,6 @@
 #include <QByteArray>
 #include <QObject>
 #include <QSocketNotifier>
-#include <QSize>
 #include <sys/types.h>
 
 #include <atomic>
@@ -67,9 +66,10 @@ public slots:
 signals:
     void dataReceived(const QByteArray &data);
     void finished(int exitCode);
-    // Emitted when write() drops data due to pending-write queue overflow
-    // (> MAX_PENDING_WRITE_BYTES). Callers can use this to implement back-pressure
-    // or alert the user (ANTS-1349).
+    // Emitted whenever bytes handed to write() can never reach the PTY: the
+    // pending-write queue is full (> MAX_PENDING_WRITE_BYTES), an EAGAIN
+    // remainder is over that cap, or a write or drain fails fatally (a dead
+    // master). Callers can use this to alert the user (ANTS-1349, ANTS-4456).
     void writeLost(qint64 byteCount);
     // ANTS-5075 — the EAGAIN queue has just been written out in full.
     void writeDrained();
