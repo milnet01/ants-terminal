@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5783 -->
+<!-- ants-roadmap-id-high-water: ANTS=5784 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -3254,6 +3254,13 @@ remainder, captured so they don't drop on the floor.
   nothing; it must assert stateDetermined too. Second suspect, unconfirmed:
   ClaudeTabTracker has no backstop re-read, so one missed watcher event
   freezes the state.
+  Second symptom, user report 2026-10-19 (screenshot, finbreak tab): an
+  AskUserQuestion prompt waiting for an answer showed "Claude: idle" and
+  no waiting colour (ANTS-5718). Same cause, confirmed from the session's
+  transcript tail: assistant tool_use:AskUserQuestion, then last-prompt,
+  ai-title, mode, atis-latch. `last-prompt` is a further type the
+  deny-list lacks. The allow-list walk fixes both symptoms; the test
+  should cover a pending AskUserQuestion followed by those four records.
   **Layman:** The status bar could say Claude was idle while it was busy, most often right after a background job finished and Claude carried on by itself.
   Kind: fix.
   Source: user-report-2026-10-19.
@@ -91876,6 +91883,20 @@ asked for them to ship in 0.8.0.
   Kind: refactor.
   Source: readability-trial-review-2026-10-19.
   Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5784] **CSI ? J (DECSED) erases like ED in the grid but does not clear the selection.**
+  Found 2026-10-19 while fixing ANTS-5782. TerminalGrid::handleCsi's
+  case 'J' calls eraseInDisplay without checking a.intermediate, so
+  CSI ? 2 J wipes the screen exactly like ED 2. VtStream::onParsedAction
+  sets clearSelectionHint only when the intermediate is empty, so the
+  selection survives that wipe. Pick one: implement DECSED (keep
+  protected cells, which needs DECSCA) and leave the hint as is, or treat
+  CSI ? J as ED in both places. Either way add a vtstream_clear_hint
+  case for CSI ? 2 J.
+  **Layman:** A program that wipes the screen with the "selective erase" command leaves your old text selection highlighted on a blank screen.
+  Kind: fix.
+  Source: readability-fix-pass-2026-10-19.
+  Lanes: terminal-grid, vt-parser-pty.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
