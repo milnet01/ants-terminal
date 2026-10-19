@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5784 -->
+<!-- ants-roadmap-id-high-water: ANTS=5788 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -3239,7 +3239,7 @@ remainder, captured so they don't drop on the floor.
   Source: user-request-2026-10-19.
   Lanes: claudestateresolver, claudebgtasks, claudestatuswidgets, coloredtabbar.
 
-- 📋 [ANTS-5779] **The status bar reads "Claude: idle" while Claude is working, when the transcript ends in a record type the parser does not know.**
+- ✅ [ANTS-5779] **The status bar reads "Claude: idle" while Claude is working, when the transcript ends in a record type the parser does not know.**
   Seen 2026-10-19 on 0.7.114 (99ca7222): a turn started by a
   task-notification showed "Claude: idle" while thinking and running Bash.
   Cause: parseTranscriptTail's backward walk (src/claudeintegration.cpp)
@@ -3261,6 +3261,11 @@ remainder, captured so they don't drop on the floor.
   ai-title, mode, atis-latch. `last-prompt` is a further type the
   deny-list lacks. The allow-list walk fixes both symptoms; the test
   should cover a pending AskUserQuestion followed by those four records.
+  Shipped 2026-10-19: the walk is an allow-list (assistant, user, human,
+  attachment) and the state search widens its own window. Correction to
+  the note above: last-prompt was already on the old deny-list; the four
+  other records were the cause. Reaches a running terminal on its next
+  relaunch.
   **Layman:** The status bar could say Claude was idle while it was busy, most often right after a background job finished and Claude carried on by itself.
   Kind: fix.
   Source: user-report-2026-10-19.
@@ -20290,22 +20295,6 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-09-26 (close-findings audit pass).
   Lanes: mcp.
-
-- 📋 [ANTS-5602] **A verb that names the tests which read a given source file.**
-  Measured 2026-10-01: ANTS-5527's tests were picked by a name regex;
-  the push gate then failed on two source-scrape tests that read the
-  edited files (cited_by INV-9 via slurpRemoteControl, and the partition
-  coverage test), costing a ~10 min gate run and a fix commit.
-  focused_test maps changed files to ctest names, but a scrape test
-  reaches a file through a SRC_*_PATH or ANTS_SOURCE_DIR compile
-  definition or an ants_test::slurp* helper, which a name map cannot
-  see. A verb (or a focused_test mode) could read those definitions from
-  CMakeLists.txt and the slurp helpers, and return the tests that read a
-  given path.
-  **Layman:** After changing a file, a session could run just the tests that check it, instead of the whole suite or a guess.
-  Kind: feature.
-  Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
-  Lanes: mcp, tests.
 
 - 📋 [ANTS-5690] **spec_log op:"set_status" cannot add a Status line to a spec that has none.**
   Measured 2026-10-15: dry-run set_status on ANTS-1633 (no Status line)
@@ -91907,6 +91896,91 @@ asked for them to ship in 0.8.0.
   Kind: fix.
   Source: readability-fix-pass-2026-10-19.
   Lanes: terminal-grid, vt-parser-pty.
+
+- 📋 [ANTS-5785] **duplicate_blocks verb: find repeated and diverged code blocks across files.**
+  Shape agreed with claude-config (CFG-0830), 2026-10-19.
+  Args: paths[] (files or dirs); min_lines (default 5); similarity
+  threshold for near-matches; normalise_names; include_tests and
+  include_generated (both off by default).
+  Returns groups, largest first: {id (stable), lines, copies,
+  diverged, finding_shape (copies>=3 || diverged, per coding.md
+  § 1.3's Rule of Three), sites[{file, start, end}], diff between
+  sites}. Grades nothing; the readability skill's lanes confirm or
+  dismiss by id.
+  Reuse: DocDedup's shingle and cluster machinery (src/docdedup.h),
+  segmented by line windows instead of paragraphs.
+  **Layman:** A tool that lists code written out more than once, including copies that have drifted apart, so a reviewer checks a short list instead of hunting.
+  Kind: feature.
+  Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
+  Lanes: mcp.
+
+- 📋 [ANTS-5786] **comment_claims verb: check the claims code comments make.**
+  Shape agreed with claude-config (CFG-0830), 2026-10-19.
+  Args: paths[]; include_tests and include_generated (off by
+  default). Returns two buckets.
+  findings (tool-decided, routed to check-code): a quoted text
+  attributed to a file that lacks it; a "see X" naming a symbol or
+  path that does not exist; a ticket id absent from the roadmap.
+  candidates (judgement, for readability lanes): census numbers in
+  comments ("~140-line", "the 5 keys").
+  Each row: {id, file, line, kind, quote, why}.
+  Reuse: QuotationCheck::run for quotes; DocSymbols' resolve step
+  for symbols (it needs a comment harvester, as it reads only
+  backtick spans).
+  **Layman:** A tool that catches comments that quote a file wrongly, point at code that is gone, or carry numbers that go stale.
+  Kind: feature.
+  Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
+  Lanes: mcp.
+
+- 📋 [ANTS-5787] **function_sizes verb: rank the longest functions in given paths.**
+  Shape agreed with claude-config (CFG-0830), 2026-10-19. A ranked
+  shortlist only; a long function is not a finding by itself.
+  Args: paths[]; top; include_tests and include_generated (off).
+  Returns [{id, file, symbol, lines, body_start, body_end,
+  nesting_depth if cheap}].
+  Reuse: FileOutline for symbols, braceBalancedEndLine
+  (src/readregion.cpp, to be exported) for exact brace-family spans;
+  Python needs an indentation rule.
+  **Layman:** A tool that lists the longest functions, so a reviewer looks first where code is hardest to follow.
+  Kind: feature.
+  Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
+  Lanes: mcp.
+
+- 📋 [ANTS-5788] **tools/vtparser-diff.sh: prove a parser change keeps every action identical.**
+  Promotes the throwaway differential run from ANTS-5783 (2026-10-19)
+  to a project tool. Builds VtParser from a base ref and from the
+  working tree into one driver, feeds seeded random streams weighted
+  toward escape-relevant bytes (plus truncated-then-normal CSIs), and
+  compares every action field. Must fail on a planted fault before it
+  is trusted. Project-local; the readability skill does not call it.
+  **Layman:** A script that feeds the old and new parser the same random input and fails if their output differs, so parser clean-ups can be proven safe.
+  Kind: test.
+  Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5602] **A verb that names the tests which read a given source file.**
+  Measured 2026-10-01: ANTS-5527's tests were picked by a name regex;
+  the push gate then failed on two source-scrape tests that read the
+  edited files (cited_by INV-9 via slurpRemoteControl, and the partition
+  coverage test), costing a ~10 min gate run and a fix commit.
+  focused_test maps changed files to ctest names, but a scrape test
+  reaches a file through a SRC_*_PATH or ANTS_SOURCE_DIR compile
+  definition or an ants_test::slurp* helper, which a name map cannot
+  see. A verb (or a focused_test mode) could read those definitions from
+  CMakeLists.txt and the slurp helpers, and return the tests that read a
+  given path.
+  2026-10-19: named source_scrapes and moved into 0.8.0 (user request).
+  Shape agreed with claude-config (CFG-0830): args path or paths[];
+  returns per test {test, file, line, anchor (verbatim), kind
+  literal|regex}. Consumers: the readability skill's scrape-test flag
+  and write-code's gate-reds.md. Mapping: SRC_*_PATH and the
+  ANTS_*_SOURCES lists in target_compile_definitions blocks
+  (BuildTargets::parse needs extending to read them), plus the
+  ants_test::slurp* helpers in tests/_support/srcgrep.h.
+  **Layman:** After changing a file, a session could run just the tests that check it, instead of the whole suite or a guess.
+  Kind: feature.
+  Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
+  Lanes: mcp, tests.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

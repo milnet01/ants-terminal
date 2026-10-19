@@ -188,6 +188,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude status and tab colour now show a waiting question, or work after a background task, instead of "idle".**
+  The status reader skips the bookkeeping records newer Claude Code
+  versions write after each step, and looks further back when they are
+  large. ANTS-5779.
+
 - **spec_log append_loop adds a row at the newest end of a newest-first bullet loop log, and reports the order it found** (ANTS-5769)
 
 - **Changing the theme or opening a new window after using Review Changes no longer crashes the terminal.** (ANTS-5774)
