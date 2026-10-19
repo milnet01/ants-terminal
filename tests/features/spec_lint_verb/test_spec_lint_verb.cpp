@@ -57,7 +57,9 @@ TEST(SpecLintVerb, Inv4CommandClauseIsACandidate) {
         "- **INV-2** — b. *Test:* `grep -c foo src/` → 3\n"
         "- **INV-3** — c. *Test:* `tests/features/spec_lint/` covers it\n"
         "- **INV-4** — d. *Test:* run `ctest -R spec_lint`.\n"
-        "- **INV-5** — e. *Test:* `tests/features/spec_lint/`\n");
+        "- **INV-5** — e. *Test:* `tests/features/spec_lint/`\n"
+        "- **INV-6** — f. *Test:* `grep -c foo src/`\n"
+        "  *Breaks when:* foo is renamed.\n");
     const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("c.md"), {});
 
     int candidates = 0;
@@ -68,7 +70,8 @@ TEST(SpecLintVerb, Inv4CommandClauseIsACandidate) {
         EXPECT_TRUE(f.message.contains(QStringLiteral("candidate")));
     }
     // INV-1 and INV-4 fire: a bare command, and a command whose only trailing
-    // text is punctuation. Three do not, and each is excluded by a DIFFERENT
+    // text is punctuation. INV-6 fires too (ANTS-5758): its *Breaks when:*
+    // line is not the command's result. Three do not, and each is excluded by a DIFFERENT
     // half of the heuristic — which is the point of carrying all three:
     //   INV-2  `→ 3` is an expectation (the trailing-alphanumeric rule).
     //   INV-3  trailing prose, so the expectation rule excludes it whatever the
@@ -76,7 +79,7 @@ TEST(SpecLintVerb, Inv4CommandClauseIsACandidate) {
     //   INV-5  a BARE path span with nothing after it. Only the fixed
     //          vocabulary keeps this quiet; a shape test ("contains a slash")
     //          fires here. Without this clause the vocabulary is untested.
-    EXPECT_EQ(candidates, 2);
+    EXPECT_EQ(candidates, 3);
 
     // The wire form: ANTS-3664 INV-1 OMITS auto_fixable when false, so the
     // assertion is that the key is ABSENT — a test written against

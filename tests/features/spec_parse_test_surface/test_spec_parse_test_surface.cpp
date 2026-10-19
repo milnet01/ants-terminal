@@ -288,3 +288,33 @@ TEST(SpecParseTestSurface, Ants3676QuotedMarkerAloneIsNoSurface) {
            render(i));
     EXPECT_EQ(0, expect_finish());
 }
+
+// ANTS-5758 — specs.md § 7's skeleton puts *Breaks when:* on the line after
+// the *Test:* clause, inside the same paragraph. Ending the clause only at its
+// paragraph lifted the marker and its text into test_surface, so spec_lint's
+// command_test_no_expectation read "foo is renamed" as the command's result
+// and never fired on a bare command. The clause ends at either marker; the
+// marker stays in `body`. A quoted mention of the marker does not end it.
+TEST(SpecParseTestSurface, Ants5758ClauseEndsAtBreaksWhenMarker) {
+    expect_reset();
+    const QJsonObject p = parse(withHeader(QStringLiteral(
+        "- **INV-1** — a. *Test:* `grep -c foo src/`\n"
+        "  *Breaks when:* foo is renamed.\n"
+        "- **INV-2** — b. *Test:* `grep -c bar src/` *Broken by:* a rename.\n"
+        "- **INV-3** — c. *Test:* a fixture quoting `*Breaks when:*` passes.\n"))
+        .toUtf8().constData());
+    const QJsonObject a = inv(p, 0);
+    expect(field(a, "test_surface") == QStringLiteral("`grep -c foo src/`"),
+           "ANTS-5758: test_surface ends at *Breaks when:*", render(a));
+    expect(field(a, "body").contains(QStringLiteral("*Breaks when:* foo is renamed.")),
+           "ANTS-5758: the marker and its text stay in body", render(a));
+    const QJsonObject b = inv(p, 1);
+    expect(field(b, "test_surface") == QStringLiteral("`grep -c bar src/`"),
+           "ANTS-5758: test_surface ends at *Broken by:*", render(b));
+    expect(field(b, "body").contains(QStringLiteral("*Broken by:* a rename.")),
+           "ANTS-5758: the older marker stays in body", render(b));
+    const QJsonObject c = inv(p, 2);
+    expect(field(c, "test_surface").endsWith(QStringLiteral("passes.")),
+           "ANTS-5758: a quoted marker does not end the clause", render(c));
+    EXPECT_EQ(0, expect_finish());
+}

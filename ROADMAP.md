@@ -69002,7 +69002,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
 
-- 📋 [ANTS-5758] **spec_query's test_surface ends at a *Breaks when:* or *Broken by:* marker.**
+- ✅ [ANTS-5758] **spec_query's test_surface ends at a *Breaks when:* or *Broken by:* marker.**
   SpecParse::parseSpecBody lifts the whole *Test:* paragraph into
   test_surface, so a *Breaks when:* continuation counts as the command's
   result and command_test_no_expectation never fires on specs.md § 7's
@@ -69011,6 +69011,11 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   the two markers. After it ships, revisit specs.md's What-checks-this
   Partial: row and the § 3.5 ordering sentence. Hot reload: spec_lint
   and spec_query are mcpd-served; rebuild ants-mcpd and reconnect.
+  Shipped 2026-10-19. Measured over docs/specs:
+  command_test_no_expectation stays 3 before and after, so no current
+  spec hid a bare command behind the marker. specs.md's What-checks-this
+  row updated; the § 3.5 ordering sentence stands, and the check now
+  enforces it.
   **Layman:** The spec checker reads a spec's "what breaks it" note as the test's expected result, so it misses a missing result.
   Kind: fix.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).

@@ -282,9 +282,16 @@ QJsonObject parseSpecBody(const QString &body) {
                 // ANTS-3676 — the first marker OUTSIDE an inline code span.
                 // A quoted mention is the document talking about the marker,
                 // not declaring one.
+                // ANTS-5758 — the clause also ends at a *Breaks when:* (or an
+                // older spec's *Broken by:*) marker. specs.md § 7's skeleton
+                // puts it on the next line of the same paragraph, and lifting
+                // it into test_surface made command_test_no_expectation read
+                // the breaking condition as the command's result.
+                static const QRegularExpression breaksRe(
+                    QStringLiteral(R"(\*(?:Breaks when|Broken by):\*)"));
+                const QVector<bool> quoted = inlineCodeMask(invBody);
                 QRegularExpressionMatch testM;
                 {
-                    const QVector<bool> quoted = inlineCodeMask(invBody);
                     auto tit = testRe.globalMatch(invBody);
                     while (tit.hasNext()) {
                         const auto m = tit.next();
@@ -299,13 +306,21 @@ QJsonObject parseSpecBody(const QString &body) {
                     const int clauseFrom = testM.capturedEnd();
                     const int para =
                         invBody.indexOf(QStringLiteral("\n\n"), clauseFrom);
-                    const int clauseTo = para >= 0 ? para : invBody.size();
+                    int clauseTo = para >= 0 ? para : invBody.size();
+                    auto mit = breaksRe.globalMatch(invBody, clauseFrom);
+                    while (mit.hasNext()) {
+                        const auto m = mit.next();
+                        if (m.capturedStart() >= clauseTo) break;
+                        if (!quoted.value(m.capturedStart())) {
+                            clauseTo = m.capturedStart();
+                            break;
+                        }
+                    }
                     testSurface =
                         invBody.mid(clauseFrom, clauseTo - clauseFrom).trimmed();
 
                     QString head = invBody.left(testM.capturedStart()).trimmed();
-                    const QString tail =
-                        para >= 0 ? invBody.mid(clauseTo).trimmed() : QString();
+                    const QString tail = invBody.mid(clauseTo).trimmed();
                     if (!tail.isEmpty()) {
                         if (!head.isEmpty()) head += QStringLiteral("\n\n");
                         head += tail;

@@ -161,6 +161,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_query`'s `test_surface` ends at a *Breaks when:* or *Broken by:* marker, so `spec_lint` flags a bare command written in specs.md's skeleton form** (ANTS-5758)
+
 - **On a pass-headings roadmap, a `- **Status**: in progress` line reads as in progress, and flipping it replaces both words** (ANTS-5761)
 
 - **roadmap_log append_batch takes the call-level source for any bullet without its own, and a batch that files nothing says so in a warning that survives fields** (ANTS-5722)
