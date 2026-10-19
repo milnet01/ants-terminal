@@ -79,6 +79,12 @@ private slots:
     void onWriteReady();
 
 private:
+    // The write loop shared by write() and onWriteReady(): writes until all
+    // `len` bytes are out or a write fails with anything but EINTR, and
+    // returns the count written. On an early stop errno says why; a write
+    // that makes no progress reports EIO.
+    qsizetype writeSome(const char *buf, qsizetype len);
+
     int m_masterFd = -1;
     // ANTS-4456 — atomic because the two threads genuinely disagree about
     // this. terminalwidget.h used to justify the cross-thread read with

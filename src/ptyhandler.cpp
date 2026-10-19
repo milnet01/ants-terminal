@@ -15,7 +15,92 @@
 #include <termios.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <iterator>
 #include <vector>
+
+extern char **environ;
+
+namespace {
+
+// The TERM family every shell gets, native or under Flatpak. Written once,
+// in flatpak-spawn's `--env=` form; the native envp entry is the same text
+// with that prefix skipped.
+constexpr const char *kTermOverrides[] = {
+    "--env=TERM=xterm-256color",
+    "--env=COLORTERM=truecolor",
+    "--env=TERM_PROGRAM=AntsTerminal",
+    "--env=COLORFGBG=15;0",
+};
+constexpr size_t kEnvFlagLen = sizeof("--env=") - 1;
+
+// ANTS-4541 — a Claude Code session's identity, inherited when the
+// terminal was launched from inside one. The session it names is gone,
+// and a claude started in the tab reads CLAUDE_CODE_CHILD_SESSION as a
+// live parent and turns transcript saving off. Only the identity keys:
+// configuration such as CLAUDE_CODE_USE_BEDROCK arrives the same way and
+// must still reach the shell. A claude started in the tab sets its own.
+constexpr const char *kClaudeIdentityKeys[] = {
+    "CLAUDECODE=",
+    "CLAUDE_CODE_CHILD_SESSION=",
+    "CLAUDE_CODE_SESSION_ID=",
+    "CLAUDE_PID=",
+    "CLAUDE_CODE_MESSAGING_SOCKET=",
+    "CLAUDE_CODE_EXECPATH=",
+    "AI_AGENT=",
+};
+
+// True when the KEY=VALUE string `entry` sets the same key as `assignment`
+// (a KEY= prefix or a whole KEY=VALUE).
+bool sameKey(const char *entry, const char *assignment) {
+    for (size_t i = 0;; ++i) {
+        if (entry[i] != assignment[i]) return false;
+        if (assignment[i] == '=') return true;
+    }
+}
+
+// The caller's choice, else $SHELL, else the passwd entry, else /bin/bash.
+QString resolveShell(const QString &shell) {
+    if (!shell.isEmpty()) return shell;
+    const char *envShell = ::getenv("SHELL");
+    if (envShell && envShell[0] != '\0') return QString::fromLocal8Bit(envShell);
+    struct passwd *pw = ::getpwuid(::getuid());
+    if (pw && pw->pw_shell && pw->pw_shell[0] != '\0')
+        return QString::fromLocal8Bit(pw->pw_shell);
+    return QStringLiteral("/bin/bash");
+}
+
+struct winsize makeWinsize(int rows, int cols) {
+    struct winsize ws = {};
+    ws.ws_row = static_cast<unsigned short>(rows);
+    ws.ws_col = static_cast<unsigned short>(cols);
+    return ws;
+}
+
+// The child's envp: this process's environment minus the keys the shell must
+// not inherit, then the TERM overrides. `termProgramVersion` is the
+// TERM_PROGRAM_VERSION=... assignment. ANTS-5075 — sized from environ, so no
+// entry is dropped; variables set at run time (ANTS_MCP_SOCKET, ANTS-1897
+// INV-14) are the ones a fixed table lost. The pointers are environ's own
+// strings and string literals, read-only in the child.
+std::vector<const char *> buildChildEnvp(const char *termProgramVersion) {
+    size_t environCount = 0;
+    for (char **e = environ; *e != nullptr; ++e) ++environCount;
+    std::vector<const char *> envp;
+    envp.reserve(environCount + std::size(kTermOverrides) + 2);  // + version, NUL
+    for (char **e = environ; *e != nullptr; ++e) {
+        const char *entry = *e;
+        bool drop = sameKey(entry, termProgramVersion);
+        for (const char *o : kTermOverrides) drop = drop || sameKey(entry, o + kEnvFlagLen);
+        for (const char *k : kClaudeIdentityKeys) drop = drop || sameKey(entry, k);
+        if (!drop) envp.push_back(entry);
+    }
+    for (const char *o : kTermOverrides) envp.push_back(o + kEnvFlagLen);
+    envp.push_back(termProgramVersion);
+    envp.push_back(nullptr);
+    return envp;
+}
+
+} // namespace
 
 Pty::Pty(QObject *parent) : QObject(parent) {}
 
@@ -75,28 +160,8 @@ Pty::~Pty() {
 }
 
 bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols) {
-    // Determine which shell to use
-    QString shellPath = shell;
-    if (shellPath.isEmpty()) {
-        const char *envShell = ::getenv("SHELL");
-        if (envShell && envShell[0] != '\0') {
-            shellPath = QString::fromLocal8Bit(envShell);
-        } else {
-            // Fall back to passwd entry
-            struct passwd *pw = ::getpwuid(::getuid());
-            if (pw && pw->pw_shell && pw->pw_shell[0] != '\0') {
-                shellPath = QString::fromLocal8Bit(pw->pw_shell);
-            } else {
-                shellPath = QStringLiteral("/bin/bash");
-            }
-        }
-    }
-
-    struct winsize ws = {};
-    ws.ws_row = static_cast<unsigned short>(rows);
-    ws.ws_col = static_cast<unsigned short>(cols);
-    ws.ws_xpixel = 0;
-    ws.ws_ypixel = 0;
+    const QString shellPath = resolveShell(shell);
+    struct winsize ws = makeWinsize(rows, cols);
 
     // The rule for everything up to the fork (ANTS-1046, ANTS-1135):
     // the child must not allocate between forkpty and exec. This process
@@ -107,12 +172,9 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     const bool inFlatpak =
         ::getenv("FLATPAK_ID") != nullptr ||
         ::access("/.flatpak-info", F_OK) == 0;
-    char flatpakVerArg[128];
     char flatpakDirArg[PATH_MAX + 16];
     char flatpakMcpSocketArg[PATH_MAX + 32];
     if (inFlatpak) {
-        (void)::snprintf(flatpakVerArg, sizeof(flatpakVerArg),
-                         "--env=TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
         if (!workDir.isEmpty()) {
             const QByteArray workDirBytes = workDir.toLocal8Bit();
             (void)::snprintf(flatpakDirArg, sizeof(flatpakDirArg),
@@ -142,66 +204,15 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         }
     }
 
-    // ANTS-1135 — the child's envp, built here rather than by setenv() in
-    // the child, because setenv can realloc `environ`.
+    // One buffer for both launches: flatpak-spawn takes it whole, the
+    // native envp from kEnvFlagLen on.
     char termProgramVerArg[128];
     (void)::snprintf(termProgramVerArg, sizeof(termProgramVerArg),
-                     "TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
-    // ANTS-5075 — the pointer table is sized from environ, so no entry is
-    // dropped. A fixed table lost the entries added last, and variables set
-    // at run time (ANTS_MCP_SOCKET, ANTS-1897 INV-14) are exactly those.
-    // Allocated here, before the fork; the child only reads it.
-    extern char **environ;
-    size_t environCount = 0;
-    for (char **e = environ; *e != nullptr; ++e) ++environCount;
-    // The 5 appended overrides + the NUL terminator.
-    constexpr size_t kEnvpOverrideCount = 6;
-    std::vector<const char *> childEnvp;
-    childEnvp.reserve(environCount + kEnvpOverrideCount);
-    // Copy parent's environ entries, skipping the 5 keys we
-    // override. const_cast is safe — we only read the pointers,
-    // not their contents, and POSIX guarantees `environ` entries
-    // are NUL-terminated KEY=VALUE strings.
-    for (char **e = environ; *e != nullptr; ++e) {
-        const char *entry = *e;
-        const auto startsWith = [entry](const char *prefix) {
-            for (size_t i = 0; prefix[i] != '\0'; ++i) {
-                if (entry[i] != prefix[i]) return false;
-            }
-            return true;
-        };
-        if (startsWith("TERM=") || startsWith("COLORTERM=") ||
-            startsWith("TERM_PROGRAM=") ||
-            startsWith("TERM_PROGRAM_VERSION=") ||
-            startsWith("COLORFGBG=")) {
-            continue;
-        }
-        // ANTS-4541 — a Claude Code session's identity, inherited when the
-        // terminal was launched from inside one. The session it names is gone,
-        // and a claude started in the tab reads CLAUDE_CODE_CHILD_SESSION as a
-        // live parent and turns transcript saving off. Only the identity keys:
-        // configuration such as CLAUDE_CODE_USE_BEDROCK arrives the same way and
-        // must still reach the shell. A claude started in the tab sets its own.
-        if (startsWith("CLAUDECODE=") ||
-            startsWith("CLAUDE_CODE_CHILD_SESSION=") ||
-            startsWith("CLAUDE_CODE_SESSION_ID=") ||
-            startsWith("CLAUDE_PID=") ||
-            startsWith("CLAUDE_CODE_MESSAGING_SOCKET=") ||
-            startsWith("CLAUDE_CODE_EXECPATH=") ||
-            startsWith("AI_AGENT=")) {
-            continue;
-        }
-        childEnvp.push_back(entry);
-    }
-    // Append our 5 overrides (5 string literals + 1 snprintf'd
-    // buffer). The string-literal pointers live in the binary's
-    // .rodata so they outlive forkpty trivially.
-    childEnvp.push_back("TERM=xterm-256color");
-    childEnvp.push_back("COLORTERM=truecolor");
-    childEnvp.push_back("TERM_PROGRAM=AntsTerminal");
-    childEnvp.push_back(termProgramVerArg);
-    childEnvp.push_back("COLORFGBG=15;0");
-    childEnvp.push_back(nullptr);
+                     "--env=TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
+    // ANTS-1135 — the child's envp, built here rather than by setenv() in
+    // the child, because setenv can realloc `environ`.
+    const std::vector<const char *> childEnvp =
+        buildChildEnvp(termProgramVerArg + kEnvFlagLen);
 
     // ANTS-1135 follow-up (indie-review-2026-05-21): pre-fork the shell-path
     // and workdir byte conversions. toLocal8Bit() heap-allocates, which is
@@ -328,8 +339,10 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
                 // no async-signal-unsafe getenv() runs between fork and exec.
                 // Last resort; if this fails too, the shell starts in the
                 // inherited cwd.
-                if (!homeBytesPre.isEmpty())
-                    (void)::chdir(homeBytesPre.constData());
+                if (!homeBytesPre.isEmpty()) {
+                    [[maybe_unused]] const int ignored =
+                        ::chdir(homeBytesPre.constData());
+                }
             }
         }
 
@@ -350,15 +363,12 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             // unconditionally with stable string literals or with
             // pre-built buffers from the pre-fork prep. No heap
             // touch.
-            const char *argv[14];
+            const char *argv[std::size(kTermOverrides) + 8];
             size_t i = 0;
             argv[i++] = "flatpak-spawn";
             argv[i++] = "--host";
-            argv[i++] = "--env=TERM=xterm-256color";
-            argv[i++] = "--env=COLORTERM=truecolor";
-            argv[i++] = "--env=TERM_PROGRAM=AntsTerminal";
-            argv[i++] = flatpakVerArg;
-            argv[i++] = "--env=COLORFGBG=15;0";
+            for (const char *o : kTermOverrides) argv[i++] = o;
+            argv[i++] = termProgramVerArg;
             if (flatpakDirArg[0] != '\0') argv[i++] = flatpakDirArg;
             if (flatpakMcpSocketArg[0] != '\0') argv[i++] = flatpakMcpSocketArg;
             argv[i++] = "--";
@@ -454,50 +464,49 @@ void Pty::write(const QByteArray &data) {
         return;
     }
 
-    const char *buf = data.constData();
-    qsizetype remaining = data.size();
-    while (remaining > 0) {
-        ssize_t n = ::write(m_masterFd, buf, remaining);
-        if (n > 0) {
-            buf += n;
-            remaining -= n;
-        } else if (n < 0 && errno == EINTR) {
-            continue;
-        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            // Kernel PTY buffer full — queue the remainder and let
-            // onWriteReady drain it when the kernel signals writability.
-            // Pre-fix this branch broke out of the loop with no buffer,
-            // silently dropping `remaining` bytes.
-            if (remaining > MAX_PENDING_WRITE_BYTES) {
-                ANTS_LOG(DebugLog::Pty,
-                         "EAGAIN remainder %lld bytes exceeds queue cap "
-                         "(%lld); dropping",
-                         (long long)remaining,
-                         (long long)MAX_PENDING_WRITE_BYTES);
-                // ANTS-1994(3) — signal the drop, same as the
-                // pending-queue-full path above (ANTS-1349). Without
-                // this, an oversize write past the kernel PTY buffer
-                // vanished with no writeLost notification.
-                emit writeLost(remaining);
-                return;
-            }
-            m_pendingWrite = QByteArray(buf, remaining);
-            if (m_writeNotifier) m_writeNotifier->setEnabled(true);
-            return;
-        } else {
-            // Fatal error (EIO, EPIPE on a torn-down master, etc.).
-            // Don't queue — the FD is gone or the slave reaped.
+    const qsizetype written = writeSome(data.constData(), data.size());
+    const qsizetype remaining = data.size() - written;
+    if (remaining == 0) return;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Kernel PTY buffer full — queue the remainder and let
+        // onWriteReady drain it when the kernel signals writability.
+        if (remaining > MAX_PENDING_WRITE_BYTES) {
             ANTS_LOG(DebugLog::Pty,
-                     "write failed errno=%d; dropping %lld bytes",
-                     errno, (long long)remaining);
-            // ANTS-4456 — the third drop path. The two above (queue-full,
-            // EAGAIN-oversize) both signal; this one discarded the
-            // caller's remainder with only a debug-log line, so a
-            // torn-down master lost keystrokes silently.
-            emit writeLost(remaining);
+                     "EAGAIN remainder %lld bytes exceeds queue cap "
+                     "(%lld); dropping",
+                     (long long)remaining,
+                     (long long)MAX_PENDING_WRITE_BYTES);
+            emit writeLost(remaining);  // ANTS-1994(3)
             return;
         }
+        m_pendingWrite = QByteArray(data.constData() + written, remaining);
+        if (m_writeNotifier) m_writeNotifier->setEnabled(true);
+        return;
     }
+    // Fatal error (EIO, EPIPE on a torn-down master, etc.). Don't queue —
+    // the FD is gone or the slave reaped.
+    ANTS_LOG(DebugLog::Pty,
+             "write failed errno=%d; dropping %lld bytes",
+             errno, (long long)remaining);
+    emit writeLost(remaining);  // ANTS-4456
+}
+
+qsizetype Pty::writeSome(const char *buf, qsizetype len) {
+    qsizetype written = 0;
+    while (written < len) {
+        const ssize_t n = ::write(m_masterFd, buf + written, len - written);
+        if (n > 0) {
+            written += n;
+        } else if (n < 0 && errno == EINTR) {
+            continue;
+        } else {
+            // A write that makes no progress can never finish: report it as
+            // an I/O error so the caller treats it as fatal.
+            if (n == 0) errno = EIO;
+            break;
+        }
+    }
+    return written;
 }
 
 void Pty::onWriteReady() {
@@ -505,35 +514,16 @@ void Pty::onWriteReady() {
         if (m_writeNotifier) m_writeNotifier->setEnabled(false);
         return;
     }
-    const char *buf = m_pendingWrite.constData();
-    qsizetype remaining = m_pendingWrite.size();
-    qsizetype written = 0;
-    bool fatal = false;
-    int fatalErrno = 0;
-    while (remaining > 0) {
-        ssize_t n = ::write(m_masterFd, buf + written, remaining);
-        if (n > 0) {
-            written += n;
-            remaining -= n;
-        } else if (n < 0 && errno == EINTR) {
-            continue;
-        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            break;  // Kernel buffer full again — retry on the next fire.
-        } else {
-            // Fatal (EIO on a torn-down master, EPIPE on a reaped slave,
-            // or a 0-byte short write that can never make progress).
-            // ANTS-4456: the pre-fix code shared the EAGAIN break here
-            // under a comment claiming the fatal case was handled below.
-            // Nothing handled it. The notifier is disarmed only when the
-            // queue empties, and a dead master keeps the write notifier
-            // firing, so the slot re-fired forever: write fails,
-            // nothing is consumed, event loop spins at 100% CPU for the
-            // life of the process with no error surfaced.
-            fatalErrno = errno;
-            fatal = true;
-            break;
-        }
-    }
+    const qsizetype written =
+        writeSome(m_pendingWrite.constData(), m_pendingWrite.size());
+    // Stopped early: a kernel buffer full again is retried on the next fire;
+    // anything else is fatal. ANTS-4456: the two used to share one break,
+    // and since the notifier is disarmed only when the queue empties and a
+    // dead master keeps it firing, a fatal error spun the event loop at
+    // 100% CPU for the life of the process.
+    const bool fatal = written < m_pendingWrite.size() &&
+                       !(errno == EAGAIN || errno == EWOULDBLOCK);
+    const int fatalErrno = errno;
     if (written > 0) {
         m_pendingWrite.remove(0, written);
     }
@@ -568,9 +558,7 @@ void Pty::setReadEnabled(bool enabled) {
 
 void Pty::resize(int rows, int cols) {
     if (m_masterFd >= 0) {
-        struct winsize ws = {};
-        ws.ws_row = static_cast<unsigned short>(rows);
-        ws.ws_col = static_cast<unsigned short>(cols);
+        const struct winsize ws = makeWinsize(rows, cols);
         ::ioctl(m_masterFd, TIOCSWINSZ, &ws);
         ANTS_LOG(DebugLog::Pty, "resize rows=%d cols=%d", rows, cols);
     }
