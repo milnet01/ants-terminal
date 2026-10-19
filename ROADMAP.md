@@ -24166,7 +24166,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-07-13; surfaced during ANTS-3355.
   Resolved (2026-07-13): moved commentSuppresses verbatim from AuditDialog (ants_audit_dialog_lib, the QDialog TU) to a free function in the AuditEngine namespace (auditengine.h/.cpp, ants_audit_lib). Updated the 3 inlineSuppressed call sites to AuditEngine::commentSuppresses; dropped the obsolete public static from auditdialog.h. The ANTS-3355 runtime test (audit_drop_alias) moved back from test_dialogs to test_audit (engine-only bundle) and now calls it via auditengine.h — a green test_audit proves the symbol resolves from the engine lib without the GUI lib. Full suite green (2631). Doc-note: ANTS-1111.md §2.6 still cites auditdialog.cpp line numbers for the predicate; left as-is (historical shipped spec, line cites already drift-prone).
 
-- 📋 [ANTS-5771] **Three tests outside ANTS-1379's list restore process state by hand; one can leak PATH.**
+- ✅ [ANTS-5771] **Three tests outside ANTS-1379's list restore process state by hand; one can leak PATH.**
   Found 2026-10-19 by grepping tests/ for qputenv / qunsetenv /
   setTestModeEnabled / umask( in files without xdg_guard.h.
   - mcp_workspace_search: swaps PATH to a shim dir, and an ASSERT_EQ sits
@@ -24181,6 +24181,10 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
     ScopedUmask could move to tests/_support and serve both.
   tests/bundle_main_gui.cpp sets process-wide env once per bundle on
   purpose: not in scope.
+  Shipped 2026-10-19: mcp_workspace_search and trace_serve use XdgGuard;
+  a shared tests/_support/scoped_umask.h replaces the hand-written umask
+  restore in debuglog_perms, allowlist_perms_postcommit and
+  roadmap_migrate_verb.
   **Layman:** One test can leave a broken search path behind for the tests after it when it fails; two others repeat cleanup code the shared helper already does.
   Kind: fix.
   Source: ANTS-1379 close-out 2026-10-19.
