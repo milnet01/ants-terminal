@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Building from source uses less disk and memory: each precompiled Qt header is about a third smaller, and a compiler update replaces the old ones automatically.** (ANTS-2107)
+
 - **Two slow tests run in a few hundredths of a second: one no longer sleeps between config writes, one no longer starts hundreds of shells.** (ANTS-1384)
 
 - **The test suite compiles about a quarter faster from cold: each test bundle precompiles the Qt headers once.** (ANTS-1383)

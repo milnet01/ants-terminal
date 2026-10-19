@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5771 -->
+<!-- ants-roadmap-id-high-water: ANTS=5772 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -14838,7 +14838,7 @@ class; the deferrals below cover the rest.
   Source: user-request-2026-06-11 (triaging this session's audit by hand was ~280 findings, ~95% FPs).
   Carve (2026-06-15): idea (3) — the FP-capture write verb for `.ants_review_falsepos.jsonl` — carved into [[ANTS-2129]] as `audit_falsepos_log` and taken to spec+implement (re-confirmed by DOOM 2026-06-12). Ideas (1) audit_triage, (2) trust-model auto-suppression, (4) cross-run novelty signal, (5) confidence/corroboration in audit_run top_findings remain open here. Note: idea (3)'s "fingerprint dedup via auditfpledger" clause concerns the OTHER ledger (.audit_suppress, code-grain); ANTS-2129 scopes only the prose `.ants_review_falsepos.jsonl` append.
 
-- 📋 [ANTS-2107] **Build robustness after GCC 15 update — stale 368 MB PCHs SIGBUS cc1plus; regenerate PCHs and consider capping PCH size / parallelism.**
+- ✅ [ANTS-2107] **Build robustness after GCC 15 update — stale 368 MB PCHs SIGBUS cc1plus; regenerate PCHs and consider capping PCH size / parallelism.**
   GCC updated to 15.2.1 (20260604). Pre-existing cmake_pch.hxx.gch files were built by the prior GCC -> `-Winvalid-pch: created by a different GCC executable` warnings, and a build/ compile of reviewdialogbase.cpp SIGBUSed cc1plus inside its own diagnostic printer (internal_error -> pretty_printer -> __strlen_avx2). Each PCH is ~368 MB (8 libs x build/ + build-fast/ ≈ 6 GB); concurrent cc1plus each mmap'ing a 368 MB PCH under a parallel build is a plausible memory-pressure / SIGBUS trigger on the 32 GB host with earlyoom history. NOT an Ants code bug, NOT the running instance (build/ants-terminal was not relinked; the lib compile failed first). Actions: (1) clear stale PCHs after a toolchain bump (rm build*/CMakeFiles/*/cmake_pch.hxx.gch or fresh configure) — consider a configure-time GCC-version stamp that auto-invalidates; (2) investigate why the PCH is 368 MB (Qt6 全-module include?) and trim the PCH header set; (3) the JOB_POOLS compile cap should already bound parallelism under Ninja — confirm it held during the crashing build. Root trigger this session was a triage subagent running `cmake --build build` (process error, corrected); the underlying stale-PCH fragility is the real follow-up.
   **Layman:** After the system's compiler updated to GCC 15, the leftover precompiled-header files became incompatible and crashed the compiler during a build. Clearing them fixes it; we should also stop those files from getting so huge.
   Kind: chore.
@@ -14866,6 +14866,12 @@ class; the deferrals below cover the rest.
   Seen again (2026-10-08): a full build warned `cc1plus: warning:
   ./CMakeFiles/ants_mcpcore_lib.dir/cmake_pch.hxx.gch: created by a
   different GCC executable [-Winvalid-pch]`. The build still succeeded.
+  Action (2) done 2026-10-19 (59802599). Why 368 MB: the PCH held the
+  whole QtCore, QtGui and QtWidgets aggregates. It now holds the 58 Qt
+  headers the tree includes most: 256 MB, cc1plus peak RSS 150-180 MB
+  lower, 15 of 16 sampled TUs faster. The 2026-10-08 warning is closed
+  too: the stamp now keys on cc1plus's mtime and size, so a rebuild at
+  the same version drops the old PCHs.
 
 - ✅ [ANTS-2108] **Indie-review 2026-06-11: cleartext Bearer API-key egress on the review-dialog family (auditdialog batch path + coldeyesdialog) — add isPlaintextRemote refusal to LlmClient::send.**
   auditdialog.cpp:5742/5747 requestAiTriageBatch and the v2 review dialogs (coldeyesdialog via ReviewDialogBase->LlmClient::send) gate only on scheme + SSRF host-block, never on cleartext http to a public remote. The single-finding path (auditdialog.cpp:5467, ANTS-1826) and aidialog.cpp:236 already guard via LlmClient::isPlaintextRemote; the v2 refactor didn't carry it. Fix once in LlmClient::send so all egress is covered. Detail: .indie-review/reports-2026-06-11/{auditdialog,coldeyesdialog}.md.
@@ -15144,6 +15150,22 @@ class; the deferrals below cover the rest.
   Kind: audit-fix.
   Source: in-session-2026-10-13 (left by ANTS-2122).
   Lanes: featurecoverage.
+
+- 📋 [ANTS-5772] **A full build prints 41 compiler warnings from six of the project's own files.**
+  Full `cmake --build build`, 2026-10-19, after ANTS-2107. The same set
+  appears with the old PCH, the new one and none:
+  - src/claudebgtasksdialog.cpp: 12 -Wnull-dereference (inlined Qt).
+  - tests: test_build_target_for (20), test_status_info_window (4),
+    test_claude_bg_tasks_button (2), test_evict_to_cap (1):
+    -Wnull-dereference.
+  - tests/features/spec_lint/test_spec_lint.cpp: 3 -Wdangling-else.
+  Shape of the fix (as test_about_dialog_fits, e7542f97): check a
+  plain pointer before use; brace the dangling else.
+  Log: /mnt/Games/scratch-audit/gate2107-build.log (scratch).
+  **Layman:** Clear the leftover compiler warnings so a new one stands out.
+  Kind: fix.
+  Source: in-session-2026-10-19 (full build during ANTS-2107).
+  Lanes: build.
 
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
