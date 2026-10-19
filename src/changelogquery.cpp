@@ -324,6 +324,35 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
     return result;
 }
 
+QHash<QString, QStringList> citationsByVersion(const QString &markdown,
+                                               const QString &idPrefix) {
+    QHash<QString, QStringList> out;
+    QString version;
+    bool inSection = false;
+    QStringList body;
+    const auto flush = [&]() {
+        if (!inSection) return;
+        QStringList &ids = out[version];
+        for (const QString &id : extractIds(body.join(QLatin1Char('\n')), idPrefix))
+            if (!ids.contains(id)) ids << id;
+        body.clear();
+    };
+    // A column-0 `## [` opens a section even inside a fence, as in parse().
+    for (const QString &line : markdown.split(QLatin1Char('\n'))) {
+        QString v, d;
+        bool u = false;
+        if (parseVersionHeading(line, v, d, u)) {
+            flush();
+            version   = v;
+            inSection = true;
+            continue;
+        }
+        if (inSection) body << line;
+    }
+    flush();
+    return out;
+}
+
 }  // namespace ChangelogQuery
 
 namespace ChangelogQuery {

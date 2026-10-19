@@ -457,6 +457,31 @@ TEST(RoadmapPlaceByRelease, Inv3LowestChangelogCitationWinsThenTags) {
                   .value(QStringLiteral("stable_tags")).toInt(), 5);
 }
 
+// § 2.2 item 1 — every `## [X.Y.Z]` section citing the id is a candidate,
+// whatever `###` heading the citation sits under. Measured on Ants Terminal's
+// CHANGELOG 2026-10-19: reading only entries under the six Keep-a-Changelog
+// categories lost 110 placements.
+TEST(RoadmapPlaceByRelease, Inv3ACitationUnderAnyHeadingCounts) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seed(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+    QByteArray changelog(kChangelog);
+    changelog.replace("## [0.1.0]",
+                      "### \xF0\x9F\x94\x8C MCP fold-in \xE2\x80\x94 pull 5\n\n"
+                      "- DEMO-0014 named under a topic heading.\n\n## [0.1.0]");
+    ASSERT_TRUE(writeFile(fx.root + QStringLiteral("/CHANGELOG.md"), changelog));
+
+    const QJsonObject dry = dryRun(fx);
+    ASSERT_VERB_OK(dry);
+    const QJsonObject row = rowFor(dry.value(QStringLiteral("moved")).toArray(),
+                                   QStringLiteral("id"), QStringLiteral("DEMO-0014"));
+    EXPECT_EQ(row.value(QStringLiteral("version")).toString(), QStringLiteral("0.2.0"))
+        << dump(dry);
+    EXPECT_EQ(row.value(QStringLiteral("source")).toString(), QStringLiteral("changelog"));
+}
+
 // ------------------------------------------------------------------ INV-4 ---
 TEST(RoadmapPlaceByRelease, Inv4TitlesAndDatesNeverPlace) {
     ants_test::XdgGuard guard;

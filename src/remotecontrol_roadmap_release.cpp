@@ -230,8 +230,8 @@ RlChangelogEvidence rlReadChangelog(const QString &root, const QString &roadmapP
     ev.relPath = QDir(root).relativeFilePath(path);
     const QString prefix = RoadmapFoldIn::sniffIdPrefix(
         QFileInfo(roadmapPath).absolutePath(), prefixFallback);
-    const ChangelogQuery::ParseResult parsed =
-        ChangelogQuery::parse(QString::fromUtf8(f.readAll()), prefix);
+    const QString markdown = QString::fromUtf8(f.readAll());
+    const ChangelogQuery::ParseResult parsed = ChangelogQuery::parse(markdown, prefix);
     static const QRegularExpression iso(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
     for (const ChangelogQuery::VersionInfo &v : parsed.versions) {
         if (v.unreleased || !rlStableKey(v.version)) continue;
@@ -239,13 +239,19 @@ RlChangelogEvidence rlReadChangelog(const QString &root, const QString &roadmapP
         if (iso.match(v.date.trimmed()).hasMatch())
             ev.headingDate.insert(v.version, v.date.trimmed());
     }
-    for (const ChangelogQuery::Entry &e : parsed.entries) {
-        for (const QString &id : e.ids) {
-            if (e.unreleased) {
+    // Every citation in a section counts, not only entries under one of the
+    // six categories parse() keeps.
+    const QHash<QString, QStringList> byVersion =
+        ChangelogQuery::citationsByVersion(markdown, prefix);
+    for (auto it = byVersion.cbegin(); it != byVersion.cend(); ++it) {
+        const bool unreleased = it.key() == QLatin1String("Unreleased");
+        if (!unreleased && !rlStableKey(it.key())) continue;
+        for (const QString &id : it.value()) {
+            if (unreleased) {
                 ev.unreleased.insert(id);
-            } else if (rlStableKey(e.version)) {
+            } else {
                 QStringList &vs = ev.cited[id];
-                if (!vs.contains(e.version)) vs << e.version;
+                if (!vs.contains(it.key())) vs << it.key();
             }
         }
     }

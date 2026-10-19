@@ -9,6 +9,7 @@
 
 #include "docfinding.h"
 
+#include <QHash>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -49,6 +50,14 @@ struct ParseResult {
 // roadmap prefix P (e.g. "ANTS"); id extraction collects `<P>-NNNN`
 // tokens from each entry's text+body (§ 3). An empty prefix yields no ids.
 ParseResult parse(const QString &markdown, const QString &idPrefix);
+
+// ANTS-5315 — every `<P>-NNNN` id each `## [x]` section cites, wherever in
+// the section it sits: under any `###` heading, in prose or in fenced code.
+// parse() keeps only entries under a category, so it misses these. Keyed by
+// the version as parse() reports it ("Unreleased" for that section); text
+// above the first `## [` belongs to no section.
+QHash<QString, QStringList> citationsByVersion(const QString &markdown,
+                                               const QString &idPrefix);
 
 // ANTS-5543 — READ-ONLY format check, so a push gate can catch a misplaced
 // line without changing the file. One finding per offending line, in document
