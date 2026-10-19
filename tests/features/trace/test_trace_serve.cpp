@@ -7,6 +7,7 @@
 
 #include "trace/extract.h"
 #include "trace/trace.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -53,13 +54,7 @@ protected:
         }
         ASSERT_GT(copied, 0) << "fixture not found at " << src.toStdString();
         m_root = QFileInfo(m_project.path()).canonicalFilePath();
-        m_savedXdg = qgetenv("XDG_DATA_HOME");
-        m_hadXdg = qEnvironmentVariableIsSet("XDG_DATA_HOME");
-        qputenv("XDG_DATA_HOME", m_data.path().toUtf8());
-    }
-    void TearDown() override {
-        if (m_hadXdg) qputenv("XDG_DATA_HOME", m_savedXdg);
-        else qunsetenv("XDG_DATA_HOME");
+        m_env.setEnv("XDG_DATA_HOME", m_data.path().toUtf8());
     }
 
     QJsonObject call(const QJsonObject &args) const { return trace::serve(args, m_root); }
@@ -76,8 +71,8 @@ protected:
     QTemporaryDir m_project;
     QTemporaryDir m_data;
     QString m_root;
-    QByteArray m_savedXdg;
-    bool m_hadXdg = false;
+    // After m_data, so XDG_DATA_HOME is restored before that directory goes.
+    ants_test::XdgGuard m_env;
 };
 
 QJsonArray arr(const QJsonObject &o, const char *key) {
