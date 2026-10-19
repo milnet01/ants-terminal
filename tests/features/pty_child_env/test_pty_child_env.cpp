@@ -4,6 +4,7 @@
 #include "ptyhandler.h"
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -14,6 +15,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 
+#include <optional>
 #include <string>
 #include <sys/stat.h>
 
@@ -50,19 +52,17 @@ int runMain() {
 
     // setenv appends a new name at the end of environ, so the sentinel lands
     // after every pad entry.
+    std::optional<ants_test::XdgGuard> env(std::in_place);
     for (int i = 0; i < kPadEntries; ++i)
-        qputenv(QByteArray("ANTS_PTYENV_PAD_") + QByteArray::number(i), "x");
-    qputenv("ANTS_PTYENV_SENTINEL", "reached");
+        env->setEnv((QByteArray("ANTS_PTYENV_PAD_") + QByteArray::number(i))
+                        .constData(), "x");
+    env->setEnv("ANTS_PTYENV_SENTINEL", "reached");
     // ANTS-4541 — a dead session's identity, plus one CLAUDE_CODE_ setting
     // that is not identity. This suite may itself run inside a Claude session,
-    // so the prior values are restored below rather than unset.
-    const bool hadClaudeCode = qEnvironmentVariableIsSet("CLAUDECODE");
-    const QByteArray priorClaudeCode = qgetenv("CLAUDECODE");
-    const bool hadChild = qEnvironmentVariableIsSet("CLAUDE_CODE_CHILD_SESSION");
-    const QByteArray priorChild = qgetenv("CLAUDE_CODE_CHILD_SESSION");
-    qputenv("CLAUDECODE", "1");
-    qputenv("CLAUDE_CODE_CHILD_SESSION", "1");
-    qputenv("CLAUDE_CODE_ANTS_TEST_KEEP", "kept");
+    // so the guard restores the prior values rather than unsetting them.
+    env->setEnv("CLAUDECODE", "1");
+    env->setEnv("CLAUDE_CODE_CHILD_SESSION", "1");
+    env->setEnv("CLAUDE_CODE_ANTS_TEST_KEEP", "kept");
 
     QByteArray output;
     bool finished = false;
@@ -74,15 +74,8 @@ int runMain() {
         const bool started = pty.start(script);
 
         // The child's environment is fixed at fork, so the test process can
-        // drop the padding now.
-        for (int i = 0; i < kPadEntries; ++i)
-            qunsetenv(QByteArray("ANTS_PTYENV_PAD_") + QByteArray::number(i));
-        qunsetenv("ANTS_PTYENV_SENTINEL");
-        qunsetenv("CLAUDE_CODE_ANTS_TEST_KEEP");
-        if (hadClaudeCode) qputenv("CLAUDECODE", priorClaudeCode);
-        else               qunsetenv("CLAUDECODE");
-        if (hadChild) qputenv("CLAUDE_CODE_CHILD_SESSION", priorChild);
-        else          qunsetenv("CLAUDE_CODE_CHILD_SESSION");
+        // restore its own now.
+        env.reset();
 
         if (!started) {
             expect(false, "ANTS-5075-setup", "Pty::start(print_env.sh) failed");
