@@ -4,6 +4,7 @@
 
 #include "auditrunner.h"
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -213,12 +214,14 @@ TEST(AuditInprocessLanesAsync, Inv7ToolLessSweepGivesTheLanesABudget) {
     QTemporaryDir emptyBin;
     ASSERT_TRUE(project.isValid() && emptyBin.isValid());
 
-    const QByteArray oldPath = qgetenv("PATH");
-    qputenv("PATH", emptyBin.path().toLocal8Bit());
-    AuditRunner::RunRequest req;
-    req.projectRoot = project.path();
-    const AuditRunner::RunResult r = AuditRunner::runAudit(req);
-    qputenv("PATH", oldPath);
+    AuditRunner::RunResult r;
+    {
+        ants_test::XdgGuard env;
+        env.setEnv("PATH", emptyBin.path().toLocal8Bit());
+        AuditRunner::RunRequest req;
+        req.projectRoot = project.path();
+        r = AuditRunner::runAudit(req);
+    }
 
     ASSERT_TRUE(r.ok) << "setup: runAudit refused: " << r.code.toStdString()
                       << " " << r.error.toStdString();
