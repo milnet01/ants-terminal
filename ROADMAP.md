@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5766 -->
+<!-- ants-roadmap-id-high-water: ANTS=5769 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -23023,6 +23023,20 @@ that shipped 6+ months ago — pure self-reference).
   ui_state_persistence. test_dialogs: review_changes_diff_cap. Not
   process state, so skipped: mcp_orientation_install,
   test_audit_bundle_2026_05_19, roadmap_store_sandbox, mcp_extra_tools.
+  Progress (2026-10-19): moved onto ants_test::XdgGuard, one commit
+  each: audit_inprocess_lanes_async, debt_sweep_engine,
+  tool_detection_engine (test_audit, 57 tests pass);
+  config_parse_failure_guard, config_ai_review_concurrency,
+  config_tab_title_format, config_reload_loop_safety, mcp_master_toggle,
+  spawn_budget (test_core, 23 pass); auto_switch_surfacing,
+  claude_projects_summary_cache, claude_session_freshness,
+  claude_socket_runtime_dir, claude_tab_status_indicator,
+  diagnostics_guards (env half), git_optional_locks,
+  local_socket_connection_cap, mcp_async_dispatch,
+  roadmap_log_store_preview_and_counter, roadmap_source_witness,
+  shared_socket_listener, spec_lint_verb (test_claude, 99 pass).
+  Remaining: test_chrome pty_child_env, shell_command_wiring,
+  ui_state_persistence; test_dialogs review_changes_diff_cap.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.**
   `tests/features/concurrent_writer_lock/
@@ -69107,6 +69121,37 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   **Layman:** The spec checker reads a spec's "what breaks it" note as the test's expected result, so it misses a missing result.
   Kind: fix.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
+  Lanes: mcp.
+
+- 📋 [ANTS-5767] **specs.md says whether § Reload and the loop log must sit in a fixed position after § Tests.**
+  [Q2, both lanes, pre-existing] § 3's prose says its sections come "in
+  this relative order", while its required-sections block and the § 3
+  What-checks-this row place `## Reload` and the loop log after
+  `## Tests`. A conformer cannot tell whether § Reload's position binds.
+  Filed outside the ANTS-5757 gate's radius. Hot reload: nothing.
+  **Layman:** The spec rules disagree with themselves about where two required sections go.
+  Kind: doc-fix.
+  Source: review-contract specs.md 2026-10-19 (ANTS-5757 gate, loop 1).
+
+- 📋 [ANTS-5768] **specs.md says whether a build plan or ledger in docs/specs/ may opt out of the required sections.**
+  [Q3, one lane, pre-existing] The standard does not say whether a new
+  build plan or ledger placed in docs/specs/ may carry
+  `<!-- spec-lint: no-required-sections -->`. Filed outside the
+  ANTS-5757 gate's radius. Hot reload: nothing.
+  **Layman:** The spec rules don't say whether a non-spec file in the specs folder can skip the spec checklist.
+  Kind: doc-fix.
+  Source: review-contract specs.md 2026-10-19 (ANTS-5757 gate, loop 1).
+
+- 📋 [ANTS-5769] **spec_log op:append_loop places a row where the log's own order puts it.**
+  Seen 2026-10-19: on docs/specs/ANTS-1855.md, whose bullet loop log
+  runs newest first, a dry run of op:append_loop reported landing line
+  452, the end of the file, below the oldest row. The row was placed by
+  hand. Detect the log's direction from its existing rows (dates or loop
+  numbers) and insert at the newest end. Hot reload: spec_log is served
+  by ants-mcpd; a rebuild reaches clients on their next /mcp reconnect.
+  **Layman:** The tool that adds a review-history line puts it at the bottom even when the history runs newest-first.
+  Kind: fix.
+  Source: in-session-2026-10-19 (ANTS-1855 amendment).
   Lanes: mcp.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
