@@ -91909,6 +91909,9 @@ asked for them to ship in 0.8.0.
   dismiss by id.
   Reuse: DocDedup's shingle and cluster machinery (src/docdedup.h),
   segmented by line windows instead of paragraphs.
+  On ship: send the final schema to claude-config with session_message
+  op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830's
+  review-readability skill cites the verb in Phase 1b).
   **Layman:** A tool that lists code written out more than once, including copies that have drifted apart, so a reviewer checks a short list instead of hunting.
   Kind: feature.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
@@ -91927,6 +91930,9 @@ asked for them to ship in 0.8.0.
   Reuse: QuotationCheck::run for quotes; DocSymbols' resolve step
   for symbols (it needs a comment harvester, as it reads only
   backtick spans).
+  On ship: send the final schema to claude-config with session_message
+  op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830). The
+  findings bucket feeds check-code, so name the verb in that message.
   **Layman:** A tool that catches comments that quote a file wrongly, point at code that is gone, or carry numbers that go stale.
   Kind: feature.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
@@ -91941,6 +91947,8 @@ asked for them to ship in 0.8.0.
   Reuse: FileOutline for symbols, braceBalancedEndLine
   (src/readregion.cpp, to be exported) for exact brace-family spans;
   Python needs an indentation rule.
+  On ship: send the final schema to claude-config with session_message
+  op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830).
   **Layman:** A tool that lists the longest functions, so a reviewer looks first where code is hardest to follow.
   Kind: feature.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
@@ -91977,6 +91985,9 @@ asked for them to ship in 0.8.0.
   ANTS_*_SOURCES lists in target_compile_definitions blocks
   (BuildTargets::parse needs extending to read them), plus the
   ants_test::slurp* helpers in tests/_support/srcgrep.h.
+  On ship: send the final schema to claude-config with session_message
+  op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830 and
+  write-code's gate-reds.md use it).
   **Layman:** After changing a file, a session could run just the tests that check it, instead of the whole suite or a guess.
   Kind: feature.
   Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
