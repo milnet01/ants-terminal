@@ -35,6 +35,7 @@
 //
 // Exit 0 = all assertions hold.
 
+#include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 #include <gtest/gtest.h>
 #include "claudetabtracker.h"
@@ -485,13 +486,8 @@ int checkProjectCwdScopedTranscript() {
     if (!tmp.isValid()) { std::fprintf(stderr, "[INV-8] tmpdir fail\n"); return 1; }
 
     // ConfigPaths::claudeProjectsDir() reads $HOME — override it.
-    const QByteArray oldHome = qgetenv("HOME");
-    qputenv("HOME", tmp.path().toUtf8());
-
-    auto restore = qScopeGuard([&]() {
-        if (oldHome.isEmpty()) qunsetenv("HOME");
-        else                   qputenv("HOME", oldHome);
-    });
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", tmp.path().toUtf8());
 
     const QString projectsDir = tmp.path() + "/.claude/projects";
     QDir().mkpath(projectsDir);
@@ -553,12 +549,8 @@ int checkTranscriptBindsAfterClaudeStarts() {
     if (!tmp.isValid()) { std::fprintf(stderr, "[INV-10] tmpdir fail\n"); return 1; }
 
     // ConfigPaths::claudeProjectsDir() reads $HOME — override it.
-    const QByteArray oldHome = qgetenv("HOME");
-    qputenv("HOME", tmp.path().toUtf8());
-    auto restore = qScopeGuard([&]() {
-        if (oldHome.isEmpty()) qunsetenv("HOME");
-        else                   qputenv("HOME", oldHome);
-    });
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", tmp.path().toUtf8());
 
     const QString projectsDir = tmp.path() + "/.claude/projects";
     const QString cwd = tmp.path() + "/work/proj";
