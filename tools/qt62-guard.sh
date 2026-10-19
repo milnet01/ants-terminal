@@ -361,7 +361,7 @@ else
     echo "qt62-guard: compiling for $qt62_what ($qt62_base, tag $qt62_tag)…"
     podman run --rm --security-opt label=disable --init --name "$qt62_container" \
         -v "$PWD:/src:ro" -v "$qt62_volume:/build" -v "$qt62_ccache:/ccache" \
-        -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2G -e CCACHE_COMPRESS=1 \
+        -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2500M -e CCACHE_COMPRESS=1 \
         -e CCACHE_SLOPPINESS=pch_defines,time_macros \
         -w /src "$qt62_image" \
         bash -euo pipefail -c '

@@ -91,7 +91,11 @@ jobs:
       # the other end — locally, 5 GiB self-evicts on this Qt codebase. The
       # measurement that says whether 2G is enough is the next run's
       # `Cleanups:` line; non-zero means raise it again.
-      CCACHE_MAXSIZE: 2G
+      # ANTS-1383 — the eight test bundles gained a PCH each, up to about
+      # 57 MB compressed, on a cache already at 2.0 / 2.0. The repository's
+      # Actions caches share a 10 GB limit: every ccache cap plus the other
+      # caches must stay under it.
+      CCACHE_MAXSIZE: 2500M
       CCACHE_COMPRESS: "1"
       # ANTS-5531 — without these ccache will not store a precompiled header,
       # so each of the ten per-library PCHs rebuilt on every run and gated
@@ -291,7 +295,8 @@ jobs:
       # 36124635817) the stats read `Cache size (GB): 2.0 / 2.0 (99.95%)`, so
       # the build evicts its own objects. The next nightly's size line says
       # whether 4G holds it.
-      CCACHE_MAXSIZE: 4G
+      # ANTS-1383 — plus the test bundles' PCHs; see build-test's note.
+      CCACHE_MAXSIZE: 4500M
       CCACHE_COMPRESS: "1"
       # ANTS-5531 — without these ccache will not store a precompiled header,
       # so each of the ten per-library PCHs rebuilt on every run and gated
@@ -459,7 +464,8 @@ jobs:
     # jobs build against — sharing either would miss 100%.
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 2G
+      # ANTS-1383 — plus the test bundles' PCHs; see build-test's note.
+      CCACHE_MAXSIZE: 2500M
       CCACHE_COMPRESS: "1"
       # ANTS-5531 — without these ccache will not store a precompiled header,
       # so each of the ten per-library PCHs rebuilt on every run and gated

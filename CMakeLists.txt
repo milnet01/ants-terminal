@@ -1511,9 +1511,8 @@ if(ANTS_TESTS)
     endif()
     include(GoogleTest)
 
-    # GUI bundle helper — bundles share PCH from ants-terminal so the per-TU
-    # Qt cost only pays once across the whole tests-on build. The Qt6::Widgets
-    # link surface comes through transitively from each ants_*_lib (PUBLIC).
+    # GUI bundle helper. The Qt6::Widgets link surface comes through
+    # transitively from each ants_*_lib (PUBLIC).
     #
     # The internal ants_*_lib graph has cycles (chrome ↔ claude ↔ dialogs
     # via mainwindow.cpp's calls into all three). GNU ld scans archives
@@ -1540,14 +1539,14 @@ if(ANTS_TESTS)
         # by short name.
         target_include_directories(${name} PRIVATE
             ${CMAKE_SOURCE_DIR}/tests)
-        # ANTS-1373/1368: do NOT REUSE_FROM ants-terminal's PCH. The PCH
-        # is generated with the main exe's full flag set (PIC +
-        # QT_OPENGL_LIB define from the OpenGLWidgets link). Test bundles
-        # don't link OpenGLWidgets and don't need PIC, so cc1plus rejects
-        # the PCH on every bundle TU with `-Winvalid-pch`. The bundles
-        # are only ~4 TUs each, so cold-compiling Qt aggregate headers
-        # without PCH is a noise-free no-op vs. emitting one warning per
-        # TU per build. Keep ants-terminal's own PCH (where it pays off).
+        # ANTS-1373/1368: do NOT REUSE_FROM ants-terminal's PCH. Its flag
+        # set differs from a bundle's, so cc1plus rejects it on every
+        # bundle TU with `-Winvalid-pch`.
+        # ANTS-1383: each bundle builds its own PCH instead, as the libs
+        # do. The bundles now hold hundreds of TUs; the PCH cut the mean TU
+        # compile of test_core + test_claude from 3.9 s to 2.9 s, and their
+        # cold wall time from 484 s to 371 s (ccache off, 2026-10-19).
+        ants_apply_qt_pch(${name})
         # TIMEOUT is a HANG detector, not a performance budget, and 10s was
         # calibrated against Release only. Under ANTS_SANITIZERS the same
         # tests run several times slower — measured 2026-07-31 in build-asan:
@@ -1568,8 +1567,8 @@ if(ANTS_TESTS)
             PROPERTIES LABELS "features;fast" TIMEOUT 60)
     endfunction()
 
-    # Core-only bundle helper — Qt::Core only, no Widgets. PCH not reused
-    # from ants-terminal (different INTERFACE flag set without Widgets).
+    # Core-only bundle helper — Qt::Core only, no Widgets. Its own QtCore
+    # PCH (ANTS-1383), not ants-terminal's (a different flag set).
     function(ants_add_core_bundle name)
         cmake_parse_arguments(B "" "" "LIBS;SOURCES" ${ARGN})
         add_executable(${name} tests/bundle_main_core.cpp ${B_SOURCES})
@@ -1580,6 +1579,7 @@ if(ANTS_TESTS)
             ${B_LIBS} ants_warnings GTest::gtest Qt6::Core)
         target_include_directories(${name} PRIVATE
             ${CMAKE_SOURCE_DIR}/tests)
+        target_precompile_headers(${name} PRIVATE <QtCore/QtCore>)
         # TIMEOUT is a HANG detector, not a performance budget, and 10s was
         # calibrated against Release only. Under ANTS_SANITIZERS the same
         # tests run several times slower — measured 2026-07-31 in build-asan:
