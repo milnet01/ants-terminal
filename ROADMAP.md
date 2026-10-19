@@ -20053,6 +20053,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   every section change and up to sample_limit example moves, not the full
   move list. Next: implement place_by_release per
   docs/specs/ANTS-5315-release-sections-migration.md.
+  Progress (2026-10-19): place_by_release built per the step 4 spec
+  (src/remotecontrol_roadmap_release.cpp, RoadmapStore::placementHistory,
+  the wrapper's _plan_apply mark). Feature test
+  tests/features/roadmap_place_by_release: 12/12 red on pre-change source
+  (bad_op_combo), 94/94 green with the op-enum, McpEagerLoad, write-half and
+  backfill suites. Still owed: the mcp-behavioural-notes.md note (spec
+  § 11), the full suite and push, an ants-mcpd rebuild plus the user's
+  /mcp, then the dry run on Ants Terminal shown to the user before any
+  apply.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.

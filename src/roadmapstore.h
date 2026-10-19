@@ -1184,6 +1184,16 @@ public:
     std::optional<int> maxHistorySeq(qint64 itemPk, const QString &changedAt,
                                      QString *error = nullptr) const;
 
+    // ANTS-5315 step 4 — the project's `section` and `placed_by` history rows,
+    // in (item_pk, changed_at, seq) order. place_by_release reads its own
+    // marker back from them: who last moved an item, this op or someone else.
+    struct PlacementEvent {
+        qint64  itemPk = 0;
+        QString field;        // "section" | "placed_by"
+    };
+    std::optional<QVector<PlacementEvent>> placementHistory(
+        qint64 projectId, QString *error = nullptr) const;
+
     // Canonical JSON for the store's own column writes. ANTS-3761 owns the
     // general RFC 8785 writer and INV-19 tests it against the RFC's vectors;
     // this covers the shapes the store itself writes (flat objects and arrays

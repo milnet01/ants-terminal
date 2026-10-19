@@ -1376,6 +1376,11 @@ private:
     // Store-only, like the two above: `project_not_registered` on a project the
     // migration has not taken over. See docs/specs/ANTS-4501-roadmap-report.md.
     QJsonDocument cmdRoadmapLogBackfillDates(const QJsonObject &req);
+    // ANTS-5315 step 4 — place_by_release: file each shipped item under the
+    // release its CHANGELOG citation or git tag names. Store-only, and applies
+    // only a plan from its own dry run.
+    // See docs/specs/ANTS-5315-release-sections-migration.md.
+    QJsonDocument cmdRoadmapLogPlaceByRelease(const QJsonObject &req);
     // ANTS-4585 phase 2 — repair_trailers: re-parse each item's surviving
     // prose and extend the trailer columns migration cut short. Guarded by
     // strict prefix, so it can only ever lengthen a value with more of the

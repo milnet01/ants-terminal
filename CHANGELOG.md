@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"place_by_release" files each shipped item under the release it shipped in** (ANTS-5315)
+  The release comes from the lowest CHANGELOG citation, else the lowest stable git tag holding a commit whose subject starts with the item's id. It reuses or creates one release section per version, moves a wave title's version to its end, and leaves open items and human moves alone. A dry run is required first; its plan_id applies it.
+
 - **"Claude: waiting (N bg)" and a pink tab dot while background work is still running** (ANTS-5773)
   When Claude's turn ends but a background shell, helper agent or monitor it started is still running, the status bar reads "Claude: waiting (N bg)" and the tab dot turns pink, on every tab. The tooltip names each kind. "Claude: idle" now means nothing is pending. A quiet shell is no longer counted as finished after 60 seconds; tasks left by an earlier Claude process are not counted.
 

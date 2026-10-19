@@ -4220,7 +4220,11 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         plan = rlTakePlan(req, &refusal);
         if (!plan) return QJsonDocument(refusal);
     }
-    const QJsonObject &opReq = plan ? plan->req : req;
+    // ANTS-5315 step 4 — the apply mark is ours alone: stripped from what a
+    // caller sends, and set on a plan's re-dispatch.
+    QJsonObject opReq = plan ? plan->req : req;
+    opReq.remove(QLatin1String(kPlanApplyKey));
+    if (plan) opReq[QLatin1String(kPlanApplyKey)] = true;
     QJsonDocument doc = cmdRoadmapLogDispatch(opReq);
     if (plan && !doc.object().value(QStringLiteral("ok")).toBool())
         rlRestorePlan(req.value(QStringLiteral("plan_id")).toString(), *plan);
@@ -4419,6 +4423,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
     if (op == QStringLiteral("backfill_dates")) {
         return cmdRoadmapLogBackfillDates(req);
     }
+    // ANTS-5315 step 4 — place_by_release. A store-only WRITE, beside
+    // backfill_dates for the same reason.
+    if (op == QStringLiteral("place_by_release"))
+        return cmdRoadmapLogPlaceByRelease(req);
     // ANTS-4585 phase 2 — repair_trailers. A WRITE, and store-only, so it sits
     // beside backfill_dates for the same reason: the read verb must not write.
     if (op == QStringLiteral("repair_trailers")) {
@@ -4454,7 +4462,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"list_elements\", "
                            "\"amend_element\", \"delete_element\", "
                            "\"promote_element\", "
-                           "\"bundle_row\", \"backfill_dates\", "
+                           "\"bundle_row\", \"backfill_dates\", \"place_by_release\", "
                            "\"render\", \"convert\", "
                            "\"repair_trailers\", or "
                            "\"create_section\"").arg(op));

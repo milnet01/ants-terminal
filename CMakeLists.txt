@@ -534,6 +534,9 @@ set(ANTS_RC_SOURCES_REL
     # ANTS-5502 — quotation_check's handler. Appended last, for the reason above.
     src/remotecontrol_quotation_check.cpp
     src/remotecontrol_session_cost.cpp
+    # ANTS-5315 step 4 — op:"place_by_release"'s handler. Appended last, for the
+    # reason above.
+    src/remotecontrol_roadmap_release.cpp
 )
 # ANTS-4932 § 2.2 — the list splits in two here, derived rather than restated
 # (INV-11): the terminal TU, which holds dispatch(), the --remote socket and
@@ -3069,6 +3072,9 @@ if(ANTS_TESTS)
                 # real repository with controlled author dates: the subject IS
                 # a history walk, so a fake would assert against the harness.
                 tests/features/roadmap_backfill_dates/test_roadmap_backfill_dates.cpp
+                # ANTS-5315 step 4 — place_by_release. A real repository with
+                # stable and pre-release tags, as roadmap_backfill_dates builds.
+                tests/features/roadmap_place_by_release/test_roadmap_place_by_release.cpp
                 # ANTS-4585 phase 2 — the trailer repair. Against a store the
                 # migration actually built, because the subject is what
                 # migration left behind.

@@ -531,6 +531,10 @@ QString rcProjectRootFor(const QString &path);
 // project with a roadmap; empty otherwise.
 QString rcWorktreeMainCheckout(const QString &path);
 QString findChangelogUnder(const QString &canonicalRoot);
+// ANTS-5315 step 4 — the mark cmdRoadmapLog() puts on a plan_id re-dispatch,
+// so an op can tell an apply from a direct call. The wrapper strips it from
+// every request a caller sends.
+inline constexpr char kPlanApplyKey[] = "_plan_apply";
 QString findYamlChangelogUnder(const QString &canonicalRoot);
 const QString &kUnrecognisedFormatHint();
 QJsonArray kUnrecognisedFormatExpected();

@@ -12313,6 +12313,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
                     opEnum.append("backfill_dates");  // ANTS-4501
+                    opEnum.append("place_by_release");  // ANTS-5315
                     opEnum.append("repair_trailers");  // ANTS-4585
                     opEnum.append("render");  // ANTS-4614
                     opEnum.append("set_intro");     // ANTS-4949
@@ -12548,6 +12549,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "~4 s over 1525 revisions on Ants Terminal — a one-off, "
                         "not a per-query cost, which is why it is an explicit "
                         "op and never a side effect of a read. "
+                        "\"place_by_release\" (ANTS-5315) files each SHIPPED "
+                        "item under the release it shipped in: the lowest "
+                        "CHANGELOG `## [X.Y.Z]` citing its id, else the lowest "
+                        "stable tag holding a commit whose subject begins with "
+                        "the id. It reuses or creates one `## X.Y.Z` section "
+                        "per release, moves a wave title's leading version to "
+                        "its end, and never moves open items or ones a human "
+                        "moved. Dry run first is enforced: send dry_run:true, "
+                        "read the counts, section changes and sampled moves "
+                        "(`sample_limit`), then apply its plan_id. "
                         "\"repair_trailers\" (ANTS-4585 phase 2) is the other "
                         "ONE-OFF: it recovers the `layman` / `source` / `lanes` "
                         "values MIGRATION CUT SHORT, at a hard line wrap "
@@ -13460,6 +13471,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["stable_id"]     = stableIdProp;    // ANTS-1905
                     props["id_prefix"]     = idPrefixProp;    // ANTS-2076
                     props["dry_run"]       = dryRunProp;      // ANTS-2077
+                    {   // ANTS-5315
+                        QJsonObject sampleLimitProp;
+                        sampleLimitProp["type"] = QStringLiteral("integer");
+                        sampleLimitProp["description"] = QStringLiteral(
+                            "place_by_release: cap on each sample array in the "
+                            "reply, 1-200, default 50. Counts are never capped.");
+                        props["sample_limit"] = sampleLimitProp;
+                    }
                     {   // ANTS-5704
                         QJsonObject planIdProp;
                         planIdProp["type"] = QStringLiteral("string");

@@ -3667,6 +3667,25 @@ std::optional<qint64> RoadmapStore::maxSynthesisedId(qint64 projectId,
     return q.value(0).toLongLong();
 }
 
+std::optional<QVector<RoadmapStore::PlacementEvent>>
+RoadmapStore::placementHistory(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT h.item_pk, h.field FROM history h "
+        "JOIN item i ON i.item_pk = h.item_pk "
+        "WHERE i.project_id = ? AND h.field IN ('section', 'placed_by') "
+        "ORDER BY h.item_pk, h.changed_at, h.seq"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return std::nullopt;
+    }
+    QVector<PlacementEvent> out;
+    while (q.next())
+        out.push_back({q.value(0).toLongLong(), q.value(1).toString()});
+    return out;
+}
+
 std::optional<int> RoadmapStore::maxHistorySeq(qint64 itemPk, const QString &changedAt,
                                                QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
