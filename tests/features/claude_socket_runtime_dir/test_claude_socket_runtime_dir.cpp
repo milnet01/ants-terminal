@@ -40,6 +40,7 @@
 #include <unistd.h>
 
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 #include "claudesetup.h"
 #include "configpaths.h"
@@ -60,33 +61,9 @@ bool waitUntil(const std::function<bool()> &done, int timeoutMs) {
     return done();
 }
 
-// Saves the named variables, restores them on scope exit.
-class EnvGuard {
-public:
-    EnvGuard() {
-        for (const char *n : kNames)
-            m_saved.push_back({n, qEnvironmentVariableIsSet(n), qgetenv(n)});
-    }
-    ~EnvGuard() {
-        for (const auto &s : m_saved) {
-            if (s.wasSet) qputenv(s.name, s.value);
-            else          qunsetenv(s.name);
-        }
-    }
-    EnvGuard(const EnvGuard &) = delete;
-    EnvGuard &operator=(const EnvGuard &) = delete;
-
-private:
-    struct Saved { const char *name; bool wasSet; QByteArray value; };
-    static constexpr const char *kNames[] = {
-        "XDG_RUNTIME_DIR", "TMPDIR", "HOME", "ANTS_MCP_SOCKET",
-        "ANTS_CLAUDE_HOOK_SOCKET"};
-    std::vector<Saved> m_saved;
-};
-
 // A = runtime directory (0700), B = tempPath(), both inside one scratch dir.
 struct Sandbox {
-    EnvGuard       env;
+    ants_test::XdgGuard env;
     QTemporaryDir  base;
     QString        a;   // XDG_RUNTIME_DIR
     QString        b;   // TMPDIR
@@ -101,11 +78,11 @@ struct Sandbox {
         QDir().mkpath(b);
         QDir().mkpath(home);
         ::chmod(QFile::encodeName(a).constData(), 0700);
-        qputenv("XDG_RUNTIME_DIR", a.toLocal8Bit());
-        qputenv("TMPDIR", b.toLocal8Bit());
-        qputenv("HOME", home.toLocal8Bit());
-        qunsetenv("ANTS_MCP_SOCKET");
-        qunsetenv("ANTS_CLAUDE_HOOK_SOCKET");
+        env.setEnv("XDG_RUNTIME_DIR", a.toLocal8Bit());
+        env.setEnv("TMPDIR", b.toLocal8Bit());
+        env.setEnv("HOME", home.toLocal8Bit());
+        env.unsetEnv("ANTS_MCP_SOCKET");
+        env.unsetEnv("ANTS_CLAUDE_HOOK_SOCKET");
     }
     bool ok() const { return base.isValid(); }
     QString antsDir() const { return a + QStringLiteral("/ants-terminal"); }
