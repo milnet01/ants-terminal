@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5760 -->
+<!-- ants-roadmap-id-high-water: ANTS=5761 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72191,6 +72191,19 @@ project. Reported causes are claims until checked in source.
   **Layman:** Filing a batch of roadmap items could silently file none of them while saying it worked.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-16.
+  Lanes: mcp-roadmap.
+
+- 📋 [ANTS-5761] **roadmap_log op:flip replaces a pass-headings item's whole Status phrase, not its first word.**
+  Repro (RetroDB, 2026-10-17): an item whose body holds
+  `- **Status**: in progress. Lanes: ui, docs.`; op:flip id:PASS-59-104
+  to_status:shipped dry_run:true return:full renders `done progress`.
+  amend_body refuses the Status line, so repair needs a hand-edit plus
+  roadmap_migrate. Fix: replace the status phrase up to the first '.',
+  not its first word. Regression test: multi-word phrases ("in
+  progress", "todo, next after ...").
+  **Layman:** Marking a RetroDB task done turned "in progress" into "done progress"; the fix rewrites the whole status words.
+  Kind: fix.
+  Source: RetroDB_Ants_MCP_Feedback.md 2026-10-17.
   Lanes: mcp-roadmap.
 
 ## Ants MCP feedback from CC sessions — 2026-10-15 token survey
