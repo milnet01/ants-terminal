@@ -73,7 +73,7 @@ enum class ClaudeState {
 // any emit).
 struct ClaudeTranscriptSnapshot {
     bool hasEvents = false;        // true iff tail parsed at least one event
-    bool stateDetermined = false;  // true iff last non-metadata event was recognized
+    bool stateDetermined = false;  // true iff the tail holds an assistant/user/human/attachment record
     ClaudeState state = ClaudeState::NotRunning;
     QString tool;                  // non-empty iff state == ToolUse
     QString detail;                // short human-readable label ("thinking", "Bash", …)

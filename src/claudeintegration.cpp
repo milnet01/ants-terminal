@@ -895,21 +895,12 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         return out;
     };
     const QList<QJsonObject> events = parseEvents(tail);
+    // The window `events` came from. The context reading below widens
+    // `window` for itself; the state search widens its own copy.
+    qint64 stateWindow = window;
 
     if (events.isEmpty()) return snap;
     snap.hasEvents = true;
-
-    // Metadata event types that don't affect run state. They can appear after
-    // `assistant/end_turn`, so naively looking at only the last event would
-    // miss the real terminal state of the turn.
-    static const QSet<QString> kMetadataTypes = {
-        QStringLiteral("system"),
-        QStringLiteral("last-prompt"),
-        QStringLiteral("permission-mode"),
-        QStringLiteral("file-history-snapshot"),
-        QStringLiteral("summary"),
-        QStringLiteral("meta"),
-    };
 
     // Context size from the most recent event carrying usage info. Walk
     // backward. With prompt caching, input_tokens is only the uncached tail,
@@ -968,14 +959,31 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         }
     }
 
-    // Find the most recent state-determining event by walking backward.
-    QJsonObject stateEvent;
-    for (int i = events.size() - 1; i >= 0; --i) {
-        QString t = events[i].value("type").toString();
-        if (!kMetadataTypes.contains(t)) {
-            stateEvent = events[i];
-            break;
+    // ANTS-5779 — only these record types say what Claude is doing. Claude
+    // Code writes a growing set of bookkeeping records after a turn's real
+    // event (last-prompt, ai-title, mode, atis-latch, api-request, …), so the
+    // walk skips everything not on this list, rather than a list of the
+    // bookkeeping types, which went stale and froze the state.
+    const auto findStateEvent = [](const QList<QJsonObject> &evs) {
+        for (int i = evs.size() - 1; i >= 0; --i) {
+            const QString t = evs[i].value("type").toString();
+            if (t == QLatin1String("assistant") || t == QLatin1String("user") ||
+                t == QLatin1String("human") || t == QLatin1String("attachment"))
+                return evs[i];
         }
+        return QJsonObject();
+    };
+    QJsonObject stateEvent = findStateEvent(events);
+    // Bookkeeping can outgrow the window (an api-request-blob runs to
+    // hundreds of KiB). Widen it, as for the context reading above, until a
+    // state record is inside.
+    while (stateEvent.isEmpty() && stateWindow < kMaxWindow && stateWindow < size) {
+        stateWindow = std::min(stateWindow * 2, kMaxWindow);
+        const qint64 start = std::max(qint64(0), size - stateWindow);
+        if (!file.seek(start)) break;
+        QByteArray wider = file.read(size - start);
+        if (start > 0) wider.remove(0, wider.indexOf('\n') + 1);
+        stateEvent = findStateEvent(parseEvents(wider));
     }
     if (!stateEvent.isEmpty()) {
         const QString type = stateEvent.value("type").toString();
@@ -1036,8 +1044,6 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
             snap.detail = "thinking";
             snap.stateDetermined = true;
         }
-        // Any other state-determining type we don't recognize: leave
-        // snap.stateDetermined == false so the caller retains its prior state.
     }
 
     // /compact override. The command is recorded in the transcript as a user

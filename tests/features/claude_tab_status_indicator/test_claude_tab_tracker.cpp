@@ -78,9 +78,12 @@ int checkTranscriptMapping(const char *label, const char *jsonl,
     if (!snap.hasEvents) {
         std::fprintf(stderr, "[%s] FAIL no events parsed\n", label); return 1;
     }
-    if (snap.stateDetermined && snap.state != expected) {
-        std::fprintf(stderr, "[%s] FAIL state=%d want=%d\n",
-                     label, int(snap.state), int(expected));
+    // ANTS-5779 — an undetermined state must fail too: it leaves the tab on
+    // whatever it showed before, which is how a busy Claude read as idle.
+    if (!snap.stateDetermined || snap.state != expected) {
+        std::fprintf(stderr, "[%s] FAIL determined=%d state=%d want=%d\n",
+                     label, int(snap.stateDetermined), int(snap.state),
+                     int(expected));
         return 1;
     }
     if (expectPlanMode && !snap.planMode) {

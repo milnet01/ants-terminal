@@ -125,6 +125,15 @@ records it returns records 7–9 with a total of 9; with a budget of one
 byte it returns record 9 alone. The transcript dialog passes a byte cap so
 a few huge records cannot make its parse and HTML unbounded.
 
+**INV-16** — Record types the parser does not know never hide the turn's
+state (ANTS-5779). Only `assistant`, `user`, `human` and `attachment`
+records decide state; every other type is skipped. When none is in the
+first window, the window widens until one is. A pending `AskUserQuestion`
+followed by a 100 KiB `api-request-blob`, then `last-prompt`, `ai-title`,
+`mode` and `atis-latch`, returns `stateDetermined`, `ToolUse` and tool
+`AskUserQuestion`. Before the fix it returned no state, so the tab kept
+showing "idle".
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript

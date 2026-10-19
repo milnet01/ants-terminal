@@ -619,6 +619,40 @@ int inv14TailFindsRecordLargerThanOldWindow() {
     return ok ? 0 : 1;
 }
 
+// ANTS-5779: bookkeeping records the parser does not know, written after the
+// turn's real event, must not hide it. Here a pending AskUserQuestion is
+// followed by the records Claude Code wrote in a live session (2026-10-19),
+// one of them larger than the first 32 KiB window.
+int inv16StateSurvivesUnknownTrailingRecords() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString path = tmp.path() + "/pending-question.jsonl";
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        f.write(R"({"type":"user","message":{"content":"go"}})" "\n");
+        f.write(R"({"type":"assistant","message":{"stop_reason":"tool_use",)"
+                R"("content":[{"type":"tool_use","name":"AskUserQuestion","input":{}}]}})" "\n");
+        f.write(R"({"type":"api-request-blob","blob":")");
+        f.write(QByteArray(100 * 1024, 'x'));
+        f.write(R"("})" "\n");
+        f.write(R"({"type":"last-prompt","lastPrompt":"go"})" "\n");
+        f.write(R"({"type":"ai-title","title":"t"})" "\n");
+        f.write(R"({"type":"mode","mode":"default"})" "\n");
+        f.write(R"({"type":"atis-latch"})" "\n");
+    }
+    const ClaudeTranscriptSnapshot snap =
+        ClaudeIntegration::parseTranscriptTail(path, false);
+    const bool ok = snap.stateDetermined &&
+                    snap.state == ClaudeState::ToolUse &&
+                    snap.tool == QLatin1String("AskUserQuestion");
+    std::fprintf(stderr,
+                 "[inv16 state-survives-unknown-trailers] determined=%d state=%d tool=%s  %s\n",
+                 snap.stateDetermined ? 1 : 0, static_cast<int>(snap.state),
+                 qPrintable(snap.tool), ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -637,6 +671,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv13TailLoaderReturnsLastEntriesAndTotal();
     failures += inv14TailFindsRecordLargerThanOldWindow();
     failures += inv15TailLoaderHonoursByteCap();
+    failures += inv16StateSurvivesUnknownTrailingRecords();
     if (failures) FAIL();
 }
 
