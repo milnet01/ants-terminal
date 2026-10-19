@@ -5,6 +5,7 @@
 #include "gitwrap.h"
 
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -22,19 +23,12 @@ constexpr char kVar[] = "GIT_OPTIONAL_LOCKS";
 // environment that already sets it cannot make the test pass.
 class OptionalLocksUnset {
 public:
-    OptionalLocksUnset()
-        : m_had(qEnvironmentVariableIsSet(kVar)), m_saved(qgetenv(kVar)) {
-        qunsetenv(kVar);
-    }
-    ~OptionalLocksUnset() {
-        if (m_had) qputenv(kVar, m_saved);
-    }
+    OptionalLocksUnset() { m_env.unsetEnv(kVar); }
     OptionalLocksUnset(const OptionalLocksUnset &) = delete;
     OptionalLocksUnset &operator=(const OptionalLocksUnset &) = delete;
 
 private:
-    bool       m_had;
-    QByteArray m_saved;
+    ants_test::XdgGuard m_env;
 };
 
 // The body of the function whose signature starts with `anchor`, comments
