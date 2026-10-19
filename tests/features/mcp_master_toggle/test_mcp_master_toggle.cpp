@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QByteArray>
 #include <QStandardPaths>
@@ -35,22 +36,6 @@
 
 namespace {
 
-// Sandbox XDG_CONFIG_HOME so Config reads/writes a temp dir, not the
-// user's real config (mirrors config_tab_title_format's guard).
-struct XdgConfigHomeGuard {
-    QByteArray prior;
-    bool hadPrior = false;
-    XdgConfigHomeGuard() {
-        hadPrior = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
-        if (hadPrior) prior = qgetenv("XDG_CONFIG_HOME");
-    }
-    void set(const QByteArray &v) { qputenv("XDG_CONFIG_HOME", v); }
-    ~XdgConfigHomeGuard() {
-        if (hadPrior) qputenv("XDG_CONFIG_HOME", prior);
-        else qunsetenv("XDG_CONFIG_HOME");
-    }
-};
-
 std::string slurp(const char *path) { return ants_test::slurpFile(path); }
 
 bool has(const std::string &s, const std::string &needle) {
@@ -70,10 +55,10 @@ size_t countOccurrences(const std::string &s, const std::string &needle) {
 
 // INV-1 — config round-trip: default true, persists a written value.
 TEST(McpMasterToggle, INV1_ConfigRoundTrip) {
-    XdgConfigHomeGuard guard;
+    ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    guard.set(tmp.path().toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", tmp.path().toUtf8());
 
     { Config a; EXPECT_TRUE(a.claudeMcpEnabled()); }       // default on
     { Config a; a.setClaudeMcpEnabled(false); }
