@@ -20082,6 +20082,26 @@ fixes don't address. Roadmapped here as their own design tasks.
   § 11), the full suite and push, an ants-mcpd rebuild plus the user's
   /mcp, then the dry run on Ants Terminal shown to the user before any
   apply.
+  2026-10-19 progress: place_by_release pushed (5282518d); ants-mcpd
+  rebuilt, server_build 5282518d. Full suite before the TU/lane fix
+  5726/5728; after, the two failures pass. First dry run on Ants
+  Terminal (NOT applied): moved 1972, unplaced 768 (no_evidence 692,
+  unreleased 76, human_placed 0), already_placed 0, 53 sections created
+  (0.7.56..0.7.114), 11 retitled, 0 reused, both 1082, differ 94,
+  multi_cited 122. Spec § 7 expects placed 2082 (tag-only 216),
+  no_evidence 582, both 1184, differ 76, multi 148. A Python emulation
+  of the op's own rules (CHANGELOG regex under released headings;
+  per-tag git log --not lower tags; subject-start id) reproduces § 7:
+  placed 2082, tag-only 216, both 1181, differ 98, tag ids 1397. So the
+  op's tag source (rlReadTags in src/remotecontrol_roadmap_release.cpp)
+  loses about 210 shipped ids, and its CHANGELOG reader
+  (ChangelogQuery::parse, ids from bullet entries only) gives
+  multi_cited 122 vs 148. Cause not yet found. Next: find why
+  rlReadTags/rlRunGit returns fewer subjects than the same git commands
+  from a shell, fix it with a red test, then re-run the dry run and show
+  the user before applying. Retitles also touch the archives: "0.6.0 —
+  shipped (2026-04-14)" becomes "shipped (2026-04-14) (0.6.0 wave)";
+  show the user that wording.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
