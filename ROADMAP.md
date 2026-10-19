@@ -3225,6 +3225,10 @@ remainder, captured so they don't drop on the floor.
   enqueue, then a user record. Rule: pending from the start record until
   a notification with a status for that id; clear when the tab's Claude
   PID changes.
+  Spec accepted 2026-10-19:
+  docs/specs/ANTS-5773-idle-means-nothing-pending.md, after
+  review-contract capped at 2 loops (9 verified findings, all fixed;
+  calm cap; user rulings untouched). Next: build with write-code.
   **Layman:** The status bar stops saying Claude is idle while a background shell, helper agent or monitor it started is still running.
   Kind: feature.
   Source: user-request-2026-10-19.
