@@ -20047,6 +20047,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Progress (2026-10-19, 757f9933): step 4 spec docs/specs/ANTS-5315-release-sections-migration.md
   passed review-contract at the spec cap (two passes, 15 findings fixed) and is
   accepted. Next: build roadmap_log op:"place_by_release".
+  User decisions 2026-10-19 (spec stage): shipped items with no release
+  evidence stay in place and are reported; version-led wave titles move
+  their version to the end ("… (0.7.65 wave)"); the dry run returns counts,
+  every section change and up to sample_limit example moves, not the full
+  move list. Next: implement place_by_release per
+  docs/specs/ANTS-5315-release-sections-migration.md.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.

@@ -5,7 +5,7 @@
 **Source:** ROADMAP.md ANTS-5315 step 4 (claude-ab-request-2026-09-24; user decisions 2026-10-19).
 **Composes with:** ANTS-1878 § 2.3a (release-section placement), ANTS-4501 (the `backfill_dates` dry-run discipline), ANTS-5704 (`plan_id`).
 
-**Layman:** One command sorts every finished roadmap item under the release it shipped in, shows you the whole result before changing anything, and leaves unfinished work where it is.
+**Layman:** One command sorts every finished roadmap item under the release it shipped in, shows you the counts, every section change and example moves before changing anything, and leaves unfinished work where it is.
 
 ## 1. Problem
 
