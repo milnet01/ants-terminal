@@ -24,6 +24,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_SPECLINT_CPP_PATH)
@@ -748,8 +749,8 @@ QString canon(const QString &p) { return QFileInfo(p).canonicalFilePath(); }
 // Restores PATH on every exit path, including a failed ASSERT.
 struct PathGuard {
     QByteArray old = qgetenv("PATH");
-    ~PathGuard() { qputenv("PATH", old); }
-    void set(const QString &p) { qputenv("PATH", p.toUtf8()); }
+    ants_test::XdgGuard env;
+    void set(const QString &p) { env.setEnv("PATH", p.toUtf8()); }
     void prepend(const QString &dir) { set(dir + QLatin1Char(':') + QString::fromUtf8(old)); }
 };
 
