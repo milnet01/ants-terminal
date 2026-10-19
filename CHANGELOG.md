@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Two slow tests run in a few hundredths of a second: one no longer sleeps between config writes, one no longer starts hundreds of shells.** (ANTS-1384)
+
 - **The test suite compiles about a quarter faster from cold: each test bundle precompiles the Qt headers once.** (ANTS-1383)
 
 - **The spec standard says a spec written before the § Reload rule gains that section only when its Surface or Invariants are next amended** (ANTS-5757)

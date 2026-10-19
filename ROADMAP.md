@@ -23192,7 +23192,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane E).
 
-- 📋 [ANTS-1384] **Remaining test perf — sleep-free reflow, bench gate, fixture-size caps.**
+- ✅ [ANTS-1384] **Remaining test perf — sleep-free reflow, bench gate, fixture-size caps.**
   Cluster of smaller perf
   fixes from the audit: (a) `osc8_apc_memory_caps`
   `ApcOverflowDropped` reduces overflow margin from `+1024
@@ -23217,6 +23217,16 @@ that shipped 6+ months ago — pure self-reference).
   expensive setup (huge fixtures, real-clock sleeps, shell
   forks, repeated file reads). Each individually small;
   together ~3 s of CI tax.
+  Closed 2026-10-19 (b7e5c082), each part re-measured in today's suite:
+  (c) done: mtime back-dated, no sleeps; 0.72 s to 0.03 s.
+  (e) done: line built once; 0.58 s to 0.04 s.
+  (b) and (d) were already done: bench_vt is outside the default run,
+  threaded_parse_equivalence takes 0.10 s.
+  (a) not worth it: ApcOverflowDropped takes 0.30 s in all.
+  (f) not worth it: one 20 ms sleep; injecting now() means a
+  production API change for 20 ms.
+  (g) not worth it: mainwindow.cpp is split now (ANTS-1677), so each
+  read is small.
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane A residual).
 
