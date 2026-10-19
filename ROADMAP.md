@@ -69243,21 +69243,28 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
   Lanes: mcp.
 
-- 📋 [ANTS-5767] **specs.md says whether § Reload and the loop log must sit in a fixed position after § Tests.**
+- ✅ [ANTS-5767] **specs.md says whether § Reload and the loop log must sit in a fixed position after § Tests.**
   [Q2, both lanes, pre-existing] § 3's prose says its sections come "in
   this relative order", while its required-sections block and the § 3
   What-checks-this row place `## Reload` and the loop log after
   `## Tests`. A conformer cannot tell whether § Reload's position binds.
   Filed outside the ANTS-5757 gate's radius. Hot reload: nothing.
+  Resolved 2026-10-19: § 3 now says its order binds its own entries
+  only; § 4's sections, § Reload and the loop log included, sit wherever
+  they read best, and the block lists names, not positions.
+  What-checks-this row aligned.
   **Layman:** The spec rules disagree with themselves about where two required sections go.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-19 (ANTS-5757 gate, loop 1).
 
-- 📋 [ANTS-5768] **specs.md says whether a build plan or ledger in docs/specs/ may opt out of the required sections.**
+- ✅ [ANTS-5768] **specs.md says whether a build plan or ledger in docs/specs/ may opt out of the required sections.**
   [Q3, one lane, pre-existing] The standard does not say whether a new
   build plan or ledger placed in docs/specs/ may carry
   `<!-- spec-lint: no-required-sections -->`. Filed outside the
   ANTS-5757 gate's radius. Hot reload: nothing.
+  Resolved 2026-10-19: § 3 now says a non-spec file in docs/specs/ (a
+  build plan or ledger, new or old) may carry the opt-out; a new spec
+  may not.
   **Layman:** The spec rules don't say whether a non-spec file in the specs folder can skip the spec checklist.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-19 (ANTS-5757 gate, loop 1).

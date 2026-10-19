@@ -80,6 +80,9 @@ Every spec carries these in this relative order; § 4's sections may sit
 between them. They are not the whole
 required set — § 4 carries three more: **§ RAM / build cost** when its
 trigger applies, and **§ Reload** and **§ Cold-eyes loop log** always.
+The order binds this section's own entries only. § 4's sections, those
+three included, sit wherever they read best; the block below lists
+names, not positions.
 
 The block below is that rule in the form `spec_lint`'s `missing_section`
 check reads (ANTS-4345). It **adds no obligation** — every entry is
@@ -122,11 +125,12 @@ predates this standard (v1, 2026-05-21); § 2 already records that.
 `spec_lint` measures the current figure — this document does not restate
 it, because a count here reads as present tense and rots.
 
-A spec that cannot conform — a build plan or a ledger parked in
-`docs/specs/`, or a pre-standard file nobody is rewriting — may exempt
-itself with `<!-- spec-lint: no-required-sections -->` on its own line
-outside any fence, which suppresses every `missing_section` finding for
-that document. It is not a licence for a new spec.
+A file in `docs/specs/` that is not a spec — a build plan or a ledger,
+new or old — may exempt itself with
+`<!-- spec-lint: no-required-sections -->` on its own line outside any
+fence, which suppresses every `missing_section` finding for that
+document. So may a pre-standard spec nobody is rewriting. It is not a
+licence for a new spec.
 
 
 ### 3.1 Title (H1)
@@ -578,7 +582,7 @@ its stop/start control, or why it has none>
 | Rule | What catches a breach |
 |---|---|
 | § 2 the `<ID>-<topic>.md` filename shape | **nothing** — `spec_query` resolves the bare `<ID>.md` too, so a missing slug is invisible to it; the corpus sweep is ANTS-3755 |
-| § 3 the required sections are present | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading § 3's own block. It tests presence, never ORDER, though § 3 fixes their relative order — **nothing** catches a spec whose sections are all present and out of sequence |
+| § 3 the required sections are present | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading § 3's own block. It tests presence, never ORDER, though § 3 fixes its own entries' relative order — **nothing** catches a spec whose sections are all present and out of sequence |
 | § 3.2 the header block stays parseable | **`Partial:`** `spec_query`, a parse check that returns an empty `title`, `status` or `kind` for a broken header, not an error — and nothing runs it. § 6 asks the author to |
 | § 3.5 every invariant carries a test surface | `spec_lint` `invariant_no_test`, a per-invariant clause-presence check. A tombstone is exempt, so a MALFORMED one — the dash in `*withdrawn — …*` is load-bearing — surfaces here as an untested invariant rather than as itself |
 | § 3.5 a command test clause states a result | **`Partial:`** `spec_lint` `command_test_no_expectation`, a candidate check over the clause's code spans. The clause ends at its paragraph or at a *Breaks when:* / *Broken by:* marker, so text after the marker never counts as the result |
