@@ -16,6 +16,7 @@
 #include "sessionmanager.h"
 #include <QJsonObject>
 #include <QApplication>
+#include <QCheckBox>
 #include <QMessageBox>
 #include <QPointer>
 #include <QVBoxLayout>

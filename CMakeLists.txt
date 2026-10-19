@@ -1145,11 +1145,11 @@ target_link_libraries(ants-terminal PRIVATE
     ants_warnings
 )
 
-# Precompile Qt aggregate headers. Qt headers dominate per-TU compile cost
-# (~200-300 MiB working set in cc1plus) and are pulled in by nearly every
-# .cpp under src/. PCH cuts that 30-50%, which keeps the build under
-# RAM+swap on 32 GiB hosts as the source tree grows. Aggregate headers
-# (no individual classes) so the PCH stays valid across edits.
+# Precompile Qt headers. Qt headers dominate per-TU compile cost (~200-300
+# MiB working set in cc1plus) and are pulled in by nearly every .cpp under
+# src/. PCH cuts that 30-50%, which keeps the build under RAM+swap on 32 GiB
+# hosts as the source tree grows. Only Qt headers go in, so no project edit
+# invalidates the PCH.
 #
 # ANTS-1550 extends PCH from main.cpp's lone TU to every STATIC lib (where
 # the bulk of compile time lives). Each lib builds its own PCH once and
@@ -1168,6 +1168,21 @@ target_link_libraries(ants-terminal PRIVATE
 # slower build, never a wrong one.
 set(_ants_toolchain_id
     "${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
+# A distro rebuild can replace cc1plus without changing the version, and GCC
+# then rejects the PCH as "created by a different GCC executable" (seen
+# 2026-10-08). Key on the executable's mtime and size as well.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -print-prog-name=cc1plus
+        OUTPUT_VARIABLE _ants_cc1plus OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(_ants_cc1plus AND EXISTS "${_ants_cc1plus}")
+        file(TIMESTAMP "${_ants_cc1plus}" _ants_cc1plus_mtime "%s" UTC)
+        file(SIZE "${_ants_cc1plus}" _ants_cc1plus_size)
+        string(APPEND _ants_toolchain_id
+            "-${_ants_cc1plus_mtime}-${_ants_cc1plus_size}")
+    endif()
+endif()
 set(_ants_toolchain_stamp "${CMAKE_BINARY_DIR}/ants-toolchain-id.txt")
 set(_ants_toolchain_prev "")
 if(EXISTS "${_ants_toolchain_stamp}")
@@ -1191,12 +1206,38 @@ if(NOT _ants_toolchain_prev STREQUAL _ants_toolchain_id)
     file(WRITE "${_ants_toolchain_stamp}" "${_ants_toolchain_id}\n")
 endif()
 
+# ANTS-2107 — the Qt headers src/ and tests/ include most often, not the
+# QtCore/QtGui/QtWidgets aggregates. Measured 2026-10-19 on 16 sampled TUs:
+# the PCH shrank from 373 MB to 256 MB, cc1plus's peak RSS dropped by 150 to
+# 180 MB, and 15 of the 16 compiled faster (sum 19.2 s to 17.4 s on the
+# 10 outside ants_mcpcore_lib). A header used by few TUs is left out: each
+# one costs every TU that loads the PCH. mainwindow_menus.cpp, the heaviest
+# widget user sampled, is 0.27 s slower.
+set(ANTS_QT_PCH_HEADERS
+    <QtCore/QByteArray> <QtCore/QChar> <QtCore/QCoreApplication>
+    <QtCore/QCryptographicHash> <QtCore/QDate> <QtCore/QDateTime>
+    <QtCore/QDir> <QtCore/QDirIterator> <QtCore/QElapsedTimer>
+    <QtCore/QEvent> <QtCore/QFile> <QtCore/QFileInfo> <QtCore/QHash>
+    <QtCore/QIODevice> <QtCore/QJsonArray> <QtCore/QJsonDocument>
+    <QtCore/QJsonObject> <QtCore/QJsonParseError> <QtCore/QJsonValue>
+    <QtCore/QList> <QtCore/QMap> <QtCore/QMutex> <QtCore/QObject>
+    <QtCore/QPair> <QtCore/QPointer> <QtCore/QProcess>
+    <QtCore/QProcessEnvironment> <QtCore/QRegularExpression>
+    <QtCore/QSaveFile> <QtCore/QScopeGuard> <QtCore/QSet>
+    <QtCore/QStandardPaths> <QtCore/QString> <QtCore/QStringList>
+    <QtCore/QTemporaryDir> <QtCore/QTextStream> <QtCore/QThread>
+    <QtCore/QTimer> <QtCore/QUrl> <QtCore/QUuid> <QtCore/QVariant>
+    <QtCore/QVector>
+    <QtGui/QColor> <QtGui/QKeyEvent> <QtGui/QPainter>
+    <QtWidgets/QApplication> <QtWidgets/QDialog> <QtWidgets/QHBoxLayout>
+    <QtWidgets/QLabel> <QtWidgets/QLineEdit> <QtWidgets/QListWidget>
+    <QtWidgets/QMessageBox> <QtWidgets/QPushButton> <QtWidgets/QScrollBar>
+    <QtWidgets/QSplitter> <QtWidgets/QStatusBar> <QtWidgets/QVBoxLayout>
+    <QtWidgets/QWidget>
+)
+
 function(ants_apply_qt_pch tgt)
-    target_precompile_headers(${tgt} PRIVATE
-        <QtCore/QtCore>
-        <QtGui/QtGui>
-        <QtWidgets/QtWidgets>
-    )
+    target_precompile_headers(${tgt} PRIVATE ${ANTS_QT_PCH_HEADERS})
 endfunction()
 
 ants_apply_qt_pch(ants-terminal)
