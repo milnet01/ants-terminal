@@ -17,7 +17,7 @@ This complements, rather than replaces, the unit-style shell tests in
 
 ```
 tests/features/
-  <feature-name>/
+  <feature_name>/
     spec.md                 # human contract — reviewed like code
     test_<feature>.cpp      # GoogleTest TEST() blocks under one Suite
 ```
@@ -87,7 +87,8 @@ reported against three prior releases.
 
 ## Authoring a new feature test
 
-1. `mkdir tests/features/<feature-name>/`.
+1. `mkdir tests/features/<feature_name>/`, in lowercase snake_case:
+   `spec_lint` resolves no other form (`docs/standards/specs.md` § 3.6).
 2. Write `spec.md`: the feature's invariants, in plain English,
    reviewable by humans. Include motivation, scope, and what's *out*
    of scope.

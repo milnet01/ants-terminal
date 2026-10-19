@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5762 -->
+<!-- ants-roadmap-id-high-water: ANTS=5763 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -20139,6 +20139,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-10-15 (found while working ANTS-4413).
   Lanes: mcp-spec.
+
+- 📋 [ANTS-5763] **workspace_search's rate cap leaves room for a session that fans out read-only subagents.**
+  Seen 2026-10-19: with 12 read-only ants-explore subagents running a
+  roadmap audit, the parent session's own workspace_search refused
+  rate_limited (10 calls in the last 60 s, cap 10). Not measured: whether
+  the cap counts per client connection or per server, and how many of
+  the subagents' calls were refused. Measure that first, then size the
+  cap (or a per-caller budget) so one fan-out does not starve the
+  session that dispatched it. Hot reload: workspace_search is served by
+  ants-mcpd; a rebuild reaches clients on their next /mcp reconnect.
+  **Layman:** When Claude splits a big search across many helpers, the search tool's speed limit slows them all down.
+  Kind: enhancement.
+  Source: in-session-2026-10-19 (roadmap audit fan-out).
+  Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
@@ -68984,7 +68998,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16 loop 15.
 
-- 📋 [ANTS-5756] **specs.md § 3.6 and spec_lint agree on which tests/features/<name> forms resolve.**
+- ✅ [ANTS-5756] **specs.md § 3.6 and spec_lint agree on which tests/features/<name> forms resolve.**
   [Q1] specs.md § 3.6 says spec_lint resolves tests/features/<name>, but
   surfaceRe in src/speclint.cpp captures only lowercase snake_case
   (tests/features/([a-z0-9]+(?:_[a-z0-9]+)*)(?!\w|\*)). A hyphenated
@@ -68992,6 +69006,10 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   test_surface_absent FINDING; a capitalised one is never read.
   tests/features/README.md writes <feature-name>. No directory has a
   hyphen or capital today. Fix the doc (state snake_case) or the regex.
+  Shipped 2026-10-19: docs fixed, regex kept. specs.md § 3.6 and
+  tests/features/README.md say `<name>` is lowercase snake_case, the
+  only form spec_lint resolves; every existing directory already uses
+  it.
   **Layman:** The spec rules and the spec checker disagree about how test folder names may be spelled.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).

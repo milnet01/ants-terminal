@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The spec standard and the feature-test guide say a `tests/features/` folder name is lowercase snake_case, the form `spec_lint` resolves** (ANTS-5756)
+
 - **The status bar's Claude area has no empty gaps: Claude status, model suggestion, current model, context, tokens saved, Review Changes, Roadmap and version in that order, with occasional pills (mail, background tasks, task list, undo, exit code) at its left** (ANTS-5762)
 
 - **The spec standard names `implemented (DATE)` for a spec whose code is built and green but not yet released** (ANTS-3864)
