@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include "tooldetectionengine.h"
 
@@ -20,18 +21,6 @@
 
 namespace TDE = ToolDetectionEngine;
 
-namespace {
-
-// Restores PATH at scope-exit so test isolation holds.
-struct PathScope {
-    QByteArray saved;
-    PathScope() : saved(qgetenv("PATH")) {}
-    ~PathScope() { qputenv("PATH", saved); }
-    void set(const QByteArray &v) { qputenv("PATH", v); }
-};
-
-
-}  // namespace
 
 // TDE-1
 TEST(ToolDetectionEngine, EmptyToolReturnsFalse) {
@@ -70,13 +59,13 @@ TEST(ToolDetectionEngine, UnknownToolNegativeCaches) {
 
 // TDE-4
 TEST(ToolDetectionEngine, PathChangeInvalidates) {
-    PathScope scope;
+    ants_test::XdgGuard scope;  // restores PATH at scope exit
     TDE::clearCache();
     const QString hBefore = TDE::currentPathHash();
     EXPECT_TRUE(TDE::exists("sh"));
     EXPECT_GE(TDE::cacheSize(), 1);
     // Mutate PATH to a path that excludes /usr/bin and /bin.
-    scope.set("/dev/null");
+    scope.setEnv("PATH", "/dev/null");
     const QString hAfter = TDE::currentPathHash();
     EXPECT_NE(hBefore, hAfter) << "PATH change must change hash";
     // Next call sees the new hash and resets the cache.
@@ -128,8 +117,8 @@ TEST(ToolDetectionEngine, RepeatProbesAreFree) {
 TEST(ToolDetectionEngine, MissExpiresSoInstalledToolIsFound) {
     QTemporaryDir bin;
     ASSERT_TRUE(bin.isValid());
-    PathScope scope;
-    scope.set(bin.path().toLocal8Bit() + ":" + scope.saved);
+    ants_test::XdgGuard scope;  // restores PATH at scope exit
+    scope.setEnv("PATH", bin.path().toLocal8Bit() + ":" + qgetenv("PATH"));
     TDE::clearCache();
     TDE::setMissTtlMs(0);
     const QString tool = QStringLiteral("ants-5110-installed-later");
