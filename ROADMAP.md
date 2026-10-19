@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5770 -->
+<!-- ants-roadmap-id-high-water: ANTS=5771 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -22956,7 +22956,7 @@ test-mode without restoring leaks state into siblings) and
 exact string exists in the source" for one-shot refactors
 that shipped 6+ months ago — pure self-reference).
 
-- 📋 [ANTS-1379] **Test env-pollution sweep — bundle-wide RAII for `qputenv` / `setTestModeEnabled` / `umask`.**
+- ✅ [ANTS-1379] **Test env-pollution sweep — bundle-wide RAII for `qputenv` / `setTestModeEnabled` / `umask`.**
   ~10 tests call `qputenv("XDG_CONFIG_HOME"|"XDG_DATA_HOME"|
   "HOME")` without restoring; `tab_color.cpp:221`
   permanently flips `QStandardPaths::setTestModeEnabled(true)`
@@ -23037,6 +23037,11 @@ that shipped 6+ months ago — pure self-reference).
   shared_socket_listener, spec_lint_verb (test_claude, 99 pass).
   Remaining: test_chrome pty_child_env, shell_command_wiring,
   ui_state_persistence; test_dialogs review_changes_diff_cap.
+  Shipped 2026-10-19: the last four (pty_child_env, shell_command_wiring,
+  ui_state_persistence, review_changes_diff_cap) moved onto XdgGuard, one
+  commit each; 22/22 pass. Every file in the 2026-10-12 classification is
+  done. Three files that classification did not list are filed as
+  ANTS-5771.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.**
   `tests/features/concurrent_writer_lock/
@@ -24160,6 +24165,26 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: refactor.
   Source: in-session-2026-07-13; surfaced during ANTS-3355.
   Resolved (2026-07-13): moved commentSuppresses verbatim from AuditDialog (ants_audit_dialog_lib, the QDialog TU) to a free function in the AuditEngine namespace (auditengine.h/.cpp, ants_audit_lib). Updated the 3 inlineSuppressed call sites to AuditEngine::commentSuppresses; dropped the obsolete public static from auditdialog.h. The ANTS-3355 runtime test (audit_drop_alias) moved back from test_dialogs to test_audit (engine-only bundle) and now calls it via auditengine.h — a green test_audit proves the symbol resolves from the engine lib without the GUI lib. Full suite green (2631). Doc-note: ANTS-1111.md §2.6 still cites auditdialog.cpp line numbers for the predicate; left as-is (historical shipped spec, line cites already drift-prone).
+
+- 📋 [ANTS-5771] **Three tests outside ANTS-1379's list restore process state by hand; one can leak PATH.**
+  Found 2026-10-19 by grepping tests/ for qputenv / qunsetenv /
+  setTestModeEnabled / umask( in files without xdg_guard.h.
+  - mcp_workspace_search: swaps PATH to a shim dir, and an ASSERT_EQ sits
+    before the hand-written restore, so a failure leaves PATH on a
+    deleted directory for later tests in the bundle. Move onto
+    ants_test::XdgGuard.
+  - trace/test_trace_serve.cpp: fixture saves/restores XDG_DATA_HOME in
+    SetUp/TearDown. Safe (TearDown runs after an ASSERT); dedup onto
+    XdgGuard.
+  - allowlist_perms_postcommit: hand-rolled ::umask save/restore, no early
+    exit between. XdgGuard has no umask; roadmap_migrate_verb's local
+    ScopedUmask could move to tests/_support and serve both.
+  tests/bundle_main_gui.cpp sets process-wide env once per bundle on
+  purpose: not in scope.
+  **Layman:** One test can leave a broken search path behind for the tests after it when it fails; two others repeat cleanup code the shared helper already does.
+  Kind: fix.
+  Source: ANTS-1379 close-out 2026-10-19.
+  Lanes: tests.
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
