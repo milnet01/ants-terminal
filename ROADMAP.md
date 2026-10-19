@@ -72520,6 +72520,11 @@ measured Ants adding about 5,250 tokens to every request.
   context and leaked credentials into the session transcript, twice.
   A verb that returns matching lines, counts or a tail, with known secret
   patterns redacted, saves the dump and keeps secrets out of transcripts.
+  2026-10-19: built as a change to read_log, not a new verb. read_log
+  already greps, counts and tails any log under caller_cwd (path=); what
+  it lacked was redaction. Spec amended: docs/specs/ANTS-1855.md § 2.6
+  step 6 and INV-14 (SecretRedact::scrub on returned lines). Gate before
+  build.
   **Layman:** Read app logs in small pieces, with passwords hidden, instead of dumping them whole.
   Kind: security.
   Source: token-survey-2026-10-15.
