@@ -32,12 +32,15 @@ struct Options {
     bool    hasSinceCursor = false;
     QString sinceCursor;        // opaque byte-offset token (decimal)
     int     timeBudgetMs = 0;   // <=0 = kDefaultTimeBudgetMs
+    // ANTS-5707 — blank secrets in the returned lines (spec § 2.6 step 6).
+    // On by default; cmdReadLog sets it from claude.mcp_redact_secrets.
+    bool    redactSecrets = true;
 };
 
 // Filter the already-resolved file at `path`. Returns the read_log
 // response envelope:
 //   {ok:true, path, lines[], matched, scanned, returned, truncated,
-//    lines_dropped?, bytes_cap_clamped?, time_budget_exhausted?, cursor,
+//    lines_dropped?, bytes_cap_clamped?, time_budget_exhausted?, redacted?, cursor,
 //    cursor_stale?, stale_reason?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   not_found  — file cannot be opened.

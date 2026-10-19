@@ -16,13 +16,15 @@ the auto-switcher stands down, and every verb refuses with `mcp_disabled`
 (turning it off is honoured immediately via the dispatcher guard; turning it
 back on takes effect on the next launch).
 
-## Secret redaction in terminal reads (ANTS-5169)
+## Secret redaction in reads (ANTS-5169)
 
 `claude.mcp_redact_secrets` (bool, default true). `get_scrollback`,
-`get_text`, `recent_errors` and `last_selection` replace each secret
-`SecretRedact::scrub` recognises with `[REDACTED:<kind>]` and report how
-many they hid. Read on every call, so an edit applies with no relaunch.
-Contract: `tests/features/mcp_secret_redaction/spec.md`.
+`get_text`, `recent_errors`, `last_selection` and `read_log` replace each
+secret `SecretRedact::scrub` recognises with `[REDACTED:<kind>]` and report
+how many they hid. `read_log` also blanks each line of a private-key block
+(ANTS-5707). Read on every call, so an edit applies with no relaunch.
+Contracts: `tests/features/mcp_secret_redaction/spec.md`; for `read_log`,
+INV-14 of `docs/specs/ANTS-1855.md`.
 
 ## Feedback corpus root (ANTS-4471)
 

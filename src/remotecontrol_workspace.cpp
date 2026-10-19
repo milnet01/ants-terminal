@@ -2434,6 +2434,8 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
         opts.hasSinceCursor = true;
         opts.sinceCursor = QString::number(cursorVal.toInteger());
     }
+    // ANTS-5707 — read per call, so a config change applies to the next one.
+    opts.redactSecrets = Config().claudeMcpRedactSecrets();
 
     // The echoed `path` stays the ABSOLUTE resolved path (the debug-log
     // default lives outside any project root, so no reframe — ANTS-1855

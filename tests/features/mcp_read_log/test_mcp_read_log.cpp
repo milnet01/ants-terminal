@@ -314,3 +314,79 @@ TEST(McpReadLog, TimeBudgetStopsAtALineAndResumes) {
         << "the cursor lost or repeated lines";
     EXPECT_EQ(linesOf(second), (QStringList{"line 299999"}));
 }
+
+// B-INV-14 — returned lines are scrubbed of secrets (ANTS-5707): known
+// token shapes, private-key blocks a filter or a cursor cuts into, and the
+// byte cap re-applied to the longer scrubbed text.
+TEST(McpReadLog, Inv14ReturnedLinesAreScrubbed) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString pat = "ghp_" + QString(36, QChar('a'));
+    const QString p = writeLog(dir, "s.log", {
+        "[2026-10-19T09:00:00.000] claude  push with " + pat,
+        "[2026-10-19T09:01:00.000] claude  api_key=hunter2hunter2",
+        "[2026-10-19T09:02:00.000] vt      plain line",
+    });
+
+    const QJsonObject e = ReadLog::filter(p, ReadLog::Options{});
+    ASSERT_TRUE(e.value("ok").toBool());
+    const QString all = linesOf(e).join('\n');
+    EXPECT_TRUE(all.contains("[REDACTED:github_pat]")) << qPrintable(all);
+    EXPECT_TRUE(all.contains("api_key=[REDACTED:generic_secret]")) << qPrintable(all);
+    EXPECT_FALSE(all.contains(pat));
+    EXPECT_FALSE(all.contains("hunter2hunter2"));
+    EXPECT_TRUE(all.contains("plain line"));
+    EXPECT_EQ(e.value("redacted").toInt(), 2);
+
+    // Off: raw lines and no `redacted` field.
+    ReadLog::Options off; off.redactSecrets = false;
+    const QJsonObject raw = ReadLog::filter(p, off);
+    EXPECT_TRUE(linesOf(raw).join('\n').contains(pat));
+    EXPECT_FALSE(raw.contains("redacted"));
+
+    // A private-key block whose middle lines a filter keeps. The marker is
+    // split so the secret scan does not read this source as a key.
+    const QString kind = QStringLiteral("RSA PRIVATE") + QStringLiteral(" KEY-----");
+    const QStringList key = {
+        "[2026-10-19T09:03:00.000] claude  key dump follows",
+        "-----BEGIN " + kind,
+        "MIIEkeybodyone",
+        "MIIEkeybodytwo",
+        "-----END " + kind,
+        "[2026-10-19T09:04:00.000] claude  after the key",
+    };
+    const QString k = writeLog(dir, "k.log", key);
+    ReadLog::Options mid; mid.contains = "MIIE";
+    const QJsonObject em = ReadLog::filter(k, mid);
+    EXPECT_EQ(linesOf(em), (QStringList{"[REDACTED:private_key]",
+                                        "[REDACTED:private_key]"}));
+    EXPECT_EQ(em.value("redacted").toInt(), 2);
+
+    // A since_cursor read starting inside the block returns no key line raw.
+    qint64 offset = 0;
+    for (int i = 0; i < 3; ++i) offset += key[i].toUtf8().size() + 1;
+    ReadLog::Options cut; cut.hasSinceCursor = true;
+    cut.sinceCursor = QString::number(offset);
+    const QJsonObject ec = ReadLog::filter(k, cut);
+    const QStringList cl = linesOf(ec);
+    ASSERT_EQ(cl.size(), 3);
+    EXPECT_EQ(cl[0], "[REDACTED:private_key]");
+    EXPECT_EQ(cl[1], "[REDACTED:private_key]");
+    EXPECT_TRUE(cl[2].contains("after the key"));
+    EXPECT_FALSE(cl.join('\n').contains("MIIE"));
+
+    // The byte cap counts the scrubbed text: both raw lines fit 40 bytes,
+    // their longer scrubbed forms do not, so the oldest is dropped.
+    const QString c = writeLog(dir, "c.log",
+                               {"api_key=abcdefgh", "api_key=ijklmnop"});
+    ReadLog::Options capped; capped.maxBytes = 40;
+    const QJsonObject ecap = ReadLog::filter(c, capped);
+    EXPECT_EQ(linesOf(ecap), (QStringList{"api_key=[REDACTED:generic_secret]"}));
+    EXPECT_EQ(ecap.value("returned").toInt(), 1);
+    EXPECT_EQ(ecap.value("lines_dropped").toInt(), 1);
+    EXPECT_TRUE(ecap.value("truncated").toBool());
+    EXPECT_EQ(ecap.value("redacted").toInt(), 1);
+
+    // cmdReadLog takes the option from the config key on each call.
+    const std::string rcCpp = ants_test::slurpRemoteControl();
+    EXPECT_TRUE(has(rcCpp, "opts.redactSecrets = Config().claudeMcpRedactSecrets()"));
+}

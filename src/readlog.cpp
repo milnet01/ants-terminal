@@ -4,6 +4,7 @@
 // peak heap stays near max_bytes regardless of file size. See docs/specs/ANTS-1855.md.
 
 #include "readlog.h"
+#include "secretredact.h"
 
 #include <QByteArray>
 #include <QElapsedTimer>
@@ -13,6 +14,7 @@
 
 #include <climits>
 #include <deque>
+#include <vector>
 
 namespace ReadLog {
 
@@ -44,6 +46,16 @@ bool prefixGE(const QString &line, const QString &since) {
     if (close < 1) return false;
     return QStringView(line).mid(1, close - 1) >= since;
 }
+
+// ANTS-5707 — where a line sits against private-key blocks, which span
+// lines that SecretRedact::scrub sees one at a time (spec § 2.6 step 6).
+enum class Pem { Outside, Inside, HeadPending };
+
+// One survivor: its raw text and where it sits against key blocks.
+struct Kept {
+    QByteArray raw;
+    Pem pem;
+};
 
 }  // namespace
 
@@ -110,7 +122,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
 
     int scanned = 0;
     int matched = 0;
-    std::deque<QByteArray> kept;     // raw UTF-8 (newline stripped)
+    std::deque<Kept> kept;           // raw UTF-8 (newline stripped)
     qint64 keptBytes = 0;
     qint64 cursorPos = startOffset;  // advances past each COMPLETE line
     int oversizeSkipped = 0;         // lines longer than maxBytes (B-INV-11)
@@ -122,6 +134,50 @@ QJsonObject filter(const QString &path, const Options &opts) {
     QElapsedTimer clock;
     clock.start();
     bool budgetExhausted = false;
+
+    // ANTS-5707 — key-block tracking over every scanned line, kept or not.
+    // A slice starting past byte 0 may start inside a block: its lines stay
+    // HeadPending until an END marker (inside) or a BEGIN marker (outside)
+    // settles them, as SecretRedact::scrubCutPemHead does for one string.
+    static const QRegularExpression kPemBegin(
+        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
+    static const QRegularExpression kPemEnd(
+        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY-----"));
+    bool inBlock = false;
+    bool headPending = opts.redactSecrets && startOffset > 0;
+    const auto settleHead = [&](Pem to) {
+        headPending = false;
+        for (Kept &k : kept)
+            if (k.pem == Pem::HeadPending) k.pem = to;
+    };
+    // Returns where `line` sits and advances the block state past it.
+    const auto pemOf = [&](const QString &line) -> Pem {
+        if (!line.contains(QLatin1String("PRIVATE KEY-----"))) {
+            if (inBlock) return Pem::Inside;
+            return headPending ? Pem::HeadPending : Pem::Outside;
+        }
+        const QRegularExpressionMatch b = kPemBegin.match(line);
+        const QRegularExpressionMatch e = kPemEnd.match(line);
+        const int bAt = b.hasMatch() ? b.capturedStart() : -1;
+        const int eAt = e.hasMatch() ? e.capturedStart() : -1;
+        if (headPending) {
+            if (eAt >= 0 && (bAt < 0 || eAt < bAt)) {
+                settleHead(Pem::Inside);   // the slice began inside a block
+                inBlock = bAt > eAt;       // a new block opens after it
+                return Pem::Inside;
+            }
+            if (bAt < 0) return Pem::HeadPending;
+            settleHead(Pem::Outside);
+        }
+        if (inBlock) {
+            if (eAt >= 0)
+                inBlock = kPemBegin.match(line, e.capturedEnd()).hasMatch();
+            return Pem::Inside;
+        }
+        if (bAt < 0) return Pem::Outside;
+        inBlock = !kPemEnd.match(line, b.capturedEnd()).hasMatch();
+        return Pem::Inside;
+    };
 
     while (!f.atEnd()) {
         if (scanned > 0 && (scanned & 255) == 0 && clock.elapsed() > budgetMs) {
@@ -156,30 +212,62 @@ QJsonObject filter(const QString &path, const Options &opts) {
 
         ++scanned;
         const QString line = QString::fromUtf8(raw);
+        const Pem pem = opts.redactSecrets ? pemOf(line) : Pem::Outside;
         if (haveContains && !line.contains(contains)) continue;
         if (haveInc && !incRe.match(line).hasMatch()) continue;
         if (haveExc && excRe.match(line).hasMatch()) continue;
         if (haveSince && !prefixGE(line, opts.since)) continue;
 
         ++matched;
-        kept.push_back(raw);
         keptBytes += lineCost(raw);
+        kept.push_back({std::move(raw), pem});
         // Drop-oldest until within both bounds (keep ≥1 line).
         while (static_cast<int>(kept.size()) > tailLimit ||
                (keptBytes > maxBytes && kept.size() > 1)) {
-            keptBytes -= lineCost(kept.front());
+            keptBytes -= lineCost(kept.front().raw);
             kept.pop_front();
         }
     }
 
+    // A head never settled by a marker was not inside a block.
+    if (headPending) settleHead(Pem::Outside);
+
+    // ANTS-5707 — scrub the kept lines, then re-apply the byte cap: a
+    // redaction label can be longer than the secret it replaces.
+    struct Out { QString text; int redacted; int cost; };
+    std::vector<Out> out;
+    out.reserve(kept.size());
+    qint64 outBytes = 0;
+    for (const Kept &k : kept) {
+        Out o{QString::fromUtf8(k.raw), 0, 0};
+        if (k.pem == Pem::Inside) {
+            o.text = QStringLiteral("[REDACTED:private_key]");
+            o.redacted = 1;
+        } else if (opts.redactSecrets) {
+            SecretRedact::Result r = SecretRedact::scrub(o.text);
+            o.text = std::move(r.text);
+            o.redacted = r.redactedCount;
+        }
+        o.cost = lineCost(o.text.toUtf8());
+        outBytes += o.cost;
+        out.push_back(std::move(o));
+    }
+    std::size_t first = 0;
+    while (outBytes > maxBytes && out.size() - first > 1)
+        outBytes -= out[first++].cost;
+
     const int tailSelected = (opts.tail > 0)
                                  ? std::min(matched, tailLimit)
                                  : matched;
-    const int returned = static_cast<int>(kept.size());
+    const int returned = static_cast<int>(out.size() - first);
     const int linesDropped = tailSelected - returned;  // cap-removed (≥0)
 
     QJsonArray lines;
-    for (const QByteArray &l : kept) lines.append(QString::fromUtf8(l));
+    int redacted = 0;
+    for (std::size_t i = first; i < out.size(); ++i) {
+        lines.append(out[i].text);
+        redacted += out[i].redacted;
+    }
 
     env["ok"] = true;
     env["path"] = path;
@@ -198,6 +286,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
         env["time_budget_exhausted"] = true;
     }
     if (capClamped) env["bytes_cap_clamped"] = true;
+    if (redacted > 0) env["redacted"] = redacted;
     env["cursor"] = QString::number(cursorPos);
     if (cursorStale) {
         env["cursor_stale"] = true;
