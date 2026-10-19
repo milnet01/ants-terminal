@@ -72584,7 +72584,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5707] **A log-query verb greps, counts and tails a project's own logs with secrets blanked by pattern.**
+- ✅ [ANTS-5707] **A log-query verb greps, counts and tails a project's own logs with secrets blanked by pattern.**
   RetroDB (2026-10-15): two raw scrape-log reads dumped whole logs into
   context and leaked credentials into the session transcript, twice.
   A verb that returns matching lines, counts or a tail, with known secret
@@ -72594,6 +72594,11 @@ measured Ants adding about 5,250 tokens to every request.
   it lacked was redaction. Spec amended: docs/specs/ANTS-1855.md § 2.6
   step 6 and INV-14 (SecretRedact::scrub on returned lines). Gate before
   build.
+  Shipped 2026-10-19 (defd0085): read_log scrubs each returned line with
+  SecretRedact::scrub, reports `redacted`, blanks private-key lines across
+  scanned lines (mid-block since_cursor slices too) and re-applies the byte
+  cap after scrubbing. Follows claude.mcp_redact_secrets per call. Test:
+  McpReadLog.Inv14ReturnedLinesAreScrubbed. Live on the next /mcp reconnect.
   **Layman:** Read app logs in small pieces, with passwords hidden, instead of dumping them whole.
   Kind: security.
   Source: token-survey-2026-10-15.

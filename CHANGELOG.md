@@ -232,6 +232,11 @@ for security-relevant changes.
   the reply's `next_step` points at `roadmap_log op:"create_section"`
   rather than at the Backlog section, which is never picked up for work.
 
+### Security
+
+- **`read_log` blanks secrets in the lines it returns** (ANTS-5707)
+  Known token shapes become `[REDACTED:<kind>]`, private-key lines become `[REDACTED:private_key]` even when a filter or cursor cuts into the block, and `redacted` counts them. Follows `claude.mcp_redact_secrets` (default on) on every call.
+
 ## [0.7.114] - 2026-10-12
 
 **Theme:** A side panel that lists every tab by its full name, with Go
