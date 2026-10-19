@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5774 -->
+<!-- ants-roadmap-id-high-water: ANTS=5775 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87418,6 +87418,16 @@ a modern terminal" release.
   Kind: fix.
   Source: user-report-2026-10-19 (coredump PID 772073, Ctrl+Shift+N).
   Lanes: dialogs.
+
+- 📋 [ANTS-5775] **ColoredTabBar::installCloseButton's comment says setTabButton deletes the displaced close button; Qt 6.11 only hides it, so Qt's CloseButton stays a hidden child per tab.**
+  Qt v6.11.2 qtabbar.cpp QTabBar::setTabButton: `if (tab.rightWidget)
+  tab.rightWidget->hide(); tab.rightWidget = widget;` — no delete. Fix:
+  delete the displaced widget when it is not ours, and correct the
+  comment in src/coloredtabbar.cpp.
+  **Layman:** Each tab keeps an unused hidden close button in memory; tiny waste, and a code comment says the opposite.
+  Kind: fix.
+  Source: found-during-ANTS-5774-2026-10-19.
+  Lanes: chrome.
 
 ### 🐛 Carried over from 0.7.x
 
