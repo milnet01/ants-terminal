@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5761 -->
+<!-- ants-roadmap-id-high-water: ANTS=5762 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92413,6 +92413,24 @@ contributors don't duplicate research.
   **Layman:** Tooltips are too big for the magnifier, so a click on the context gauge or tokens-saved pill shows the same text in a window you can read at leisure.
   Kind: accessibility.
   Source: user-request-2026-10-16.
+
+- 🚧 [ANTS-5762] **Status bar's Claude area: steady items in a fixed order with no gaps, occasional pills at the far left.**
+  User decisions 2026-10-19 (replaces the 2026-10-16 rule that every
+  hidden pill keeps its slot):
+  - Order: Claude status, model suggestion, current model, context
+    gauge, tokens saved, Review Changes, Roadmap, version.
+  - Mail, Background Tasks, task list, Undo and exit-code pills go at
+    the far left of the group and hold no space while hidden. The group
+    is right-aligned, so their coming and going moves none of the steady
+    items.
+  - The current-model pill fits its text instead of the widest possible
+    text.
+  The model-suggestion slot rule (held only while the suggestion is on
+  and auto-switch is off) is unchanged.
+  **Layman:** Removes the big empty spaces in the bottom bar and puts the Claude items in the order you chose.
+  Kind: ux.
+  Source: user-request-2026-10-19.
+  Lanes: status-bar.
 
 ### Opt-in usage telemetry and crash reports (user request 2026-09-27)
 
