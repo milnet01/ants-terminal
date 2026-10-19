@@ -18,8 +18,8 @@ Each pill keeps a fixed slot wide enough for its longest text.
 - **INV-3** — `ClaudeStatusBarController::pinSlots()` pins every
   variable-text Claude pill (`m_statusLabel`, `m_tokensSavedChip`,
   `m_mailChip`, `m_reviewBtn`, `m_bgTasksBtn`, `m_tasksBtn`, `m_modelBtn`,
-  `m_modelStateBtn`, `m_undoSwitchBtn`, `m_errorLabel`) and keeps
-  `m_contextBar`'s slot when hidden; `applyTheme` calls it. Breaks when: a
+  `m_undoSwitchBtn`, `m_errorLabel`) and keeps `m_contextBar`'s slot when
+  hidden; `applyTheme` calls it. Breaks when: a
   pill is dropped from the list, or a theme change no longer re-measures.
 - **INV-4** — a Claude state text wider than its slot (a raw tool name) is
   elided to the slot, with the full text in the tooltip. Breaks when:
@@ -28,6 +28,15 @@ Each pill keeps a fixed slot wide enough for its longest text.
   "Add to allowlist" prompt is inserted at the left end of the permanent
   group (`insertPermanentWidget(0, …)`) so the pills do not shift when it
   appears. Breaks when: either is appended with `addPermanentWidget`.
+- **INV-6** (ANTS-5762, user 2026-10-19) — the controller adds its pills in
+  this order: mail, Background Tasks, task list, Undo, exit code, Claude
+  status, model suggestion, current model, context, tokens saved, Review
+  Changes. The first five are pinned with `retainWhenHidden=false`, so a
+  hidden one holds no gap; the group is right-aligned, so their showing and
+  hiding moves none of the pills after them. The current-model pill is not
+  pinned: it fits its text, and keeps its slot when hidden. Breaks when: a
+  pill is added out of order, an occasional pill keeps its slot, or the
+  model pill is pinned again.
 
 Tests: `test_status_bar_fixed_slots.cpp` — INV-1 and INV-2 behaviourally
-on real widgets; INV-3 to INV-5 by source scrape.
+on real widgets; INV-3 to INV-6 by source scrape.

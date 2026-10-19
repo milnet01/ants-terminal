@@ -92414,7 +92414,7 @@ contributors don't duplicate research.
   Kind: accessibility.
   Source: user-request-2026-10-16.
 
-- 🚧 [ANTS-5762] **Status bar's Claude area: steady items in a fixed order with no gaps, occasional pills at the far left.**
+- ✅ [ANTS-5762] **Status bar's Claude area: steady items in a fixed order with no gaps, occasional pills at the far left.**
   User decisions 2026-10-19 (replaces the 2026-10-16 rule that every
   hidden pill keeps its slot):
   - Order: Claude status, model suggestion, current model, context
@@ -92427,6 +92427,11 @@ contributors don't duplicate research.
     text.
   The model-suggestion slot rule (held only while the suggestion is on
   and auto-switch is off) is unchanged.
+  Resolved (2026-10-19): the ClaudeStatusBarController constructor adds the
+  pills in one ordered block; pinSlots() pins the five occasional pills
+  with retainWhenHidden=false and no longer pins the current-model pill.
+  Test: StatusBarFixedSlots Inv6OccasionalLeftSteadyInOrder, seen red
+  first. Reaches the screen after a terminal relaunch.
   **Layman:** Removes the big empty spaces in the bottom bar and puts the Claude items in the order you chose.
   Kind: ux.
   Source: user-request-2026-10-19.

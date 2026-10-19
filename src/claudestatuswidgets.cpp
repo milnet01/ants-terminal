@@ -161,7 +161,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // text. The accessibleDescription tracks the live state via apply().
     m_statusLabel->setAccessibleName(tr("Claude Code session status"));
     m_statusLabel->hide();
-    m_statusBar->addPermanentWidget(m_statusLabel);
 
     // Context window pressure indicator. Styled by applyTheme(); the
     // tooltip is rebuilt on every update with the actual numbers.
@@ -172,7 +171,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_contextBar->setToolTip(tr("How full Claude Code's context is"));
     m_contextBar->setAccessibleName(tr("Claude Code context window usage"));
     m_contextBar->hide();
-    m_statusBar->addPermanentWidget(m_contextBar);
 
     // ANTS-3572 — MCP tokens-saved pill. Face shows the live session total
     // ("↓ 1.2M saved"); the tooltip adds this-month / this-year / all-time
@@ -183,16 +181,14 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_tokensSavedChip->setObjectName(QStringLiteral("claudeTokensSavedChip"));
     m_tokensSavedChip->setAccessibleName(tr("MCP tokens saved this session"));
     m_tokensSavedChip->hide();
-    m_statusBar->addPermanentWidget(m_tokensSavedChip);
 
     // ANTS-5620 — unread session_message mail for the focused tab's project.
-    // Beside the tokens pill (both are per-project); hidden until mail waits.
+    // Hidden until mail waits.
     m_mailChip = new QLabel(m_statusBar);
     m_mailChip->setObjectName(QStringLiteral("claudeMailChip"));
     m_mailChip->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_mailChip->setAccessibleName(tr("Unread messages from other Claude Code sessions"));
     m_mailChip->hide();
-    m_statusBar->addPermanentWidget(m_mailChip);
 
     // Review Changes button (shown when Claude edits files). Size/height
     // intentionally left at Qt's default so it matches the sibling
@@ -206,7 +202,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_reviewBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_reviewBtn->setAccessibleName(tr("Review Claude code changes"));
     m_reviewBtn->hide();
-    m_statusBar->addPermanentWidget(m_reviewBtn);
     // Click → reviewClicked signal. MainWindow connects the signal to
     // showDiffViewer; this indirection lets future consumers (command
     // palette, remote-control verb) wire to the same surface.
@@ -222,7 +217,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_bgTasksBtn->setAccessibleName(tr("Background tasks"));
     m_bgTasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_bgTasksBtn->hide();
-    m_statusBar->addPermanentWidget(m_bgTasksBtn);
     connect(m_bgTasksBtn, &QPushButton::clicked,
             this, &ClaudeStatusBarController::bgTasksClicked);
 
@@ -239,7 +233,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_tasksBtn->setAccessibleName(tr("Task list"));
     m_tasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_tasksBtn->hide();
-    m_statusBar->addPermanentWidget(m_tasksBtn);
     connect(m_tasksBtn, &QPushButton::clicked,
             this, &ClaudeStatusBarController::tasksClicked);
     // ANTS-1219-INV-5: tracker → controller feedback connect. A
@@ -257,7 +250,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_modelBtn->setAccessibleName(tr("Model recommendation"));
     m_modelBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_modelBtn->hide();
-    m_statusBar->addPermanentWidget(m_modelBtn);
     connect(m_modelBtn, &QPushButton::clicked, this, [this]() {
         if (!m_modelBtn) return;
         // Read the tier from a stored property, NOT by reverse-parsing the
@@ -336,19 +328,14 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_modelStateBtn->setFlat(true);   // visual cue: passive readout, not actionable
     m_modelStateBtn->setFocusPolicy(Qt::NoFocus);
     m_modelStateBtn->hide();
-    m_statusBar->addPermanentWidget(m_modelStateBtn);
 
-    // ANTS-1893 — Undo button. Sits between the model chip and the
-    // error label so the visual order is
-    // [recommender] [model+thinking] [Undo: back to <Tier>] [error].
-    // Hidden by default; emitSwitchSurfacing shows it for ~10 s after
+    // ANTS-1893 — Undo button. Hidden by default; emitSwitchSurfacing shows it for ~10 s after
     // a live auto-switch fires.
     m_undoSwitchBtn = new QPushButton(QString(), m_statusBar);
     m_undoSwitchBtn->setObjectName(QStringLiteral("claudeUndoSwitchBtn"));
     m_undoSwitchBtn->setAccessibleName(tr("Undo last auto-model switch"));
     m_undoSwitchBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_undoSwitchBtn->hide();
-    m_statusBar->addPermanentWidget(m_undoSwitchBtn);
     connect(m_undoSwitchBtn, &QPushButton::clicked, this,
             &ClaudeStatusBarController::onUndoSwitchClicked);
 
@@ -359,7 +346,22 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_errorLabel->setAccessibleName(tr("Last command error"));
     // Styled dynamically by applyTheme()
     m_errorLabel->hide();
+
+    // ANTS-5762 — the bar order (user, 2026-10-19). The group is right-aligned,
+    // so the occasional pills go first: they hold no slot when hidden
+    // (pinSlots), and their coming and going moves none of the steady pills
+    // after them.
+    m_statusBar->addPermanentWidget(m_mailChip);
+    m_statusBar->addPermanentWidget(m_bgTasksBtn);
+    m_statusBar->addPermanentWidget(m_tasksBtn);
+    m_statusBar->addPermanentWidget(m_undoSwitchBtn);
     m_statusBar->addPermanentWidget(m_errorLabel);
+    m_statusBar->addPermanentWidget(m_statusLabel);
+    m_statusBar->addPermanentWidget(m_modelBtn);
+    m_statusBar->addPermanentWidget(m_modelStateBtn);
+    m_statusBar->addPermanentWidget(m_contextBar);
+    m_statusBar->addPermanentWidget(m_tokensSavedChip);
+    m_statusBar->addPermanentWidget(m_reviewBtn);
 
     // ANTS-5759 — the pills with no click action open their tooltip in a
     // window on a click; the others keep their action.
@@ -1002,21 +1004,6 @@ void ClaudeStatusBarController::pinSlots() {
     const Config &cfg = cachedConfig();
     const bool autoOn = cfg.claudeAutoModel().value("switch_enabled").toBool();
 
-    // The "(auto → X)" suffix shows only while auto-switch is on, so it
-    // widens the slot only then.
-    QStringList modelState;
-    for (const QString &t : tiers)
-        for (const char *lvl : {"", "ultrathink", "think hard", "think",
-                                "standard"}) {
-            QString base = t;
-            if (*lvl) base += QStringLiteral(" · ") + QLatin1String(lvl);
-            modelState << base;
-            if (!autoOn) continue;
-            for (const QString &to : tiers)
-                modelState << base + QStringLiteral(" (auto → ") + to
-                                   + QStringLiteral(")");
-        }
-
     QStringList undo;
     for (const QString &t : tiers) undo << tr("Undo: back to %1").arg(t);
 
@@ -1026,17 +1013,26 @@ void ClaudeStatusBarController::pinSlots() {
                        {QStringLiteral("↓ 888.8M saved"),
                         QStringLiteral("↓ 888.8B saved")},
                        cfg.claudeTokensSavedChipEnabled());
-    statusbarslot::pin(m_mailChip, {tr("✉ %1 unread").arg(888)});
+    // ANTS-5762 — the occasional pills sit left of the steady ones and give
+    // their slot back when hidden, so no gap is held for them.
+    statusbarslot::pin(m_mailChip, {tr("✉ %1 unread").arg(888)},
+                       /*retainWhenHidden=*/false);
     statusbarslot::pin(m_reviewBtn, {QStringLiteral("Review Changes")});
-    statusbarslot::pin(m_bgTasksBtn, {tr("Background Tasks (%1)").arg(88)});
-    statusbarslot::pin(m_tasksBtn, {QStringLiteral("☰ 88/88")});
+    statusbarslot::pin(m_bgTasksBtn, {tr("Background Tasks (%1)").arg(88)},
+                       /*retainWhenHidden=*/false);
+    statusbarslot::pin(m_tasksBtn, {QStringLiteral("☰ 88/88")},
+                       /*retainWhenHidden=*/false);
     statusbarslot::pin(m_modelBtn,
                        {tr("→ Haiku"), tr("→ Opus"), tr("→ Sonnet")},
                        cfg.claudeModelSuggestionChipEnabled() && !autoOn);
-    statusbarslot::pin(m_modelStateBtn, modelState);
-    statusbarslot::pin(m_undoSwitchBtn, undo,
-                       autoOn && cfg.claudeAutoModelUndoEnabled());
-    statusbarslot::pin(m_errorLabel, {QStringLiteral("Exit 888")});
+    // ANTS-5762 — the model pill fits its text (user, 2026-10-19); only the
+    // pills left of it shift when the model or thinking level changes.
+    m_modelStateBtn->setMinimumWidth(0);
+    m_modelStateBtn->setMaximumWidth(QWIDGETSIZE_MAX);
+    statusbarslot::setRetain(m_modelStateBtn, true);
+    statusbarslot::pin(m_undoSwitchBtn, undo, /*retainWhenHidden=*/false);
+    statusbarslot::pin(m_errorLabel, {QStringLiteral("Exit 888")},
+                       /*retainWhenHidden=*/false);
 }
 
 void ClaudeStatusBarController::refreshBgTasksButton() {

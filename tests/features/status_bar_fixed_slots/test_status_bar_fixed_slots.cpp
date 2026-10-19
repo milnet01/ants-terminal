@@ -79,8 +79,7 @@ TEST(StatusBarFixedSlots, Inv3EveryPillIsPinned) {
     ASSERT_FALSE(body.empty()) << "pinSlots() not found";
     for (const char *m : {"m_statusLabel", "m_tokensSavedChip", "m_mailChip",
                           "m_reviewBtn", "m_bgTasksBtn", "m_tasksBtn",
-                          "m_modelBtn", "m_modelStateBtn", "m_undoSwitchBtn",
-                          "m_errorLabel"}) {
+                          "m_modelBtn", "m_undoSwitchBtn", "m_errorLabel"}) {
         EXPECT_NE(body.find(std::string("statusbarslot::pin(") + m),
                   std::string::npos)
             << m << " must be pinned in pinSlots()";
@@ -129,4 +128,40 @@ TEST(StatusBarFixedSlots, Inv5RoadmapRetainedAllowlistInsertedLeft) {
     EXPECT_NE(src.find("insertPermanentWidget(0, btnWidget)"), std::string::npos)
         << "hook allowlist prompt must insert at the left end";
     EXPECT_EQ(src.find("addPermanentWidget(btnWidget)"), std::string::npos);
+}
+
+// INV-6 (ANTS-5762) — the occasional pills sit at the left and hold no slot;
+// the steady pills follow in the user's order; the model pill fits its text.
+TEST(StatusBarFixedSlots, Inv6OccasionalLeftSteadyInOrder) {
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    std::size_t at = 0;
+    for (const char *m : {"m_mailChip", "m_bgTasksBtn", "m_tasksBtn",
+                          "m_undoSwitchBtn", "m_errorLabel", "m_statusLabel",
+                          "m_modelBtn", "m_modelStateBtn", "m_contextBar",
+                          "m_tokensSavedChip", "m_reviewBtn"}) {
+        const std::string call = std::string("addPermanentWidget(") + m + ")";
+        const auto pos = src.find(call);
+        ASSERT_NE(pos, std::string::npos) << call;
+        EXPECT_GT(pos, at) << m << " is out of order";
+        at = pos;
+    }
+
+    const std::string body = between(
+        src, "void ClaudeStatusBarController::pinSlots()", "\n}\n");
+    ASSERT_FALSE(body.empty());
+    for (const char *m : {"m_mailChip", "m_bgTasksBtn", "m_tasksBtn",
+                          "m_errorLabel"}) {
+        const std::string stmt = between(
+            body, std::string("statusbarslot::pin(") + m, ";");
+        EXPECT_NE(stmt.find("/*retainWhenHidden=*/false"), std::string::npos)
+            << m << " must give its slot back when hidden";
+    }
+    const std::string undo = between(
+        body, "statusbarslot::pin(m_undoSwitchBtn", ";");
+    EXPECT_NE(undo.find("/*retainWhenHidden=*/false"), std::string::npos)
+        << "the Undo pill must give its slot back when hidden";
+    EXPECT_EQ(body.find("statusbarslot::pin(m_modelStateBtn"), std::string::npos)
+        << "the model pill fits its text";
+    EXPECT_NE(body.find("statusbarslot::setRetain(m_modelStateBtn, true)"),
+              std::string::npos);
 }
