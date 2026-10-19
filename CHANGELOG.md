@@ -84,6 +84,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The spec standard says its fixed section order covers § 3's own sections only; § Reload and the loop log may sit wherever they read best** (ANTS-5767)
+
+- **The spec standard says a build plan or ledger in docs/specs/, new or old, may opt out of the required sections; a new spec may not** (ANTS-5768)
+
 - **Building from source uses less disk and memory: each precompiled Qt header is about a third smaller, and a compiler update replaces the old ones automatically.** (ANTS-2107)
 
 - **Two slow tests run in a few hundredths of a second: one no longer sleeps between config writes, one no longer starts hundreds of shells.** (ANTS-1384)
@@ -173,6 +177,8 @@ for security-relevant changes.
   `claude mcp add` command in the README again.
 
 ### Fixed
+
+- **spec_log append_loop adds a row at the newest end of a newest-first bullet loop log, and reports the order it found** (ANTS-5769)
 
 - **Changing the theme or opening a new window after using Review Changes no longer crashes the terminal.** (ANTS-5774)
 
