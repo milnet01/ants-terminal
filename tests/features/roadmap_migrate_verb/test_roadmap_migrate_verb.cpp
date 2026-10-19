@@ -20,6 +20,7 @@
 #include "roadmapsource.h"
 #include "roadmapstore.h"
 #include "../../_support/roadmapstoreaccess.h"
+#include "../../_support/scoped_umask.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -230,16 +231,7 @@ QStringList countFields() {
 // vacuously on any machine or CI runner already running `umask 077`: the file
 // would be 0600 whether or not setOwnerOnlyPerms() ran, and the rule under test
 // would not be the rule making the fixture pass.
-class ScopedUmask {
-public:
-    explicit ScopedUmask(mode_t mask) : m_previous(::umask(mask)) {}
-    ~ScopedUmask() { ::umask(m_previous); }
-    ScopedUmask(const ScopedUmask &) = delete;
-    ScopedUmask &operator=(const ScopedUmask &) = delete;
-
-private:
-    mode_t m_previous;
-};
+using ants_test::ScopedUmask;
 
 }  // namespace
 

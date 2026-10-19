@@ -9,6 +9,7 @@
 // Exit 0 = all invariants hold. Non-zero = regression.
 
 #include "../../_support/expect.h"
+#include "../../_support/scoped_umask.h"
 #include "../../_support/xdg_guard.h"
 #include "debuglog.h"
 
@@ -40,7 +41,7 @@ int statMode(const QString &path) {
 }
 
 void runRuntimeChecks() {
-    const mode_t oldUmask = ::umask(0022);
+    const ants_test::ScopedUmask um(0022);
 
     // Restores XDG_DATA_HOME at exit so later tests in the test_core
     // bundle don't point at a deleted directory.
@@ -120,7 +121,6 @@ void runRuntimeChecks() {
     QFile::remove(expected);
     QDir().rmpath(QFileInfo(expected).absolutePath());
     QDir().rmdir(xdg);
-    ::umask(oldUmask);
 }
 
 void runSourceChecks() {

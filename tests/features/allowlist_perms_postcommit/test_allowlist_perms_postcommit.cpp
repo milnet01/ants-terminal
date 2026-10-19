@@ -15,6 +15,7 @@
 // Exit 0 = all invariants hold. Non-zero = regression.
 
 #include "../../_support/expect.h"
+#include "../../_support/scoped_umask.h"
 #include "claudeallowlist.h"
 
 #include <gtest/gtest.h>
@@ -49,7 +50,7 @@ void checkPermsAfterSave() {
     // Umask 0022 — the POSIX default. If the code relied on umask to set
     // perms (instead of an explicit chmod), fresh files would land 0644
     // here and the invariant would fail.
-    const mode_t oldUmask = ::umask(0022);
+    const ants_test::ScopedUmask um(0022);
 
     // Isolated path under TempLocation so parallel test runs don't race.
     const QString dir =
@@ -90,8 +91,6 @@ void checkPermsAfterSave() {
     // Cleanup — test harness courtesy, not part of the invariant.
     QFile::remove(path);
     QDir().rmdir(dir);
-
-    ::umask(oldUmask);
 }
 
 // Invariant 2: both perm-setting call sites remain in the source. A
