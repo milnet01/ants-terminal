@@ -1,4 +1,4 @@
-// ANTS-3833 TU 10/21 — Feedback and audit verbs.
+// ANTS-3833 TU 10/22 — Feedback and audit verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "build_info.h"    // ANTS-4741 — the stale-binary comparison

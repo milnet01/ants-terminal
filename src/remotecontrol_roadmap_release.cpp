@@ -1,4 +1,4 @@
-// ANTS-5315 step 4 — roadmap_log op:"place_by_release": file each shipped
+// ANTS-5315 step 4 — TU 22/22 — roadmap_log op:"place_by_release": file each shipped
 // item under the release it shipped in.
 // Contract: docs/specs/ANTS-5315-release-sections-migration.md.
 //

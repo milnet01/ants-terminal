@@ -1,4 +1,4 @@
-// ANTS-5698 TU 21/21 — the `session_cost` handler: a session's context rent.
+// ANTS-5698 TU 21/22 — the `session_cost` handler: a session's context rent.
 // Contract: tests/features/session_cost/spec.md.
 //
 // Thin by design, like its quotation_check and run_trace siblings. The seam

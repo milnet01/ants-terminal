@@ -292,6 +292,7 @@
       "summary": "Batch log plus the migrate/publish/repair/backfill verbs.",
       "sourcePaths": [
         "src/remotecontrol_roadmap_backfill.cpp",
+        "src/remotecontrol_roadmap_release.cpp",
         "src/remotecontrol_roadmap_log_batch.cpp",
         "src/remotecontrol_roadmap_migrate.cpp",
         "src/remotecontrol_roadmap_publish.cpp",
