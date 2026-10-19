@@ -3,6 +3,7 @@
 // for why the old per-fixture 5000 ms literal was the wrong shape.
 
 #include "support/testspawn.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QElapsedTimer>
 #include <QProcess>
@@ -15,20 +16,12 @@ namespace {
 
 // Set/clear ANTS_TEST_SPAWN_TIMEOUT_MS around one check and put it back, so a
 // sibling test in the same bundle cannot inherit it.
-struct EnvGuard {
-    QByteArray had;
-    bool       wasSet;
-    explicit EnvGuard(const char *value)
-        : had(qgetenv("ANTS_TEST_SPAWN_TIMEOUT_MS")),
-          wasSet(qEnvironmentVariableIsSet("ANTS_TEST_SPAWN_TIMEOUT_MS")) {
-        if (value) qputenv("ANTS_TEST_SPAWN_TIMEOUT_MS", QByteArray(value));
-        else       qunsetenv("ANTS_TEST_SPAWN_TIMEOUT_MS");
-    }
-    ~EnvGuard() {
-        if (wasSet) qputenv("ANTS_TEST_SPAWN_TIMEOUT_MS", had);
-        else        qunsetenv("ANTS_TEST_SPAWN_TIMEOUT_MS");
-    }
-};
+ants_test::XdgGuard spawnBudgetEnv(const char *value) {
+    ants_test::XdgGuard g;
+    if (value) g.setEnv("ANTS_TEST_SPAWN_TIMEOUT_MS", QByteArray(value));
+    else       g.unsetEnv("ANTS_TEST_SPAWN_TIMEOUT_MS");
+    return g;
+}
 
 }  // namespace
 
@@ -39,7 +32,7 @@ struct EnvGuard {
 // 60 s ctest TIMEOUT, which is the layer that terminates a genuine hang.
 TEST(SpawnBudget, Inv1DefaultIsGenerousAndOverridable) {
     {
-        EnvGuard g(nullptr);
+        const auto g = spawnBudgetEnv(nullptr);
         const int d = ants_test::spawnTimeoutMs();
         EXPECT_GE(d, 15000)
             << "ANTS-4651: 5000 ms was calibrated on a quiet Release box and "
@@ -50,7 +43,7 @@ TEST(SpawnBudget, Inv1DefaultIsGenerousAndOverridable) {
                "first and with a worse message";
     }
     {
-        EnvGuard g("31000");
+        const auto g = spawnBudgetEnv("31000");
         EXPECT_EQ(ants_test::spawnTimeoutMs(), 31000)
             << "ANTS-4651: the right value is a property of the machine, so "
                "the machine has to be able to say so";
@@ -63,7 +56,7 @@ TEST(SpawnBudget, Inv1DefaultIsGenerousAndOverridable) {
 // instantly and every fixture fails, which reads as the code being broken.
 TEST(SpawnBudget, Inv2MalformedOverrideFallsBackNotToZero) {
     for (const char *bad : {"", "abc", "0", "-1", "99999999"}) {
-        EnvGuard g(bad);
+        const auto g = spawnBudgetEnv(bad);
         const int v = ants_test::spawnTimeoutMs();
         EXPECT_GE(v, 1000)
             << "ANTS-4651: a junk override must never produce a budget that "
@@ -94,7 +87,7 @@ TEST(SpawnBudget, Inv3FastHelperReturnsPromptly) {
 // The old message was `Value of: initGitProject(...)  Actual: false`, which
 // says nothing about which command, how long, or what the limit was.
 TEST(SpawnBudget, Inv4OverrunIsKilledAndDiagnosed) {
-    EnvGuard g("1000");
+    const auto g = spawnBudgetEnv("1000");
     QProcess p;
     p.start(QStringLiteral("/bin/sleep"), {QStringLiteral("30")});
     QElapsedTimer t;
@@ -119,7 +112,7 @@ TEST(SpawnBudget, Inv4OverrunIsKilledAndDiagnosed) {
 // tell them apart. It must also not burn the budget: a program that is not
 // there fails at once.
 TEST(SpawnBudget, Inv5FailedToStartIsNotATimeout) {
-    EnvGuard g("20000");
+    const auto g = spawnBudgetEnv("20000");
     QProcess p;
     p.start(QStringLiteral("ants-no-such-helper-binary"), {});
     QElapsedTimer t;
