@@ -150,7 +150,8 @@ from § 1:
 ```
 
 - **Status** (required, parsed by `spec_query`) — lifecycle:
-  `spec draft (DATE)` → `accepted (DATE)` → `shipped X.Y.Z (DATE)`.
+  `spec draft (DATE)` → `accepted (DATE)` → `implemented (DATE)` →
+  `shipped X.Y.Z (DATE)` (§ 5.6).
   Append cold-eyes progress inline as it happens, e.g.
   `spec draft, cold-eyes loops 1 + 2 folded (DATE)` — see § 5.7.
 - **Kind** (required, parsed by `spec_query`) — the same taxonomy as
@@ -440,7 +441,10 @@ candidates for a reader to triage.
 ### 5.6 Status lifecycle
 
 `spec draft` → `accepted` (design signed off, ready to implement) →
-`shipped X.Y.Z`. A shipped spec is a historical record; later behaviour
+`implemented` (built, merged and green; no release carries it yet) →
+`shipped X.Y.Z`. `spec_lint` reads `implemented` as it reads
+`shipped`: the code exists, so its surface checks apply
+(`shippedStatusWords()` in `src/speclint.cpp`). A shipped spec is a historical record; later behaviour
 changes get their own spec that supersedes it (`**Superseded by:**`).
 
 ### 5.7 Cold-eyes loop log

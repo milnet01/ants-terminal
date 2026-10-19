@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The spec standard names `implemented (DATE)` for a spec whose code is built and green but not yet released** (ANTS-3864)
+
 - **Status-bar pills keep fixed positions: each has a fixed width for its longest text and keeps its place when hidden** (ANTS-5753)
   A pill switched off in Settings gives its space back; an overlong Claude state is shortened with "…" and shown in full on hover.
 

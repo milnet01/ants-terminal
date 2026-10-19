@@ -40001,7 +40001,7 @@ against current source before filing.
   corrected there.
 
 
-- 📋 [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
+- ✅ [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
   `docs/standards/specs.md` § 5.6 fixes the lifecycle as `spec draft` →
   `accepted` (design signed off, ready to implement) → `shipped X.Y.Z`.
   There is no state for the gap both ends of which are real: the code is
@@ -40020,6 +40020,10 @@ against current source before filing.
   needs. Either add one (`implemented (DATE)`, then `shipped X.Y.Z` at
   release) or state in § 5.6 that `accepted` covers built-but-unreleased
   and that the prose carries the detail.
+  Resolved (2026-10-19): added `implemented (DATE)` between `accepted`
+  and `shipped X.Y.Z` in specs.md §§ 3.2 and 5.6. The corpus already used
+  it in about 20 specs, and spec_lint's shippedStatusWords() already
+  accepted it, so the standard now records existing practice.
   **Layman:** Our spec documents have no way to say "this is finished and working, but hasn't gone out in a release yet" — so they end up saying something slightly wrong.
   Kind: doc.
   Source: in-session-2026-08-07 — ANTS-3815 cold-eyes loop 5, both lanes independently.
