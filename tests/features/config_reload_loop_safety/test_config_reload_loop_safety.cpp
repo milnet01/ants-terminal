@@ -14,6 +14,7 @@
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 #include "config.h"
 
 #include <QCoreApplication>
@@ -34,25 +35,6 @@
 ANTS_TEST_SCOPE();
 
 namespace {
-
-// RAII guard for XDG_CONFIG_HOME — captures the prior value (or unset
-// state) and restores it in the destructor. Without this, the
-// per-scenario `qputenv("XDG_CONFIG_HOME", tmp.path())` leaks past the
-// QTemporaryDir's lifetime, leaving any subsequent test in the same
-// test_core bundle pointing at a deleted directory.
-struct XdgConfigHomeGuard {
-    QByteArray prior;
-    bool hadPrior = false;
-    XdgConfigHomeGuard() {
-        hadPrior = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
-        if (hadPrior) prior = qgetenv("XDG_CONFIG_HOME");
-    }
-    void set(const QByteArray &v) { qputenv("XDG_CONFIG_HOME", v); }
-    ~XdgConfigHomeGuard() {
-        if (hadPrior) qputenv("XDG_CONFIG_HOME", prior);
-        else qunsetenv("XDG_CONFIG_HOME");
-    }
-};
 
 std::string readFile(const char *path) {
     std::ifstream f(path);
@@ -119,8 +101,8 @@ template <typename Setter>
 void expectIdempotent(const char *name, Setter &&apply) {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, name, "QTemporaryDir setup"); return; }
-    XdgConfigHomeGuard envGuard;
-    envGuard.set(tmp.path().toLocal8Bit());
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
     const QString antsDir = tmp.path() + "/ants-terminal";
     QDir().mkpath(antsDir);
     const QString cfgPath = antsDir + "/config.json";
@@ -147,8 +129,8 @@ void testInv1_setThemeIdempotent_functional() {
         expect(false, "INV-1 (functional): QTemporaryDir construction");
         return;
     }
-    XdgConfigHomeGuard envGuard;
-    envGuard.set(tmp.path().toLocal8Bit());
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
     const QString antsDir = tmp.path() + "/ants-terminal";
     QDir().mkpath(antsDir);
     const QString cfgPath = antsDir + "/config.json";
@@ -247,8 +229,8 @@ void testInv1c_storeIfChangedSemantics() {
     if (!tmp.isValid()) {
         expect(false, "INV-1c: QTemporaryDir construction"); return;
     }
-    XdgConfigHomeGuard envGuard;
-    envGuard.set(tmp.path().toLocal8Bit());
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
     const QString antsDir = tmp.path() + "/ants-terminal";
     QDir().mkpath(antsDir);
     const QString cfgPath = antsDir + "/config.json";
