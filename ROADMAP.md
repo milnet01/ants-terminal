@@ -91801,7 +91801,7 @@ Fixes from the readability trial review of 2026-10-19. The user
 
 asked for them to ship in 0.8.0.
 
-- 📋 [ANTS-5780] **PTY handler: correct the writeLost doc and trim misleading comments.**
+- ✅ [ANTS-5780] **PTY handler: correct the writeLost doc and trim misleading comments.**
   From the readability trial review (2026-10-19).
   - ptyhandler.h: writeLost doc says queue overflow only; it is
     emitted on four paths (overflow, oversize EAGAIN remainder,
@@ -91818,12 +91818,14 @@ asked for them to ship in 0.8.0.
   - Unused #include <QSize> in the header.
   - Long pre-fix histories bury the current rule; keep the rule
     and the ticket id.
+  Shipped 2026-10-19. The chdir (void) cast was replaced in ANTS-5781's
+  commit (GCC ignores (void) on warn_unused_result).
   **Layman:** Fix comments in the shell-connection code that describe things wrongly or point readers at nothing.
   Kind: doc-fix.
   Source: readability-trial-review-2026-10-19.
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-5781] **PTY handler: one table for TERM overrides, one write helper, split Pty::start.**
+- ✅ [ANTS-5781] **PTY handler: one table for TERM overrides, one write helper, split Pty::start.**
   From the readability trial review (2026-10-19).
   - The TERM/COLORTERM overrides are spelled three times (skip
     list, envp, flatpak --env=); derive all from one table.
@@ -91836,12 +91838,15 @@ asked for them to ship in 0.8.0.
   - Pty::start does about eight jobs; extract resolveShell,
     buildChildEnv and a child-only execChild so the no-allocation-
     after-fork rule is visible.
+  Shipped 2026-10-19. Left as is on purpose: the child code stays inline
+  (pty_closefrom reads it), and the destructor's two wait loops stay
+  (pty_dtor_off_main_thread I4 pins them as the bound's proof).
   **Layman:** Remove copied code in the shell-connection code so a future change cannot update one copy and miss another.
   Kind: refactor.
   Source: readability-trial-review-2026-10-19.
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-5782] **VT parser: rename oscString and fix misleading parser comments.**
+- ✅ [ANTS-5782] **VT parser: rename oscString and fix misleading parser comments.**
   From the readability trial review (2026-10-19).
   - VtAction::oscString carries DCS and APC payloads too; the
     header says "OSC payload". Rename to payload or fix the doc.
@@ -91857,12 +91862,13 @@ asked for them to ship in 0.8.0.
   - vtstream.cpp: the selection-clear test excludes DECSED with no
     stated reason.
   - Long "previously" histories bury the current rule.
+  Shipped 2026-10-19. oscString is now VtAction::payload.
   **Layman:** Rename and re-describe parts of the code that reads program output, where the current names say the wrong thing.
   Kind: doc-fix.
   Source: readability-trial-review-2026-10-19.
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-5783] **VT parser: one CSI reset site and helpers for repeated action building.**
+- ✅ [ANTS-5783] **VT parser: one CSI reset site and helpers for repeated action building.**
   From the readability trial review (2026-10-19).
   - CSI reset is split: transition(CsiEntry) clears m_colonSep and
     m_nextIsSubParam; the case CsiEntry block clears
@@ -91879,6 +91885,10 @@ asked for them to ship in 0.8.0.
     condition written three times.
   - processChar holds every state; split by state family. Name
     the VtStream::start lambda.
+  Shipped 2026-10-19. The split CSI reset was not a bug: every entry
+  goes through transition(CsiEntry). Proved behaviour-identical by a
+  differential run against the old parser (200 random streams, 878,365
+  actions), which two planted faults made fail.
   **Layman:** Remove copied code in the part that reads program output, and give one reset step a single home.
   Kind: refactor.
   Source: readability-trial-review-2026-10-19.

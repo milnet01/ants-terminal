@@ -87,6 +87,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **The shell-connection and output-parser code is easier to read and maintain, with no change in behaviour.**
+  Repeated code now has one home: the TERM settings both launch paths
+  give the shell, the write loop, the CSI parameter cap and the
+  string-end handling. A misleading field name (VtAction::oscString,
+  now payload) and comments that described old code are fixed.
+  ANTS-5780, ANTS-5781, ANTS-5782, ANTS-5783.
+
 - **The spec standard says its fixed section order covers § 3's own sections only; § Reload and the loop log may sit wherever they read best** (ANTS-5767)
 
 - **The spec standard says a build plan or ledger in docs/specs/, new or old, may opt out of the required sections; a new spec may not** (ANTS-5768)
