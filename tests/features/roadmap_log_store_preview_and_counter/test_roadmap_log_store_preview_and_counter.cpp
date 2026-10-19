@@ -11,6 +11,7 @@
 // serves the store only for that dialect, so a plain markdown fixture would
 // silently exercise the branch that already passes and prove nothing.
 
+#include "../../_support/xdg_guard.h"
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
@@ -55,20 +56,13 @@ QByteArray roadmapText() {
 
 class XdgRedirect {
 public:
-    explicit XdgRedirect(const QString &dir)
-        : m_had(qEnvironmentVariableIsSet("XDG_DATA_HOME")),
-          m_prior(m_had ? qgetenv("XDG_DATA_HOME") : QByteArray()) {
-        qputenv("XDG_DATA_HOME", dir.toLocal8Bit());
-    }
-    ~XdgRedirect() {
-        if (m_had) qputenv("XDG_DATA_HOME", m_prior);
-        else       qunsetenv("XDG_DATA_HOME");
+    explicit XdgRedirect(const QString &dir) {
+        m_env.setEnv("XDG_DATA_HOME", dir.toLocal8Bit());
     }
     XdgRedirect(const XdgRedirect &) = delete;
     XdgRedirect &operator=(const XdgRedirect &) = delete;
 private:
-    bool m_had;
-    QByteArray m_prior;
+    ants_test::XdgGuard m_env;
 };
 
 // Bulk, because RoadmapMigrateLoad::load() refuses an Interactive connection
