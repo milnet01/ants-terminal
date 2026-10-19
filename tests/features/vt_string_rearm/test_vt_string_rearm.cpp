@@ -41,11 +41,11 @@ int countByType(const std::vector<VtAction> &v, VtAction::Type t) {
     return n;
 }
 
-// Payloads of DcsEnd/ApcEnd/OscEnd all arrive in `oscString`.
+// Payloads of DcsEnd/ApcEnd/OscEnd all arrive in `payload`.
 std::vector<std::string> payloadsOfType(const std::vector<VtAction> &v,
                                         VtAction::Type t) {
     std::vector<std::string> out;
-    for (const auto &a : v) if (a.type == t) out.push_back(a.oscString);
+    for (const auto &a : v) if (a.type == t) out.push_back(a.payload);
     return out;
 }
 

@@ -30,6 +30,8 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
         // ANTS-5075 — the selection-clear hint comes from parsed actions, so a
         // clear split across two reads still counts: ED 2, ED 3, or form feed.
+        // `CSI ? J` (DECSED, selective erase) is left out: by spec it keeps
+        // protected cells, so it is not a full clear.
         if ((a.type == VtAction::CsiDispatch && a.finalChar == 'J' &&
              a.intermediate.empty() && a.params.size() == 1 &&
              (a.params[0] == 2 || a.params[0] == 3)) ||

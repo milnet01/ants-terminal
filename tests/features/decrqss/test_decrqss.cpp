@@ -38,7 +38,7 @@ struct Probe {
     void dcs(const std::string &payload) {
         VtAction a;
         a.type = VtAction::DcsEnd;
-        a.oscString = payload;
+        a.payload = payload;
         grid.processAction(a);
     }
 

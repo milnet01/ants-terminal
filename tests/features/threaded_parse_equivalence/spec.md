@@ -48,7 +48,7 @@ For every fixture:
   single-shot parse and every chunked parse.
 - For each index `i`, `actions[i]` comparison covers `type`, `codepoint`,
   `controlChar`, `finalChar`, `params`, `colonSep`, `intermediate`, and
-  `oscString`. All must match byte-for-byte.
+  `payload`. All must match byte-for-byte.
 
 On any mismatch the test prints the fixture name, the diverging action
 index, and a diagnostic dump of both action tokens so the failure is

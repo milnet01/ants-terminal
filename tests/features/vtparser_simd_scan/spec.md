@@ -19,7 +19,7 @@ three feeds MUST produce byte-identical action streams:
 "Byte-identical action stream" means: the sequence of `VtAction`s
 delivered to the callback has the same length and each corresponding
 pair of actions has equal `type`, `codepoint`, `controlChar`,
-`finalChar`, `params`, `colonSep`, `intermediate`, and `oscString`.
+`finalChar`, `params`, `colonSep`, `intermediate`, and `payload`.
 
 ## Rationale
 

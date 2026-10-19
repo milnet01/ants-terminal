@@ -52,7 +52,7 @@ output that looks like trusted local commands.
 
 After feeding `ESC ] 0 ; t i t l e ESC c` to the parser:
 
-- Exactly one `OscEnd` action is dispatched (with `oscString = "0;title"`).
+- Exactly one `OscEnd` action is dispatched (with `payload = "0;title"`).
 - **Zero** `EscDispatch` actions are dispatched, regardless of what
   X is (`c` for RIS, `D` for IND, `7` for DECSC, etc.).
 - The parser is back in Ground state.
@@ -79,7 +79,7 @@ inside the string state as a terminator) would break legitimate OSC
 8 / OSC 52 / OSC 1337 payloads. The spec requires that ordinary
 bytes (non-BEL, non-ST, non-ESC) continue to flow into the OSC
 buffer. Tested by feeding a 1 KiB OSC body and asserting the dispatched
-oscString matches it byte-for-byte.
+payload matches it byte-for-byte.
 
 ## Regression history
 

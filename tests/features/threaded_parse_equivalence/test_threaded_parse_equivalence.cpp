@@ -108,7 +108,7 @@ static bool actionsEqual(const VtAction &a, const VtAction &b, std::string &why)
     if (a.params != b.params)      { why = "params"; return false; }
     if (a.colonSep != b.colonSep)  { why = "colonSep"; return false; }
     if (a.intermediate != b.intermediate) { why = "intermediate"; return false; }
-    if (a.oscString != b.oscString){ why = "oscString"; return false; }
+    if (a.payload != b.payload){ why = "payload"; return false; }
     return true;
 }
 
@@ -134,7 +134,7 @@ static void dumpAction(const VtAction &a, const char *tag) {
     for (size_t i = 0; i < a.params.size(); ++i)
         std::fprintf(stderr, "%s%d", i ? "," : "", a.params[i]);
     std::fprintf(stderr, "} intermediate=\"%s\" osc_len=%zu\n",
-                 a.intermediate.c_str(), a.oscString.size());
+                 a.intermediate.c_str(), a.payload.size());
 }
 
 static bool compareAndReport(const char *fixture,

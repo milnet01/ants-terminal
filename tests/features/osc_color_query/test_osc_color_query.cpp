@@ -32,7 +32,7 @@ struct Probe {
     void osc(const std::string &payload) {
         VtAction a;
         a.type = VtAction::OscEnd;
-        a.oscString = payload;
+        a.payload = payload;
         grid.processAction(a);
     }
 

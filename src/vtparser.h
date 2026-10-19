@@ -40,8 +40,8 @@ struct VtAction {
     char finalChar = 0;           // For CSI/ESC dispatch
     std::vector<int> params;      // CSI parameters
     std::vector<bool> colonSep;   // true if param[i] was preceded by ':' (sub-parameter)
-    std::string intermediate;     // Intermediate bytes
-    std::string oscString;        // OSC payload
+    std::string intermediate;     // Intermediate bytes; for CSI, also the private prefix (? > = <)
+    std::string payload;          // The string body, for OscEnd, DcsEnd and ApcEnd
     // True when the OSC/DCS/APC payload hit the 10 MiB accumulator cap and was
     // silently truncated. Consumers that act on the payload byte-for-byte
     // (OSC 52 base64 clipboard, OSC 8 hyperlink URI) MUST refuse a truncated
@@ -84,6 +84,9 @@ private:
     };
 
     void processChar(uint32_t ch);
+    // Enter a state and reset what that state collects. A move that must keep
+    // what was collected (CsiEntry to CsiParam, CsiParam to CsiIntermediate,
+    // either to CsiIgnore) assigns m_state directly instead.
     void transition(State newState);
 
     // ANTS-1777: from a *StringEsc peek-state, re-enter a string-collecting
@@ -96,7 +99,6 @@ private:
 
     // UTF-8 decoding
     void feedByte(uint8_t byte);
-    void flushCodepoint(uint32_t cp);
 
     // Append a codepoint to an OSC/DCS/APC accumulator as UTF-8, bounded by
     // maxBytes. Returns false (without writing) when the append would exceed

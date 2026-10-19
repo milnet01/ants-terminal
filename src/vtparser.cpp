@@ -141,26 +141,23 @@ void VtParser::feedByte(uint8_t byte) {
                 else if (m_utf8Accum < 0x10000 && m_utf8ExpectedLen >= 4) valid = false; // overlong 4-byte
                 else if (m_utf8Accum >= 0xD800 && m_utf8Accum <= 0xDFFF) valid = false;  // surrogate
                 else if (m_utf8Accum > 0x10FFFF) valid = false;           // out of range
-                flushCodepoint(valid ? m_utf8Accum : 0xFFFD);
+                processChar(valid ? m_utf8Accum : 0xFFFD);
             }
             return;
         }
         // Invalid continuation — reset and process this byte
         m_utf8Remaining = 0;
-        flushCodepoint(0xFFFD);
+        processChar(0xFFFD);
     }
 
-    if (byte < 0x80) {
-        flushCodepoint(byte);
-    } else if (byte <= 0x9F) {
-        // 8-bit C1 controls (0x80-0x9F). UTF-8 encodes these as a 2-byte
+    if (byte <= 0x9F) {
+        // ASCII, or an 8-bit C1 control (0x80-0x9F). UTF-8 encodes C1 as a 2-byte
         // sequence (0xC2 0x80..0xC2 0x9F), so raw 0x80-0x9F here means
         // either a legacy 8-bit-C1-aware producer or a malformed UTF-8
         // stream. ECMA-48 § 5.3 and the Williams VT500 state machine
         // treat C1 bytes as first-class controls; route them through
-        // processChar() rather than substituting U+FFFD. This lets the
-        // CsiEntry / OscString / DcsString string-terminator branches
-        // for 0x9C reach their handlers (previously dead code).
+        // processChar() rather than substituting U+FFFD, so 0x9C (ST)
+        // reaches the string states' terminator branches.
         processChar(byte);
     } else if ((byte & 0xE0) == 0xC0) {
         m_utf8Accum = byte & 0x1F;
@@ -175,20 +172,24 @@ void VtParser::feedByte(uint8_t byte) {
         m_utf8Remaining = 3;
         m_utf8ExpectedLen = 4;
     } else {
-        flushCodepoint(0xFFFD);
+        processChar(0xFFFD);
     }
 }
 
-void VtParser::flushCodepoint(uint32_t cp) {
-    processChar(cp);
-}
+namespace {
+// No real parameter comes near this, and the clamp keeps `* 10 + digit` from
+// ever overflowing an int.
+constexpr int kMaxParamValue = 16384;
+// ANTS-1827 — more parameters than this is a DoS shape, not a sequence.
+constexpr size_t kMaxParams = 32;
+// Room for a large inline image; caps what a hostile stream can make the
+// parser hold.
+constexpr size_t kMaxStringBytes = size_t{10} * 1024 * 1024;
+} // namespace
 
-// After a large OSC/DCS/APC sequence dispatches, std::string::clear() keeps
-// the underlying capacity. An attacker who streamed a ~10 MB inline image
-// would otherwise leave three 10 MB buffers resident for the lifetime of
-// the parser (30 MB permanent overhead per terminal). Swap against an empty
-// string to actually release memory when the buffer grew past the
-// "one legitimate notification fits in this much" threshold.
+// Called on an accumulator just moved into an End action. The standard does
+// not promise a moved-from string gives up its buffer, so this makes sure a
+// 10 MiB image payload does not stay resident for the parser's lifetime.
 static void releaseIfLarge(std::string &s) {
     constexpr size_t kShrinkThreshold = 64 * 1024;   // 64 KB
     if (s.capacity() > kShrinkThreshold) {
@@ -232,15 +233,10 @@ void VtParser::processChar(uint32_t ch) {
     if (ch < 0x20 || ch == 0x7F) {
         switch (ch) {
         case 0x1B: // ESC
-            // 0.7.53 (2026-04-27 indie-review HIGH) — string states
-            // (OSC/DCS/APC/IgnoreString) MUST handle ESC themselves
-            // so they can dispatch their End action and transition to
-            // the matching *Esc peek state that consumes the trailing
-            // byte. Falling through to transition(Escape) here ate
-            // the End dispatch AND let the trailing byte be parsed as
-            // a fresh ESC sequence (RIS/IND/DECSC), giving a hostile
-            // OSC payload an RCE-adjacent terminal-reset trigger.
-            // See tests/features/vt_osc_esc_discard/spec.md.
+            // The string states handle ESC themselves: they dispatch
+            // their End action, and the *Esc peek state consumes the next
+            // byte so a hostile payload cannot end in a live ESC sequence
+            // such as RIS. See tests/features/vt_osc_esc_discard/spec.md.
             if (m_state == OscString || m_state == DcsString ||
                 m_state == ApcString || m_state == IgnoreString) {
                 break;  // exit the C0 switch — per-state switch handles it
@@ -356,9 +352,7 @@ void VtParser::processChar(uint32_t ch) {
             // ECMA-48 / Williams parser table: a C0 control inside
             // `esc_intermediate` Executes and stays in esc_intermediate
             // (the ESC sequence is NOT aborted) — same rule as the
-            // CsiIntermediate branch below. Previously this fell through
-            // to transition(Ground), asymmetrically dropping the whole
-            // sequence on an embedded BEL/CR/LF. indie-review-2026-05-21.
+            // CsiIntermediate branch below.
             VtAction a;
             a.type = VtAction::Execute;
             a.controlChar = static_cast<char>(ch);
@@ -389,9 +383,9 @@ void VtParser::processChar(uint32_t ch) {
             if (m_currentParam < 0) m_currentParam = 0;
             m_currentParam = m_currentParam * 10 + (ch - '0');
             // Clamp to prevent overflow
-            if (m_currentParam > 16384) m_currentParam = 16384;
+            if (m_currentParam > kMaxParamValue) m_currentParam = kMaxParamValue;
         } else if (ch == ';') {
-            if (m_params.size() < 32) { // Cap at 32 params to prevent DoS
+            if (m_params.size() < kMaxParams) {
                 m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
                 m_colonSep.push_back(m_nextIsSubParam);
             } else {
@@ -402,7 +396,7 @@ void VtParser::processChar(uint32_t ch) {
         } else if (ch >= 0x20 && ch <= 0x2F) {
             // Intermediate byte
             if (m_currentParam >= 0) {
-                if (m_params.size() < 32) { // honour the same 32-param DoS cap as ';'
+                if (m_params.size() < kMaxParams) {
                     m_params.push_back(m_currentParam);
                     m_colonSep.push_back(m_nextIsSubParam);
                 } else {
@@ -416,7 +410,7 @@ void VtParser::processChar(uint32_t ch) {
         } else if (ch >= 0x40 && ch <= 0x7E) {
             // Final byte — dispatch
             if (m_currentParam >= 0) {
-                if (m_params.size() < 32) { // honour the 32-param DoS cap
+                if (m_params.size() < kMaxParams) {
                     m_params.push_back(m_currentParam);
                     m_colonSep.push_back(m_nextIsSubParam);
                 } else {
@@ -435,7 +429,7 @@ void VtParser::processChar(uint32_t ch) {
             transition(Ground);
         } else if (ch == ':') {
             // Sub-parameter separator (used in SGR colon syntax like 4:3 for curly underline)
-            if (m_params.size() < 32) {
+            if (m_params.size() < kMaxParams) {
                 m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
                 m_colonSep.push_back(m_nextIsSubParam);
             } else {
@@ -478,12 +472,7 @@ void VtParser::processChar(uint32_t ch) {
         } else if (ch < 0x20) {
             // ECMA-48 / Williams parser table: a C0 control inside
             // `csi_intermediate` Executes and stays in csi_intermediate
-            // (the CSI is NOT aborted). xterm dispatches the embedded
-            // BEL / DEL / NL etc. and resumes parsing for the final byte.
-            // Previously this branch fell through to `transition(Ground)`,
-            // silently aborting CSIs like `CSI ! <BEL> p` (DECSTR with
-            // an embedded BEL) — asymmetric with the CsiParam C0 branch
-            // above. indie-review-2026-05-19 vtparser H2.
+            // (the CSI is NOT aborted), so `CSI ! <BEL> p` is still DECSTR.
             VtAction a;
             a.type = VtAction::Execute;
             a.controlChar = static_cast<char>(ch);
@@ -518,33 +507,25 @@ void VtParser::processChar(uint32_t ch) {
             // BEL or ST terminates OSC
             VtAction a;
             a.type = VtAction::OscEnd;
-            a.oscString = std::move(m_oscString);
+            a.payload = std::move(m_oscString);
             a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_oscString);
             transition(Ground);
         } else if (ch == 0x1B) {
-            // 0.7.53 (2026-04-27 indie-review HIGH) — peek-state for
-            // ESC inside OSC body. xterm semantics: ESC inside OSC is
-            // the OSC's terminator regardless of what follows;
-            // specifically, ESC \ is the canonical 7-bit ST encoding,
-            // and ESC anything-else also terminates (the trailing byte
-            // is consumed and discarded). The previous code transitioned
-            // to Escape state, which dispatched the trailing byte as a
-            // real ESC sequence — so a crafted OSC ending in `ESC c`
-            // triggered RIS (full terminal reset), and `ESC D` triggered
-            // IND (line feed), etc. RCE-adjacent because the OSC body
-            // can be attacker-supplied (trigger rules, SSH, etc.). End
-            // the OSC now and route the next byte through OscStringEsc.
+            // xterm semantics: ESC ends the OSC whatever follows. The 7-bit
+            // ST is ESC + backslash; after any other byte the OSC still ends,
+            // and OscStringEsc consumes that byte, never dispatching it,
+            // so an OSC ending in `ESC c` cannot trigger RIS.
             VtAction a;
             a.type = VtAction::OscEnd;
-            a.oscString = std::move(m_oscString);
+            a.payload = std::move(m_oscString);
             a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_oscString);
             transition(OscStringEsc);
         } else {
-            if (!appendUtf8(m_oscString, ch, 10 * 1024 * 1024)) // 10MB cap for inline images
+            if (!appendUtf8(m_oscString, ch, kMaxStringBytes))
                 m_stringTruncated = true;
         }
         break;
@@ -567,7 +548,7 @@ void VtParser::processChar(uint32_t ch) {
         if (ch == 0x9C || ch == 0x07) {
             VtAction a;
             a.type = VtAction::DcsEnd;
-            a.oscString = std::move(m_dcsString); // Reuse oscString field for payload
+            a.payload = std::move(m_dcsString);
             a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_dcsString);
@@ -576,13 +557,13 @@ void VtParser::processChar(uint32_t ch) {
             // Same fix as OscString — see comment above.
             VtAction a;
             a.type = VtAction::DcsEnd;
-            a.oscString = std::move(m_dcsString);
+            a.payload = std::move(m_dcsString);
             a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_dcsString);
             transition(DcsStringEsc);
         } else {
-            if (!appendUtf8(m_dcsString, ch, 10 * 1024 * 1024)) // 10MB cap
+            if (!appendUtf8(m_dcsString, ch, kMaxStringBytes))
                 m_stringTruncated = true;
         }
         break;
@@ -599,7 +580,7 @@ void VtParser::processChar(uint32_t ch) {
         if (ch == 0x9C || ch == 0x07) {
             VtAction a;
             a.type = VtAction::ApcEnd;
-            a.oscString = std::move(m_apcString); // Reuse oscString field for payload
+            a.payload = std::move(m_apcString);
             a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_apcString);
@@ -608,13 +589,13 @@ void VtParser::processChar(uint32_t ch) {
             // Same fix as OscString — see comment above.
             VtAction a;
             a.type = VtAction::ApcEnd;
-            a.oscString = std::move(m_apcString);
+            a.payload = std::move(m_apcString);
             a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_apcString);
             transition(ApcStringEsc);
         } else {
-            if (!appendUtf8(m_apcString, ch, 10 * 1024 * 1024)) // 10MB cap
+            if (!appendUtf8(m_apcString, ch, kMaxStringBytes))
                 m_stringTruncated = true;
         }
         break;

@@ -92,13 +92,13 @@ std::shared_ptr<const PredecodedImage> Predecoder::onAction(const VtAction &acti
     if (action.type == VtAction::OscEnd) {
         if (action.truncated) return nullptr;
         std::string keys, b64;
-        if (!splitITerm2(action.oscString, &keys, &b64)) return nullptr;
+        if (!splitITerm2(action.payload, &keys, &b64)) return nullptr;
         if (b64.size() > kMaxInlineImageB64Bytes) return nullptr;
         return predecoded(b64, decodeBytes(decodeBase64Strict(b64), nullptr, kMaxImageDim));
     }
     if (action.type == VtAction::ApcEnd) {
         if (action.truncated) return nullptr;  // the grid refuses it outright
-        return onApc(action.oscString);
+        return onApc(action.payload);
     }
     return nullptr;
 }

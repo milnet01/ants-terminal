@@ -61,12 +61,9 @@ class Pty;
 // via a `std::shared_ptr<const VtBatch>` (`VtBatchPtr`) over a queued
 // connection. The shared_ptr makes the cross-thread hop zero-copy: Qt
 // copies the smart-pointer (an atomic refcount bump) instead of the
-// underlying vector + QByteArray — those stay put on the heap. Prior
-// to the smart-pointer wrap, the queued-connection copy of `const
-// VtBatch &` was forced to deep-copy `actions` (~64 KB on a noisy
-// burst) regardless of any move-from-pending shaping the worker did,
-// because Qt's queued-connection plumbing has to own the parameters
-// it dispatches.
+// underlying vector + QByteArray — those stay put on the heap. A plain
+// `const VtBatch &` would be deep-copied, because a queued connection
+// owns the arguments it dispatches.
 struct VtBatch {
     std::vector<VtAction> actions;
     QByteArray rawBytes;

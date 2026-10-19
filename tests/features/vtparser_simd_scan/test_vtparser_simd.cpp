@@ -52,7 +52,7 @@ bool actionsEqual(const VtAction &a, const VtAction &b) {
         && a.params == b.params
         && a.colonSep == b.colonSep
         && a.intermediate == b.intermediate
-        && a.oscString == b.oscString
+        && a.payload == b.payload
         && a.truncated == b.truncated
         && a.paramsTruncated == b.paramsTruncated;
 }
@@ -77,7 +77,7 @@ void dumpAction(const VtAction &a, const char *tag) {
         a.codepoint, static_cast<unsigned>(static_cast<uint8_t>(a.controlChar)),
         (a.finalChar >= 0x20 && a.finalChar <= 0x7E) ? a.finalChar : '?',
         static_cast<int>(a.finalChar),
-        a.params.size(), a.intermediate.c_str(), a.oscString.size());
+        a.params.size(), a.intermediate.c_str(), a.payload.size());
 }
 
 bool streamsEqual(const std::vector<VtAction> &expected,

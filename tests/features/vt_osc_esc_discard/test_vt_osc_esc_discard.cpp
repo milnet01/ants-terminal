@@ -76,7 +76,7 @@ TEST(VtOscEscDiscard, oscEscX_discardsX) {
         // appended to it.
         const VtAction *osc = findByType(actions, VtAction::OscEnd);
         if (osc) {
-            const bool bodyClean = (osc->oscString == "0;hello");
+            const bool bodyClean = (osc->payload == "0;hello");
             expect(bodyClean, c.name,
                    "OSC body should be \"0;hello\" — the trailing ESC must "
                    "not leak into the dispatched payload");
@@ -102,7 +102,7 @@ TEST(VtOscEscDiscard, oscEscBackslash_isStLikeOther) {
 
     const VtAction *osc = findByType(actions, VtAction::OscEnd);
     if (osc) {
-        const bool bodyClean = (osc->oscString == "52;c;dGVzdA==");
+        const bool bodyClean = (osc->payload == "52;c;dGVzdA==");
         expect(bodyClean,
                "INV-2: OSC body before ESC \\ ST is preserved verbatim");
     }
@@ -143,7 +143,7 @@ TEST(VtOscEscDiscard, oscBodyStillAccumulates) {
     expect(osc != nullptr,
            "INV-4: OscEnd dispatched after BEL terminator");
     if (osc) {
-        const bool bodyMatches = (osc->oscString == body);
+        const bool bodyMatches = (osc->payload == body);
         expect(bodyMatches,
                "INV-4: full OSC body preserved byte-for-byte");
     }

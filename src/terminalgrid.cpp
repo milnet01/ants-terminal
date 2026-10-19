@@ -374,13 +374,13 @@ void TerminalGrid::processAction(const VtAction &action,
         handleEsc(action);
         break;
     case VtAction::OscEnd:
-        handleOsc(action.oscString, action.truncated);
+        handleOsc(action.payload, action.truncated);
         break;
     case VtAction::DcsEnd:
-        handleDcs(action.oscString, action.truncated);
+        handleDcs(action.payload, action.truncated);
         break;
     case VtAction::ApcEnd:
-        handleApc(action.oscString, action.truncated);
+        handleApc(action.payload, action.truncated);
         break;
     }
     m_predecoded = nullptr;
