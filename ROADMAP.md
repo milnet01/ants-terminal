@@ -42058,6 +42058,16 @@ against current source before filing.
   stamp, but only if a measurement inside the app shows the hash
   cheaper than the scan (13.3 ms; sha256sum of the 6.8 MB file took
   about 20 ms with process start, 2026-10-10).
+  Site 1 measured (2026-10-19), not built. A scratch program linked
+  against build/libants_*_lib.a timed, on the 7.0 MB live file and a
+  read-only copy of the store, median of 15 runs: read 0.7 ms,
+  RoadmapFoldIn::maxDeclaredId 22.1 ms, QCryptographicHash SHA-256 of the
+  file 33.5 ms, RoadmapStore::contentDigest 90.0 ms. The hash alone costs
+  more than the scan it would skip, and a skip that keeps
+  file_ahead_of_store exact also needs the store digest (an item deleted
+  since publish leaves the file holding an id above the store's mark).
+  The 2026-10-10 condition is not met, so site 1 stays as it is. Refute
+  by re-timing the same four calls. Site 3 remains open.
   Source: in-session-2026-08-17 (ANTS-3863 implementation).
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
