@@ -32,9 +32,10 @@ underlying `VtBatch` lives on the heap and is not duplicated.
 the queued connection can register it.
 
 ### I3 — Emitters use `std::make_shared<VtBatch>()`.
-Both `VtStream::flushBatch` and `VtStream::onPtyFinished` build the
-batch through `std::make_shared<VtBatch>()`, populate via `b->…`,
-and emit via `emit batchReady(b)`. No copy of a stack-allocated
+Both `VtStream::flushBatch` and `VtStream::onPtyFinished` take the
+batch from `VtStream::takeBatch`. It builds the batch through
+`std::make_shared<VtBatch>()` and populates it via `b->…`. Both emit
+via `emit batchReady(b)`. No copy of a stack-allocated
 `VtBatch` survives in the emit path.
 
 ### I4 — Receiver dereferences via pointer.

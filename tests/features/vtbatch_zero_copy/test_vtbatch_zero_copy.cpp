@@ -61,11 +61,11 @@ TEST(VtbatchZeroCopy, Main) {
     if (!contains(vtsHeader, "Q_DECLARE_METATYPE(VtBatchPtr)"))
         fail("I2", "Q_DECLARE_METATYPE(VtBatchPtr) missing");
 
-    // I3 — Emitters use make_shared. Two emit sites: flushBatch and
-    // onPtyFinished. Each constructs via make_shared<VtBatch>() and
-    // populates via b->.
-    if (count(vtsSource, "std::make_shared<VtBatch>()") < 2)
-        fail("I3", "expected ≥2 std::make_shared<VtBatch>() emit-site builders");
+    // I3 — Emitters use make_shared. Both emit sites, flushBatch and
+    // onPtyFinished, take their batch from VtStream::takeBatch, which
+    // constructs via make_shared<VtBatch>() and populates via b->.
+    if (count(vtsSource, "std::make_shared<VtBatch>()") < 1)
+        fail("I3", "expected a std::make_shared<VtBatch>() batch builder");
     if (!contains(vtsSource, "emit batchReady(b)"))
         fail("I3", "emit batchReady(b) call site missing");
     // No stack-allocated VtBatch survives in the emit path.

@@ -255,34 +255,17 @@ void VtParser::processChar(uint32_t ch) {
     switch (m_state) {
     case Ground:
         if (ch < 0x20) {
-            // C0 control
-            VtAction a;
-            a.type = VtAction::Execute;
-            a.controlChar = static_cast<char>(ch);
-            m_callback(a);
+            emitExecute(ch);
         } else if (ch == 0x7F) {
             // DEL — ignore
         } else if (ch >= 0x80 && ch <= 0x9F) {
-            // 8-bit C1 controls (ECMA-48 § 5.3). These are the dual of
-            // the ESC-prefixed two-byte forms: 0x9B == CSI (ESC [),
-            // 0x9D == OSC (ESC ]), 0x90 == DCS (ESC P), 0x9F == APC
-            // (ESC _), 0x9E == PM (ESC ^), 0x98 == SOS (ESC X).
-            switch (ch) {
-            case 0x9B: transition(CsiEntry); break;
-            case 0x9D: m_oscString.clear(); transition(OscString); break;
-            case 0x90: m_dcsString.clear(); transition(DcsString); break;
-            case 0x9F: m_apcString.clear(); transition(ApcString); break;
-            case 0x98:
-            case 0x9E: transition(IgnoreString); break;
-            default: {
-                // Other C1 controls (IND/NEL/HTS/RI/SS2/SS3) — Execute
-                VtAction a;
-                a.type = VtAction::Execute;
-                a.controlChar = static_cast<char>(ch);
-                m_callback(a);
-                break;
-            }
-            }
+            // 8-bit C1 controls (ECMA-48 § 5.3). Each is the one-byte form of
+            // ESC followed by (byte - 0x40): 0x9B is CSI (ESC [), 0x9D is OSC
+            // (ESC ]), 0x90 DCS, 0x9F APC, 0x98 SOS, 0x9E PM.
+            if (ch == 0x9B)
+                transition(CsiEntry);
+            else if (!reArmStringIntroducer(ch - 0x40))
+                emitExecute(ch);  // IND, NEL, HTS, RI, SS2, SS3, …
         } else {
             // Printable character
             VtAction a;
@@ -295,38 +278,16 @@ void VtParser::processChar(uint32_t ch) {
     case Escape:
         if (ch == '[') {
             transition(CsiEntry);
-        } else if (ch == ']') {
-            m_oscString.clear();
-            transition(OscString);
         } else if (ch >= 0x20 && ch <= 0x2F) {
             m_intermediate.clear();
             m_intermediate += static_cast<char>(ch);
             transition(EscapeIntermediate);
-        } else if (ch == 'P') {
-            // DCS — Sixel graphics
-            m_dcsString.clear();
-            transition(DcsString);
-        } else if (ch == '_') {
-            // APC — Kitty graphics
-            m_apcString.clear();
-            transition(ApcString);
-        } else if (ch == 'X' || ch == '^') {
-            // SOS, PM — consume and ignore
-            transition(IgnoreString);
         } else if (ch >= 0x30 && ch <= 0x7E) {
-            // ESC final byte
-            VtAction a;
-            a.type = VtAction::EscDispatch;
-            a.finalChar = static_cast<char>(ch);
-            a.intermediate = m_intermediate;
-            m_callback(a);
-            transition(Ground);
+            // A final byte, unless it opens a string (] P _ X ^).
+            if (!reArmStringIntroducer(ch))
+                dispatchEsc(ch);
         } else if (ch < 0x20) {
-            // C0 in escape
-            VtAction a;
-            a.type = VtAction::Execute;
-            a.controlChar = static_cast<char>(ch);
-            m_callback(a);
+            emitExecute(ch);
         } else {
             // ANTS-1998 — catch-all for the bytes none of the branches above
             // match: 0x7F (DEL) and decoded codepoints > 0x7E. Without this the
@@ -342,66 +303,62 @@ void VtParser::processChar(uint32_t ch) {
             if (m_intermediate.size() < 8) // Cap intermediate bytes (real sequences use 1-2)
                 m_intermediate += static_cast<char>(ch);
         } else if (ch >= 0x30 && ch <= 0x7E) {
-            VtAction a;
-            a.type = VtAction::EscDispatch;
-            a.finalChar = static_cast<char>(ch);
-            a.intermediate = m_intermediate;
-            m_callback(a);
-            transition(Ground);
+            dispatchEsc(ch);
         } else if (ch < 0x20) {
             // ECMA-48 / Williams parser table: a C0 control inside
             // `esc_intermediate` Executes and stays in esc_intermediate
             // (the ESC sequence is NOT aborted) — same rule as the
-            // CsiIntermediate branch below.
-            VtAction a;
-            a.type = VtAction::Execute;
-            a.controlChar = static_cast<char>(ch);
-            m_callback(a);
+            // CsiIntermediate branch.
+            emitExecute(ch);
         } else {
             transition(Ground);
         }
         break;
 
     case CsiEntry:
-        m_params.clear();
-        m_currentParam = -1;
-        m_paramsTruncated = false;  // ANTS-1827 — fresh CSI, clear carry-over
-        m_intermediate.clear();
-        if (ch >= 0x3C && ch <= 0x3F) {
-            // Private parameter prefix: ?, >, =, <
-            m_intermediate += static_cast<char>(ch);
-            m_state = CsiParam;
-        } else {
-            // Fall through to CsiParam processing
-            m_state = CsiParam;
-            processChar(ch);
-        }
+    case CsiParam:
+    case CsiIntermediate:
+    case CsiIgnore:
+        processCsi(ch);
+        break;
+
+    case OscString:
+    case OscStringEsc:
+    case DcsString:
+    case DcsStringEsc:
+    case ApcString:
+    case ApcStringEsc:
+    case IgnoreString:
+    case IgnoreStringEsc:
+        processString(ch);
+        break;
+    }
+}
+
+void VtParser::processCsi(uint32_t ch) {
+    switch (m_state) {
+    case CsiEntry:
+        // transition(CsiEntry) has already reset what a CSI collects.
+        m_state = CsiParam;
+        if (ch >= 0x3C && ch <= 0x3F)
+            m_intermediate += static_cast<char>(ch);  // private prefix: ? > = <
+        else
+            processCsi(ch);  // a parameter, intermediate or final byte
         break;
 
     case CsiParam:
         if (ch >= '0' && ch <= '9') {
             if (m_currentParam < 0) m_currentParam = 0;
             m_currentParam = m_currentParam * 10 + (ch - '0');
-            // Clamp to prevent overflow
             if (m_currentParam > kMaxParamValue) m_currentParam = kMaxParamValue;
         } else if (ch == ';') {
-            if (m_params.size() < kMaxParams) {
-                m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
-                m_colonSep.push_back(m_nextIsSubParam);
-            } else {
-                m_paramsTruncated = true;  // ANTS-1827 — param dropped at cap
-            }
+            pushParam(m_currentParam < 0 ? 0 : m_currentParam);
             m_currentParam = -1;
             m_nextIsSubParam = false;
         } else if (ch >= 0x20 && ch <= 0x2F) {
             // Intermediate byte
             if (m_currentParam >= 0) {
-                if (m_params.size() < kMaxParams) {
-                    m_params.push_back(m_currentParam);
-                    m_colonSep.push_back(m_nextIsSubParam);
-                } else {
-                    m_paramsTruncated = true;  // ANTS-1827
-                }
+                pushParam(m_currentParam);
                 m_currentParam = -1;
                 m_nextIsSubParam = false;
             }
@@ -409,39 +366,16 @@ void VtParser::processChar(uint32_t ch) {
             m_state = CsiIntermediate;
         } else if (ch >= 0x40 && ch <= 0x7E) {
             // Final byte — dispatch
-            if (m_currentParam >= 0) {
-                if (m_params.size() < kMaxParams) {
-                    m_params.push_back(m_currentParam);
-                    m_colonSep.push_back(m_nextIsSubParam);
-                } else {
-                    m_paramsTruncated = true;  // ANTS-1827 — in-flight param dropped
-                }
-            }
+            if (m_currentParam >= 0) pushParam(m_currentParam);
             m_nextIsSubParam = false;
-            VtAction a;
-            a.type = VtAction::CsiDispatch;
-            a.finalChar = static_cast<char>(ch);
-            a.params = m_params;
-            a.colonSep = m_colonSep;
-            a.intermediate = m_intermediate;
-            a.paramsTruncated = m_paramsTruncated;
-            m_callback(a);
-            transition(Ground);
+            dispatchCsi(ch);
         } else if (ch == ':') {
             // Sub-parameter separator (used in SGR colon syntax like 4:3 for curly underline)
-            if (m_params.size() < kMaxParams) {
-                m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
-                m_colonSep.push_back(m_nextIsSubParam);
-            } else {
-                m_paramsTruncated = true;  // ANTS-1827 — sub-param dropped at cap
-            }
+            pushParam(m_currentParam < 0 ? 0 : m_currentParam);
             m_currentParam = -1;
             m_nextIsSubParam = true;  // Mark next param as a colon sub-parameter
         } else if (ch < 0x20) {
-            VtAction a;
-            a.type = VtAction::Execute;
-            a.controlChar = static_cast<char>(ch);
-            m_callback(a);
+            emitExecute(ch);
         } else if (ch == 0x7F) {
             // ANTS-5075 — DEL is ignored in every CSI state (ECMA-48 /
             // Williams parser table).
@@ -460,23 +394,12 @@ void VtParser::processChar(uint32_t ch) {
             if (m_intermediate.size() < 8) // Cap intermediate bytes
                 m_intermediate += static_cast<char>(ch);
         } else if (ch >= 0x40 && ch <= 0x7E) {
-            VtAction a;
-            a.type = VtAction::CsiDispatch;
-            a.finalChar = static_cast<char>(ch);
-            a.params = m_params;
-            a.intermediate = m_intermediate;
-            a.colonSep = m_colonSep;
-            a.paramsTruncated = m_paramsTruncated;
-            m_callback(a);
-            transition(Ground);
+            dispatchCsi(ch);
         } else if (ch < 0x20) {
             // ECMA-48 / Williams parser table: a C0 control inside
             // `csi_intermediate` Executes and stays in csi_intermediate
             // (the CSI is NOT aborted), so `CSI ! <BEL> p` is still DECSTR.
-            VtAction a;
-            a.type = VtAction::Execute;
-            a.controlChar = static_cast<char>(ch);
-            m_callback(a);
+            emitExecute(ch);
         } else if (ch == 0x7F) {
             // ANTS-5075 — DEL ignored, as in CsiParam.
         } else if (ch >= 0x30 && ch <= 0x3F) {
@@ -490,146 +413,129 @@ void VtParser::processChar(uint32_t ch) {
     case CsiIgnore:
         // ANTS-5075 — csi_ignore: C0 controls still execute, 0x20-0x3F and
         // DEL are consumed, a final byte ends the sequence with no dispatch.
-        if (ch < 0x20) {
-            VtAction a;
-            a.type = VtAction::Execute;
-            a.controlChar = static_cast<char>(ch);
-            m_callback(a);
-        } else if (ch >= 0x40 && ch <= 0x7E) {
-            transition(Ground);
-        } else if (ch > 0x7F) {
-            transition(Ground);
-        }
-        break;
-
-    case OscString:
-        if (ch == 0x07 || ch == 0x9C) {
-            // BEL or ST terminates OSC
-            VtAction a;
-            a.type = VtAction::OscEnd;
-            a.payload = std::move(m_oscString);
-            a.truncated = m_stringTruncated;
-            m_callback(a);
-            releaseIfLarge(m_oscString);
-            transition(Ground);
-        } else if (ch == 0x1B) {
-            // xterm semantics: ESC ends the OSC whatever follows. The 7-bit
-            // ST is ESC + backslash; after any other byte the OSC still ends,
-            // and OscStringEsc consumes that byte, never dispatching it,
-            // so an OSC ending in `ESC c` cannot trigger RIS.
-            VtAction a;
-            a.type = VtAction::OscEnd;
-            a.payload = std::move(m_oscString);
-            a.truncated = m_stringTruncated;
-            m_callback(a);
-            releaseIfLarge(m_oscString);
-            transition(OscStringEsc);
-        } else {
-            if (!appendUtf8(m_oscString, ch, kMaxStringBytes))
-                m_stringTruncated = true;
-        }
-        break;
-
-    case OscStringEsc:
-        // Just consumed ESC inside an OSC. The OSC was already terminated
-        // and dispatched in the OscString branch above. ANTS-1777: if the
-        // next byte is a string introducer (] P _ X ^), re-arm a fresh
-        // string — this restores back-to-back `ESC ] … ESC ] …` /
-        // Sixel / Kitty sequences. Every other byte (incl. the dangerous
-        // ESC-finals `c`=RIS / `D` / `7` … and the CSI introducer `[`) is
-        // still discarded to Ground without dispatch, preserving the
-        // 0.7.53 hardening. See docs/specs/ANTS-1777.md +
-        // tests/features/vt_osc_esc_discard/spec.md.
-        if (!reArmStringIntroducer(ch))
+        if (ch < 0x20)
+            emitExecute(ch);
+        else if (ch >= 0x40 && ch != 0x7F)
             transition(Ground);
         break;
 
-    case DcsString:
-        if (ch == 0x9C || ch == 0x07) {
-            VtAction a;
-            a.type = VtAction::DcsEnd;
-            a.payload = std::move(m_dcsString);
-            a.truncated = m_stringTruncated;
-            m_callback(a);
-            releaseIfLarge(m_dcsString);
-            transition(Ground);
-        } else if (ch == 0x1B) {
-            // Same fix as OscString — see comment above.
-            VtAction a;
-            a.type = VtAction::DcsEnd;
-            a.payload = std::move(m_dcsString);
-            a.truncated = m_stringTruncated;
-            m_callback(a);
-            releaseIfLarge(m_dcsString);
-            transition(DcsStringEsc);
-        } else {
-            if (!appendUtf8(m_dcsString, ch, kMaxStringBytes))
-                m_stringTruncated = true;
-        }
-        break;
-
-    case DcsStringEsc:
-        // ANTS-1777 — re-arm only on a string introducer (see
-        // OscStringEsc above); dangerous ESC-finals + CSI stay discarded.
-        // Fixes back-to-back `ESC P … ESC P` (Sixel) data loss.
-        if (!reArmStringIntroducer(ch))
-            transition(Ground);
-        break;
-
-    case ApcString:
-        if (ch == 0x9C || ch == 0x07) {
-            VtAction a;
-            a.type = VtAction::ApcEnd;
-            a.payload = std::move(m_apcString);
-            a.truncated = m_stringTruncated;
-            m_callback(a);
-            releaseIfLarge(m_apcString);
-            transition(Ground);
-        } else if (ch == 0x1B) {
-            // Same fix as OscString — see comment above.
-            VtAction a;
-            a.type = VtAction::ApcEnd;
-            a.payload = std::move(m_apcString);
-            a.truncated = m_stringTruncated;
-            m_callback(a);
-            releaseIfLarge(m_apcString);
-            transition(ApcStringEsc);
-        } else {
-            if (!appendUtf8(m_apcString, ch, kMaxStringBytes))
-                m_stringTruncated = true;
-        }
-        break;
-
-    case ApcStringEsc:
-        // ANTS-1777 — re-arm only on a string introducer (see
-        // OscStringEsc). Fixes back-to-back `ESC _ … ESC _` (Kitty) loss.
-        if (!reArmStringIntroducer(ch))
-            transition(Ground);
-        break;
-
-    case IgnoreString:
-        if (ch == 0x9C || ch == 0x07) {
-            transition(Ground);
-        } else if (ch == 0x1B) {
-            transition(IgnoreStringEsc);
-        }
-        break;
-
-    case IgnoreStringEsc:
-        // ANTS-1777 — re-arm only on a string introducer (see
-        // OscStringEsc); SOS/PM payloads carry no accumulator.
-        if (!reArmStringIntroducer(ch))
-            transition(Ground);
+    default:
         break;
     }
 }
 
+void VtParser::processString(uint32_t ch) {
+    // BEL or ST ends a string and returns to Ground. ESC ends it too, whatever
+    // follows (xterm semantics): the 7-bit ST is ESC + backslash, and after
+    // any other byte the string still ends. The *Esc peek state then consumes
+    // that byte, never dispatching it, so a string ending in `ESC c` cannot
+    // trigger RIS.
+    switch (m_state) {
+    case OscString:
+        if (ch == 0x07 || ch == 0x9C)
+            endString(VtAction::OscEnd, m_oscString, Ground);
+        else if (ch == 0x1B)
+            endString(VtAction::OscEnd, m_oscString, OscStringEsc);
+        else if (!appendUtf8(m_oscString, ch, kMaxStringBytes))
+            m_stringTruncated = true;
+        break;
+
+    case DcsString:
+        if (ch == 0x07 || ch == 0x9C)
+            endString(VtAction::DcsEnd, m_dcsString, Ground);
+        else if (ch == 0x1B)
+            endString(VtAction::DcsEnd, m_dcsString, DcsStringEsc);
+        else if (!appendUtf8(m_dcsString, ch, kMaxStringBytes))
+            m_stringTruncated = true;
+        break;
+
+    case ApcString:
+        if (ch == 0x07 || ch == 0x9C)
+            endString(VtAction::ApcEnd, m_apcString, Ground);
+        else if (ch == 0x1B)
+            endString(VtAction::ApcEnd, m_apcString, ApcStringEsc);
+        else if (!appendUtf8(m_apcString, ch, kMaxStringBytes))
+            m_stringTruncated = true;
+        break;
+
+    case IgnoreString:
+        // SOS, PM — the body is consumed and dropped.
+        if (ch == 0x07 || ch == 0x9C)
+            transition(Ground);
+        else if (ch == 0x1B)
+            transition(IgnoreStringEsc);
+        break;
+
+    case OscStringEsc:
+    case DcsStringEsc:
+    case ApcStringEsc:
+    case IgnoreStringEsc:
+        // The byte after a string-ending ESC. ANTS-1777: a string introducer
+        // (] P _ X ^) re-arms a fresh string, so back-to-back OSC, Sixel and
+        // Kitty sequences survive. Every other byte — the dangerous ESC
+        // finals `c`=RIS, `D`, `7` …, and the CSI introducer `[` — is
+        // discarded to Ground without dispatch. See docs/specs/ANTS-1777.md
+        // and tests/features/vt_osc_esc_discard/spec.md.
+        if (!reArmStringIntroducer(ch))
+            transition(Ground);
+        break;
+
+    default:
+        break;
+    }
+}
+
+void VtParser::emitExecute(uint32_t ch) {
+    VtAction a;
+    a.type = VtAction::Execute;
+    a.controlChar = static_cast<char>(ch);
+    m_callback(a);
+}
+
+void VtParser::dispatchEsc(uint32_t ch) {
+    VtAction a;
+    a.type = VtAction::EscDispatch;
+    a.finalChar = static_cast<char>(ch);
+    a.intermediate = m_intermediate;
+    m_callback(a);
+    transition(Ground);
+}
+
+void VtParser::dispatchCsi(uint32_t ch) {
+    VtAction a;
+    a.type = VtAction::CsiDispatch;
+    a.finalChar = static_cast<char>(ch);
+    a.params = m_params;
+    a.colonSep = m_colonSep;
+    a.intermediate = m_intermediate;
+    a.paramsTruncated = m_paramsTruncated;
+    m_callback(a);
+    transition(Ground);
+}
+
+void VtParser::pushParam(int value) {
+    if (m_params.size() < kMaxParams) {
+        m_params.push_back(value);
+        m_colonSep.push_back(m_nextIsSubParam);
+    } else {
+        m_paramsTruncated = true;
+    }
+}
+
+void VtParser::endString(VtAction::Type type, std::string &buf, State next) {
+    VtAction a;
+    a.type = type;
+    a.payload = std::move(buf);
+    a.truncated = m_stringTruncated;
+    m_callback(a);
+    releaseIfLarge(buf);
+    transition(next);
+}
+
 bool VtParser::reArmStringIntroducer(uint32_t ch) {
-    // Mirror the Ground→Escape string-introducer cases (clear-then-
-    // transition, identical to processChar's Escape state). Any byte not
-    // listed here is NOT a string introducer — the caller discards it to
-    // Ground, so `c`=RIS, `D`=IND, the CSI introducer `[`, intermediates,
-    // and C0 all stay neutralised (the 0.7.53 hardening). ANTS-1777.
+    // Any byte not listed here is NOT a string introducer, so `c`=RIS,
+    // `D`=IND, the CSI introducer `[`, intermediates and C0 never re-arm
+    // from a peek state. ANTS-1777.
     switch (ch) {
     case ']': m_oscString.clear(); transition(OscString); return true;
     case 'P': m_dcsString.clear(); transition(DcsString); return true;
@@ -649,6 +555,7 @@ void VtParser::transition(State newState) {
         m_colonSep.clear();
         m_currentParam = -1;
         m_nextIsSubParam = false;
+        m_paramsTruncated = false;  // ANTS-1827 — fresh CSI, clear carry-over
         m_intermediate.clear();
     } else if (newState == Escape) {
         m_intermediate.clear();

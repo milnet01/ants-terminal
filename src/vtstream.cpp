@@ -27,42 +27,8 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     // on another thread triggers a Qt warning on first activation.
     m_pty = new Pty(this);
     m_pty->setKeysShareableSink(&m_keysShareable);
-    m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
-        // ANTS-5075 — the selection-clear hint comes from parsed actions, so a
-        // clear split across two reads still counts: ED 2, ED 3, or form feed.
-        // `CSI ? J` (DECSED, selective erase) is left out: by spec it keeps
-        // protected cells, so it is not a full clear.
-        if ((a.type == VtAction::CsiDispatch && a.finalChar == 'J' &&
-             a.intermediate.empty() && a.params.size() == 1 &&
-             (a.params[0] == 2 || a.params[0] == 3)) ||
-            (a.type == VtAction::Execute && a.controlChar == '\x0C')) {
-            m_pendingClearSelection = true;
-        }
-        // Coalesced Print runs (printRun pointing into the feed buffer)
-        // do NOT outlive this callback — `data` in onPtyData is freed
-        // when that frame returns, so any pointer into it is dangling
-        // by the time `flushBatch` ships the batch to the GUI thread.
-        // Expand runs into per-byte Print actions here; the cost is
-        // one VtAction per byte on the worker thread but that's the
-        // same shape as the pre-0.7.17 parser and keeps the GUI-side
-        // batch consumer dangling-pointer-free. The direct (non-
-        // threaded) path in processAction still benefits from
-        // coalescing because there the VtAction lives on the stack
-        // during the callback only.
-        if (a.type == VtAction::Print && a.printRun != nullptr) {
-            for (int i = 0; i < a.printRunLen; ++i) {
-                VtAction b;
-                b.type = VtAction::Print;
-                b.codepoint = static_cast<uint8_t>(a.printRun[i]);
-                m_pending.push_back(std::move(b));
-            }
-            return;
-        }
-        m_pending.push_back(a);
-        // ANTS-1061 — decode an inline image here, off the GUI thread.
-        if (auto image = m_predecoder.onAction(a))
-            m_pendingImages.emplace_back(m_pending.size() - 1, std::move(image));
-    });
+    m_parser = std::make_unique<VtParser>(
+        [this](const VtAction &a) { onParsedAction(a); });
     connect(m_pty, &Pty::dataReceived, this, &VtStream::onPtyData);
     connect(m_pty, &Pty::finished, this, &VtStream::onPtyFinished);
     // ANTS-2119 — surface PTY write-loss (queue/kernel-buffer overflow) so it is
@@ -84,6 +50,43 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
         return false;
     }
     return true;
+}
+
+void VtStream::onParsedAction(const VtAction &a) {
+    // ANTS-5075 — the selection-clear hint comes from parsed actions, so a
+    // clear split across two reads still counts: ED 2, ED 3, or form feed.
+    // `CSI ? J` (DECSED, selective erase) is left out: by spec it keeps
+    // protected cells, so it is not a full clear.
+    if ((a.type == VtAction::CsiDispatch && a.finalChar == 'J' &&
+         a.intermediate.empty() && a.params.size() == 1 &&
+         (a.params[0] == 2 || a.params[0] == 3)) ||
+        (a.type == VtAction::Execute && a.controlChar == '\x0C')) {
+        m_pendingClearSelection = true;
+    }
+    // Coalesced Print runs (printRun pointing into the feed buffer)
+    // do NOT outlive this callback — `data` in onPtyData is freed
+    // when that frame returns, so any pointer into it is dangling
+    // by the time `flushBatch` ships the batch to the GUI thread.
+    // Expand runs into per-byte Print actions here; the cost is
+    // one VtAction per byte on the worker thread but that's the
+    // same shape as the pre-0.7.17 parser and keeps the GUI-side
+    // batch consumer dangling-pointer-free. The direct (non-
+    // threaded) path in processAction still benefits from
+    // coalescing because there the VtAction lives on the stack
+    // during the callback only.
+    if (a.type == VtAction::Print && a.printRun != nullptr) {
+        for (int i = 0; i < a.printRunLen; ++i) {
+            VtAction b;
+            b.type = VtAction::Print;
+            b.codepoint = static_cast<uint8_t>(a.printRun[i]);
+            m_pending.push_back(std::move(b));
+        }
+        return;
+    }
+    m_pending.push_back(a);
+    // ANTS-1061 — decode an inline image here, off the GUI thread.
+    if (auto image = m_predecoder.onAction(a))
+        m_pendingImages.emplace_back(m_pending.size() - 1, std::move(image));
 }
 
 pid_t VtStream::childPid() const {
@@ -134,7 +137,7 @@ void VtStream::drainAck() {
         // Drain any bytes that arrived while paused: onPtyData runs again
         // when the notifier wakes, so no explicit poll needed here. But
         // if m_pending already held bytes we hadn't emitted, flush now.
-        if (!m_pending.empty() || !m_pendingRaw.isEmpty()) {
+        if (hasPending()) {
             flushBatch();
         }
     }
@@ -168,7 +171,7 @@ void VtStream::scheduleFlush() {
 
 void VtStream::onFlushTimer() {
     m_flushScheduled = false;
-    if (!m_pending.empty() || !m_pendingRaw.isEmpty()) {
+    if (hasPending()) {
         flushBatch();
     }
 }
@@ -184,6 +187,16 @@ void VtStream::flushBatch() {
         return;
     }
 
+    VtBatchPtr b = takeBatch();
+    ++m_inFlightBatches;
+    // Implicit shared_ptr<VtBatch> → shared_ptr<const VtBatch> on the
+    // signal carrier. Qt copies the smart-pointer across the queued
+    // connection, not the underlying VtBatch — so `actions` and
+    // `rawBytes` are NOT deep-copied on the worker→GUI hop.
+    emit batchReady(b);
+}
+
+VtBatchPtr VtStream::takeBatch() {
     auto b = std::make_shared<VtBatch>();
     b->actions = std::move(m_pending);
     b->rawBytes = std::move(m_pendingRaw);
@@ -195,31 +208,16 @@ void VtStream::flushBatch() {
     m_pendingImages.clear();
     m_pendingRaw.clear();
     m_pendingClearSelection = false;
-
-    ++m_inFlightBatches;
-    // Implicit shared_ptr<VtBatch> → shared_ptr<const VtBatch> on the
-    // signal carrier. Qt copies the smart-pointer across the queued
-    // connection, not the underlying VtBatch — so `actions` and
-    // `rawBytes` are NOT deep-copied on the worker→GUI hop.
-    emit batchReady(b);
+    return b;
 }
 
 void VtStream::onPtyFinished(int exitCode) {
     // Flush anything still buffered so the shell's final output reaches
     // the GUI before the finished signal.
-    if (!m_pending.empty() || !m_pendingRaw.isEmpty()) {
+    if (hasPending()) {
         // Force a flush even if over the back-pressure cap — the PTY is
         // done, there's no more input coming.
-        auto b = std::make_shared<VtBatch>();
-        b->actions = std::move(m_pending);
-        b->rawBytes = std::move(m_pendingRaw);
-        b->clearSelectionHint = m_pendingClearSelection;
-        b->wallClockMs = m_wallClock.elapsed();
-        b->images = std::move(m_pendingImages);
-        m_pending.clear();
-        m_pendingImages.clear();
-        m_pendingRaw.clear();
-        m_pendingClearSelection = false;
+        VtBatchPtr b = takeBatch();
         emit batchReady(b);
     }
     emit finished(exitCode);

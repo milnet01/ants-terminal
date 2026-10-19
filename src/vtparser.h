@@ -84,17 +84,30 @@ private:
     };
 
     void processChar(uint32_t ch);
+    void processCsi(uint32_t ch);     // CsiEntry, CsiParam, CsiIntermediate, CsiIgnore
+    void processString(uint32_t ch);  // the OSC/DCS/APC/SOS/PM states and their peek states
+
+    void emitExecute(uint32_t ch);
+    void dispatchEsc(uint32_t ch);    // emits EscDispatch, returns to Ground
+    void dispatchCsi(uint32_t ch);    // emits CsiDispatch, returns to Ground
+    // Close a CSI parameter. Past the cap it is dropped and the CSI is marked
+    // truncated (ANTS-1827).
+    void pushParam(int value);
+    // Emit the End action for the string in `buf`, then enter `next`.
+    void endString(VtAction::Type type, std::string &buf, State next);
+
     // Enter a state and reset what that state collects. A move that must keep
     // what was collected (CsiEntry to CsiParam, CsiParam to CsiIntermediate,
     // either to CsiIgnore) assigns m_state directly instead.
     void transition(State newState);
 
-    // ANTS-1777: from a *StringEsc peek-state, re-enter a string-collecting
-    // state iff `ch` is a string introducer (] OSC, P DCS, _ APC, X SOS,
-    // ^ PM) — performs the transition and returns true. Returns false (no
-    // state change) for every other byte so the caller discards it to
-    // Ground, preserving the 0.7.53 ESC-final hardening (c=RIS, [=CSI, …
-    // stay discarded). See docs/specs/ANTS-1777.md.
+    // Enter a string-collecting state iff `ch` is a string introducer
+    // (] OSC, P DCS, _ APC, X SOS, ^ PM) — performs the transition and
+    // returns true. Returns false (no state change) for every other byte.
+    // The one place string introducers are decoded: the Escape state, the
+    // 8-bit C1 forms and the *StringEsc peek states all call it. From a peek
+    // state the caller discards a false to Ground, so c=RIS, [=CSI, … stay
+    // discarded (ANTS-1777, docs/specs/ANTS-1777.md).
     bool reArmStringIntroducer(uint32_t ch);
 
     // UTF-8 decoding

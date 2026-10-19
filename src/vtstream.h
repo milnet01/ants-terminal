@@ -149,6 +149,11 @@ private slots:
 private:
     void scheduleFlush();
     void flushBatch();
+    // The parser's action callback: queues each action for the next batch.
+    void onParsedAction(const VtAction &a);
+    bool hasPending() const { return !m_pending.empty() || !m_pendingRaw.isEmpty(); }
+    // Moves everything pending into a new batch and resets the pending state.
+    VtBatchPtr takeBatch();
 
     Pty *m_pty = nullptr;                    // heap-allocated, owned, worker-thread
     std::atomic<bool> m_keysShareable{false};
