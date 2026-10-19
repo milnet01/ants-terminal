@@ -171,6 +171,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Changing the theme or opening a new window after using Review Changes no longer crashes the terminal.** (ANTS-5774)
+
 - **`spec_query`'s `test_surface` ends at a *Breaks when:* or *Broken by:* marker, so `spec_lint` flags a bare command written in specs.md's skeleton form** (ANTS-5758)
 
 - **On a pass-headings roadmap, a `- **Status**: in progress` line reads as in progress, and flipping it replaces both words** (ANTS-5761)

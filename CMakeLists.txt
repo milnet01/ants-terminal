@@ -3921,7 +3921,11 @@ if(ANTS_TESTS)
                 # bundle as diffviewer_extraction: diffviewer.cpp is
                 # ants_dialogs_lib, and SRC_DIFFVIEWER_CPP_PATH is already
                 # defined target-wide below.
-                tests/features/review_changes_diff_cap/test_review_changes_diff_cap.cpp)
+                tests/features/review_changes_diff_cap/test_review_changes_diff_cap.cpp
+                # ANTS-5774 — rendering the diff must not sever others'
+                # links to the Copy Diff button (Qt's style-cache cleanup).
+                # Behavioural, real diffviewer::show().
+                tests/features/review_changes_style_cache/test_review_changes_style_cache.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
         "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""

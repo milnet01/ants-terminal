@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5773 -->
+<!-- ants-roadmap-id-high-water: ANTS=5774 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87396,6 +87396,28 @@ a modern terminal" release.
   Kind: fix.
   Source: in-session-2026-10-16 (Groundwork GRND-0081 question).
   Lanes: packaging.
+
+- ✅ [ANTS-5774] **Review Changes' Copy Diff button leaves a dangling style-cache entry that crashes the next theme switch or New Window (SIGSEGV in QApplication::setStyleSheet).**
+  Root cause of ANTS-2024 / ANTS-2097 / ANTS-3556 and of the 2026-10-19
+  New Window crash. diffviewer.cpp finalize calls copyGuard->disconnect(),
+  which severs every connection on the Copy Diff button, including
+  QStyleSheetStyle's destroyed -> objectDestroyed link (Qt 6.11
+  qstylesheetstyle.cpp initWidget connects it once, guarded by
+  WA_StyleSheet, and never again). Once the dialog closes, the button's
+  pointer stays a key in styleRulesCache; the next qApp->setStyleSheet
+  walks it (repolish(qApp) -> updateObjects -> qobject_cast) -> SIGSEGV.
+  Reproduced under ASan with max_free_fill_size: same fault address
+  (libQt6Widgets +0x2df3fd) as the user's core. Fix: disconnect only
+  clicked.
+  Fixed 2026-10-19: clicked-only disconnect. Regression test
+  tests/features/review_changes_style_cache (red before, green after).
+  ASan driver with zeroed frees: crashed at libQt6Widgets +0x2df3fd
+  before, clean after through theme switch + New Window. Full suite 5703
+  passed.
+  **Layman:** After you close Review Changes, the next theme change or new window could crash the terminal. This was the real cause behind the earlier theme-switch crashes.
+  Kind: fix.
+  Source: user-report-2026-10-19 (coredump PID 772073, Ctrl+Shift+N).
+  Lanes: dialogs.
 
 ### 🐛 Carried over from 0.7.x
 

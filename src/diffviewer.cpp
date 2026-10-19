@@ -777,7 +777,10 @@ QDialog *show(QWidget *parent,
             // Wire the Copy button now that the data is known. Disconnect
             // first so we don't stack handlers if finalize were ever
             // invoked twice (shouldn't happen, but cheap insurance).
-            copyGuard->disconnect();
+            // ANTS-5774 — only our own clicked handler: a bare disconnect()
+            // also cut Qt's style-cache cleanup on destroyed(), so the
+            // deleted button crashed the next qApp->setStyleSheet().
+            QObject::disconnect(copyGuard, &QPushButton::clicked, copyGuard, nullptr);
             QObject::connect(copyGuard, &QPushButton::clicked, copyGuard, [state]() {
                 QString combined;
                 if (!state->status.isEmpty())
