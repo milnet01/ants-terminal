@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5776 -->
+<!-- ants-roadmap-id-high-water: ANTS=5778 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -20306,6 +20306,28 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: optimize.
   Source: user-request-2026-10-19.
   Lanes: mcp.
+
+- 📋 [ANTS-5777] **create_section refuses a release version that a section in an archive file already carries.**
+  Measured 2026-10-19 while researching ANTS-5315 step 4: the duplicate-version
+  check in RemoteControl::cmdRoadmapLogCreateSection reads the heading index
+  built from the live ROADMAP.md (RoadmapIndex::findByVersion), so a version
+  whose section has source_path docs/roadmap/<M>.<m>.md (rotate_minor) is not
+  seen, and a second section for it is accepted. ANTS-1878 § 2.3a's
+  duplicate rule then fails silently on archived releases.
+  **Layman:** Stops the roadmap tool from making a second heading for a release whose heading was moved to an archive file.
+  Kind: fix.
+  Source: ANTS-5315-spec-research-2026-10-19.
+  Lanes: roadmap.
+
+- 📋 [ANTS-5778] **Re-archive the old minors after the release migration moves their shipped items into live release sections.**
+  Follow-up to docs/specs/ANTS-5315-release-sections-migration.md § 10:
+  place_by_release creates release sections for 0.1 to 0.6 in the live
+  file. Run rotate_minor for each closed minor after the first apply, and
+  check the archive files render the moved items.
+  **Layman:** After the roadmap is sorted by release, moves the old 0.1 to 0.6 releases back out of the main roadmap file so it stays short.
+  Kind: chore.
+  Source: ANTS-5315-spec-research-2026-10-19.
+  Lanes: roadmap.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
