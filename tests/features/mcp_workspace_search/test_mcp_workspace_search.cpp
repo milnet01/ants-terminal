@@ -25,6 +25,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -617,8 +618,10 @@ TEST(McpWorkspaceSearch, Ants5711HardKillKeepsPartialResultsInEveryMode) {
         s.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
                          | QFileDevice::ExeOwner);
     }
-    const QByteArray oldPath = qgetenv("PATH");
-    qputenv("PATH", shimDir.path().toUtf8() + ":" + oldPath);
+    // Restores PATH on every exit, the ASSERT below included, before
+    // shimDir is deleted.
+    ants_test::XdgGuard env;
+    env.setEnv("PATH", shimDir.path().toUtf8() + ":" + qgetenv("PATH"));
 
     const auto run = [&root](const char *mode) {
         QJsonObject req;
@@ -645,6 +648,4 @@ TEST(McpWorkspaceSearch, Ants5711HardKillKeepsPartialResultsInEveryMode) {
                   .value(QStringLiteral("file")).toString(),
               QStringLiteral("a.txt"));
     EXPECT_EQ(run("count_only").value(QStringLiteral("count")).toInt(), 1);
-
-    qputenv("PATH", oldPath);
 }
