@@ -3208,6 +3208,20 @@ remainder, captured so they don't drop on the floor.
   Specs to amend: ANTS-1873 + claude_state_resolver, claude_state_dot_
   palette, claude_status_bar, claude_bg_tasks_button.
   Hot reload: code only the terminal serves, so it needs one relaunch.
+  Colour (user, 2026-10-19): orange #F08C2E. Never the prompt red or the
+  idle grey.
+  Transcript facts (probed live in this session, Claude Code 2026-10-19):
+  - shell: toolUseResult.backgroundTaskId, also on a foreground command
+    moved to the background on timeout (timedOutAfterMs, no
+    run_in_background flag);
+  - agent: toolUseResult.status "async_launched" + agentId;
+  - monitor: toolUseResult.taskId (+ persistent, timeoutMs).
+  All three end with a task-notification carrying that id and a
+  <status> (completed seen); a monitor's per-event notifications carry
+  no status. Each notification is written twice: a queue-operation
+  enqueue, then a user record. Rule: pending from the start record until
+  a notification with a status for that id; clear when the tab's Claude
+  PID changes.
   **Layman:** The status bar stops saying Claude is idle while a background shell, helper agent or monitor it started is still running.
   Kind: feature.
   Source: user-request-2026-10-19.
