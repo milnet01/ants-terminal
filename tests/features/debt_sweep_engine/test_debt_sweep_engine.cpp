@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include "support/testspawn.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -1003,16 +1004,16 @@ TEST(DebtSweepEngine, Ants5101GitFailureIsNotAClean) {
     }
     QFile::setPermissions(fake, QFile::ReadOwner | QFile::WriteOwner |
                                     QFile::ExeOwner);
-    const QByteArray oldPath = qgetenv("PATH");
-    qputenv("PATH", bin.path().toUtf8() + ':' + oldPath);
-
-    DebtSweepEngine::ScanOptions opt;
-    opt.includeTestCoverage   = false;
-    opt.includeDocDrift       = false;
-    opt.includePackagingDrift = false;
-    const QList<DebtSweepEngine::Finding> fs =
-        DebtSweepEngine::scanAll(proj.path(), opt);
-    qputenv("PATH", oldPath);
+    QList<DebtSweepEngine::Finding> fs;
+    {
+        ants_test::XdgGuard env;
+        env.setEnv("PATH", bin.path().toUtf8() + ':' + qgetenv("PATH"));
+        DebtSweepEngine::ScanOptions opt;
+        opt.includeTestCoverage   = false;
+        opt.includeDocDrift       = false;
+        opt.includePackagingDrift = false;
+        fs = DebtSweepEngine::scanAll(proj.path(), opt);
+    }
 
     bool sawFailure = false;
     for (const auto &f : fs)
