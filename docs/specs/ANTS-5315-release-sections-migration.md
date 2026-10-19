@@ -1,6 +1,6 @@
 # ANTS-5315 — `roadmap_log op:"place_by_release"`: file shipped items under the release they shipped in
 
-**Status:** spec draft (2026-10-19).
+**Status:** accepted (2026-10-19).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5315 step 4 (claude-ab-request-2026-09-24; user decisions 2026-10-19).
 **Composes with:** ANTS-1878 § 2.3a (release-section placement), ANTS-4501 (the `backfill_dates` dry-run discipline), ANTS-5704 (`plan_id`).
@@ -55,12 +55,12 @@ A **version-led section** is a level-2 section whose title begins with a numbere
 For each released version `V` that has at least one placed item, the op picks one **release section**, taking the first rule that applies:
 
 1. **Already established.** A version-led section for `V` that holds an item this op placed there (§ 2.4's marker) is the release section. If several do, the one earliest in section order wins.
-2. **Reusable.** A version-led section for `V` qualifies when its title is not a range, and every item left in it after the planned moves has placement `V` or is `human_placed`. An empty section qualifies. If several qualify, the one earliest in section order wins.
-3. **New.** Otherwise the op creates a level-2 section in the live roadmap, titled `V — released YYYY-MM-DD`. The date is the stable tag's creator date. With no tag, it is the CHANGELOG heading's date if that date is ISO `YYYY-MM-DD`. With neither, the title is `V — released`. It is placed by ANTS-1878 § 2.3a's rule, in ascending SemVer order. The rule reads every section title as it will stand after this plan's retitles, plus the sections this plan has already created.
+2. **Reusable.** A version-led section for `V` qualifies when its title is not a range, and every item left in its subtree after the planned moves has placement `V` or is `human_placed`. An empty section qualifies. If several qualify, the one earliest in section order wins.
+3. **New.** Otherwise the op creates a level-2 section in the live roadmap, titled `V — released YYYY-MM-DD`. The date is the stable tag's creator date. With no tag, it is the CHANGELOG heading's date if that date is ISO `YYYY-MM-DD`. With neither, the title is `V — released`. It is placed by ANTS-1878 § 2.3a's rule, in ascending SemVer order. The rule reads the live sections' titles as they will stand after this plan's retitles, plus the sections this plan has already created.
 
 Every placed item not already in its release section's subtree moves there, after the section's last element. Items that are already there stay in place.
 
-**Retitling.** After the moves, every version-led section for a released version that is not a release section is retitled. Its version moves to the end of the title, so a version at the start of a heading always means a release (user, 2026-10-19). The leading version text is everything before the first ` — `, so a range comes with it. It is removed, and ` (<that text> wave)` is appended to the rest. A title with no ` — ` becomes `Release wave (<title>)`:
+**Retitling.** After the moves, every version-led section for a released version that is not a release section is retitled. Its version moves to the end of the title, so a version at the start of a level-2 heading always means a release (user, 2026-10-19). The leading version text is everything before the first ` — `, so a range comes with it. It is removed, and ` (<that text> wave)` is appended to the rest. A title with no ` — ` becomes `Release wave (<title>)`:
 
 | Before | After |
 |---|---|
@@ -83,7 +83,7 @@ history(item_pk, changed_at = <the move's stamp>, seq = <next>,
 
 An item the op would otherwise move is **`human_placed`**, and stays, when either of these holds:
 
-- it has a `placed_by` row and a later `section` row: someone moved it after this op placed it; or
+- it has a `placed_by` row and a `section` row after it in (`changed_at`, `seq`) order: someone moved it after this op placed it. The op writes its `placed_by` row after its own `section` row; or
 - it sits in a release section picked by § 2.3 rule 1, and has no `placed_by` row: someone filed it there by hand.
 
 An item already in its own release section is never moved, so neither case applies to it.
@@ -92,9 +92,9 @@ Both cases rest on the marker. Over `RoadmapStore`'s history cap, `rlFlushHistor
 
 ### 2.5 One plan, one write
 
-The op decides every move, creation and retitle before opening a transaction, as `cmdRoadmapLogBackfillDates` does. The dry run reports exactly what the apply would write. All writes then land in one `RoadmapWrite::commitAndRender`, so the roadmap re-renders once. The apply re-reads the CHANGELOG and git, then re-plans. A change landing between the preview and the apply therefore shows up in the apply's own reply, which is the record of what was written.
+The op decides every move, creation and retitle before opening a transaction, as `cmdRoadmapLogBackfillDates` does. The dry run plans exactly what the apply would write. All writes then land in one `RoadmapWrite::commitAndRender`, so the roadmap re-renders once. The apply re-reads the CHANGELOG and git, then re-plans. A change landing between the preview and the apply therefore shows up in the apply's own reply, which is the record of what was written.
 
-Git is read through `HostExec`, as `rlWalkGitForDates` reads it, under a wall budget. A git start failure, a non-zero exit or a budget overrun refuses `git_failed` (`docs/standards/mcp-error-codes.md`), and nothing is written.
+Git is read through `HostExec`, as `rlWalkGitForDates` reads it, under the 50 s wall budget `backfill_dates` uses (ANTS-5095: under the client's 60 s timeout). A git start failure, a non-zero exit or a budget overrun refuses `git_failed` (`docs/standards/mcp-error-codes.md`), and nothing is written.
 
 ### 2.6 Reply
 
@@ -119,11 +119,11 @@ Each array is capped at `sample_limit` and carries a `*_truncated` flag when cap
 
 ## 3. Invariants
 
-- **INV-1** — A request with neither `dry_run:true` nor `plan_id` refuses `bad_args`, and the store is unchanged. *Test:* `tests/features/roadmap_place_by_release`: the store's `history` row count, and the bytes of `ROADMAP.md`, are equal before and after. *Breaks when:* the op applies on a direct call.
+- **INV-1** — A request with neither `dry_run:true` nor `plan_id` refuses `bad_args`, and the store is unchanged. *Test:* `tests/features/roadmap_place_by_release`: the refusal's code is `bad_args` and its hint names `dry_run:true`, and the store's `history` row count and the bytes of `ROADMAP.md` are equal before and after. *Breaks when:* the op applies on a direct call.
 - **INV-2** — A dry run writes nothing. When nothing changes between the two calls, the apply of its `plan_id` writes exactly the moves, creations and retitles the dry run reported. *Test:* `tests/features/roadmap_place_by_release`: dry run, compare store and file bytes, apply, then compare the apply's `moved`, `sections_created` and `sections_retitled` with the dry run's. *Breaks when:* planning reads state the apply changes first, or a dry run commits.
 - **INV-3** — Placement follows § 2.2's order. With a CHANGELOG citation, the lowest cited `## [X.Y.Z]` wins over any tag. The tag source is used only with no citation. *Test:* `tests/features/roadmap_place_by_release`. The fixture repo has item A cited in `[0.2.0]` and `[0.3.0]` with a subject commit under `v0.1.0`, and item B uncited with a subject commit under `v0.2.0`. A goes to `0.2.0` and B to `0.2.0`; A is counted in `differ_count` and `multi_cited_count`. *Breaks when:* the tag wins, or the highest citation wins.
 - **INV-4** — No section title, `item.shipped` date or tag date ever produces a placement. *Test:* `tests/features/roadmap_place_by_release`: an item cited nowhere, not named by any commit subject, with a `shipped` date, and sitting under `## 0.1.0 — …`, is reported `no_evidence` and does not move. *Breaks when:* a fallback source is added.
-- **INV-5** — Only shipped items move. Open, `considered` and `dropped` items keep their section and position, even when the CHANGELOG cites them. *Test:* `tests/features/roadmap_place_by_release`: a planned item cited in `[0.2.0]` keeps its `element` row unchanged. *Breaks when:* status is not checked.
+- **INV-5** — Only shipped items move. Open, `considered` and `dropped` items keep their section and position, even when the CHANGELOG cites them. *Test:* `tests/features/roadmap_place_by_release`: in one apply, a shipped item cited in `[0.2.0]` moves and a planned item cited there keeps its `element` row unchanged. *Breaks when:* status is not checked.
 - **INV-6** — An item a human moved after this op placed it, or filed by hand into a release section, is reported `human_placed` and never moved. *Test:* `tests/features/roadmap_place_by_release`: apply once, move item A with `amend_field field:"section"`, then run again. A is `human_placed` and stays. *Breaks when:* the `placed_by` marker is not written or not read.
 - **INV-7** — A second run straight after an apply plans no moves, creations or retitles. *Test:* `tests/features/roadmap_place_by_release`: apply, then dry run again. `moved_count` 0, `sections_created` and `sections_retitled` empty. *Breaks when:* a release section the op created fails § 2.3 rule 1 on the re-run, or a retitled title still begins with a version.
 - **INV-8** — A version already carried by a section in an archive file gets no second section. *Test:* `tests/features/roadmap_place_by_release`: a store whose `0.1.0` section has `source_path` `docs/roadmap/0.1.md` and qualifies under rule 2 receives `0.1.0`'s items, and `sections_created` has no `0.1.0` row. *Breaks when:* sections are read from `ROADMAP.md` alone.
@@ -155,7 +155,7 @@ Feature test `tests/features/roadmap_place_by_release/`, which covers INV-1, INV
 
 ### 6.1 Measured figures
 
-A measurement script produced every figure in § 1 and § 7. It read Ants Terminal's `CHANGELOG.md`, the live store read-only, and `git log` per stable-tag range in SemVer order, on 2026-10-19 at `a524fd80`. These figures describe today's data and are not invariants. The op's dry run reports the same quantities and is the authority from then on.
+A measurement script produced every figure in § 1 and § 7. It read Ants Terminal's `CHANGELOG.md`, the live store read-only, and `git log` per stable-tag range in SemVer order, on 2026-10-19 at `a524fd80`. These figures describe today's data and are not invariants. The op's dry run is the authority from then on.
 
 ## 7. Expected first run on Ants Terminal
 
