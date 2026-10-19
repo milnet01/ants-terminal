@@ -803,6 +803,38 @@ which heading you expect it under.
   write. Measured on Ants Terminal 2026-08-20: 1525 revisions in 3.9 s,
   2179 of 2179 items dated, 0 undated. Refusals: `not_a_git_repo`,
   `project_not_registered`, `git_failed`.
+- **`roadmap_log op:"place_by_release"` (ANTS-5315)** — a ONE-OFF that files
+  each SHIPPED item under the release it shipped in. Contract:
+  [`ANTS-5315-release-sections-migration.md`](../specs/ANTS-5315-release-sections-migration.md).
+  Store-only and per project, like `backfill_dates`.
+  - **Dry run first is enforced.** A direct apply refuses `bad_args`; only
+    the `plan_id` of its own dry run applies. `cmdRoadmapLog()` strips the
+    internal `_plan_apply` mark from every caller request and sets it on the
+    plan's re-dispatch.
+  - **The release** is the lowest CHANGELOG `## [X.Y.Z]` citing the id. With
+    no citation, it is the lowest stable tag (`X.Y.Z` or `vX.Y.Z`; a suffixed
+    tag is not a release) holding a commit whose subject begins with the id.
+  - **What stays put.** Open, considered and dropped items never move. A
+    shipped item with no release stays and is listed in `unplaced` with a
+    reason: `unreleased` (cited under `[Unreleased]`, or a subject commit on
+    any ref, `git log --all`, that no stable tag holds), `no_evidence`, or
+    `human_placed`.
+  - **Sections.** It reuses one section per release, or creates
+    `X.Y.Z — released <date>` placed by ANTS-1878 § 2.3a. Any other section
+    titled with a released version is retitled so the version moves to the
+    end: `<rest> (X.Y.Z wave)`. A slug collision refuses `bad_args` and
+    writes nothing.
+  - **The marker.** Each move writes a `section` history row and a
+    `placed_by` row. An item someone moves after that is `human_placed` and
+    stays. Where those rows would exceed the history cap, the apply refuses
+    `store_failed` rather than drop the marker.
+  - **The reply** carries every count uncapped, the full section lists
+    (`sections_created`, `_reused`, `_retitled`, `_emptied`) and sampled
+    rows (`moved`, `unplaced`, `disagreements.sample`). `sample_limit`
+    (1–200, default 50) caps each sample; a capped one sets `*_truncated`.
+  - Git reads share a 50 s budget; over it, or on a git error, it refuses
+    `git_failed`. A project that is not a git repository gets no tag
+    evidence and no error.
 - **`roadmap_log` on a store-migrated project (ANTS-3809)** — all eight ops
   (`append`, `append_batch`, `flip`, `flip_batch`, `annotate`,
   `amend_body`, `create_section`, `bundle_row`) **mutate the store and
