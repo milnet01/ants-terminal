@@ -28,30 +28,37 @@ The silence rule had a reason (`claude_bg_tasks_button` spec, INV-12): tasks who
 
 ### 2.1 Which records start and end a task
 
-`applyBgEvent` keeps its current rules and gains these. Each task carries a **kind**: `shell`, `agent` or `monitor`.
+`applyBgEvent` keeps its current rules and gains these. Each task carries a **kind**, `ClaudeBackgroundTask::kind` of `enum class Kind { Shell, Agent, Monitor }`; § 2.3's counts are taken by it.
 
 | Record | Effect |
 |---|---|
 | assistant `tool_use` named `Bash`, `Agent`, `Task` or `Monitor` | Remember it by `tool_use_id`: name, description, command or prompt (truncated as today). Forgotten when its `tool_result` arrives. |
-| user `tool_result`, `toolUseResult.backgroundTaskId` set | Start a `shell` task with that id, whether or not a flagged launch preceded it. |
+| user `tool_result`, `toolUseResult.backgroundTaskId` set | A flagged launch's task for this `tool_use_id` takes the id, as today. With no such task, start a `shell` task with that id. |
 | user `tool_result`, `toolUseResult.status == "async_launched"` and `agentId` set | Start an `agent` task, id = `agentId`, output path = `toolUseResult.outputFile`. |
 | user `tool_result` for a remembered `Monitor` call, `toolUseResult.taskId` set | Start a `monitor` task, id = `taskId`. |
 | `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from a `queue-operation` record's `content`; the first one seen ends it. A block without `<status>` (a monitor's per-event notice) ends nothing. |
 | assistant `tool_use` named `TaskStop` (`input.task_id`, or the deprecated `input.shell_id`) | End that task, as `KillShell` already does. |
 
-The 60 s silence rule is removed from both `finalizeBgTasks` and `sweepLiveness`. A missing output file still ends a task.
+The 60 s silence rule is removed from both `finalize` (§ 2.2) and `sweepLiveness`. A missing output file still ends a task.
 
 ### 2.2 The process-start rule
 
-`ClaudeBgTaskTracker` gains:
+`ClaudeBgTaskTracker` gains a parameter on `parseIncremental`, a public `finalize` and a setter:
 
 ```cpp
-// A task whose startedAt precedes this is not running: it belonged to an
-// earlier Claude process. 0 = unknown; the rule is then skipped.
+// A task whose startedAt precedes processStartMs is not running: it
+// belonged to an earlier Claude process. 0 = unknown; the rule is skipped.
+static QList<ClaudeBackgroundTask> parseIncremental(
+    const QString &path, ClaudeTranscript::Cursor &cursor,
+    ClaudeBgTaskAccum &acc, qint64 processStartMs = 0);
+// Today's finalizeBgTasks, made public; it applies the rule above.
+static QList<ClaudeBackgroundTask> finalize(const ClaudeBgTaskAccum &acc,
+                                            qint64 processStartMs = 0);
+// The button's tracker passes this value to both.
 void setProcessStartMs(qint64 ms);
 ```
 
-`finalizeBgTasks` treats such a task as finished. `ClaudeTabTracker::detectClaudeChild` already computes `ClaudeIntegration::processStartTimeMs(found)` for the tab's Claude process; it keeps the value in the shell's entry.
+The tab tracker calls the two static functions with its entry's `claudeStartMs`. `ClaudeTabTracker::detectClaudeChild` already computes `ClaudeIntegration::processStartTimeMs(found)` for the tab's Claude process; it keeps the value in the shell's entry.
 
 ### 2.3 Per-tab count
 
@@ -64,9 +71,9 @@ int backgroundMonitors = 0;
 qint64 claudeStartMs = 0;   // processStartTimeMs of the tab's Claude; 0 = unknown
 ```
 
-Each shell entry holds its own `ClaudeTranscript::Cursor` and `ClaudeBgTaskAccum`. `reparseTranscript` runs `ClaudeBgTaskTracker::parseIncremental` on the entry's transcript alongside the tail parse. `pollAllShells` (every 2 s) re-runs the finish rules, so a deleted output file is noticed without a transcript write. A change in any count emits `shellStateChanged`. A new Claude PID resets cursor, accumulator and counts.
+Each shell entry holds its own `ClaudeTranscript::Cursor` and `ClaudeBgTaskAccum`. `reparseTranscript` runs `ClaudeBgTaskTracker::parseIncremental` on the entry's transcript alongside the tail parse. `pollAllShells` (every 2 s) re-runs `finalize`, so a deleted output file is noticed without a transcript write. A change in any count emits `shellStateChanged`. A new Claude PID resets cursor, accumulator and counts.
 
-`ClaudeStatusBarController::refreshBgTasksButton` passes the focused tab's `claudeStartMs` to the button's tracker, so the button and the status label agree.
+`ClaudeStatusBarController::refreshBgTasksButton` passes the focused tab's `claudeStartMs` to the button's tracker.
 
 ### 2.4 Resolver
 
@@ -87,7 +94,7 @@ enum class Display { /* existing values */ Background };
 
 - **ANTS-1873 INV-1** — the lossless adapter also carries `backgroundPending` (the sum of § 2.3's counts).
 - **`claude_state_resolver` spec** — gains the INV-1 below as its coverage of `Display::Background`.
-- **`claude_state_dot_palette` spec** — the table gains a Background row (pink, `#F07AB4`). Its INV-2 and INV-3 lists and the "all eight" wording in invariant 8 and INV-9 become nine. Its precedence (invariant 6) inserts Background directly before Idle.
+- **`claude_state_dot_palette` spec** — the table gains a Background row (pink, `#F07AB4`). Its INV-2 and INV-3 lists and the "all eight" wording in invariant 8 become nine. Its precedence (invariant 6) inserts Background directly before Idle.
 - **`claude_bg_tasks_button` spec** — INV-1 recognises § 2.1's start records rather than only `run_in_background`. INV-12's condition (b), the 60 s staleness window, is withdrawn. INV-13's un-latch then applies only to a task finished by a missing file.
 
 ## 3. Invariants
@@ -107,13 +114,13 @@ enum class Display { /* existing values */ Background };
 - **INV-5** — `TaskStop` ends the task named by `task_id` or `shell_id`.
   *Test:* same file.
   *Breaks when:* only `KillShell` is read.
-- **INV-6** — Silence does not end a task: one whose output file exists but is unwritten for longer than 60 s stays pending, in both `finalizeBgTasks` and `sweepLiveness`.
+- **INV-6** — Silence does not end a task: one whose output file exists but is unwritten for longer than 60 s stays pending, in both `finalize` and `sweepLiveness`.
   *Test:* same file; the output file's mtime set 10 minutes back.
   *Breaks when:* `outputLooksStale`'s mtime test remains. The fixture holds no finish record, so the mtime is the only thing that can end it.
 - **INV-7** — A missing output file still ends a task.
   *Test:* same file.
   *Breaks when:* INV-6's change also drops the existence check.
-- **INV-8** — A task whose `startedAt` precedes `setProcessStartMs` is not pending. With 0 the rule is skipped.
+- **INV-8** — A task whose `startedAt` precedes the process start time (§ 2.2) is not pending. With 0 the rule is skipped.
   *Test:* same file; one task an hour before the start, one after.
   *Breaks when:* phantoms from an earlier Claude process count, or a 0 start retires every task.
 - **INV-9** — Each tracked shell's counts come from its own transcript: a tab that was never focused shows `Background` when its transcript holds a running task.
@@ -149,7 +156,7 @@ Per tracked shell: one cursor, one accumulator holding that session's background
 
 ## 7. Tests
 
-Feature tests named per invariant in § 3, in their existing bundles. Label `features;fast`. The bundles are `build_target_for`'s answer for each file, rebuilt before the run. Fixture records are copied from a real 2026-10-19 transcript. Each new test is run against pre-change source first and must fail there.
+Feature tests named per invariant in § 3, in their existing bundles. Label `features;fast`. The bundles are `build_target_for`'s answer for each file, rebuilt before the run. Fixture records are copied from a real 2026-10-19 transcript. Each new test is run against pre-change source first and must fail there, except the two that guard behaviour this spec keeps: a missing output file ends a task, and `ClaudeState` gains no value.
 
 ## 8. Reload
 
@@ -184,7 +191,7 @@ Rejected:
 
 ## 11. Cross-doc impact
 
-- The four feature specs and ANTS-1873, per § 2.6.
+- The three feature specs and ANTS-1873, per § 2.6.
 - CHANGELOG `[Unreleased]`: one Added line.
 - `docs/subsystems.md`: no change; no file moves.
 
