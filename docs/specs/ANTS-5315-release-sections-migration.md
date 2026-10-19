@@ -17,7 +17,7 @@ The roadmap is meant to read as a release plan (`## 0.1.0 — Theme`, then `0.2.
 
 ## 2. Surface
 
-A new op on the existing `roadmap_log` verb, `op:"place_by_release"`. Its body is `RemoteControl::cmdRoadmapLogPlaceByRelease` in a new file, `src/remotecontrol_roadmap_release.cpp`, joining the same library as `src/remotecontrol_roadmap_backfill.cpp`. The target project is resolved from `caller_cwd` the way every store op resolves it (`roadmapSectionOpTarget`). A project that is not store-backed refuses `op_unsupported`.
+A new op on the existing `roadmap_log` verb, `op:"place_by_release"`. Its body is `RemoteControl::cmdRoadmapLogPlaceByRelease` in a new file, `src/remotecontrol_roadmap_release.cpp`, joining the same library as `src/remotecontrol_roadmap_backfill.cpp`. The target project is resolved from `caller_cwd` the way every store op resolves it (`roadmapSectionOpTarget`). A project that is not store-backed refuses through `rlNotStoreServedRefusal`, as `backfill_dates` does: `project_not_registered` with no project row, `unsupported_format` with one (`docs/standards/mcp-error-codes.md`, the `op_unsupported` row).
 
 ### 2.1 Request
 
@@ -35,7 +35,7 @@ A new op on the existing `roadmap_log` verb, `op:"place_by_release"`. Its body i
 For each item with `status = 'shipped'`, the op computes at most one **placement** — a release version, `X.Y.Z` — in this order. The first source that gives one wins.
 
 1. **The CHANGELOG.** The project's changelog (`ChangelogQuery::parse`, path from the project layout) is read. Every `## [X.Y.Z]` section citing the item's id, by `ChangelogQuery`'s id extraction, is a candidate. The placement is the **lowest** cited version, by SemVer. `## [Unreleased]` and non-`X.Y.Z` headings are never candidates.
-2. **The git tags.** Stable release tags are `vX.Y.Z` or `X.Y.Z`. A tag with any suffix (`v1.0.0-rc1`) is ignored. The op takes the earliest commit whose **subject begins with the item's id** followed by a non-word character (`ANTS-1234: …`, `ANTS-1234 fix …`). The placement is the lowest stable tag, by SemVer, whose history contains that commit. A commit no stable tag contains gives no placement.
+2. **The git tags.** Stable release tags are `vX.Y.Z` or `X.Y.Z`. A tag with any suffix (`v1.0.0-rc1`) is ignored. The placement is the lowest stable tag, by SemVer, whose history contains any commit whose **subject begins with the item's id** followed by a non-word character (`ANTS-1234: …`, `ANTS-1234 fix …`). Such commits that no stable tag contains give no placement.
 3. **Nothing else.** Section titles, `item.shipped` dates and tag dates are not sources (§ 9 says why).
 
 An item with no placement is **unplaced** and is not moved. Each unplaced item is reported with one reason:
@@ -56,7 +56,7 @@ For each released version `V` that has at least one placed item, the op picks on
 
 1. **Already established.** A version-led section for `V` that holds an item this op placed there (§ 2.4's marker) is the release section. If several do, the one earliest in section order wins.
 2. **Reusable.** A version-led section for `V` qualifies when its title is not a range, and every item left in it after the planned moves has placement `V` or is `human_placed`. An empty section qualifies. If several qualify, the one earliest in section order wins.
-3. **New.** Otherwise the op creates a level-2 section in the live roadmap, titled `V — released YYYY-MM-DD`. The date is the stable tag's creator date. With no tag, it is the CHANGELOG heading's date if that date is ISO `YYYY-MM-DD`. With neither, the title is `V — released`. It is placed by ANTS-1878 § 2.3a's rule, applied over the live sections plus those this plan has already created, in ascending SemVer order.
+3. **New.** Otherwise the op creates a level-2 section in the live roadmap, titled `V — released YYYY-MM-DD`. The date is the stable tag's creator date. With no tag, it is the CHANGELOG heading's date if that date is ISO `YYYY-MM-DD`. With neither, the title is `V — released`. It is placed by ANTS-1878 § 2.3a's rule, in ascending SemVer order. The rule reads every section title as it will stand after this plan's retitles, plus the sections this plan has already created.
 
 Every placed item not already in its release section's subtree moves there, after the section's last element. Items that are already there stay in place.
 
@@ -88,6 +88,8 @@ An item the op would otherwise move is **`human_placed`**, and stays, when eithe
 
 An item already in its own release section is never moved, so neither case applies to it.
 
+Both cases rest on the marker. Over `RoadmapStore`'s history cap, `rlFlushHistory` writes no rows and still reports success. So when this op's rows would exceed the cap, the apply refuses `store_failed` and writes nothing.
+
 ### 2.5 One plan, one write
 
 The op decides every move, creation and retitle before opening a transaction, as `cmdRoadmapLogBackfillDates` does. The dry run reports exactly what the apply would write. All writes then land in one `RoadmapWrite::commitAndRender`, so the roadmap re-renders once. The apply re-reads the CHANGELOG and git, then re-plans. A change landing between the preview and the apply therefore shows up in the apply's own reply, which is the record of what was written.
@@ -113,32 +115,33 @@ Git is read through `HostExec`, as `rlWalkGitForDates` reads it, under a wall bu
 }
 ```
 
-Each array is capped at `sample_limit` and carries a `*_truncated` flag when capped. Counts are never capped. The three `sections_*` arrays are complete, never sampled. Each holds at most one row per release or per existing section. `sections_emptied` names the sections the moves leave with no items. The op does not delete them.
+Each array is capped at `sample_limit` and carries a `*_truncated` flag when capped. Counts are never capped. The four `sections_*` arrays are complete, never sampled. Each holds at most one row per release or per existing section. `sections_emptied` names the sections the moves leave with no items. The op does not delete them.
 
 ## 3. Invariants
 
 - **INV-1** — A request with neither `dry_run:true` nor `plan_id` refuses `bad_args`, and the store is unchanged. *Test:* `tests/features/roadmap_place_by_release`: the store's `history` row count, and the bytes of `ROADMAP.md`, are equal before and after. *Breaks when:* the op applies on a direct call.
-- **INV-2** — A dry run writes nothing, and the apply of its `plan_id` writes exactly the moves, creations and retitles the dry run reported. *Test:* `tests/features/roadmap_place_by_release`: dry run, compare store and file bytes, apply, then compare the apply's `moved`, `sections_created` and `sections_retitled` with the dry run's. *Breaks when:* planning reads state the apply changes first, or a dry run commits.
+- **INV-2** — A dry run writes nothing. When nothing changes between the two calls, the apply of its `plan_id` writes exactly the moves, creations and retitles the dry run reported. *Test:* `tests/features/roadmap_place_by_release`: dry run, compare store and file bytes, apply, then compare the apply's `moved`, `sections_created` and `sections_retitled` with the dry run's. *Breaks when:* planning reads state the apply changes first, or a dry run commits.
 - **INV-3** — Placement follows § 2.2's order. With a CHANGELOG citation, the lowest cited `## [X.Y.Z]` wins over any tag. The tag source is used only with no citation. *Test:* `tests/features/roadmap_place_by_release`. The fixture repo has item A cited in `[0.2.0]` and `[0.3.0]` with a subject commit under `v0.1.0`, and item B uncited with a subject commit under `v0.2.0`. A goes to `0.2.0` and B to `0.2.0`; A is counted in `differ_count` and `multi_cited_count`. *Breaks when:* the tag wins, or the highest citation wins.
 - **INV-4** — No section title, `item.shipped` date or tag date ever produces a placement. *Test:* `tests/features/roadmap_place_by_release`: an item cited nowhere, not named by any commit subject, with a `shipped` date, and sitting under `## 0.1.0 — …`, is reported `no_evidence` and does not move. *Breaks when:* a fallback source is added.
 - **INV-5** — Only shipped items move. Open, `considered` and `dropped` items keep their section and position, even when the CHANGELOG cites them. *Test:* `tests/features/roadmap_place_by_release`: a planned item cited in `[0.2.0]` keeps its `element` row unchanged. *Breaks when:* status is not checked.
 - **INV-6** — An item a human moved after this op placed it, or filed by hand into a release section, is reported `human_placed` and never moved. *Test:* `tests/features/roadmap_place_by_release`: apply once, move item A with `amend_field field:"section"`, then run again. A is `human_placed` and stays. *Breaks when:* the `placed_by` marker is not written or not read.
-- **INV-7** — A second run straight after an apply plans no moves, creations or retitles. *Test:* `tests/features/roadmap_place_by_release`: apply, then dry run again. `moved_count` 0, all three `sections_*` arrays empty. *Breaks when:* a release section the op created fails § 2.3 rule 1 on the re-run, or a retitled title still begins with a version.
+- **INV-7** — A second run straight after an apply plans no moves, creations or retitles. *Test:* `tests/features/roadmap_place_by_release`: apply, then dry run again. `moved_count` 0, `sections_created` and `sections_retitled` empty. *Breaks when:* a release section the op created fails § 2.3 rule 1 on the re-run, or a retitled title still begins with a version.
 - **INV-8** — A version already carried by a section in an archive file gets no second section. *Test:* `tests/features/roadmap_place_by_release`: a store whose `0.1.0` section has `source_path` `docs/roadmap/0.1.md` and qualifies under rule 2 receives `0.1.0`'s items, and `sections_created` has no `0.1.0` row. *Breaks when:* sections are read from `ROADMAP.md` alone.
-- **INV-9** — After an apply, no level-2 title begins with a released version unless it is that version's release section. A range title never begins with a version. *Test:* `tests/features/roadmap_place_by_release`: the fixture's `0.1.0–0.1.9 — wave` section holding an open item is retitled to `wave (0.1.0–0.1.9 wave)`, and `versionOfTitle` of every remaining level-2 title is empty, a stream, unreleased, or a release section's. *Breaks when:* retitling skips range titles, or reuses a section holding an open item.
-- **INV-10** — New release sections stand in SemVer order among the version-led sections, so `0.10.0` follows `0.9.0`. *Test:* `tests/features/roadmap_place_by_release`: the fixture tags `v0.9.0` and `v0.10.0` and has a live `## 1.0.0 — target` section. Rendered order is `0.9.0`, `0.10.0`, `1.0.0`. *Breaks when:* creation order or text order is used.
+- **INV-9** — After an apply, no level-2 title begins with a released version unless it is that version's release section. *Test:* `tests/features/roadmap_place_by_release`: the fixture's `0.1.0–0.1.9 — wave` section holding an open item is retitled to `wave (0.1.0–0.1.9 wave)`, and `versionOfTitle` of every remaining level-2 title is empty, a stream, unreleased, or a release section's. *Breaks when:* retitling skips range titles, or reuses a section holding an open item.
+- **INV-10** — New release sections stand in SemVer order among the version-led sections, so `0.10.0` follows `0.9.0`. *Test:* `tests/features/roadmap_place_by_release`: the fixture tags `v0.9.0` and `v0.10.0` and has a live `## 1.0.0 — target` section, and a `## 0.10.0 — wave` section holding an open item stands after it. Rendered order of the version-led sections is `0.9.0`, `0.10.0`, `1.0.0`. *Breaks when:* creation order or text order is used, or placement reads a title before its retitle.
 - **INV-11** — A pre-release tag never gives a placement, and never forms part of a title. *Test:* `tests/features/roadmap_place_by_release`: a subject commit contained only by `v0.4.0-rc1` is reported `unreleased`. *Breaks when:* the stable-tag filter is missing.
-- **INV-12** — The apply re-renders once. It writes one `section` history row and one `placed_by` row per moved item, both with the same `changed_at`. *Test:* `tests/features/roadmap_place_by_release`: count `history` rows by field after an apply of N moves → N `section` rows and N `placed_by` rows. *Breaks when:* moves are written through repeated `amend_field` calls, or the marker is skipped.
+- **INV-12** — The apply re-renders once. It writes one `section` history row and one `placed_by` row per moved item, all with one `changed_at`. *Test:* `tests/features/roadmap_place_by_release`: count `history` rows by field after an apply of N moves → N `section` rows and N `placed_by` rows, all 2N sharing one `changed_at`. *Breaks when:* moves are written through repeated `amend_field` calls, or the marker is skipped.
 
 ## 4. Failure modes
 
 | Condition | Result |
 |---|---|
-| Project not store-backed | `op_unsupported`; nothing written. |
+| Project not store-backed | `project_not_registered` or `unsupported_format` (§ 2); nothing written. |
 | Another writer holds the project | `roadmap_busy` (`RoadmapWriteHold`); nothing written. |
 | No CHANGELOG | The CHANGELOG source gives nothing; tags still run. `sources.changelog` is `null`. |
 | Not a git repository | The tag source gives nothing. `sources.stable_tags` is 0. |
 | Git fails to start, exits non-zero, or exceeds the budget | `git_failed`; nothing written. |
+| The history rows would exceed the store's cap | `store_failed`; nothing written (§ 2.4). |
 | A plan expired or used | `plan_not_found`, from the wrapper (ANTS-5704). |
 | The render gate refuses | The transaction rolls back; the wrapper restores the plan. |
 
