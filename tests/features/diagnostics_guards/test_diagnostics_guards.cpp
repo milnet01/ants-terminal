@@ -1,6 +1,7 @@
 // Debug log rotation while running; read_log refuses non-regular files —
 // see spec.md. ANTS-5110.
 
+#include "../../_support/xdg_guard.h"
 #include "buildcache.h"
 #include "debuglog.h"
 
@@ -81,18 +82,15 @@ namespace {
 // Point the debug log at a fresh directory for one test; restore on exit.
 struct ScratchLog {
     QTemporaryDir dir;
-    QByteArray prior = qgetenv("XDG_DATA_HOME");
-    bool hadPrior = qEnvironmentVariableIsSet("XDG_DATA_HOME");
+    ants_test::XdgGuard env;
     ScratchLog() {
-        qputenv("XDG_DATA_HOME", dir.path().toLocal8Bit());
+        env.setEnv("XDG_DATA_HOME", dir.path().toLocal8Bit());
         DebugLog::setActive(0);
         DebugLog::clear();   // closes any log an earlier test left open
     }
     ~ScratchLog() {
         DebugLog::setActive(0);
         DebugLog::clear();
-        if (hadPrior) qputenv("XDG_DATA_HOME", prior);
-        else qunsetenv("XDG_DATA_HOME");
     }
     static QByteArray read(const QString &path) {
         QFile f(path);
