@@ -27,6 +27,7 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 ANTS_TEST_SCOPE();
 
@@ -148,16 +149,15 @@ void checkI3() {
 void checkI4() {
     // Sandbox via XDG_CONFIG_HOME so the test doesn't touch the real
     // user's config. QUuid keeps parallel test runs isolated.
-    // Capture prior XDG_CONFIG_HOME so subsequent tests in the
+    // The guard restores XDG_CONFIG_HOME on return, so later tests in the
     // test_chrome bundle don't see a deleted directory.
-    const bool hadXdg = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
-    const QByteArray priorXdg = hadXdg ? qgetenv("XDG_CONFIG_HOME") : QByteArray();
+    ants_test::XdgGuard env;
     const QString isolateDir =
         QStandardPaths::writableLocation(QStandardPaths::TempLocation)
         + QStringLiteral("/ants-shellcmd-wiring-")
         + QUuid::createUuid().toString(QUuid::Id128);
     QDir().mkpath(isolateDir);
-    qputenv("XDG_CONFIG_HOME", isolateDir.toLocal8Bit());
+    env.setEnv("XDG_CONFIG_HOME", isolateDir.toLocal8Bit());
 
     {
         Config c;
@@ -176,11 +176,6 @@ void checkI4() {
 
     // Courtesy cleanup.
     QDir(isolateDir).removeRecursively();
-
-    // Restore env so the next test in the bundle doesn't see our
-    // (now-removed) isolateDir.
-    if (hadXdg) qputenv("XDG_CONFIG_HOME", priorXdg);
-    else qunsetenv("XDG_CONFIG_HOME");
 }
 
 }  // namespace
