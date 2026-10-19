@@ -20034,6 +20034,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   pre-release and repeated versions as bad_title. Next: step 4, the
   dry-run-first migration op, CHANGELOG first and tags second, run on
   Ants Terminal before any other project.
+  User decisions 2026-10-19, for the step 4 migration on Ants Terminal:
+  (1) shipped items move into one section per release they shipped in
+  (the release is the heading, as ruled 2026-09-24); (2) open items stay
+  in their named sections (the CLAUDE.md priority list addresses
+  sections such as Colony), and only an open item with no meaningful
+  home goes to Unscheduled. (2) departs from the handoff's "open items
+  go in Unscheduled"; claude-ab told. Measured 2026-10-19 (sqlite on the
+  live store): 3,411 items, 2,740 shipped, 496 planned or in progress, 0
+  with milestone set. Step 4 needs a spec (data migration, design choice
+  on CHANGELOG/tag disagreement); next is write-spec.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
