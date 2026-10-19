@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <utime.h>
 
+#include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 #include "claudeprojects.h"
 #include "config.h"
@@ -43,13 +44,8 @@ void selectOnly(QTreeWidget *tree, QTreeWidgetItem *item) {
 TEST(ClaudeProjectsSummaryCache, Inv1LazySummaryIsKept) {
     QTemporaryDir home;
     ASSERT_TRUE(home.isValid());
-    const bool hadHome = qEnvironmentVariableIsSet("HOME");
-    const QByteArray priorHome = qgetenv("HOME");
-    auto restore = qScopeGuard([&] {
-        if (hadHome) qputenv("HOME", priorHome);
-        else qunsetenv("HOME");
-    });
-    ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", home.path().toLocal8Bit());
 
     const QString cwd = home.path() + QStringLiteral("/proj");
     ASSERT_TRUE(QDir().mkpath(cwd));
