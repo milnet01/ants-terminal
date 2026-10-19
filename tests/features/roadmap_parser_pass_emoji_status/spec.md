@@ -82,3 +82,11 @@ packaging.`. An undated line keeps its shape. This matches the store route
 bullet, unlabelled. Its continuation lines not already indented now take
 the two-space indent a labelled note's lines take, so a wrapped note lines
 up under its bullet. *Test:* `Ants5398CallerBulletContinuationIndented`.
+
+## ANTS-5761 — `in progress` is one status phrase
+
+The reader takes `in progress` (any case, any run of spaces) as one
+keyword and reads it as 🚧; it read the word `in` as 📋. A flip by
+either route replaces both words, so `in progress. Lanes: ui, docs.`
+flipped to done becomes `done. Lanes: ui, docs.`, not `done progress`.
+*Test:* `Ants5761TwoWordInProgress`.

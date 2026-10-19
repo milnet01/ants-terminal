@@ -811,9 +811,11 @@ parsePassHeadingBullets(const QStringList &lines) {
     // `- **Status**: ✅ Done` left statusWord empty and defaulted to
     // planned (📋). Group 2 is the keyword, now optional so a bare emoji
     // (`- **Status**: ✅`) still matches and is mapped below.
+    // ANTS-5761 — `in progress` is one keyword, not `in`.
     static const QRegularExpression rxStatusLine(
         QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*"
-                       "([^\\sA-Za-z0-9_-]+)?\\s*([A-Za-z0-9_-]*)"),
+                       "([^\\sA-Za-z0-9_-]+)?\\s*"
+                       "(in\\s+progress(?![A-Za-z0-9_-])|[A-Za-z0-9_-]*)"),
         QRegularExpression::CaseInsensitiveOption);
     QString currentSectionHeading;
     QString currentSectionSlug;
@@ -864,7 +866,7 @@ parsePassHeadingBullets(const QStringList &lines) {
             const QRegularExpressionMatch sm = rxStatusLine.match(peek);
             if (sm.hasMatch()) {
                 const QString emoji = sm.captured(1);
-                statusWord = sm.captured(2).trimmed().toLower();
+                statusWord = sm.captured(2).simplified().toLower();
                 // ANTS-2039 — a bare status emoji with no trailing
                 // keyword (`- **Status**: ✅`) is authoritative: map the
                 // glyph straight to its canonical keyword so the
@@ -950,6 +952,7 @@ parsePassHeadingBullets(const QStringList &lines) {
             rec.status = QStringLiteral("✅");
         } else if (statusWord == QStringLiteral("in-progress") ||
                    statusWord == QStringLiteral("in_progress") ||
+                   statusWord == QStringLiteral("in progress") ||   // ANTS-5761
                    statusWord == QStringLiteral("inprogress") ||
                    statusWord == QStringLiteral("doing") ||
                    statusWord == QStringLiteral("wip") ||

@@ -188,3 +188,28 @@ TEST(roadmap_parser_pass_emoji_status, Ants5398CallerBulletContinuationIndented)
                                QStringLiteral("2026-09-27"))
                     == QStringLiteral("- one line"));
 }
+
+// ANTS-5761 — `in progress` is one status phrase, not the word `in`. The
+// reader read it as 📋, and a flip to done wrote `done progress` (RetroDB,
+// 2026-10-17). Both routes rewrite the whole phrase now.
+TEST(roadmap_parser_pass_emoji_status, Ants5761TwoWordInProgress) {
+    const auto read = RoadmapDialog::parseBullets(QString::fromUtf8(
+        "#### Pass 59.104 A\n- **Status**: in progress. Lanes: ui, docs.\n\n"
+        "#### Pass 59.105 B\n- **Status**: \xF0\x9F\x9A\xA7 In progress\n"));
+    ASSERT_EQ(read.size(), 2);
+    EXPECT_EQ(read[0].status, kInProgress) << "`in progress` must read 🚧";
+    EXPECT_EQ(read[1].status, kInProgress) << "`🚧 In progress` must read 🚧";
+
+    const auto file = PassHeadingWrite::flipPassStatus(
+        QStringLiteral("#### Pass 59.104 A\n- **Status**: in progress. Lanes: ui, docs.\n"),
+        QStringLiteral("PASS-59-104"), QString(), QStringLiteral("done"));
+    ASSERT_TRUE(file.ok);
+    EXPECT_TRUE(file.markdown.contains(QStringLiteral("- **Status**: done. Lanes: ui, docs.")))
+        << file.markdown.toStdString();
+
+    // The store route, with a status glyph.
+    EXPECT_EQ(PassHeadingWrite::setPassStatusWord(
+                  QString::fromUtf8("- **Status**: \xF0\x9F\x9A\xA7 In progress (2026-10-01). Lanes: ui."),
+                  QStringLiteral("done"), QStringLiteral("done")),
+              QString::fromUtf8("- **Status**: \xE2\x9C\x85 Done (2026-10-01). Lanes: ui."));
+}

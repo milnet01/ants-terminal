@@ -47,9 +47,11 @@ const QRegularExpression &rxStatusPrefix() {
 
 // Classify a Status value into (emoji, keyword) — same split the reader
 // uses: a leading non-word, non-space glyph run then a keyword token.
+// ANTS-5761 — `in progress` is one token, so a flip replaces both words.
 const QRegularExpression &rxStatusValue() {
     static const QRegularExpression re(
-        QStringLiteral("^([^\\sA-Za-z0-9_-]+)?\\s*([A-Za-z0-9_-]*)"));
+        QStringLiteral("^([^\\sA-Za-z0-9_-]+)?\\s*"
+                       "((?i:in\\s+progress)(?![A-Za-z0-9_-])|[A-Za-z0-9_-]*)"));
     return re;
 }
 

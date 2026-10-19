@@ -72207,7 +72207,7 @@ project. Reported causes are claims until checked in source.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-16.
   Lanes: mcp-roadmap.
 
-- 📋 [ANTS-5761] **roadmap_log op:flip replaces a pass-headings item's whole Status phrase, not its first word.**
+- ✅ [ANTS-5761] **roadmap_log op:flip replaces a pass-headings item's whole Status phrase, not its first word.**
   Repro (RetroDB, 2026-10-17): an item whose body holds
   `- **Status**: in progress. Lanes: ui, docs.`; op:flip id:PASS-59-104
   to_status:shipped dry_run:true return:full renders `done progress`.
@@ -72215,6 +72215,12 @@ project. Reported causes are claims until checked in source.
   roadmap_migrate. Fix: replace the status phrase up to the first '.',
   not its first word. Regression test: multi-word phrases ("in
   progress", "todo, next after ...").
+  Resolved (2026-10-19): the reader (parsePassHeadingBullets) and the
+  writer (rxStatusValue in passheadingwrite.cpp, both flip routes) take
+  `in progress` as one keyword. The reader also read it as 📋 before;
+  it now reads 🚧. Test: roadmap_parser_pass_emoji_status
+  Ants5761TwoWordInProgress, seen red first. Other phrases (`todo, next
+  after ...`) keep their prose after the replaced word, as before.
   **Layman:** Marking a RetroDB task done turned "in progress" into "done progress"; the fix rewrites the whole status words.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-10-17.
