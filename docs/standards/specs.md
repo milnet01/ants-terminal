@@ -340,7 +340,10 @@ spec without exception.
   relaunch, whether its code runs in its own process and why, and its
   stop/start control or why it has none. A spec that
   rule does not reach — a bug fix, a test, a document, a version bump —
-  says so in one line.
+  says so in one line. A spec written before this requirement (ANTS-5721,
+  2026-10-16) is not in breach for lacking one; it gains § Reload when
+  next amended. `spec_lint`'s `missing_section` still lists it, as part
+  of the backlog § 3 describes.
 - **§ Out of scope** — the spec's edges, stated so they read as decisions
   rather than omissions. Two kinds of line live here and they carry
   different obligations:
