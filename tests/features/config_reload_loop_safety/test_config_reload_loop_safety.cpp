@@ -18,12 +18,12 @@
 #include "config.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QTemporaryDir>
-#include <QThread>
 
 #include <cstdio>
 #include <fstream>
@@ -46,6 +46,19 @@ std::string readFile(const char *path) {
 
 bool contains(const std::string &haystack, const std::string &needle) {
     return haystack.find(needle) != std::string::npos;
+}
+
+// ANTS-1384 — move the file's mtime 10 s into the past and return it (-1
+// on failure), so a rewrite shows as a later mtime without sleeping past
+// the filesystem's timestamp granularity.
+qint64 backdateMtime(const QString &path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return -1;
+    if (!f.setFileTime(QDateTime::currentDateTime().addSecs(-10),
+                       QFileDevice::FileModificationTime))
+        return -1;
+    f.close();
+    return QFileInfo(path).lastModified().toMSecsSinceEpoch();
 }
 
 // ANTS-1468 — delegate to the shared string/comment-aware extractor;
@@ -116,8 +129,8 @@ void expectIdempotent(const char *name, Setter &&apply) {
         std::fprintf(stderr, "[%-72s] PASS — first call no-op (default match)\n", name);
         return;
     }
-    const qint64 t1 = QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
-    QThread::msleep(50);
+    const qint64 t1 = backdateMtime(cfgPath);
+    expect(t1 >= 0, name, "could not back-date config.json");
     apply(cfg);
     const qint64 t2 = QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
     expect(t1 == t2, name, "second call rewrote the file");
@@ -140,9 +153,9 @@ void testInv1_setThemeIdempotent_functional() {
     expect(QFile::exists(cfgPath),
            "INV-1 (functional): first setTheme writes config.json");
 
-    const qint64 mtimeAfterFirst =
-        QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
-    QThread::msleep(50);
+    const qint64 mtimeAfterFirst = backdateMtime(cfgPath);
+    expect(mtimeAfterFirst >= 0,
+           "INV-1 (functional): could not back-date config.json");
 
     cfg.setTheme(QStringLiteral("Dark"));
     expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() == mtimeAfterFirst,
@@ -150,7 +163,6 @@ void testInv1_setThemeIdempotent_functional() {
            "the file (mtime unchanged)");
 
     // Sanity: a setTheme to a different value DOES rewrite.
-    QThread::msleep(50);
     cfg.setTheme(QStringLiteral("Solarized"));
     expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() > mtimeAfterFirst,
            "INV-1 (functional): setTheme to a NEW value rewrites the file");
@@ -240,14 +252,13 @@ void testInv1c_storeIfChangedSemantics() {
     cfg.setFontSize(14);
     expect(QFile::exists(cfgPath),
            "INV-1c: setFontSize(14) on default config writes the file");
-    const qint64 t1 = QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
-    QThread::msleep(50);
+    const qint64 t1 = backdateMtime(cfgPath);
+    expect(t1 >= 0, "INV-1c: could not back-date config.json");
 
     // Same value again — must not write.
     cfg.setFontSize(14);
     expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() == t1,
            "INV-1c: setFontSize(14) when value already 14 does not write");
-    QThread::msleep(50);
 
     // Different value — must write.
     cfg.setFontSize(16);

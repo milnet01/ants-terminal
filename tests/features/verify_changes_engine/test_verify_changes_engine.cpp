@@ -166,9 +166,10 @@ TEST(VerifyEngine, Inv3LogCappingByteCapBeatsLineCap) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     // 500 lines × 200 chars each = ~100 KiB. With maxLogLines=500 the
-    // line cap doesn't bite, so the byte cap (16 KiB) must.
+    // line cap doesn't bite, so the byte cap (16 KiB) must. The line is
+    // built once: per-line `seq` forked 500 shells (ANTS-1384).
     writeFile(tmp.path(), ".ants/verify.json", R"({
-        "build": {"command": "for i in $(seq 1 500); do printf '%.0s.' $(seq 1 200); echo; done",
+        "build": {"command": "l=$(printf '%.0s.' $(seq 1 200)); for i in $(seq 1 500); do echo $l; done",
                   "format": "plain"}
     })");
 
