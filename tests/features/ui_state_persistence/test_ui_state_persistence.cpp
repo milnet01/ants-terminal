@@ -26,6 +26,7 @@
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 #include "config.h"
 
 #include <QDir>
@@ -95,25 +96,17 @@ std::string extractBody(const std::string &source, const std::string &sig) {
 // dir for the lifetime of the QTemporaryDir.
 struct Sandbox {
     QTemporaryDir tmp;
+    // Declared after tmp, so it restores XDG_CONFIG_HOME before the
+    // directory goes; otherwise the next Sandbox or sibling test in the
+    // bundle sees a deleted directory.
+    ants_test::XdgGuard env;
     QString configDir;
-    QByteArray priorXdg;
-    bool hadPriorXdg = false;
     bool valid() const { return tmp.isValid(); }
     Sandbox() {
         if (!tmp.isValid()) return;
-        // Capture so dtor can restore; otherwise XDG_CONFIG_HOME leaks
-        // past the QTemporaryDir's lifetime and the next Sandbox or
-        // sibling test in the bundle sees a deleted directory.
-        hadPriorXdg = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
-        if (hadPriorXdg) priorXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+        env.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
         configDir = tmp.path() + "/ants-terminal";
         QDir().mkpath(configDir);
-    }
-    ~Sandbox() {
-        if (hadPriorXdg) qputenv("XDG_CONFIG_HOME", priorXdg);
-        else if (qEnvironmentVariableIsSet("XDG_CONFIG_HOME"))
-            qunsetenv("XDG_CONFIG_HOME");
     }
 };
 
