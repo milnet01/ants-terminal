@@ -327,7 +327,7 @@ as a family and is not resolved. No existing clause is invalidated.
 Add these when they carry weight; omit when they would be empty — with
 three exceptions, marked below: **§ RAM / build cost** whenever its
 trigger applies, and **§ Reload** and **§ Cold-eyes loop log** on every
-spec without exception.
+spec, as their bullets state.
 
 - **§ RAM / build cost** — **required** for any feature that holds state
   that can grow at runtime (a cache, queue, history or index), or adds a
