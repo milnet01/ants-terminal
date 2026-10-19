@@ -68813,7 +68813,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: split from ANTS-5527, 2026-10-01.
   Lanes: packaging.
 
-- 📋 [ANTS-5599] **In the Flatpak, every terminal names its MCP socket mcp-2, so two running at once collide.**
+- 🚫 [ANTS-5599] **In the Flatpak, every terminal names its MCP socket mcp-2, so two running at once collide.**
   Measured 2026-10-01: each sandbox has its own pid namespace, and the
   terminal is pid 2 in it, so its socket is
   $XDG_RUNTIME_DIR/ants-terminal/mcp-2 every time (likewise
@@ -68834,13 +68834,15 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   never bound a socket.
   User decision 2026-10-01: parked until Flathub resumes (ANTS-1070); no
   user can hit it before then.
+  Dropped 2026-10-19 (user): Flathub dropped; Flatpak code stays as is,
+  Flatpak-only fixes are not pursued.
   **Layman:** If two copies of the Flatpak terminal run at once, Claude Code can only reach one of them.
   Kind: fix.
   Source: ANTS-5527 sandbox test, 2026-10-01.
   Lanes: mcp, packaging.
   Blocked-by: ANTS-1070.
 
-- 📋 [ANTS-5600] **In the Flatpak, run the editor, notify-send, dbus-send and the audit tools on the host.**
+- 🚫 [ANTS-5600] **In the Flatpak, run the editor, notify-send, dbus-send and the audit tools on the host.**
   Not covered by HostExec yet (src/hostexec.h): QProcess::startDetached
   of the editor (src/terminalwidget.cpp openFileAtPath, which also picks
   code or kate by QStandardPaths::findExecutable inside the sandbox),
@@ -68851,6 +68853,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   as `flatpak-spawn --host which <tool>`. Not measured in a sandbox.
   User decision 2026-10-01: parked until Flathub resumes (ANTS-1070); no
   user can hit it before then.
+  Dropped 2026-10-19 (user): Flathub dropped; Flatpak code stays as is,
+  Flatpak-only fixes are not pursued.
   **Layman:** In the Flatpak, opening a file in your editor, desktop notifications and the code audit's tools still look inside the sandbox, where they are missing.
   Kind: package.
   Source: split from ANTS-5598, 2026-10-01.
@@ -81405,6 +81409,8 @@ roughly-priority order.
   deps, cmake build, hope it works."
   Decided (2026-10-15, user): after the next release, drafts approved
   first. See ANTS-1313.
+  2026-10-19 (user): Flathub dropped (its policy refuses AI-related
+  apps). AUR and Homebrew remain in scope.
   Kind: package.
   Source: indie-review-2026-05-13.
 
@@ -87859,7 +87865,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   [CHANGELOG.md §0.7.3](CHANGELOG.md#073--2026-04-20).
   Kind: implement.
 
-- 💭 [ANTS-1070] **H6.2 — Flathub submission.**
+- 🚫 [ANTS-1070] **H6.2 — Flathub submission.**
   PR a new repo against
   [flathub/flathub](https://github.com/flathub/flathub) named
   `org.ants.Terminal`. In-tree prep is complete: the
@@ -87899,6 +87905,9 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   AI-assisted apps or moves on. Packaging prep stays in place
   (packaging/flatpak/flathub-submission/, FLATHUB.md). Reopen on the
   user's word.
+  Dropped 2026-10-19 (user): Flathub's policy refuses AI-related apps,
+  so Flathub is dropped until that changes. Packaging prep stays in
+  tree.
 
 - 📋 [ANTS-1071] **H7 — project website + docs site.**
   Static GitHub Pages site
@@ -88019,7 +88028,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Source: user-request-2026-06-24 (Flathub publishing).
   Resolved (2026-06-25): already implemented by prior work — no new code needed. src/ptyhandler.cpp detects FLATPAK_ID / /.flatpak-info (lines 133-135) and routes the child through execvp("flatpak-spawn","--host",...) with TERM* via --env= and cwd via --directory= (ANTS-1046 pre-fork prep + ANTS-1135 envp). The manifest already carries the --talk-name=org.freedesktop.Flatpak finish-arg (packaging/flatpak/org.ants.Terminal.yml:53). Specced + tested: tests/features/flatpak_host_shell/spec.md (INV-1..4), FlatpakHostShell.Main passes. Verified green this session.
 
-- 💭 [ANTS-2167] **Rename app ID org.ants.Terminal -> io.github.milnet01.* for Flathub.**
+- 🚫 [ANTS-2167] **Rename app ID org.ants.Terminal -> io.github.milnet01.* for Flathub.**
   Flathub requires the reverse-DNS app ID to match a domain or code host you control. org.ants.Terminal implies ants.org (not owned); rename to the GitHub-hosted scheme io.github.milnet01.AntsTerminal. Ripples through metainfo (org.ants.Terminal.metainfo.xml -> renamed), the .desktop file, icon filenames, D-Bus/service names, and any hardcoded ID. User chose this scheme 2026-06-24. Gates the manifest item (ANTS-2168).
   **Layman:** Change the app's internal identifier to a GitHub-based one that Flathub accepts for free (the current org.ants.Terminal would require owning the ants.org domain).
   Kind: refactor.
@@ -88031,8 +88040,10 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Left as considered rather than shipped, because the work described here was never carried out and calling it shipped would make the roadmap claim a rename that did not happen. Its surface map is still accurate reference material for anyone touching the app ID again, which is why it is not deleted.
 
   Found while auditing the Flathub items in a session that stopped short of submitting; ANTS-1070 carries the live state.
+  Dropped 2026-10-19 (user): Flathub dropped (its policy refuses
+  AI-related apps); the rename existed only for Flathub.
 
-- 💭 [ANTS-2168] **Flatpak manifest + metainfo polish + Flathub submission.**
+- 🚫 [ANTS-2168] **Flatpak manifest + metainfo polish + Flathub submission.**
   Write the Flatpak manifest (build against org.kde.Platform/Sdk 6.x Qt6 runtime, no network during build, sourced from a tagged release). Add the AppStream bits the validator needs: OARS content-rating, SPDX license, screenshots, homepage URL. Submit via a PR to flathub/flathub (new-pr branch); the build bot + reviewer check sandbox finish-args. On merge, future updates push to the dedicated flathub/<app-id> repo (wire into CI like the AppImage pipeline). DEPENDS ON ANTS-2166 (sandbox-aware spawning) + ANTS-2167 (app-ID rename). Verify current submission steps against flathub.org/docs before acting.
   **Layman:** Package Ants Terminal as a Flatpak and submit it to Flathub so it appears in KDE Discover, GNOME Software and most Linux app stores (AppImage stays as-is alongside it).
   Kind: package.
@@ -88042,8 +88053,10 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Paused with ANTS-1070 (2026-09-28, user): the remaining submission
   polish (icon named for the app ID, home-vs-host finish-args) waits for
   the Flathub submission to resume.
+  Dropped 2026-10-19 (user): Flathub dropped (its policy refuses
+  AI-related apps). The existing Flatpak manifest stays as it is.
 
-- 📋 [ANTS-2177] **Include a Flatpak build in every public release + RC (wire into `cut-rc.sh cycle` / `release.yml`).**
+- 🚫 [ANTS-2177] **Include a Flatpak build in every public release + RC (wire into `cut-rc.sh cycle` / `release.yml`).**
   The weekly dual-cut (cut-rc.sh cycle, ANTS-1318 + ANTS-2164) and
   release.yml currently produce/publish only the AppImage (CLAUDE.md:
   "release.yml routes RC AppImages to a separate zsync channel"). The
@@ -88073,6 +88086,8 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Extends the ANTS-1318 / ANTS-2164 cadence; spec before implementing
   (touches the release contract). Verify Flathub beta-branch + GitHub
   Actions flatpak-builder setup against current docs before acting.
+  Dropped 2026-10-19 (user): Flathub dropped; Flatpak code stays, no
+  further Flatpak release work.
   **Layman:** Make every weekly release — both the public one and the Patron preview (RC) — also ship a Flatpak version, so Flatpak/Flathub users get the same update on the same schedule as AppImage users.
   Kind: package.
   Source: user-request-2026-06-25 (Flatpak must ride the RC→public→new-RC cadence).
@@ -92521,6 +92536,8 @@ reports are asked for separately, each time.
   retention period and how to delete data; Flathub and distro notes
   (off by default, the build switch). Written from the spec ANTS-5486, and
   shipped with the first build that can send.
+  2026-10-19 (user): Flathub dropped; the packager notes cover distros
+  only.
   **Layman:** A plain page saying what is collected, why, and how to switch it off, for users and distros.
   Kind: doc.
   Source: user-request-2026-09-27.
@@ -95360,7 +95377,7 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: user-request-2026-10-16.
   Lanes: ui.
 
-- 📋 [ANTS-5745] **Under Flatpak, the welcome dialog's Claude Code setup reaches the host's claude and ~/.claude.**
+- 🚫 [ANTS-5745] **Under Flatpak, the welcome dialog's Claude Code setup reaches the host's claude and ~/.claude.**
   Found 2026-10-16 by the review-contract gate on the ANTS-5744
   amendment (loop 3, both lanes). registerMcp and mcpStatus run and look
   up `claude` inside the sandbox (QProcess, QStandardPaths), with no
@@ -95370,6 +95387,8 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Fix: route the claude calls through HostExec::wrap (src/hostexec.h) and
   state the Flatpak behaviour in docs/specs/ANTS-5558-welcome-dialog.md
   § 2.4. Reload: nothing; dialog built per open.
+  Dropped 2026-10-19 (user): Flathub dropped; Flatpak code stays as is,
+  Flatpak-only fixes are not pursued.
   **Layman:** The Flatpak version of Ants can connect its tools to Claude Code from the welcome window, as the other versions can.
   Kind: review-fix.
   Source: review-contract-2026-10-16 ANTS-5558 loop 3.
