@@ -27,6 +27,7 @@
 #include <memory>
 #include <optional>
 
+#include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 #include "guithread.h"
 #include "remotecontrol.h"
@@ -127,14 +128,9 @@ QJsonObject gitStateRequest(const QString &callerCwd) {
 // Bind a bare RemoteControl, with no MainWindow, at `sockPath`. start() takes
 // its path from ANTS_REMOTE_SOCKET, so set it for the call and put it back.
 bool startRemoteControlAt(RemoteControl &rc, const QString &sockPath) {
-    const QByteArray previous = qgetenv("ANTS_REMOTE_SOCKET");
-    qputenv("ANTS_REMOTE_SOCKET", sockPath.toLocal8Bit());
-    const bool ok = rc.start();
-    if (previous.isEmpty())
-        qunsetenv("ANTS_REMOTE_SOCKET");
-    else
-        qputenv("ANTS_REMOTE_SOCKET", previous);
-    return ok;
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("ANTS_REMOTE_SOCKET", sockPath.toLocal8Bit());
+    return rc.start();
 }
 
 }  // namespace
