@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5769 -->
+<!-- ants-roadmap-id-high-water: ANTS=5770 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69094,12 +69094,17 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
 
-- 📋 [ANTS-5757] **specs.md says whether the required § Reload section binds specs written before it.**
+- ✅ [ANTS-5757] **specs.md says whether the required § Reload section binds specs written before it.**
   [Q3] specs.md § 4 § Reload is "required on every spec" with no line on
   specs written before the requirement; § 5.7 has a "binds new logs"
   clause and § Reload has none. A conformer acting on spec_lint's
   missing_section output cannot tell whether an old or shipped spec is
   in breach.
+  Shipped 2026-10-19 (bef90fc2, 6bdb19b7, 6e858a24): an older spec is
+  not in breach for lacking § Reload; it gains one when an amendment
+  next changes its § Surface or § Invariants (user decisions
+  2026-10-19). Gated: review-contract loops 13-14,
+  docs/reviews/specs-review-log.md.
   **Layman:** The spec rules do not say whether older specs must add a newer required section.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16 (ANTS-5749 gate).
@@ -69152,6 +69157,25 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   **Layman:** The tool that adds a review-history line puts it at the bottom even when the history runs newest-first.
   Kind: fix.
   Source: in-session-2026-10-19 (ANTS-1855 amendment).
+  Lanes: mcp.
+
+- 📋 [ANTS-5770] **ANTS-1855's read_log spec matches the shipped envelope and names current source locations.**
+  Pre-existing, filed outside the ANTS-5707 gate's radius:
+  - § 2.3's example envelope omits lines_oversize_skipped and
+    time_budget_exhausted, which ReadLog::filter emits; "lines_dropped
+    present iff truncated" is false when an oversize skip or a budget
+    stop sets truncated alone.
+  - The handler is in src/remotecontrol_workspace.cpp (spec says
+    remotecontrol.cpp); registration is in src/mcptoolregistry.cpp (spec
+    says mainwindow.cpp); several mainwindow.cpp/remotecontrol.h line
+    citations no longer point at the cited code. The test contract's
+    W1/W2 also name mainwindow.cpp.
+  - § 6 states coverage as a range (INV-1..INV-14), which spec_lint
+    reports as test_coverage_unverifiable.
+  Hot reload: nothing; documentation.
+  **Layman:** The read_log design document describes an older version of the code in a few places.
+  Kind: doc-fix.
+  Source: review-contract ANTS-1855 2026-10-19 (ANTS-5707 gate, out of radius).
   Lanes: mcp.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)

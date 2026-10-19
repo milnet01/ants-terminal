@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The spec standard says a spec written before the § Reload rule gains that section only when its Surface or Invariants are next amended** (ANTS-5757)
+
 - **The spec standard and the feature-test guide say a `tests/features/` folder name is lowercase snake_case, the form `spec_lint` resolves** (ANTS-5756)
 
 - **The status bar's Claude area has no empty gaps: Claude status, model suggestion, current model, context, tokens saved, Review Changes, Roadmap and version in that order, with occasional pills (mail, background tasks, task list, undo, exit code) at its left** (ANTS-5762)
