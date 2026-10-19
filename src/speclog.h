@@ -37,7 +37,8 @@ struct EditResult {
     // so a caller can see which form the section actually holds rather than
     // assuming. `rowOrder` is the direction INFERRED from the existing rows —
     // "oldest_first", "newest_first", or "ambiguous" when fewer than two rows
-    // carry a loop number. Loop logs run in opposite directions across specs
+    // carry a loop number (ANTS-5769: a bullet log falls back to the rows'
+    // dates). Loop logs run in opposite directions across specs
     // in one corpus, and a row inserted at the wrong end reads as a different
     // loop's result — which a checker validating only per-row tallies passes.
     QString rowShape;

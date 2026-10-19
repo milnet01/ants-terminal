@@ -69269,13 +69269,19 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-19 (ANTS-5757 gate, loop 1).
 
-- 📋 [ANTS-5769] **spec_log op:append_loop places a row where the log's own order puts it.**
+- ✅ [ANTS-5769] **spec_log op:append_loop places a row where the log's own order puts it.**
   Seen 2026-10-19: on docs/specs/ANTS-1855.md, whose bullet loop log
   runs newest first, a dry run of op:append_loop reported landing line
   452, the end of the file, below the oldest row. The row was placed by
   hand. Detect the log's direction from its existing rows (dates or loop
   numbers) and insert at the newest end. Hot reload: spec_log is served
   by ants-mcpd; a rebuild reaches clients on their next /mcp reconnect.
+  Resolved 2026-10-19: a bullet-shaped log's direction is inferred from
+  its first and last rows (leading loop number, else date); newest-first
+  logs take the row above their first row, and row_order is reported for
+  bullet logs too. Test: McpSpecLog.Ants5769BulletLogDirectionInference
+  (red before, green after). Reaches clients when ants-mcpd is rebuilt
+  and they reconnect (/mcp).
   **Layman:** The tool that adds a review-history line puts it at the bottom even when the history runs newest-first.
   Kind: fix.
   Source: in-session-2026-10-19 (ANTS-1855 amendment).

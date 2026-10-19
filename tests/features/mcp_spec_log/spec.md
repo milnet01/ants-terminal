@@ -45,3 +45,7 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
   end it: rows after the gap with the header's column count are the same
   table, so append_loop writes after the log's last row. A second table
   (a row followed by its own separator) is not part of the log.
+- T15 — (ANTS-5769) a bullet-shaped loop log's direction is inferred from
+  its first and last rows: by leading loop number, else by date. A
+  newest-first log takes the row above its first row; an oldest-first or
+  ambiguous one takes it at the section's end. `row_order` reports which.

@@ -542,6 +542,73 @@ TEST(McpSpecLog, Ants4364TableFormAnd4353DirectionInference) {
     EXPECT_TRUE(d.content.contains(QStringLiteral("- **Loop 2** — 0 findings.")));
 }
 
+// ANTS-5769 — a BULLET log runs in either direction too. Seen on
+// docs/specs/ANTS-1855.md: its log runs newest first, and a dry run reported
+// landing at the end of the file, below the oldest row. The direction comes
+// from the first and last rows' labels: the loop number, else the date.
+TEST(McpSpecLog, Ants5769BulletLogDirectionInference) {
+    const QString head = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## Cold-eyes loop log\n"
+        "\n");
+    const QString tail = QStringLiteral("\n## Later\n\ntext.\n");
+
+    // Newest first by loop number, with a suffixed label and a wrapped body,
+    // as ANTS-1855 has them → the new row goes at the TOP.
+    const QString newestFirst = head + QStringLiteral(
+        "- **8-fix (2026-10-19) — not a loop.** Fixed one\n"
+        "  thing.\n"
+        "- **Loop 1 (2026-05-25) — 2 lanes.** Three findings.\n") + tail;
+    const auto a = SpecLog::appendLoop(newestFirst,
+                                       QStringLiteral("Loop 9 (2026-10-20)"),
+                                       QStringLiteral("clean."));
+    ASSERT_TRUE(a.ok) << a.error.toStdString();
+    EXPECT_EQ(a.rowOrder, QStringLiteral("newest_first"));
+    EXPECT_LT(a.content.indexOf(QStringLiteral("- **Loop 9")),
+              a.content.indexOf(QStringLiteral("- **8-fix")))
+        << "a newest-first bullet log continues at the top";
+    EXPECT_EQ(a.line, 5) << "the reported line is the row's real line";
+
+    // Oldest first → the same call goes at the BOTTOM, inside the section.
+    const QString oldestFirst = head + QStringLiteral(
+        "- **Loop 1 (2026-05-25)** — three findings.\n"
+        "- **Loop 2 (2026-05-26)** — one.\n") + tail;
+    const auto b = SpecLog::appendLoop(oldestFirst,
+                                       QStringLiteral("Loop 3 (2026-10-20)"),
+                                       QStringLiteral("clean."));
+    ASSERT_TRUE(b.ok) << b.error.toStdString();
+    EXPECT_EQ(b.rowOrder, QStringLiteral("oldest_first"));
+    EXPECT_GT(b.content.indexOf(QStringLiteral("- **Loop 3")),
+              b.content.indexOf(QStringLiteral("- **Loop 2")));
+    EXPECT_LT(b.content.indexOf(QStringLiteral("- **Loop 3")),
+              b.content.indexOf(QStringLiteral("## Later")));
+
+    // No loop number at one end → the dates decide; a date is never read as
+    // a loop number.
+    const QString byDate = head + QStringLiteral(
+        "- **amend (2026-10-19)** — ANTS-5707.\n"
+        "- **Loop 6 (2026-05-25)** — clean.\n") + tail;
+    const auto c = SpecLog::appendLoop(byDate,
+                                       QStringLiteral("Loop 7 (2026-10-20)"),
+                                       QStringLiteral("x."));
+    ASSERT_TRUE(c.ok);
+    EXPECT_EQ(c.rowOrder, QStringLiteral("newest_first"));
+    EXPECT_LT(c.content.indexOf(QStringLiteral("- **Loop 7")),
+              c.content.indexOf(QStringLiteral("- **amend")));
+
+    // One row carries no direction: reported, and the row goes at the end.
+    const QString single = head + QStringLiteral(
+        "- **Loop 1 (2026-05-25)** — three findings.\n") + tail;
+    const auto d = SpecLog::appendLoop(single,
+                                       QStringLiteral("Loop 2 (2026-10-20)"),
+                                       QStringLiteral("x."));
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.rowOrder, QStringLiteral("ambiguous"));
+    EXPECT_GT(d.content.indexOf(QStringLiteral("- **Loop 2")),
+              d.content.indexOf(QStringLiteral("- **Loop 1")));
+}
+
 // ANTS-3651 — append_loop must append to the EXISTING loop-log section,
 // wherever it sits, and must never create a second one.
 //

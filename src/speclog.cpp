@@ -261,6 +261,32 @@ static int slRowLoopNumber(const QString &line) {
     return ok ? n : -1;
 }
 
+// ANTS-5769 — compare two bullet rows' labels (the text between `- **` and
+// the next `**`): <0 when `a` is older, >0 when newer, 0 when they cannot
+// say. A label's leading number (`Loop 8`, `8-fix`) wins; a date never counts
+// as one. Otherwise its first YYYY-MM-DD.
+static int slBulletOrder(const QString &a, const QString &b) {
+    static const QRegularExpression loopRe(
+        QStringLiteral("^\\s*(?:loop\\s+)?(\\d+)(?!\\d|-\\d)"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression dateRe(
+        QStringLiteral("\\d{4}-\\d{2}-\\d{2}"));
+    const auto label = [](const QString &line) {
+        const int end = line.indexOf(QStringLiteral("**"), 4);
+        return end < 0 ? line.mid(4) : line.mid(4, end - 4);
+    };
+    const QString la = label(a), lb = label(b);
+    const auto ma = loopRe.match(la), mb = loopRe.match(lb);
+    if (ma.hasMatch() && mb.hasMatch()) {
+        const int na = ma.captured(1).toInt(), nb = mb.captured(1).toInt();
+        if (na != nb) return na < nb ? -1 : 1;
+    }
+    const auto da = dateRe.match(la), db = dateRe.match(lb);
+    if (da.hasMatch() && db.hasMatch())
+        return QString::compare(da.captured(), db.captured());
+    return 0;
+}
+
 EditResult appendLoop(const QString &content, const QString &label,
                       const QString &body, const QStringList &cells) {
     bool ewn = false;
@@ -436,12 +462,42 @@ EditResult appendLoop(const QString &content, const QString &label,
                             "both are empty, which renders the empty row "
                             "`- **` `** — `. Nothing was written."));
 
+        // ANTS-5769 — a bullet log runs in either direction too, so infer it
+        // as the table arm does. The first and last rows decide: by loop
+        // number where both labels lead with one, else by date.
+        int firstRow = -1, lastRow = -1;
+        for (int i = hdr + 1; i < sectionEnd; ++i) {
+            if (fenced(i) || !lines.at(i).startsWith(QStringLiteral("- **")))
+                continue;
+            if (firstRow < 0) firstRow = i;
+            lastRow = i;
+        }
+        QString rowOrder = QStringLiteral("ambiguous");
+        if (firstRow >= 0 && lastRow > firstRow) {
+            const int c = slBulletOrder(lines.at(firstRow), lines.at(lastRow));
+            if (c != 0)
+                rowOrder = c < 0 ? QStringLiteral("oldest_first")
+                                 : QStringLiteral("newest_first");
+        }
+        if (rowOrder == QStringLiteral("newest_first")) {
+            lines.insert(firstRow, bullet);
+            EditResult r;
+            r.ok = true;
+            r.content = lines.join(QLatin1Char('\n'));
+            if (ewn) r.content += QLatin1Char('\n');
+            r.line = firstRow + 1;   // 1-based
+            r.rowShape = QStringLiteral("bullet");
+            r.rowOrder = rowOrder;
+            return r;
+        }
+
         const auto ins = insertAtSectionEnd(lines, hdr, bullet, ewn);
         EditResult r;
         r.ok = true;
         r.content = ins.content;
         r.line = ins.line;
         r.rowShape = QStringLiteral("bullet");
+        r.rowOrder = rowOrder;
         return r;
     }
     // ANTS-4886 — creating the heading is right for a spec that has no loop
