@@ -14,6 +14,7 @@
 #include <memory>
 #include <vector>
 
+#include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 #include "localsockethub.h"
 #include "remotecontrol.h"
@@ -95,12 +96,13 @@ TEST(LocalSocketConnectionCap, Inv3SlotFreesWhenAConnectionCloses) {
 TEST(LocalSocketConnectionCap, Inv4RemoteControlRefusesPastCap) {
     QTemporaryDir dir;
     const QString path = dir.path() + QStringLiteral("/rc.sock");
-    const QByteArray saved = qgetenv("ANTS_REMOTE_SOCKET");
-    qputenv("ANTS_REMOTE_SOCKET", path.toLocal8Bit());
     RemoteControl rc(nullptr);
-    const bool started = rc.start();
-    if (saved.isEmpty()) qunsetenv("ANTS_REMOTE_SOCKET");
-    else qputenv("ANTS_REMOTE_SOCKET", saved);
+    bool started = false;
+    {
+        ants_test::XdgGuard envGuard;
+        envGuard.setEnv("ANTS_REMOTE_SOCKET", path.toLocal8Bit());
+        started = rc.start();
+    }
     ASSERT_TRUE(started);
     auto clients = fillPastCap(path);
     EXPECT_TRUE(connected(*clients.front())) << "INV-4: an admitted client was dropped";
