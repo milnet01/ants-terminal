@@ -6,6 +6,7 @@
 // — which cmdRoadmapQuery resolves internally and no argument overrides —
 // lands in a QTemporaryDir instead of the developer's REAL store.
 
+#include "../../_support/xdg_guard.h"
 #include "remotecontrol.h"
 #include "roadmaprender.h"
 #include "roadmapmigrate.h"
@@ -65,23 +66,14 @@ QByteArray handFiledBullet() {
 // filesystem root rather than at the user's real data dir.
 class XdgRedirect {
 public:
-    explicit XdgRedirect(const QString &dir)
-        : m_had(qEnvironmentVariableIsSet("XDG_DATA_HOME")),
-          m_prior(m_had ? qgetenv("XDG_DATA_HOME") : QByteArray()) {
-        qputenv("XDG_DATA_HOME", dir.toLocal8Bit());
-    }
-    ~XdgRedirect() {
-        if (m_had)
-            qputenv("XDG_DATA_HOME", m_prior);
-        else
-            qunsetenv("XDG_DATA_HOME");
+    explicit XdgRedirect(const QString &dir) {
+        m_env.setEnv("XDG_DATA_HOME", dir.toLocal8Bit());
     }
     XdgRedirect(const XdgRedirect &) = delete;
     XdgRedirect &operator=(const XdgRedirect &) = delete;
 
 private:
-    bool m_had;
-    QByteArray m_prior;
+    ants_test::XdgGuard m_env;
 };
 
 // findRoadmaps → planFrom → load, the migration as a consumer runs it. Bulk,
