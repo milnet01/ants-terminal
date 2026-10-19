@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QJsonObject>
 #include <QTemporaryDir>
+#include "../../_support/xdg_guard.h"
 #include "config.h"
 
 namespace {
@@ -21,16 +22,14 @@ protected:
     void SetUp() override {
         m_dir = std::make_unique<QTemporaryDir>();
         ASSERT_TRUE(m_dir->isValid());
-        m_prevXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", m_dir->path().toUtf8());
+        m_env.setEnv("XDG_CONFIG_HOME", m_dir->path().toUtf8());
     }
     void TearDown() override {
-        if (m_prevXdg.isEmpty()) qunsetenv("XDG_CONFIG_HOME");
-        else                     qputenv("XDG_CONFIG_HOME", m_prevXdg);
         m_dir.reset();
     }
+    // Declared first so it is destroyed last: env restores after m_dir.
+    ants_test::XdgGuard m_env;
     std::unique_ptr<QTemporaryDir> m_dir;
-    QByteArray m_prevXdg;
 };
 
 }  // namespace
