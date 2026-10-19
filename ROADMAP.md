@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5779 -->
+<!-- ants-roadmap-id-high-water: ANTS=5783 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94912,6 +94912,89 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-10-13 (doc_lint while shipping ANTS-1061).
   Lanes: terminal-grid, tests.
+
+- 📋 [ANTS-5780] **PTY handler: correct the writeLost doc and trim misleading comments.**
+  From the readability trial review (2026-10-19).
+  - ptyhandler.h: writeLost doc says queue overflow only; it is
+    emitted on four paths (overflow, oversize EAGAIN remainder,
+    fatal write, fatal drain).
+  - ptyhandler.cpp: two comments cite a CLAUDE.md line "child only
+    does execvp" that CLAUDE.md no longer has; one is a tombstone.
+  - "a dead master stays write-ready (see Pty::start)" points at
+    text Pty::start does not hold.
+  - Read loop exits on EINTR, unlike the write loops; the reason
+    is unstated.
+  - maxFd fallback of 1024 has no reason given.
+  - "~140-line" count in a comment, already wrong.
+  - Empty if-body used to discard chdir's result.
+  - Unused #include <QSize> in the header.
+  - Long pre-fix histories bury the current rule; keep the rule
+    and the ticket id.
+  **Layman:** Fix comments in the shell-connection code that describe things wrongly or point readers at nothing.
+  Kind: doc-fix.
+  Source: readability-trial-review-2026-10-19.
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5781] **PTY handler: one table for TERM overrides, one write helper, split Pty::start.**
+  From the readability trial review (2026-10-19).
+  - The TERM/COLORTERM overrides are spelled three times (skip
+    list, envp, flatpak --env=); derive all from one table.
+  - write() and onWriteReady() share the write/EINTR/EAGAIN/fatal
+    loop; ANTS-4456 already had to patch both. Note the
+    pty_write_eagain_queue test counts "emit writeLost" in
+    write()'s source and needs updating.
+  - Destructor has two copies of the reap-wait loop; winsize is
+    built twice.
+  - Pty::start does about eight jobs; extract resolveShell,
+    buildChildEnv and a child-only execChild so the no-allocation-
+    after-fork rule is visible.
+  **Layman:** Remove copied code in the shell-connection code so a future change cannot update one copy and miss another.
+  Kind: refactor.
+  Source: readability-trial-review-2026-10-19.
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5782] **VT parser: rename oscString and fix misleading parser comments.**
+  From the readability trial review (2026-10-19).
+  - VtAction::oscString carries DCS and APC payloads too; the
+    header says "OSC payload". Rename to payload or fix the doc.
+  - VtAction::intermediate also holds the CSI private prefix.
+  - flushCodepoint is a pure forwarder; no buffer is flushed.
+  - The 0x9C comment names CsiEntry, which has no 0x9C branch,
+    and omits ApcString and IgnoreString.
+  - releaseIfLarge's rationale does not fit its call sites, which
+    follow a std::move.
+  - Magic numbers 16384 and the repeated 10 MiB literal need named
+    constants with a reason.
+  - Five direct m_state writes bypass transition() unexplained.
+  - vtstream.cpp: the selection-clear test excludes DECSED with no
+    stated reason.
+  - Long "previously" histories bury the current rule.
+  **Layman:** Rename and re-describe parts of the code that reads program output, where the current names say the wrong thing.
+  Kind: doc-fix.
+  Source: readability-trial-review-2026-10-19.
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5783] **VT parser: one CSI reset site and helpers for repeated action building.**
+  From the readability trial review (2026-10-19).
+  - CSI reset is split: transition(CsiEntry) clears m_colonSep and
+    m_nextIsSubParam; the case CsiEntry block clears
+    m_paramsTruncated. Neither does the whole job. Check whether
+    any path reaches CsiEntry without transition() (possible bug).
+  - String-end block repeated six times: endString(type, buf,
+    next).
+  - Param push with the 32 cap repeated four times: pushParam and
+    kMaxParams.
+  - Execute, EscDispatch and CsiDispatch built by hand at several
+    sites.
+  - String introducers coded in three places.
+  - vtstream.cpp: batch build and reset duplicated; hasPending
+    condition written three times.
+  - processChar holds every state; split by state family. Name
+    the VtStream::start lambda.
+  **Layman:** Remove copied code in the part that reads program output, and give one reset step a single home.
+  Kind: refactor.
+  Source: readability-trial-review-2026-10-19.
+  Lanes: vt-parser-pty.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
