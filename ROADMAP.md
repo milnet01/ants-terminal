@@ -3196,7 +3196,8 @@ remainder, captured so they don't drop on the floor.
   - Counts: background shells, background agents, monitors. Scheduled
     or recurring jobs do not count.
   - Look: status bar "Claude: waiting on background work (N)"; the tab
-    dot gets its own colour, contrast-checked like the others.
+    dot gets its own colour (pink, below), contrast-checked like the
+    others.
   Design (from a status-bar lane read, 2026-10-19): an overlay on the
   resolver (Display::Background / Glyph::Background when base is Idle
   and the pending count > 0). No new ClaudeState value, so
@@ -3208,8 +3209,10 @@ remainder, captured so they don't drop on the floor.
   Specs to amend: ANTS-1873 + claude_state_resolver, claude_state_dot_
   palette, claude_status_bar, claude_bg_tasks_button.
   Hot reload: code only the terminal serves, so it needs one relaunch.
-  Colour (user, 2026-10-19): orange #F08C2E. Never the prompt red or the
-  idle grey.
+  Colour (user, 2026-10-19): pink #F07AB4. Never the prompt red or the
+  idle grey. Orange was chosen first, then withdrawn: on 2026-10-15
+  (ANTS-5718) the user found orange read as the ToolUse yellow. White
+  fails on light themes (contrast adaptation darkens it to grey).
   Transcript facts (probed live in this session, Claude Code 2026-10-19):
   - shell: toolUseResult.backgroundTaskId, also on a foreground command
     moved to the background on timeout (timedOutAfterMs, no
