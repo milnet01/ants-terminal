@@ -6,32 +6,13 @@
 
 #include <QByteArray>
 #include <QTemporaryDir>
-
-namespace {
-
-// Sandbox XDG_CONFIG_HOME so Config reads/writes a temp dir, not the
-// user's real config. Restores the prior value on teardown.
-struct XdgConfigHomeGuard {
-    QByteArray prior;
-    bool hadPrior = false;
-    XdgConfigHomeGuard() {
-        hadPrior = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
-        if (hadPrior) prior = qgetenv("XDG_CONFIG_HOME");
-    }
-    void set(const QByteArray &v) { qputenv("XDG_CONFIG_HOME", v); }
-    ~XdgConfigHomeGuard() {
-        if (hadPrior) qputenv("XDG_CONFIG_HOME", prior);
-        else qunsetenv("XDG_CONFIG_HOME");
-    }
-};
-
-}  // namespace
+#include "../../_support/xdg_guard.h"
 
 TEST(ConfigAiReviewConcurrency, INV14_DefaultAndClamp) {
-    XdgConfigHomeGuard guard;
+    ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    guard.set(tmp.path().toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", tmp.path().toUtf8());
 
     Config cfg;
     EXPECT_EQ(cfg.aiReviewConcurrency(), 2);   // default when unset
