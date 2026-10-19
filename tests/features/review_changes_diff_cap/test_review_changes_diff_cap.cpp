@@ -26,6 +26,7 @@
 #include "diffviewer.h"
 
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QCoreApplication>
 #include <QDialog>
@@ -43,6 +44,7 @@
 #include <QWidget>
 
 #include <cstdio>
+#include <optional>
 #include <regex>
 #include <string>
 #include <utility>
@@ -427,8 +429,8 @@ TEST(ReviewChangesDiffCap, ClosingDoesNotDestroyRunningProbes) {
         QFile::ReadGroup | QFile::ExeGroup | QFile::ReadOther | QFile::ExeOther))
         << "could not make the slow git shim executable";
 
-    const QByteArray originalPath = qgetenv("PATH");
-    qputenv("PATH", shimDir.path().toUtf8() + ":" + originalPath);
+    std::optional<ants_test::XdgGuard> env(std::in_place);
+    env->setEnv("PATH", shimDir.path().toUtf8() + ":" + qgetenv("PATH"));
 
     QWidget host;
     QDialog *dialog = diffviewer::show(&host, dir, QStringLiteral("Dark"));
@@ -437,7 +439,7 @@ TEST(ReviewChangesDiffCap, ClosingDoesNotDestroyRunningProbes) {
     // call, so the real PATH goes back now — before any assertion that
     // could return early and leave a later test in this binary running
     // against the shim.
-    qputenv("PATH", originalPath);
+    env.reset();
 
     ASSERT_NE(dialog, nullptr);
     QPointer<QDialog> guard(dialog);
