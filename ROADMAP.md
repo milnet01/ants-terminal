@@ -20114,6 +20114,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   the user before applying. Retitles also touch the archives: "0.6.0 —
   shipped (2026-04-14)" becomes "shipped (2026-04-14) (0.6.0 wave)";
   show the user that wording.
+  2026-10-19 (1564312d, pushed; gate 5731/5731): cause of the dry-run
+  shortfall found and fixed. The tag source was never short. The op read
+  CHANGELOG citations from ChangelogQuery::parse entries, which keep only
+  bullets under the six Keep-a-Changelog categories; bullets under topic
+  headings ("### 🔌 MCP fold-in — pull 5") were dropped. A Python copy of
+  parse's rules reproduced the op exactly (both 1082, placed 1972, multi
+  122, differ 94). New ChangelogQuery::citationsByVersion reads every id
+  in each ## [x] section (spec § 2.2 item 1); parse() unchanged. Test
+  Inv3ACitationUnderAnyHeadingCounts red before, green after. ants-mcpd
+  rebuilt from 1564312d. Next: user types /mcp, check server_build is
+  1564312d, re-run dry_run:true, expect about both 1181, placed 2082,
+  multi 148; show the user counts, section changes, sampled moves and
+  the archive retitle wording ("shipped (2026-04-14) (0.6.0 wave)");
+  apply plan_id only on their yes.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
