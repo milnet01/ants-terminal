@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5778 -->
+<!-- ants-roadmap-id-high-water: ANTS=5779 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -3238,6 +3238,26 @@ remainder, captured so they don't drop on the floor.
   Kind: feature.
   Source: user-request-2026-10-19.
   Lanes: claudestateresolver, claudebgtasks, claudestatuswidgets, coloredtabbar.
+
+- 📋 [ANTS-5779] **The status bar reads "Claude: idle" while Claude is working, when the transcript ends in a record type the parser does not know.**
+  Seen 2026-10-19 on 0.7.114 (99ca7222): a turn started by a
+  task-notification showed "Claude: idle" while thinking and running Bash.
+  Cause: parseTranscriptTail's backward walk (src/claudeintegration.cpp)
+  skips only the kMetadataTypes deny-list, and current Claude Code writes
+  record types it does not list: api-request, api-request-blob,
+  api-request-shape, mode, atis-latch, ai-title, queue-operation,
+  file-history-delta. When one is newest, stateDetermined stays false and
+  ClaudeTabTracker keeps the previous Idle. Fix: walk back to the newest
+  assistant / user / human / attachment record instead (an allow-list).
+  Test gap: test_claude_tab_tracker.cpp's checkTranscriptMapping passes
+  whenever stateDetermined is false, so an unknown-trailer case tests
+  nothing; it must assert stateDetermined too. Second suspect, unconfirmed:
+  ClaudeTabTracker has no backstop re-read, so one missed watcher event
+  freezes the state.
+  **Layman:** The status bar could say Claude was idle while it was busy, most often right after a background job finished and Claude carried on by itself.
+  Kind: fix.
+  Source: user-report-2026-10-19.
+  Lanes: claude-integration.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
