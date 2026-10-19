@@ -69281,7 +69281,7 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: in-session-2026-10-19 (ANTS-1855 amendment).
   Lanes: mcp.
 
-- 📋 [ANTS-5770] **ANTS-1855's read_log spec matches the shipped envelope and names current source locations.**
+- ✅ [ANTS-5770] **ANTS-1855's read_log spec matches the shipped envelope and names current source locations.**
   Pre-existing, filed outside the ANTS-5707 gate's radius:
   - § 2.3's example envelope omits lines_oversize_skipped and
     time_budget_exhausted, which ReadLog::filter emits; "lines_dropped
@@ -69295,6 +69295,12 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   - § 6 states coverage as a range (INV-1..INV-14), which spec_lint
     reports as test_coverage_unverifiable.
   Hot reload: nothing; documentation.
+  Resolved 2026-10-19: § 2.3 lists lines_oversize_skipped and
+  time_budget_exhausted and says when lines_dropped appears; citations
+  name remotecontrol_workspace.cpp, mcptoolregistry.cpp,
+  mainwindow_mcp.cpp and remotecontrol_terminal.cpp without line
+  numbers; § 6 lists covered ids (spec_lint clean); the test contract
+  names mcptoolregistry.cpp.
   **Layman:** The read_log design document describes an older version of the code in a few places.
   Kind: doc-fix.
   Source: review-contract ANTS-1855 2026-10-19 (ANTS-5707 gate, out of radius).

@@ -19,7 +19,7 @@ dispatch are locked by source-scrape.
   (`mcpprojection.cpp`) and the tools/list schema registers `read_log`
   with `path`/`include`/`exclude`/`contains`/`since`/`tail`/`max_bytes`/
   `since_cursor`/`fields` + `registerToolProvider("read_log", …Required…)`
-  in `mainwindow.cpp`.
+  in `mcptoolregistry.cpp`.
 - **B-INV-4** — `include`/`exclude` regex: a line is kept iff it matches
   `include` and not `exclude`; invalid regex → `bad_args`.
 - **B-INV-5** — `contains:S` keeps only lines containing literal S.
@@ -55,6 +55,7 @@ dispatch are locked by source-scrape.
 
 Behavioural invariants exercise `ReadLog::filter` against fixture logs
 in a `QTemporaryDir`. Wiring invariants source-scrape
-`remotecontrol.{h,cpp}` / `claudeintegration.cpp` / `mcpprojection.cpp`
-/ `mainwindow.cpp`. Label `features;fast`. Verify the suite fails against
+`remotecontrol.h` and every RemoteControl source / `claudeintegration.cpp`
+/ `mcpprojection.cpp` / the MainWindow sources plus
+`mcptoolregistry.cpp`. Label `features;fast`. Verify the suite fails against
 the stub helper + un-wired sources before implementing.
