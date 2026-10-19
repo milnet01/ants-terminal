@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5763 -->
+<!-- ants-roadmap-id-high-water: ANTS=5766 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -1214,6 +1214,42 @@ exist yet. Host-shell model similar to our Flatpak approach.
 5. **Ongoing:** `snapcraft.io` GitHub builder hooks auto-rebuild
    on tag push — no per-release manual work after the initial
    submission.
+
+- 📋 [ANTS-5764] **Build Ants Terminal as a classic-confinement snap.**
+  packaging/snap/snapcraft.yaml, classic confinement (terminal
+  emulators are a listed classic category; Ghostty and Alacritty ship
+  classic). Qt6: check the kde-neon-6 extension against bundling Qt in
+  the snap before choosing; verify against current snapcraft docs, not
+  memory. Include ants-mcpd and the hook scripts. Build and run it
+  locally (snap install --dangerous --classic) before any request.
+  Research 2026-10-19: the Snap Store has no AI policy (absence, not
+  approval); every new name gets a manual review (forum 39440).
+  Hot reload: nothing; packaging only.
+  **Layman:** Package Ants so Ubuntu users can install it from the Snap Store.
+  Kind: package.
+  Source: user-request-2026-10-19 (Snap Store replaces Flathub).
+  Lanes: packaging.
+
+- 📋 [ANTS-5765] **Draft the Snap Store classic-confinement request for the user to post.**
+  Follow the forum's classic-confinement request template: why a
+  terminal needs classic (spawns arbitrary shells, full filesystem
+  access), with a working snap from ANTS-5764. Precedent: bossterm
+  (forum 49853), psadi-wezterm (forum 44148). The user registers the
+  snap name and posts the request; no AI posts it. Hot reload: nothing.
+  **Layman:** Write the request asking the Snap Store to let Ants run with the access a terminal needs; you post it.
+  Kind: doc.
+  Source: user-request-2026-10-19 (Snap Store replaces Flathub).
+  Lanes: packaging.
+
+- 📋 [ANTS-5766] **Publish the snap from the release flow.**
+  After the name and classic request are approved: build the snap in
+  release.yml (or release.sh) and push to the stable channel on each
+  tag. Needs a store login credential as a CI secret, which the user
+  creates. Blocked until ANTS-5765 is approved. Hot reload: nothing.
+  **Layman:** Every release also updates the Snap Store version.
+  Kind: package.
+  Source: user-request-2026-10-19 (Snap Store replaces Flathub).
+  Lanes: packaging.
 
 ### P7 — AppImage
 
