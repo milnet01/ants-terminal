@@ -16,24 +16,9 @@
 #include <QStandardPaths>
 #include <QString>
 #include <QTemporaryDir>
+#include "../../_support/xdg_guard.h"
 
 namespace {
-
-// Sandbox XDG_CONFIG_HOME so Config reads/writes a temp dir, not the
-// user's real config. Restores the prior value on teardown.
-struct XdgConfigHomeGuard {
-    QByteArray prior;
-    bool hadPrior = false;
-    XdgConfigHomeGuard() {
-        hadPrior = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
-        if (hadPrior) prior = qgetenv("XDG_CONFIG_HOME");
-    }
-    void set(const QByteArray &v) { qputenv("XDG_CONFIG_HOME", v); }
-    ~XdgConfigHomeGuard() {
-        if (hadPrior) qputenv("XDG_CONFIG_HOME", prior);
-        else qunsetenv("XDG_CONFIG_HOME");
-    }
-};
 
 QString configJsonPath() {
     return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
@@ -43,10 +28,10 @@ QString configJsonPath() {
 }  // namespace
 
 TEST(ConfigTabTitleFormat, INV3_DefaultAndRoundTrip) {
-    XdgConfigHomeGuard guard;
+    ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    guard.set(tmp.path().toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", tmp.path().toUtf8());
 
     {
         Config cfg;
@@ -62,10 +47,10 @@ TEST(ConfigTabTitleFormat, INV3_DefaultAndRoundTrip) {
 }
 
 TEST(ConfigTabTitleFormat, INV2_SetterRejectsUnknown) {
-    XdgConfigHomeGuard guard;
+    ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    guard.set(tmp.path().toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", tmp.path().toUtf8());
 
     { Config a; a.setTabTitleFormat(QStringLiteral("cwd")); }
     { Config b; b.setTabTitleFormat(QStringLiteral("garbage-not-a-format")); }
@@ -77,10 +62,10 @@ TEST(ConfigTabTitleFormat, INV2_SetterRejectsUnknown) {
 }
 
 TEST(ConfigTabTitleFormat, INV1_GetterFallbackOnHandEdit) {
-    XdgConfigHomeGuard guard;
+    ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    guard.set(tmp.path().toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", tmp.path().toUtf8());
 
     // Materialise config.json via a save, then hand-edit a garbage value
     // directly (bypassing the setter — mimics a forward-version write).
