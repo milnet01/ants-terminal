@@ -28,8 +28,10 @@ TEST(AboutDialogFits, BodyIsNeverClipped) {
     // A size far below the text, as a saved size from an older build was.
     dlg->resize(200, 120);
     QApplication::processEvents();
+    QDialog *const shown = dlg.data();
+    ASSERT_NE(shown, nullptr) << "the dialog closed while events were processed";
 
-    EXPECT_GE(dlg->width(), 560) << "INV-1: the minimum width was not held";
+    EXPECT_GE(shown->width(), 560) << "INV-1: the minimum width was not held";
     const auto *label = dlg->findChild<QLabel *>(QStringLiteral("aboutAntsBody"));
     ASSERT_TRUE(label);
     EXPECT_GE(label->height(), label->heightForWidth(label->width()))

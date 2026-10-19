@@ -398,7 +398,7 @@ TEST(TestAuditDialog, Inv13PrunesOldReportFolders) {
         const QString p = cache + QChar('/') + name;
         QDir().mkpath(p);
         QFile f(p + QStringLiteral("/r.md"));
-        f.open(QIODevice::WriteOnly);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly)) << qPrintable(f.fileName());
         f.write("x");
         f.close();
         struct timeval tv[2];
