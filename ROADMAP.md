@@ -20283,6 +20283,15 @@ fixes don't address. Roadmapped here as their own design tasks.
     default or naming it in the hook's nudge.
   Hot reload: hook scripts are re-read per call; verb changes reach
   clients through an ants-mcpd rebuild and /mcp reconnect.
+  First measurement, 2026-10-19, query "relative order" excluding
+  docs/reviews/**: `git grep -n` printed 3,464 bytes; workspace_search
+  with encoding:"tabular", max_match_bytes:160, fields:["matches"]
+  returned a reply of similar size by eye (a verb reply cannot be
+  byte-counted from inside the session, so the tool needs a reply-size
+  readout). With default options the same query's reply was visibly
+  larger. The same session hit workspace_search's 10-calls-a-minute cap
+  (rate_limited) while one ants-explore subagent ran, which is
+  ANTS-5112.
   **Layman:** Find out whether Claude sessions actually use the cheaper Ants tools, and whether they really are cheaper, instead of guessing.
   Kind: optimize.
   Source: user-request-2026-10-19.
