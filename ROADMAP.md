@@ -5632,7 +5632,7 @@ minor tag (next: pre-0.8.0).
 > `/indie-review` orchestration so Claude is invoked only for
 > the per-lane judgment + optional synthesis.
 
-- 💭 [ANTS-1110] **Catalogue retired — re-shaped per [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
+- 🚫 [ANTS-1110] **Catalogue retired — re-shaped per [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
   The original 13-row "absorb every superpowers skill" table mixed
   mechanical-shape rows (e.g. `using-git-worktrees`) with judgment-
   shape rows (e.g. `verification-before-completion`,
@@ -5650,6 +5650,7 @@ minor tag (next: pre-0.8.0).
   unless / until the user explicitly pulls them in.
   Layman: A retired plan, kept on the record so the reasoning behind reversing it is not lost.
   Kind: research. Source: ADR-0002-2026-04-30.
+  Roadmap audit 2026-10-19: retired by ADR-0002; kept as a record.
   Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-skill bullet.
 
@@ -6008,7 +6009,7 @@ minor tag (next: pre-0.8.0).
   Source: spec-ANTS-1113-v2.
   Lanes: auditdialog, debtsweepengine, aidialog, ptyhandler.
 
-- 💭 [ANTS-1114] **Wishlist retired — re-shaped per [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
+- 🚫 [ANTS-1114] **Wishlist retired — re-shaped per [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
   The original 14-bullet "additional companion surfaces" wishlist
   had no leverage ranking and mixed token-saving items
   (Output sanitiser, Permission-hint learner) with UX features
@@ -6034,6 +6035,7 @@ minor tag (next: pre-0.8.0).
   explicitly asks for them; this bullet is not auto-promoted.
   Layman: A retired wishlist, kept on the record so the reasoning behind reversing it is not lost.
   Kind: research. Source: ADR-0002-2026-04-30.
+  Roadmap audit 2026-10-19: retired by ADR-0002; kept as a record.
   Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-surface bullet.
 
@@ -10971,7 +10973,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (found fixing ANTS-3847).
   Lanes: lua, mcp.
 
-- 💭 [ANTS-5116] **spec_lint holds per-test contracts under tests/features/ to the full-spec section list and finds none of their invariants.**
+- 🚫 [ANTS-5116] **spec_lint holds per-test contracts under tests/features/ to the full-spec section list and finds none of their invariants.**
   Run on the shipped contract tests/features/session_sha256_checksum/
   spec.md (2026-09-11), spec_lint returns ok:true with four
   missing_section findings (## Problem, ## Surface, ## Tests,
@@ -10998,6 +11000,8 @@ extends an existing item, that item carries it instead.
   spec_lint could say a tests/features/ path is outside its genre
   instead of listing absences. Filed without reading that section;
   found when a write-test agent quoted it.
+  Roadmap audit 2026-10-19: reconsidered as intended behaviour
+  (9b8e978f); only an optional idea remains.
   **Layman:** The checker for design documents grades small per-test notes against the rules for full designs, so its report on them is meaningless.
   Kind: fix.
   Source: in-session-2026-09-11 (write-test run for ANTS-5025).
@@ -20766,7 +20770,7 @@ indie-review finding.
   Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
   Deferred (2026-05-29): the inline comment at CMakeLists.txt:499-503 (against ONE shared PCH) is correct but more nuanced than blanket-no. REUSE_FROM is safe within matching-flag profile groups: Profile-A (warnings-only) = {ants_core_lib, ants_audit_lib} — 1 compile saveable; Profile-D (transitive QT_OPENGL_LIB + ANTS_LUA_PLUGINS via chrome) = {ants_claude_lib, ants_dialogs_lib, ants_audit_dialog_lib} — 2 more saveable. Max ~3-5 PCH compiles saved × ~3-5s each = ~15-25s on cold builds only. The ROADMAP entry's own success criterion ("if < 10% wall-clock, the layout complexity isn't worth it") needs a baseline measurement we don't have. Picking up requires (a) cold-build wall-clock measurement against current per-lib layout, then (b) implement Profile-A first (lowest risk), measure, then Profile-D if win >= 10%.
 
-- 💭 [ANTS-1560] **`build_info.h` HH:MM precision freezes the displayed build time across intra-minute rebuilds.**
+- 🚫 [ANTS-1560] **`build_info.h` HH:MM precision freezes the displayed build time across intra-minute rebuilds.**
   Withdrawn 2026-05-18 — phantom bug. The scenario
   (two rebuilds in the same HH:MM minute producing identical
   build_info.h content) is not reachable in practice: a full
@@ -20816,6 +20820,7 @@ indie-review finding.
 
   Lanes: build, dx.
   ["build", "dx"]
+  Roadmap audit 2026-10-19: withdrawn 2026-05-18 as a phantom bug.
   **Layman:** The "build time" shown in the title bar stops updating if you rebuild twice in the same minute — fix is to use seconds, not just minutes.
   Kind: fix.
   Source: user-report-2026-05-18 (build-time stamp frozen across intra-minute rebuilds).
@@ -24886,12 +24891,14 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   Resolved (2026-06-11): duplicate of ANTS-1465 (slurp + std::exit migration). Verified done — see ANTS-1465 closure.
   Kind: implement.
 
-- 📋 [ANTS-1588] **Consolidate brace-matching function-body extractors into ants_test::slurpFunctionBody() + QString twin.**
+- 🚫 [ANTS-1588] **Consolidate brace-matching function-body extractors into ants_test::slurpFunctionBody() + QString twin.**
   - File: tests/_support/srcgrep.h:0
   - Dimension: duplication
   - Severity: medium
   - Fix: Migrate the inline extractors to ants_test::slurpFunctionBody() (or its QString twin if one is added). Add a QString overload to srcgrep.h for the Qt-typed test sites.
   Progress (2026-06-11): the brace-balanced function-body extractor consolidation is the same work tracked under ANTS-1468 — 14 local brace-walkers now delegate to ants_test::slurpFunctionBody (string/comment-aware). See ANTS-1468 for the migrated set, the out-of-scope delimiter-scanners, the ~14-file residue, and the `= {}` default-arg-signature limitation. No QString twin added — the QString call-sites (allowlist_add, scrollback_frozen_view, review_changes_clickable, confirm_close_with_processes) wrap via QString::fromStdString(slurpFunctionBody(...)), which is sufficient.
+  Roadmap audit 2026-10-19: same work as ANTS-1468; its residue is
+  tracked there.
   **Layman:** Merge the duplicated text-scanning helpers into one shared version.
   Kind: implement.
 
@@ -25193,12 +25200,14 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   test-harness change (frozen clock for two invariants). Nothing a user
   or packager can observe.
 
-- 📋 [ANTS-1473] **Multiple tests mutate process-global env (XDG_CONFIG_HOME, HOME, PATH) without RAII restore — leaks state to subsequent TESTs in the same binary..**
+- 🚫 [ANTS-1473] **Multiple tests mutate process-global env (XDG_CONFIG_HOME, HOME, PATH) without RAII restore — leaks state to subsequent TESTs in the same binary..**
   - File: tests/features/*:0
   - Dimension: isolation
   - Severity: MED
   - Fix: Wrap env-mutation in a Sandbox struct whose dtor restores the original value; or use the existing env-guard helper if one exists in _support.
   Status re-verified 2026-06-28: duplicate-theme of ANTS-1379 (env-pollution RAII). The shared guard ants_test::XdgGuard (tests/_support/xdg_guard.h, ANTS-2062) exists and the named unrestored leaks are migrated. Audited the current qputenv/qunsetenv/setTestModeEnabled surface across tests/: the remaining sites (XDG_CONFIG_HOME / HOME / PATH mutations in the config_* tests, shell_command_wiring, debuglog_perms, claude_session_freshness, tool_detection_engine PathScope, etc.) all DO restore manually — no active leak found. Residual work is the same incremental XdgGuard convergence tracked under ANTS-1379; this item is effectively a co-dependent duplicate. Resolve together when the convergence chore is scheduled.
+  Roadmap audit 2026-10-19: duplicate of ANTS-1379; no active leak
+  found.
   **Layman:** Some tests change global settings and never put them back, which can make later tests fail for the wrong reason.
   Kind: implement.
 
@@ -32164,21 +32173,24 @@ build).
   Source: Contact_List/MAME_Curator/RetroArch-feedback-2026-07-10 (recurring).
   Duplicate of ANTS-3393 (vendor-dir / .gitignore-aware file-walk for project_settings detect + codebase_index), which shipped and is confirmed working on Contact_List (2026-07-01: codebase_index returned 25 files not 2350). Filed in error 2026-07-10 during the feedback condense; closing as already-done. If MAME node_modules still repros, re-verify against ANTS-3393.
 
-- 💭 [ANTS-3484] **roadmap_log op:append/append_batch writes a literal backslash before every double-quote in body prose.**
+- 🚫 [ANTS-3484] **roadmap_log op:append/append_batch writes a literal backslash before every double-quote in body prose.**
   A body containing a double-quote is written to ROADMAP.md with a literal backslash before each quote. Verified via python repr on the raw file: ANTS-3482 (line 18545) and ANTS-3483 (line 18552) both show a DOUBLED backslash before each quote in repr — a real backslash byte. A pre-existing bullet (line 14705, a roadmap_query call with a quoted arg) is clean, so this is NEW this session — likely a double-escape in the current build write path (possibly related to the known large-append serialization issues). Affects every body append this session that contained a double-quote (ANTS-3475 through 3483). Impact: cosmetic corruption of body prose only — headline / id / status / list parsing are all unaffected — but it accumulates and reads badly. Fix: drop the extra escaping in the op:append body writer; add a regression asserting a body containing a double-quote round-trips with no backslash. Optionally a one-off sweep to strip existing backslash-before-quote occurrences from ROADMAP.md.
   **Layman:** When a roadmap item's description contains quote marks, they come out with a stray backslash in front, making the text look messy.
   Kind: fix.
   Lanes: roadmaplog.
   Source: in-session-2026-07-10 (self-observed on my own appends).
   Investigated 2026-07-10 (build c57e16b6): NOT a server defect — no server-side fix. Verified the write-path clean three ways: (1) tools/mcp-bridge.py round-trips via json.loads→json.dumps with no manual escaping; (2) formatRoadmapBullet + rcSanitizeBulletField only strip control chars / right-trim, never escape quotes; (3) a live dry_run op:append with a body of status="planned" and embedded "double quotes" rendered CLEANLY (no literal backslash). So the backslash-before-quote was introduced upstream in the reporting session's MCP client arg-encoding (the large-append path), not by Ants, and does not reproduce on the current build/transport. A blanket \"→" un-escape at the write boundary was rejected: most existing \" occurrences in ROADMAP.md are LEGITIMATE escaped quotes inside JSON/code snippets (e.g. the cwd_mismatch error object, id_strategy:"stable_prefix" examples), so collapsing them would corrupt intentional prose. No safe server mitigation; closing as considered. Re-open with a fresh repro if it recurs on a current build.
+  Roadmap audit 2026-10-19: does not reproduce on a current build; no
+  safe mitigation.
 
-- 💭 [ANTS-3485] **workspace_search returns a raw -32000 transport timeout on a whole-repo regex over large data blobs — return a soft rg_failed envelope instead.**
+- 🚫 [ANTS-3485] **workspace_search returns a raw -32000 transport timeout on a whole-repo regex over large data blobs — return a soft rg_failed envelope instead.**
   A single workspace_search (regex, whole-repo, a 4-alternation pattern, headline_only) returned MCP error -32000 (Ants MCP transport timed out) with no partial envelope, on RetroDB — a repo carrying a large data/changelog.yaml (~1.2 MB) + per-locale changelog YAMLs + translations/*.mo binaries. A plain rg of the same pattern finished in under 1s and found 3 files, so the rg scan of the big blobs blows the default timeout. Impact LOW (rg fallback is immediate) but it is the second workspace_search reliability item (ANTS-2045 covers empty-on-multiword) and gives the caller no partial result and no in-tool retry hint. Fix: when the underlying rg exceeds timeout_sec, return the documented soft rg_failed-shaped envelope with a hint (retry with a narrower scope / raise timeout_sec) instead of a raw -32000; optionally exclude large non-code blobs (.mo, and .yaml/.json over ~512 KB) from the default scan unless respect_gitignore is false, or auto-narrow scope when big data files dominate the set. Distinct from ANTS-2045 and from ANTS-3396 (audit_run timeout). Evidence: RetroDB_Ants_MCP_Feedback.md.
   **Layman:** The code-search tool sometimes hard-errors (no result at all) when a project has big data files, instead of gracefully saying it timed out so the caller can narrow the search.
   Kind: fix.
   Lanes: remotecontrol.
   Source: RetroDB-feedback-2026-07-10.
   Duplicate of ANTS-3405 (same workspace_search -32000 transport-timeout-on-large-blobs issue, RetroDB). Filed in error 2026-07-10 during the feedback condense; roadmap_log possible_duplicates flagged it. Track under ANTS-3405.
+  Roadmap audit 2026-10-19: duplicate of ANTS-3405 (shipped).
 
 - ✅ [ANTS-3486] **file_outline / read_region symbol-mode do not register C typedef-struct aggregates (typedef struct NAME_s {} NAME_t) — only forward decls survive.**
   On DOOM linuxdoom-1.10/r_defs.h (detected cpp), file_outline returns exactly ONE symbol: a forward declaration line_s (struct line_s;). The header actually defines ~12 core engine aggregates in the dominant C idiom typedef struct NAME_s { body } NAME_t; (vertex_t, degenmobj_t, sector_t, line_t, subsector_t, seg_t, node_t, ...). None are registered, neither by tag (subsector_s) nor by typedef alias (subsector_t); read_region symbol:subsector_t returns symbol_not_found, and find_definition resolves none (they are not functions). So the extractor catches struct X; forward decls but skips typedef struct X_s { body } X_t; definitions, and ANTS-2222 aggregate-body read is unreachable for C structs — the only fallback is a whole-header Read, exactly the cost the outline layer exists to remove. Distinct from ANTS-2159 (cpp FUNCTION extraction) — this is the STRUCT/typedef path on a C header. Fix: register typedef struct TAG_s { } ALIAS_t and anonymous typedef struct { } ALIAS_t as aggregate symbols keyed by BOTH tag and alias so read_region symbol-mode resolves either; ANTS-2222 brace-matched slice does the rest. Evidence: DOOM_Ants_MCP_Feedback.md.
@@ -40126,7 +40138,7 @@ against current source before filing.
   Source: in-session-2026-08-08 (found reviewing the first store-backed render).
   Source: planned." onto bullets that have no recorded provenance.**.
 
-- 💭 [ANTS-4064] **Reconcile the 62 roadmap bullets whose Kind: is outside the taxonomy.**
+- 🚫 [ANTS-4064] **Reconcile the 62 roadmap bullets whose Kind: is outside the taxonomy.**
   The first real migration emitted 433 notes, of which the
   `kind_unmapped` class is genuine doc-drift rather than migration noise.
 
@@ -40160,6 +40172,7 @@ against current source before filing.
   100 on append — the verb reported it in the same envelope that created it.
   Retained rather than deleted per roadmap-format.md § 3.5.1 (stable-ID
   immutability).
+  Roadmap audit 2026-10-19: duplicate of ANTS-4062 (shipped).
   **Layman:** Some roadmap entries are filed under labels that are not on the official list, so the database has to guess what they mean.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
@@ -41320,7 +41333,7 @@ against current source before filing.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild), deferred same day.
 
-- 💭 [ANTS-4084] **roadmap-data-model.md § 6's relates-to conversion has no implementation at all.**
+- 🚫 [ANTS-4084] **roadmap-data-model.md § 6's relates-to conversion has no implementation at all.**
   Found while verifying ANTS-4068's decision 2 (which direction a
   symmetric `relates-to` edge is stored in). The direction question
   turned out to be already settled in code — but only in a function
@@ -41391,6 +41404,8 @@ against current source before filing.
   deciding which extension keys deserve real columns
   (`Dependencies` 98 among them) out of scope as a data-model
   change rather than an import mapping.
+  Roadmap audit 2026-10-19: premise gone; relateItems is called from
+  src/roadmapmigrateload.cpp and the roadmap_log batch path.
 
 - ✅ [ANTS-4085] **doc_citations reports a quoted foreign-project path as a stale citation, and cannot be silenced.**
   `roadmap-data-model.md` § 5 quotes two sub-bullets from OTHER projects'
@@ -42517,7 +42532,7 @@ against current source before filing.
   Resolved (2026-08-28): the render_gate_unmet row was re-read fresh, as this item asked, and the re-read found more than the row. The remedy now names op:"amend_field" as the direct route to the layman column, with the field_shadowed_by_body case that defeats it and the amend_body way out. Gated under rule 14 because a conformer would reach for a different op; the gate ran three cold loops, verified 22 findings and fixed 19, dismissed one on measurement and filed three as ANTS-4752 at a violent cap. The run also corrected a claim this item's own fix had carried: the ride-along rule is the label first on ANY line, not the note's first line, which the shipped refusal message still gets wrong (ANTS-4749). The file gained the loop-log section the standard skeleton requires, which it had never had.
   Release note (2026-08-28): no CHANGELOG entry, deliberately — a correction to a project standard; nothing a user of the product observes.
 
-- 💭 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
+- 🚫 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
   ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
 
   Measured 2026-08-18: only 6 of 14 projects have an `id_prefix` row (ANTS, AIPR, 3D_E, MUSI, LWSM, ONEUP). The other 8 report the warning permanently.
@@ -42528,6 +42543,7 @@ against current source before filing.
 
   Fix is to write the high water at migration from the highest id imported.
   Closed 2026-08-18 as a DUPLICATE of ANTS-4430, filed earlier the same day from the E2 rollout. Same defect, same two proposed fixes (suppress the field when the row is absent, or seed it at migration from the highest id imported). I filed this from the finbreak report without checking the E2 items first — my error, not a second finding. The new evidence is folded into ANTS-4430 rather than kept here.
+  Roadmap audit 2026-10-19: duplicate of ANTS-4430 (shipped).
   **Layman:** The tools warn that your roadmap file is ahead of their copy even when the copy was just built from that exact file.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
@@ -47707,7 +47723,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lanes roadmap-write + roadmap-read + plugin lane (UNVERIFIED — triage before work).
   Lanes: roadmapstore, roadmapexport, pluginmanager.
 
-- 📋 [ANTS-4658] **mcp-tools.md states "a refusal is never short-circuited" only inside its handler-local paragraph.**
+- ✅ [ANTS-4658] **mcp-tools.md states "a refusal is never short-circuited" only inside its handler-local paragraph.**
   The sentence is the whole contract for refusals and short-circuits, and it
   sits in the paragraph describing a HANDLER-LOCAL 304 -- the case for verbs
   held out of `isEtagSupportedTool`. Its second clause carries no qualifier, so
@@ -47725,6 +47741,8 @@ whole files.
   Check while there whether `maybeInsertIdempotentReadCache`'s INV-5(a)/(b) is
   the same rule wearing a third name. If it is, the standard should say it
   once.
+  Roadmap audit 2026-10-19: done by 425fe69b (2026-09-04), never
+  flipped.
   **Layman:** A rule that should cover every case is written where it looks like it covers one.
   Kind: doc.
   Source: in-session-2026-08-25 (found while fixing ANTS-4446).
@@ -48524,7 +48542,7 @@ happen.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: roadmapparse.
 
-- 💭 [ANTS-4477] **Commit ee33b664 is mislabelled — a chore message carrying the 2026-08-18 triage, and the decision to rewrite it is the user's.**
+- 🚫 [ANTS-4477] **Commit ee33b664 is mislabelled — a chore message carrying the 2026-08-18 triage, and the decision to rewrite it is the user's.**
   ee33b664 reads "chore: re-copy the commits.md mirror after CFG-0143 loop 2
   upstream" and contains that one-line mirror re-copy PLUS 381 lines of
   ROADMAP.md — the whole ANTS-4462..4476 triage. The content is correct and
@@ -48566,6 +48584,8 @@ happen.
   The content is correct and already pushed. Amending would rewrite published history for a label, and the label is the only thing wrong. Recorded here so a later ledger audit that notices the mismatch finds the decision instead of re-opening it.
 
   The habit the item was really about stands: a hook-refused commit leaves the index STAGED, so `git status` before staging anything else, or the next commit swallows it.
+  Roadmap audit 2026-10-19: no-action decision recorded 2026-08-19;
+  nothing to do.
 
 ## 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 second triage
 
@@ -49758,7 +49778,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 💭 [ANTS-4494] **On the GFM path `source` is written as the status word and `kind` is defaulted, on every bullet.**
+- 🚫 [ANTS-4494] **On the GFM path `source` is written as the status word and `kind` is defaulted, on every bullet.**
   Two parse defects in the same data, both silent, both on the GFM task-list path only.
 
   `source` is the literal string "planned" on 989 of Vestige's items — a lifecycle word in a
@@ -49815,6 +49835,8 @@ are closed inline in the feedback files rather than filed here.
 
   Recorded as considered rather than shipped: nothing was built, and a
   later session should not re-open this without reading § 3.5.3 first.
+  Roadmap audit 2026-10-19: nothing to build; the remaining half is
+  ANTS-4492's.
   **Layman:** For older-format roadmaps the migration files the word "planned" as the item's origin, and invents a work category for every single item.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).
@@ -54455,7 +54477,7 @@ Three folded into existing items rather than re-filed: ANTS-3620 flipped out of
 considered on new evidence, ANTS-4507 and ANTS-4539 annotated. The rest are
 filed below.
 
-- 💭 [ANTS-4545] **file_outline / read_region containment is a string-prefix test, so a sibling whose name starts with the project's is readable.**
+- 🚫 [ANTS-4545] **file_outline / read_region containment is a string-prefix test, so a sibling whose name starts with the project's is readable.**
   The project-root containment check compares path STRINGS, not path
   components. With caller_cwd=/…/LocalWebServerManager, the file
   /…/LocalWebServerManager_Ants_MCP_Feedback.md is a SIBLING of the root,
@@ -54520,6 +54542,8 @@ filed below.
   project subdirectory — and the suffix plus the ancestor test is the
   stated bound. Reopening that is a separate argument with its own
   evidence, not a fold-in here.
+  Roadmap audit 2026-10-19: closed as not a defect in its own body
+  (ANTS-3616's bound is deliberate; ANTS-4569 shipped the hint).
   **Layman:** A read tool can open files just outside the project when their name happens to start the same way.
   Kind: security.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20.
@@ -62096,7 +62120,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
   Lanes: docs, specs.
 
-- 💭 [ANTS-4876] **roadmap_query mode:"sections" has no name filter, so locating one section costs the whole index.**
+- 🚫 [ANTS-4876] **roadmap_query mode:"sections" has no name filter, so locating one section costs the whole index.**
   Measured this session on this project: mode:"sections" spilled and needed a
   paged read_spill to find one slug, and the answer was ultimately found by
   looking up a neighbouring item's id instead. That id lookup is the cheap
@@ -62121,6 +62145,8 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   argument description, then filed the absence it had not checked for. The
   measured cost was real; the cause stated in the original body was not. Nothing
   to build.
+  Roadmap audit 2026-10-19: not a defect; section_index + query already
+  filters (ANTS-4610).
   **Layman:** Asking "which roadmap section should this go in?" returns every section, which is far more than fits in one reply.
   Kind: enhancement.
   Source: in-session-2026-09-04.
@@ -63689,7 +63715,7 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   Source: in-session-2026-08-31, hit while filing this very section.
   Lanes: mcp, roadmapwrite.
 
-- 📋 [ANTS-4767] **A fields= call whose names all miss returns the misses and no way to learn the real key set.**
+- ✅ [ANTS-4767] **A fields= call whose names all miss returns the misses and no way to learn the real key set.**
   REPORTED against feedback_query, but the shape reaches every verb, because
   fields= is advertised on all of them.
 
@@ -63714,6 +63740,8 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   handler runs, or only after it has composed the envelope. If only after,
   echoing the keys is nearly free; if before, it may be worth exposing on
   tool_info instead.
+  Roadmap audit 2026-10-19: src/mcpprojection.cpp emits fields_available
+  when requested fields go unmatched; never flipped.
   **Layman:** Asking for the wrong parts of a reply tells you they were wrong but not what you could have asked for.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
@@ -68131,7 +68159,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-09-11.
   Lanes: mcp, mutation_probe.
 
-- 📋 [ANTS-5220] **find_definition lists same-named local variables as declarations of a member function.**
+- ✅ [ANTS-5220] **find_definition lists same-named local variables as declarations of a member function.**
   Seen 2026-09-15 on ANTS-5219: find_definition {symbol:"scrollbackSize",
   lang:"cpp"} returned the one real definition (src/terminalgrid.h,
   TerminalGrid::scrollbackSize) plus 19 rows of kind "declaration", each a
@@ -68140,6 +68168,8 @@ than re-filed; everything else lands here.
   declarations of the function. For "where is Foo defined?" they are noise
   that buries the answer. Possible shapes: a distinct kind for a local
   variable, or rank function and member definitions ahead of them.
+  Roadmap audit 2026-10-19: find_definition reports same-named locals as
+  kind local, after the real definition.
   **Layman:** Asking where a function lives also lists every ordinary variable that happens to share its name.
   Kind: enhancement.
   Source: in-session-2026-09-15.
@@ -70663,11 +70693,14 @@ project. Reported causes are claims until checked in source.
   Source: MAME_Curator_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: roadmap.
 
-- 📋 [ANTS-5400] **session_orient reports pending feedback but not unread cross-session mail.**
+- ✅ [ANTS-5400] **session_orient reports pending feedback but not unread cross-session mail.**
   A handoff note asked for session_orient fields ["feedback_pending","mail_pending"];
   the reply listed mail_pending in fields_unmatched. Unread mail is only visible via
   session_message op:"inbox". Add a `mail_pending` block (unacked_count, newest
   sender/date) beside feedback_pending, from the same store read the inbox uses.
+  Roadmap audit 2026-10-19: session_orient emits mail_pending
+  (buildMailPendingBlock, ANTS-4622 § 2.4) when mail is unread; never
+  flipped.
   **Layman:** The start-of-session summary counts waiting feedback but not waiting messages, so a session must remember a second call to find its mail.
   Kind: enhancement.
   Source: in-session-2026-09-26.
@@ -71255,7 +71288,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-config CFG-0658, relayed by claude-cd 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5540] **PtyReadBackpressure INV-1 waited a fixed 600 ms for the first chunk and failed once under the pre-push hook's load.**
+- ✅ [ANTS-5540] **PtyReadBackpressure INV-1 waited a fixed 600 ms for the first chunk and failed once under the pre-push hook's load.**
   push-5531's hook (ubuntu 24.04 container) failed with "no
   dataReceived arrived after re-enabling reads". Not reproduced locally:
   20 serial runs and 12 copies pinned to one core all passed. The test
@@ -71263,6 +71296,8 @@ project. Reported causes are claims until checked in source.
   fixed 600 ms window; the exactly-one-chunk check is unchanged. Close
   if it does not recur by 2026-10-05; if it does, the read notifier, not
   the child's start, is the suspect.
+  Roadmap audit 2026-10-19: fixed by 09d13677 (2026-09-28); no
+  recurrence recorded past the 2026-10-05 close date.
   **Layman:** A terminal test sometimes failed on a busy machine because it gave a helper program too little time to start.
   Kind: test.
   Source: in-session-2026-09-28 (push-5531 pre-push run).
@@ -72893,7 +72928,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-request-2026-10-16 (pressless).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5740] **roadmap_query warns when a bullet_fields name matches no field, instead of dropping it silently.**
+- ✅ [ANTS-5740] **roadmap_query warns when a bullet_fields name matches no field, instead of dropping it silently.**
   OneUp 2026-10-16 asked for bullet_fields:["section"]; the real key is
   section_slug, and the unknown name dropped with no notice, so it fell back
   to awk. Report unmatched names (e.g. unknown_bullet_fields[] plus the
@@ -72904,6 +72939,8 @@ measured Ants adding about 5,250 tokens to every request.
   bullet_fields_unmatched:["section"] and bullet_fields_available
   listing section_slug. The near-miss suggestion is covered by that
   list. Recommendation: close as done; do not add more reply text.
+  Roadmap audit 2026-10-19: already shipped by ANTS-4837 (5334b852), per
+  the item's own 2026-10-16 live check.
   **Layman:** If Claude asks the roadmap tool for a field that does not exist, the tool now says so instead of quietly leaving it out.
   Kind: fix.
   Source: claude-config-request-2026-10-16 (oneup).
@@ -73100,7 +73137,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: check-code-sweep-2026-09-01.
   Lanes: chrome.
 
-- 💭 [ANTS-4778] **3,345 include-cleaner hits: the tree leans on the Qt module PCH for its includes.**
+- ✅ [ANTS-4778] **3,345 include-cleaner hits: the tree leans on the Qt module PCH for its includes.**
   clang-tidy misc-include-cleaner, 3,345 unique hits (2,177 in src/). ants_apply_qt_pch() gives every library <QtCore/QtCore> + <QtGui/QtGui> + <QtWidgets/QtWidgets> (CMakeLists.txt:885-893), so a TU can name almost any Qt type without including it.
 
   ANTS-4775 is the one case where this already bites (a hard compile error with the PCH stripped). The question here is the policy, not the sites: is include-what-you-use a goal for this project, or is the module PCH the accepted convention? Until that is answered no site is a defect, which is why this is filed as investigate and not as a fix.
@@ -73117,11 +73154,13 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   ANTS-4775 stays open as the one case where a missing include actually
   bites — a hard compile error with the PCH stripped.
+  Roadmap audit 2026-10-19: decided; .clang-tidy excludes
+  misc-include-cleaner and names this id.
   **Layman:** Most files do not list what they use; they build because a shared shortcut header supplies it. That works until the shortcut is removed.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
 
-- 💭 [ANTS-4779] **4,354 const-correctness hits await a project decision.**
+- ✅ [ANTS-4779] **4,354 const-correctness hits await a project decision.**
   clang-tidy misc-const-correctness, 4,354 unique hits (1,361 in src/) — 35% of that tool's entire output and the single largest class in the sweep.
 
   Purely advisory: no hit is a defect. Needs one project-level answer (adopt, or exclude the check in a committed .clang-tidy) rather than 4,354 judgements. Note the project ships NO .clang-tidy at all, which is why this run had to pass an explicit --checks= list; deciding that file's contents would settle this item and several below.
@@ -73135,6 +73174,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Correction to this item's body: it says the project ships no .clang-tidy
   at all. That was true when written, and ANTS-4787 added one days later —
   which is what settles this. Do not read the body's premise as current.
+  Roadmap audit 2026-10-19: decided; .clang-tidy excludes
+  misc-const-correctness and names this id.
   **Layman:** A style checker wants thousands of variables marked as never-changing. Worth deciding once, not case by case.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -73199,7 +73240,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
 
-- 💭 [ANTS-4781] **784 narrowing-conversion hits need per-site judgement.**
+- ✅ [ANTS-4781] **784 narrowing-conversion hits need per-site judgement.**
   clang-tidy bugprone-narrowing-conversions, 784 unique hits (522 in src/). Overwhelmingly int/qsizetype and qint64/int boundaries typical of Qt code.
 
   Each hit needs the actual value range to decide, which is a judgement a tool cannot make — review-code's territory rather than check-code's. Filed so the class is on record; expect most to be benign and a small number to matter (grid coordinates, scrollback indices, byte counts near 2 GiB).
@@ -73213,6 +73254,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   names this id, with deleting that line as the route back. The sites that
   would actually matter — grid coordinates, scrollback indices, byte counts
   near the 2 GiB boundary — are review-code's to raise per site.
+  Roadmap audit 2026-10-19: decided; .clang-tidy excludes
+  bugprone-narrowing-conversions and names this id.
   **Layman:** Hundreds of places convert big numbers to smaller ones; most are fine, a few might lose data.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -77880,7 +77923,7 @@ defect from different angles.
   Source: in-session-2026-08-14 (hit twice while settling ANTS-3747).
   Lanes: remotecontrol, symbolquery.
 
-- 💭 [ANTS-4347] **WITHDRAWN — duplicate of ANTS-4345, which had already filed this exact defect the same day.**
+- 🚫 [ANTS-4347] **WITHDRAWN — duplicate of ANTS-4345, which had already filed this exact defect the same day.**
   *(Original text kept below; the diagnosis was right and the id was redundant.)*
   `spec_lint` gates `missing_section` on the project format standard carrying
   that marker, and skips the check when it is absent, reporting
@@ -77908,6 +77951,7 @@ defect from different angles.
   the one the skill said was upstream and closed. The skill's own label is
   what made two names for one defect. Filed against the skill; see
   ANTS-4345 for the work.
+  Roadmap audit 2026-10-19: withdrawn duplicate of ANTS-4345 (shipped).
   **Layman:** The spec checker has a "are all the required chapters present?" test that has silently never run here, because the rulebook it reads is missing one line telling it which chapters to expect.
   Kind: doc-fix.
   Source: in-session-2026-08-14 (surfaced by the ANTS-3368 spec's mechanical pass).
@@ -81555,7 +81599,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Shipped 2026-06-02: synonym normalization lambda in remotecontrol.cpp; error message updated to list synonyms.
   **Layman:** When marking a roadmap item finished, the tool only accepts the word "shipped", not the more obvious "done" — so the first try fails and has to be redone
 
-- 💭 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
+- 🚫 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
   model_switch_stats (2026-06-02) shows 107 of 186 near-miss events (57%)
   blocked by ticks_target_stable_insufficient — the recommendation must
   be stable for kStableTicks=2 consecutive ticks before a switch fires.
@@ -81582,6 +81626,8 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Lanes: modelautoswitch, modelrecommender.
   Source: in-session-2026-06-02 (model_switch_stats near-miss analysis — 107/186 blocked by ticks_target_stable_insufficient in 24 h).
   Investigation done (2026-06-02). The "57% ticks_target_stable_insufficient" headline is a telemetry ARTIFACT, not a real blocker. Ledger analysis (541 project records): ticks_target_stable appears in 322 events but is the SOLE blocker in only 19 (3.5%). It rides along mechanically because when target==current, advanceStability can't increment ticksStable, so both tokens always co-fire. Genuine sole-blockers: composer_not_empty (89), dwell_time_insufficient (75) — both already addressed (ANTS-1919/1926/1908/1914; dwell is by-design). The stability constants (kStableTicks=2, kTierLockWindowMs=8s) are working as designed — a 1-in-2 oscillation reaches ticksStable=2 by the 3rd tick. CONCLUSION: do NOT tune the stability constants. The real fix is telemetry-semantics (see follow-up item): target_equals_current records are non-near-misses (no switch was ever wanted) and should not be emitted — they are 36% of the project ledger (198/541) and corrupt the dominant_blocker signal + evict genuine near-misses under the byte cap. Demoted to considered; superseded by the telemetry-correctness item.
+  Roadmap audit 2026-10-19: superseded by the telemetry-correctness
+  follow-up, per its body.
 
 - ✅ [ANTS-1946] **Near-miss telemetry: stop recording `target_equals_current` as a near-miss (it corrupts `dominant_blocker`).**
   Root cause found while investigating ANTS-1945. A near-miss should mean
@@ -83352,7 +83398,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 📊 Claude Code token-usage tracking + reports (user request 2026-05-12)
 
-- 📋 [ANTS-1245] **Track Claude Code token usage per session and expose daily / weekly / monthly reports with graphs.**
+- 🚫 [ANTS-1245] **Track Claude Code token usage per session and expose daily / weekly / monthly reports with graphs.**
   User ask
   2026-05-12: *"I would like token usage tracked and I should be
   able to pull a daily, weekly and monthly report please with
@@ -83413,6 +83459,8 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature. Source: user-2026-05-12.
   Lanes: new (tokenusagetracker, tokenusagedialog), claudeintegration
   (extend parseTranscriptTail), mainwindow (menu wire).
+  Roadmap audit 2026-10-19: same goal as ANTS-5338 (daily/weekly/monthly
+  token report); work it there.
   Source: user-2026-05-12.
 
 - ✅ [ANTS-3572] **Surface MCP tokens-saved as a live status-bar chip + persisted month / YTD / all-time aggregate.**
@@ -85985,31 +86033,35 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔥 Cross-cutting themes (≥2 reviewers)
 
-- 📋 [ANTS-4283] **Doc-rot: comments lie about current code (4 lanes).**
+- 🚫 [ANTS-4283] **Doc-rot: comments lie about current code (4 lanes).**
   Stale
   rationale survives refactors. Lane A M1 (variable name inverted in
   alt-screen), Lane B Critical (DECRQSS comment vs present
   implementation), Lane C info × 2 + Lane D HIGH (FBO/QOpenGLWidget
   comments post-0.7.44). Bundled into ANTS-1206 (doc-rot sweep on
   terminalwidget.cpp + targeted comment fixes).
+  Roadmap audit 2026-10-19: bundled into ANTS-1206 (shipped).
   **Layman:** Comments in four areas describe how the code used to work rather than how it works now.
   Kind: implement.
 
-- 📋 [ANTS-4284] **Default-state asymmetry foot-guns (2 lanes).**
+- ✅ [ANTS-4284] **Default-state asymmetry foot-guns (2 lanes).**
   Lane A M3
   (`m_altScrollBottom = 0` not `m_rows-1` at construction; symptom-
   free today but reads as 0 if any future caller consults outside an
   active alt-session); Lane B Critical (comment claims defense not
   implemented). Initialize defensively at construction.
+  Roadmap audit 2026-10-19: src/terminalgrid.cpp constructor sets
+  m_altScrollBottom = m_rows - 1; never flipped.
   **Layman:** Two places start out holding a default value that would read as wrong if anything consulted it early.
   Kind: implement.
 
-- 📋 [ANTS-4285] **Per-frame allocator pressure (Lane D, multi-finding).**
+- 🚫 [ANTS-4285] **Per-frame allocator pressure (Lane D, multi-finding).**
   Four
   separate per-paint `QFont` constructions (badge × 4pt-bold,
   command-mark labels, quick-select, perf-overlay); `QString::fromUcs4`
   per text run UTF-32→UTF-16 transcoding ASCII content; span-cache
   full-clear on every scrollback push. Bundled into ANTS-1207.
+  Roadmap audit 2026-10-19: bundled into ANTS-1207 (shipped).
   **Layman:** The drawing code rebuilds several objects on every single frame instead of reusing them.
   Kind: implement.
 
