@@ -20044,6 +20044,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   live store): 3,411 items, 2,740 shipped, 496 planned or in progress, 0
   with milestone set. Step 4 needs a spec (data migration, design choice
   on CHANGELOG/tag disagreement); next is write-spec.
+  Progress (2026-10-19, 757f9933): step 4 spec docs/specs/ANTS-5315-release-sections-migration.md
+  passed review-contract at the spec cap (two passes, 15 findings fixed) and is
+  accepted. Next: build roadmap_log op:"place_by_release".
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
