@@ -81,6 +81,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The test suite compiles about a quarter faster from cold: each test bundle precompiles the Qt headers once.** (ANTS-1383)
+
 - **The spec standard says a spec written before the § Reload rule gains that section only when its Surface or Invariants are next amended** (ANTS-5757)
 
 - **The spec standard and the feature-test guide say a `tests/features/` folder name is lowercase snake_case, the form `spec_lint` resolves** (ANTS-5756)

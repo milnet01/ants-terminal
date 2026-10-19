@@ -23156,7 +23156,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: ANTS-1382-phase-2 (2026-05-15).
 
-- 📋 [ANTS-1383] **Re-enable shared bundle PCH + `gtest_discover_tests POST_BUILD`.**
+- ✅ [ANTS-1383] **Re-enable shared bundle PCH + `gtest_discover_tests POST_BUILD`.**
   The
   `target_precompile_headers REUSE_FROM ants-terminal` line
   was dropped in ANTS-1373 because of a `-Winvalid-pch`
@@ -23183,6 +23183,12 @@ that shipped 6+ months ago — pure self-reference).
   still DISCOVERY_MODE PRE_TEST in CMakeLists.txt, so every ctest run
   first starts each test binary to list its tests, which is slowest
   under ASan.
+  Shipped 2026-10-19 (8418badd): each test bundle builds its own Qt
+  PCH, as the libs do (REUSE_FROM still rejected). test_core +
+  test_claude cold, ccache off: 484 s to 371 s wall, mean TU 3.9 s to
+  2.9 s. CI ccache caps +500M each to hold the PCHs.
+  POST_BUILD half not done, by measurement: `ctest -N` takes 0.2 s, and
+  POST_BUILD only moves the listing run into the build.
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane E).
 
