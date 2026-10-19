@@ -1,6 +1,6 @@
 # ANTS-5773 — "Claude: idle" means nothing is pending
 
-**Status:** spec draft (2026-10-19).
+**Status:** accepted (2026-10-19).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5773 (user-request-2026-10-19: a screenshot of "Claude: idle" while Claude Code's own footer read "1 shell · 1 agent").
 **Amends:** ANTS-1873 (resolver), and the feature contracts `claude_state_resolver`, `claude_state_dot_palette`, `claude_bg_tasks_button` (§ 2.6 names each clause).
@@ -32,7 +32,7 @@ The silence rule had a reason (`claude_bg_tasks_button` spec, INV-12): tasks who
 
 | Record | Effect |
 |---|---|
-| assistant `tool_use` named `Bash`, `Agent`, `Task` or `Monitor` | Remember it by `tool_use_id`: name, description, command or prompt (truncated as today). Forgotten when its `tool_result` arrives. |
+| assistant `tool_use` named `Bash`, `Agent`, `Task` or `Monitor` | Remember it by `tool_use_id`: name, description, command or prompt (truncated as today), and the record's timestamp, which becomes the task's `startedAt`. Forgotten when its `tool_result` arrives. |
 | user `tool_result`, `toolUseResult.backgroundTaskId` set | A flagged launch's task for this `tool_use_id` takes the id, as today. With no such task, start a `shell` task with that id. |
 | user `tool_result`, `toolUseResult.status == "async_launched"` and `agentId` set | Start an `agent` task, id = `agentId`, output path = `toolUseResult.outputFile`. |
 | user `tool_result` for a remembered `Monitor` call, `toolUseResult.taskId` set | Start a `monitor` task, id = `taskId`. |
@@ -73,16 +73,20 @@ qint64 claudeStartMs = 0;   // processStartTimeMs of the tab's Claude; 0 = unkno
 
 Each shell entry holds its own `ClaudeTranscript::Cursor` and `ClaudeBgTaskAccum`. `reparseTranscript` runs `ClaudeBgTaskTracker::parseIncremental` on the entry's transcript alongside the tail parse. `pollAllShells` (every 2 s) re-runs `finalize`, so a deleted output file is noticed without a transcript write. A change in any count emits `shellStateChanged`. A new Claude PID resets cursor, accumulator and counts.
 
-`ClaudeStatusBarController::refreshBgTasksButton` passes the focused tab's `claudeStartMs` to the button's tracker.
+`ClaudeStatusBarController::refreshBgTasksButton` passes the focused tab's `claudeStartMs` to the button's tracker when that tracker's transcript is the tab's bound one, read through a new `ClaudeTabTracker::transcriptPath(pid_t)`; otherwise it passes 0. The button reads `activeSessionPath(cwd)`, which can be another tab's session, whose tasks the focused tab's start time would wrongly retire.
 
 ### 2.4 Resolver
 
 ```cpp
-struct Resolved { /* existing fields */ int backgroundPending = 0; };
+struct Resolved {
+    /* existing fields */
+    int backgroundShells = 0, backgroundAgents = 0, backgroundMonitors = 0;
+    int backgroundPending = 0;   // their sum
+};
 enum class Display { /* existing values */ Background };
 ```
 
-`fromShell` sets `backgroundPending` to the sum of the three counts. In `display()`'s switch, `ClaudeState::Idle` returns `Display::Background` when `backgroundPending > 0`, else `Display::Idle`. Every branch before the switch (awaiting input, planning, auditing, not running) is unchanged and outranks it. `ClaudeState` gains no value.
+`fromShell` copies § 2.3's three counts and sets `backgroundPending` to their sum. The status bar's tooltip reads the three from `Resolved`. In `display()`'s switch, `ClaudeState::Idle` returns `Display::Background` when `backgroundPending > 0`, else `Display::Idle`. Every branch before the switch (awaiting input, planning, auditing, not running) is unchanged and outranks it. `ClaudeState` gains no value.
 
 ### 2.5 What the user sees
 
@@ -92,10 +96,10 @@ enum class Display { /* existing values */ Background };
 
 ### 2.6 Clauses this changes in other specs
 
-- **ANTS-1873 INV-1** — the lossless adapter also carries `backgroundPending` (the sum of § 2.3's counts).
+- **ANTS-1873 INV-1** — the lossless adapter also carries § 2.3's three counts and their sum, `backgroundPending`.
 - **`claude_state_resolver` spec** — gains the INV-1 below as its coverage of `Display::Background`.
 - **`claude_state_dot_palette` spec** — the table gains a Background row (pink, `#F07AB4`). Its INV-2 and INV-3 lists and the "all eight" wording in invariant 8 become nine. Its precedence (invariant 6) inserts Background directly before Idle.
-- **`claude_bg_tasks_button` spec** — INV-1 recognises § 2.1's start records rather than only `run_in_background`. INV-12's condition (b), the 60 s staleness window, is withdrawn. INV-13's un-latch then applies only to a task finished by a missing file.
+- **`claude_bg_tasks_button` spec** — INV-1 recognises § 2.1's start records rather than only `run_in_background`. INV-12's condition (b), the 60 s staleness window, is withdrawn. INV-13's un-latch then applies only to a task finished by a missing file. Its test `SweepLivenessUnlatchesResumedTask` removes and recreates the output file instead of ageing it, and INV-12's `lastModified` source-grep is dropped.
 
 ## 3. Invariants
 
