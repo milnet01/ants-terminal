@@ -19,6 +19,7 @@
 //    alone, whether a candidate was ever opened.
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 
 #include <gtest/gtest.h>
@@ -161,13 +162,8 @@ void testFilterAndPick(QTemporaryDir &home) {
     // Restore HOME on scope exit; otherwise when the caller's
     // QTemporaryDir is destroyed, $HOME continues pointing at a deleted
     // directory for the rest of the test_core bundle's lifetime.
-    const bool hadHome = qEnvironmentVariableIsSet("HOME");
-    const QByteArray priorHome = hadHome ? qgetenv("HOME") : QByteArray();
-    auto restoreHome = qScopeGuard([hadHome, priorHome]() {
-        if (hadHome) qputenv("HOME", priorHome);
-        else qunsetenv("HOME");
-    });
-    ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", home.path().toLocal8Bit());
 
     const QString cwd = home.path() + "/projA";
     QDir().mkpath(cwd);
@@ -354,13 +350,8 @@ void testFilterAndPick(QTemporaryDir &home) {
 // (unfixed) code opens every file regardless of mtime order, so the
 // forged content timestamp wins and these assertions fail red.
 void testMtimeShortCircuit(QTemporaryDir &home) {
-    const bool hadHome = qEnvironmentVariableIsSet("HOME");
-    const QByteArray priorHome = hadHome ? qgetenv("HOME") : QByteArray();
-    auto restoreHome = qScopeGuard([hadHome, priorHome]() {
-        if (hadHome) qputenv("HOME", priorHome);
-        else qunsetenv("HOME");
-    });
-    ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", home.path().toLocal8Bit());
 
     const QString projectsRoot = home.path() + "/.claude/projects";
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
@@ -688,13 +679,8 @@ TEST(ClaudeSessionFreshness, Wiring) {
 TEST(ClaudeSessionFreshness, EmptyCwdIsNotUnscoped) {
     QTemporaryDir home;
     ASSERT_TRUE(home.isValid());
-    const bool hadHome = qEnvironmentVariableIsSet("HOME");
-    const QByteArray priorHome = hadHome ? qgetenv("HOME") : QByteArray();
-    auto restoreHome = qScopeGuard([&] {
-        if (hadHome) qputenv("HOME", priorHome);
-        else qunsetenv("HOME");
-    });
-    ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", home.path().toLocal8Bit());
 
     // A fresh transcript belonging to some other project.
     const QString projects = home.path() + "/.claude/projects";
