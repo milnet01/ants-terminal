@@ -28,6 +28,7 @@
 #include <QPointer>
 #include <QSet>
 #include <QStandardPaths>
+#include <QTimeZone>
 #include <QTimer>
 
 #include <cerrno>
