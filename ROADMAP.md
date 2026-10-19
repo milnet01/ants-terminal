@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5772 -->
+<!-- ants-roadmap-id-high-water: ANTS=5773 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -3190,6 +3190,28 @@ remainder, captured so they don't drop on the floor.
   and the call-site wiring through
   `focusedTerminal()->shellCwd()`.
   Kind: implement.
+
+- 🚧 [ANTS-5773] **"Claude: idle" means nothing is pending; otherwise the tab shows it is waiting on background work.**
+  User decisions (2026-10-19):
+  - Counts: background shells, background agents, monitors. Scheduled
+    or recurring jobs do not count.
+  - Look: status bar "Claude: waiting on background work (N)"; the tab
+    dot gets its own colour, contrast-checked like the others.
+  Design (from a status-bar lane read, 2026-10-19): an overlay on the
+  resolver (Display::Background / Glyph::Background when base is Idle
+  and the pending count > 0). No new ClaudeState value, so
+  ModelAutoSwitch and tab_list's claude_state enum are unchanged.
+  Prerequisites in ClaudeBgTaskTracker: every tab's tracker gets its own
+  transcript path (today only the focused tab's does); recognise the
+  current finish records (TaskStop, task-notification); a silent shell
+  must not be marked done after 60 s; agents and monitors are tracked.
+  Specs to amend: ANTS-1873 + claude_state_resolver, claude_state_dot_
+  palette, claude_status_bar, claude_bg_tasks_button.
+  Hot reload: code only the terminal serves, so it needs one relaunch.
+  **Layman:** The status bar stops saying Claude is idle while a background shell, helper agent or monitor it started is still running.
+  Kind: feature.
+  Source: user-request-2026-10-19.
+  Lanes: claudestateresolver, claudebgtasks, claudestatuswidgets, coloredtabbar.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
