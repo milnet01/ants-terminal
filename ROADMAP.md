@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5775 -->
+<!-- ants-roadmap-id-high-water: ANTS=5776 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -20262,6 +20262,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** When Claude splits a big search across many helpers, the search tool's speed limit slows them all down.
   Kind: enhancement.
   Source: in-session-2026-10-19 (roadmap audit fan-out).
+  Lanes: mcp.
+
+- 📋 [ANTS-5776] **Measure how often sessions bypass Ants verbs for raw grep/sed/Read, and what each route costs.**
+  Seen 2026-10-19 in this session: about six raw grep/sed calls on
+  source where a verb fitted, two silenced with `# ants-bypass`. The
+  stated reason, "one shell call is cheaper than several verb calls", was
+  never measured. The verbs had the answer: a regex alternation covers
+  several patterns in one workspace_search, and encoding:"tabular" or
+  headline_only trims the per-match JSON wrapping.
+  Wanted:
+  - Count, per session, the raw source searches and reads the token hooks
+    see (and the `# ants-bypass` silences) against the matching verb
+    calls, readable from token_usage or a sibling verb.
+  - Measure the reply bytes of a verb call against the equivalent raw
+    command on the same query, for workspace_search (with and without
+    context and tabular), read_region and find_definition.
+  - Where a verb is costlier, file the gap (likely the default envelope or
+    context-row shape); where a lean option exists, consider making it the
+    default or naming it in the hook's nudge.
+  Hot reload: hook scripts are re-read per call; verb changes reach
+  clients through an ants-mcpd rebuild and /mcp reconnect.
+  **Layman:** Find out whether Claude sessions actually use the cheaper Ants tools, and whether they really are cheaper, instead of guessing.
+  Kind: optimize.
+  Source: user-request-2026-10-19.
   Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
