@@ -5,7 +5,7 @@ baseline, so a performance change can be shown rather than asserted.
 
 ```bash
 tools/perf-report.sh                  # run everything, compare to the baseline
-tools/perf-report.sh --save-baseline  # record the current numbers as the baseline
+tools/perf-report.sh --save-baseline  # record the best of 3 runs as the baseline; warns above load 4
 tools/perf-report.sh -R vt            # only benchmarks whose name matches
 tools/perf-report.sh --repeat 5       # 5 runs each, keep the best
 tools/perf-report.sh --json           # machine-readable

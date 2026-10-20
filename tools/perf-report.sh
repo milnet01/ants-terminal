@@ -10,8 +10,12 @@
 # Options:
 #   --build-dir DIR   tree to run from (default: build)
 #   --threshold PCT   regression threshold, percent (default: 5)
-#   --repeat N        run each benchmark N times, keep the best (default: 1)
+#   --repeat N        run each benchmark N times, keep the best (default: 1,
+#                     or 3 with --save-baseline)
 #   --baseline FILE   baseline path (default: tests/perf/baseline.tsv)
+#
+# --save-baseline warns when the 1-minute load average is above
+# ANTS_PERF_MAX_LOAD (default 4).
 #
 # Exit codes: 0 all within threshold; 1 a regression or a benchmark that exited
 # non-zero; 2 a setup problem.
@@ -32,7 +36,7 @@ ROOT="$PWD"
 BUILD_DIR="build"
 BASELINE="tests/perf/baseline.tsv"
 THRESHOLD=5
-REPEAT=1
+REPEAT=""
 SAVE=0
 JSON=0
 FILTER=""
@@ -46,10 +50,26 @@ while [[ $# -gt 0 ]]; do
         --threshold)     THRESHOLD="$2"; shift 2 ;;
         --repeat)        REPEAT="$2"; shift 2 ;;
         -R|--filter)     FILTER="$2"; shift 2 ;;
-        -h|--help)       sed -n '2,20p' "$0"; exit 0 ;;
+        -h|--help)       sed -n '2,24p' "$0"; exit 0 ;;
         *) echo "perf-report: unknown argument $1" >&2; exit 2 ;;
     esac
 done
+
+# ANTS-5134 — a saved baseline is the reference every later run is judged
+# against, so one noisy sample poisons all of them. Measured 2026-09-12: a
+# single-run save at load average about 5 recorded audit.drift.spec_drift at
+# 3480 ms; best of 3 under the same load gave 565 ms, the true figure.
+if [[ -z "$REPEAT" ]]; then
+    if [[ "$SAVE" == 1 ]]; then REPEAT=3; else REPEAT=1; fi
+fi
+if [[ "$SAVE" == 1 ]]; then
+    load=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+    max_load="${ANTS_PERF_MAX_LOAD:-4}"
+    if [[ -n "$load" ]] && awk -v l="$load" -v m="$max_load" 'BEGIN{exit !(l > m)}'; then
+        echo "perf-report: WARNING — load average $load is above $max_load;" \
+             "this baseline may record outliers. Re-run when the machine is quiet." >&2
+    fi
+fi
 
 [[ -d "$BUILD_DIR" ]] || { echo "perf-report: no build dir '$BUILD_DIR'" >&2; exit 2; }
 
