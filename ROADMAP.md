@@ -73005,7 +73005,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: claude-ab-request-2026-09-24.
   Lanes: tools, docs.
 
-- 🚧 [ANTS-5315] **A roadmap organised by SemVer release, rendered by the store, with unplaced items a normal state.**
+- ✅ [ANTS-5315] **A roadmap organised by SemVer release, rendered by the store, with unplaced items a normal state.**
   Handoff record, with every decision so far and the next step:
   docs/reviews/ANTS-5315-roadmap-versions-handoff-2026-09-24.md.
   Urgent: Games_Hub's checker refuses every roadmap commit ("no version
@@ -73092,6 +73092,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   retitled to the "(X.Y.Z wave)" wording, 41 emptied. ROADMAP.md in sync
   with the store. Next: run it on the other projects, Games_Hub first,
   each dry run shown to its owner before apply.
+  2026-10-20: rollout done for every project requested. Games_Hub's
+  session re-ran the dry run (counts matched: moved 151, unplaced 22),
+  applied it as Games_Hub f851556 and pushed (claude-config msg 762).
+  claude-config requests no other project for now; another project runs
+  the op from its own root, dry run first.
   **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.
