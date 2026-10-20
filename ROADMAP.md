@@ -89258,7 +89258,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Roadmap dialog redesign + format spec v2 (user request 2026-05-07)
 
-- 🚧 [ANTS-1160] **Roadmap dialog redesign + format spec v2 — multi-phase initiative.**
+- ✅ [ANTS-1160] **Roadmap dialog redesign + format spec v2 — multi-phase initiative.**
   User report 2026-05-07: today's
   Roadmap dialog renders the full Markdown source to HTML in a
   `QTextBrowser`, leaving wall-of-text chrome (intro prose,
@@ -89354,6 +89354,14 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Driver bullet for the remaining store work: ANTS-3853. Revisit the
   2026-07-04 "split P3/P5/P6 and close this ✅" recommendation only after that
   lands — the rollout it proposed splitting out now has an owner.
+  Closed 2026-10-20 on the user's call (split and close; the 2026-08-06
+  "revisit after the store lands" hold lifted). No split items were
+  needed; each remainder already has a home. P4 scroll-anchor restore
+  shipped as ANTS-1264 (RoadmapDialog::captureScrollAnchor /
+  restoreScrollAnchor). P3 and P6 IPC verbs are served by the store's
+  roadmap_query and roadmap_log. P5 cross-project rollout is ANTS-3853.
+  P1: ANTS-NNNN ids kept by user decision; the v2 format pragma had no
+  consumer and is dropped.
   Source: user-2026-05-07.
 
 ### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
