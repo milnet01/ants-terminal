@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5795 -->
+<!-- ants-roadmap-id-high-water: ANTS=5796 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93922,7 +93922,7 @@ asked for them to ship in 0.8.0.
   Source: readability-fix-pass-2026-10-19.
   Lanes: terminal-grid, vt-parser-pty.
 
-- 📋 [ANTS-5785] **duplicate_blocks verb: find repeated and diverged code blocks across files.**
+- ✅ [ANTS-5785] **duplicate_blocks verb: find repeated and diverged code blocks across files.**
   Shape agreed with claude-config (CFG-0830), 2026-10-19.
   Args: paths[] (files or dirs); min_lines (default 5); similarity
   threshold for near-matches; normalise_names; include_tests and
@@ -93937,6 +93937,19 @@ asked for them to ship in 0.8.0.
   On ship: send the final schema to claude-config with session_message
   op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830's
   review-readability skill cites the verb in Phase 1b).
+  Shipped 2026-10-20. Seam src/duplicateblocks.{h,cpp}. Not built on
+  DocDedup: its shingle bags keep no line order, so they cannot give a
+  site's lines or a drifted copy's edits; lines are matched in order
+  instead. Args: caller_cwd, paths[], min_lines (2-200, default 5),
+  similarity (0.5-1, default 0.8), normalise_names, top (1-500,
+  default 50), include_tests, include_generated. Returns {ok,
+  groups:[{id, lines, copies, diverged, finding_shape, similarity,
+  sites:[{file, start, end}], diff:[{file, line, text}]}], top,
+  scanned:{files, skipped_tests, skipped_generated, truncated,
+  lines_compared, groups_total, rows_truncated}}. id dup:<12 hex of
+  SHA-1 of the first site's compared text>. No git-history hint.
+  Contract tests/features/mcp_duplicate_blocks/spec.md. Real src/: 420
+  files in 0.4 s, 335 groups, 160 with finding_shape.
   **Layman:** A tool that lists code written out more than once, including copies that have drifted apart, so a reviewer checks a short list instead of hunting.
   Kind: feature.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
@@ -94068,6 +94081,20 @@ asked for them to ship in 0.8.0.
   **Layman:** Some code comments point at work items or files that do not exist, so a reader following them hits a dead end.
   Kind: doc-fix.
   Source: in-session-2026-10-20 (first comment_claims run over src/).
+  Lanes: mcp.
+
+- 📋 [ANTS-5796] **Review the repeated code duplicate_blocks finds in src/ and fold the copies that coding.md § 1.3 says should be one.**
+  Measured 2026-10-20 with duplicate_blocks over src/ (ANTS-5785): 335
+  groups, 160 with finding_shape (three or more copies, or copies that
+  drifted apart). Largest: the review dialogs' shared block
+  (coldeyesdialog, indiereviewdialog, testauditdialog); claudebgtasks.cpp
+  vs claudetasklist.cpp; codebaseindex.cpp vs docsindex.cpp file walks.
+  A shortlist, not findings: review-readability's lanes confirm or
+  dismiss each group by id before any fold. Re-run the verb for the
+  current list.
+  **Layman:** The same code is written out in several places; folding the copies means a future fix is made once instead of in each copy.
+  Kind: refactor.
+  Source: in-session-2026-10-20 (first duplicate_blocks run over src/).
   Lanes: mcp.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)

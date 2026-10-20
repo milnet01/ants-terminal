@@ -1136,6 +1136,10 @@ public:
     // Seam: src/commentclaims.h. Handler TU: remotecontrol_readability.cpp.
     QJsonDocument cmdCommentClaims(const QJsonObject &req);
 
+    // ANTS-5785 — duplicate_blocks: code written out more than once.
+    // Seam: src/duplicateblocks.h. Handler TU: remotecontrol_readability.cpp.
+    QJsonDocument cmdDuplicateBlocks(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by

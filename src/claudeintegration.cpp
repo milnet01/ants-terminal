@@ -14744,6 +14744,105 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5785 — duplicate_blocks: code written out more than once.
+                // Every property below is read by cmdDuplicateBlocks (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "duplicate_blocks";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to find code written out more than once, including copies that "
+                        "drifted apart, as a shortlist instead of reading files side by side.");
+                    t["description"] = QStringLiteral(
+                        "Find blocks of code repeated across the given files. Each group: {id, "
+                        "lines, copies, diverged, finding_shape, similarity, sites[{file, start, "
+                        "end}], diff[{file, line, text}]}, largest first. Grades nothing. "
+                        "Refusals: bad_args, bad_path, no_project. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5785. Contract: tests/features/mcp_duplicate_blocks/spec.md. "
+                        "Compares lines in order: blank, comment, bracket-only and import lines "
+                        "are dropped. A match may skip up to 3 edited lines per side while "
+                        "matched lines stay at least `similarity` of the longer side; such a "
+                        "group is diverged and diff lists the edited lines. finding_shape: "
+                        "copies >= 3 or diverged (coding.md § 1.3). id: dup:<sha1 of the first "
+                        "site's text, 12 hex>. Tests and generated files are left out unless "
+                        "asked; paths defaults to source_roots, else src.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project the paths resolve in.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject s;
+                        s["type"] = "string";
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = s;
+                        p["description"] = QStringLiteral(
+                            "Files or directories, project-relative or absolute. Default: "
+                            "source_roots, else src.");
+                        props["paths"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 2;
+                        p["maximum"] = 200;
+                        p["description"] = QStringLiteral(
+                            "Shortest block reported, in compared lines (default 5).");
+                        props["min_lines"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "number";
+                        p["minimum"] = 0.5;
+                        p["maximum"] = 1.0;
+                        p["description"] = QStringLiteral(
+                            "Least share of matched lines for a drifted copy (default 0.8); 1 "
+                            "allows exact copies only.");
+                        props["similarity"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Match copies whose names, numbers and strings differ (default false).");
+                        props["normalise_names"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 500;
+                        p["description"] = QStringLiteral("How many groups to return (default 50).");
+                        props["top"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Also read test files (default false).");
+                        props["include_tests"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Also read generated files such as moc_* (default false).");
+                        props["include_generated"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -15924,7 +16023,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // ANTS-5787 — the readability shortlists.
                     if (name == QLatin1String("function_sizes") ||
                         name == QLatin1String("source_scrapes") ||   // ANTS-5602
-                        name == QLatin1String("comment_claims"))     // ANTS-5786
+                        name == QLatin1String("comment_claims") ||   // ANTS-5786
+                        name == QLatin1String("duplicate_blocks"))   // ANTS-5785
                         return QStringLiteral("readability");
                     // ANTS-1306 — task-start context bundler.
                     if (name == QLatin1String("task_priors"))
@@ -17586,6 +17686,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("source_scrapes"))     return C::Required;
     // ANTS-5786 — comment_claims walks paths under the caller's project root.
     if (toolName == QStringLiteral("comment_claims"))     return C::Required;
+    // ANTS-5785 — duplicate_blocks walks paths under the caller's project root.
+    if (toolName == QStringLiteral("duplicate_blocks"))   return C::Required;
     // ANTS-5698 — session_cost reads the transcript folder named by the cwd.
     if (toolName == QStringLiteral("session_cost"))       return C::Required;
     // ANTS-5734 — trace walks and parses the caller's project.

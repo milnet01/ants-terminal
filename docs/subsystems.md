@@ -171,6 +171,10 @@ Listed only where behavior isn't obvious from the name.
   verb's seam: comments harvested by each file's comment syntax and checked
   for missing quotations, dead `see` references and unknown ticket ids, with
   census numbers listed for a reader. ANTS-5786.
+- `duplicateblocks` (Qt6::Core, `ants_mcpcore_lib`) — the `duplicate_blocks`
+  verb's seam: compared lines matched in order across files, drifted copies
+  kept in one group, pair matches joined so three copies are one group.
+  ANTS-5785.
 - `docdedup` (Qt6::Core, `ants_core_lib`) — near-duplicate passage detection
   across a doc set: paragraph segmentation (a list item is one passage, marker
   line included), word 3-gram shingles, exact Jaccard, and connected-component
@@ -333,9 +337,10 @@ Listed only where behavior isn't obvious from the name.
   reports a session's context rent from its transcript; the seam is
   `sessioncostverb` (ANTS-5698).
 - `remotecontrol_readability` — thin handlers for the readability verbs
-  (`function_sizes`, `source_scrapes`, `comment_claims`); the seams are
-  `functionsizes`, `sourcescrapes`, `commentclaims` and `codewalk`
-  (ANTS-5787, ANTS-5602, ANTS-5786).
+  (`function_sizes`, `source_scrapes`, `comment_claims`, `duplicate_blocks`);
+  the seams are `functionsizes`, `sourcescrapes`, `commentclaims`,
+  `duplicateblocks` and `codewalk` (ANTS-5787, ANTS-5602, ANTS-5786,
+  ANTS-5785).
   (`remotecontrol_roadmap_migrate` is the remaining TU and has its own entry
   further down.)
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

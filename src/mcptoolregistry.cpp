@@ -184,6 +184,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("comment_claims",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdCommentClaims));
+    // ANTS-5785 — duplicate_blocks: code written out more than once.
+    // Required: paths resolve against the caller's project root.
+    sink.registerToolProvider("duplicate_blocks",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdDuplicateBlocks));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     sink.registerToolProvider("changelog_log",

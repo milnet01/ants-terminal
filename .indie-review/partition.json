@@ -444,6 +444,8 @@
         "src/sourcescrapes.h",
         "src/commentclaims.cpp",
         "src/commentclaims.h",
+        "src/duplicateblocks.cpp",
+        "src/duplicateblocks.h",
         "src/paginationengine.cpp",
         "src/paginationengine.h",
         "src/readregion.cpp",

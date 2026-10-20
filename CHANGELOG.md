@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`duplicate_blocks` lists code written out more than once, including copies that have drifted apart** (ANTS-5785)
+  Each group names every place the code sits and the lines a drifted copy changed, so a reviewer checks a short list instead of comparing files by hand.
+
 - **`comment_claims` checks what code comments claim: quotations, see-references, ticket ids and counts** (ANTS-5786)
   It lists comments that quote a file wrongly, point at a file or function that is gone, or cite a roadmap id that does not exist, and separately lists counts in comments that go stale, for a reviewer to judge.
 

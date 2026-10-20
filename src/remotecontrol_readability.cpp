@@ -1,5 +1,6 @@
 // ANTS-5787 TU 23/23 — the readability verbs' handlers: function_sizes,
-// source_scrapes (ANTS-5602) and comment_claims (ANTS-5786). Contracts: each
+// source_scrapes (ANTS-5602), comment_claims (ANTS-5786) and duplicate_blocks
+// (ANTS-5785). Contracts: each
 // verb's tests/features/mcp_<verb>/spec.md.
 //
 // Thin by design, like quotation_check: each seam (outside
@@ -14,6 +15,7 @@
 #include "remotecontrol.h"
 
 #include "commentclaims.h"
+#include "duplicateblocks.h"
 #include "functionsizes.h"
 #include "resolvedroot.h"
 #include "sourcescrapes.h"
@@ -73,4 +75,14 @@ QJsonDocument RemoteControl::cmdCommentClaims(const QJsonObject &req) {
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(CommentClaims::run(
         root, forward(req, {"paths", "limit", "include_tests", "include_generated"})));
+}
+
+QJsonDocument RemoteControl::cmdDuplicateBlocks(const QJsonObject &req) {
+    QJsonObject refusal;
+    const QString root =
+        resolveRoot(m_roots, req, QStringLiteral("duplicate_blocks"), &refusal);
+    if (root.isEmpty()) return QJsonDocument(refusal);
+    return QJsonDocument(DuplicateBlocks::run(
+        root, forward(req, {"paths", "min_lines", "similarity", "normalise_names", "top",
+                            "include_tests", "include_generated"})));
 }

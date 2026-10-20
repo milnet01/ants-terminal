@@ -277,6 +277,12 @@ server-controllable beyond this per-tool hint.
   prefixes the roadmap's own items use. Contract:
   [`tests/features/mcp_comment_claims/spec.md`](../../tests/features/mcp_comment_claims/spec.md).
 
+- **`duplicate_blocks` counts compared lines, not file lines** (ANTS-5785).
+  Blank, comment, bracket-only and import lines are dropped before matching,
+  so `lines` is smaller than a site's `end - start + 1`. A seed run found in
+  more than 30 places is treated as boilerplate and skipped. Contract:
+  [`tests/features/mcp_duplicate_blocks/spec.md`](../../tests/features/mcp_duplicate_blocks/spec.md).
+
 - **`roadmap_query` `mode:"section_index"` — the counts of a LEVEL-2
   section are ROLLUPS of its level-3 children, so summing `sections[]`
   double-counts.** Measured 2026-08-21: `0.7.92 — indie-review #4` (level 2)
