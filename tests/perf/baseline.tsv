@@ -1,7 +1,7 @@
 # ANTS-5133 perf baseline — regenerate with tools/perf-report.sh --save-baseline
-# date	2026-10-20T09:00:11Z
+# date	2026-10-20T09:02:34Z
 # machine	AMD Ryzen 5 5600 6-Core Processor | 12 cores | 31GiB
-# commit	3ae23a62
+# commit	dd3de09b
 audit.drift.changelog_coverage	96.9648	ms	lower_is_better
 audit.drift.contract_doc_specs	928.0527	ms	lower_is_better
 audit.drift.contract_doc_standards	465.6230	ms	lower_is_better
@@ -39,6 +39,8 @@ paint.sgr_styled.cached_ms	414.8683	ms	lower_is_better
 paint.sgr_styled.hit_rate	0.9993	ratio	higher_is_better
 paint.sgr_styled.speedup	1.5860	x	higher_is_better
 resize.reflow.scrollback_50k	110.1929	ms	lower_is_better
+scrollback.seek.jump_to_top_ms	6.9156	ms	lower_is_better
+scrollback.seek.page_down_ms	4.3552	ms	lower_is_better
 search.ci_literal.lookup_ms	0.0518	ms	lower_is_better
 search.ci_literal.scan_lines_per_sec	6634180.4120	lines/s	higher_is_better
 search.literal_term.lookup_ms	0.0523	ms	lower_is_better
@@ -48,6 +50,8 @@ search.regex_term.scan_lines_per_sec	6768325.1049	lines/s	higher_is_better
 search.widget.literal_term.scan_lines_per_sec	1047470.0690	lines/s	higher_is_better
 search.widget.regex_term.scan_lines_per_sec	1059029.8275	lines/s	higher_is_better
 search.widget.single_space.scan_lines_per_sec	48496.5058	lines/s	higher_is_better
+selection.copy_ms	442.9088	ms	lower_is_better
+selection.extract_ms	428.0257	ms	lower_is_better
 session.async_caller_ms	250.3905	ms	lower_is_better
 session.compress_ms	234.8830	ms	lower_is_better
 session.hash_ms	4.1810	ms	lower_is_better

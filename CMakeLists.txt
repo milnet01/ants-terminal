@@ -2059,37 +2059,9 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 300)
 
-    # bench_widget_search — the REAL TerminalWidget::performSearch over a full
-    # scrollback (ANTS-2000). bench_search_throughput reproduces the scan over
-    # pre-built strings and so never pays for building line text from cells.
-    # Same --start-group link as bench_full_paint, for the same reason.
-    add_executable(bench_widget_search
-        tests/perf/bench_widget_search.cpp
-    )
-    target_link_libraries(bench_widget_search PRIVATE
-        -Wl,--start-group
-        ants_chrome_lib ants_vt_lib ants_core_lib
-        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
-        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-        -Wl,--end-group
-        Qt6::Widgets Qt6::Core Qt6::Gui
-    )
-    target_include_directories(bench_widget_search PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
-    target_compile_options(bench_widget_search PRIVATE
-        -Wall -Wextra -Wpedantic -O2
-    )
-    add_test(NAME widget_search COMMAND bench_widget_search)
-    set_tests_properties(widget_search PROPERTIES
-        LABELS "perf"
-        TIMEOUT 300)
-
-    # bench_full_paint — wall time of the WHOLE of TerminalWidget::paintEvent
-    # (ANTS-5134). Links the real widget and renders it offscreen, so the
-    # number is the frame the terminal actually paints rather than a
-    # reproduction of its shaping step (which bench_paint_throughput covers).
-    add_executable(bench_full_paint
-        tests/perf/bench_full_paint.cpp
-    )
+    # A benchmark that drives the real TerminalWidget, built as
+    # bench_<name> and registered as ctest <name> under the `perf` label.
+    #
     # ANTS-1444 — the static-lib graph has symbol cycles (chrome<->claude<->
     # dialogs via mainwindow.cpp, chrome<->audit_dialog via the AuditDialog
     # ctor), so the archives must sit inside --start-group for the linker to
@@ -2100,22 +2072,40 @@ if(ANTS_TESTS)
     # An ordered link resolved here with mold and failed on the Qt 6.2 floor's
     # GNU ld, which is stricter about archive order — caught by the pre-push
     # qt62-guard, not by any local build.
-    target_link_libraries(bench_full_paint PRIVATE
-        -Wl,--start-group
-        ants_chrome_lib ants_vt_lib ants_core_lib
-        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
-        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-        -Wl,--end-group
-        Qt6::Widgets Qt6::Core Qt6::Gui
-    )
-    target_include_directories(bench_full_paint PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
-    target_compile_options(bench_full_paint PRIVATE
-        -Wall -Wextra -Wpedantic -O2
-    )
-    add_test(NAME full_paint COMMAND bench_full_paint)
-    set_tests_properties(full_paint PROPERTIES
-        LABELS "perf"
-        TIMEOUT 300)
+    function(ants_add_widget_bench name)
+        add_executable(bench_${name} tests/perf/bench_${name}.cpp)
+        target_link_libraries(bench_${name} PRIVATE
+            -Wl,--start-group
+            ants_chrome_lib ants_vt_lib ants_core_lib
+            ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
+            $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+            -Wl,--end-group
+            Qt6::Widgets Qt6::Core Qt6::Gui
+        )
+        target_include_directories(bench_${name} PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+        target_compile_options(bench_${name} PRIVATE -Wall -Wextra -Wpedantic -O2)
+        add_test(NAME ${name} COMMAND bench_${name})
+        set_tests_properties(${name} PROPERTIES LABELS "perf" TIMEOUT 300)
+    endfunction()
+
+    # bench_widget_search — the REAL TerminalWidget::performSearch over a full
+    # scrollback (ANTS-2000). bench_search_throughput reproduces the scan over
+    # pre-built strings and so never pays for building line text from cells.
+    ants_add_widget_bench(widget_search)
+
+    # bench_full_paint — wall time of the WHOLE of TerminalWidget::paintEvent
+    # (ANTS-5134). Links the real widget and renders it offscreen, so the
+    # number is the frame the terminal actually paints rather than a
+    # reproduction of its shaping step (which bench_paint_throughput covers).
+    ants_add_widget_bench(full_paint)
+
+    # ANTS-5134 — Shift+Home to the top of a full scrollback, then paging
+    # down, each step with the frame that shows it.
+    ants_add_widget_bench(scrollback_seek)
+
+    # ANTS-5134 — a mouse-drag selection over the whole scrollback, then
+    # selectedText() and a Ctrl+Shift+C copy, timed apart.
+    ants_add_widget_bench(selection_copy)
 
     endif()  # NOT ANTS_SANITIZERS — ANTS-5143
 
