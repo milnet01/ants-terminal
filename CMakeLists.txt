@@ -2107,6 +2107,18 @@ if(ANTS_TESTS)
     # selectedText() and a Ctrl+Shift+C copy, timed apart.
     ants_add_widget_bench(selection_copy)
 
+    # ANTS-5134 — launch to first paint of the built ants-terminal, in an
+    # isolated XDG tree. Links nothing of ours; it runs the real binary.
+    add_executable(bench_startup tests/perf/bench_startup.cpp)
+    target_link_libraries(bench_startup PRIVATE Qt6::Core)
+    target_include_directories(bench_startup PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_definitions(bench_startup PRIVATE
+        ANTS_TERMINAL_BIN="$<TARGET_FILE:ants-terminal>")
+    target_compile_options(bench_startup PRIVATE -Wall -Wextra -Wpedantic -O2)
+    add_dependencies(bench_startup ants-terminal)
+    add_test(NAME startup COMMAND bench_startup)
+    set_tests_properties(startup PROPERTIES LABELS "perf" TIMEOUT 300)
+
     endif()  # NOT ANTS_SANITIZERS — ANTS-5143
 
 

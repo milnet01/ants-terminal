@@ -51,6 +51,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <cstdio>    // ANTS-5134 — the first-paint marker on stderr
 #include <memory>
 #include <utility>   // std::as_const — see updateSuggestion()
 
@@ -879,6 +880,22 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         stallGuard.setContext(QString::asprintf(
             " grid=%dx%d scrollOff=%d", m_grid->rows(), m_grid->cols(),
             m_scrollOffset).toUtf8());
+
+    // ANTS-5134 — bench_startup times launch to first paint. With
+    // ANTS_PERF_FIRST_PAINT set, the first terminal paint of the process
+    // queues a marker on stderr and a quit, both after this paint finishes.
+    // Unset, it is one static read per paint.
+    static const bool perfFirstPaint =
+        qEnvironmentVariableIsSet("ANTS_PERF_FIRST_PAINT");
+    static bool perfFirstPaintSent = false;
+    if (perfFirstPaint && !perfFirstPaintSent) {
+        perfFirstPaintSent = true;
+        QMetaObject::invokeMethod(qApp, [] {
+            std::fputs("ANTS_PERF_FIRST_PAINT\n", stderr);
+            std::fflush(stderr);
+            QCoreApplication::quit();
+        }, Qt::QueuedConnection);
+    }
 
     QPainter p(this);
     p.setFont(m_font);

@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **The perf suite measures resize reflow, scrollback seek, large-selection copy and startup to first paint, and a saved baseline keeps the best of three runs** (ANTS-5134)
+
 - **`doc_symbols` takes `count_only`, returning its totals and a findings count without the per-symbol rows** (ANTS-5265)
 
 - **roadmap_log op:"place_by_release" files each shipped item under the release it shipped in** (ANTS-5315)

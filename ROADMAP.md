@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5789 -->
+<!-- ants-roadmap-id-high-water: ANTS=5791 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91917,7 +91917,7 @@ a modern terminal" release.
   Source: in-session-2026-09-08.
   Lanes: claudestatuswidgets.
 
-- 🚧 [ANTS-5134] **The perf suite does not measure the paths a user actually waits on.**
+- ✅ [ANTS-5134] **The perf suite does not measure the paths a user actually waits on.**
   ANTS-5133 built the harness. This is its coverage, and without it the
   harness cannot answer the question that prompted it — where the terminal
   is slowest.
@@ -92031,6 +92031,16 @@ a modern terminal" release.
   Serves SIGN-2 (docs/discovery.md, 2026-09-28): the perf suite should
   measure what SIGN-2 names. The Konsole comparison is ANTS-5547, typing
   lag ANTS-5548.
+  2026-10-20: every gap this item named is covered. bench_resize_reflow
+  (about 107 ms per reflow at 50k; 1M opt-in), bench_scrollback_seek
+  (6.9 ms jump to top, 4.4 ms per page), bench_selection_copy (about 430
+  ms extract and the same again to copy, 9.06M chars), bench_startup
+  (about 76-80 ms launch to first paint, offscreen, via an
+  ANTS_PERF_FIRST_PAINT marker in TerminalWidget::paintEvent).
+  --save-baseline now keeps the best of 3 and warns above load 4. The
+  four widget benchmarks share ants_add_widget_bench(). Findings filed
+  rather than tuned, per this item: ANTS-5789 (scrollback memory), plus
+  the reflow and copy items filed with it.
   **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
@@ -92062,6 +92072,29 @@ a modern terminal" release.
   **Layman:** Every line of history the terminal keeps uses far more memory than its text needs, so the largest history setting could use more memory than many computers have.
   Kind: investigate.
   Source: in-session-2026-10-20 (ANTS-5134 bench_resize_reflow).
+
+- 📋 [ANTS-5790] **A width change reflows a 50k scrollback in about 107 ms on the GUI thread, so dragging a window edge drops frames.**
+  Measured 2026-10-20 by bench_resize_reflow (resize.reflow.scrollback_50k
+  in tests/perf/baseline.tsv): 160 <-> 120 columns over 50k soft-wrapped
+  lines, about 107 ms per reflow, three runs within 4%. A 60 fps frame is
+  16.7 ms. Options to weigh: reflow the visible screen first and the
+  scrollback lazily or off-thread, or coalesce resize steps during a drag.
+  Refute by re-running the benchmark.
+  **Layman:** Resizing the window with a long history makes it stutter, because each step of the drag rewraps every stored line before the next frame can draw.
+  Kind: perf.
+  Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
+
+- 📋 [ANTS-5791] **Ctrl+Shift+C over a large selection builds the selected text twice, about 430 ms each for a full 50k scrollback.**
+  Measured 2026-10-20 by bench_selection_copy: a drag over the whole 50k
+  scrollback (9.06M characters); selection.extract_ms 428 and
+  selection.copy_ms 443 in tests/perf/baseline.tsv. The copy re-runs the
+  extraction selectedText() already did, so the user waits for both.
+  Investigate whether the copy path and auto-copy-on-select can reuse one
+  extraction, and whether extraction itself (about 47 ns a character) has
+  an obvious cost. Refute by re-running the benchmark.
+  **Layman:** Copying a very large selection takes nearly a second, and half of that is spent doing the same work twice.
+  Kind: perf.
+  Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
 
 ### 🎨 Features — multiplexing
 

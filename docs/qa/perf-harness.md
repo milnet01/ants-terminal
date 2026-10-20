@@ -103,9 +103,13 @@ improve while the cache quietly stops working.
 | `bench_drift_lanes` | the four in-process audit lanes run on the GUI thread |
 | `bench_session_save` | `SessionManager::saveSession` on a full scrollback, split into `serialize()` and the write |
 | `bench_mcp_reply_tail` | each phase `finishToolDispatch` runs on the GUI thread for a large MCP reply |
+| `bench_resize_reflow` | `TerminalGrid::resize` reflowing a full 50k scrollback; the 1M case needs `ANTS_PERF_RESIZE_1M=1` |
+| `bench_scrollback_seek` | Shift+Home to the top of a full scrollback, then Shift+PageDown, each with its frame |
+| `bench_selection_copy` | a mouse-drag selection over the whole scrollback, then `selectedText()` and Ctrl+Shift+C |
+| `bench_startup` | launch to first paint of the built `ants-terminal`, in a throwaway XDG tree |
 
-Known gaps, not yet covered: scrollback seek, resize reflow, startup time,
-and selection/copy over a large region.
+`bench_scrollback_seek` and `bench_selection_copy` exit 2 when their action
+did not take effect, for the reason the next section gives.
 
 ## A benchmark that measures nothing
 
