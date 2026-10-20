@@ -21,7 +21,8 @@ TEST(TraceGrammars, EveryShipOneLanguageLoads) {
         "c", "cpp", "python", "bash", "lua", "glsl",
         "javascript", "typescript", "tsx", "rust", "go", "java",
         "c_sharp", "ruby", "qmljs", "make", "css",
-        "scala", "zig", "julia", "objc"};
+        "scala", "zig", "julia", "objc",
+        "kotlin", "cmake", "haskell", "r", "nix"};
     std::vector<std::string> ids;
     for (const trace::Language &l : trace::languages()) ids.emplace_back(l.id);
     EXPECT_EQ(expected, ids) << "the vendored set must be § 2.3's ship-1 list and ship-3 batches";

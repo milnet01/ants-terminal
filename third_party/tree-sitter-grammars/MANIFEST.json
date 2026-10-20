@@ -204,6 +204,51 @@
       "sha256": "c96a6b1fdebccd56419f552c416a044e94401990dcf5ccfb633f5d2b395f5578",
       "license": "MIT",
       "generated_by": "upstream"
+    },
+    {
+      "lang": "kotlin",
+      "repo": "https://github.com/fwcd/tree-sitter-kotlin",
+      "tag": "0.3.8",
+      "commit": "e1a2d5ad1f61f5740677183cd4125bb071cd2f30",
+      "sha256": "2046cb900ba359119db534f79de090310a81f33a7870a141d549c3caa9d71c6c",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "cmake",
+      "repo": "https://github.com/uyha/tree-sitter-cmake",
+      "tag": "v0.7.5",
+      "commit": "e997bd0b275ca525ce9befecedf5299031183661",
+      "sha256": "18d0a9d81cea54e3be0fa7c6415c286098e760f7806a6d3f0af3c472e2e09324",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "haskell",
+      "repo": "https://github.com/tree-sitter/tree-sitter-haskell",
+      "tag": "v0.24.1",
+      "commit": "97288e585b0bd44199720280d067fa35bacd81ff",
+      "sha256": "303499ad970426c0f7a90652ec76d6fe4f43e37318c1774d4a9a5e4bb59af968",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "r",
+      "repo": "https://github.com/r-lib/tree-sitter-r",
+      "tag": "v1.3.0",
+      "commit": "346d3707b8c9301f1051e8f6e32666e67529f7d2",
+      "sha256": "52d7a2d3cc5ef8a1db82da1cbc3a500bbf63518dbc578b92b30a5bc962f6bb29",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "nix",
+      "repo": "https://github.com/nix-community/tree-sitter-nix",
+      "tag": "v0.3.0",
+      "commit": "ea1d87f7996be1329ef6555dcacfa63a69bd55c6",
+      "sha256": "52cbf49d3e080b45dd8147adb37d7bc2aa709fa100e040f48fb482a2b3754852",
+      "license": "MIT",
+      "generated_by": "upstream"
     }
   ]
 }

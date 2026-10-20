@@ -296,7 +296,9 @@ TEST_F(TraceServe, Inv10EmptyAnswerSaysWhatItScanned) {
         QStringLiteral("c_sharp"),    QStringLiteral("ruby"), QStringLiteral("qmljs"),
         QStringLiteral("make"),       QStringLiteral("css"),
         QStringLiteral("scala"),      QStringLiteral("zig"),  QStringLiteral("julia"),
-        QStringLiteral("objc")};
+        QStringLiteral("objc"),
+        QStringLiteral("kotlin"),     QStringLiteral("cmake"), QStringLiteral("haskell"),
+        QStringLiteral("r"),          QStringLiteral("nix")};
     EXPECT_EQ(langs, fixtureLangs) << dump(scanned);
 }
 
@@ -480,6 +482,31 @@ TEST_F(TraceServe, Ship3SecondBatchDefinitionsAndCallers) {
         << dump(arr(r, "callers"));
     const QSet<QString> batch{QStringLiteral("scala"), QStringLiteral("zig"),
                               QStringLiteral("julia"), QStringLiteral("objc")};
+    for (const QJsonValue &v : arr(r, "not_covered"))
+        EXPECT_FALSE(v.toObject().value(QStringLiteral("reason")).toString() ==
+                         QLatin1String("no_grammar") &&
+                     batch.contains(v.toObject().value(QStringLiteral("lang")).toString()))
+            << dump(v);
+}
+
+// § 2.3, ship 3's third batch — the same shape with its own probe name. The
+// Haskell probe's type signature is a declaration, not a second definition.
+TEST_F(TraceServe, Ship3ThirdBatchDefinitionsAndCallers) {
+    const QJsonObject r = traceSymbol(QStringLiteral("shipThreeBatchThree"));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    QSet<QString> defFiles, callerFiles;
+    for (const QJsonValue &v : arr(r, "definitions"))
+        defFiles.insert(v.toObject().value(QStringLiteral("file")).toString());
+    for (const QJsonValue &v : arr(r, "callers"))
+        callerFiles.insert(v.toObject().value(QStringLiteral("file")).toString());
+    const QSet<QString> files{QStringLiteral("probe.kt"), QStringLiteral("probe.cmake"),
+                              QStringLiteral("probe.hs"), QStringLiteral("probe.r"),
+                              QStringLiteral("probe.nix")};
+    EXPECT_EQ(defFiles, files) << dump(arr(r, "definitions"));
+    EXPECT_EQ(callerFiles, files) << dump(arr(r, "callers"));
+    const QSet<QString> batch{QStringLiteral("kotlin"), QStringLiteral("cmake"),
+                              QStringLiteral("haskell"), QStringLiteral("r"),
+                              QStringLiteral("nix")};
     for (const QJsonValue &v : arr(r, "not_covered"))
         EXPECT_FALSE(v.toObject().value(QStringLiteral("reason")).toString() ==
                          QLatin1String("no_grammar") &&

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5793 -->
+<!-- ants-roadmap-id-high-water: ANTS=5794 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87410,6 +87410,16 @@ measured Ants adding about 5,250 tokens to every request.
   queries need #any-of?, which trace does not evaluate (ANTS-5792).
   Still open in ship 3: kotlin, cmake, dart, haskell, ocaml, r, nix,
   sql, perl, swift (ANTS-5752), php (ANTS-5751), elixir (ANTS-5792).
+  2026-10-20, ship 3 batch 3: vendored tree-sitter-kotlin 0.3.8,
+  tree-sitter-cmake v0.7.5, tree-sitter-haskell v0.24.1, tree-sitter-r
+  v1.3.0 and tree-sitter-nix v0.3.0 (each MIT, parser.c committed
+  upstream, ABI 13-15). R's queries are upstream's tags.scm; Nix's
+  replace upstream's (whole-attrpath names, two-argument calls only);
+  kotlin, cmake and haskell ship none, so theirs were written against
+  parse trees and every pattern was seen to match. Held: ocaml
+  (ANTS-5751, common/scanner.h path), sql, perl and dart (ANTS-5794, pin
+  rule). Still open in ship 3: swift (ANTS-5752), php and ocaml
+  (ANTS-5751), elixir (ANTS-5792), sql, perl, dart (ANTS-5794).
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
@@ -87547,6 +87557,12 @@ measured Ants adding about 5,250 tokens to every request.
   would break generated_by:"upstream" and the hash pin. Needs a spec
   amendment and its gate. Split from ANTS-5734's first ship-3 batch.
   Reload: runs in ants-mcpd; next reconnect.
+  2026-10-20: OCaml waits on the same question. tree-sitter-ocaml
+  v0.26.0's grammars/ocaml/src/scanner.c includes
+  "../../../common/scanner.h", which vendored at
+  third_party/tree-sitter-grammars/ocaml/src/ resolves outside the
+  grammars folder; vendored as an `extra` it would take typescript's
+  common/scanner.h path. Settle both together.
   **Layman:** Claude's code lookup learns PHP once a file-placement clash between two grammars is solved.
   Kind: feature.
   Source: review-contract-ANTS-5734-2026-10-16.
@@ -87603,6 +87619,24 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Elixir code looks the same whether it defines a function or calls one, so the lookup tool needs a filter feature it does not have yet before it can support Elixir.
   Kind: feature.
   Source: in-session-2026-10-20 (ANTS-5734 ship 3, batch 2).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-5794] **trace cannot vendor SQL, Perl or Dart under § 2.3's pin rule: SQL and Perl ship parser.c only on a generated branch, and Dart has no release or tag.**
+  Checked 2026-10-20 with gh api. DerekStride/tree-sitter-sql v0.3.11
+  and tree-sitter-perl/tree-sitter-perl v2.0.0 commit no src/parser.c at
+  the tag; SQL's generated parser.c sits on its gh-pages branch, Perl's
+  on a release branch. UserNobody14/tree-sitter-dart has no release and
+  no tag (newest commit 0038280b, 2026-10-18). Spec § 2.3 pins a grammar
+  to its latest release, else its latest tag, else a later commit that
+  fixes a defect; none of the three fits. Options: allow a pin to the
+  generated-branch commit built from the release tag, and to the newest
+  commit where a repository has neither; or generate parser.c ourselves
+  (ANTS-5752). Either changes § 2.3, so it owes review-contract first.
+  Dart is the INV-5/INV-9 no-grammar fixture: vendoring it moves that
+  fixture to another unvendored language.
+  **Layman:** Three languages cannot be added to the code lookup tool yet, because the rule for which version of their parser to copy does not fit how those projects publish.
+  Kind: feature.
+  Source: in-session-2026-10-20 (ANTS-5734 ship 3, batch 3).
   Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

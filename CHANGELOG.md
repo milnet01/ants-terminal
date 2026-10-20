@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **trace reads Kotlin, CMake, Haskell, R and Nix** (ANTS-5734)
+  The trace verb finds definitions and callers in five more languages, from grammars vendored with the source.
+
 - **`trace` reads Scala, Zig, Julia and Objective-C, and no longer reports a Julia function's own definition as a call of it** (ANTS-5734)
 
 - **The perf suite measures resize reflow, scrollback seek, large-selection copy and startup to first paint, and a saved baseline keeps the best of three runs** (ANTS-5134)
