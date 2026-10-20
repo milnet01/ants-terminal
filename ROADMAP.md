@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5792 -->
+<!-- ants-roadmap-id-high-water: ANTS=5793 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89419,6 +89419,36 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   P1: ANTS-NNNN ids kept by user decision; the v2 format pragma had no
   consumer and is dropped.
   Source: user-2026-05-07.
+
+- 🚧 [ANTS-5793] **The Roadmap dialog's columns change width with what is shown; give each a width set by the dialog's size alone, and wrap text inside it.**
+  User request 2026-10-20, with two screenshots of the Current tab: with
+  one row shown the title column starts near x=290; with an In-progress
+  card shown, the state column grows to fit "🚧In progress (active commit
+  work — usually direct-to-main …)" and pushes the title to x=930.
+  Wanted: column widths "dynamic with the size of the dialog but
+  calculated and fixed at any given size", and word wrap where needed.
+
+  Cause, read 2026-10-20: RoadmapDialog::applyCardColumnGrid
+  (src/roadmapdialog.cpp) sets every column but the summary to a FIXED
+  floor, which Qt treats as a minimum, and the stylesheet keeps
+  rm-col-state, rm-col-kind, rm-col-meta, rm-count and rm-col-chev
+  nowrap; so each column grows to its widest content (ANTS-3762, 5604,
+  5610 chose this). Design to build: compute every column's width from
+  doc->textWidth() (a share of it, with a fixed floor only for
+  content of known size — counts, date, #id), set them all as fixed
+  constraints summing to the width, drop nowrap from the state and kind
+  columns so their text wraps, and keep the label's nowrap. Keep the
+  protections those items measured: no mid-word breaks (ANTS-5610's
+  widest-word hold for the summary) and a usable summary at the ~900 px
+  first-run width. applyCardColumnGrid already re-runs on rebuild and on
+  resize. Tests pinning today's widths: test_roadmap_dialog_cards.cpp
+  (three tests call applyCardColumnGrid). Hot reload: a dialog layout
+  change reaches a running terminal only on relaunch (code in the
+  terminal binary); the dialog has no state to restart.
+  **Layman:** When you filter the roadmap, the columns jump left and right because each one sizes itself to its longest text; they should stay put at any window size and wrap long text instead.
+  Kind: ux.
+  Source: user-request-2026-10-20.
+  Lanes: roadmapdialog.
 
 ### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
 

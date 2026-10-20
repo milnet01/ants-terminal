@@ -169,6 +169,15 @@ or similar thing, in order of preference:
 whether to *extract* a helper, extract on the third call-site, not
 the first or second. Premature DRY costs more than duplication.
 
+**Two copies count as three where a past fix had to touch both** — as a
+comment, a ticket or the history shows. The pattern Rule of Three waits
+for is already visible, and the next fix will be needed twice too.
+Extract when your change touches either copy. **A pair you merely found
+is §1.7's — surface it.**
+
+Breach: a copy your change touches, left as one of two that a recorded
+past fix had to patch both of.
+
 **Touches** means your change edits that code's own lines. Editing only
 a caller does not.
 
@@ -205,7 +214,7 @@ every module-level name is importable, which would make nothing private.
 Breach: a private helper your change touches, reached from one place
 after your change.
 
-**Both repairs above are part of the request that reached the code** — so
+**Each repair above is part of the request that reached the code** — so
 each is §1.7's *refactoring to satisfy the request*, not its *adjacent*
 branch.
 
@@ -563,7 +572,7 @@ Each of these is something that looks like care and is not.
 |------|----------------------|
 | §1.1 shortest correct implementation | **nothing mechanical** — a code review, the only reader that can raise "shorter would have worked" about an alternative nobody wrote |
 | §1.2 no workarounds without a root-cause fix | **`Partial:`** `check-code`'s language sweep, a static-analysis check. Measured unconfigured on `ruff` 0.16.8: `E722` and `S110` fire, `S110` being §1.2's own `try/except: pass`, and `ERA001` finds a commented-out branch once selected. **Nothing** catches a silently loosened condition, or a skipped test naming no tracked cause |
-| §1.3 reuse before rewriting | **nothing mechanical** for the general case — a reviewer who knows the codebase, or `review-readability`'s cold read. A near-duplicate detector finds copied *text*, which is the weakest form of the rule and the one least worth catching |
+| §1.3 reuse before rewriting | **nothing mechanical** for the general case — a reviewer who knows the codebase, or `review-readability`'s cold read. A near-duplicate detector finds copied *text*, which is the weakest form of the rule and the one least worth catching. A pair a past fix patched twice shows in each copy's comments and `git log -L`; nothing raises it unprompted |
 | §1.4 six-month test | **nothing** — by construction. It asks whether a stranger will understand this later, which nobody present can answer. `review-readability` is the reader who was not there |
 | §1.5 latest stable library, current idioms | `dependencies.md` § What checks this owns the answer for both halves — a version-staleness check for what is behind, and a person for the idiom refresh |
 | §1.6 an assumption is stated, not built on | **nothing mechanical** — a reviewer asking "how was this decided?", or the user recognising a choice they never made. The assumption is invisible once the code exists, which is the failure |
