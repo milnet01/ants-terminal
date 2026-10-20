@@ -2,6 +2,7 @@
 
 #include "briefdispatch.h"
 #include "codebaseindex.h"     // ANTS-3709 — indexable-suffix filter
+#include "codewalk.h"          // ANTS-4120 — the generated-file predicate
 #include "falseposledger.h"
 #include "filecontentcache.h"  // ANTS-5056 — shared, locked file cache
 #include "pathvalidation.h"
@@ -253,40 +254,9 @@ QList<Lane> deriveFileListPartition(const QString &projectPath,
 }
 
 // ANTS-4096 — a generated source file is not review material: a lane briefed
-// from one reviews a compiler's output. The prefix-only test this replaces
-// (`moc_`/`ui_`/`qrc_`) missed every SUFFIX-shaped generator, which is how a
-// shaders/ directory partitioned into 22 `*.spv.h` byte-array headers and none
-// of the 19 hand-written GLSL sources beside them.
-//
-// Deliberately NOT AuditDialog::isGeneratedFile: that one lives on a
-// Widgets-linked class this core library must not see, and it carries
-// audit-artifact rules (`.audit_cache/`, `audit_fixtures/`) that have no
-// meaning for a review partition. It also predates `.spv.h`. Third site of
-// this shape (auditdialog, findsources, here) — the Rule-of-Three extraction
-// is filed as its own item rather than smuggled into this fix.
-bool isGeneratedSource(const QString &fileName) {
-    static const QStringList kPrefixes = {
-        QStringLiteral("moc_"), QStringLiteral("ui_"), QStringLiteral("qrc_"),
-    };
-    for (const QString &p : kPrefixes)
-        if (fileName.startsWith(p)) return true;
-
-    // Suffix-shaped generators: shader byte arrays (glslc/spirv `-mfs`),
-    // protobuf/gRPC, flex/bison, and the `*_generated.<ext>` convention.
-    static const QStringList kSuffixes = {
-        QStringLiteral(".spv.h"),  QStringLiteral(".spv.hpp"),
-        QStringLiteral(".pb.h"),   QStringLiteral(".pb.cc"),
-        QStringLiteral(".yy.cc"),  QStringLiteral(".tab.cc"),
-        QStringLiteral(".ttf.h"),  QStringLiteral(".moc"),
-    };
-    for (const QString &s : kSuffixes)
-        if (fileName.endsWith(s, Qt::CaseInsensitive)) return true;
-
-    static const QRegularExpression reGenerated(
-        QStringLiteral(R"(_generated\.[A-Za-z0-9]+$)"),
-        QRegularExpression::CaseInsensitiveOption);
-    return reGenerated.match(fileName).hasMatch();
-}
+// from one reviews a compiler's output. The predicate is CodeWalk's
+// (ANTS-4120), shared with the readability verbs.
+using CodeWalk::isGeneratedSource;
 
 // ANTS-4786 — the source roots the computed walk reads. Extracted so
 // unassignedForLanes asks about the same tree; two copies of this resolution

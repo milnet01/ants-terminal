@@ -1,4 +1,4 @@
-// ANTS-3833 TU 2/22 — The --remote socket, dispatch(), and the terminal and
+// ANTS-3833 TU 2/23 — The --remote socket, dispatch(), and the terminal and
 // window verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"

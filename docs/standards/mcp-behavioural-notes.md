@@ -253,6 +253,14 @@ server-controllable beyond this per-tool hint.
   `precision:"syntactic"` says so. Contract:
   [`docs/specs/ANTS-5734-trace-verb.md`](../specs/ANTS-5734-trace-verb.md).
 
+- **`function_sizes` measures only what `file_outline` calls a function**
+  (ANTS-5787): its `func` symbols. A language `file_outline` does not
+  outline, such as Lua, gives no rows and no `unmeasured` count;
+  `scanned.files` still counts its files. A function with no brace body (a
+  Ruby `def … end`, a Kotlin `fun f() = x`) or whose closing brace never
+  balances is counted in `unmeasured`. Contract:
+  [`tests/features/mcp_function_sizes/spec.md`](../../tests/features/mcp_function_sizes/spec.md).
+
 - **`roadmap_query` `mode:"section_index"` — the counts of a LEVEL-2
   section are ROLLUPS of its level-3 children, so summing `sections[]`
   double-counts.** Measured 2026-08-21: `0.7.92 — indie-review #4` (level 2)

@@ -172,13 +172,19 @@ struct SymRange {
 int braceBalancedEndLine(const QString &absPath, int startLine) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return 0;
-    int lineNo = 0, depth = 0;
+    QStringList lines;
+    while (!f.atEnd()) lines.append(QString::fromUtf8(f.readLine()));
+    return ReadRegion::braceBalancedEndLine(lines, startLine);
+}
+
+}  // namespace
+
+int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
+                         int *openLine) {
+    int depth = 0, deepest = 0;
     bool seenOpen = false, inBlockComment = false;
-    while (!f.atEnd()) {
-        const QByteArray raw = f.readLine();
-        ++lineNo;
-        if (lineNo < startLine) continue;
-        const QString line = QString::fromUtf8(raw);
+    for (int lineNo = qMax(1, startLine); lineNo <= lines.size(); ++lineNo) {
+        const QString &line = lines.at(lineNo - 1);
         bool inString = false, inChar = false;
         for (int i = 0; i < line.size(); ++i) {
             const QChar c = line.at(i);
@@ -201,15 +207,23 @@ int braceBalancedEndLine(const QString &absPath, int startLine) {
             if (c == QLatin1Char('/') && n == QLatin1Char('*')) { inBlockComment = true; ++i; continue; }
             if (c == QLatin1Char('"'))  { inString = true; continue; }
             if (c == QLatin1Char('\'')) { inChar = true; continue; }
-            if (c == QLatin1Char('{')) { ++depth; seenOpen = true; }
-            else if (c == QLatin1Char('}')) {
-                if (--depth <= 0 && seenOpen) return lineNo;
+            if (c == QLatin1Char('{')) {
+                deepest = qMax(deepest, ++depth);
+                if (!seenOpen && openLine) *openLine = lineNo;
+                seenOpen = true;
+            } else if (c == QLatin1Char('}')) {
+                if (--depth <= 0 && seenOpen) {
+                    if (maxDepth) *maxDepth = deepest;
+                    return lineNo;
+                }
             }
         }
         if (lineNo - startLine > 200000) break;  // defensive bound
     }
     return 0;
 }
+
+namespace {
 
 SymRange resolveSymbol(const QString &absPath, const QString &name) {
     SymRange r;

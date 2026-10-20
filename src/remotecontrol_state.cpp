@@ -1,4 +1,4 @@
-// ANTS-3833 TU 11/22 — Session and state verbs.
+// ANTS-3833 TU 11/23 — Session and state verbs.
 #include "remotecontrol.h"
 #include "gitwrap.h"   // ANTS-4352 — gate_drift
 #include "remotecontrol_internal.h"

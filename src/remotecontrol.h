@@ -1124,6 +1124,10 @@ public:
     // Seam: src/sessioncostverb.h.
     QJsonDocument cmdSessionCost(const QJsonObject &req);
 
+    // ANTS-5787 — function_sizes: the longest functions in given paths.
+    // Seam: src/functionsizes.h. Handler TU: remotecontrol_readability.cpp.
+    QJsonDocument cmdFunctionSizes(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by

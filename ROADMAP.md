@@ -93963,7 +93963,7 @@ asked for them to ship in 0.8.0.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
   Lanes: mcp.
 
-- 📋 [ANTS-5787] **function_sizes verb: rank the longest functions in given paths.**
+- ✅ [ANTS-5787] **function_sizes verb: rank the longest functions in given paths.**
   Shape agreed with claude-config (CFG-0830), 2026-10-19. A ranked
   shortlist only; a long function is not a finding by itself.
   Args: paths[]; top; include_tests and include_generated (off).
@@ -93974,6 +93974,18 @@ asked for them to ship in 0.8.0.
   Python needs an indentation rule.
   On ship: send the final schema to claude-config with session_message
   op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830).
+  Shipped 2026-10-20. Seam src/functionsizes.{h,cpp}; shared walk
+  src/codewalk.{h,cpp} (paths[] -> files, tests/generated left out; the
+  other readability verbs reuse it); handler TU
+  src/remotecontrol_readability.cpp (TU 23/23, the other three verbs'
+  handlers go here too). Args: caller_cwd, paths[], top (1-500, default
+  20), include_tests, include_generated. Returns {ok, functions:[{id,
+  file, symbol, lines, body_start, body_end, nesting_depth}], top,
+  scanned:{files, skipped_tests, skipped_generated, truncated,
+  functions_measured, unmeasured}}. Refusals bad_args, bad_path,
+  no_project. Contract tests/features/mcp_function_sizes/spec.md. Schema
+  NOT yet sent to claude-config: send once session_orient's server_build
+  shows an ants-mcpd built from this commit.
   **Layman:** A tool that lists the longest functions, so a reviewer looks first where code is hardest to follow.
   Kind: feature.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
@@ -94496,6 +94508,11 @@ contributors don't duplicate research.
   policy, not a fact about the file. Filed rather than folded into
   ANTS-4096 so a three-site refactor across a Widgets boundary is
   not smuggled into a fix.
+  2026-10-20 (ANTS-5787): indiereviewengine.cpp's isGeneratedSource
+  moved to CodeWalk::isGeneratedSource (src/codewalk.{h,cpp},
+  ants_mcpcore_lib); indiereviewengine now uses it. auditdialog
+  (Widgets-linked, with audit-artifact rules) and findsources still keep
+  their own copies.
   **Layman:** Three parts of the app each keep their own list of "files a machine wrote"; they disagree, and one of those disagreements was a bug.
   Kind: refactor.
   Source: in-session-2026-08-12.

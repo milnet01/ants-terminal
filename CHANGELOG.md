@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **function_sizes lists the longest functions in a project, ranked** (ANTS-5787)
+  A new MCP verb gives a reviewer a short list of where code is hardest to follow: each function's file, name, length and nesting depth, longest first. Tests and generated files are left out unless asked for.
+
 - **trace reads Kotlin, CMake, Haskell, R and Nix** (ANTS-5734)
   The trace verb finds definitions and callers in five more languages, from grammars vendored with the source.
 

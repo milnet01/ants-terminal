@@ -169,6 +169,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("session_cost",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdSessionCost));
+    // ANTS-5787 — function_sizes: the longest functions in given paths.
+    // Required: paths resolve against the caller's project root.
+    sink.registerToolProvider("function_sizes",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdFunctionSizes));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     sink.registerToolProvider("changelog_log",

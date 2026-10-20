@@ -105,4 +105,13 @@ QJsonObject extractBatch(const QString &rootCanonical,
 QStringList rankSectionCandidates(const QString &wantSlug,
                                   const QStringList &slugs);
 
+// ANTS-2222 — from a declaration on 1-based `startLine` of `lines` (a file's
+// lines), the 1-based line of the brace that closes its body, or 0 when none
+// balances. Skips braces in // and /* */ comments and "…"/'…' literals.
+// ANTS-5787 — exported for function_sizes. When given, `maxDepth` receives
+// the deepest nesting reached, the body's own braces counting 1, and
+// `openLine` the line of the body's opening brace.
+int braceBalancedEndLine(const QStringList &lines, int startLine,
+                         int *maxDepth = nullptr, int *openLine = nullptr);
+
 }  // namespace ReadRegion

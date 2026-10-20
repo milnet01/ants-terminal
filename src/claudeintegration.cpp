@@ -14527,6 +14527,79 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5787 — function_sizes: the longest functions, ranked. Every
+                // property below is read by cmdFunctionSizes (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "function_sizes";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to find where code is hardest to follow: the longest "
+                        "functions in some paths, ranked, instead of outlining each file.");
+                    t["description"] = QStringLiteral(
+                        "Rank the longest functions in the given files or directories. "
+                        "Each row: {id, file, symbol, lines, body_start, body_end, "
+                        "nesting_depth}. A shortlist for review, not a finding. Tests and "
+                        "generated files are left out unless asked for; `scanned` counts "
+                        "files, functions measured and any unmeasured. Refusals: "
+                        "bad_args, bad_path, no_project. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5787. Contract: tests/features/mcp_function_sizes/spec.md. "
+                        "Functions are FileOutline's `func` symbols. A brace-family body "
+                        "ends at its balancing brace; a Python body at its last line "
+                        "indented deeper than the def. A declaration ending in `;` is "
+                        "skipped. nesting_depth counts the body's own level as 1. paths "
+                        "defaults to source_roots, else src, else the root.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project the paths resolve in.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject s;
+                        s["type"] = "string";
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = s;
+                        p["description"] = QStringLiteral(
+                            "Files or directories, project-relative or absolute. Default: "
+                            "source_roots, else src.");
+                        props["paths"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 500;
+                        p["description"] = QStringLiteral("How many rows to return (default 20).");
+                        props["top"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Also measure test files (default false).");
+                        props["include_tests"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Also measure generated files such as moc_* (default false).");
+                        props["include_generated"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -15704,6 +15777,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // ANTS-1305 — shape matcher.
                     if (name == QLatin1String("similar_code"))
                         return QStringLiteral("pattern");
+                    // ANTS-5787 — the readability shortlists.
+                    if (name == QLatin1String("function_sizes"))
+                        return QStringLiteral("readability");
                     // ANTS-1306 — task-start context bundler.
                     if (name == QLatin1String("task_priors"))
                         return QStringLiteral("context");
@@ -17358,6 +17434,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("run_trace"))          return C::Required;
     // ANTS-5502 — quotation_check reads files under the caller's project root.
     if (toolName == QStringLiteral("quotation_check"))    return C::Required;
+    // ANTS-5787 — function_sizes walks paths under the caller's project root.
+    if (toolName == QStringLiteral("function_sizes"))     return C::Required;
     // ANTS-5698 — session_cost reads the transcript folder named by the cwd.
     if (toolName == QStringLiteral("session_cost"))       return C::Required;
     // ANTS-5734 — trace walks and parses the caller's project.

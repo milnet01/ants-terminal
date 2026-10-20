@@ -537,6 +537,9 @@ set(ANTS_RC_SOURCES_REL
     # ANTS-5315 step 4 — op:"place_by_release"'s handler. Appended last, for the
     # reason above.
     src/remotecontrol_roadmap_release.cpp
+    # ANTS-5787 — the readability verbs' handlers. Appended last, for the
+    # reason above.
+    src/remotecontrol_readability.cpp
 )
 # ANTS-4932 § 2.2 — the list splits in two here, derived rather than restated
 # (INV-11): the terminal TU, which holds dispatch(), the --remote socket and
@@ -603,6 +606,10 @@ add_library(ants_mcpcore_lib STATIC
     # the handler lives in ANTS_RC_SOURCES_REL.
     src/quotationcheckverb.cpp
     src/sessioncostverb.cpp
+    # ANTS-5787 — the readability verbs' seams, their own TUs for the same
+    # reason; codewalk.cpp is the file walk they share.
+    src/codewalk.cpp
+    src/functionsizes.cpp
     # ANTS-3664 — one finding shape for the doc-lint verbs (Qt6::Core-only).
     # Blocker for ANTS-3660/3661/3662, composed by ANTS-3663.
     src/docfinding.cpp
@@ -4361,6 +4368,9 @@ if(ANTS_TESTS)
                 # ANTS-5698 — session_cost: the seam against a QTemporaryDir;
                 # INV-6 scrapes ANTS_SRC_DIR.
                 tests/features/session_cost/test_session_cost.cpp
+                # ANTS-5787 — function_sizes: the seam against a QTemporaryDir;
+                # INV-8 scrapes ANTS_SRC_DIR.
+                tests/features/mcp_function_sizes/test_mcp_function_sizes.cpp
                 # ANTS-5098 — inbox page, message_id and add_batch bounds.
                 tests/features/content_verb_bounds/test_content_verb_bounds.cpp
                 # ANTS-4065 — the markdown→store import mapping. Behavioural
