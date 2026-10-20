@@ -77672,7 +77672,7 @@ against current source before filing.
   Also corrected: packaging/obs/README.md's "Currently building" list is
   true again now that all four targets are green.
 
-- 🚧 [ANTS-3853] **Finish the roadmap store migration — the driver bullet for the remaining tail.**
+- 📋 [ANTS-3853] **Finish the roadmap store migration — the driver bullet for the remaining tail.**
   User request 2026-08-06: finish this. The goal is ONE roadmap standard
   every project adheres to. ANTS-1160's dialog redesign is built against the
   store's model and cannot be finalised while each project's roadmap is still
@@ -77813,6 +77813,11 @@ against current source before filing.
   in progress), ANTS-3810, ANTS-3824, ANTS-3749, ANTS-3751 and
   ANTS-3864. This project is migrated and in sync, so priority step 9 is
   done here; step 8 is these six.
+  2026-10-20, user's call: flipped 🚧 → 📋. Of the six children open on
+  2026-10-01, five are closed (4065, 3810, 3824, 3864 shipped; 3751
+  dropped). The last, ANTS-3749, rotates the 0.7 sections into
+  docs/roadmap/0.7.md at the 0.8.0 bump (§ 3.9, ANTS-5609), so nothing
+  here can move before then. Close this when 3749 ships at that bump.
 
 - 📋 [ANTS-3859] **Measure roadmap_migrate's own end-to-end latency; add a budget invariant only if it warrants one.**
   ANTS-3855 § 4 states a 1 s/project ceiling INHERITED from ANTS-3765 § 4,
@@ -78508,7 +78513,7 @@ against current source before filing.
   Kind: test.
   Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).
 
-- 🚧 [ANTS-4426] **Three migrated-path consumers still read the whole ROADMAP.md body, so ANTS-3863's saving does not reach them.**
+- ✅ [ANTS-4426] **Three migrated-path consumers still read the whole ROADMAP.md body, so ANTS-3863's saving does not reach them.**
   ANTS-3863 made the dispatch lazy and bounded, and the saving lands wherever
   the roadmap text feeds nothing but the seam. Three sites still call full()
   on the migrated path, each for a reason that predates that item and none of
@@ -78652,6 +78657,17 @@ against current source before filing.
   since publish leaves the file holding an id above the store's mark).
   The 2026-10-10 condition is not met, so site 1 stays as it is. Refute
   by re-timing the same four calls. Site 3 remains open.
+  Closed 2026-10-20 on the user's call (re-measure, then close). Site 3
+  re-timed: a scratch program linked against
+  build/libants_roadmapparse_lib.a, on the 7.06 MB live ROADMAP.md (302
+  sections), median of 15 runs at load average about 2.4: read 1.86 ms,
+  RoadmapIndex::buildIndex 8.63 ms. That is the whole remaining prize,
+  paid once per cold section= query. It scales with file size, and
+  ANTS-3749's rotation at the 0.8.0 bump shrinks the file, which cuts it
+  with no code change. Sourcing the index from the store's section table
+  would also change when the ANTS-1907 section etag is produced. Not
+  worth that. Site 2 shipped (c3537e91); site 1 stays per the 2026-10-19
+  measurement. Refute by re-timing buildIndex on the live file.
   Source: in-session-2026-08-17 (ANTS-3863 implementation).
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
