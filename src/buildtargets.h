@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -62,5 +63,14 @@ QList<Target> ownersOf(const QList<Target> &targets, const QString &relPath);
 // This is what makes `ctest -R` usable straight from the answer, and it is the
 // half the `--gtest_list_tests` fallback was paying a process launch for.
 QStringList gtestSuites(const QString &sourceText);
+
+// ANTS-5602 — the compile definitions that hand a test a source path, as
+// definition name -> root-relative paths. `NAME="${CMAKE_SOURCE_DIR}/rel"`
+// gives `rel`, and `NAME="${CMAKE_SOURCE_DIR}"` gives "" (the root itself).
+// `NAME="${VAR}"` gives every path of the list VAR was built from through
+// set(), list(APPEND), list(TRANSFORM … OUTPUT_VARIABLE) and list(JOIN);
+// list(FILTER) is not applied, so a filtered list reads as its source. A
+// later definition of the same name replaces an earlier one.
+[[nodiscard]] QHash<QString, QStringList> pathDefinitions(const QString &cmakeText);
 
 }  // namespace BuildTargets

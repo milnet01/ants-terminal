@@ -174,6 +174,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("function_sizes",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdFunctionSizes));
+    // ANTS-5602 — source_scrapes: the tests that read a file as text.
+    // Required: the path and the test roots resolve against the caller's root.
+    sink.registerToolProvider("source_scrapes",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdSourceScrapes));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     sink.registerToolProvider("changelog_log",

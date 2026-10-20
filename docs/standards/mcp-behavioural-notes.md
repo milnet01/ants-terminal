@@ -261,6 +261,15 @@ server-controllable beyond this per-tool hint.
   balances is counted in `unmeasured`. Contract:
   [`tests/features/mcp_function_sizes/spec.md`](../../tests/features/mcp_function_sizes/spec.md).
 
+- **`source_scrapes` follows a test's reads, not its build** (ANTS-5602). A
+  definition counts wherever the root `CMakeLists.txt` sets it, whichever
+  bundle that is, and `list(FILTER)` is not applied. A source-shaped literal
+  in a file that names a directory definition reads the file it names when
+  that file exists, so a fixture string naming a real file can show as a
+  reader. A search by a variable is counted in
+  `scanned.unresolved_anchors`, never reported as a row. Contract:
+  [`tests/features/mcp_source_scrapes/spec.md`](../../tests/features/mcp_source_scrapes/spec.md).
+
 - **`roadmap_query` `mode:"section_index"` — the counts of a LEVEL-2
   section are ROLLUPS of its level-3 children, so summing `sections[]`
   double-counts.** Measured 2026-08-21: `0.7.92 — indie-review #4` (level 2)

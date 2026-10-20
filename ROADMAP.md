@@ -94003,7 +94003,7 @@ asked for them to ship in 0.8.0.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-5602] **A verb that names the tests which read a given source file.**
+- ✅ [ANTS-5602] **A verb that names the tests which read a given source file.**
   Measured 2026-10-01: ANTS-5527's tests were picked by a name regex;
   the push gate then failed on two source-scrape tests that read the
   edited files (cited_by INV-9 via slurpRemoteControl, and the partition
@@ -94025,6 +94025,18 @@ asked for them to ship in 0.8.0.
   On ship: send the final schema to claude-config with session_message
   op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830 and
   write-code's gate-reds.md use it).
+  Shipped 2026-10-20 as source_scrapes. Seam src/sourcescrapes.{h,cpp};
+  CMake half BuildTargets::pathDefinitions (src/buildtargets.{h,cpp});
+  handler in src/remotecontrol_readability.cpp. Args: caller_cwd, path
+  and/or paths[] (files or directories), limit (1-5000, default 500).
+  Returns {ok, paths, scrapes:[{path, test, file, line, anchor, kind}],
+  readers:[{path, test, file, line, via}], limit, scanned:{test_files,
+  definitions, helpers, scrapes_total, readers_total,
+  unresolved_anchors, truncated}, not_covered[]}. test is Suite.Name
+  (ctest -R), null outside a TEST. Refusals bad_args, bad_path,
+  no_project. Contract tests/features/mcp_source_scrapes/spec.md.
+  Real tree: src/remotecontrol_workspace.cpp names CitedBy.Inv9 via
+  slurpRemoteControl, the ANTS-5527 case.
   **Layman:** After changing a file, a session could run just the tests that check it, instead of the whole suite or a guess.
   Kind: feature.
   Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).

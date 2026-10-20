@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`source_scrapes` names the tests that read a source file as text, and the strings each one looks for** (ANTS-5602)
+  Before a refactor, a session can see which tests would break if a function is renamed or moved, without running the whole suite.
+
 - **function_sizes lists the longest functions in a project, ranked** (ANTS-5787)
   A new MCP verb gives a reviewer a short list of where code is hardest to follow: each function's file, name, length and nesting depth, longest first. Tests and generated files are left out unless asked for.
 

@@ -14600,6 +14600,75 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5602 — source_scrapes: the tests that read a file as text.
+                // Every property below is read by cmdSourceScrapes (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "source_scrapes";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use before a refactor: which tests read this file as text, and "
+                        "which strings they look for, so a rename does not break them unseen.");
+                    t["description"] = QStringLiteral(
+                        "Name the tests that read a source file as text. Each scrape row: "
+                        "{path, test, file, line, anchor, kind}; anchor is the searched "
+                        "string as written, kind literal or regex. `readers` names each "
+                        "test that reads the file, anchors found or not. Refusals: "
+                        "bad_args, bad_path, no_project. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5602. Contract: tests/features/mcp_source_scrapes/spec.md. "
+                        "A test reaches a file through a path definition in the root "
+                        "CMakeLists.txt (SRC_*_PATH, a list such as ANTS_RC_SOURCES), a "
+                        "directory definition plus a literal path, a helper whose return "
+                        "reads one, or a variable assigned from any of these. Anchors are "
+                        "literal arguments of find/contains/indexOf/count, of a call whose "
+                        "first argument reads the file, or a regex used on it. test is "
+                        "Suite.Name, for ctest -R. scanned.unresolved_anchors counts "
+                        "searches by a variable; not_covered names what is not followed.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project the paths resolve in.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "A source file or directory, project-relative or absolute.");
+                        props["path"] = p;
+                    }
+                    {
+                        QJsonObject s;
+                        s["type"] = "string";
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = s;
+                        p["description"] = QStringLiteral(
+                            "Several files or directories; rows for any of them. Give path, "
+                            "paths, or both.");
+                        props["paths"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 5000;
+                        p["description"] = QStringLiteral(
+                            "Cap on scrapes and on readers (default 500); scanned holds the totals.");
+                        props["limit"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -15778,7 +15847,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     if (name == QLatin1String("similar_code"))
                         return QStringLiteral("pattern");
                     // ANTS-5787 — the readability shortlists.
-                    if (name == QLatin1String("function_sizes"))
+                    if (name == QLatin1String("function_sizes") ||
+                        name == QLatin1String("source_scrapes"))   // ANTS-5602
                         return QStringLiteral("readability");
                     // ANTS-1306 — task-start context bundler.
                     if (name == QLatin1String("task_priors"))
@@ -17436,6 +17506,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("quotation_check"))    return C::Required;
     // ANTS-5787 — function_sizes walks paths under the caller's project root.
     if (toolName == QStringLiteral("function_sizes"))     return C::Required;
+    // ANTS-5602 — source_scrapes reads the caller's CMakeLists.txt and tests.
+    if (toolName == QStringLiteral("source_scrapes"))     return C::Required;
     // ANTS-5698 — session_cost reads the transcript folder named by the cwd.
     if (toolName == QStringLiteral("session_cost"))       return C::Required;
     // ANTS-5734 — trace walks and parses the caller's project.

@@ -163,6 +163,10 @@ Listed only where behavior isn't obvious from the name.
 - `functionsizes` (Qt6::Core, `ants_mcpcore_lib`) — the `function_sizes`
   verb's seam: FileOutline's functions measured to their closing brace, or by
   indentation for Python, and ranked longest first. ANTS-5787.
+- `sourcescrapes` (Qt6::Core, `ants_mcpcore_lib`) — the `source_scrapes`
+  verb's seam: the tests that read a source file as text, through the root
+  `CMakeLists.txt`'s path definitions (`BuildTargets::pathDefinitions`),
+  helpers and variables, and the strings each looks for. ANTS-5602.
 - `docdedup` (Qt6::Core, `ants_core_lib`) — near-duplicate passage detection
   across a doc set: paragraph segmentation (a list item is one passage, marker
   line included), word 3-gram shingles, exact Jaccard, and connected-component
@@ -325,7 +329,8 @@ Listed only where behavior isn't obvious from the name.
   reports a session's context rent from its transcript; the seam is
   `sessioncostverb` (ANTS-5698).
 - `remotecontrol_readability` — thin handlers for the readability verbs
-  (`function_sizes`); the seams are `functionsizes` and `codewalk` (ANTS-5787).
+  (`function_sizes`, `source_scrapes`); the seams are `functionsizes`,
+  `sourcescrapes` and `codewalk` (ANTS-5787, ANTS-5602).
   (`remotecontrol_roadmap_migrate` is the remaining TU and has its own entry
   further down.)
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

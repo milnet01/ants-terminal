@@ -1,5 +1,6 @@
-// ANTS-5787 TU 23/23 — the readability verbs' handlers: function_sizes.
-// Contracts: tests/features/mcp_function_sizes/spec.md.
+// ANTS-5787 TU 23/23 — the readability verbs' handlers: function_sizes and
+// source_scrapes (ANTS-5602). Contracts: tests/features/mcp_function_sizes/
+// spec.md and tests/features/mcp_source_scrapes/spec.md.
 //
 // Thin by design, like quotation_check: each seam (outside
 // ANTS_RC_SOURCES_REL) does everything below the root; what lives here is
@@ -14,6 +15,7 @@
 
 #include "functionsizes.h"
 #include "resolvedroot.h"
+#include "sourcescrapes.h"
 
 namespace {
 
@@ -53,4 +55,12 @@ QJsonDocument RemoteControl::cmdFunctionSizes(const QJsonObject &req) {
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(FunctionSizes::run(
         root, forward(req, {"paths", "top", "include_tests", "include_generated"})));
+}
+
+QJsonDocument RemoteControl::cmdSourceScrapes(const QJsonObject &req) {
+    QJsonObject refusal;
+    const QString root =
+        resolveRoot(m_roots, req, QStringLiteral("source_scrapes"), &refusal);
+    if (root.isEmpty()) return QJsonDocument(refusal);
+    return QJsonDocument(SourceScrapes::run(root, forward(req, {"path", "paths", "limit"})));
 }

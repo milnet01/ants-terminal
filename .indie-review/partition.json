@@ -440,6 +440,8 @@
         "src/findsources.h",
         "src/functionsizes.cpp",
         "src/functionsizes.h",
+        "src/sourcescrapes.cpp",
+        "src/sourcescrapes.h",
         "src/paginationengine.cpp",
         "src/paginationengine.h",
         "src/readregion.cpp",

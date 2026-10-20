@@ -610,6 +610,7 @@ add_library(ants_mcpcore_lib STATIC
     # reason; codewalk.cpp is the file walk they share.
     src/codewalk.cpp
     src/functionsizes.cpp
+    src/sourcescrapes.cpp
     # ANTS-3664 — one finding shape for the doc-lint verbs (Qt6::Core-only).
     # Blocker for ANTS-3660/3661/3662, composed by ANTS-3663.
     src/docfinding.cpp
@@ -4371,6 +4372,9 @@ if(ANTS_TESTS)
                 # ANTS-5787 — function_sizes: the seam against a QTemporaryDir;
                 # INV-8 scrapes ANTS_SRC_DIR.
                 tests/features/mcp_function_sizes/test_mcp_function_sizes.cpp
+                # ANTS-5602 — source_scrapes: the seam against a QTemporaryDir;
+                # INV-9 scrapes ANTS_SRC_DIR.
+                tests/features/mcp_source_scrapes/test_mcp_source_scrapes.cpp
                 # ANTS-5098 — inbox page, message_id and add_batch bounds.
                 tests/features/content_verb_bounds/test_content_verb_bounds.cpp
                 # ANTS-4065 — the markdown→store import mapping. Behavioural

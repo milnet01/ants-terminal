@@ -1128,6 +1128,10 @@ public:
     // Seam: src/functionsizes.h. Handler TU: remotecontrol_readability.cpp.
     QJsonDocument cmdFunctionSizes(const QJsonObject &req);
 
+    // ANTS-5602 — source_scrapes: the tests that read a file as text.
+    // Seam: src/sourcescrapes.h. Handler TU: remotecontrol_readability.cpp.
+    QJsonDocument cmdSourceScrapes(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by
