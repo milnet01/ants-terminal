@@ -1853,6 +1853,23 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 60)
 
+    # bench_resize_reflow — ANTS-5134: a width change reflows the whole
+    # scrollback on the GUI thread. Same sources as bench_vt_throughput.
+    add_executable(bench_resize_reflow
+        tests/perf/bench_resize_reflow.cpp
+        src/terminalgrid.cpp
+        src/inlineimagedecode.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(bench_resize_reflow PRIVATE Qt6::Core Qt6::Gui)
+    target_include_directories(bench_resize_reflow PRIVATE
+        src ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_resize_reflow PRIVATE -Wall -Wextra -Wpedantic -O2)
+    add_test(NAME resize_reflow COMMAND bench_resize_reflow)
+    set_tests_properties(resize_reflow PROPERTIES
+        LABELS "perf"
+        TIMEOUT 120)
+
     # bench_paint_throughput — shaping + draw throughput for the QPainter /
     # QTextLayout text path paintEvent runs per frame (ANTS-3462, the
     # baseline for the ANTS-3453 shaped-run cache). Pure Qt micro-benchmark:

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5788 -->
+<!-- ants-roadmap-id-high-water: ANTS=5789 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92047,6 +92047,21 @@ a modern terminal" release.
   Kind: fix.
   Source: in-session-2026-10-12 (found running ANTS-4921).
   Lanes: perf, session.
+
+- 📋 [ANTS-5789] **A full scrollback costs about 12 KB per 160-column line, so the 1M maximum would need around 12 GiB.**
+  Measured 2026-10-20 with bench_resize_reflow (tests/perf): a TerminalGrid
+  at 40x160 with a 50,000-line scrollback of 200-character lines peaked at
+  619 MB resident (/usr/bin/time %M, three runs within 0.1%). That is about
+  12 KB per stored line, or about 77 bytes per cell; Cell holds a codepoint,
+  CellAttrs (with colours) and two flags. Scaled linearly, the 1M-line
+  maximum would need about 12 GiB. Not yet split between the cells and
+  the benchmark's own overhead. Investigate first: measure per-line cost
+  in isolation, then decide whether scrollback should store a compact
+  form (attribute runs, or trimmed trailing blanks). Refute by timing RSS
+  at two scrollback sizes and taking the slope.
+  **Layman:** Every line of history the terminal keeps uses far more memory than its text needs, so the largest history setting could use more memory than many computers have.
+  Kind: investigate.
+  Source: in-session-2026-10-20 (ANTS-5134 bench_resize_reflow).
 
 ### 🎨 Features — multiplexing
 
