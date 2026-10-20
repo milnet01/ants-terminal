@@ -89420,7 +89420,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   consumer and is dropped.
   Source: user-2026-05-07.
 
-- 🚧 [ANTS-5793] **The Roadmap dialog's columns change width with what is shown; give each a width set by the dialog's size alone, and wrap text inside it.**
+- ✅ [ANTS-5793] **The Roadmap dialog's columns change width with what is shown; give each a width set by the dialog's size alone, and wrap text inside it.**
   User request 2026-10-20, with two screenshots of the Current tab: with
   one row shown the title column starts near x=290; with an In-progress
   card shown, the state column grows to fit "🚧In progress (active commit
@@ -89445,6 +89445,15 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   (three tests call applyCardColumnGrid). Hot reload: a dialog layout
   change reaches a running terminal only on relaunch (code in the
   terminal binary); the dialog has no state to restart.
+  Shipped 2026-10-20. User clarified mid-build: each column scales with
+  the dialog, with a minimum width. applyCardColumnGrid sets state,
+  label, date kind and date to a share of the width with a per-tier
+  minimum (no cap); counts and meta stay fixed; the summary takes the
+  rest. State and kind lost nowrap and wrap. The widest-word holds
+  (ANTS-5610) stay, so a word wider than its column still widens it.
+  Test Ants5793ColumnsHoldStillWhatEverIsShown (red before, green
+  after); INV-32 rewritten. Checked visually off-screen at
+  700/900/1300/1500 px.
   **Layman:** When you filter the roadmap, the columns jump left and right because each one sizes itself to its longest text; they should stay put at any window size and wrap long text instead.
   Kind: ux.
   Source: user-request-2026-10-20.

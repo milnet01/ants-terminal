@@ -1304,10 +1304,10 @@ TEST(RoadmapDialogCards, Ants5610NarrowViewKeepsTheSummaryReadable) {
         << "the id column was pushed past the right edge";
 }
 
-// ANTS-1277 — the chevron cell carries the state word, in the first column,
-// which applyCardColumnGrid fixes at zero. With every section collapsed no
-// card's nowrap state cell widens that column, and "closed" broke one
-// letter per line.
+// ANTS-1277 — the chevron cell carries the state word, in the first column.
+// When applyCardColumnGrid fixed that column at zero and every section was
+// collapsed, no card's state cell widened it, and "closed" broke one letter
+// per line.
 TEST(RoadmapDialogCards, Ants1277StateWordStaysOnOneLine) {
     const QString md = QStringLiteral(
         "# Fixture\n\n"
@@ -1337,4 +1337,73 @@ TEST(RoadmapDialogCards, Ants1277StateWordStaysOnOneLine) {
     EXPECT_EQ(t->cellAt(head, 0).firstCursorPosition().block()
                   .layout()->lineCount(), 1)
         << "\"▸ closed\" broke across lines";
+}
+
+// ANTS-5793 — the columns' widths come from the document's width alone. A
+// view showing only a short "Planned" card and one adding an In-progress card
+// with a long legend put the summary column at x=290 and x=930. Every column
+// must start at the same x in both, and the long legend wraps at its spaces.
+TEST(RoadmapDialogCards, Ants5793ColumnsHoldStillWhatEverIsShown) {
+    const QString shortView = QStringLiteral(
+        "# Fixture\n\n"
+        "## Work\n\n"
+        "- 📋 [ANTS-9301] **Short.**\n"
+        "  Layman: the plain card.\n"
+        "  Kind: ux.\n"
+        "  Source: fixture.\n");
+    const QString longView = shortView + QStringLiteral(
+        "- 🚧 [ANTS-9302] **Long.**\n"
+        "  Layman: the in-progress card.\n"
+        "  Kind: implement.\n"
+        "  Source: fixture.\n");
+    RD::CardRenderOptions opts;
+    opts.activePreset = RD::Preset::Full;
+    opts.expandedSections.insert(QStringLiteral("work"));
+    opts.legendFromStore = true;
+    opts.legend.insert(QStringLiteral("📋"), QStringLiteral("Planned"));
+    opts.legend.insert(QStringLiteral("🚧"), QStringLiteral(
+        "In progress (active commit work — usually direct-to-main, "
+        "sometimes on a branch)"));
+
+    for (const int width : {900, 1400}) {
+        SCOPED_TRACE(width);
+        QTextDocument shortDoc, longDoc;
+        for (auto [doc, md] : {std::pair{&shortDoc, shortView},
+                               std::pair{&longDoc, longView}}) {
+            doc->setTextWidth(width);
+            doc->setHtml(RD::renderCardsHtml(
+                md, kAllOn, {}, QStringLiteral("light"),
+                RD::SortOrder::Document, QString(), {}, opts));
+            RoadmapDialog::applyCardColumnGrid(doc, RD::Density::Cozy);
+        }
+        const QList<QTextTable *> shortTables = gridTablesOf(shortDoc);
+        const QList<QTextTable *> longTables = gridTablesOf(longDoc);
+        ASSERT_EQ(shortTables.size(), 1);
+        ASSERT_EQ(longTables.size(), 1);
+        QTextTable *s = shortTables.first();
+        QTextTable *l = longTables.first();
+        const int sCard = rowWith(s, QStringLiteral("plain card"));
+        const int lCard = rowWith(l, QStringLiteral("plain card"));
+        const int lLong = rowWith(l, QStringLiteral("in-progress card"));
+        ASSERT_GE(sCard, 0);
+        ASSERT_GE(lCard, 0);
+        ASSERT_GE(lLong, 0);
+
+        for (const int col : {0, 1, 7, 8, 9, 10})
+            EXPECT_EQ(cellX(shortDoc, s, sCard, col),
+                      cellX(longDoc, l, lCard, col))
+                << "column " << col << " moved when a card was added";
+
+        const QTextBlock legend =
+            l->cellAt(lLong, 0).firstCursorPosition().block();
+        EXPECT_GT(legend.layout()->lineCount(), 1)
+            << "the long legend did not wrap";
+        for (int i = 0; i + 1 < legend.layout()->lineCount(); ++i) {
+            const QTextLine line = legend.layout()->lineAt(i);
+            const QChar last =
+                legend.text().at(line.textStart() + line.textLength() - 1);
+            EXPECT_TRUE(last == QLatin1Char(' ') || last == QLatin1Char('-'))
+                << "the legend broke inside a word, at line " << i;
+        }
+    }
 }

@@ -1073,9 +1073,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // even if a future Qt regression flips the palette path again.
         ".rm-section-toggle{color:%2;font-weight:normal;font-size:%7px;padding-right:12px;padding-left:4px;}"
         ".rm-section-state{padding-left:4px;}"
-        // ANTS-1277 — the first column is fixed at zero and grows only to
-        // nowrap content; without this, a view of collapsed sections (no card
-        // state cell to widen it) broke "closed" one letter per line.
+        // ANTS-1277 — the chevron and its state word stay on one line: when
+        // the first column was fixed at zero, a view of collapsed sections
+        // broke "closed" one letter per line.
         ".rm-col-chev{white-space:nowrap;}"
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
@@ -1102,8 +1102,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // reaches the HTML.
         "table.rm-cards{border-collapse:collapse;margin:%17px 0;width:100%;}"
         "td{border:none;padding:%18px %19px;vertical-align:top;background:%3;}"
-        ".rm-col-state{border-left:3px solid %5;white-space:nowrap;}"
-        ".rm-col-kind{white-space:nowrap;}"
+        // ANTS-5793 — the state and kind cells wrap inside their column's
+        // width (applyCardColumnGrid); a nowrap cell would widen it instead.
+        ".rm-col-state{border-left:3px solid %5;}"
         ".rm-col-meta{text-align:right;white-space:nowrap;}"
         // Expanded body row's colspan cell: the <p>s carry their own
         // rm-body-first/line spacing, so drop the cell's top padding.
@@ -1113,9 +1114,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-hd{background:%24;}"
         ".rm-count{text-align:center;white-space:nowrap;font-size:%16px;color:%6;}"
         // ANTS-5610 — no `nowrap` on the two date columns: Qt's import turns
-        // a nowrap cell's spaces into no-break spaces, so it could never wrap
-        // again. applyCardColumnGrid() keeps them on one line instead, and
-        // lets them wrap in a narrow view.
+        // a nowrap cell's spaces into no-break spaces, so they could never
+        // wrap inside the width applyCardColumnGrid() gives them.
         ".rm-col-datekind{font-size:%16px;color:%6;}"
         // rm-current: tint every cell of the row (class beats the bare `td`
         // background by specificity) + swap the first cell's accent to the
@@ -3414,73 +3414,75 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
 
     const DensityTier &t = kDensityTable[densityToIndex(density)];
 
-    // ANTS-5604 — the view is one table, so Qt already gives every row the
-    // same columns; what is left to set is who takes the spare width. The
-    // summary/title column takes all of it, every other column sizes to its
-    // content (each is nowrap), and the meta column keeps its floor so the
-    // toggle does not crowd the id. A markdown table inside an expanded body
-    // has its own column count and keeps its natural layout.
+    // ANTS-5793 — every column's width comes from the document's width, so
+    // filtering the view moves no column (unless a word is wider than its
+    // column; see the widest-word hold below). Until then each
+    // column but the summary sized to its widest one-line content, and one
+    // long status legend ("In progress (active commit work …)") pushed the
+    // titles from x=290 to x=930. Now each column is a share of the width
+    // with a minimum, and the state, kind and date text wraps inside it. The
+    // counts and the #id are fixed: their content has a known size.
     //
-    // So every other column is FIXED at a floor and the summary column is the
-    // only auto-sized one, with the table itself set to full width below.
-    // A fixed width is a minimum to Qt, so each fixed column still grows to
-    // its nowrap content. Measured 2026-10-01 against this project's
-    // roadmap: a PERCENTAGE summary column loses to the other columns'
-    // minimum widths and the spare width is shared out evenly, leaving five
-    // count columns several times wider than their numbers.
-    QVector<QTextLength> cols(kGridColumns,
-                              QTextLength(QTextLength::FixedLength, 0));
+    // The view is one table, so Qt gives every row the same columns (ANTS-
+    // 5604). The summary column is the only auto-sized one and takes what is
+    // left. Measured 2026-10-01: a PERCENTAGE summary column loses to the
+    // other columns' minimum widths and the spare width is shared out evenly.
+    // A markdown table inside an expanded body has its own column count and
+    // keeps its natural layout.
+    const qreal width = qMax<qreal>(doc->textWidth(), 0);
+    const auto share = [width](qreal fraction, int minPx) {
+        return QTextLength(QTextLength::FixedLength,
+                           std::floor(qMax(width * fraction, qreal(minPx))));
+    };
+    QVector<QTextLength> cols(kGridColumns);
+    cols[0] = share(0.12, t.metaPx * 9);
     for (int col = 1; col <= 5; ++col)
         cols[col] = QTextLength(QTextLength::FixedLength, t.metaPx * 3);
+    cols[kColLabel] = share(0.06, t.metaPx * 5);
     cols[kColSummary] = QTextLength(QTextLength::VariableLength, 0);
+    cols[kColDateKind] = share(0.06, t.metaPx * 6);
+    cols[kColDate] = share(0.08, t.metaPx * 8);
     cols[kGridColumns - 1] = QTextLength(QTextLength::FixedLength, t.colMetaPx);
 
-    // ANTS-5610 — in a narrow view those one-line columns took nearly all the
-    // width: at the first-run size (a ~900 px viewer) the summary got 178 px
-    // and a heading broke mid-word. So lay the grid out one line per column,
-    // and where the summary then falls below this share of the width, let
-    // the date kind and date wrap at their spaces instead. A wrapping column
-    // is fixed at its widest word: Qt holds a wrapping cell to its column's
-    // fixed width, and at zero it broke "shipped" one letter per line. That
-    // width includes the cell's side padding.
+    // ANTS-5610 — a wrapping column is held at its widest word: Qt holds a
+    // wrapping cell to its column's fixed width and breaks a longer word
+    // anywhere ("shipped" went one letter per line at zero). So a column
+    // whose width is narrower than its widest word grows to it. That width
+    // includes the cell's side padding, and the state column's 3 px accent.
     constexpr qreal kSummaryFloor = 0.4;
     const int cellPaddingX = 2 * t.cardPaddingX;
-    const auto setDateWrap = [&cols, cellPaddingX](QTextTable *table, bool wrap) {
-        QTextTableFormat fmt = table->format();
-        QVector<QTextLength> widths = cols;
-        QTextCursor edit(table->document());
-        edit.beginEditBlock();
-        for (const int col : {kColDateKind, kColDate}) {
-            qreal widestWord = 0;
-            for (int row = 0; row < table->rows(); ++row) {
-                const QTextTableCell cell = table->cellAt(row, col);
-                if (!cell.isValid() || cell.column() != col) continue;
-                const int end = cell.lastCursorPosition().position();
-                for (QTextBlock b = cell.firstCursorPosition().block();
-                     b.isValid() && b.position() <= end; b = b.next()) {
-                    for (auto f = b.begin(); wrap && !f.atEnd(); ++f) {
-                        const QTextFragment frag = f.fragment();
-                        const QFontMetricsF fm(frag.charFormat().font().resolve(
-                            table->document()->defaultFont()));
-                        for (const QString &word :
-                             frag.text().split(QLatin1Char(' ')))
-                            widestWord = qMax(widestWord,
-                                              fm.horizontalAdvance(word));
-                    }
-                    QTextBlockFormat bf = b.blockFormat();
-                    if (bf.nonBreakableLines() == !wrap) continue;
-                    bf.setNonBreakableLines(!wrap);
-                    edit.setPosition(b.position());
-                    edit.setBlockFormat(bf);
+    const auto widestWord = [](QTextTable *table, int col,
+                               const QRegularExpression &breaks) {
+        qreal widest = 0;
+        for (int row = 0; row < table->rows(); ++row) {
+            const QTextTableCell cell = table->cellAt(row, col);
+            if (!cell.isValid() || cell.column() != col) continue;
+            const int end = cell.lastCursorPosition().position();
+            for (QTextBlock b = cell.firstCursorPosition().block();
+                 b.isValid() && b.position() <= end; b = b.next()) {
+                for (auto f = b.begin(); !f.atEnd(); ++f) {
+                    const QTextFragment frag = f.fragment();
+                    const QFontMetricsF fm(frag.charFormat().font().resolve(
+                        table->document()->defaultFont()));
+                    for (const QString &word : frag.text().split(breaks))
+                        widest = qMax(widest, fm.horizontalAdvance(word));
                 }
             }
-            if (wrap)
-                widths[col] = QTextLength(QTextLength::FixedLength,
-                                          std::ceil(widestWord) + cellPaddingX);
         }
-        fmt.setColumnWidthConstraints(widths);
-        if (fmt != table->format()) table->setFormat(fmt);
-        edit.endEditBlock();
+        return std::ceil(widest);
+    };
+    // A date such as "2026-05-10" cannot break at its hyphens, so these
+    // columns are measured between spaces only.
+    static const QRegularExpression spaces(QStringLiteral(" "));
+    const auto holdWords = [&](QTextTable *table) {
+        QVector<QTextLength> widths = cols;
+        for (const int col : {0, kColLabel, kColDateKind, kColDate}) {
+            const qreal need = widestWord(table, col, spaces) + cellPaddingX
+                               + (col == 0 ? 3 : 0);
+            if (widths[col].rawValue() < need)
+                widths[col] = QTextLength(QTextLength::FixedLength, need);
+        }
+        return widths;
     };
     const auto summaryWidth = [doc](QTextTable *table) {
         const auto x = [&](int col) {
@@ -3490,31 +3492,15 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
         return x(kColDateKind) - x(kColSummary);
     };
 
-    // Wrapping the dates can still leave the summary narrower than its widest
+    // The other columns can still leave the summary narrower than its widest
     // word, and Qt then breaks the word anywhere: Mageia's fonts did, at the
     // first-run width (2026-10-12). So hold the summary at its widest word,
     // where a line may end at a space or after a hyphen, plus the cell
     // padding. Capped at the floor: a longer word breaks, as it must.
-    const auto holdSummaryWords = [&summaryWidth, cellPaddingX](QTextTable *table,
-                                                                qreal cap) {
+    const auto holdSummaryWords = [&](QTextTable *table, qreal cap) {
         static const QRegularExpression breakAfter(QStringLiteral("(?<=-)| "));
-        qreal widestWord = 0;
-        for (int row = 0; row < table->rows(); ++row) {
-            const QTextTableCell cell = table->cellAt(row, kColSummary);
-            if (!cell.isValid() || cell.column() != kColSummary) continue;
-            const int end = cell.lastCursorPosition().position();
-            for (QTextBlock b = cell.firstCursorPosition().block();
-                 b.isValid() && b.position() <= end; b = b.next()) {
-                for (auto f = b.begin(); !f.atEnd(); ++f) {
-                    const QTextFragment frag = f.fragment();
-                    const QFontMetricsF fm(frag.charFormat().font().resolve(
-                        table->document()->defaultFont()));
-                    for (const QString &word : frag.text().split(breakAfter))
-                        widestWord = qMax(widestWord, fm.horizontalAdvance(word));
-                }
-            }
-        }
-        const qreal need = qMin(std::ceil(widestWord) + cellPaddingX, cap);
+        const qreal need = qMin(
+            widestWord(table, kColSummary, breakAfter) + cellPaddingX, cap);
         if (summaryWidth(table) >= need) return;
         QTextTableFormat fmt = table->format();
         QVector<QTextLength> widths = fmt.columnWidthConstraints();
@@ -3535,14 +3521,10 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
                     // 2026-10-01: 955 px of 1300) and the summary column's
                     // percentage would have no spare width to take.
                     fmt.setWidth(QTextLength(QTextLength::PercentageLength, 100));
-                    fmt.setColumnWidthConstraints(cols);
+                    fmt.setColumnWidthConstraints(holdWords(table));
                     if (fmt != table->format()) table->setFormat(fmt);
-                    setDateWrap(table, false);
-                    if (doc->textWidth() > 0
-                        && summaryWidth(table) < doc->textWidth() * kSummaryFloor) {
-                        setDateWrap(table, true);
-                        holdSummaryWords(table, doc->textWidth() * kSummaryFloor);
-                    }
+                    if (width > 0)
+                        holdSummaryWords(table, width * kSummaryFloor);
                 }
             }
             walk(child);
