@@ -1312,7 +1312,7 @@ set_target_properties(ants-terminal PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Generated C we do not maintain: no ants_warnings, -w, no unity batching
 # (each parser.c defines the same static names).
 set(_ants_ts_grammars c cpp python bash lua glsl javascript typescript tsx rust go java
-    c_sharp ruby qmljs make css)
+    c_sharp ruby qmljs make css scala zig julia objc)
 set(_ants_ts_sources third_party/tree-sitter/lib/src/lib.c)
 foreach(_g IN LISTS _ants_ts_grammars)
     list(APPEND _ants_ts_sources third_party/tree-sitter-grammars/${_g}/src/parser.c)

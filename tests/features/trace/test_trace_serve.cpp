@@ -265,10 +265,10 @@ TEST_F(TraceServe, Inv9NoGrammarLanguageIsReported) {
     const QJsonObject r = traceSymbol(QStringLiteral("kindProbe"));
     const auto ng = notCovered(r, QStringLiteral("no_grammar"));
     ASSERT_TRUE(ng.has_value()) << dump(arr(r, "not_covered"));
-    EXPECT_EQ(ng->value(QStringLiteral("lang")).toString(), QStringLiteral("zig"));
+    EXPECT_EQ(ng->value(QStringLiteral("lang")).toString(), QStringLiteral("dart"));
     EXPECT_EQ(ng->value(QStringLiteral("files")).toInt(), 1);
     EXPECT_EQ(rowsWhere(arr(r, "references"), [](const QJsonObject &o) {
-                  return o.value(QStringLiteral("file")).toString() == QLatin1String("script.zig") &&
+                  return o.value(QStringLiteral("file")).toString() == QLatin1String("script.dart") &&
                          o.value(QStringLiteral("kind")).toString() == QLatin1String("unparsed");
               }).size(),
               1);
@@ -294,7 +294,9 @@ TEST_F(TraceServe, Inv10EmptyAnswerSaysWhatItScanned) {
         QStringLiteral("javascript"), QStringLiteral("typescript"), QStringLiteral("tsx"),
         QStringLiteral("rust"),       QStringLiteral("go"),   QStringLiteral("java"),
         QStringLiteral("c_sharp"),    QStringLiteral("ruby"), QStringLiteral("qmljs"),
-        QStringLiteral("make"),       QStringLiteral("css")};
+        QStringLiteral("make"),       QStringLiteral("css"),
+        QStringLiteral("scala"),      QStringLiteral("zig"),  QStringLiteral("julia"),
+        QStringLiteral("objc")};
     EXPECT_EQ(langs, fixtureLangs) << dump(scanned);
 }
 
@@ -448,6 +450,36 @@ TEST_F(TraceServe, Ship3BatchDefinitionsAndCallers) {
     const QSet<QString> batch{QStringLiteral("c_sharp"), QStringLiteral("ruby"),
                               QStringLiteral("qmljs"), QStringLiteral("make"),
                               QStringLiteral("css")};
+    for (const QJsonValue &v : arr(r, "not_covered"))
+        EXPECT_FALSE(v.toObject().value(QStringLiteral("reason")).toString() ==
+                         QLatin1String("no_grammar") &&
+                     batch.contains(v.toObject().value(QStringLiteral("lang")).toString()))
+            << dump(v);
+}
+
+// § 2.3, ship 3's second batch — the same shape with its own probe name, so
+// neither batch's assertions see the other's fixtures.
+TEST_F(TraceServe, Ship3SecondBatchDefinitionsAndCallers) {
+    const QJsonObject r = traceSymbol(QStringLiteral("shipThreeBatchTwo"));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    QSet<QString> defFiles, callerFiles;
+    for (const QJsonValue &v : arr(r, "definitions"))
+        defFiles.insert(v.toObject().value(QStringLiteral("file")).toString());
+    for (const QJsonValue &v : arr(r, "callers"))
+        callerFiles.insert(v.toObject().value(QStringLiteral("file")).toString());
+    const QSet<QString> files{QStringLiteral("probe.scala"), QStringLiteral("probe.zig"),
+                              QStringLiteral("probe.jl"), QStringLiteral("Probe.m")};
+    EXPECT_EQ(defFiles, files) << dump(arr(r, "definitions"));
+    EXPECT_EQ(callerFiles, files) << dump(arr(r, "callers"));
+    // Julia's `function f()` signature is itself a call_expression; the
+    // definition's own name must not come back as a call of it.
+    EXPECT_EQ(rowsWhere(arr(r, "callers"), [](const QJsonObject &o) {
+                  return o.value(QStringLiteral("file")).toString() == QLatin1String("probe.jl");
+              }).size(),
+              1)
+        << dump(arr(r, "callers"));
+    const QSet<QString> batch{QStringLiteral("scala"), QStringLiteral("zig"),
+                              QStringLiteral("julia"), QStringLiteral("objc")};
     for (const QJsonValue &v : arr(r, "not_covered"))
         EXPECT_FALSE(v.toObject().value(QStringLiteral("reason")).toString() ==
                          QLatin1String("no_grammar") &&

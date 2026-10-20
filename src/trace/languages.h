@@ -19,7 +19,7 @@ struct Language {
     const TSLanguage *(*language)();   // the grammar's tree_sitter_<id>()
 };
 
-// Every vendored language: § 2.3's ship-1 order, then ship 3's first batch.
+// Every vendored language: § 2.3's ship-1 order, then ship 3's batches.
 const std::vector<Language> &languages();
 
 // The grammar for `id`, or nullptr when no vendored language has that id.

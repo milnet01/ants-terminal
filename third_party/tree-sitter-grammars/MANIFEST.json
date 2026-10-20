@@ -168,6 +168,42 @@
       "sha256": "c47392e483feb9137d8f0acf9ca6e916b820122c260324454a9980c75c98c3c5",
       "license": "MIT",
       "generated_by": "upstream"
+    },
+    {
+      "lang": "scala",
+      "repo": "https://github.com/tree-sitter/tree-sitter-scala",
+      "tag": "v0.26.3",
+      "commit": "851032fc97297bbe299dabe5bd826f778794d03c",
+      "sha256": "754ca8623cfbc8ef76e8202398e0b93847fd877a6792c3d0c5e6bde27226d0d0",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "zig",
+      "repo": "https://github.com/tree-sitter-grammars/tree-sitter-zig",
+      "tag": "v1.1.2",
+      "commit": "b670c8df85a1568f498aa5c8cae42f51a90473c0",
+      "sha256": "c7af5b1a992fcaffdf50a11a9974fbf8f09d20c4d9ef42245ac90c152dd3a85a",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "julia",
+      "repo": "https://github.com/tree-sitter/tree-sitter-julia",
+      "tag": "v0.25.0",
+      "commit": "e0f9dcd180fdcfcfa8d79a3531e11d99e79321d3",
+      "sha256": "13e604be147d4d42e3640857752acf57b99ab5df84f73a026a43558da7bc4e40",
+      "license": "MIT",
+      "generated_by": "upstream"
+    },
+    {
+      "lang": "objc",
+      "repo": "https://github.com/tree-sitter-grammars/tree-sitter-objc",
+      "tag": "v3.0.2",
+      "commit": "18802acf31d0b5c1c1d50bdbc9eb0e1636cab9ed",
+      "sha256": "c96a6b1fdebccd56419f552c416a044e94401990dcf5ccfb633f5d2b395f5578",
+      "license": "MIT",
+      "generated_by": "upstream"
     }
   ]
 }

@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`trace` reads Scala, Zig, Julia and Objective-C, and no longer reports a Julia function's own definition as a call of it** (ANTS-5734)
+
 - **The perf suite measures resize reflow, scrollback seek, large-selection copy and startup to first paint, and a saved baseline keeps the best of three runs** (ANTS-5134)
 
 - **`doc_symbols` takes `count_only`, returning its totals and a findings count without the per-symbol rows** (ANTS-5265)

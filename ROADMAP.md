@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5791 -->
+<!-- ants-roadmap-id-high-water: ANTS=5792 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87400,6 +87400,16 @@ measured Ants adding about 5,250 tokens to every request.
   with ANTS-5735's), after server_build showed 35198ade live. The ship-3
   first-batch notice to groundwork waits on an ants-mcpd built from
   f1ea7d5c or later.
+  2026-10-20: ship 3's second batch built: scala (v0.26.3), zig
+  (v1.1.2), julia (v0.25.0), objc (v3.0.2), each MIT, parser.c committed
+  upstream, ABI 14-15. Zig, Julia and objc ship no tags.scm; their
+  queries were written against parse trees of sample files and every
+  pattern was seen to match. extract.cpp now drops a call whose name is
+  a definition's own name (Julia's signature is a call_expression). The
+  no_grammar fixture moved from zig to dart. Elixir held back: its
+  queries need #any-of?, which trace does not evaluate (ANTS-5792).
+  Still open in ship 3: kotlin, cmake, dart, haskell, ocaml, r, nix,
+  sql, perl, swift (ANTS-5752), php (ANTS-5751), elixir (ANTS-5792).
   **Layman:** Claude can look up everything about a piece of code (where it is, what uses it, which documents describe it) in one step instead of many searches.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user requirements relayed).
@@ -87576,6 +87586,24 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: perf.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
+
+- 📋 [ANTS-5792] **trace evaluates no query predicates, so Elixir's queries, which tell a def from a call only by #any-of?, cannot be used.**
+  Found 2026-10-20 while choosing ship 3's second batch. In Elixir, `def`,
+  `defmodule` and an ordinary call are all `call` nodes; upstream's
+  queries/tags.scm (elixir-lang/tree-sitter-elixir v0.3.5) separates them
+  with `#any-of? @ignore "def" "defp" …`. The tree-sitter C runtime does
+  not apply predicates itself; a host must read
+  ts_query_predicates_for_pattern and filter. src/trace has no predicate
+  handling (workspace_search for any-of/#eq/#match/predicate: no match),
+  and docs/specs/ANTS-5734-trace-verb.md says nothing about predicates.
+  So Elixir would report every nested call as a definition. Supporting
+  #eq? and #any-of? is a spec amendment (it changes what the engine must
+  build), so it owes review-contract before code. Elixir stays no_grammar
+  until then.
+  **Layman:** Elixir code looks the same whether it defines a function or calls one, so the lookup tool needs a filter feature it does not have yet before it can support Elixir.
+  Kind: feature.
+  Source: in-session-2026-10-20 (ANTS-5734 ship 3, batch 2).
+  Lanes: mcp-tools.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

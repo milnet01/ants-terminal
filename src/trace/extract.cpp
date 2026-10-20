@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QSet>
 
 #include <algorithm>
 #include <list>
@@ -241,6 +242,19 @@ std::shared_ptr<const FileRows> extractRows(const QString &langId, const TSQuery
     });
     dedupe(rows->calls, [](const CallRow &c) { return c.nameRange.start; });
     dedupe(scopes, [](const ScopeNode &s) { return std::make_pair(s.range.start, s.range.end); });
+
+    // A definition's own name is never a call of it. Julia writes a
+    // function's signature as a call_expression, so its call pattern also
+    // matches every definition.
+    {
+        QSet<uint32_t> defNames;
+        for (const DefRow &d : std::as_const(rows->defs)) defNames.insert(d.nameRange.start);
+        rows->calls.erase(std::remove_if(rows->calls.begin(), rows->calls.end(),
+                                         [&](const CallRow &c) {
+                                             return defNames.contains(c.nameRange.start);
+                                         }),
+                          rows->calls.end());
+    }
 
     // Scopes, outermost first; a qualifier (`Foo::` in `void Foo::bar()`)
     // adds its parts innermost.

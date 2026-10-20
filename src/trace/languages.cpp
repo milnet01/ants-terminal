@@ -25,6 +25,10 @@ const TSLanguage *tree_sitter_ruby();
 const TSLanguage *tree_sitter_qmljs();
 const TSLanguage *tree_sitter_make();
 const TSLanguage *tree_sitter_css();
+const TSLanguage *tree_sitter_scala();
+const TSLanguage *tree_sitter_zig();
+const TSLanguage *tree_sitter_julia();
+const TSLanguage *tree_sitter_objc();
 }
 
 namespace trace {
@@ -49,6 +53,11 @@ const std::vector<Language> &languages() {
         {"qmljs", &tree_sitter_qmljs},
         {"make", &tree_sitter_make},
         {"css", &tree_sitter_css},
+        // Ship 3, second batch.
+        {"scala", &tree_sitter_scala},
+        {"zig", &tree_sitter_zig},
+        {"julia", &tree_sitter_julia},
+        {"objc", &tree_sitter_objc},
     };
     return all;
 }
@@ -90,20 +99,21 @@ const QHash<QString, QString> &extensionMap() {
         add("css", {"css"});
         add("ruby", {"rb"});
         add("qmljs", {"qml"});
+        // Ship 3, second batch.
+        add("scala", {"scala", "sc"});
+        add("zig", {"zig"});
+        add("julia", {"jl"});
+        add("objc", {"m", "mm"});
         // Ship 3: known, not yet vendored, so reported as no_grammar.
         add("kotlin", {"kt", "kts"});
         add("swift", {"swift"});
         add("php", {"php"});
         add("cmake", {"cmake"});
-        add("scala", {"scala", "sc"});
         add("dart", {"dart"});
-        add("zig", {"zig"});
         add("elixir", {"ex", "exs"});
         add("haskell", {"hs"});
         add("ocaml", {"ml", "mli"});
-        add("objc", {"m", "mm"});
         add("r", {"r"});
-        add("julia", {"jl"});
         add("nix", {"nix"});
         add("sql", {"sql"});
         add("perl", {"pl", "pm"});
