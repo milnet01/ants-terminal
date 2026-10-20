@@ -7009,6 +7009,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "relying on it. No symbols[] or findings[]. Refuses with "
                             "only. Default full.");
                     props["mode"] = dsMode;
+                    // ANTS-5265 — workspace_search's count_only, same meaning.
+                    QJsonObject dsCountOnly; dsCountOnly["type"] = "boolean";
+                        dsCountOnly["description"] = QStringLiteral(
+                            "Totals only: counts and findings_count, no symbols[] "
+                            "or findings[]. Refuses with mode:\"locator\" or a "
+                            "narrowing only.");
+                    props["count_only"] = dsCountOnly;
                     schema["properties"] = props;
                     docSym["inputSchema"] = schema;
                 }

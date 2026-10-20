@@ -673,10 +673,13 @@ public:
     // the scan found, not what this call chose to print. An unrecognised
     // value is refused by the verb before it reaches here, so this stays
     // total and a test can call it with anything.
+    // ANTS-5265 — `countOnly` drops symbols[] and findings[] and adds
+    // findings_count, for a caller who wants the totals and not the rows.
     static QJsonObject docSymbolsBuildResponse(
         const QVector<DocSymbols::Symbol> &symbols,
         const QList<DocFinding::Finding> &findings, bool truncated,
-        const QStringList &checkedDocs, const QString &only = {});
+        const QStringList &checkedDocs, const QString &only = {},
+        bool countOnly = false);
     // ANTS-5313 — pure: DocSymbols::locate() → the mode:"locator" reply.
     static QJsonObject docSymbolsBuildLocatorResponse(
         const DocSymbols::Locators &l, bool truncated,

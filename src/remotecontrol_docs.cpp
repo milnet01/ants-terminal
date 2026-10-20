@@ -412,6 +412,20 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
         return QJsonDocument(bad);
     }
 
+    // ANTS-5265-INV-5 — count_only drops the rows, so mode:"locator" and a
+    // narrowing `only` would have nothing to act on. Refuse rather than
+    // ignore them, as ANTS-5313-INV-7 does for `only` with the locator.
+    const bool countOnly = req.value(QStringLiteral("count_only")).toBool();
+    if (countOnly && (locator || (!only.isEmpty() && only != QLatin1String("all")))) {
+        QJsonObject bad;
+        bad[QStringLiteral("ok")]    = false;
+        bad[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        bad[QStringLiteral("error")] = locator
+            ? QStringLiteral("doc_symbols: count_only does not apply to mode:\"locator\"")
+            : QStringLiteral("doc_symbols: count_only does not combine with only=");
+        return QJsonDocument(bad);
+    }
+
     DocSymbols::Options opts;
     opts.rootCanonical = rootCanonical;
     opts.excludedNames = docSymbolsRefusalCodes(rootCanonical);
@@ -461,7 +475,8 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
                              : QStringList();
               }),
               truncated, checked)
-        : docSymbolsBuildResponse(symbols, findings, truncated, checked, only);
+        : docSymbolsBuildResponse(symbols, findings, truncated, checked, only,
+                                  countOnly);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     // ANTS-5623 — a cut walk may have missed a document; say so.
     if (walkCut) out[QStringLiteral("walk_truncated")] = true;
@@ -472,7 +487,7 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
 QJsonObject RemoteControl::docSymbolsBuildResponse(
     const QVector<DocSymbols::Symbol> &symbols,
     const QList<DocFinding::Finding> &findings, bool truncated,
-    const QStringList &checkedDocs, const QString &only) {
+    const QStringList &checkedDocs, const QString &only, bool countOnly) {
     // ANTS-3689 — the doc_citations `only:"stale"` shape: narrow the rows a
     // caller acts on, leave `counts` whole-document. The counting below runs
     // over every symbol and the append is what the filter gates, so the two
@@ -555,6 +570,13 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     // absence would otherwise be a third state a reader has to interpret.
     o[QStringLiteral("only")]                 = onlyApplied;
     o[QStringLiteral("symbols_filtered_out")] = withheld;
+    // ANTS-5265 — the totals without the rows. counts above is built the
+    // same either way, so the two replies cannot disagree about it.
+    if (countOnly) {
+        o.remove(QStringLiteral("symbols"));
+        o.remove(QStringLiteral("findings"));
+        o[QStringLiteral("findings_count")] = findings.size();
+    }
     return o;
 }
 

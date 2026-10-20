@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_symbols` takes `count_only`, returning its totals and a findings count without the per-symbol rows** (ANTS-5265)
+
 - **roadmap_log op:"place_by_release" files each shipped item under the release it shipped in** (ANTS-5315)
   The release comes from the lowest CHANGELOG citation, else the lowest stable git tag holding a commit whose subject starts with the item's id. It reuses or creates one release section per version, moves a wave title's version to its end, and leaves open items and human moves alone. A dry run is required first; its plan_id applies it.
 

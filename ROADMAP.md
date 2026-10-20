@@ -81153,7 +81153,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ai-prompts).
   Lanes: mcp.
 
-- 📋 [ANTS-5265] **doc_symbols has no count_only, so reading its five summary numbers costs a response that does not fit.**
+- ✅ [ANTS-5265] **doc_symbols has no count_only, so reading its five summary numbers costs a response that does not fit.**
   Measured on UT_MonsterHunt, 21 documents under `docs/`:
 
       doc_symbols(path:"docs", only:"unresolved")
@@ -81205,6 +81205,11 @@ are closed inline in the feedback files rather than filed here.
   ACTIONABLE HERE: when a reply spills, the residue should be the recipe,
   not a sample. Cheaper than the preview it replaces, and it is the only
   thing a caller can act on.
+  2026-10-20: shipped. doc_symbols count_only drops symbols[] and
+  findings[] and adds findings_count; refuses with mode:"locator" or a
+  narrowing only. Test tests/features/doc_symbols_count_only: 3 of 5
+  checks red on the stub, 33/33 DocSymbols+McpEagerLoad green. Live
+  after ants-mcpd is rebuilt and a client reconnects.
   **Layman:** Asking a document checker for its totals returns every single finding instead, which is too big to send — so you pay four calls to read five numbers it had already worked out.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).
@@ -81364,7 +81369,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige).
   Lanes: mcp.
 
-- 🚧 [ANTS-5272] **The over-ceiling hint offers paging and a spill file, and never names the one argument that most often turns a refusal into an answer.**
+- ✅ [ANTS-5272] **The over-ceiling hint offers paging and a spill file, and never names the one argument that most often turns a refusal into an answer.**
   MEASURED ON TWO INDEPENDENT TREES the same day, which is what makes it
   general rather than one project's shape:
 
@@ -81397,6 +81402,8 @@ are closed inline in the feedback files rather than filed here.
   STILL OPEN: ANTS-5265's `count_only` on doc_symbols. Cheaper now that
   the hint points at `fields`, but a rows-eliminated mode is still the
   right shape, and `workspace_search` already has the precedent.
+  2026-10-20: the one open piece, ANTS-5265's count_only, shipped.
+  Closed.
   **Layman:** When a reply is too big to send, the advice suggests several expensive ways to fetch it in pieces, and never mentions the single word that would have made it small enough in the first place.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (ut-ants, ut-monsterhunt).
