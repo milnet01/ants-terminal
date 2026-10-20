@@ -259,6 +259,7 @@ private:
             m_item = Item();
             m_locals.clear();
             m_localRegex.clear();
+            m_localLits.clear();
             static const QRegularExpression test(
                 QStringLiteral("^\\s*TEST(?:_F|_P)?\\s*\\(\\s*(\\w+)\\s*,\\s*(\\w+)"));
             static const QRegularExpression lambda(QStringLiteral("(\\w+)\\s*=\\s*\\["));
@@ -290,10 +291,12 @@ private:
         m_item = Item();
         m_locals.clear();
         m_localRegex.clear();
+        m_localLits.clear();
     }
 
     QHash<QString, QSet<QString>> &bindings() { return m_itemDepth == 0 ? m_fileBindings : m_locals; }
     QHash<QString, QList<int>> &regexVars() { return m_itemDepth == 0 ? m_fileRegex : m_localRegex; }
+    QHash<QString, QList<int>> &literalVars() { return m_itemDepth == 0 ? m_fileLits : m_localLits; }
 
     QSet<QString> boundPaths(const QString &id) const {
         if (m_locals.contains(id)) return m_locals.value(id);
@@ -303,6 +306,12 @@ private:
     QList<int> regexVar(const QString &id) const {
         if (m_localRegex.contains(id)) return m_localRegex.value(id);
         return m_fileRegex.value(id);
+    }
+
+    // A variable holding only a literal (`const std::string call = "f(";`).
+    QList<int> literalVar(const QString &id) const {
+        if (m_localLits.contains(id)) return m_localLits.value(id);
+        return m_fileLits.value(id);
     }
 
     QSet<QString> helperPaths(const QString &id) const {
@@ -385,9 +394,15 @@ private:
             return true;
         }
         static const QRegularExpression bare(QStringLiteral("^\\s*(\\w+)\\s*$"));
-        if (const auto m = bare.match(arg); m.hasMatch() && !regexVar(m.captured(1)).isEmpty()) {
-            addAnchor(regexVar(m.captured(1)), true, paths);
-            return true;
+        if (const auto m = bare.match(arg); m.hasMatch()) {
+            if (const QList<int> l = regexVar(m.captured(1)); !l.isEmpty()) {
+                addAnchor(l, true, paths);
+                return true;
+            }
+            if (const QList<int> l = literalVar(m.captured(1)); !l.isEmpty()) {
+                addAnchor(l, regexCall, paths);
+                return true;
+            }
         }
         return false;
     }
@@ -487,6 +502,8 @@ private:
             if (!m.hasMatch() || lhs.contains(QLatin1Char('(')) || lhs.contains(QLatin1Char('.'))
                 || lhs.contains(QLatin1String("->")))
                 return;
+            if (const QList<int> l = literalsOnly(code.mid(eq + (append ? 2 : 1))); !append && !l.isEmpty())
+                literalVars().insert(m.captured(1), l);
             if (append) bindings()[m.captured(1)] += r;
             else if (!r.isEmpty()) bindings()[m.captured(1)] = r;
             else bindings().remove(m.captured(1));
@@ -512,7 +529,7 @@ private:
     int m_itemDepth = 0;
     Item m_item;
     QHash<QString, QSet<QString>> m_locals, m_fileBindings, m_fileHelpers;
-    QHash<QString, QList<int>> m_localRegex, m_fileRegex;
+    QHash<QString, QList<int>> m_localRegex, m_fileRegex, m_localLits, m_fileLits;
     QSet<QString> m_seen;
     FileResult m_out;
 };
@@ -690,6 +707,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     scanned[QStringLiteral("readers_total")] = int(readerRows.size());
     scanned[QStringLiteral("unresolved_anchors")] = unresolved;
     scanned[QStringLiteral("truncated")] = walk.truncated;
+    // True when `limit` cut either list; `truncated` is the file walk's cap.
+    scanned[QStringLiteral("rows_truncated")] = total > limit || readerRows.size() > limit;
     QJsonObject env;
     env[QStringLiteral("ok")] = true;
     env[QStringLiteral("paths")] = QJsonArray::fromStringList(wanted);

@@ -83,7 +83,9 @@ const QByteArray kOne =
     "    EXPECT_NE(s.find(\"strung\"), npos);\n"                              // 36
     "    const std::string src = slurpFile(SRC_A_PATH);\n"                    // 37
     "    for (const char *n : {\"x\"}) EXPECT_NE(src.find(n), npos);\n"       // 38
-    "}\n";                                                                    // 39
+    "    const std::string call = \"held(\";\n"                               // 39
+    "    EXPECT_NE(src.find(call), npos);\n"                                   // 40
+    "}\n";                                                                    // 41
 
 const QByteArray kTwo =
     "TEST(T, Helper) {\n"                                                     // 1
@@ -186,6 +188,8 @@ TEST(SourceScrapes, Inv6CommentsStringsAndVariables) {
     EXPECT_TRUE(row(a, QStringLiteral("strung")).isEmpty());
     EXPECT_EQ(a.value(QStringLiteral("scanned")).toObject()
                   .value(QStringLiteral("unresolved_anchors")).toInt(), 1);
+    EXPECT_EQ(row(a, QStringLiteral("held(")).value(QStringLiteral("line")).toInt(), 39)
+        << "a variable holding a literal is that literal";
 }
 
 TEST(SourceScrapes, Inv7FilteredAndOrdered) {
@@ -222,6 +226,10 @@ TEST(SourceScrapes, Inv7FilteredAndOrdered) {
     EXPECT_EQ(capped.value(QStringLiteral("scrapes")).toArray().size(), 1);
     EXPECT_GT(capped.value(QStringLiteral("scanned")).toObject()
                   .value(QStringLiteral("scrapes_total")).toInt(), 1);
+    EXPECT_TRUE(capped.value(QStringLiteral("scanned")).toObject()
+                    .value(QStringLiteral("rows_truncated")).toBool());
+    EXPECT_FALSE(b.value(QStringLiteral("scanned")).toObject()
+                     .value(QStringLiteral("rows_truncated")).toBool());
 }
 
 TEST(SourceScrapes, Inv8Refusals) {
