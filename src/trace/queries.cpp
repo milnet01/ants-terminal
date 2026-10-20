@@ -32,7 +32,16 @@ struct UserFile {
 };
 
 QMutex g_mutex;
-QHash<QByteArray, Compiled> g_compiled;   // key: lang + '\0' + text hash
+
+// Key: lang + '\0' + text hash. Heap-held and never destroyed, so the queries
+// stay reachable at exit: a static table is torn down before LeakSanitizer
+// looks, which orphans every TSQuery in it. Not freed at exit either, since a
+// worker thread may still be matching with one.
+QHash<QByteArray, Compiled> &compiled() {
+    static auto *table = new QHash<QByteArray, Compiled>;
+    return *table;
+}
+
 QHash<QString, UserFile> g_userFiles;     // key: absolute path
 
 QString limitsOf(const QByteArray &text) {
@@ -112,8 +121,9 @@ Query queryFor(const QString &langId) {
     out.hash = QCryptographicHash::hash(text, QCryptographicHash::Sha1).toHex();
     out.limits = limitsOf(text);
     const QByteArray key = langId.toUtf8() + '\0' + out.hash;
-    auto it = g_compiled.find(key);
-    if (it == g_compiled.end()) {
+    QHash<QByteArray, Compiled> &table = compiled();
+    auto it = table.find(key);
+    if (it == table.end()) {
         Compiled c;
         uint32_t errOffset = 0;
         TSQueryError err = TSQueryErrorNone;
@@ -127,7 +137,7 @@ Query queryFor(const QString &langId) {
                           .arg(out.userCopy ? QStringLiteral(" of ") + userPath
                                             : QString());
         }
-        it = g_compiled.insert(key, c);
+        it = table.insert(key, c);
     }
     out.query = it->query;
     out.error = it->error;
