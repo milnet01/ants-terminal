@@ -167,6 +167,10 @@ Listed only where behavior isn't obvious from the name.
   verb's seam: the tests that read a source file as text, through the root
   `CMakeLists.txt`'s path definitions (`BuildTargets::pathDefinitions`),
   helpers and variables, and the strings each looks for. ANTS-5602.
+- `commentclaims` (Qt6::Core, `ants_mcpcore_lib`) — the `comment_claims`
+  verb's seam: comments harvested by each file's comment syntax and checked
+  for missing quotations, dead `see` references and unknown ticket ids, with
+  census numbers listed for a reader. ANTS-5786.
 - `docdedup` (Qt6::Core, `ants_core_lib`) — near-duplicate passage detection
   across a doc set: paragraph segmentation (a list item is one passage, marker
   line included), word 3-gram shingles, exact Jaccard, and connected-component
@@ -329,8 +333,9 @@ Listed only where behavior isn't obvious from the name.
   reports a session's context rent from its transcript; the seam is
   `sessioncostverb` (ANTS-5698).
 - `remotecontrol_readability` — thin handlers for the readability verbs
-  (`function_sizes`, `source_scrapes`); the seams are `functionsizes`,
-  `sourcescrapes` and `codewalk` (ANTS-5787, ANTS-5602).
+  (`function_sizes`, `source_scrapes`, `comment_claims`); the seams are
+  `functionsizes`, `sourcescrapes`, `commentclaims` and `codewalk`
+  (ANTS-5787, ANTS-5602, ANTS-5786).
   (`remotecontrol_roadmap_migrate` is the remaining TU and has its own entry
   further down.)
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

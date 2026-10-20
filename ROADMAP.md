@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5794 -->
+<!-- ants-roadmap-id-high-water: ANTS=5795 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93942,7 +93942,7 @@ asked for them to ship in 0.8.0.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
   Lanes: mcp.
 
-- 📋 [ANTS-5786] **comment_claims verb: check the claims code comments make.**
+- ✅ [ANTS-5786] **comment_claims verb: check the claims code comments make.**
   Shape agreed with claude-config (CFG-0830), 2026-10-19.
   Args: paths[]; include_tests and include_generated (off by
   default). Returns two buckets.
@@ -93958,6 +93958,20 @@ asked for them to ship in 0.8.0.
   On ship: send the final schema to claude-config with session_message
   op:"send" to:"claude-config" (its request, 2026-10-19; CFG-0830). The
   findings bucket feeds check-code, so name the verb in that message.
+  Shipped 2026-10-20. Seam src/commentclaims.{h,cpp} (own comment
+  harvester; QuotationCheck::normalise for quotes; SymbolQuery::
+  findDefinitions for symbols, one walk). Args: caller_cwd, paths[],
+  limit (1-5000, default 500, per bucket), include_tests,
+  include_generated. Returns {ok, findings:[{id, file, line, kind,
+  quote, why}], candidates:[same], limit, scanned:{files,
+  skipped_tests, skipped_generated, truncated, comments,
+  findings_total, candidates_total, symbols_unchecked,
+  rows_truncated}, not_covered[]}. Finding kinds missing_quotation,
+  dead_reference, unknown_ticket; candidate kind census_number. id is
+  file:line:kind:n. Contract tests/features/mcp_comment_claims/spec.md.
+  Real src/ tree: 418 files; 135 unknown_ticket (ids the store also
+  lacks), 4 dead_reference, 0 missing_quotation after tightening
+  attribution; 936 census candidates.
   **Layman:** A tool that catches comments that quote a file wrongly, point at code that is gone, or carry numbers that go stale.
   Kind: feature.
   Source: user-request-2026-10-19 (readability tooling, shaped with claude-config CFG-0830).
@@ -94041,6 +94055,20 @@ asked for them to ship in 0.8.0.
   Kind: feature.
   Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
   Lanes: mcp, tests.
+
+- 📋 [ANTS-5795] **Source comments cite roadmap ids the store lacks, and four see-references point at nothing.**
+  Measured 2026-10-20 with comment_claims over src/ (ANTS-5786):
+  135 unknown_ticket rows, e.g. ANTS-1168 and ANTS-1181, which
+  roadmap_query also reports missing. Some may be ids that predate the
+  store; check the CHANGELOG and git log for each before rewording.
+  dead_reference: src/remotecontrol.h cites
+  tests/features/roadmap_backfill_dates/spec.md (absent);
+  src/terminalgrid.{h,cpp} cite ink/build/ink.js (another project's
+  file: say so in the comment). Re-run comment_claims to list them.
+  **Layman:** Some code comments point at work items or files that do not exist, so a reader following them hits a dead end.
+  Kind: doc-fix.
+  Source: in-session-2026-10-20 (first comment_claims run over src/).
+  Lanes: mcp.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

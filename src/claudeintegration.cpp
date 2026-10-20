@@ -14669,6 +14669,81 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5786 — comment_claims: comments whose claims can be checked.
+                // Every property below is read by cmdCommentClaims (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "comment_claims";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to find comments that have gone false: a quotation its file "
+                        "lacks, a see-reference to nothing, an unknown ticket id, a stale count.");
+                    t["description"] = QStringLiteral(
+                        "Check the claims code comments make. Two buckets of {id, file, line, "
+                        "kind, quote, why}: findings, decided by lookup (missing_quotation, "
+                        "dead_reference, unknown_ticket), and candidates for a reader "
+                        "(census_number). Refusals: bad_args, bad_path, no_project. "
+                        "caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5786. Contract: tests/features/mcp_comment_claims/spec.md. "
+                        "Comments: // and /* */ in C-family files, # in Python, shell, CMake "
+                        "and YAML, -- in Lua. missing_quotation: a quoted text no file named "
+                        "within 80 characters contains. dead_reference: `see X` naming a "
+                        "path or a project symbol that does not exist. unknown_ticket: an id "
+                        "with a roadmap prefix that the roadmap lacks. census_number: ~N, "
+                        "N-line, N <plural noun>. Tests and generated files are left out "
+                        "unless asked; paths defaults to source_roots, else src.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project the paths resolve in.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject s;
+                        s["type"] = "string";
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = s;
+                        p["description"] = QStringLiteral(
+                            "Files or directories, project-relative or absolute. Default: "
+                            "source_roots, else src.");
+                        props["paths"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 5000;
+                        p["description"] = QStringLiteral(
+                            "Cap on each bucket (default 500); scanned holds the totals.");
+                        props["limit"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Also read test files (default false).");
+                        props["include_tests"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Also read generated files such as moc_* (default false).");
+                        props["include_generated"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -15848,7 +15923,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         return QStringLiteral("pattern");
                     // ANTS-5787 — the readability shortlists.
                     if (name == QLatin1String("function_sizes") ||
-                        name == QLatin1String("source_scrapes"))   // ANTS-5602
+                        name == QLatin1String("source_scrapes") ||   // ANTS-5602
+                        name == QLatin1String("comment_claims"))     // ANTS-5786
                         return QStringLiteral("readability");
                     // ANTS-1306 — task-start context bundler.
                     if (name == QLatin1String("task_priors"))
@@ -17508,6 +17584,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("function_sizes"))     return C::Required;
     // ANTS-5602 — source_scrapes reads the caller's CMakeLists.txt and tests.
     if (toolName == QStringLiteral("source_scrapes"))     return C::Required;
+    // ANTS-5786 — comment_claims walks paths under the caller's project root.
+    if (toolName == QStringLiteral("comment_claims"))     return C::Required;
     // ANTS-5698 — session_cost reads the transcript folder named by the cwd.
     if (toolName == QStringLiteral("session_cost"))       return C::Required;
     // ANTS-5734 — trace walks and parses the caller's project.

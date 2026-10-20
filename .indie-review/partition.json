@@ -442,6 +442,8 @@
         "src/functionsizes.h",
         "src/sourcescrapes.cpp",
         "src/sourcescrapes.h",
+        "src/commentclaims.cpp",
+        "src/commentclaims.h",
         "src/paginationengine.cpp",
         "src/paginationengine.h",
         "src/readregion.cpp",

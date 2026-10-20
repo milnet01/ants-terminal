@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`comment_claims` checks what code comments claim: quotations, see-references, ticket ids and counts** (ANTS-5786)
+  It lists comments that quote a file wrongly, point at a file or function that is gone, or cite a roadmap id that does not exist, and separately lists counts in comments that go stale, for a reviewer to judge.
+
 - **`source_scrapes` names the tests that read a source file as text, and the strings each one looks for** (ANTS-5602)
   Before a refactor, a session can see which tests would break if a function is renamed or moved, without running the whole suite.
 

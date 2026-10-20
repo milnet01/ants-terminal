@@ -1132,6 +1132,10 @@ public:
     // Seam: src/sourcescrapes.h. Handler TU: remotecontrol_readability.cpp.
     QJsonDocument cmdSourceScrapes(const QJsonObject &req);
 
+    // ANTS-5786 — comment_claims: comments whose claims can be checked.
+    // Seam: src/commentclaims.h. Handler TU: remotecontrol_readability.cpp.
+    QJsonDocument cmdCommentClaims(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by

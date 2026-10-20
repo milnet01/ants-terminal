@@ -270,6 +270,13 @@ server-controllable beyond this per-tool hint.
   `scanned.unresolved_anchors`, never reported as a row. Contract:
   [`tests/features/mcp_source_scrapes/spec.md`](../../tests/features/mcp_source_scrapes/spec.md).
 
+- **`comment_claims` reports a finding only where a lookup decides it**
+  (ANTS-5786). A `see` naming a bare file name, a Qt or `std::` name, or an
+  all-caps name is not looked up, and a symbol the capped walk never reached
+  is counted in `scanned.symbols_unchecked`. Ticket ids are checked only for
+  prefixes the roadmap's own items use. Contract:
+  [`tests/features/mcp_comment_claims/spec.md`](../../tests/features/mcp_comment_claims/spec.md).
+
 - **`roadmap_query` `mode:"section_index"` — the counts of a LEVEL-2
   section are ROLLUPS of its level-3 children, so summing `sections[]`
   double-counts.** Measured 2026-08-21: `0.7.92 — indie-review #4` (level 2)

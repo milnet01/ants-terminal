@@ -1,6 +1,6 @@
-// ANTS-5787 TU 23/23 — the readability verbs' handlers: function_sizes and
-// source_scrapes (ANTS-5602). Contracts: tests/features/mcp_function_sizes/
-// spec.md and tests/features/mcp_source_scrapes/spec.md.
+// ANTS-5787 TU 23/23 — the readability verbs' handlers: function_sizes,
+// source_scrapes (ANTS-5602) and comment_claims (ANTS-5786). Contracts: each
+// verb's tests/features/mcp_<verb>/spec.md.
 //
 // Thin by design, like quotation_check: each seam (outside
 // ANTS_RC_SOURCES_REL) does everything below the root; what lives here is
@@ -13,6 +13,7 @@
 
 #include "remotecontrol.h"
 
+#include "commentclaims.h"
 #include "functionsizes.h"
 #include "resolvedroot.h"
 #include "sourcescrapes.h"
@@ -63,4 +64,13 @@ QJsonDocument RemoteControl::cmdSourceScrapes(const QJsonObject &req) {
         resolveRoot(m_roots, req, QStringLiteral("source_scrapes"), &refusal);
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(SourceScrapes::run(root, forward(req, {"path", "paths", "limit"})));
+}
+
+QJsonDocument RemoteControl::cmdCommentClaims(const QJsonObject &req) {
+    QJsonObject refusal;
+    const QString root =
+        resolveRoot(m_roots, req, QStringLiteral("comment_claims"), &refusal);
+    if (root.isEmpty()) return QJsonDocument(refusal);
+    return QJsonDocument(CommentClaims::run(
+        root, forward(req, {"paths", "limit", "include_tests", "include_generated"})));
 }

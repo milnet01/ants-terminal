@@ -179,6 +179,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("source_scrapes",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdSourceScrapes));
+    // ANTS-5786 — comment_claims: comments whose claims can be checked.
+    // Required: paths resolve against the caller's project root.
+    sink.registerToolProvider("comment_claims",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdCommentClaims));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     sink.registerToolProvider("changelog_log",
