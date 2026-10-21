@@ -83,6 +83,44 @@ struct DiffFile {
 QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
                                  bool includeLines);
 
+// ANTS-5508 — the pure halves of git_state's added-lines diff, log stat and
+// rename sweep. Contract: tests/features/git_state_filters/spec.md.
+
+// The `+` lines of a file parsed with includeLines, numbered in the new
+// file, marker stripped. A non-empty `match` keeps the lines containing it
+// (case-sensitive).
+struct AddedLine {
+    int     line = 0;
+    QString text;
+};
+QVector<AddedLine> addedLines(const DiffFile &file, const QString &match);
+
+// `git log --numstat` with a format of 0x1e, fields joined by 0x1f, then
+// 0x1d. A binary file's counts are -1.
+struct NumstatRow {
+    QString path;
+    int     added   = -1;
+    int     removed = -1;
+};
+struct LogRecord {
+    QStringList         fields;
+    QVector<NumstatRow> files;
+};
+QVector<LogRecord> parseLogNumstat(const QByteArray &out);
+
+// `git grep -n -z` output. `rev` is the revision searched, empty for the
+// working tree; its `<rev>:` prefix is dropped from each path.
+struct GrepHit {
+    QString path;
+    int     line = 0;
+    QString text;
+};
+QVector<GrepHit> parseGrepZ(const QByteArray &out, const QString &rev);
+
+// The revision a range ends at: B for A..B or A...B, HEAD for A.., and a
+// lone revision unchanged.
+QString rangeTip(const QString &range);
+
 }  // namespace GitWrap
 
 #endif

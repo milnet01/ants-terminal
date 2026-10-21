@@ -132,4 +132,78 @@ QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
     return out;
 }
 
+QVector<AddedLine> addedLines(const DiffFile &file, const QString &match) {
+    QVector<AddedLine> out;
+    for (const DiffHunk &h : file.hunks) {
+        int newLine = h.newStart;
+        for (const QString &l : h.lines) {
+            if (l.startsWith(QLatin1Char(' '))) {
+                ++newLine;
+            } else if (l.startsWith(QLatin1Char('+'))) {
+                const QString text = l.mid(1);
+                if (match.isEmpty() || text.contains(match))
+                    out.append({newLine, text});
+                ++newLine;
+            }
+            // `-` lines and "\ No newline" do not exist in the new file.
+        }
+    }
+    return out;
+}
+
+QVector<LogRecord> parseLogNumstat(const QByteArray &out) {
+    QVector<LogRecord> records;
+    const QStringList raw =
+        QString::fromUtf8(out).split(QChar(0x1e), Qt::SkipEmptyParts);
+    for (const QString &rec : raw) {
+        const int end = rec.indexOf(QChar(0x1d));
+        if (end < 0) continue;   // a record cut by the stdout cap
+        LogRecord r;
+        r.fields = rec.left(end).split(QChar(0x1f));
+        const QStringList lines =
+            rec.mid(end + 1).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            // "<added>\t<removed>\t<path>"; a binary file shows "-\t-".
+            const QStringList parts = line.split(QLatin1Char('\t'));
+            if (parts.size() < 3) continue;
+            NumstatRow row;
+            bool ok = false;
+            const int a = parts.at(0).toInt(&ok);
+            if (ok) row.added = a;
+            const int d = parts.at(1).toInt(&ok);
+            if (ok) row.removed = d;
+            row.path = parts.mid(2).join(QLatin1Char('\t'));
+            r.files.append(row);
+        }
+        records.append(r);
+    }
+    return records;
+}
+
+QVector<GrepHit> parseGrepZ(const QByteArray &out, const QString &rev) {
+    QVector<GrepHit> hits;
+    const QString prefix = rev.isEmpty() ? QString() : rev + QLatin1Char(':');
+    for (const QByteArray &lb : out.split('\n')) {
+        // "<path>\0<line>\0<text>"; the text may hold NULs of its own.
+        const int a = lb.indexOf('\0');
+        const int b = a < 0 ? -1 : lb.indexOf('\0', a + 1);
+        if (b < 0) continue;
+        GrepHit h;
+        h.path = QString::fromUtf8(lb.left(a));
+        if (!prefix.isEmpty() && h.path.startsWith(prefix))
+            h.path.remove(0, prefix.size());
+        h.line = lb.mid(a + 1, b - a - 1).toInt();
+        h.text = QString::fromUtf8(lb.mid(b + 1));
+        hits.append(h);
+    }
+    return hits;
+}
+
+QString rangeTip(const QString &range) {
+    const int dots = range.lastIndexOf(QLatin1String(".."));
+    if (dots < 0) return range;
+    const QString tip = range.mid(dots + 2);
+    return tip.isEmpty() ? QStringLiteral("HEAD") : tip;
+}
+
 }  // namespace GitWrap

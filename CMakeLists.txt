@@ -2888,6 +2888,8 @@ if(ANTS_TESTS)
                 tests/features/git_optional_locks/test_git_optional_locks.cpp
                 # ANTS-3377 — git_state op:diff hunk-header parser.
                 tests/features/git_diff_hunks/test_git_diff_hunks.cpp
+                # ANTS-5508 — git_state added lines, log stat, rename sweep.
+                tests/features/git_state_filters/test_git_state_filters.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
                 tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp

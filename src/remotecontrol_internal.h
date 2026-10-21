@@ -679,6 +679,8 @@ void parseStatusHeader(const QString &headerLine, QJsonObject &out);
 QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req);
 QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req);
 QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req);
+QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
+                             const QJsonObject &req);   // ANTS-5508
 QByteArray runGit(const QString &root, const QStringList &argv);
 QJsonObject csErr(const QString &code, const QString &message);
 QJsonObject irErr(const QString &code, const QString &message);

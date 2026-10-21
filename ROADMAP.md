@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5813 -->
+<!-- ants-roadmap-id-high-water: ANTS=5814 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85845,9 +85845,12 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (A6).
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5508] **git_state diff and log gain paths[], an added-text filter, grep, stat and a rename sweep.**
+- ✅ [ANTS-5508] **git_state diff and log gain paths[], an added-text filter, grep, stat and a rename sweep.**
   Each is small. rename_sweep lists every place still using an old
   name after a rename over a range; ANTS-4961 is adjacent.
+  Shipped 2026-10-22: diff paths[] + added_lines/added_match, log grep +
+  stat, op:"rename_sweep" (old, range, paths[]). Contract:
+  tests/features/git_state_filters/spec.md.
   **Layman:** Reviewers want to see only the lines a change added, across several files, in one call.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B10, quick win).
@@ -85971,6 +85974,16 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** The start-of-session summary could say whether this project's push check is wired up, at a small cost to every session start.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A4), split from ANTS-5505 2026-10-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5814] **ANTS-1250's spec still names pathInRepoRoot() and a streamed readyReadStandardOutput read, which the code no longer uses.**
+  doc_lint doc_symbols on docs/specs/ANTS-1250.md (2026-10-22) flags
+  both. Path checks moved to PathValidation::validatePath (ANTS-1295);
+  GitWrap::run waits with waitForFinished, then reads stdout whole. Its
+  terminate()/kill() hits are Qt methods the code still calls.
+  **Layman:** The design note for git_state names some code that has since been renamed or replaced.
+  Kind: doc-fix.
+  Source: doc_lint while shipping ANTS-5508, 2026-10-22.
   Lanes: mcp.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage

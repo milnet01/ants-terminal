@@ -8789,8 +8789,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "ahead/behind, files[] including untracked), \"log\" (n, default "
                     "10, cap 100; path; body), \"diff\" (path; range, omitted for "
                     "the working tree; hunks:true for per-file hunk headers, with "
-                    "include_lines, context and staged) or \"hooks\" (push-gate "
-                    "wiring).");
+                    "include_lines, context and staged; added_lines for only the "
+                    "added lines), \"rename_sweep\" (where `old` still appears) "
+                    "or \"hooks\" (push-gate wiring).");
                 gsTool["detail"] = QStringLiteral(
                     "Query git repo state (status / log / diff) as "
                     "structured JSON. Replaces multiple Bash "
@@ -8823,7 +8824,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "(none, machine_wide, hands_off or own), every ants.gate.* key "
                     "with its source, the gate script and the workflows calling "
                     "it, and whether HEAD's tree has a gate-passed record. It "
-                    "gives no verdict; ~/.claude/tools/ci-gate does.");
+                    "gives no verdict; ~/.claude/tools/ci-gate does. ANTS-5508: "
+                    "log and diff take paths[]; log grep keeps commits whose "
+                    "message holds the text (any case) and stat adds each "
+                    "commit's files[] {path, added, removed}; diff added_lines "
+                    "returns files[{path, added:[{line, text}]}], narrowed by "
+                    "added_match (case-sensitive), and refuses beside hunks; "
+                    "op=\"rename_sweep\" lists hits[{path, line, text}] where "
+                    "`old` still appears as a whole word in tracked files, at "
+                    "range's last commit or in the working tree.");
                 gsTool["selection_hint"] = QStringLiteral(
                     "Use for git status/log/diff in one structured "
                     "call (vs three Bash invocations). Pairs with "
@@ -8837,6 +8846,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("status");
                     opEnum.append("log");
                     opEnum.append("diff");
+                    opEnum.append("rename_sweep");  // ANTS-5508
                     opEnum.append("hooks");         // ANTS-5505
                     opProp["enum"]    = opEnum;
                     opProp["default"] = "status";   // ANTS-3365
@@ -8852,13 +8862,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QStringLiteral("log only");
                     QJsonObject pathProp;   pathProp["type"]  = "string";
                                             pathProp["description"] =
-                        QStringLiteral("log/diff: filter to repo-relative path");
+                        QStringLiteral("log/diff/rename_sweep: filter to "
+                                       "repo-relative path");
                     QJsonObject rangeProp;  rangeProp["type"] = "string";
                                             rangeProp["description"] =
-                        QStringLiteral("diff: e.g. HEAD~5..HEAD. Omit for "
-                                       "the working-tree diff (unstaged "
-                                       "changes, like bare `git diff`) — "
-                                       "ANTS-2074.");
+                        QStringLiteral("diff/rename_sweep: e.g. HEAD~5..HEAD. "
+                                       "Omit for the working tree (diff: "
+                                       "unstaged changes) — ANTS-2074.");
                     QJsonObject bodyProp;   bodyProp["type"]  = "boolean";
                                             bodyProp["default"] = false;
                                             bodyProp["description"] =
@@ -8898,6 +8908,43 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["staged"]        = stagedProp;
                     props["include_lines"] = incLProp;
                     props["context"]       = ctxProp;
+                    // ANTS-5508 — paths[], log grep / stat, diff added
+                    // lines, rename_sweep's old name.
+                    QJsonObject pathsProp;  pathsProp["type"] = "array";
+                    QJsonObject pathsItems; pathsItems["type"] = "string";
+                                            pathsProp["items"] = pathsItems;
+                                            pathsProp["description"] =
+                        QStringLiteral("log/diff/rename_sweep: several "
+                                       "repo-relative paths; replaces path");
+                    QJsonObject grepProp;   grepProp["type"] = "string";
+                                            grepProp["description"] =
+                        QStringLiteral("log: keep commits whose message "
+                                       "contains this text, any case");
+                    QJsonObject statProp;   statProp["type"] = "boolean";
+                                            statProp["default"] = false;
+                                            statProp["description"] =
+                        QStringLiteral("log: add each commit's files[] "
+                                       "{path, added, removed}");
+                    QJsonObject addLProp;   addLProp["type"] = "boolean";
+                                            addLProp["default"] = false;
+                                            addLProp["description"] =
+                        QStringLiteral("diff: only the added lines, "
+                                       "{line, text} per file; not with hunks");
+                    QJsonObject addMProp;   addMProp["type"] = "string";
+                                            addMProp["description"] =
+                        QStringLiteral("diff: keep added lines containing "
+                                       "this text (case-sensitive); implies "
+                                       "added_lines");
+                    QJsonObject oldProp;    oldProp["type"] = "string";
+                                            oldProp["description"] =
+                        QStringLiteral("rename_sweep: the old name, matched "
+                                       "as a whole word");
+                    props["paths"]       = pathsProp;
+                    props["grep"]        = grepProp;
+                    props["stat"]        = statProp;
+                    props["added_lines"] = addLProp;
+                    props["added_match"] = addMProp;
+                    props["old"]         = oldProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499

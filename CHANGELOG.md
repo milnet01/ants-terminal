@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **git_state can show only the lines a change added, search commit messages, list each commit's files, and find a renamed name's leftovers** (ANTS-5508)
+  op:"diff" takes paths[] and, with added_lines, returns just the added lines with their line numbers; added_match keeps the ones containing a given text. op:"log" takes grep, to keep commits whose message holds a text, and stat, to list each commit's changed files with their line counts. The new op:"rename_sweep" lists every line in the tracked files that still uses an old name, in the working tree or at the end of a range.
+
 - **git_state op:"hooks" shows how a repository's push check is wired, in one call** (ANTS-5505)
   It reports where core.hooksPath points and who set it, whether pre-push is
   the machine-wide hook, hands off to it, or is the project's own, every

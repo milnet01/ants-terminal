@@ -37,7 +37,8 @@
 using namespace rcdetail;  // ANTS-3833
 
 QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
-    // ANTS-1250-INV-1: dispatch on op ∈ {status, log, diff, hooks}.
+    // ANTS-1250-INV-1: dispatch on op ∈ {status, log, diff, rename_sweep,
+    // hooks}.
     // ANTS-3365: the verb is advertised as a one-call "status + branch +
     // ahead/behind" read, so an omitted op defaults to "status" (a bare
     // git_state{caller_cwd} just works). A non-empty unknown op still
@@ -54,6 +55,9 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     if (op == QLatin1String("diff")) {
         return QJsonDocument(runDiffOp(m_roots, req));
     }
+    if (op == QLatin1String("rename_sweep")) {   // ANTS-5508
+        return QJsonDocument(runRenameSweepOp(m_roots, req));
+    }
     if (op == QLatin1String("hooks")) {   // ANTS-5505
         const QString root = resolveRootCanonical(m_roots, req);
         if (root.isEmpty())
@@ -64,7 +68,8 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     }
     return QJsonDocument(gitErr("bad_op",
         QStringLiteral("git_state: \"op\" must be one of "
-                       "{status, log, diff, hooks}, got \"%1\"").arg(op)));
+                       "{status, log, diff, rename_sweep, hooks}, "
+                       "got \"%1\"").arg(op)));
     // ANTS-1250-INV-2: parseStatusHeader handles `## branch...upstream
     //                  [ahead N, behind M]`.
     // ANTS-1250-INV-7: stderr cap enforced inside GitWrap::run.

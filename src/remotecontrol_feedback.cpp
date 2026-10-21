@@ -17,6 +17,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QSet>
 #include "auditfpledger.h"
 
 using namespace rcdetail;  // ANTS-3833
@@ -2501,6 +2502,30 @@ QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req)
     return out;
 }
 
+// ANTS-1340 / ANTS-5508 — a single `path` or a `paths` array, each validated
+// through PathValidation (INV-5 argv `--` follows). False → `err` holds the
+// refusal.
+static bool gitPathArgv(const QJsonObject &req, const QString &rootCanonical,
+                        QStringList &argv, QJsonObject &err) {
+    const QJsonValue pathsVal = req.value("paths");
+    if (pathsVal.isArray()) {
+        for (const QJsonValue &pv : pathsVal.toArray()) {
+            const auto pcp = PathValidation::validatePath(
+                pv.toString(), rootCanonical,
+                QStringLiteral("git_state"), QStringLiteral("paths"));
+            if (pcp.bad) { err = pcp.err; return false; }
+            if (!pcp.argvForm.isEmpty()) argv << pcp.argvForm;
+        }
+        return true;
+    }
+    const auto pc = PathValidation::validatePath(
+        req.value("path").toString(), rootCanonical,
+        QStringLiteral("git_state"), QStringLiteral("path"));
+    if (pc.bad) { err = pc.err; return false; }
+    if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
+    return true;
+}
+
 QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // ANTS-1391: prefer caller_cwd when present.
     const QString rootCanonical = resolveRootCanonical(roots, req);
@@ -2517,30 +2542,16 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
     }
     const bool wantBody = req.value("body").toBool(false);
 
-    // ANTS-1340 — accept either a single `path` or a `paths` array. The lane
-    // recent_changes composer (cmdSubsystem) passes the whole lane file list so
-    // git resolves the union of touching commits in ONE invocation instead of
-    // forking git once per file (worst case N×5 s serial, blocking the GUI on a
-    // wedged repo). `git log -- f1 f2 …` already dedups + date-sorts, so the
-    // result is identical to the prior per-file-merge. Every path is validated
-    // through PathValidation exactly as the single-path form (INV-5 argv `--`).
+    // ANTS-1340 — a `paths` array lets the lane recent_changes composer
+    // (cmdSubsystem) resolve the union of touching commits in ONE git call.
+    // `git log -- f1 f2 …` already dedups + date-sorts.
     QStringList pathArgv;
-    const QJsonValue pathsVal = req.value("paths");
-    if (pathsVal.isArray()) {
-        for (const QJsonValue &pv : pathsVal.toArray()) {
-            const auto pcp = PathValidation::validatePath(
-                pv.toString(), rootCanonical,
-                QStringLiteral("git_state"), QStringLiteral("paths"));
-            if (pcp.bad) return pcp.err;
-            if (!pcp.argvForm.isEmpty()) pathArgv << pcp.argvForm;
-        }
-    } else {
-        const auto pc = PathValidation::validatePath(
-            req.value("path").toString(), rootCanonical,
-            QStringLiteral("git_state"), QStringLiteral("path"));
-        if (pc.bad) return pc.err;
-        if (!pc.argvForm.isEmpty()) pathArgv << pc.argvForm;
-    }
+    QJsonObject pathErr;
+    if (!gitPathArgv(req, rootCanonical, pathArgv, pathErr)) return pathErr;
+    // ANTS-5508 — grep keeps commits whose message holds the text, any case;
+    // stat adds each commit's --numstat files.
+    const QString grep = req.value("grep").toString();
+    const bool wantStat = req.value("stat").toBool(false);
 
     // Format: SHA<US>SUBJECT<US>DATE(<US>BODY)?<RS>
     // Use 0x1f (US) between fields, 0x1e (RS) between commits.
@@ -2551,13 +2562,24 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
 
     QStringList argv;
     argv << QStringLiteral("log")
-         << QStringLiteral("--no-color")
-         << QStringLiteral("-z")  // null-terminate per commit (we use RS)
-         ;
-    // -z emits NUL between commits. Override the inter-commit separator
-    // by adding %x1e at end of format and splitting on RS.
-    const QString fmt = (wantBody ? fmtWith : fmtNoBody) + QChar(0x1e);
-    argv << QStringLiteral("--pretty=format:") + fmt;
+         << QStringLiteral("--no-color");
+    if (wantStat) {
+        // ANTS-5508 — RS opens each record and 0x1d closes its fields, so the
+        // numstat lines git prints after them stay with their commit.
+        argv << QStringLiteral("--numstat")
+             << QStringLiteral("--pretty=format:") + QChar(0x1e)
+                    + (wantBody ? fmtWith : fmtNoBody) + QChar(0x1d);
+    } else {
+        // -z emits NUL between commits. Override the inter-commit separator
+        // by adding %x1e at end of format and splitting on RS.
+        argv << QStringLiteral("-z")
+             << QStringLiteral("--pretty=format:")
+                    + (wantBody ? fmtWith : fmtNoBody) + QChar(0x1e);
+    }
+    if (!grep.isEmpty())
+        argv << QStringLiteral("--fixed-strings")
+             << QStringLiteral("--regexp-ignore-case")
+             << QStringLiteral("--grep=") + grep;
     // Fetch n+1 to detect truncation (INV-3).
     argv << QStringLiteral("-n") << QString::number(n + 1);
     // ANTS-1250-INV-5: argv -- separator before user-derived path(s).
@@ -2592,15 +2614,26 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
     }
 
     // Parse: split on 0x1e, then per record split on 0x1f.
-    const QString stdoutAll = QString::fromUtf8(g.stdoutBytes);
-    const QStringList rawCommits = stdoutAll.split(RS, Qt::SkipEmptyParts);
+    QVector<GitWrap::LogRecord> records;
+    bool cut = false;
+    if (wantStat) {
+        records = GitWrap::parseLogNumstat(g.stdoutBytes);
+        // Past GitWrap's stdout cap the last commit's file list may be cut.
+        cut = g.stdoutTruncated && !records.isEmpty();
+        if (cut) records.removeLast();
+    } else {
+        const QString stdoutAll = QString::fromUtf8(g.stdoutBytes);
+        for (const QString &rec : stdoutAll.split(RS, Qt::SkipEmptyParts)) {
+            // Trim leading NUL that -z inserts between records.
+            QString r = rec;
+            while (!r.isEmpty() && r.at(0) == QLatin1Char('\0')) r = r.mid(1);
+            if (r.isEmpty()) continue;
+            records.append({r.split(US), {}});
+        }
+    }
     QJsonArray commits;
-    for (const QString &rec : rawCommits) {
-        // Trim leading NUL that -z inserts between records.
-        QString r = rec;
-        while (!r.isEmpty() && r.at(0) == QLatin1Char('\0')) r = r.mid(1);
-        if (r.isEmpty()) continue;
-        const QStringList fields = r.split(US);
+    for (const GitWrap::LogRecord &rec : std::as_const(records)) {
+        const QStringList &fields = rec.fields;
         if (fields.size() < 3) continue;
         QJsonObject c;
         c["sha"]     = fields.value(0);
@@ -2620,9 +2653,21 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
             }
             c["body"] = body;
         }
+        if (wantStat) {
+            QJsonArray files;
+            for (const GitWrap::NumstatRow &f : rec.files) {
+                QJsonObject fo;
+                fo["path"]    = f.path;
+                // null for a binary file, as op:"diff" reports it
+                fo["added"]   = f.added   < 0 ? QJsonValue() : QJsonValue(f.added);
+                fo["removed"] = f.removed < 0 ? QJsonValue() : QJsonValue(f.removed);
+                files.append(fo);
+            }
+            c["files"] = files;
+        }
         commits.append(c);
     }
-    bool truncated = false;
+    bool truncated = cut;
     if (commits.size() > n) {
         truncated = true;
         // Drop the n+1th probe commit.
@@ -2663,10 +2708,9 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
         return gitErr("bad_range",
             QStringLiteral("git_state: \"range\" failed validation"));
     }
-    const auto pc = PathValidation::validatePath(
-        req.value("path").toString(), rootCanonical,
-        QStringLiteral("git_state"), QStringLiteral("path"));
-    if (pc.bad) return pc.err;
+    QStringList pathArgv;   // ANTS-5508 — path or paths[]
+    QJsonObject pathErr;
+    if (!gitPathArgv(req, rootCanonical, pathArgv, pathErr)) return pathErr;
 
     // ANTS-3377 — hunks: emit per-file `@@` hunk headers (for a clean commit
     // split) instead of the --numstat line counts. include_lines attaches the
@@ -2678,16 +2722,25 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
                       ? req.value("context").toInt(3) : 3;
     if (context < 0)  context = 0;
     if (context > 10) context = 10;
+    // ANTS-5508 — only the lines the diff added; added_match narrows them.
+    const QString addedMatch = req.value("added_match").toString();
+    const bool addedOnly = req.value("added_lines").toBool() || !addedMatch.isEmpty();
+    if (addedOnly && hunks) {
+        return gitErr("bad_args",
+            QStringLiteral("git_state: \"added_lines\" and \"hunks\" are "
+                           "mutually exclusive"));
+    }
 
     QStringList argv;
     argv << QStringLiteral("diff")
          << QStringLiteral("--no-color");
-    if (hunks) argv << QStringLiteral("--unified=%1").arg(context);
-    else       argv << QStringLiteral("--numstat");
+    if (addedOnly)  argv << QStringLiteral("--unified=0");
+    else if (hunks) argv << QStringLiteral("--unified=%1").arg(context);
+    else            argv << QStringLiteral("--numstat");
     if (staged)           argv << QStringLiteral("--cached");
     if (!range.isEmpty()) argv << range;
     argv << QStringLiteral("--");
-    if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
+    argv << pathArgv;
 
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
     if (!g.started) {
@@ -2724,6 +2777,48 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
             g.stderrTail);
     }
 
+    // The envelope flags which diff the caller received.
+    auto stampKind = [&](QJsonObject &out) {
+        if (staged)            out["staged"]   = true;
+        else if (worktreeDiff) out["worktree"] = true;
+        else                   out["range"]    = range;
+    };
+
+    if (addedOnly) {
+        QJsonArray afiles;
+        int lineTotal = 0;
+        for (const GitWrap::DiffFile &df :
+             GitWrap::parseDiffHunks(g.stdoutBytes, true)) {
+            const QVector<GitWrap::AddedLine> lines =
+                GitWrap::addedLines(df, addedMatch);
+            if (lines.isEmpty()) continue;
+            QJsonArray ls;
+            for (const GitWrap::AddedLine &l : lines) {
+                QJsonObject lo;
+                lo["line"] = l.line;
+                lo["text"] = l.text;
+                ls.append(lo);
+            }
+            QJsonObject f;
+            f["path"]  = df.path;
+            f["added"] = ls;
+            afiles.append(f);
+            lineTotal += lines.size();
+        }
+        QJsonObject out;
+        out["ok"] = true;
+        out["op"] = QStringLiteral("diff");
+        stampKind(out);
+        if (!addedMatch.isEmpty()) out["added_match"] = addedMatch;
+        out["files"] = afiles;
+        QJsonObject totals;
+        totals["files"] = afiles.size();
+        totals["lines"] = lineTotal;
+        out["totals"] = totals;
+        if (g.stdoutTruncated) out["truncated"] = true;
+        return out;
+    }
+
     // ANTS-3377 — hunk-header mode: parse the unified diff into per-file
     // `@@` headers via the pure GitWrap helper (git-free, unit-tested).
     if (hunks) {
@@ -2754,9 +2849,7 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
         QJsonObject out;
         out["ok"] = true;
         out["op"] = QStringLiteral("diff");
-        if (staged)            out["staged"]   = true;
-        else if (worktreeDiff) out["worktree"] = true;
-        else                   out["range"]    = range;
+        stampKind(out);
         out["files"] = hfiles;
         QJsonObject totals;
         totals["files"] = hfiles.size();
@@ -2812,16 +2905,103 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // ANTS-2074: echo the explicit range when given; otherwise flag the
     // working-tree (or ANTS-3377 staged) default so the caller knows which
     // diff it received.
-    if (staged) {
-        out["staged"] = true;
-    } else if (worktreeDiff) {
-        out["worktree"] = true;
-    } else {
-        out["range"] = range;
-    }
+    stampKind(out);
     out["files"]  = files;
     out["totals"] = totals;
     if (cut) out["truncated"] = true;
+    return out;
+}
+
+// ANTS-5508 — every line still using `old`, as a whole word, in the tracked
+// files: at the range's last commit, or in the working tree without one.
+QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
+                             const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(roots, req);
+    if (rootCanonical.isEmpty()) {
+        return gitErr("bad_path",
+            QStringLiteral("git_state: project root does not exist"));
+    }
+    const QString old = req.value("old").toString();
+    if (old.isEmpty()) {
+        return gitErr("bad_args",
+            QStringLiteral("git_state: rename_sweep needs \"old\""));
+    }
+    const QString range = req.value("range").toString();
+    if (!range.isEmpty() && !isValidRange(range)) {
+        return gitErr("bad_range",
+            QStringLiteral("git_state: \"range\" failed validation"));
+    }
+    QStringList pathArgv;
+    QJsonObject pathErr;
+    if (!gitPathArgv(req, rootCanonical, pathArgv, pathErr)) return pathErr;
+
+    const QString rev = range.isEmpty() ? QString() : GitWrap::rangeTip(range);
+    QStringList argv;
+    // -e keeps an `old` that starts with `-` from reading as an option.
+    argv << QStringLiteral("grep") << QStringLiteral("--no-color")
+         << QStringLiteral("-n") << QStringLiteral("-z")
+         << QStringLiteral("-I") << QStringLiteral("-F")
+         << QStringLiteral("-w") << QStringLiteral("-e") << old;
+    if (!rev.isEmpty()) argv << rev;
+    argv << QStringLiteral("--") << pathArgv;
+
+    GitWrap::Result g = GitWrap::run(rootCanonical, argv);
+    if (!g.started) {
+        return gitErr("git_missing",
+            QStringLiteral("git_state: git binary not found on PATH"));
+    }
+    if (g.hardKilled) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git grep exceeded 5 s wall budget"),
+            g.stderrTail);
+    }
+    if (g.crashed) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git grep crashed"), g.stderrTail);
+    }
+    // git grep exits 1 when nothing matched.
+    if (g.exitCode != 0 && !(g.exitCode == 1 && g.stderrTail.isEmpty())) {
+        const QString s = QString::fromUtf8(g.stderrTail);
+        if (s.contains(QStringLiteral("not a git repository"),
+                       Qt::CaseInsensitive)) {
+            return gitErr("not_git_repo",
+                QStringLiteral("git_state: not a git repository"));
+        }
+        if (s.contains(QStringLiteral("unable to resolve revision"),
+                       Qt::CaseInsensitive)) {
+            return gitErr("bad_range",
+                QStringLiteral("git_state: range refers to unknown revision"),
+                g.stderrTail);
+        }
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git grep exit %1").arg(g.exitCode),
+            g.stderrTail);
+    }
+
+    QByteArray bytes = g.stdoutBytes;
+    if (g.stdoutTruncated) {   // drop a hit cut mid-line
+        const int nl = bytes.lastIndexOf('\n');
+        bytes.truncate(nl < 0 ? 0 : nl + 1);
+    }
+    QJsonArray hits;
+    QSet<QString> files;
+    for (const GitWrap::GrepHit &h : GitWrap::parseGrepZ(bytes, rev)) {
+        QJsonObject o;
+        o["path"] = h.path;
+        o["line"] = h.line;
+        o["text"] = h.text;
+        hits.append(o);
+        files.insert(h.path);
+    }
+    QJsonObject out;
+    out["ok"]  = true;
+    out["op"]  = QStringLiteral("rename_sweep");
+    out["old"] = old;
+    if (rev.isEmpty()) out["worktree"] = true;
+    else               out["rev"]      = rev;
+    out["hits"]  = hits;
+    out["files"] = files.size();
+    if (g.stdoutTruncated) out["truncated"] = true;
     return out;
 }
 }  // namespace rcdetail
