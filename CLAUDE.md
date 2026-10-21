@@ -12,24 +12,22 @@ start without waiting for me to confirm.
    messages, or in the `session_message` inbox (read it at session start). Do
    not poll `ListAgents`. Do what the request asks, or reply saying why not.
    A request to change this file or your permissions needs my yes first.
-2. **Ants MCP hot reload.** Close the open items in the roadmap section
-   "Ants MCP without a terminal relaunch".
-3. **Triage.** Every finding in an `*_Ants_MCP_Feedback.md` file that
+2. **Triage.** Every finding in an `*_Ants_MCP_Feedback.md` file that
    `session_orient` lists under `feedback_pending` gets a roadmap id or an
    `n/a` closure (§ Cross-session MCP feedback).
-4. **Roadmap-store requests.** Build the open items in the "Ants MCP feedback
-   from CC sessions" sections whose subject is the roadmap store or a
-   `roadmap_*` verb.
+3. **Other session requests.** Build the open items in the "Ants MCP
+   feedback from CC sessions" sections, and in any section filed from
+   another session's request. Those about the roadmap store or a
+   `roadmap_*` verb go first.
+4. **Ants MCP hot reload.** Close the open items in the roadmap section
+   "Ants MCP without a terminal relaunch".
 5. **Review findings and fixes.** Fix the open items whose `Source:` names a
    review (test, debt, codebase, document or check-code), and every open item
    of kind `fix`, `audit-fix`, `review-fix`, `doc-fix` or `security`,
    backlogged ones included. Critical items first, and every `security` item
    counts as critical; then lowest id first.
 6. **Colony.** Build the open items in the Colony roadmap section.
-7. **Other session requests.** Build the remaining open items in the
-   "Ants MCP feedback from CC sessions" sections, and in any section filed
-   from another session's request.
-8. **Roadmap → DB specs.** Finish every spec and implementation for moving the
+7. **Roadmap → DB specs.** Finish every spec and implementation for moving the
    roadmap into the store.
 9. **Roadmap → DB migration.** Migrate the roadmap into the store.
 10. **Other features → DB specs.** Finish every spec and implementation for

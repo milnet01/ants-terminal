@@ -15,6 +15,13 @@ a rule lives in `docs/history/claude-md.md`, under `documentation.md`
 
 ---
 
+## Priority order
+
+2026-10-21 (user): building other sessions' requests moved up to step 3,
+straight after answering them and triage. Before that it was step 7, with
+roadmap-store requests alone at step 4. The user's reason: it helps those
+sessions finish the tasks the user gave them, so they use fewer tokens.
+
 ## Module map
 
 The per-subsystem reference was moved to `docs/subsystems.md` by ANTS-1292
