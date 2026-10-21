@@ -85806,6 +85806,10 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   count, so line numbers match; a Status value naming a review outcome
   becomes `(withheld)`; a pointer-style loop-log section is left as is.
   Return withheld_ranges and line_count_match.
+  2026-10-21: on hold for claude-config. brief-build.sh (CFG-0703,
+  2026-10-01) and packet-build.sh now do the scrub, the shared brief
+  and the captioned windows; only the hash is missing. Asked
+  claude-config (message 792) whether to close as superseded.
   **Layman:** Building a review's reading pack by hand is slow and has leaked review history to reviewers twice.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A3; CFG-0426, CFG-0616).
