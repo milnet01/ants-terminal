@@ -674,8 +674,8 @@ which heading you expect it under.
   `claude.mcp_enabled` gate (off → `mcp_disabled`, takes precedence).
   A large result spills via the ANTS-2094 offload path (in
   `isOffloadEligible`). Refusal codes: `query_error` / `query_timeout` /
-  `query_oom` / `result_too_large` / `query_disabled`
-  (mcp-error-codes.md § 6). Compiled out under `-DANTS_LUA_PLUGINS=OFF`
+  `query_oom` / `result_too_large` (mcp-error-codes.md § 6) /
+  `query_disabled` (§ 5). Compiled out under `-DANTS_LUA_PLUGINS=OFF`
   (verb unregistered; absent from the catalogue). Pure entry point
   `LuaEngine::projectQueryVerb`; the provider lambda lives in
   `mainwindow.cpp` (the core-lib `RemoteControl` can't see `LuaEngine`).

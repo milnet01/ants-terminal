@@ -49,7 +49,13 @@ against the table below.
 
 ## Categories
 
-### 1 — Input validation (caller's argv is malformed)
+A heading names its section's usual case. It is not a test every row
+passes: some rows sit elsewhere, and a few say why. A code's section is
+the section its row sits in, so a source comment's `§ N` is checked
+against the table. An existing row is not moved to fit a heading,
+because source comments cite its section.
+
+### 1 — Input validation
 
 | Code | Meaning | Examples |
 |------|---------|----------|
@@ -97,7 +103,7 @@ against the table below.
 | `rate_limited` | The caller exceeded the per-tool sliding-window cap (ANTS-1356). The envelope carries `retry_after_ms`. | `audit_run` 11th call within 60 s (Expensive tier cap = 10/min). Caller should honour `retry_after_ms` before retrying. |
 | `reports_dir_outside_root` | `reports_dir` resolves outside the focused project root AND `allow_outside_project:true` was NOT passed (ANTS-1455). Replaces the pre-ANTS-1455 `reports_dir_missing`. | `TestAuditEngine::synthesize` with `reports_dir:"/tmp/foo"` and no `allow_outside_project`. Caller's natural fix is to pass `allow_outside_project:true` for ephemeral `/tmp` workflows. |
 
-### 2 — Resource state (the requested object isn't where the tool can act on it)
+### 2 — Resource state
 
 | Code | Meaning | Examples |
 |------|---------|----------|
@@ -208,6 +214,7 @@ against the table below.
 | `unknown_tool` | `tool_info` has no descriptor for the requested name; the envelope carries `available`, the listed names. **A `tools/call` naming no registered tool is not this code**: the dispatcher answers with JSON-RPC error `-32602` (`Unknown tool: <name>`) and records `tool_not_found` — see the note below. | `tool_info` with a typo in `name`. |
 | `verb_removed` | A `tools/call` or `tool_info` named a verb that was removed (ANTS-5485). On `tools/call` it is the JSON-RPC `-32602` error's `data.code`, with `data.replacement` naming what to use; the message names it too. `tool_info` refuses `unknown_tool` and adds `replacement`. The dispatcher still records `tool_not_found`. | `tools/call` naming `get_git_status` → use `git_state`. |
 | `mcp_disabled` | The Ants MCP integration is toggled off (Settings → General → "Enable Ants MCP integration"); the dispatcher refuses every verb before any handler runs. | Any `tools/call` after the master switch is turned off mid-session (ANTS-1901). |
+| `query_disabled` | The `project_query` feature is off (`claude.mcp_project_query_enabled` false, Settings → General → "Let Ants run read-only project queries for Claude"). Checked *first* in the handler, before arg validation; the master `mcp_disabled` gate still takes precedence (it refuses before the handler runs). | Any `project_query` call while the feature toggle is off. |
 | `roadmap_busy` | Another call holds this project's roadmap: a migration (`roadmap_migrate`, including `op:"init"` and `op:"deregister"`) refuses every writer for its whole run, and waits up to 5 s for writers already running before refusing itself. The writer is `roadmap_log`. Nothing was written; the envelope carries `retry_after_ms` (ANTS-5086, ANTS-2132 § 2.10). | A `roadmap_log` sent to a project another session is migrating. |
 | `dispatch_queue_full` | The off-thread dispatch queue is full, so the verb was refused rather than dropped. The envelope carries `retry_after_ms`. Counts the executing job, so the 65th outstanding call is the first refused (ANTS-2132 § 2.6, INV-10). The remote-control socket returns the same code, without the JSON-RPC envelope, when a route it runs on that worker finds the queue full (§ 2.7, INV-14). | A wedged verb holding the worker while a session keeps calling. |
 | `gui_read_refused` | A verb running on the dispatch worker needed a GUI-thread-owned read and the marshal was refused because the dispatcher is shutting down. The verb refuses rather than answering from a default-constructed value — an empty project root or a zero savings total is a silently wrong answer, where a refusal is a visible one (ANTS-2132 § 2.5, ANTS-4682, ANTS-4684). | `token_usage` or `project_query` called while the window is closing. |
@@ -232,7 +239,8 @@ server-side. A new category, not a fold into 1–5: these describe the
 *execution* of caller-supplied code (none of input-validation /
 resource-state / caller-cwd / I/O / dispatcher covers that), and each is a
 genuinely distinct caller action — fix the snippet / make it cheaper /
-narrow the data / aggregate harder / re-enable the feature.
+narrow the data / aggregate harder. The feature's own off switch,
+`query_disabled`, sits in § 5 beside its twin `mcp_disabled`.
 
 | Code | Meaning | Examples |
 |------|---------|----------|
@@ -240,19 +248,24 @@ narrow the data / aggregate harder / re-enable the feature.
 | `query_timeout` | The snippet exceeded the wall-clock budget (`claude.mcp_project_query_timeout_ms`, default 1500). A pure-Lua/C-in-loop runaway is killed at the next bytecode boundary; a single uninterruptible C call is detached at the join deadline (budget + 250 ms grace). | `project_query` with `code:"while true do end"`. |
 | `query_oom` | The snippet tripped the VM's 10 MiB allocation cap (the allocator returns null → Lua raises a memory error). The refusal, never a partial/nil result. | `project_query` with a snippet that grows a table without bound. |
 | `result_too_large` | The marshalled result's UTF-8 byte count exceeds `claude.mcp_project_query_result_cap_bytes` (default 64 KiB). Carries the byte size; emits **no** `result` (never truncated). From ANTS-5104 the result offload emits it too, for a body over `kSpillMaxBytes` (64 MiB): such a body is neither returned inline nor spilled, and no other spill is evicted. | `project_query` returning every line of every file instead of a count — aggregate harder. |
-| `query_disabled` | The `project_query` feature is off (`claude.mcp_project_query_enabled` false, Settings → General → "Let Ants run read-only project queries for Claude"). Checked *first* in the handler, before arg validation; the master `mcp_disabled` gate still takes precedence (it refuses before the handler runs). | Any `project_query` call while the feature toggle is off. |
 
 ## Adding a new code
 
-1. Pick the category your refusal belongs to.
+1. Pick the section. Where your row names an existing code as its
+   twin, sibling or analogue, or as the code it is distinct from, use
+   that code's section. `query_disabled` sits beside `mcp_disabled` this
+   way. Otherwise use the section whose heading names your case.
 2. Check the table — if an existing code's meaning covers your
    case, reuse it. **The test is the caller's next action: mint a new
    code only where a caller would do something different** (§ 6's
    criterion, applied everywhere). Don't split for stylistic reasons.
-   `not_audited` beside `not_cached` predates this rule. The table's
-   other analogue pairs — `target_not_found`, `target_ambiguous`,
-   `widget_not_found`, `symbol_not_found` — are not yet classified
-   against this test (ANTS-4752).
+   `symbol_not_found` passes: the file exists, so the caller changes
+   the symbol rather than the path. Three codes fail and predate the
+   rule, as `not_audited` beside `not_cached` does. `target_not_found`
+   and `target_ambiguous` are `bullet_not_found` and `bullet_ambiguous`
+   on another verb; the caller corrects the locator either way.
+   `widget_not_found` is answered as `not_found` is, by correcting the
+   name.
 3. If you need a new code, add the row + 1-line meaning + at least
    one example in the same commit as the refusal site.
 4. Cite this doc in the implementation comment (e.g.
