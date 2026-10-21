@@ -70,6 +70,7 @@ QString integrityKind(DocIntegrity::Kind k) {
     case DocIntegrity::Kind::TocGap:          return QStringLiteral("toc_gap");
     case DocIntegrity::Kind::HeadingSequence: return QStringLiteral("heading_sequence");
     case DocIntegrity::Kind::UngrantedTool:   return QStringLiteral("ungranted_tool");
+    case DocIntegrity::Kind::ListCount:       return QStringLiteral("list_count");
     }
     return QString();
 }

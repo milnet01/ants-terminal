@@ -85695,7 +85695,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5295] **doc_integrity gains a list_count kind — a cardinal in a lead-in line against the list beneath it.**
+- ✅ [ANTS-5295] **doc_integrity gains a list_count kind — a cardinal in a lead-in line against the list beneath it.**
   Fires only where the next non-blank line starts a list; a number in running
   prose claims nothing a script can count. Word and digit forms both, bounded
   to a small range, siblings matched by indent.
@@ -85703,6 +85703,10 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   This is the check that enforces the lean workflow's no-stale-counts rule, and
   nothing in the server does it today. doc_integrity is the right home: it is
   already the fence-aware markdown-structure checker.
+  Shipped 2026-10-21: kind list_count on doc_integrity (and doc_lint).
+  Reports only a list LONGER than its stated count; a shorter one was
+  grouping in every calibration case. Calibrated over every project on
+  this machine plus ~/.claude: 17 findings, 15 real.
   **Layman:** Catch "four of these:" followed by five bullets.
   Kind: feature.
   Source: claude-config-session-2026-09-21.

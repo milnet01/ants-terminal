@@ -60,6 +60,13 @@ struct Link {
     int     line = 0;    // 1-based
 };
 
+// ANTS-5295 — a lead-in's stated count against the items found beneath it.
+struct CountedList {
+    int line   = 0;  // 1-based line of the lead-in's colon
+    int stated = 0;
+    int found  = 0;
+};
+
 // ANTS-3700 — the leading section number of a heading, as its components:
 // "5.7 Emission model" → [5, 7]; "5. Problem" → [5]; "Overview" → {}. A single
 // trailing dot is consumed ("## 5. Problem" is the dominant form in this
@@ -101,6 +108,8 @@ struct DocData {
     // ANTS-4878 — (first, last) line of each MIRROR region, markers included.
     // Empty for every document that mirrors nothing, which is almost all.
     QList<QPair<int, int>> mirrors;
+    // ANTS-5295 — one entry per lead-in whose list outgrew its count.
+    QList<CountedList> overCounted;
 };
 
 QList<Heading> extractHeadings(const QStringList &lines,
@@ -599,6 +608,232 @@ QList<QPair<int, QString>> detectUngrantedTools(const QStringList &lines,
     return out;
 }
 
+// ANTS-5295 — list_count. A lead-in ending in `:` states how many items follow
+// ("Two options:"); the list beneath it holds more. Every rule below exists
+// because a calibration run (2026-10-21) over every project on this machine,
+// ~/.claude included, found a false positive without it:
+//
+//   * Only a list LONGER than its count is reported. A shorter one was almost
+//     always grouping — "Three paths:" over `Path A` and `Paths B and C` — and
+//     the longer one is the defect: the list grew, the number did not.
+//   * Only the lead-in's last sentence is read, joined across wrapped lines,
+//     and it holds exactly one number, from two to twelve. A second number
+//     makes it ambiguous which one counts the list.
+//   * That sentence is at most ten words. Past that, the number counts the
+//     sentence's own subject rather than the list ("Two mechanisms already
+//     exist and are the shape to build on:" over two mechanisms and two
+//     quotations).
+//   * The number opens the sentence ("Three clauses come with it:", "These two
+//     paths drift:") and is followed by a plural noun or `of`; or it closes
+//     the sentence after a determiner ("do these three:", "four of these:").
+//     A number mid-sentence counts something else, and `Phase 2:` is a label.
+//   * Not after a qualifier ("at least two", "the first three"), and not where
+//     "plus" or "beside" announces an item the number leaves out.
+//
+// Measured with these rules on the same date: 17 findings across the machine,
+// 15 of them real. The false two are a list whose last bullet is a note, and
+// a count of part of the list ("Two substantive HIGHs" over two HIGHs and a
+// LOW).
+namespace {
+
+int indentOf(const QString &l) {
+    int n = 0;
+    while (n < l.size() && l.at(n) == QLatin1Char(' ')) ++n;
+    return n;
+}
+
+// Group 1 is the indent, group 2 the marker.
+const QRegularExpression &markerRe() {
+    static const QRegularExpression re(QStringLiteral(R"(^( *)([-*+]|\d+[.)])\s)"));
+    return re;
+}
+
+bool isHeading(const QString &l) { return atxRe().match(l).hasMatch(); }
+
+// "two" → 2, "7" → 7, anything else → -1. Zero and one are numbers too, so a
+// sentence holding "one" alongside "three" is ambiguous, not a count of three.
+int numberValue(const QString &tok) {
+    static const QStringList words = {
+        QStringLiteral("zero"), QStringLiteral("one"), QStringLiteral("two"),
+        QStringLiteral("three"), QStringLiteral("four"), QStringLiteral("five"),
+        QStringLiteral("six"), QStringLiteral("seven"), QStringLiteral("eight"),
+        QStringLiteral("nine"), QStringLiteral("ten"), QStringLiteral("eleven"),
+        QStringLiteral("twelve")};
+    const int w = words.indexOf(tok);
+    if (w >= 0) return w;
+    bool ok = false;
+    const int v = tok.toInt(&ok);
+    return ok && v >= 0 ? v : -1;
+}
+
+// The count a lead-in states, or -1 where it states none this check trusts.
+int statedCount(const QString &paragraph) {
+    static const QRegularExpression codeRe(QStringLiteral("`[^`]*`"));
+    static const QRegularExpression tokRe(
+        QStringLiteral(R"([A-Za-z0-9§#~]+(?:['’][a-z]+)?|[^\sA-Za-z0-9])"));
+    static const QRegularExpression wordRe(QStringLiteral("^[a-z0-9]+$"));
+    static const QRegularExpression alphaRe(QStringLiteral("^[a-z]+$"));
+    static const QSet<QString> dets = {
+        QStringLiteral("the"), QStringLiteral("these"), QStringLiteral("those"),
+        QStringLiteral("its"), QStringLiteral("our"), QStringLiteral("their"),
+        QStringLiteral("all"), QStringLiteral("my"), QStringLiteral("your"),
+        QStringLiteral("here"), QStringLiteral("there"), QStringLiteral("are"),
+        QStringLiteral("do")};
+    static const QSet<QString> qualifiers = {
+        QStringLiteral("least"), QStringLiteral("most"), QStringLiteral("than"),
+        QStringLiteral("to"), QStringLiteral("about"), QStringLiteral("around"),
+        QStringLiteral("over"), QStringLiteral("under"), QStringLiteral("nearly"),
+        QStringLiteral("almost"), QStringLiteral("roughly"),
+        QStringLiteral("approximately"), QStringLiteral("first"),
+        QStringLiteral("last"), QStringLiteral("next"), QStringLiteral("top"),
+        QStringLiteral("every"), QStringLiteral("per"), QStringLiteral("each"),
+        QStringLiteral("§"), QStringLiteral("#"), QStringLiteral("-"),
+        QStringLiteral("."), QStringLiteral("/"), QStringLiteral("~"),
+        QStringLiteral("–"), QStringLiteral("—"), QStringLiteral("≥"),
+        QStringLiteral("≤"), QStringLiteral("<"), QStringLiteral(">"),
+        QStringLiteral("=")};
+    static const QSet<QString> notCountingAfter = {
+        QStringLiteral("."), QStringLiteral(")"), QStringLiteral("-"),
+        QStringLiteral("/"), QStringLiteral("%"), QStringLiteral("×"),
+        QStringLiteral("x"), QStringLiteral(","), QStringLiteral("+"),
+        QStringLiteral("–"), QStringLiteral("—")};
+    static const QSet<QString> extraItem = {
+        QStringLiteral("plus"), QStringLiteral("beside"),
+        QStringLiteral("besides"), QStringLiteral("alongside")};
+    static const QSet<QString> notPlural = {
+        QStringLiteral("this"), QStringLiteral("thus"), QStringLiteral("does"),
+        QStringLiteral("always"), QStringLiteral("across"), QStringLiteral("less"),
+        QStringLiteral("unless"), QStringLiteral("process"), QStringLiteral("class"),
+        QStringLiteral("pass"), QStringLiteral("access"), QStringLiteral("miss"),
+        QStringLiteral("status"), QStringLiteral("alias"), QStringLiteral("bypass"),
+        QStringLiteral("ones")};
+
+    QString t = paragraph;
+    t.replace(codeRe, QStringLiteral(" code "));
+    t.replace(QLatin1Char('*'), QLatin1Char(' '));
+    const int cut = std::max({t.lastIndexOf(QLatin1String(". ")),
+                              t.lastIndexOf(QLatin1String("? ")),
+                              t.lastIndexOf(QLatin1String("! "))});
+    if (cut >= 0) t = t.mid(cut + 2);
+
+    QStringList low;
+    for (auto it = tokRe.globalMatch(t); it.hasNext();)
+        low << it.next().captured(0).toLower();
+
+    int at = -1, n = -1, words = 0;
+    for (int i = 0; i < low.size(); ++i) {
+        if (wordRe.match(low.at(i)).hasMatch()) ++words;
+        const int v = numberValue(low.at(i));
+        if (v < 0) continue;
+        if (at >= 0) return -1;  // a second number — which one counts?
+        at = i;
+        n = v;
+    }
+    if (at < 0 || n < 2 || n > 12 || words > 10) return -1;
+
+    const QString prev = at > 0 ? low.at(at - 1) : QString();
+    QStringList after = low.mid(at + 1);
+    after.removeAll(QStringLiteral(":"));
+    for (const QString &w : after)
+        if (extraItem.contains(w)) return -1;
+
+    bool head = at == 0;
+    if (!head && at <= 2) {
+        head = true;
+        for (int i = 0; i < at; ++i) head = head && dets.contains(low.at(i));
+    }
+    const bool tail =
+        (after.isEmpty() && (dets.contains(prev) || prev == QLatin1String("following"))) ||
+        (after.size() == 2 && after.first() == QLatin1String("of"));
+    if (!head && !tail) return -1;
+    if (qualifiers.contains(prev)) return -1;
+    if (prev == QLatin1String("of") && at >= 2 &&
+        QStringList{QStringLiteral("one"), QStringLiteral("any"), QStringLiteral("some"),
+                    QStringLiteral("none"), QStringLiteral("all")}
+            .contains(low.at(at - 2)))
+        return -1;  // "one of three:" picks from the list, it does not count it
+
+    const QString next = at + 1 < low.size() ? low.at(at + 1) : QString();
+    if (notCountingAfter.contains(next)) return -1;
+    if (next == QLatin1String("of") || next == QLatin1String(":")) return n;
+    for (int i = at + 1; i < low.size() && i <= at + 3; ++i) {
+        const QString &w = low.at(i);
+        if (!alphaRe.match(w).hasMatch()) break;
+        if (w.size() > 3 && w.endsWith(QLatin1Char('s')) && !notPlural.contains(w))
+            return n;
+    }
+    return -1;
+}
+
+// The sibling items of the list whose first item is line `first`. Nested
+// items and continuation lines are skipped; a change of marker kind, a
+// heading, a fence at the list's column, or an unindented line after a blank
+// ends the list (CommonMark's rules, as far as they decide a count).
+int countItems(const QStringList &lines, const QVector<bool> &fence, int first) {
+    const auto m = markerRe().match(lines.at(first));
+    const int sib = m.captured(1).size();
+    const auto kindOf = [](const QString &marker) {
+        return marker.at(0).isDigit() ? QStringLiteral("1") : marker;
+    };
+    const QString kind = kindOf(m.captured(2));
+    int n = 0;
+    bool prevBlank = false;
+    for (int k = first; k < lines.size(); ++k) {
+        const QString &l = lines.at(k);
+        if (k < fence.size() && fence.at(k)) {
+            const bool insideFence = k > first && fence.at(k - 1);
+            if (!insideFence && indentOf(l) <= sib) break;
+            prevBlank = false;
+            continue;
+        }
+        if (l.trimmed().isEmpty()) { prevBlank = true; continue; }
+        const auto lm = markerRe().match(l);
+        if (lm.hasMatch() && lm.captured(1).size() == sib) {
+            if (kindOf(lm.captured(2)) != kind) break;
+            ++n;
+        } else if (indentOf(l) > sib) {
+            // nested item or continuation
+        } else if (prevBlank || isHeading(l) || lm.hasMatch()) {
+            break;
+        }  // else: a lazy continuation line of the item above
+        prevBlank = false;
+    }
+    return n;
+}
+
+QList<CountedList> detectOverCountedLists(const QStringList &lines,
+                                          const QVector<bool> &fence) {
+    QList<CountedList> out;
+    const auto fenced = [&](int i) { return i < fence.size() && fence.at(i); };
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &l = lines.at(i);
+        if (fenced(i) || !l.trimmed().endsWith(QLatin1Char(':'))) continue;
+        const QString lead = l.trimmed();
+        if (markerRe().match(l).hasMatch() || isHeading(l) ||
+            lead.startsWith(QLatin1Char('|')) || lead.startsWith(QLatin1Char('>')))
+            continue;
+        int j = i + 1;
+        while (j < lines.size() && lines.at(j).trimmed().isEmpty()) ++j;
+        if (j >= lines.size() || fenced(j) || !markerRe().match(lines.at(j)).hasMatch() ||
+            indentOf(lines.at(j)) < indentOf(l))
+            continue;
+
+        int p = i;
+        while (p > 0 && !lines.at(p - 1).trimmed().isEmpty() && !fenced(p - 1) &&
+               !markerRe().match(lines.at(p - 1)).hasMatch() && !isHeading(lines.at(p - 1)))
+            --p;
+        QStringList para;
+        for (int k = p; k <= i; ++k) para << lines.at(k).trimmed();
+        const int stated = statedCount(para.join(QLatin1Char(' ')));
+        if (stated < 0) continue;
+        const int found = countItems(lines, fence, j);
+        if (found > stated) out.append({i + 1, stated, found});
+    }
+    return out;
+}
+
+}  // namespace
+
 QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                      const Options &opts, QStringList *checkedDocs,
                      Suppressed *suppressed) {
@@ -646,6 +881,7 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         d.mirrors   = mirrorRegions(lines);                  // ANTS-4878
         detectToc(lines, d);
         d.ungranted = detectUngrantedTools(lines, fence);  // ANTS-3719
+        d.overCounted = detectOverCountedLists(lines, fence);  // ANTS-5295
 
         byRel.insert(rel, d);
         inScope.insert(rel);
@@ -653,7 +889,7 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         if (checkedDocs) checkedDocs->append(rel);
     }
 
-    // ---- Phase B — run the three checks over each parsed doc ----------------
+    // ---- Phase B — run every check over each parsed doc ---------------------
     QList<Finding> findings;
     for (const QString &rel : order) {
         const DocData &d = byRel.value(rel);
@@ -745,6 +981,13 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                              QStringLiteral("`%1` is called here but absent from "
                                             "this skill's allowed-tools")
                                  .arg(u.second)});
+
+        // Check 6 — a lead-in counting fewer items than its list holds (ANTS-5295).
+        for (const CountedList &c : d.overCounted)
+            findings.append({Kind::ListCount, rel, c.line,
+                             QStringLiteral("the lead-in counts %1, but the list "
+                                            "beneath it holds %2 items")
+                                 .arg(c.stated).arg(c.found)});
     }
 
     std::stable_sort(findings.begin(), findings.end(),

@@ -6816,7 +6816,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "Deterministic markdown integrity check. Kinds: dead_anchor, "
                     "broken_link, toc_gap, heading_sequence, ungranted_tool (a "
                     "skill calling an mcp__ants__ verb its allowed-tools never "
-                    "granted). Fence-aware. path=<file|dir> or paths=[...] scopes "
+                    "granted), list_count (a lead-in counting fewer items than its "
+                    "list holds). Fence-aware. path=<file|dir> or paths=[...] scopes "
                     "the run (default: the docs dir); kinds=[...] filters. "
                     "Suppressed cases are counted, not reported. Refusal: bad_path. "
                     "caller_cwd required, or \"~global\" with an explicit path.");
@@ -6836,7 +6837,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "frontmatter never granted it, so the skill is unexecutable "
                     "as written; gated on the frontmatter carrying allowed-tools, "
                     "which scopes it to skill files, and matched on the "
-                    "fully-qualified spelling only). "
+                    "fully-qualified spelling only), and list_count (ANTS-5295 — "
+                    "a lead-in ending in a colon, such as \"Three things to "
+                    "know:\", over a list of sibling items that holds MORE "
+                    "than it says; a shorter list is grouping and is never "
+                    "reported, and a lead-in is trusted only where its last "
+                    "sentence is at most ten words holding one number from "
+                    "two to twelve, opening the sentence or closing it after "
+                    "a determiner). "
                     "Fence-aware (fenced examples ignored); GitHub-compatible "
                     "heading slugs. path=<file|dir> scopes the run (a dir walks "
                     "its *.md recursively); paths=[...] scopes it to the UNION "
@@ -6898,7 +6906,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                 QStringLiteral("broken_link"),
                                 QStringLiteral("toc_gap"),
                                 QStringLiteral("heading_sequence"),
-                                QStringLiteral("ungranted_tool")};
+                                QStringLiteral("ungranted_tool"),
+                                QStringLiteral("list_count")};
                             kindsProp["items"] = items;
                         }
                         kindsProp["description"] = QStringLiteral(

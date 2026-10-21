@@ -543,7 +543,7 @@ server-controllable beyond this per-tool hint.
   target doc is itself in scope, so narrowing `path` quietly narrows
   anchor coverage rather than reporting reduced coverage. Kinds are
   `dead_anchor`, `broken_link`, `toc_gap`, `heading_sequence`,
-  `ungranted_tool`. The engine caches nothing (`DocIntegrity::check` is
+  `ungranted_tool`, `list_count`. The engine caches nothing (`DocIntegrity::check` is
   pure); the ETag-304 is made content-sensitive by `docs_digest` over the
   checked set's paths, sizes and mtimes. Spec: `docs/specs/ANTS-3601.md`.
 

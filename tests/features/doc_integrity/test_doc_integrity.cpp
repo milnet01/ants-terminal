@@ -923,3 +923,95 @@ TEST(DocIntegrity, Ants4643TildeTargetIsOutOfScopeNotMissing) {
     EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, QStringLiteral("nope.md")))
         << "ANTS-4643: …and it is the relative one";
 }
+
+// ---- ANTS-5295 — list_count ------------------------------------------------
+//
+// Requested by the claude_config session: the lean workflow forbids counts that
+// go stale, and nothing caught "Four of these:" over five bullets. Every quiet
+// case below is a false positive the calibration run (2026-10-21) found in a
+// real document on this machine, so each one guards a rule in
+// detectOverCountedLists.
+
+namespace {
+QList<Finding> listCountRun(const QString &body) {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return {};
+    const QString root = canon(tmp);
+    writeFile(root + "/docs/l.md", body);
+    QList<Finding> out;
+    for (const Finding &f : DocIntegrity::check(root, {"docs/l.md"}))
+        if (f.kind == Kind::ListCount) out << f;
+    return out;
+}
+}  // namespace
+
+// The lead-in opens with its number; the list grew past it.
+TEST(DocIntegrity, Ants5295LongerListIsReported) {
+    const auto fs = listCountRun("# T\n\n"
+                                 "Three things to get right:\n\n"
+                                 "- one\n- two\n- three\n- four\n");
+    ASSERT_EQ(fs.size(), 1) << render(fs);
+    EXPECT_EQ(fs.first().line, 3) << "reported at the lead-in";
+    EXPECT_TRUE(fs.first().message.contains(QStringLiteral("counts 3"))) << render(fs);
+    EXPECT_TRUE(fs.first().message.contains(QStringLiteral("4 items"))) << render(fs);
+}
+
+// The two closing shapes: "<N> of these:" and "<determiner> <N>:".
+TEST(DocIntegrity, Ants5295ClosingNumberIsReported) {
+    EXPECT_EQ(listCountRun("Pick four of these:\n\n- a\n- b\n- c\n- d\n- e\n").size(), 1);
+    EXPECT_EQ(listCountRun("Then do these three:\n\n1. a\n2. b\n3. c\n4. d\n").size(), 1);
+}
+
+// The number sits on the first line of a wrapped lead-in.
+TEST(DocIntegrity, Ants5295WrappedLeadInIsRead) {
+    const auto fs = listCountRun("Two smaller defects in the\nsame data:\n\n"
+                                 "- a\n- b\n- c\n");
+    ASSERT_EQ(fs.size(), 1) << render(fs);
+    EXPECT_EQ(fs.first().line, 2) << "reported at the line holding the colon";
+}
+
+// Siblings only: nested items, continuation lines, fenced bodies and blank
+// lines between items do not change the count.
+TEST(DocIntegrity, Ants5295CountsSiblingsOnly) {
+    EXPECT_TRUE(listCountRun("Two options:\n\n"
+                             "- **A.** first\n  continued here\n"
+                             "  - nested one\n  - nested two\n\n"
+                             "  ```\n  - fenced, not an item\n  ```\n\n"
+                             "- **B.** second\nlazy continuation\n")
+                    .isEmpty());
+    // A paragraph after a blank ends the list; the next list is not this one's.
+    EXPECT_TRUE(listCountRun("Two options:\n\n- a\n- b\n\nProse.\n\n- c\n").isEmpty());
+    // A change of marker kind starts a new list.
+    EXPECT_TRUE(listCountRun("Two options:\n\n- a\n- b\n1. c\n").isEmpty());
+}
+
+TEST(DocIntegrity, Ants5295QuietCases) {
+    const auto quiet = [](const char *body) {
+        const auto fs = listCountRun(QString::fromUtf8(body));
+        return fs.isEmpty() ? std::string() : render(fs);
+    };
+    // A list SHORTER than its count is grouping ("Path A", "Paths B and C").
+    EXPECT_EQ(quiet("Three paths:\n\n- Path A\n- Paths B and C\n"), "");
+    // An exact count.
+    EXPECT_EQ(quiet("Two options:\n\n- a\n- b\n"), "");
+    // A label, not a count.
+    EXPECT_EQ(quiet("Phase 2:\n\n- a\n- b\n- c\n"), "");
+    // A qualifier makes the number a bound, not a count.
+    EXPECT_EQ(quiet("Do at least two of these:\n\n- a\n- b\n- c\n"), "");
+    // The number counts something mid-sentence, not the list.
+    EXPECT_EQ(quiet("Each repair cost three edits:\n\n- a\n- b\n- c\n- d\n"), "");
+    // Two numbers: which one counts the list is a guess.
+    EXPECT_EQ(quiet("Two of the three cases:\n\n- a\n- b\n- c\n- d\n"), "");
+    // The number is in an earlier sentence.
+    EXPECT_EQ(quiet("All four lanes ran. New ones:\n\n- a\n- b\n- c\n- d\n- e\n"), "");
+    // Over ten words: the number counts the sentence's subject.
+    EXPECT_EQ(quiet("Two mechanisms already exist and are the shape to build on:\n\n"
+                    "- a\n- b\n- c\n"), "");
+    // "plus" announces an item the number leaves out.
+    EXPECT_EQ(quiet("The four standards plus the roadmap:\n\n"
+                    "- a\n- b\n- c\n- d\n- e\n"), "");
+    // A lead-in inside a fence is an example.
+    EXPECT_EQ(quiet("```\nTwo options:\n\n- a\n- b\n- c\n```\n"), "");
+    // A colon with no list beneath it.
+    EXPECT_EQ(quiet("Two options:\n\nProse follows.\n"), "");
+}

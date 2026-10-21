@@ -277,6 +277,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
             return QStringLiteral("heading_sequence");
         case DocIntegrity::Kind::UngrantedTool:     // ANTS-3719
             return QStringLiteral("ungranted_tool");
+        case DocIntegrity::Kind::ListCount:         // ANTS-5295
+            return QStringLiteral("list_count");
         }
         return QString();
     };
@@ -285,7 +287,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
     };
 
     QJsonArray findingsArr;
-    int deadAnchor = 0, brokenLink = 0, tocGap = 0, headingSeq = 0, ungranted = 0;
+    int deadAnchor = 0, brokenLink = 0, tocGap = 0, headingSeq = 0, ungranted = 0,
+        listCount = 0;
     for (const DocIntegrity::Finding &f : findings) {
         const QString ks = kindStr(f.kind);
         if (!wanted(ks)) continue;
@@ -303,6 +306,7 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         case DocIntegrity::Kind::TocGap:          ++tocGap;     break;
         case DocIntegrity::Kind::HeadingSequence: ++headingSeq; break;
         case DocIntegrity::Kind::UngrantedTool:   ++ungranted;  break;
+        case DocIntegrity::Kind::ListCount:       ++listCount;  break;
         }
     }
 
@@ -314,6 +318,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         counts[QStringLiteral("heading_sequence")] = headingSeq;
     if (wanted(QStringLiteral("ungranted_tool")))
         counts[QStringLiteral("ungranted_tool")] = ungranted;
+    if (wanted(QStringLiteral("list_count")))
+        counts[QStringLiteral("list_count")] = listCount;
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;

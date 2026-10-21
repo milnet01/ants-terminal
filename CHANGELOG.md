@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_integrity reports a list_count finding where a lead-in such as "Three things to know:" sits over a list holding more items than it says** (ANTS-5295)
+  A list shorter than its count is treated as grouping and never reported. The lead-in is trusted only where its last sentence is short and holds one number, at its start or after a word like "these". doc_lint reports the same kind.
+
 - **`doc_lint staged:true` checks what is about to be committed** (ANTS-5294)
   Every check reads the staged copy of each staged `.md` file, not the copy on disk, so unstaged edits no longer change the result. Without `path` it covers every staged document in the project. Combining it with `fix:true` is refused (`bad_mode_combo`), and a folder outside git is refused (`not_a_git_repo`).
 

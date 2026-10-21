@@ -14,6 +14,8 @@
 //   5. Ungranted tool — a Claude Code skill whose body calls an MCP verb its
 //                      own `allowed-tools:` frontmatter never granted, so the
 //                      skill is unexecutable as written (ANTS-3719).
+//   6. List count    — a lead-in ("Two options:") over a list holding more
+//                      items than it says (ANTS-5295).
 //
 // Consumed by the `doc_integrity` MCP verb and the cold-eyes Phase-1e feed.
 // See docs/specs/ANTS-3601.md.
@@ -47,6 +49,11 @@ enum class Kind {
     // skill mandates was unexecutable as declared — the gate that catches
     // everything else, itself broken.
     UngrantedTool,
+    // ANTS-5295 — a lead-in that counts its list ("Three things to know:")
+    // over a list holding MORE items than that. The list grew and the number
+    // did not: the stale count the lean workflow's no-counts rule exists to
+    // stop. Requested by the claude_config session.
+    ListCount,
 };
 
 struct Finding {
