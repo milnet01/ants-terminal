@@ -87787,13 +87787,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-21, found while fixing ANTS-4709.
   Lanes: mcp, tests.
 
-- 📋 [ANTS-5805] **roadmap_log's batch_hint recommends flip_batch and annotate_batch where they refuse: a store-served pass-headings roadmap.**
+- ✅ [ANTS-5805] **roadmap_log's batch_hint recommends flip_batch and annotate_batch where they refuse: a store-served pass-headings roadmap.**
   rlBatchHint keys on the op alone. On a store-served pass-headings
   roadmap, flip_batch and annotate_batch refuse unsupported_format
   (ANTS-5334), so a caller following the hint wastes a call. The
   single-op reply already says which case it is: format
   "pass-headings" with write_path "render". Skip the hint there.
   append_batch has a store route, so append keeps its hint.
+  Shipped 2026-10-21. The hint is skipped when the single-op reply says
+  format "pass-headings" with write_path "render" and the op is flip or
+  annotate. Locked by
+  RoadmapPassStoreWrite.Ants5805NoBatchHintWhereTheBatchOpRefuses
+  (INV-16). The op check itself has no test: append through
+  cmdRoadmapLog refuses no_main in the test harness.
   **Layman:** The roadmap tool suggests a faster way to update items that then refuses to work on some projects.
   Kind: fix.
   Source: cc-feedback-2026-10-21 RetroDB.

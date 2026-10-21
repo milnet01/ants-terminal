@@ -225,6 +225,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log` suggests `flip_batch` or `annotate_batch` only where they can write, not on a store-served pass-headings roadmap** (ANTS-5805)
+
 - **An Ants MCP request over 256 KiB is refused under its own id, so the caller sees the refusal at once instead of a transport timeout** (ANTS-4709)
   `ants-mcpd` reads the id from the head of the oversized line, or from its tail once the newline arrives. `apply_edits`' description now states the limit.
 

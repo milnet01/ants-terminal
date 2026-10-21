@@ -304,6 +304,66 @@ TEST(RoadmapPassStoreWrite, Inv4OpsWithNoStoreRouteRefuse) {
     EXPECT_EQ(itemOf(QStringLiteral("PASS-44-1"), projectId)->body, bodyBefore);
 }
 
+// INV-16 (ANTS-5805) — a repeated flip or annotate must not recommend the batch
+// op INV-4 refuses. RetroDB followed the hint and got unsupported_format. On a
+// pass project the store does not serve, flip_batch writes the file, so the
+// hint stays there.
+TEST(RoadmapPassStoreWrite, Ants5805NoBatchHintWhereTheBatchOpRefuses) {
+    const auto twice = [](const QString &root, const QString &op, const QString &id,
+                          const QString &key, const QString &first,
+                          const QString &second) {
+        RemoteControl rc(nullptr);
+        QJsonObject r = req(root, op);
+        r[QStringLiteral("id")] = id;
+        r[key] = first;
+        const QJsonObject a = rc.cmdRoadmapLog(r).object();
+        EXPECT_TRUE(a.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(a).toJson().toStdString();
+        r[key] = second;
+        const QJsonObject b = rc.cmdRoadmapLog(r).object();
+        EXPECT_TRUE(b.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(b).toJson().toStdString();
+        return b;
+    };
+    const QString toKey   = QStringLiteral("to_status");
+    const QString noteKey = QStringLiteral("note");
+
+    {
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, /*migrate=*/true);
+        ASSERT_FALSE(root.isEmpty());
+        const QJsonObject flip = twice(root, QStringLiteral("flip"),
+            QStringLiteral("PASS-43-5-B"), toKey,
+            QStringLiteral("in-progress"), QStringLiteral("shipped"));
+        EXPECT_TRUE(flip.value(QStringLiteral("batch_hint")).isUndefined())
+            << "store-served flip recommends flip_batch, which refuses: "
+            << QJsonDocument(flip).toJson().toStdString();
+        const QJsonObject note = twice(root, QStringLiteral("annotate"),
+            QStringLiteral("PASS-44-1"), noteKey,
+            QStringLiteral("First note."), QStringLiteral("Second note."));
+        EXPECT_TRUE(note.value(QStringLiteral("batch_hint")).isUndefined())
+            << "store-served annotate recommends annotate_batch, which refuses: "
+            << QJsonDocument(note).toJson().toStdString();
+    }
+    {
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, /*migrate=*/false);
+        ASSERT_FALSE(root.isEmpty());
+        const QJsonObject flip = twice(root, QStringLiteral("flip"),
+            QStringLiteral("PASS-43-5-B"), toKey,
+            QStringLiteral("in-progress"), QStringLiteral("shipped"));
+        const QJsonValue hint = flip.value(QStringLiteral("batch_hint"));
+        ASSERT_TRUE(hint.isString())
+            << "the file-served pass project lost its hint: "
+            << QJsonDocument(flip).toJson().toStdString();
+        EXPECT_TRUE(hint.toString().contains(QStringLiteral("flip_batch")));
+    }
+}
+
 // INV-5 — boundary: holds before and after the fix.
 TEST(RoadmapPassStoreWrite, Inv5UnmigratedPassProjectStillWritesTheFile) {
     ants_test::XdgGuard guard;

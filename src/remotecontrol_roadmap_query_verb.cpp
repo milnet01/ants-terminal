@@ -4260,7 +4260,14 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
             op = opReq.value(QStringLiteral("op")).toString(QStringLiteral("append"));
             if (op == QStringLiteral("add")) op = QStringLiteral("append");
         }
-        const QString hint = rlBatchHint(
+        // ANTS-5805 — flip_batch and annotate_batch have no store route on a
+        // pass-headings roadmap (ANTS-5334), so naming them there sends the
+        // caller to a refusal. append_batch has one and keeps its hint.
+        const bool batchRefuses =
+            env.value(QStringLiteral("format")).toString() == QStringLiteral("pass-headings") &&
+            env.value(QStringLiteral("write_path")).toString() == QStringLiteral("render") &&
+            (op == QStringLiteral("flip") || op == QStringLiteral("annotate"));
+        const QString hint = batchRefuses ? QString() : rlBatchHint(
             req.value(QStringLiteral("caller_cwd")).toString(), op);
         if (!hint.isEmpty()) {
             env[QStringLiteral("batch_hint")] = hint;

@@ -102,9 +102,14 @@ and `op:"amend_body"` there still refuses.
 - **INV-15** — `roadmap_query` by id on a store-served pass project returns
   the block's lines after its heading as `body` (ANTS-5678).
   *Test:* `Ants5678IdFetchReturnsThePassBody`.
+- **INV-16** — on a store-served pass project, a repeated `op:"flip"` or
+  `op:"annotate"` carries no `batch_hint`, since the batch op it would name
+  refuses (INV-4). On a pass project the store does not serve, a repeated
+  flip still names `flip_batch` (ANTS-5805).
+  *Test:* `Ants5805NoBatchHintWhereTheBatchOpRefuses`.
 
 INV-1 to INV-4 fail against the pre-ANTS-5334 code; INV-8 to INV-12 fail
-against the pre-ANTS-5641 code; INV-14 and INV-15 fail against the code
+against the pre-ANTS-5641 code; INV-14 to INV-16 fail against the code
 before their fixes.
 
 ## Build
