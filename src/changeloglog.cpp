@@ -212,10 +212,22 @@ int firstInterleavedProseLine(const QStringList &lines,
 //   (3) ≥1 flush-left `**Bold**` run line (the category runs sit one level
 //       BELOW the topic heading). A normal bullet `- **summary**` trims to a
 //       leading `-`, not `**`, so it never trips this.
+//       ANTS-4946 — OR every `### ` heading is a dated topic. MAME Curator's
+//       topics carry plain prose and no bold run, so (3) alone missed them
+//       and the flat writer created its category heading at the section end.
+//
+// A dated topic is `### YYYY-MM-DD …`. QDate PARSES it rather than a regex
+// matching its shape, so `### 2026-13-45 Added — …` is not mistaken for one.
+bool isDatedTopicHeading(const QString &trimmed) {
+    return QDate::fromString(trimmed.mid(4, 10),
+                             QStringLiteral("yyyy-MM-dd")).isValid();
+}
+
 int firstFeatureGroupedTopicLine(const QStringList &lines,
                                  int sectionStart, int sectionEnd) {
     int firstTopic = -1;
     int headingCount = 0;
+    int datedCount = 0;
     bool sawBoldRun = false;
     const QVector<bool> fenced = fencedLines(lines, sectionStart, sectionEnd);
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
@@ -226,6 +238,7 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
             const QString name = t.mid(4).trimmed();
             if (canonicalCategories().contains(name, Qt::CaseInsensitive))
                 return -1;  // a real category heading → not feature-grouped
+            if (isDatedTopicHeading(t)) ++datedCount;
             if (firstTopic < 0) firstTopic = i + 1;  // 1-based, for humans
         } else if (t.startsWith(QStringLiteral("**"))) {
             sawBoldRun = true;
@@ -247,7 +260,8 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
             sawBoldRun = true;
         }
     }
-    return (headingCount >= 1 && sawBoldRun) ? firstTopic : -1;
+    const bool allDated = datedCount == headingCount;
+    return (headingCount >= 1 && (sawBoldRun || allDated)) ? firstTopic : -1;
 }
 }  // namespace
 
@@ -257,12 +271,6 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
                                    int sectionEnd) {
     UnreleasedShape s;
     s.unreleasedFound = true;   // the caller located the heading to get here
-    // A dated topic is `### YYYY-MM-DD …`. QDate PARSES it rather than a regex
-    // matching its shape, so `### 2026-13-45 Added — …` is not mistaken for one.
-    const auto isDatedTopic = [](const QString &t) {
-        return QDate::fromString(t.mid(4, 10),
-                                 QStringLiteral("yyyy-MM-dd")).isValid();
-    };
     const QVector<bool> fenced = fencedLines(lines, sectionStart, sectionEnd);
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
         if (fenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
@@ -271,7 +279,7 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
                                            Qt::CaseInsensitive)) {
             ++s.flatCount;
             if (s.flatCategoryLine < 0) s.flatCategoryLine = i + 1;  // 1-based
-        } else if (isDatedTopic(t)) {
+        } else if (isDatedTopicHeading(t)) {
             ++s.datedCount;
             if (s.datedTopicLine < 0) s.datedTopicLine = i + 1;
         }
@@ -448,9 +456,7 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     // buried the entries).
     //
     // Scoped to a MIXED section deliberately. A purely dated section is already
-    // refused above whenever it carries a bold run, which every dated corpus
-    // measured does; the no-bold-run case is a separate gap and is filed rather
-    // than widened into here on a shape nothing in the corpus has.
+    // refused above, with or without a bold run (ANTS-4946).
     {
         const UnreleasedShape shape =
             classifyUnreleased(lines, unrel + 1, sectionEnd);

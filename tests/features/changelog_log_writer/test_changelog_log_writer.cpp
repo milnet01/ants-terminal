@@ -73,6 +73,20 @@ const char *kFeatureGroupedChangelog =
     "## [0.1.0] - 2026-01-01\n\n"
     "- old.\n";
 
+// ANTS-4946 — a DATED section whose topics carry plain prose and no bold run:
+// MAME Curator's shape on 2026-10-21. Every `### ` heading is a dated topic,
+// so it is feature-grouped although no `**Bold**` line exists. The first
+// dated topic is line 5 (1-based).
+const char *kDatedProseOnlyChangelog =
+    "# Changelog\n\n"                                             // 1, 2
+    "## [Unreleased]\n\n"                                         // 3, 4
+    "### 2026-10-19 Added \xE2\x80\x94 A support link (M-1133)\n\n"  // 5, 6
+    "Settings now links to a sponsor page.\n\n"                   // 7, 8
+    "### 2026-09-28 Changed \xE2\x80\x94 Restores can be undone\n\n"  // 9, 10
+    "A restore saves what it replaces first.\n\n"                 // 11, 12
+    "## [0.1.0] - 2026-01-01\n\n"
+    "- old.\n";
+
 // ANTS-4563 — a MIXED `## [Unreleased]`: dated topics on top, a legacy flat
 // Keep-a-Changelog tail below. Vestige's reported shape, and the one that fell
 // between the two guards — `firstFeatureGroupedTopicLine` returns -1 the moment
@@ -666,6 +680,28 @@ TEST(changelog_log_writer, Ants3416FeatureGroupedRefusalHelper) {
     EXPECT_TRUE(malformed.ok)
         << "a flat category layout must never be mistaken for feature-grouped";
     EXPECT_TRUE(malformed.malformed_section);
+}
+
+// ANTS-4946 — a section of dated topics with no bold run is feature-grouped
+// too. Before the fix the detector wanted a bold run, so the flat writer
+// created `### Fixed` at the section END, below every dated topic.
+TEST(changelog_log_writer, Ants4946DatedSectionWithoutBoldRunIsRefused) {
+    const auto dated = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kDatedProseOnlyChangelog), QStringLiteral("Fixed"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_FALSE(dated.ok) << "a dated section must be refused, bold run or not";
+    EXPECT_EQ(dated.code, QStringLiteral("feature_grouped_section"));
+    EXPECT_TRUE(contains(dated.error.toStdString(), "line 5"))
+        << "the refusal names the first dated-topic heading line";
+    EXPECT_TRUE(dated.markdown.isEmpty());
+
+    // A non-canonical, UNDATED heading with prose and no bold run is not
+    // evidence of a dated layout, so it still takes the flat insert.
+    const auto undated = ChangelogLog::insertUnreleasedEntry(
+        QStringLiteral("# Changelog\n\n## [Unreleased]\n\n### Notes\n\n"
+                       "Some prose.\n\n## [0.1.0] - 2026-01-01\n\n- old.\n"),
+        QStringLiteral("Fixed"), QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_TRUE(undated.ok) << undated.error.toStdString();
 }
 
 // ANTS-4563 — one shape test, and the MIXED section that fell between two.

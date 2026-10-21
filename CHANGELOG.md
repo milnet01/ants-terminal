@@ -225,6 +225,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log op:"add" refuses a changelog of dated topics written as plain prose, and points at op:"add_subsection"** (ANTS-4946)
+  A section whose every `### ` heading is a dated topic now counts as
+  feature-grouped without any bold text, so the entry no longer lands at
+  the bottom of the section.
+
 - **A terminal-scoped verb that takes longer than 60 s now answers `terminal_timeout`, saying the terminal may still finish the call, instead of `no_terminal`'s advice to start Ants Terminal** (ANTS-4845)
 
 - **`roadmap_log` suggests `flip_batch` or `annotate_batch` only where they can write, not on a store-served pass-headings roadmap** (ANTS-5805)

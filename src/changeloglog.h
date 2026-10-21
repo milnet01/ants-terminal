@@ -103,7 +103,8 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
 // `### <category>` heading in canonical order if it is absent. Refusals:
 //   not_unreleased  — no `## [Unreleased]` heading
 //   bad_category    — category not one of the six canonical values
-//   feature_grouped_section — dated `### ` topics with `**Bold**` runs
+//   feature_grouped_section — dated `### ` topics, with `**Bold**` runs or
+//                     every heading dated (ANTS-4946)
 //   mixed_section   — ANTS-4563: dated topics LEAD and a flat category tail
 //                     sits below them. A flat insert here lands in that tail,
 //                     which is the burial this refusal exists to stop. The

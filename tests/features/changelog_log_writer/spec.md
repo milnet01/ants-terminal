@@ -144,7 +144,9 @@ block a legitimate insert): ≥1 `### ` heading, NONE of them a canonical
 category word (a single canonical heading → flat layout, handled by the
 normal insert + the INV-9 advisory), and ≥1 flush-left `**Bold**` run line.
 A normal bullet `- **summary**` trims to a leading `-`, so it never trips
-the bold-run signal.
+the bold-run signal. A section whose every `### ` heading is a dated topic
+(`### YYYY-MM-DD …`, the date parsed) needs no bold run: its topics may
+carry plain prose (ANTS-4946).
 
 ## Test plan
 

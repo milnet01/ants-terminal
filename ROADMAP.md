@@ -82616,7 +82616,7 @@ filed below.
   Kind: enhancement.
   Source: in-session-2026-09-08, found while shipping ANTS-4563.
 
-- 📋 [ANTS-4946] **A dated changelog section with no bold run escapes both guards and appends at the section end.**
+- ✅ [ANTS-4946] **A dated changelog section with no bold run escapes both guards and appends at the section end.**
   firstFeatureGroupedTopicLine requires BOTH a `### ` heading and a
   bold run (`**Bold**`, `- **`, `* **`) before it reports a
   feature-grouped section. A section of dated topics whose bodies are
@@ -82639,6 +82639,14 @@ filed below.
   bold runs, so its feature_grouped_section refusal fires correctly
   today. Re-measure before building: if the population is still empty,
   the question is whether a guard is worth its name.
+  Shipped 2026-10-21. Re-measured first: MAME_Curator's [Unreleased] now
+  has this exact shape (dated `### ` topics, prose only, no bold run),
+  so the population is no longer empty. firstFeatureGroupedTopicLine now
+  also counts a section whose every `### ` heading is a dated topic
+  (QDate-parsed; helper shared with classifyUnreleased). Verdicts moved
+  across the sibling CHANGELOGs: MAME_Curator only. Pinned by
+  Ants4946DatedSectionWithoutBoldRunIsRefused (red before the fix; an
+  always-true mutant reddens its undated half).
   **Layman:** A changelog written as dated topics with prose but no bold bullets can still have an entry added far from the top.
   Kind: fix.
   Source: in-session-2026-09-08, found while shipping ANTS-4563.
