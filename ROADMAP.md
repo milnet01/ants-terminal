@@ -85686,6 +85686,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Note the caller: a git hook cannot reach a verb without a running GUI
   instance, so this argument is only useful to a hook once ANTS-4932 lands.
   It is useful to a skill immediately.
+  Spec (2026-10-21): amendment to docs/specs/ANTS-3663.md § 2.7,
+  INV-29..31. review-contract gate owed before implementation.
   **Layman:** Check what is actually being committed, not what happens to be on disk.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
