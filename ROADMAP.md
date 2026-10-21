@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5798 -->
+<!-- ants-roadmap-id-high-water: ANTS=5799 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87677,6 +87677,23 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: in-session-2026-10-20 (ANTS-5734 ship 3, batch 3).
   Lanes: mcp-tools.
+
+- 📋 [ANTS-5799] **trace repeats every language's limits and every oversized grammar file in not_covered on each call, though the symbol was found in one language.**
+  Seen 2026-10-21: two trace calls on C++ symbols (withIgnoredArgs,
+  ignoredArgKeysFor) each returned the same not_covered block: a
+  "limits" row for every one of 26 languages, plus a file_too_large row
+  for each vendored tree-sitter parser.c under third_party/. The answer
+  itself (definitions, callers, tests) was a fraction of the reply.
+
+  Direction, not decided: keep not_covered rows only for languages the
+  symbol's definitions or references were found in, plus a count of the
+  rest; and leave the static per-language limits to tool_info, or emit
+  them once behind an opt-in. A file skipped as too large inside a
+  vendored directory could fold to one row per directory.
+  **Layman:** Each symbol lookup returns a long list of things it could not check in languages the question never touched, which costs tokens every time.
+  Kind: optimize.
+  Source: in-session-2026-10-21.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
