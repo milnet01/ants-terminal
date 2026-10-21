@@ -23,11 +23,13 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMap>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <tuple>
 
 namespace trace {
@@ -38,6 +40,31 @@ constexpr int kMaxWalkFiles = 5000;                 // § 2.5, SymbolQuery's cap
 constexpr qint64 kMaxFileBytes = 2LL * 1024 * 1024;  // § 2.5
 constexpr int kDefaultMaxBytes = 512 * 1024;         // § 2.1
 constexpr int kTextMax = 200;                        // a row's quoted line
+constexpr int kGitListMs = 10000;                    // git ls-files' time budget
+
+// ANTS-5748 / § 2.5 — every path git would track under `root`, ignored ones
+// left out, sorted by path. Nothing where `root` is not in a git checkout, or
+// git is absent, fails or overruns: the caller then walks the directory.
+std::optional<QStringList> gitListedPaths(const QString &root) {
+    QProcess git;
+    git.start(QStringLiteral("git"),
+              {QStringLiteral("-C"), root, QStringLiteral("ls-files"),
+               QStringLiteral("--cached"), QStringLiteral("--others"),
+               QStringLiteral("--exclude-standard"), QStringLiteral("--deduplicate"),
+               QStringLiteral("-z")});
+    if (!git.waitForFinished(kGitListMs)) {
+        git.kill();
+        git.waitForFinished();
+        return std::nullopt;
+    }
+    if (git.exitStatus() != QProcess::NormalExit || git.exitCode() != 0)
+        return std::nullopt;
+    QStringList paths;
+    for (const QByteArray &p : git.readAllStandardOutput().split('\0'))
+        if (!p.isEmpty()) paths << QString::fromUtf8(p);
+    paths.sort();
+    return paths;
+}
 
 const QStringList &allSections() {
     static const QStringList s = {
@@ -320,6 +347,13 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     // ---- the walk (§ 2.5) ----
     QVector<QFileInfo> files;
     bool walkCapped = false;
+    const auto addFile = [&](const QFileInfo &fi) {
+        if (files.size() >= kMaxWalkFiles) {
+            walkCapped = true;
+            return;
+        }
+        files.append(fi);
+    };
     std::function<void(const QString &)> walk = [&](const QString &dir) {
         for (const QFileInfo &fi : walkrules::entries(dir)) {
             if (walkCapped) return;
@@ -328,15 +362,31 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
                 if (!walkrules::skippedDir(fi)) walk(fi.absoluteFilePath());
                 continue;
             }
-            if (!fi.isFile()) continue;
-            if (files.size() >= kMaxWalkFiles) {
-                walkCapped = true;
-                return;
-            }
-            files.append(fi);
+            if (fi.isFile()) addFile(fi);
         }
     };
-    walk(root);
+    // ANTS-5748 — in a git checkout, git's list, so ignored trees never reach
+    // the cap. The directory walk's rules still apply: entries() lists no
+    // dot-files, and git's list holds them.
+    if (const auto listed = gitListedPaths(root)) {
+        for (QString rel : *listed) {
+            if (walkCapped) break;
+            if (rel.endsWith(QLatin1Char('/'))) rel.chop(1);   // a nested repository
+            const QStringList parts = rel.split(QLatin1Char('/'));
+            if (std::any_of(parts.cbegin(), parts.cend() - 1, walkrules::skippedDirName)
+                || parts.last().startsWith(QLatin1Char('.')))
+                continue;
+            const QFileInfo fi(root + QLatin1Char('/') + rel);
+            if (!walkrules::followed(fi)) continue;
+            if (fi.isDir()) {                                   // a submodule
+                if (!walkrules::skippedDir(fi)) walk(fi.absoluteFilePath());
+                continue;
+            }
+            if (fi.isFile()) addFile(fi);
+        }
+    } else {
+        walk(root);
+    }
 
     if (hasPath) {
         const QString base = QFileInfo(pathRel).fileName();
@@ -378,15 +428,17 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         const QString rel = fi.absoluteFilePath().mid(prefixLen);
         const bool md = isMarkdown(fi.fileName());
         if (md && !include.contains(QStringLiteral("docs"))) continue;
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        // ANTS-5748 — binary first, so a large binary is skipped, not reported.
+        QByteArray text = f.read(8000);
+        if (std::memchr(text.constData(), '\0', size_t(text.size())))
+            continue;   // binary
         if (fi.size() > kMaxFileBytes) {
             tooLarge << rel;
             continue;
         }
-        QFile f(fi.absoluteFilePath());
-        if (!f.open(QIODevice::ReadOnly)) continue;
-        const QByteArray text = f.readAll();
-        if (std::memchr(text.constData(), '\0', size_t(std::min<qsizetype>(text.size(), 8000))))
-            continue;   // binary
+        text += f.readAll();
         if (md) {
             scanMarkdown(rel, text, hasPath, needle, relNeedle, baseNeedle, docRows);
             continue;

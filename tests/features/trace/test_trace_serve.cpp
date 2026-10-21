@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QProcess>
 #include <QSet>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -511,5 +512,49 @@ TEST_F(TraceServe, Ship3ThirdBatchDefinitionsAndCallers) {
         EXPECT_FALSE(v.toObject().value(QStringLiteral("reason")).toString() ==
                          QLatin1String("no_grammar") &&
                      batch.contains(v.toObject().value(QStringLiteral("lang")).toString()))
+            << dump(v);
+}
+
+// INV-22 — in a git checkout a git-ignored file is not walked, and a symlink
+// git lists as a plain path is not followed.
+TEST_F(TraceServe, Inv22GitWalkSkipsIgnoredFilesAndSymlinks) {
+    QTemporaryDir outside;
+    ASSERT_TRUE(outside.isValid());
+    QFile out(outside.path() + QStringLiteral("/out.py"));
+    ASSERT_TRUE(out.open(QIODevice::WriteOnly));
+    out.write("def ignoredProbe():\n    pass\n");
+    out.close();
+    ASSERT_TRUE(QFile::link(outside.path(), m_root + QStringLiteral("/linked")));
+    ASSERT_TRUE(write(QStringLiteral("archive/hidden.py"), "def ignoredProbe():\n    pass\n"));
+    ASSERT_EQ(QProcess::execute(QStringLiteral("git"),
+                                {QStringLiteral("-C"), m_root, QStringLiteral("init"),
+                                 QStringLiteral("-q")}),
+              0)
+        << "INV-22 needs git";
+
+    QJsonObject r = traceSymbol(QStringLiteral("ignoredProbe"));
+    QJsonArray defs = arr(r, "definitions");
+    ASSERT_EQ(defs.size(), 1) << dump(defs);
+    EXPECT_EQ(defs.at(0).toObject().value(QStringLiteral("file")).toString(),
+              QStringLiteral("archive/hidden.py"));
+
+    ASSERT_TRUE(write(QStringLiteral(".gitignore"), "archive/\n"));
+    r = traceSymbol(QStringLiteral("ignoredProbe"));
+    EXPECT_TRUE(arr(r, "definitions").isEmpty()) << dump(arr(r, "definitions"));
+}
+
+// INV-23 — a binary file is skipped before the size check, so it is never
+// reported as file_too_large.
+TEST_F(TraceServe, Inv23BinaryFileNeverReportedTooLarge) {
+    QByteArray blob("kindProbe\n");
+    blob.append('\0');
+    const QByteArray filler(79, '#');
+    while (blob.size() < 3 * 1024 * 1024) blob += filler + '\n';
+    ASSERT_TRUE(write(QStringLiteral("blob.bin"), blob));
+
+    const QJsonObject r = traceSymbol(QStringLiteral("kindProbe"));
+    for (const QJsonValue &v : arr(r, "not_covered"))
+        EXPECT_NE(v.toObject().value(QStringLiteral("file")).toString(),
+                  QStringLiteral("blob.bin"))
             << dump(v);
 }

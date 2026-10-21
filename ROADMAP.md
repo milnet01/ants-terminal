@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5797 -->
+<!-- ants-roadmap-id-high-water: ANTS=5798 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -73336,6 +73336,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-10-21.
   Lanes: mcp.
 
+- 📋 [ANTS-5798] **trace lists a C++ lambda bound to a name (`auto f = [](…){…}`) as a definition, as find_definition does.**
+  Measured 2026-10-21 after ANTS-5748's walk fix: trace symbol:rlErr
+  walks 2967 files uncapped and parses the 6 that name it, yet returns no
+  definition. Every rlErr in src/ is `auto rlErr = [](const QString &code,
+  ...) {`, and the C++ query captures function_definition only.
+  find_definition, which matches text, lists all 12. Fix: a query pattern
+  for a declaration whose initializer is a lambda_expression, captured as
+  @definition.function with the declarator's name; the query is data
+  (§ 2.4), so a query edit reaches ants-mcpd with no rebuild.
+  **Layman:** The code lookup tool finds small helper functions written inline, not only ordinary ones.
+  Kind: enhancement.
+  Source: in-session-2026-10-21.
+  Lanes: code-index-search.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -87544,7 +87558,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-request-2026-10-16 (user decision).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5748] **trace's walk skips git-ignored files and binaries, so it covers a large repository's source before reaching its file cap.**
+- ✅ [ANTS-5748] **trace's walk skips git-ignored files and binaries, so it covers a large repository's source before reaching its file cap.**
   Measured 2026-10-16, first live call (trace symbol:seedContextReading
   on this repo): scanned.files 5000 with walk_capped:true. The walk
   (walkrules, SymbolQuery's rules) skips dot-dirs, build, build-* and
@@ -87597,7 +87611,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-contract-ANTS-5734-2026-10-16.
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5755] **trace skips gitignored files and walks tracked files first, so a capped walk still finds the definition.**
+- ✅ [ANTS-5755] **trace skips gitignored files and walks tracked files first, so a capped walk still finds the definition.**
   claude-config 2026-10-16: trace {caller_cwd:~/.claude, symbol:
   ants_is_source_search} walks gitignored file-history/ and projects/
   first, hits walk_capped at 5,000 files with 6 parsed, and returns no

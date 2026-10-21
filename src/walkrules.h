@@ -22,12 +22,15 @@ inline QFileInfoList entries(const QString &dirPath) {
 // of the project root.
 inline bool followed(const QFileInfo &fi) { return !fi.isSymLink(); }
 
-// A directory a walk does not enter.
-inline bool skippedDir(const QFileInfo &fi) {
-    const QString name = fi.fileName();
+// The name of a directory a walk does not enter. ANTS-5748 — by name, so a
+// path from git's file list can be tested one directory at a time.
+inline bool skippedDirName(const QString &name) {
     return name.startsWith(QLatin1Char('.'))
         || name == QLatin1String("build") || name.startsWith(QLatin1String("build-"))
         || name == QLatin1String("node_modules");
 }
+
+// A directory a walk does not enter.
+inline bool skippedDir(const QFileInfo &fi) { return skippedDirName(fi.fileName()); }
 
 }  // namespace walkrules

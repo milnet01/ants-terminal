@@ -215,6 +215,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`trace` searches a project's real files: in a git checkout it skips git-ignored files, and it skips binary files before its size limit** (ANTS-5748)
+  Archive and backup folders no longer use up its file budget, so definitions in source folders are found in large projects.
+
 - **The Claude status and tab colour now show a waiting question, or work after a background task, instead of "idle".**
   The status reader skips the bookkeeping records newer Claude Code
   versions write after each step, and looks further back when they are
