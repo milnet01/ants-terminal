@@ -83765,8 +83765,14 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub/LocalWebServerManager.
 
-- 📋 [ANTS-4831] **mutation_probe's transport_budget_sec cannot extend a batch, so the verb is unusable on a project that must rebuild.**
+- ✅ [ANTS-4831] **mutation_probe's transport_budget_sec cannot extend a batch, so the verb is unusable on a project that must rebuild.**
   Passing 900 still left the bridge read timeout bounding the call, and one rebuild-plus-run cycle on that project costs more than the default budget, so not even a single mutation fits. A session cannot change ANTS_MCP_READ_TIMEOUT_S for itself. Echo an effective_budget_sec beside the requested one and refuse up front with the arithmetic when not one mutation fits, since a refusal leaves nothing dirty.
+  Resolved by ANTS-5308 (bridge retired), confirmed 2026-10-21: a
+  mutation_probe call with transport_budget_sec 0 and a 75 s test run
+  returned its reply (survived, restored_clean true), so the 60 s bound
+  this item hit is gone and raising transport_budget_sec now buys the
+  time it says. The 60 s default and the text naming
+  ANTS_MCP_READ_TIMEOUT_S are ANTS-5804's.
   **Layman:** The argument that looks like it buys more time does not.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub.
@@ -83858,6 +83864,10 @@ two projects).
   30-minute idle timeout (CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT). Confirm
   with a real call longer than 60 s before re-deriving the default.
   ANTS-4831 rests on the same bound.
+  Measured 2026-10-21: a 75 s mutation_probe call through ants-mcpd
+  returned normally, so nothing on the path bounds a call at 60 s. The
+  default can rise toward the 30-minute idle timeout; the verb's own [0,
+  1800] clamp already matches it.
   **Layman:** The mutation test tool's time limit is tuned to a part that was removed, so it may stop too early or too late.
   Kind: fix.
   Source: self-found-2026-10-21 ANTS-4830 work.
