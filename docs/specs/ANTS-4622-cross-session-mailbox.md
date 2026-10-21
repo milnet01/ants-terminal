@@ -162,7 +162,8 @@ Refusal codes: `no_project` (the caller's own root is not registered),
 `unknown_project` (the `to` slug resolves to no row), `not_found` (`ack`, or
 `inbox` with `message_id`, on an id that does not exist **or on a message addressed to another project** —
 deliberately the same code, so a probe cannot use the refusal to learn that a
-message id exists), `inbox_full` (§ 2.6), `bad_args` (empty or oversized body).
+message id exists), `inbox_full` (§ 2.6), `bad_args` (empty or oversized body, oversized
+`from_session`).
 
 Of these, `no_project`, `not_found` and `bad_args` are already in
 `docs/standards/mcp-error-codes.md`; **`unknown_project` and `inbox_full` are
@@ -307,8 +308,9 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
   `inbox_full`, and every other recipient still gets its copy.
 - **One transaction.** Every copy is written in one store transaction. An I/O
   failure rolls all of them back and the call refuses `io_error`.
-- **Validated once, before any write.** An empty or oversized body refuses
-  `bad_args` for the whole call and writes nothing.
+- **Validated once, before any write.** An empty or oversized body, or an
+  oversized `from_session`, refuses `bad_args` for the whole call and writes
+  nothing. So `refused[]` carries only `inbox_full`.
 - **Reply.** `sent[]` holds `{to, message_id}` per copy written, `refused[]`
   holds `{to, code}` per recipient skipped, and `created_at` is the one stamp
   every copy carries. A call with no recipient left returns both arrays empty
@@ -318,6 +320,11 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
   and no `sent[]` or `message_id` (ANTS-4463).
 - **Prune.** § 2.6's prune runs once, over the caller's own inbox, as for any
   writing `send`.
+- **Where it lives.** The recipient walk, the per-recipient cap check and the
+  dry-run split are one `RoadmapStore` method, which returns the sent and
+  refused lists. The handler only shapes the reply. INV-11 to INV-13 drive
+  that method against a temporary store, as INV-9 drives `sendMessage()`,
+  because the handler opens the real machine-global store.
 
 ## 3. Invariants
 
@@ -518,3 +525,4 @@ here.
 | 2 | 2026-08-22 | 3, cold — identical brief, packet rebuilt whole from disk; two packet gaps loop 1's lanes had flagged were closed first (the error-code list was headings-only, and § 5 now cites `roadmapexport.cpp`) | **Q1 2 · Q2 3 · Q3 4** (9 verified / 0 dismissed) | **Nine verified, nine fixed. Cap reached (2 for a spec); nothing deferred.** **Five of the nine landed on text loop 1 wrote** — 4a-min's measured pattern, and worth stating plainly rather than in prose: this is a moderately oscillating cap, not a calm one. **The worst was loop 1's own repair being false.** Loop 1 widened INV-6 by asserting the harness compares `sqlite_master` byte-identically `ORDER BY rowid`; that query is the FIXTURE-GENERATION dump, and the live comparison is `schemaStatements()`, which ends `out.sort()` and passes every statement through a `norm` callback. So the comparison is SORTED and NORMALISED, and an implementer taking INV-6 literally would have concluded rowid order can never match between a created and a climbed store and declared the invariant unachievable. One lane found it, a second raised it as an open question, and the source settled it. **Loop 1 also introduced two of its own:** the index it added covered one FK end while `ddl[]`'s own block says SQLite does not auto-index foreign keys and `relationship` carries `idx_rel_src` AND `idx_rel_dst` — both ends, exactly as its delete is both ends; and the export bullet it added counted nine `"t"`-tagged record types where there are ten. All three lanes raised that count as an open question and none filed it, correctly — nothing is built differently either way — so the number was DELETED rather than corrected, since it was carrying nothing. **And loop 1's fix for the vacuous-fixture trap contained the trap again:** pinning the prune's side left its COLUMN unpinned, and under the `acked_at` reading an unacked row has `acked_at IS NULL`, so a pure age filter deletes nothing and INV-8 passed against a broken prune. Three lanes reached that column from three directions. INV-8 now carries two rows and says why neither leg alone is sufficient. **Four were pre-existing and loop 1 never reached them:** the 500 cap counts UNACKED rows, so § 4's 31.2 MiB was never a bound on the table — the spec now states outright which half is hard-capped and which is a deliberate trade; `mail_pending`'s keys were never named though INV-4 asserts against them; "a project with no mail" admitted *no rows* and *no unacked rows*, the second being ANTS-3631's failure the same section cites; and a `dry_run` send is an op, so loop 1's "any op" trigger had previews pruning. **Open questions, none of which became findings:** `project_not_registered` is scoped by the taxonomy to one op's remap of `op_unsupported` and is a statement about the CALLER, so it does not cover an unknown addressee — recorded in § 2.3 because three lanes asked. |
 | impl | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment recording code verified in the same commit | — | § 2.3 records two shipped changes. ANTS-5601: `inbox` takes `message_id` and returns that one message, acked or not; another project's id is `not_found`, as for `ack`. ANTS-5591: `limit` of 0 or less asks for the 200-row ceiling instead of 1. Rule 14: the code-already-exists exception, so no gate. |
 | amend | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment before implementation | — | ANTS-5741 (user decision 2026-10-16): adds § 2.7, broadcast by `to:"*"`, with INV-11 to INV-13; § 2.1 and § 2.3 gain the `*` value and `include_self`; § 5 withdraws broadcast from out of scope. It changes direction, so rule 14's gate runs next as loop 3. |
+| 3 | 2026-10-21 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; one shared packet carrying the handler whole, the `RoadmapStore` mailbox, transaction and project-list windows, the tool schema, the test fixture and the ANTS-5366 passages. Gated span: commit 6a71f24f (ANTS-5741) | **Q1 0 · Q2 0 · Q3 1 · Q4 1** (2 verified, 2 fixed / 2 dismissed) | **[Q4], both lanes:** § 2.7 placed the broadcast nowhere, and the handler opens the real store, so a handler-side broadcast left INV-11 to INV-13 with no runnable test. § 2.7 now puts the walk, the cap split and the dry-run split in one `RoadmapStore` method that the invariants drive on a temporary store. **[Q3], one lane:** only the body was validated up front, so an oversized `from_session` could come back `ok:true` with every recipient refused; it now refuses `bad_args` for the whole call and `refused[]` carries only `inbox_full`. § 2.3's `bad_args` gloss gains the same case. **Dismissed:** the single-slug preview not checking the cap while the broadcast preview does (two paths, each stated, neither false); a claim that § 6 overstates INV-10's coverage (the feature test covers it by source inspection, in that directory). **Outside the amendment's radius, filed on the roadmap:** INV-5, § 2.5 and § 7 still describe the pre-ANTS-5366 delete; § 2.3 says `acked_at` is always returned; § 2.1 says the refusal lists the known slugs. **Open questions, none became a finding:** a deregistered caller's `include_self`, `include_self` on a single-slug send, and whether a broadcast writing no row prunes — local choices nothing else binds to. |
