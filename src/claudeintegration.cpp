@@ -2390,18 +2390,20 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
         // refusals. recordDispatch derives `succeeded =
         // (result == "ok")` so failed-call accounting in
         // token_usage stays honest.
-        recordDispatch(toolName, argsObj, argBytes,
-                       /*rawBytes=*/ctx.requestBytes, outBytes,
-                       wrapBytes, durUs, cachedHit,
-                       dispatchResult);
         // ANTS-4659 — the survey of what callers send undeclared. A call
         // ants-mcpd forwards and the terminal answers is finished only in the
         // terminal, so with both processes recording each call lands once.
+        // Above recordDispatch: mcp_rate_limit INV-10 pins haveResult as the
+        // statement right after it.
         if (!m_undeclaredArgsLedgerPath.isEmpty() &&
             !ctx.ignoredArgKeys.isEmpty()) {
             McpUndeclaredArgs::appendRecord(m_undeclaredArgsLedgerPath,
                                             toolName, ctx.ignoredArgKeys);
         }
+        recordDispatch(toolName, argsObj, argBytes,
+                       /*rawBytes=*/ctx.requestBytes, outBytes,
+                       wrapBytes, durUs, cachedHit,
+                       dispatchResult);
         haveResult = true;
     } else {
         // JSON-RPC application error: tool not found or provider missing.
