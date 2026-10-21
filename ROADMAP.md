@@ -85688,6 +85688,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   It is useful to a skill immediately.
   Spec (2026-10-21): amendment to docs/specs/ANTS-3663.md § 2.7,
   INV-29..31. review-contract gate owed before implementation.
+  2026-10-21: the ANTS-3663 § 2.7 spec gate has run (review-contract
+  loops 11-12, calm cap, 8 verified and fixed). Ready to implement.
   **Layman:** Check what is actually being committed, not what happens to be on disk.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
