@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5810 -->
+<!-- ants-roadmap-id-high-water: ANTS=5811 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85904,6 +85904,18 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** A few specs say "two changes" or "three tests" above a longer list; fix the number or mark the extra items.
   Kind: doc-fix.
   Source: doc_integrity list_count first run 2026-10-21.
+
+- 📋 [ANTS-5811] **Register focused_test's five refusal codes in mcp-error-codes.md.**
+  no_build_dir, focused_test_in_flight, ctest_missing, ctest_failed and
+  unrecognised_output are emitted by RemoteControl::cmdFocusedTest
+  (src/remotecontrol_state.cpp) and listed in ANTS-1302 § 3.6, but no file
+  under docs/standards/ names them (workspace_search, 2026-10-21). The
+  register's own rule 3 wants a row per code in the commit that adds it.
+  Found while drafting the ANTS-5503 spec, which adds three more codes.
+  **Layman:** The list of error messages Claude's tools can give is missing five that the run-the-tests tool already uses.
+  Kind: doc-fix.
+  Source: ANTS-5503 spec drafting 2026-10-21.
+  Lanes: mcp.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
 
