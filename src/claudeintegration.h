@@ -400,6 +400,12 @@ public:
     }
     // ANTS-4932 — serverInfo.name in the initialize reply.
     void setServerName(const QString &name) { m_serverName = name; }
+    // ANTS-4659 — where a call's undeclared argument names are recorded
+    // (McpUndeclaredArgs). Empty, the default, records nothing, so a test
+    // that dispatches never writes the user's survey file.
+    void setUndeclaredArgsLedgerPath(const QString &path) {
+        m_undeclaredArgsLedgerPath = path;
+    }
 
     // ANTS-5464 § 2.1 — answers `ants/verifyTrustPrompt` (not a tool). It
     // runs on the Bulk worker and may block there while a prompt is open; its
@@ -811,6 +817,7 @@ private:
     QSet<QString> m_forwardedTools;
     Forwarder m_forwarder;
     QString m_serverName = QStringLiteral("ants-terminal");
+    QString m_undeclaredArgsLedgerPath;   // ANTS-4659
     VerifyTrustPromptHandler m_verifyTrustPromptHandler;   // ANTS-5464
     // ANTS-1253: per-tool providers consolidated into a single
     // name-keyed registry. See registerToolProvider() above.

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **The Ants MCP server keeps a survey of argument names callers send that a tool does not accept** (ANTS-4659)
+  Each such call adds one line to `~/.cache/ants-terminal/mcp-undeclared-args.jsonl`: the time, the tool and the argument names, never their values. The file is private to you and stays under 256 KiB. It is the evidence for deciding whether an unknown argument should be refused rather than noted.
+
 - **`roadmap_log op:"replace_text"` replaces one phrase in every roadmap item body that holds it, in one call** (ANTS-5760)
   `section` and `status` narrow which items it touches, and a dry run lists each item and how often it matched before anything is written.
 

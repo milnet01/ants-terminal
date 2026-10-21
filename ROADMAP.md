@@ -82651,7 +82651,7 @@ ids as added evidence; two closed n/a. Every finding was checked against the
 live roadmap before filing — the delta alone shows already-fixed findings as
 open, and two of these were exactly that.
 
-- 📋 [ANTS-4659] **An unknown argument is advised about, not refused — and the survey for refusing it dispatcher-wide has not been done.**
+- 🚧 [ANTS-4659] **An unknown argument is advised about, not refused — and the survey for refusing it dispatcher-wide has not been done.**
   ANTS-4626 shipped the half that was broken: the `ignored_args` advisory was
   being discarded by the result offload, so it reached a caller only on small
   replies. It now survives.
@@ -82677,6 +82677,17 @@ open, and two of these were exactly that.
   that the schemas do not declare? The dispatcher already computes exactly that
   set per call to build the advisory, so the question is answerable by logging
   what is already there rather than by guessing.
+  Survey instrument shipped (2026-10-21). Every call that carries an
+  undeclared argument now adds one line to
+  ~/.cache/ants-terminal/mcp-undeclared-args.jsonl: ts, tool, the
+  argument names (never values), capped at 256 KiB. ants-mcpd and the
+  terminal both write it; each finishes a disjoint set of calls, so a
+  call lands once. `ants-mcpd --call` and in-process tests write nothing.
+
+  Still open: read the file once it has a few weeks of calls, then
+  decide between refusing dispatcher-wide, refusing per verb, or keeping
+  the advisory. Reading it: count lines per tool and key, e.g.
+  `jq -r '.tool+" "+(.keys|join(","))' <file> | sort | uniq -c | sort -rn`.
   **Layman:** Passing a setting a tool does not have gets you a note rather than a clear error.
   Kind: fix.
   Source: in-session-2026-08-25, split out of ANTS-4626.

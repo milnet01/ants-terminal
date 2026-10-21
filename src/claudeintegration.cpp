@@ -8,6 +8,7 @@
 #include "mcpdeprecation.h"         // ANTS-5485
 #include "mcpprojection.h"
 #include "mcpspill.h"          // ANTS-2094 — result offload
+#include "mcpundeclaredargs.h"  // ANTS-4659 — undeclared-argument survey
 #include "secureio.h"
 #include "verifytrustprompt.h"  // ANTS-5464 — the method name
 
@@ -2393,6 +2394,14 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
                        /*rawBytes=*/ctx.requestBytes, outBytes,
                        wrapBytes, durUs, cachedHit,
                        dispatchResult);
+        // ANTS-4659 — the survey of what callers send undeclared. A call
+        // ants-mcpd forwards and the terminal answers is finished only in the
+        // terminal, so with both processes recording each call lands once.
+        if (!m_undeclaredArgsLedgerPath.isEmpty() &&
+            !ctx.ignoredArgKeys.isEmpty()) {
+            McpUndeclaredArgs::appendRecord(m_undeclaredArgsLedgerPath,
+                                            toolName, ctx.ignoredArgKeys);
+        }
         haveResult = true;
     } else {
         // JSON-RPC application error: tool not found or provider missing.

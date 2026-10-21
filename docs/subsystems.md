@@ -211,6 +211,10 @@ Listed only where behavior isn't obvious from the name.
   read tools; `projectFields`, universal since ANTS-4524 (read the
   predicate for the current allowlist — it grows a verb at a time, and a
   count stated here goes stale on the next addition). ANTS-1720.
+- `mcpundeclaredargs` (Qt6::Core, `ants_core_lib`) — survey ledger of the
+  argument names callers send that a verb does not declare. One JSONL line
+  per call, names only, never values. `finishToolDispatch` writes it in a
+  process that set a path: `ants-mcpd` and the terminal. ANTS-4659.
 - `briefdispatch` (Qt6::Core, `ants_core_lib`) — shared dispatch-brief
   composer for the review-dialog family: `fenceBody` (4-backtick
   fence-hardening kernel), `inlineBodies`, `inlineRelevantSections`

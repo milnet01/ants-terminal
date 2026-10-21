@@ -20,6 +20,7 @@
 #include "mcpprojection.h"
 #include "mcpspill.h"
 #include "mcptoolregistry.h"
+#include "mcpundeclaredargs.h"
 #include "remotecontrol.h"
 #include "rootprovider.h"
 #include "secureio.h"
@@ -132,6 +133,10 @@ int main(int argc, char **argv) {
     // ANTS-5506 — everything above is shared with stdio mode. `--call` builds
     // no forwarder and no usage snapshot, which is why it returns here.
     if (callRequest.isCall) return mcpd::runCall(callRequest, pipeline);
+
+    // ANTS-4659 — the undeclared-argument survey. Set after the `--call`
+    // return, so tests that run `--call` never write the user's file.
+    pipeline.setUndeclaredArgsLedgerPath(McpUndeclaredArgs::defaultLedgerPath());
 
     // § 2.5 — every terminal-scoped verb goes to the terminal, whole.
     mcpd::Forwarder forwarder;

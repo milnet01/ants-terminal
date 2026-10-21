@@ -665,6 +665,8 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-1894 — near-miss telemetry sibling ledger; same lib for the same
     # reason (model_switch_stats consumes both).
     src/modelnearmissledger.cpp
+    # ANTS-4659 — undeclared-argument survey ledger, written by the dispatcher.
+    src/mcpundeclaredargs.cpp
     # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
     src/symbolquery.cpp
     # ANTS-1305 — similar_code shape matcher (reuses FileOutline extractor).
@@ -3087,6 +3089,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_pass_store_write/test_roadmap_pass_store_write.cpp
                 # ANTS-5311 — ants-mcpd usage snapshots (drives cmdTokenUsage).
                 tests/features/mcpd_usage_snapshots/test_mcpd_usage_snapshots.cpp
+                # ANTS-4659 — undeclared-argument survey ledger and its wiring.
+                tests/features/mcp_undeclared_args_survey/test_mcp_undeclared_args_survey.cpp
                 # ANTS-5351 — bad_status hints at `active` for a list value.
                 tests/features/roadmap_query_status_hint/test_roadmap_query_status_hint.cpp
                 # ANTS-4141 — the divergence guard: a render that would delete

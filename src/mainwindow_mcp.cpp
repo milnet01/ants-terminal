@@ -6,6 +6,7 @@
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
 #include "mcpspill.h"        // ANTS-2094 — mcp::setOffloadConfig / spillSweep
 #include "mcptoolregistry.h"   // ANTS-4932 § 2.3
+#include "mcpundeclaredargs.h" // ANTS-4659
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "terminalwidget.h"
 #include "guithread.h"       // ANTS-4682 — ants::onGuiThread in inline verbs
@@ -65,6 +66,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // is honoured immediately by the dispatcher guard (ANTS-1901 § 2.4).
     const bool mcpOn = m_config.claudeMcpEnabled();
     m_claudeIntegration->setMcpEnabled(mcpOn);
+    // ANTS-4659 — record the calls this process finishes; ants-mcpd records
+    // the rest into the same file.
+    m_claudeIntegration->setUndeclaredArgsLedgerPath(
+        McpUndeclaredArgs::defaultLedgerPath());
     if (mcpOn) {
         // ANTS-5236 — the private runtime directory; empty when it is not
         // usable, and then nothing binds and nothing is exported.

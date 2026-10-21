@@ -487,6 +487,8 @@
         "src/mcpprojection.h",
         "src/mcpspill.cpp",
         "src/mcpspill.h",
+        "src/mcpundeclaredargs.cpp",
+        "src/mcpundeclaredargs.h",
         "src/resolvedroot.h",
         "src/rootprovider.h",
         "src/secretredact.h",

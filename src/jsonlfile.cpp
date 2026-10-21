@@ -41,4 +41,18 @@ bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines) {
     return sf.commit();
 }
 
+QList<QByteArray> dropOldestToCap(QList<QByteArray> lines, qint64 capBytes) {
+    // ANTS-2119 — track the running byte total and drop the oldest lines in a
+    // single erase, so a heavy eviction is O(N) rather than O(N²).
+    qint64 total = 0;
+    for (const QByteArray &l : lines) total += l.size() + 1;   // + '\n'
+    int drop = 0;
+    while (total > capBytes && lines.size() - drop > 1) {
+        total -= lines.at(drop).size() + 1;
+        ++drop;
+    }
+    if (drop > 0) lines.erase(lines.begin(), lines.begin() + drop);
+    return lines;
+}
+
 }  // namespace JsonlFile

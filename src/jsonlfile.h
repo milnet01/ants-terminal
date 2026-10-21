@@ -7,10 +7,10 @@
 // keeps that sequence from silently drifting between the two ledgers — a
 // hardening fix to one can no longer miss the other.
 //
-// The Record-typed serialize / append / evict logic stays per-ledger: it
-// genuinely differs (near-miss drops the oldest line unconditionally; the
-// firing ledger pins in-flight "pending" lines and adds a hard ceiling), so
-// templating it here would be premature abstraction, not reuse.
+// The Record-typed serialize / append logic stays per-ledger. So does the
+// firing ledger's eviction, which pins in-flight "pending" lines and adds a
+// hard ceiling. The plain drop-the-oldest eviction is shared (ANTS-4659): the
+// near-miss ledger and the undeclared-argument ledger both use it.
 #pragma once
 
 #include <QByteArray>
@@ -30,5 +30,10 @@ QList<QByteArray> readLines(const QString &path);
 // file is never briefly group/world-readable. Returns false on any I/O failure
 // (the on-disk file is left untouched).
 bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines);
+
+// Drop whole lines, oldest first, until the lines plus their '\n' fit in
+// capBytes. The newest (last) line is always kept, even when it alone is over
+// the cap. Pure.
+QList<QByteArray> dropOldestToCap(QList<QByteArray> lines, qint64 capBytes);
 
 }  // namespace JsonlFile
