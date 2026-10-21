@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5799 -->
+<!-- ants-roadmap-id-high-water: ANTS=5801 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87704,6 +87704,38 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Each symbol lookup returns a long list of things it could not check in languages the question never touched, which costs tokens every time.
   Kind: optimize.
   Source: in-session-2026-10-21.
+  Lanes: mcp.
+
+### Ants MCP feedback from CC sessions — 2026-10-21 triage
+
+- 📋 [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
+  Repro on demoreel: obs-submit.sh and .githooks/pre-push are mostly
+  top-level statements. function_sizes ranked only their small functions
+  (largest 4 lines) and reported unmeasured:0, which a caller reads as
+  full coverage. review-readability hands these rows to its size lane.
+
+  Fix direction (reporter's): a `<top-level>` pseudo-row carrying the
+  line count of code outside any function, or at least a
+  scanned.top_level_lines count plus a hint. Applies to any language
+  with top-level statements (shell, Python, Lua).
+  **Layman:** The code-size tool skips the main body of shell scripts but says it measured everything.
+  Kind: fix.
+  Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).
+  Lanes: mcp.
+
+- 📋 [ANTS-5801] **task_priors ranks roadmap cards on common words, so an unrelated card looks relevant.**
+  Repro on demoreel: a task naming OBS scripts, the pre-push hook and
+  ci.sh returned five unrelated cards scoring 2-3 on words such as tool,
+  version and read. The specs half ranked correctly (top score 15).
+  write-code's Phase 0 tells the caller to read these cards as claims,
+  so noise costs reading time.
+
+  Fix direction (reporter's): weight path tokens and rare terms above
+  common words, drop cards under a score floor, or hint when every card
+  scored only on common words.
+  **Layman:** The tool that suggests related roadmap items picks unrelated ones because they share everyday words.
+  Kind: enhancement.
+  Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
