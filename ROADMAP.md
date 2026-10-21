@@ -85743,7 +85743,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5298] **A run_cost verb that refuses a cost figure with no coverage figure beside it.**
+- ✅ [ANTS-5298] **A run_cost verb that refuses a cost figure with no coverage figure beside it.**
   `op:"append"` and `op:"report"`. The governing rule becomes a refusal code,
   `coverage_required`: cost alone cannot be recorded, because cost falling while
   coverage falls is a cut and not a saving.
@@ -85761,6 +85761,9 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   op:"finish" `cost` (ANTS-5299, 30e48050), refusing
   `coverage_required`. Still open: op:"report", the live-vs-draft
   verdict run-cost-report.py computes. Held by the v2 orchestrator.
+  Closed (2026-10-21): the record half shipped as ANTS-5299. op:"report" is
+  not wanted: claude-config (session_message 786) says run-cost-report.py
+  was deleted with draft/v2 (d61439b), so nothing calls a report.
   **Layman:** Record what a review cost and what it caught, together, so cheaper is never mistaken for better.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
