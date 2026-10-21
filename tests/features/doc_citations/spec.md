@@ -130,6 +130,30 @@ collision). Read the top-of-test comment on each for the defect it locks.
   the read path above changes.
   *Test:* `DocCitations.Ants5054QuotationOkAndNotFoundAcrossHardWrap`.
 
+## Path-token pass (ANTS-5296)
+
+`Options::paths` opt-in. No spec and no `INV-N` ids, for the reason the
+quotation pass gives above.
+
+- A backticked path whose first segment is a real directory here is `ok` or
+  `missing`. One whose first segment is not is counted as `foreign` and never
+  reported. A trailing `/` names a directory, and a leading `./` is stripped.
+  *Test:* `DocCitations.Ants5296PathTokenOkMissingAndForeign`.
+- Flags, URLs, home and absolute paths, bare extensions, placeholders, globs,
+  braces, variables, `..` segments, citations, a leaf with no dot (the MCP
+  method `tools/list`), and unbackticked prose are never judged.
+  *Test:* `DocCitations.Ants5296NonPathsAreNotJudged`.
+- With the option off, none of the pass's keys appear.
+  *Test:* `DocCitations.Ants5296OffByDefault`.
+- A fenced or doc-examples line is not scanned. A loop-log row's token is
+  counted as `skipped`, not judged.
+  *Test:* `DocCitations.Ants5296SpecimensAndLoopLogRowsAreNotJudged`.
+- The document's own directory is a second base, after the root.
+  *Test:* `DocCitations.Ants5296DocDirectoryIsASecondBase`.
+- `only:"stale"` keeps the `missing` rows; the counts stay whole-document.
+  One token named twice on a line is one check.
+  *Test:* `DocCitations.Ants5296StaleKeepsOnlyMissingButCountsStayWhole`.
+
 ## Trap cases
 
 | INV | What passes without the fixture |

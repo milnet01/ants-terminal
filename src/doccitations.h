@@ -100,6 +100,16 @@ struct Options {
     int  quoteMinChars = 30;
     int  maxQuotes     = 200;
 
+    // ANTS-5296 — opt-in PATH-TOKEN check. A bare backticked path such as
+    // `tools/check-doc.py` carries no `:line`, so the citation grammar never
+    // sees it and nothing checked that it exists. A token is judged only
+    // where its leading segment names a real directory under the root or
+    // under the document's own directory: that is the containment qualifier,
+    // and it keeps the check off another repository's paths, as
+    // `foreign_path` does for citations.
+    bool paths         = false;
+    int  maxPathTokens = 500;
+
     Probe *probe = nullptr;    // test-only, see above
 };
 

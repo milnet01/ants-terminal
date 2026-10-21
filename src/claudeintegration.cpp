@@ -7592,7 +7592,22 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "citation-shaped spans (`Class::method()`, a bare "
                     "backticked path, an unresolvable `path::symbol`) carries "
                     "`unrecognised_candidates` and a hint. Do NOT record such "
-                    "a run as a citation check that passed. Read-only. "
+                    "a run as a citation check that passed. ANTS-5296 — "
+                    "paths:true also checks a bare path in a single-line code "
+                    "span (`tools/check-doc.py`), which carries no `:line` and "
+                    "so is no citation. A token is judged only where its "
+                    "leading segment is a real directory under the root or "
+                    "under the document's own directory; elsewhere it is "
+                    "counted as `foreign`, never reported missing. Flags, URLs, "
+                    "home and absolute paths, `.`/`..` segments, placeholders, "
+                    "globs and words with no '/' are not paths, and "
+                    "unbackticked prose is not scanned. Emits path_tokens[] "
+                    "({line, token, status ok | missing, path when ok}; "
+                    "only=\"stale\" keeps the missing ones), path_token_counts "
+                    "and path_tokens_checked. Its `foreign` and `skipped` (a "
+                    "loop-log row's token) are overlay keys outside "
+                    "path_tokens_checked. "
+                    "Existence is a stat; nothing is read. Read-only. "
                     "caller_cwd required.");
                 docCit["selection_hint"] = QStringLiteral(
                     "Use when reviewing a doc full of file:line references, to check every "
@@ -7718,6 +7733,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "double-quoted span to count as a quotation. "
                             "Keeps the check off ordinary quoted words.");
                         props["quote_min_chars"] = qm;
+                    }
+                    {   // ANTS-5296 — path-token check.
+                        QJsonObject pt; pt["type"] = "boolean";
+                                        pt["default"] = false;
+                                        pt["description"] = QStringLiteral(
+                            "Also check bare backticked paths exist, where their "
+                            "first segment is a real directory here. Emits "
+                            "path_tokens[]. Off by default.");
+                        props["paths"] = pt;
                     }
                     props["caller_cwd"]      = makeCallerCwdReadProp();
                     props["etag_match"]      = makeEtagMatchProp();   // ANTS-1499

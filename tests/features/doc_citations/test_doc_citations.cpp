@@ -2344,3 +2344,170 @@ TEST(DocCitations, Ants5054QuotationOkAndNotFoundAcrossHardWrap) {
     }
     ASSERT_EQ(0, expect_finish());
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-5296 — the opt-in path-token pass (`Options::paths`). A bare backticked
+// path such as `tools/check-doc.py` is checked for existence, but only where
+// its leading segment names a real directory here: that is the containment
+// qualifier, and it is what keeps the pass off another repository's paths.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QJsonArray pathTokens(const QJsonObject &r) {
+    return r.value(QStringLiteral("path_tokens")).toArray();
+}
+int pathCount(const QJsonObject &r, const char *key) {
+    return r.value(QStringLiteral("path_token_counts")).toObject()
+        .value(QLatin1String(key)).toInt(-1);
+}
+
+}  // namespace
+
+TEST(DocCitations, Ants5296PathTokenOkMissingAndForeign) {
+    Fixture fx;
+    fx.write(QStringLiteral("tools/check-doc.py"), "x\n");
+    const QString doc = fx.doc(
+        "Run `tools/check-doc.py --full`, not `tools/gone.sh`.\n"
+        "The `tools/` directory, and `./tools/check-doc.py` again.\n"
+        "Quoted from elsewhere: `vendor/lib/x.py`.\n");
+
+    DocCitations::Options opts;
+    opts.paths = true;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    const QJsonArray rows = pathTokens(r);
+    ASSERT_EQ(rows.size(), 4) << qPrintable(render(r));
+    auto row = [&](int i) { return rows.at(i).toObject(); };
+    EXPECT_EQ(row(0).value(QStringLiteral("token")).toString(),
+              QStringLiteral("tools/check-doc.py"));
+    EXPECT_EQ(row(0).value(QStringLiteral("status")).toString(), QStringLiteral("ok"));
+    EXPECT_EQ(row(0).value(QStringLiteral("line")).toInt(), 1);
+    EXPECT_EQ(row(1).value(QStringLiteral("token")).toString(),
+              QStringLiteral("tools/gone.sh"));
+    EXPECT_EQ(row(1).value(QStringLiteral("status")).toString(),
+              QStringLiteral("missing"))
+        << "ANTS-5296: `tools/` is a real directory here, so the token is ours "
+           "and its absence is a finding";
+    EXPECT_EQ(row(2).value(QStringLiteral("status")).toString(), QStringLiteral("ok"))
+        << "a directory path resolves as well as a file";
+    EXPECT_EQ(row(3).value(QStringLiteral("token")).toString(),
+              QStringLiteral("tools/check-doc.py"))
+        << "a leading ./ is stripped, not a reason to skip";
+
+    // `vendor/` names no directory here: not judged, only counted.
+    EXPECT_EQ(pathCount(r, "ok"), 3);
+    EXPECT_EQ(pathCount(r, "missing"), 1);
+    EXPECT_EQ(pathCount(r, "foreign"), 1)
+        << "ANTS-5296: a token whose leading segment is not a directory here "
+           "is another repository's path and must not be reported missing";
+    EXPECT_EQ(r.value(QStringLiteral("path_tokens_checked")).toInt(), 4);
+    const QJsonArray overlay =
+        r.value(QStringLiteral("path_token_counts_overlay_keys")).toArray();
+    EXPECT_TRUE(overlay.contains(QStringLiteral("foreign")));
+    EXPECT_TRUE(overlay.contains(QStringLiteral("skipped")));
+}
+
+TEST(DocCitations, Ants5296NonPathsAreNotJudged) {
+    Fixture fx;
+    fx.write(QStringLiteral("tools/a.py"), "a\nb\nc\n");
+    // Every token here has `tools` as its first word and none is missing in a
+    // way a reader could fix, so any row at all is a false positive.
+    const QString doc = fx.doc(
+        "`--out=tools/x.sh` `https://example.org/tools/x.sh` `~/tools/x.sh`\n"
+        "`/tools/x.sh` `.md` `tools/<name>.py` `tools/*.sh` `tools/{a,b}.py`\n"
+        "`../tools/x.sh` `tools/../x.sh` `$ROOT/tools/x.sh` `vendor/x.py`\n"
+        "`tools/a.py:3` `tools/a.py::main` `tools//x.sh` `tools/list`\n"
+        "Prose without backticks: tools/gone.sh.\n");
+
+    DocCitations::Options opts;
+    opts.paths = true;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    EXPECT_EQ(pathTokens(r).size(), 0) << qPrintable(render(r));
+    EXPECT_EQ(pathCount(r, "missing"), 0);
+    EXPECT_EQ(pathCount(r, "foreign"), 1)
+        << "only `vendor/x.py` is path-shaped and not ours; the rest are flags, "
+           "URLs, home or absolute paths, extensions, placeholders, globs, "
+           "parent escapes, variables, citations, malformed, or a leaf with "
+           "no dot and no trailing slash (the MCP method `tools/list`)";
+    EXPECT_EQ(r.value(QStringLiteral("path_tokens_checked")).toInt(), 0);
+}
+
+TEST(DocCitations, Ants5296OffByDefault) {
+    Fixture fx;
+    fx.write(QStringLiteral("tools/a.py"), "x\n");
+    const QString doc = fx.doc("`tools/gone.sh`\n");
+    const QJsonObject r = DocCitations::check(fx.root, doc, DocCitations::Options{});
+    EXPECT_FALSE(r.contains(QStringLiteral("path_tokens"))) << qPrintable(render(r));
+    EXPECT_FALSE(r.contains(QStringLiteral("path_token_counts")));
+    EXPECT_FALSE(r.contains(QStringLiteral("path_tokens_checked")));
+}
+
+TEST(DocCitations, Ants5296SpecimensAndLoopLogRowsAreNotJudged) {
+    Fixture fx;
+    fx.write(QStringLiteral("tools/a.py"), "x\n");
+    const QString doc = fx.doc(
+        "```\n"
+        "`tools/fenced-gone.sh`\n"
+        "```\n"
+        "<!-- doc-examples: begin -->\n"
+        "`tools/example-gone.sh`\n"
+        "<!-- doc-examples: end -->\n"
+        "| Loop | Date | Outcome |\n"
+        "|---|---|---|\n"
+        "| 2 | 2026-07-26 | moved `tools/old-gone.sh` |\n");
+
+    DocCitations::Options opts;
+    opts.paths = true;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    EXPECT_EQ(pathTokens(r).size(), 0) << qPrintable(render(r));
+    EXPECT_EQ(pathCount(r, "missing"), 0);
+    EXPECT_EQ(pathCount(r, "skipped"), 1)
+        << "a loop-log row names a path as it was then: counted, never judged";
+}
+
+TEST(DocCitations, Ants5296DocDirectoryIsASecondBase) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/img/shot.png"), "x");
+    fx.write(QStringLiteral("tools/a.py"), "x\n");
+    const QString doc = fx.write(QStringLiteral("docs/guide.md"),
+        "See `img/shot.png` and `img/gone.png`, and `tools/a.py`.\n");
+
+    DocCitations::Options opts;
+    opts.paths = true;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    const QJsonArray rows = pathTokens(r);
+    ASSERT_EQ(rows.size(), 3) << qPrintable(render(r));
+    EXPECT_EQ(rows.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("ok"));
+    EXPECT_EQ(rows.at(0).toObject().value(QStringLiteral("path")).toString(),
+              QStringLiteral("docs/img/shot.png"))
+        << "a path relative to the document's own directory resolves there";
+    EXPECT_EQ(rows.at(1).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("missing"));
+    EXPECT_FALSE(rows.at(1).toObject().contains(QStringLiteral("path")));
+    EXPECT_EQ(rows.at(2).toObject().value(QStringLiteral("path")).toString(),
+              QStringLiteral("tools/a.py"));
+}
+
+TEST(DocCitations, Ants5296StaleKeepsOnlyMissingButCountsStayWhole) {
+    Fixture fx;
+    fx.write(QStringLiteral("tools/a.py"), "x\n");
+    const QString doc = fx.doc("`tools/a.py` `tools/gone.sh` `tools/a.py`\n");
+
+    DocCitations::Options opts;
+    opts.paths = true;
+    opts.only  = DocCitations::Only::Stale;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    const QJsonArray rows = pathTokens(r);
+    ASSERT_EQ(rows.size(), 1) << qPrintable(render(r));
+    EXPECT_EQ(rows.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("missing"));
+    EXPECT_EQ(pathCount(r, "ok"), 1)
+        << "one token named twice on one line is one check";
+    EXPECT_EQ(pathCount(r, "missing"), 1);
+}

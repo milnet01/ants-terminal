@@ -85711,7 +85711,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5296] **doc_citations gains paths:true — bare path tokens in prose, with the containment qualifier.**
+- ✅ [ANTS-5296] **doc_citations gains paths:true — bare path tokens in prose, with the containment qualifier.**
   Today the verb resolves `path:line` and `path::symbol` citations. A bare
   `tools/check-doc.py` written in prose is checked by nothing.
 
@@ -85720,6 +85720,13 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   names a real directory here. That is the same idea as the existing
   `foreign_path` status, which is why this belongs on this verb rather than a
   new one. A flag, a URL, a home path and a bare extension are not paths.
+  Shipped 2026-10-21. Backticked tokens only; the leaf must hold a dot
+  unless a trailing `/` names a directory (the MCP methods `tools/list`
+  and `tools/call` were otherwise a third of this repo's misses).
+  Calibrated over this repo and ~/.claude: about 9,000 paths confirmed;
+  of ~190 misses read by hand in living documents, none was stale — each
+  was a retired, optional, placeholder or generic-project path named on
+  purpose.
   **Layman:** Check that paths a document names actually exist, without guessing about paths that were never ours.
   Kind: feature.
   Source: claude-config-session-2026-09-21.

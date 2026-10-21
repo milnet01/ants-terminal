@@ -1812,6 +1812,8 @@ DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject 
     // for; the floor keeps it off every quoted word in the corpus.
     o.quotes        = req.value(QStringLiteral("quotes")).toBool(false);
     o.quoteMinChars = clamped("quote_min_chars", o.quoteMinChars, 10, 500);
+    // ANTS-5296 — opt-in path-token check, off by default for the same reason.
+    o.paths         = req.value(QStringLiteral("paths")).toBool(false);
     return o;
 }
 

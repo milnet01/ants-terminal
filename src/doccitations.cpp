@@ -941,6 +941,42 @@ static QStringList dcRejectedPathTokensIn(const QString &span) {
     return out;
 }
 
+// ANTS-5296 — one word of a code span, normalised to a project-relative path,
+// or empty when the word is not a path this pass may judge. Rejected: a flag
+// (leading `-`), a URL or citation (any `:`, so `path:line` and `path::symbol`
+// stay the citation grammar's), a home or absolute path, a word with no `/`
+// (a bare extension or basename names no directory to contain it), and any
+// character outside isSegChar — which drops placeholders, globs, braces and
+// variables at once. A `.` or `..` segment is rejected rather than resolved:
+// `..` would make the containment test prove the wrong directory. The last
+// segment must contain a `.`, as validPath asks of a citation, unless a
+// trailing `/` says the word names a directory: without that, the MCP method
+// names `tools/list` and `tools/call` were a third of this repo's misses.
+static QString dcPathTokenOf(QString w) {
+    static const QString kLead  = QStringLiteral("(\"'[*");
+    static const QString kTrail = QStringLiteral(".,;!?)\"']*");
+    while (!w.isEmpty() && kLead.contains(w.front())) w.remove(0, 1);
+    while (!w.isEmpty() && kTrail.contains(w.back())) w.chop(1);
+    const int hash = w.indexOf(QLatin1Char('#'));
+    if (hash >= 0) w.truncate(hash);
+    if (w.startsWith(QLatin1String("./"))) w.remove(0, 2);
+    if (w.isEmpty() || w.contains(QLatin1Char(':'))) return {};
+    const QChar first = w.front();
+    if (first == QLatin1Char('/') || first == QLatin1Char('~')
+        || first == QLatin1Char('-'))
+        return {};
+    for (const QChar c : w)
+        if (c != QLatin1Char('/') && !isSegChar(c)) return {};
+    QStringList segs = w.split(QLatin1Char('/'));
+    if (segs.size() < 2) return {};
+    if (segs.last().isEmpty()) segs.removeLast();   // `tools/` names a directory
+    else if (!segs.last().contains(QLatin1Char('.'))) return {};
+    for (const QString &s : segs)
+        if (s.isEmpty() || s == QLatin1String(".") || s == QLatin1String(".."))
+            return {};
+    return w;
+}
+
 // Every distinct document token in one span of a line, in reading order.
 // De-duplicated, so a span naming one document twice is one candidate rather
 // than an ambiguity.
@@ -1445,18 +1481,19 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     if (opts.basenameIndexTruncated)
         out.insert(QStringLiteral("basename_index_truncated"), true);
 
+    // ANTS-4639 (1) — the scanned document's own directory, project-relative.
+    // `relativeTo` hands the absolute path back untouched when it is not
+    // under the root, which is the one case the sibling rung must not fire on.
+    // Shared by the quotation and path-token passes.
+    QString docDirRel = relativeTo(rootCanonical, docInfo.path());
+    if (docDirRel == docInfo.path()) docDirRel.clear();
+
     // ANTS-4386 — opt-in quotation pass. Runs over the same `prefix` lines and
     // the same fence mask, so a quotation inside a fenced block (a specimen)
     // is invisible here exactly as a citation is.
     if (opts.quotes) {
         static const QRegularExpression quoteRe(
             QStringLiteral("\u201C([^\u201D]{2,})\u201D|\"([^\"]{2,})\""));
-        // ANTS-4639 (1) — the scanned document's own directory, project-relative.
-        // `relativeTo` hands the absolute path back untouched when it is not
-        // under the root, which is the one case the sibling rung must not fire on.
-        QString docDirRel = relativeTo(rootCanonical, docInfo.path());
-        if (docDirRel == docInfo.path()) docDirRel.clear();
-
         QJsonArray quotesOut;
         QHash<QString, int> qTally;
         // ANTS-5054 — each attributed document is read and folded once per
@@ -1738,6 +1775,85 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         out.insert(QStringLiteral("quotes_checked"), harvested);
         if (harvested >= opts.maxQuotes)
             out.insert(QStringLiteral("quotes_truncated"), true);
+    }
+
+    // ANTS-5296 — opt-in path-token pass. Only words inside single-line code
+    // spans: unbackticked prose is full of slashes ("and/or", "A/B") and a
+    // path a document means as one is backticked by this corpus's convention.
+    // Fenced and doc-examples lines are specimens and carry no spans to judge.
+    // Existence is a stat, never an open, so the read budget is untouched.
+    if (opts.paths) {
+        QStringList bases{QString()};
+        if (!docDirRel.isEmpty()) bases.append(docDirRel);
+        auto absOf = [&](const QString &base, const QString &rel) {
+            return base.isEmpty() ? rootCanonical + QLatin1Char('/') + rel
+                                  : rootCanonical + QLatin1Char('/') + base
+                                        + QLatin1Char('/') + rel;
+        };
+
+        static const QRegularExpression space(QStringLiteral("\\s+"));
+        QJsonArray tokensOut;
+        int ok = 0, missing = 0, foreign = 0, skipped = 0;
+        bool dropped = false;
+        int lastLine = -1;
+        QStringList seenOnLine;
+        for (const MarkdownScan::CodeSpan &sp : spans) {
+            if (sp.startLine != sp.endLine) continue;
+            const int i = sp.startLine;
+            if (i < examples.size() && examples.at(i)) continue;
+            const QString &line = prefix.at(i);
+            if (i != lastLine) { lastLine = i; seenOnLine.clear(); }
+            const bool loopLog = dcIsTableRow(line)
+                                 && dcIsLoopLogRow(line, dcTableCells(line));
+            const QStringList words =
+                line.mid(sp.startCol, sp.endCol - sp.startCol)
+                    .split(space, Qt::SkipEmptyParts);
+            for (const QString &word : words) {
+                const QString tok = dcPathTokenOf(word);
+                if (tok.isEmpty() || seenOnLine.contains(tok)) continue;
+                seenOnLine.append(tok);
+                // A loop-log row names a path as it was then (ANTS-4637).
+                if (loopLog) { ++skipped; continue; }
+
+                // The containment qualifier: judged against each base whose
+                // copy of the leading segment is a real directory.
+                const QString lead = tok.section(QLatin1Char('/'), 0, 0);
+                QString found;
+                bool judged = false;
+                for (const QString &base : bases) {
+                    if (!QFileInfo(absOf(base, lead)).isDir()) continue;
+                    judged = true;
+                    if (QFileInfo::exists(absOf(base, tok))) {
+                        found = base.isEmpty() ? tok : base + QLatin1Char('/') + tok;
+                        break;
+                    }
+                }
+                if (!judged) { ++foreign; continue; }
+                if (found.isEmpty()) ++missing; else ++ok;
+                if (opts.only == Only::Stale && !found.isEmpty()) continue;
+                if (tokensOut.size() >= opts.maxPathTokens) { dropped = true; continue; }
+                QJsonObject t{{QStringLiteral("line"), i + 1},
+                              {QStringLiteral("token"), tok},
+                              {QStringLiteral("status"),
+                               found.isEmpty() ? QStringLiteral("missing")
+                                               : QStringLiteral("ok")}};
+                if (!found.isEmpty()) t[QStringLiteral("path")] = found;
+                tokensOut.append(t);
+            }
+        }
+        out.insert(QStringLiteral("path_tokens"), tokensOut);
+        // `foreign` and `skipped` were never judged, so they sit outside the
+        // status partition and outside `path_tokens_checked`, as `skipped`
+        // does in `quote_counts`.
+        out.insert(QStringLiteral("path_token_counts"),
+                   QJsonObject{{QStringLiteral("ok"), ok},
+                               {QStringLiteral("missing"), missing},
+                               {QStringLiteral("foreign"), foreign},
+                               {QStringLiteral("skipped"), skipped}});
+        out.insert(QStringLiteral("path_token_counts_overlay_keys"),
+                   QJsonArray{QStringLiteral("foreign"), QStringLiteral("skipped")});
+        out.insert(QStringLiteral("path_tokens_checked"), ok + missing);
+        if (dropped) out.insert(QStringLiteral("path_tokens_truncated"), true);
     }
     if (reader.budgetHit()) out.insert(QStringLiteral("read_budget_exhausted"), true);
     if (sc.unterminatedFence >= 0)

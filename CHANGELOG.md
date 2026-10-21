@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_citations paths:true checks that the bare paths a document names in backticks exist** (ANTS-5296)
+  A path such as `tools/check-doc.py` is judged only where its first folder exists in the project or beside the document; another project's paths are counted as foreign, never reported missing. Off by default.
+
 - **doc_integrity reports a list_count finding where a lead-in such as "Three things to know:" sits over a list holding more items than it says** (ANTS-5295)
   A list shorter than its count is treated as grouping and never reported. The lead-in is trusted only where its last sentence is short and holds one number, at its start or after a word like "these". doc_lint reports the same kind.
 
