@@ -82582,7 +82582,7 @@ filed below.
   Source: in-session-2026-08-25 (measured while fixing ANTS-4608).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-4945] **changelog_log op:add_batch refuses a mixed section per entry where op:add routes it.**
+- ✅ [ANTS-4945] **changelog_log op:add_batch refuses a mixed section per entry where op:add routes it.**
   ANTS-4563 gave op:"add" a route: on a MIXED [Unreleased] (dated
   topics leading, a legacy flat tail below) it writes the dated-topic
   form at the TOP instead of appending into the tail. The refusal was
@@ -82612,6 +82612,12 @@ filed below.
   Note the batch writes entries in REVERSE so the result reads in
   input order (ANTS-4854); a per-entry route preserves that for free,
   a grouped one has to build the bullet list in input order instead.
+  Closed 2026-10-21 as resolved by ANTS-5098, which took the per-entry
+  answer: op:"add_batch" routes each entry on a mixed section to the
+  dated-topic form at the top, as op:"add" does. Pinned by
+  changelog_log_writer.Ants5098AddBatchRoutesAMixedSectionToTheTop,
+  green on 2026-10-21. The grouped-topic alternative (one topic, N
+  bullets) was not built; file it fresh if a session asks for it.
   **Layman:** Adding many changelog entries at once still fails on a layout that adding one entry now handles.
   Kind: enhancement.
   Source: in-session-2026-09-08, found while shipping ANTS-4563.
