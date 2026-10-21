@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5809 -->
+<!-- ants-roadmap-id-high-water: ANTS=5810 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85882,6 +85882,18 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B3).
   Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5810] **Four spec lead-ins count fewer items than the lists beneath them.**
+  Found by doc_integrity kinds:["list_count"] over docs/ (ANTS-5295):
+  ANTS-1355.md "Three new tests" over six; ANTS-1873.md "These two
+  paths" over three; ANTS-1894.md "Two changes" over four;
+  ANTS-3601.md "Two substantive HIGHs" over two HIGHs and a LOW (a
+  count of part of the list — likely leave as is). Each is in an
+  accepted spec or its loop log, so check whether the extra items were
+  added later before editing the number.
+  **Layman:** A few specs say "two changes" or "three tests" above a longer list; fix the number or mark the extra items.
+  Kind: doc-fix.
+  Source: doc_integrity list_count first run 2026-10-21.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
 
