@@ -12134,7 +12134,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "was all a caller had to retype from. Restyled and "
                         "repunctuated drift keeps nothing: that text survives "
                         "in the render. No dry-run twin — a preview overwrites "
-                        "nothing, so there is no copy to name.");
+                        "nothing, so there is no copy to name. "
+                        "op:\"replace_text\" (ANTS-5760) — replaces EVERY "
+                        "exact occurrence of `old_text` with `new_text` in "
+                        "every stored item body, in one commit. `section` "
+                        "limits it to that section and its sub-sections; "
+                        "`status` to items with that status. The match is "
+                        "case-sensitive and not wrap-tolerant: a phrase "
+                        "split across a hard wrap is not matched. Store-only. "
+                        "Reply: `amended[]` {id, hits}, `amended_count`, "
+                        "`replacements`. Refuses body_match_not_found when "
+                        "nothing in scope matches, and too_many_matches above "
+                        "500 items. Run it with dry_run:true first: the "
+                        "preview lists every item it would change.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to append a new bullet or flip an "
                         "existing one's status on ROADMAP.md. "
@@ -12174,7 +12186,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "bad_case with `canonical_slug`. Get valid slugs from "
                         "`roadmap_query` mode:\"section_index\" (or its alias "
                         "mode:\"sections\"). New "
-                        "bullet appends at the end of this section.");
+                        "bullet appends at the end of this section. Under "
+                        "op:\"replace_text\" it limits the edit to this "
+                        "section and its sub-sections (ANTS-5760).");
 
                     QJsonObject statusProp;
                     statusProp["type"] = "string";
@@ -12190,7 +12204,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "emoji by the verb. `dropped` (🚫) is closed, "
                         "deliberately not done. Under op:\"append_batch\" the "
                         "call-level value is the fallback for any bullet "
-                        "that carries none, as `pass` is (ANTS-4982).");
+                        "that carries none, as `pass` is (ANTS-4982). Under "
+                        "op:\"replace_text\" it limits the edit to items "
+                        "with this status (ANTS-5760).");
 
                     QJsonObject headlineProp;
                     headlineProp["type"]      = "string";
@@ -12317,6 +12333,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("amend_field");  // ANTS-4667
                     opEnum.append("amend_field_batch");  // ANTS-5385
                     opEnum.append("amend_batch");        // ANTS-4669
+                    opEnum.append("replace_text");       // ANTS-5760
                     // ANTS-4842 — set_body was dispatched and described for a
                     // release while absent here, so a caller that checked the
                     // enum concluded the op did not exist. That reasoning was
@@ -12812,7 +12829,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "single-line calls, each succeeding, each looking "
                         "right alone, with the paragraph they jointly produced "
                         "checked by nothing — ANTS-4550 removes that split "
-                        "rather than mitigating it, and the echo stays.");
+                        "rather than mitigating it, and the echo stays. "
+                        "op:\"replace_text\" (ANTS-5760) — the literal text "
+                        "to replace at EVERY occurrence in every body in "
+                        "scope; exact, so a phrase split by a wrap is missed.");
                     QJsonObject newTextProp;
                     newTextProp["type"]      = "string";
                     newTextProp["maxLength"] = 65536;   // ANTS-4841
@@ -12832,7 +12852,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "the line canonically below the body, and the envelope "
                         "says `trailer_columns_kept`; `lanes` / `evidence` "
                         "empty to `[]`; `layman`, the only nullable one, "
-                        "clears. ANTS-4841 — capped at 4096 characters for "
+                        "clears. op:\"replace_text\" (ANTS-5760) takes it "
+                        "with the same guard, for every match. "
+                        "ANTS-4841 — capped at 4096 characters for "
                         "amend_body and amend_headline, which take a fragment, "
                         "and 65536 for set_body, which takes a whole body.");
 
@@ -16470,15 +16492,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_log/max_planned"), QStringLiteral("convert: cap on ids.planned[] rows (default 200); 0 keeps only the counts.")},
                         {QStringLiteral("roadmap_log/new_text"), QStringLiteral("amend_*, set_body, set_intro, set_preamble: the replacement text; empty deletes the match.")},
                         {QStringLiteral("roadmap_log/note"), QStringLiteral("Prose appended to the item's body; required on annotate, optional on flip.")},
-                        {QStringLiteral("roadmap_log/old_text"), QStringLiteral("amend_body / amend_headline: exact text to replace; must occur once; matches across line wraps.")},
+                        {QStringLiteral("roadmap_log/old_text"), QStringLiteral("amend_body / amend_headline: exact text; must occur once; matches across wraps. replace_text: every exact occurrence.")},
                         {QStringLiteral("roadmap_log/op"), QStringLiteral("Default append. Each op's arguments, refusals and behaviour: tool_info {name:\"roadmap_log\"}.")},
                         {QStringLiteral("roadmap_log/plan_id"), QStringLiteral("A dry run's plan_id: applies that request without resending it. Used once; lasts 15 minutes.")},
                         {QStringLiteral("roadmap_log/pass"),QStringLiteral("Pass designator (e.g. \"43.5\") for append on a pass-headings roadmap; required there.")},
                         {QStringLiteral("roadmap_log/position"), QStringLiteral("bundle_row: end (default), or sorted by sort_col.")},
                         {QStringLiteral("roadmap_log/return"), QStringLiteral("headline_only adds post_bullets to append/flip replies; full echoes the whole rendered bullet.")},
-                        {QStringLiteral("roadmap_log/section"), QStringLiteral("Section slug; an unknown slug refuses with candidates[].")},
+                        {QStringLiteral("roadmap_log/section"), QStringLiteral("Section slug; an unknown slug refuses with candidates[]. replace_text: limits it to this section and its sub-sections.")},
                         {QStringLiteral("roadmap_log/stable_id"), QStringLiteral("The full id when id_strategy is stable_prefix (e.g. \"Ts20-SP6\").")},
-                        {QStringLiteral("roadmap_log/status"), QStringLiteral("planned, in-progress, shipped, considered or dropped.")},
+                        {QStringLiteral("roadmap_log/status"), QStringLiteral("planned, in-progress, shipped, considered or dropped. replace_text: only items with this status.")},
                         {QStringLiteral("roadmap_log/strip_runs"), QStringLiteral("repair_trailers: also remove a redundant legacy trailer run that ends a body.")},
                         {QStringLiteral("roadmap_log/targets"), QStringLiteral("link / unlink: the target ids.")},
                         {QStringLiteral("roadmap_log/type"), QStringLiteral("link / unlink: splits-from, blocked-by, duplicate-of or supersedes.")},

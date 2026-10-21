@@ -163,3 +163,16 @@ matching the first's result. All refused writes nothing. Store-only: a
 markdown project refuses `unsupported_format` and is pointed at
 `amend_body`. *Tests:* `RoadmapLogAmendBatch.EditsSeveralBodiesInOneCall`,
 `RoadmapLogAmendBatch.AllRefusedWritesNothing`.
+
+## ANTS-5760 — `op:"replace_text"`
+
+`old_text` and `new_text` replace every exact occurrence in every stored body
+in scope, in one commit and one render. `section` limits the scope to that
+section and its sub-sections; `status` to items with that status. The match is
+case-sensitive and not wrap-tolerant. The reply carries `amended[]` ({id,
+hits}), `amended_count` and `replacements`; a dry run returns the same list
+and writes nothing. Refusals write nothing: `body_match_not_found` when nothing
+in scope matches, `section_not_found` with `candidates[]`, `bad_args` on an
+unknown status, `too_many_matches` above 500 items, and the trailer guard
+(`body_shadowed`). Store-only, as `amend_batch` is. *Tests:* the
+`RoadmapLogReplaceText.*` cases.

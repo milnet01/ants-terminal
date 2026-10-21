@@ -1230,3 +1230,125 @@ TEST(RoadmapLogAmendBatch, AllRefusedWritesNothing) {
     EXPECT_EQ(resp.value(QStringLiteral("skipped")).toArray().size(), 2);
     EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-5760 — op:"replace_text": amend_batch's edit with the items found by
+// search. "prose" sits in DEMO-0007 (planned, Work), DEMO-0003 (shipped, Work)
+// and DEMO-0009 (planned, Backlog). DEMO-0009 starts with no Layman, which
+// the render gate refuses on any write touching it, so the cases give it one.
+
+namespace {
+
+QJsonObject replaceReq(const QString &root, const QString &oldText,
+                       const QString &newText) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("replace_text");
+    req[QStringLiteral("old_text")]   = oldText;
+    req[QStringLiteral("new_text")]   = newText;
+    return req;
+}
+
+bool giveLayman(RemoteControl &rc, const QString &root) {
+    return rc.cmdRoadmapLog(fieldReq(root, QStringLiteral("DEMO-0009"),
+                                     QStringLiteral("layman"),
+                                     QStringLiteral("A backlog thing.")))
+        .object().value(QStringLiteral("ok")).toBool();
+}
+
+QStringList amendedIds(const QJsonObject &resp) {
+    QStringList ids;
+    for (const QJsonValue &v : resp.value(QStringLiteral("amended")).toArray())
+        ids << v.toObject().value(QStringLiteral("id")).toString();
+    ids.sort();
+    return ids;
+}
+
+}  // namespace
+
+TEST(RoadmapLogReplaceText, ReplacesInEveryMatchingBody) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(giveLayman(rc, fx.root));
+    const QJsonObject resp = rc.cmdRoadmapLog(
+        replaceReq(fx.root, QStringLiteral("prose"), QStringLiteral("text"))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(amendedIds(resp), (QStringList{QStringLiteral("DEMO-0003"),
+                                             QStringLiteral("DEMO-0007"),
+                                             QStringLiteral("DEMO-0009")}));
+    EXPECT_EQ(resp.value(QStringLiteral("replacements")).toInt(), 3);
+    const auto a = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_TRUE(a->body.contains(QStringLiteral("Closing text line.")))
+        << a->body.toStdString();
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_FALSE(has(md, "prose")) << "and the render published every edit";
+}
+
+TEST(RoadmapLogReplaceText, SectionAndStatusNarrowTheScope) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(giveLayman(rc, fx.root));
+    QJsonObject req = replaceReq(fx.root, QStringLiteral("prose"), QStringLiteral("text"));
+    req[QStringLiteral("section")] = QStringLiteral("backlog");
+    QJsonObject resp = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(amendedIds(resp), QStringList{QStringLiteral("DEMO-0009")});
+
+    req.remove(QStringLiteral("section"));
+    req[QStringLiteral("status")] = QStringLiteral("shipped");
+    resp = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(amendedIds(resp), QStringList{QStringLiteral("DEMO-0003")});
+    const auto open = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(open.has_value());
+    EXPECT_TRUE(open->body.contains(QStringLiteral("Closing prose line.")))
+        << "an item outside both scopes is untouched";
+}
+
+TEST(RoadmapLogReplaceText, DryRunListsMatchesAndWritesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(giveLayman(rc, fx.root));
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    QJsonObject req = replaceReq(fx.root, QStringLiteral("prose"), QStringLiteral("text"));
+    req[QStringLiteral("dry_run")] = true;
+    const QJsonObject resp = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("amended_count")).toInt(), 3);
+    EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+    const auto a = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_TRUE(a->body.contains(QStringLiteral("Closing prose line.")));
+}
+
+TEST(RoadmapLogReplaceText, RefusesNoMatchAndUnknownSection) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    RemoteControl rc(nullptr);
+    QJsonObject resp = rc.cmdRoadmapLog(
+        replaceReq(fx.root, QStringLiteral("absent text"), QStringLiteral("x"))).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool(true));
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_not_found"));
+
+    QJsonObject req = replaceReq(fx.root, QStringLiteral("prose"), QStringLiteral("x"));
+    req[QStringLiteral("section")] = QStringLiteral("backlogg");
+    resp = rc.cmdRoadmapLog(req).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_not_found"));
+    EXPECT_TRUE(resp.value(QStringLiteral("candidates")).toArray()
+                    .contains(QStringLiteral("backlog")))
+        << QJsonDocument(resp).toJson().toStdString();
+
+    req.remove(QStringLiteral("section"));
+    req[QStringLiteral("status")] = QStringLiteral("open");
+    resp = rc.cmdRoadmapLog(req).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}

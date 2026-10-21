@@ -4342,6 +4342,77 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
     return QJsonDocument(env);
 }
 
+namespace {
+
+// One item's body before and after a batch edit.
+struct RlBodyEdit { qint64 pk; RoadmapStore::ItemWrite before; QString body; };
+
+// The write half amend_batch and replace_text share: each changed body is
+// written, recorded in history, its trailer columns re-derived and its
+// modified date stamped, all in one commit and one render. On success `env`
+// holds the write's fields and the history note; on a refusal it holds the
+// refusal and this returns false.
+bool rlCommitBodyEdits(RoadmapStore &store, qint64 projectId, const QString &root,
+                       const QString &roadmapPath, bool dryRun,
+                       const QList<RlBodyEdit> &edited, QJsonObject &env) {
+    HistoryContext hist;                 // one op, one stamp
+    hist.changedAt = rlHistoryStamp();
+    QString deriveCode;
+    const auto mutate = [&](QString *e) -> bool {
+        for (const RlBodyEdit &ed : edited) {
+            if (ed.body == ed.before.body) continue;
+            if (!store.setItemField(ed.pk, QStringLiteral("body"), ed.body,
+                                    QStringLiteral("asserted"), e))
+                return false;
+            hist.record(ed.pk, QStringLiteral("body"), ed.before.body, ed.body);
+            if (!rlDeriveTrailerColumns(store, ed.pk, ed.before, ed.body, {}, &hist,
+                                        e, nullptr, &deriveCode))
+                return false;
+            if (!rlStampModified(store, ed.pk, e))
+                return false;
+        }
+        return rlFlushHistory(store, hist, e);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+        if (!deriveCode.isEmpty())
+            env[QStringLiteral("code")] = deriveCode;
+        return false;
+    }
+    rlAttachHistoryNote(env, store, hist);
+    rcRoadmapWriteFields(env, outcome, dryRun);
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return true;
+}
+
+// ANTS-4591 — an unknown section slug, refused with the near-miss ranking
+// append's refusal carries.
+QJsonObject rlSectionNotFound(const RoadmapStore &store, qint64 projectId,
+                              const QString &slug) {
+    QJsonObject env;
+    env[QStringLiteral("ok")]    = false;
+    env[QStringLiteral("code")]  = QStringLiteral("section_not_found");
+    env[QStringLiteral("error")] = QStringLiteral(
+        "roadmap_log: section \"%1\" is not in the roadmap store").arg(slug);
+    if (const auto sections = store.listSectionsOrdered(projectId)) {
+        QStringList slugs;
+        slugs.reserve(sections->size());
+        for (const RoadmapStore::SectionRow &sr : *sections)
+            slugs << sr.slug;
+        env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
+            ReadRegion::rankSectionCandidates(slug, slugs));
+        env[QStringLiteral("sections_total")] = int(slugs.size());
+    }
+    return env;
+}
+
+} // namespace
+
 // ANTS-4669 — op:"amend_batch": amend_body's edit on N items, one read, one
 // commit, one render. A house-style correction across freshly-appended bullets
 // cost one full write per bullet, each racing the file watcher — the argument
@@ -4381,9 +4452,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
     }
     RoadmapStore &store = *target->store;
 
-    struct Edited { qint64 pk; RoadmapStore::ItemWrite before; QString body; };
     QHash<qint64, int> slotOf;            // pk -> index into edited
-    QList<Edited> edited;
+    QList<RlBodyEdit> edited;
     QJsonArray amended, skipped;
     const auto skip = [&](int index, const QString &id, const QString &code,
                           const QString &error) {
@@ -4436,7 +4506,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
             slotOf.insert(*pk, int(edited.size()));
             edited.append({*pk, *before, before->body});
         }
-        Edited &slot = edited[slotOf.value(*pk)];
+        RlBodyEdit &slot = edited[slotOf.value(*pk)];
         const WrapMatch::Patch patch = WrapMatch::patchOnce(
             slot.body, oldText, newText, WrapMatch::Indent::None);
         if (patch.structuredBlock) {
@@ -4479,46 +4549,146 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
     }
 
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
-    HistoryContext hist;                 // one op, one stamp
-    hist.changedAt = rlHistoryStamp();
-    QString deriveCode;
-    const auto mutate = [&](QString *e) -> bool {
-        for (const Edited &ed : std::as_const(edited)) {
-            if (ed.body == ed.before.body) continue;
-            if (!store.setItemField(ed.pk, QStringLiteral("body"), ed.body,
-                                    QStringLiteral("asserted"), e))
-                return false;
-            hist.record(ed.pk, QStringLiteral("body"), ed.before.body, ed.body);
-            if (!rlDeriveTrailerColumns(store, ed.pk, ed.before, ed.body, {}, &hist,
-                                        e, nullptr, &deriveCode))
-                return false;
-            if (!rlStampModified(store, ed.pk, e))
-                return false;
-        }
-        return rlFlushHistory(store, hist, e);
-    };
-
-    RoadmapRender::Outcome outcome;
-    QString writeErr;
-    const auto r = RoadmapWrite::commitAndRender(
-        store, target->projectId, root, roadmapPath, dryRun, mutate,
-        &outcome, &writeErr);
     QJsonObject env;
-    if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
-        if (!deriveCode.isEmpty())
-            env[QStringLiteral("code")] = deriveCode;
+    if (!rlCommitBodyEdits(store, target->projectId, root, roadmapPath, dryRun,
+                           edited, env))
         return QJsonDocument(env);
-    }
-    rlAttachHistoryNote(env, store, hist);
     env[QStringLiteral("ok")]            = true;
     env[QStringLiteral("op")]            = QStringLiteral("amend_batch");
     env[QStringLiteral("amended")]       = amended;
     env[QStringLiteral("amended_count")] = amended.size();
     env[QStringLiteral("skipped")]       = skipped;
     env[QStringLiteral("skipped_count")] = skipped.size();
-    rcRoadmapWriteFields(env, outcome, dryRun);
-    if (dryRun)
-        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+// ANTS-5760 — op:"replace_text": amend_batch's edit with the item list found
+// by search instead of named by the caller. Every occurrence of the literal
+// `old_text` in every stored body in scope is replaced. `section` (with its
+// sub-sections) and `status` narrow the scope. Unlike amend_body the match is
+// exact, not wrap-tolerant: a bulk edit that re-flowed the lines it spanned
+// would change bodies the caller never looked at. A dry run is the preview —
+// it lists each item and how often it matched.
+QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
+    const QString oldText = req.value(QStringLiteral("old_text")).toString();
+    if (oldText.isEmpty() || !req.contains(QStringLiteral("new_text")))
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"replace_text\" needs a non-empty "
+                           "`old_text` and `new_text`")));
+    QString newText = req.value(QStringLiteral("new_text")).toString();
+    if (oldText.size() > kRcMaxNoteChars || newText.size() > kRcMaxNoteChars)
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("too_large"),
+            QStringLiteral("roadmap_log: old_text / new_text exceeds %1-char cap")
+                .arg(kRcMaxNoteChars)));
+    QStringList scrubbed;
+    rcScrubLeakedToolXml(newText, scrubbed);
+    QString shadowErr;
+    if (rlNoteDeclaresTrailer(newText, &shadowErr, "new_text"))
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("body_shadowed"),
+            QStringLiteral("roadmap_log: %1").arg(shadowErr)));
+    const QString status = req.value(QStringLiteral("status")).toString();
+    static const QStringList kStatuses{
+        QStringLiteral("planned"), QStringLiteral("in-progress"),
+        QStringLiteral("shipped"), QStringLiteral("considered"),
+        QStringLiteral("dropped")};
+    if (!status.isEmpty() && !kStatuses.contains(status))
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `status` must be one of %1; got \"%2\"")
+                .arg(kStatuses.join(QStringLiteral(", ")), status)));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) {
+        QJsonObject env = refusal.object();
+        if (env.value(QStringLiteral("code")).toString()
+                == QLatin1String("op_unsupported")) {
+            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "roadmap_log: op:\"replace_text\" edits STORED bodies, so it "
+                "needs a store-served project. On a markdown-backed project use "
+                "op:\"amend_body\", once per bullet.");
+        }
+        return QJsonDocument(env);
+    }
+    RoadmapStore &store = *target->store;
+    QString err;
+
+    // The section and every section below it.
+    QSet<qint64> inScope;
+    const QString slug = req.value(QStringLiteral("section")).toString().trimmed();
+    if (!slug.isEmpty()) {
+        const auto sectionId = store.findSection(target->projectId, slug, &err);
+        if (!sectionId) {
+            if (!err.isEmpty())
+                return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
+            return QJsonDocument(rlSectionNotFound(store, target->projectId, slug));
+        }
+        const auto sections = store.listSections(target->projectId, &err);
+        if (!sections)
+            return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
+        QHash<qint64, QList<qint64>> childrenOf;
+        for (const RoadmapStore::SectionRow &sr : *sections)
+            if (sr.parentId)
+                childrenOf[*sr.parentId].append(sr.sectionId);
+        QList<qint64> frontier{*sectionId};
+        while (!frontier.isEmpty()) {
+            const qint64 id = frontier.takeLast();
+            if (inScope.contains(id)) continue;
+            inScope.insert(id);
+            frontier.append(childrenOf.value(id));
+        }
+    }
+
+    const auto items = store.readItems(target->projectId, &err);
+    if (!items)
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
+    QList<RlBodyEdit> edited;
+    QHash<qint64, int> hitsOf;
+    for (auto it = items->cbegin(); it != items->cend(); ++it) {
+        const RoadmapStore::ItemWrite &item = it.value();
+        if (!slug.isEmpty() && !inScope.contains(item.sectionId)) continue;
+        if (!status.isEmpty() && item.status != status) continue;
+        const int hits = int(item.body.count(oldText));
+        if (hits == 0) continue;
+        QString body = item.body;
+        body.replace(oldText, newText);
+        edited.append({it.key(), item, body});
+        hitsOf.insert(it.key(), hits);
+    }
+    if (edited.isEmpty())
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("body_match_not_found"),
+            QStringLiteral("roadmap_log: `old_text` occurs in no item body in "
+                           "scope — nothing was written")));
+    if (edited.size() > 500)
+        return QJsonDocument(rlFieldRefusal(QStringLiteral("too_many_matches"),
+            QStringLiteral("roadmap_log: `old_text` occurs in %1 item bodies; "
+                           "op:\"replace_text\" edits at most 500 in one call. "
+                           "Narrow it with `section` or `status`.")
+                .arg(edited.size())));
+    std::sort(edited.begin(), edited.end(),
+              [](const RlBodyEdit &a, const RlBodyEdit &b) { return a.pk < b.pk; });
+
+    QJsonArray amended;
+    int replacements = 0;
+    for (const RlBodyEdit &ed : std::as_const(edited)) {
+        QJsonObject row;
+        row[QStringLiteral("id")]   = ed.before.id;
+        row[QStringLiteral("hits")] = hitsOf.value(ed.pk);
+        amended.append(row);
+        replacements += hitsOf.value(ed.pk);
+    }
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    QJsonObject env;
+    if (!rlCommitBodyEdits(store, target->projectId, root, roadmapPath, dryRun,
+                           edited, env))
+        return QJsonDocument(env);
+    env[QStringLiteral("ok")]            = true;
+    env[QStringLiteral("op")]            = QStringLiteral("replace_text");
+    env[QStringLiteral("amended")]       = amended;
+    env[QStringLiteral("amended_count")] = amended.size();
+    env[QStringLiteral("replacements")]  = replacements;
     return QJsonDocument(env);
 }
 
@@ -4602,22 +4772,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
     if (!destId) {
         if (!err.isEmpty())
             return rlErr(QStringLiteral("store_failed"), err);
-        // ANTS-4591 — the same near-miss ranking append's refusal carries.
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = QStringLiteral("section_not_found");
-        env[QStringLiteral("error")] = QStringLiteral(
-            "roadmap_log: section \"%1\" is not in the roadmap store").arg(slug);
-        if (const auto sections = store.listSectionsOrdered(target->projectId)) {
-            QStringList slugs;
-            slugs.reserve(sections->size());
-            for (const RoadmapStore::SectionRow &sr : *sections)
-                slugs << sr.slug;
-            env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
-                ReadRegion::rankSectionCandidates(slug, slugs));
-            env[QStringLiteral("sections_total")] = int(slugs.size());
-        }
-        return QJsonDocument(env);
+        return QJsonDocument(rlSectionNotFound(store, target->projectId, slug));
     }
 
     qint64 beforePk = 0;

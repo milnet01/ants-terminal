@@ -1326,6 +1326,9 @@ private:
     QJsonDocument cmdRoadmapLogAmendField(const QJsonObject &req);
     // ANTS-4669 — op:"amend_batch": amend_body's edit on N items, one commit.
     QJsonDocument cmdRoadmapLogAmendBatch(const QJsonObject &req);
+    // ANTS-5760 — op:"replace_text": one literal string replaced in every
+    // stored body in scope, one commit.
+    QJsonDocument cmdRoadmapLogReplaceText(const QJsonObject &req);
     // ANTS-5385 — op:"amend_field_batch": N column changes, one commit.
     QJsonDocument cmdRoadmapLogAmendFieldBatch(const QJsonObject &req);
     // ANTS-4948 — amend_field's field:"section": moves items to another section.

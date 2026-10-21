@@ -4362,6 +4362,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
     // ANTS-4669 — amend_body's edit on N items in one commit.
     if (op == QStringLiteral("amend_batch"))
         return cmdRoadmapLogAmendBatch(req);
+    // ANTS-5760 — the same edit on every item whose body holds the text.
+    if (op == QStringLiteral("replace_text"))
+        return cmdRoadmapLogReplaceText(req);
     // ANTS-4949 / ANTS-4968 — a section's intro, and the roadmap's preamble.
     // ANTS-5373 — amend_intro patches one match inside a section's intro.
     // ANTS-5523 — amend_preamble patches one match inside the preamble.
@@ -4453,7 +4456,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"annotate_batch\", "
                            "\"amend_body\", \"amend_headline\", "
                            "\"amend_field\", \"amend_field_batch\", "
-                           "\"amend_batch\", \"set_body\", "
+                           "\"amend_batch\", \"replace_text\", \"set_body\", "
                            "\"set_intro\", \"amend_intro\", \"amend_preamble\", "
                            "\"set_preamble\", \"set_legend\", \"delete_section\", "
                            "\"move_section\", \"retitle_section\", "

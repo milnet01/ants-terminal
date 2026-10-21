@@ -87593,11 +87593,17 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config feedback 2026-10-16.
   Lanes: mcp.
 
-- 📋 [ANTS-5760] **roadmap_log op:replace_text replaces one string across every matching item body in one call.**
+- ✅ [ANTS-5760] **roadmap_log op:replace_text replaces one string across every matching item body in one call.**
   Split from ANTS-5704: UT_Ants asked for it alongside the plan id, after
   sending a long locator list to change one phrase across many items.
   Open design point: whether it takes a scope (section, status) and
   whether dry_run lists every match first.
+  Shipped 2026-10-21. Design points settled: scope is `section` (with
+  sub-sections) and `status`; the match is exact and case-sensitive, not
+  wrap-tolerant, so a bulk edit never re-flows lines the caller did not
+  see; every occurrence in a body is replaced; a dry run lists {id,
+  hits} per item; above 500 items it refuses too_many_matches.
+  Store-only, sharing amend_batch's commit path.
   **Layman:** Change the same words in many roadmap items at once instead of listing each item.
   Kind: perf.
   Source: token-survey-2026-10-15.

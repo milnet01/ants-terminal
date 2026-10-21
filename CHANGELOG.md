@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log op:"replace_text"` replaces one phrase in every roadmap item body that holds it, in one call** (ANTS-5760)
+  `section` and `status` narrow which items it touches, and a dry run lists each item and how often it matched before anything is written.
+
 - **`duplicate_blocks` lists code written out more than once, including copies that have drifted apart** (ANTS-5785)
   Each group names every place the code sits and the lines a drifted copy changed, so a reviewer checks a short list instead of comparing files by hand.
 
