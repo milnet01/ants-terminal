@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5805 -->
+<!-- ants-roadmap-id-high-water: ANTS=5806 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87803,6 +87803,18 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The roadmap tool suggests a faster way to update items that then refuses to work on some projects.
   Kind: fix.
   Source: cc-feedback-2026-10-21 RetroDB.
+
+- 📋 [ANTS-5806] **comment_claims skips fish, zsh and extensionless shell files without saying so.**
+  familyOf (src/commentclaims.cpp) picks a comment syntax by suffix
+  only. .fish, .zsh, .ksh and an extensionless script such as a zsh
+  completion `_demoreel` (first line `#compdef`) map to Family::None,
+  so their comments are never read, and nothing in not_covered names
+  them. Add the hash-comment suffixes, sniff a `#!` or `#compdef`
+  first line for extensionless files, and list any file still unread
+  in not_covered.
+  **Layman:** A tool that checks code comments quietly ignores some shell script files, so it looks like they were checked when they were not.
+  Kind: fix.
+  Source: cc-feedback-2026-10-21 demoreel.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
