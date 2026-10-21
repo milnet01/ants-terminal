@@ -85678,7 +85678,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5294] **doc_lint gains staged:true so a commit hook checks the staged blob, not the worktree.**
+- ✅ [ANTS-5294] **doc_lint gains staged:true so a commit hook checks the staged blob, not the worktree.**
   The reference script's `--staged` mode reads `git show :<path>` for every
   staged .md. Without it a commit-time run judges the worktree, which is a
   different document whenever the author has unstaged edits.
@@ -85690,6 +85690,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   INV-29..31. review-contract gate owed before implementation.
   2026-10-21: the ANTS-3663 § 2.7 spec gate has run (review-contract
   loops 11-12, calm cap, 8 verified and fixed). Ready to implement.
+  Shipped 2026-10-21: ANTS-3663 § 2.7, INV-29..31 (DocLintVerb).
   **Layman:** Check what is actually being committed, not what happens to be on disk.
   Kind: feature.
   Source: claude-config-session-2026-09-21.

@@ -67,6 +67,11 @@ struct Options {
     int    maxDocsPerRun     = 2000;  // total in-scope docs ceiling; mirrors
                                       // docsindex.h kMaxIndexDocs. Docs beyond
                                       // the cap are skipped, not read.
+    // ANTS-5294 — project-relative path → the text to check instead of the
+    // file on disk (doc_lint's staged:true hands it the git index copy). A
+    // document present here is never opened. doc_integrity's own verb never
+    // sets it.
+    QHash<QString, QString> textByRel;
 };
 
 // ANTS-4641 / ANTS-4642 — what a run deliberately did NOT report. A checker

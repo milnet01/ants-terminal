@@ -20,6 +20,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <optional>
+
 namespace DocCitations {
 
 // `only` — the filter over citations[]. Stale keeps every non-ok citation, and
@@ -74,6 +76,12 @@ struct Options {
     qint64 maxDocBytes    = 8 * 1024 * 1024;    // handler-enforced, the DOC's own size
     qint64 maxTargetBytes = 8 * 1024 * 1024;    // on-disk bytes of one target
     qint64 maxCacheBytes  = 24 * 1024 * 1024;   // IN-MEMORY bytes, not on-disk
+
+    // ANTS-5294 — the document's text, checked instead of the file at
+    // docAbsPath, which is then never opened (doc_lint's staged:true hands it
+    // the git index copy). Cited targets still resolve on disk. doc_citations'
+    // own verb never sets it.
+    std::optional<QString> docText;
 
     // ANTS-4386 — opt-in QUOTATION check. Nothing in the toolchain verified a
     // fragment a document attributes to another document, and it is the

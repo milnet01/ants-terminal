@@ -76,7 +76,10 @@ struct Options {
     // does not fail — it produces the verb-name false-positive flood ANTS-3661's
     // own loops removed, and a sectionsChecked:false that reads as a missing
     // standard rather than a missing pass-through.
-    DocIntegrity::Options walk;       // maxDocBytes / maxDocsPerRun
+    DocIntegrity::Options walk;       // maxDocBytes / maxDocsPerRun, and
+                                      // textByRel: ANTS-5294's staged texts,
+                                      // which every checker reads in place
+                                      // of the disk
     DocCitations::Options citations;
     DocDedup::Options     dedup;
     DocSymbols::Options   symbols;

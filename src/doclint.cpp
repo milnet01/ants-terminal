@@ -370,28 +370,37 @@ Result run(const QStringList &relDocs, const Options &opts) {
         // checkers a document cut off mid-sentence and report its findings as a
         // complete account of it — the silent partial coverage this envelope
         // exists to make visible.
-        if (QFileInfo(abs).size() > opts.walk.maxDocBytes) {
-            r.skipped.append({rel, QStringLiteral("too_large")});
-            r.truncated = true;
-            continue;
-        }
+        QByteArray bytes;
+        const auto given = opts.walk.textByRel.constFind(rel);
+        if (given != opts.walk.textByRel.cend()) {
+            // ANTS-5294 — staged:true hands in the git index copy, so nothing
+            // is opened. The verb reads one byte past the cap, so an oversize
+            // blob is caught by the check below.
+            bytes = given->toUtf8();
+        } else {
+            if (QFileInfo(abs).size() > opts.walk.maxDocBytes) {
+                r.skipped.append({rel, QStringLiteral("too_large")});
+                r.truncated = true;
+                continue;
+            }
 
-        QFile f(abs);
-        if (!f.open(QIODevice::ReadOnly)) {
-            r.skipped.append({rel, QStringLiteral("read_failed")});
-            continue;  // one bad file must not fail a whole review pass
+            QFile f(abs);
+            if (!f.open(QIODevice::ReadOnly)) {
+                r.skipped.append({rel, QStringLiteral("read_failed")});
+                continue;  // one bad file must not fail a whole review pass
+            }
+            // ANTS-5099 — read one byte past the cap, so a file that grew after
+            // the size check above is skipped rather than read without limit.
+            bytes = f.read(opts.walk.maxDocBytes + 1);
+            f.close();
         }
-        // ANTS-5099 — read one byte past the cap, so a file that grew after
-        // the size check above is skipped rather than read without limit.
-        const QByteArray bytes = f.read(opts.walk.maxDocBytes + 1);
-        f.close();
         if (bytes.size() > opts.walk.maxDocBytes) {
             r.skipped.append({rel, QStringLiteral("too_large")});
             r.truncated = true;
             continue;
         }
         const QString text = QString::fromUtf8(bytes);
-        if (opts.probe) ++opts.probe->opens;
+        if (opts.probe && given == opts.walk.textByRel.cend()) ++opts.probe->opens;
 
         r.checkedDocs << rel;
 
@@ -484,8 +493,10 @@ Result run(const QStringList &relDocs, const Options &opts) {
         int emission = 0;
         for (const QString &rel : std::as_const(r.checkedDocs)) {
             const QString abs = QDir::cleanPath(rootDir.filePath(rel));
-            const QJsonObject o =
-                DocCitations::check(opts.rootCanonical, abs, opts.citations);
+            DocCitations::Options co = opts.citations;
+            const auto given = opts.walk.textByRel.constFind(rel);   // ANTS-5294
+            if (given != opts.walk.textByRel.cend()) co.docText = *given;
+            const QJsonObject o = DocCitations::check(opts.rootCanonical, abs, co);
             if (!o.value(QStringLiteral("ok")).toBool()) {
                 r.checkErrors.append({kCitations, rel, QStringLiteral("check_failed")});
                 continue;

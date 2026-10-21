@@ -7419,7 +7419,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "its counts are a floor, not a total; skipped[] plus truncated say "
                     "the run did not cover the whole tree. spec_lint is applied only to "
                     "documents under the project's specs dir, because a README has no "
-                    "invariants. caller_cwd required.");
+                    "invariants. staged:true checks the git index copy of every "
+                    "staged *.md instead of the worktree, for a commit-time run. "
+                    "caller_cwd required.");
                 docLint["selection_hint"] = QStringLiteral(
                     "Use before any documentation review or pre-pass: it runs the whole "
                     "deterministic layer in one call, where the five verbs it composes "
@@ -7494,6 +7496,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["max_findings"] = dlMax;
                     props["fix"] = dlFix;
                     props["dry_run"] = dlDry;
+                    // ANTS-5294 — ANTS-3663 § 2.7.
+                    QJsonObject dlStaged; dlStaged["type"] = "boolean";
+                        dlStaged["description"] = QStringLiteral(
+                            "Check the git index copy of each staged *.md, not the worktree; no path means the whole project. fix:true refuses bad_mode_combo.");
+                    props["staged"] = dlStaged;
                     // NO etag_match, deliberately: doc_lint is absent from
                     // isEtagSupportedTool (INV-13) and offering the argument
                     // would advertise a short-circuit it never performs.

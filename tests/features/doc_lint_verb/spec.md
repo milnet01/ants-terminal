@@ -79,3 +79,13 @@ byte-compared):
 |---|---|
 | INV-28: leave `encoding` out of the published `verbArgs` | `Inv28LiveSchemaIsForwarded` (3 findings: `encoding` fired) |
 | INV-26: ignore `.claude/bump.json`'s version | `Inv26VersionTruthPrefersBumpFile` (0 findings where 1 was due) |
+
+**ANTS-5294's mutations, run 2026-10-21** (each rebuilt, run, restored and
+byte-compared):
+
+| Mutation | What it actually turned red |
+|---|---|
+| INV-29: `DocIntegrity` ignores `textByRel` and reads the disk | `Inv29StagedTextReachesEveryChecker` |
+| INV-29: `doc_lint` never hands `DocCitations` its `docText` | `Inv29StagedTextReachesEveryChecker` |
+| INV-30: build the staged set from `docIntegrityEnumerate` | `Inv30StagedSetIsGits` |
+| INV-31: delete the `staged` + `fix` guard | `Inv31StagedRefusalsRunNothing` |

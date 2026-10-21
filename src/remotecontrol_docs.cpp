@@ -2194,6 +2194,62 @@ static QString docLintProjectVersion(const QString &rootCanonical) {
                       QStringLiteral(R"(project\s*\([^)]*\bVERSION\s+([0-9]+\.[0-9]+\.[0-9]+))"));
 }
 
+// ANTS-5294 — staged:true's document set and texts (spec § 2.7). Either the
+// return is a refusal, or `relDocs` holds every staged *.md under `pathRel`
+// (empty: the whole project) and `texts` holds each one's index copy. The
+// refusal order is the spec's, and ANTS-3662's: a git that cannot run, then
+// the work-tree probe, then the listing and the shows. A failed listing is
+// never an empty set, which would read as a clean commit.
+static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel,
+                                     qint64 maxDocBytes, QStringList *relDocs,
+                                     QHash<QString, QString> *texts) {
+    const auto failed = [](const QString &what, const GitWrap::Result &g) {
+        QJsonObject o = gitErr("git_failed",
+                               QStringLiteral("doc_lint: git %1 failed").arg(what),
+                               g.stderrTail);
+        o[QStringLiteral("exit_code")] = g.exitCode;
+        return o;
+    };
+    const GitWrap::Result inside = GitWrap::run(
+        root, {QStringLiteral("rev-parse"), QStringLiteral("--is-inside-work-tree")});
+    if (specLintGitBroken(inside)) return failed(QStringLiteral("rev-parse"), inside);
+    if (inside.exitCode != 0)
+        return gitErr("not_a_git_repo",
+                      QStringLiteral("doc_lint: staged:true needs the project root "
+                                     "to be inside a git work tree"));
+
+    // --no-renames keeps a staged rename as an addition; -z keeps a non-ASCII
+    // name unquoted.
+    const GitWrap::Result list = GitWrap::run(
+        root, {QStringLiteral("diff"), QStringLiteral("--cached"),
+               QStringLiteral("--name-only"), QStringLiteral("-z"),
+               QStringLiteral("--no-renames"), QStringLiteral("--diff-filter=ACM"),
+               QStringLiteral("--relative")});
+    if (specLintGitBroken(list) || list.exitCode != 0 || list.stdoutTruncated)
+        return failed(QStringLiteral("diff --cached"), list);
+
+    const QString under = pathRel + QLatin1Char('/');
+    for (const QByteArray &name : list.stdoutBytes.split('\0')) {
+        const QString rel = QString::fromUtf8(name);
+        if (!rel.endsWith(QLatin1String(".md"), Qt::CaseInsensitive)) continue;
+        if (!pathRel.isEmpty() && rel != pathRel && !rel.startsWith(under)) continue;
+        *relDocs << rel;
+    }
+    relDocs->sort();
+
+    // One byte past the cap, so the engine sees an oversize blob and skips it
+    // as too_large rather than checking a cut copy.
+    for (const QString &rel : std::as_const(*relDocs)) {
+        const GitWrap::Result show = GitWrap::run(
+            root, {QStringLiteral("show"), QStringLiteral(":./") + rel},
+            static_cast<int>(maxDocBytes) + 1);
+        if (specLintGitBroken(show) || show.exitCode != 0)
+            return failed(QStringLiteral("show"), show);
+        texts->insert(rel, QString::fromUtf8(show.stdoutBytes));
+    }
+    return {};
+}
+
 QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
@@ -2204,11 +2260,19 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         return QJsonDocument(o);
     }
     const QString rawPath = req.value(QStringLiteral("path")).toString();
+    QString pathRel;   // staged:true filters git's list by it; "" is the root
     if (!rawPath.isEmpty()) {
         const auto check = PathValidation::validatePath(
             rawPath, rootCanonical, QStringLiteral("doc_lint"),
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+        // `resolved` is empty for a path absent from disk, which a staged-only
+        // path can be; the joined form is already known to stay in the root.
+        const QDir rootDir(rootCanonical);
+        pathRel = rootDir.relativeFilePath(check.resolved.isEmpty()
+                                               ? rootDir.filePath(rawPath)
+                                               : check.resolved);
+        if (pathRel == QLatin1String(".")) pathRel.clear();
     }
 
     // An unknown name REFUSES rather than reading as "all five". Silently
@@ -2246,14 +2310,28 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         return QJsonDocument(bad);
     }
 
+    // ANTS-5294 — the repair would patch the worktree from findings about the
+    // index copy. Refused before any git runs.
+    const bool staged = req.value(QStringLiteral("staged")).toBool();
+    if (staged && wantFix)
+        return QJsonDocument(gitErr("bad_mode_combo",
+            QStringLiteral("doc_lint: staged:true and fix:true are exclusive")));
+
     const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
     const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
     const QString specsDir = layout.specsDir.value_or(QStringLiteral("docs/specs"));
-    bool walkCut = false;
-    const QStringList relDocs =
-        docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
-
     DocLint::Options opts;
+    bool walkCut = false;
+    QStringList relDocs;
+    if (staged) {
+        const QJsonObject err = docLintReadStaged(rootCanonical, pathRel,
+                                                  opts.walk.maxDocBytes, &relDocs,
+                                                  &opts.walk.textByRel);
+        if (!err.isEmpty()) return QJsonDocument(err);
+    } else {
+        relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
+    }
+
     opts.rootCanonical = rootCanonical;
     opts.specsDirRel   = specsDir;
     opts.checks        = checks;

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_lint staged:true` checks what is about to be committed** (ANTS-5294)
+  Every check reads the staged copy of each staged `.md` file, not the copy on disk, so unstaged edits no longer change the result. Without `path` it covers every staged document in the project. Combining it with `fix:true` is refused (`bad_mode_combo`), and a folder outside git is refused (`not_a_git_repo`).
+
 - **`session_message` can send one message to every project at once** (ANTS-5741)
   `to:"*"` on `op:"send"` puts a copy in every registered project's mailbox, your own excluded unless `include_self:true`. The reply lists who got a copy (`sent[]`) and any project whose inbox was full (`refused[]`); `dry_run` previews the same split.
 

@@ -619,12 +619,20 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         // doc_lint skips it, never read cut short: a cut document's slug set
         // is partial, so its own links past the cut came back dead. Being
         // outside inScope, anchors into it from other docs go unchecked.
-        if (QFileInfo(abs).size() > opts.maxDocBytes) continue;
-        QFile f(abs);
-        if (!f.open(QIODevice::ReadOnly)) continue;  // INV-15 — silently skip
-        const QByteArray bytes = f.read(opts.maxDocBytes);
-        f.close();
-        const QStringList lines = QString::fromUtf8(bytes).split('\n');
+        QString text;
+        const auto given = opts.textByRel.constFind(rel);
+        if (given != opts.textByRel.cend()) {
+            // ANTS-5294 — supplied text is never opened. Its one caller,
+            // doc_lint, skips an oversize document before handing it on.
+            text = *given;
+        } else {
+            if (QFileInfo(abs).size() > opts.maxDocBytes) continue;
+            QFile f(abs);
+            if (!f.open(QIODevice::ReadOnly)) continue;  // INV-15 — silently skip
+            text = QString::fromUtf8(f.read(opts.maxDocBytes));
+            f.close();
+        }
+        const QStringList lines = text.split('\n');
         const QVector<bool> fence = MarkdownScan::fenceMask(lines);
 
         DocData d;

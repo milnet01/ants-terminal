@@ -1042,7 +1042,9 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts) {
     QStringList lines;
     const QFileInfo docInfo(docAbsPath);
-    if (docInfo.exists() && docInfo.isFile()) {
+    if (opts.docText) {
+        lines = splitLines(*opts.docText);   // ANTS-5294 — never opened
+    } else if (docInfo.exists() && docInfo.isFile()) {
         QFile f(docAbsPath);
         if (!f.open(QIODevice::ReadOnly)) return refusal(QStringLiteral("read_failed"));
         QString text;
