@@ -251,13 +251,12 @@ narrow the data / aggregate harder. The feature's own off switch,
 
 ## Adding a new code
 
-1. Pick the section. Where your row names an existing code as its
-   twin, sibling or analogue, or as the code it is distinct from, use
-   that code's section. Where it names several, in different sections,
-   a twin, sibling or analogue outranks a code it is distinct from, and
-   the first named wins among equals. `query_disabled` sits beside
-   `mcp_disabled` this way. Otherwise use the section whose heading
-   names your case.
+1. Pick the section. Where your row pairs itself with an existing
+   code (its twin, sibling, analogue, mirror or counterpart), or names
+   the code it is distinct from, use that code's section. Where it
+   names several, in different sections, a pairing outranks a code it
+   is distinct from, and the first named wins among equals. Otherwise
+   use the section whose heading names your case.
 2. Check the table — if an existing code's meaning covers your
    case, reuse it. **The test is the caller's next action: mint a new
    code only where a caller would do something different** (§ 6's

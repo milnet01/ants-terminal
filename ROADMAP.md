@@ -88090,7 +88090,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-08-28, measured while shipping ANTS-4748.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5803] **mcp-error-codes.md: five out-of-radius findings from the ANTS-4752 gate.**
+- 📋 [ANTS-5803] **mcp-error-codes.md: out-of-radius findings from the ANTS-4752 gate.**
   Filed by the review-contract run that gated ANTS-4752 (0cb0f9c5).
   Each lies outside that edit, so it exits the loop here.
 
@@ -88117,6 +88117,22 @@ volume classes, and the tooling/documentation gaps the run exposed.
      src/testauditengine.cpp cites "mcp-error-codes.md § 1" for the
      24-character name rule, which lives in "Adding a new code" step 5.
      Under the new Categories intro that citation is wrong.
+  More out-of-radius findings from the same gate:
+  6. [Q1, verified] The `query_disabled` row says only the master
+     `mcp_disabled` gate takes precedence. `project_query` is
+     CallerCwdContract::Required (src/claudeintegration.cpp,
+     callerCwdContractFor), so an empty `caller_cwd` gets the
+     dispatcher's `caller_cwd_required` before the handler's
+     `query_disabled` check. docs/specs/ANTS-2093.md says the opposite.
+     Decide which side is right; fix the row, the spec or the code.
+  7. [Q1, lane claim, half verified] `not_found` / `symbol_not_found`
+     say `not_found` means the file is missing. read_region answers any
+     failed open with `not_found` (src/readregion.cpp, the f.open
+     branch), so an unreadable file reads as a missing one; § 4 has
+     `read_failed` for that. Unverified: the lane's claim that
+     feedback paths answer an open failure with `read_failed`.
+  8. [open question, unverified] The `section_not_found` row does not
+     say the read_region refusal can carry `candidates[]` (ANTS-4350).
   **Layman:** Five smaller mistakes in the error-code rulebook, found while checking the ANTS-4752 change, written down to fix later.
   Kind: doc-fix.
   Source: review-contract mcp-error-codes.md 2026-10-21 (ANTS-4752 gate, out-of-radius findings).
