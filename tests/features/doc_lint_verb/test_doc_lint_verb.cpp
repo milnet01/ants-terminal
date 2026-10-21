@@ -15,6 +15,10 @@
 // projectVersion or verbArgs member, and "doc_facts" is not in
 // DocLint::checkNames() — see the ANTS-3663 bug description for the exact
 // interface these rows are written against.
+//
+// ANTS-5294 adds INV-29..31 (`staged:true`, spec § 2.7). They drive
+// `cmdDocLint` end to end on a bare RemoteControl against real git
+// repositories, as spec_lint_verb's ANTS-5537 rows drive `cmdSpecLint`.
 
 #include "remotecontrol.h"
 #include "doclint.h"
@@ -27,6 +31,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -453,4 +460,226 @@ TEST(DocLintVerb, Inv28LiveSchemaIsForwarded) {
         << QJsonDocument(r).toJson().toStdString();
     EXPECT_FALSE(schemaUnavailable.toBool())
         << "tools/list was served before this call: " << QJsonDocument(r).toJson().toStdString();
+}
+
+// ===========================================================================
+// ANTS-5294 — staged:true (spec § 2.7; INV-29, INV-30, INV-31).
+// ===========================================================================
+namespace {
+
+// Resolved once, so every fixture runs the real git.
+QString realGit() {
+    static const QString g = QStandardPaths::findExecutable(QStringLiteral("git"));
+    return g;
+}
+
+bool gitRun(const QString &dir, const QStringList &args) {
+    QProcess p;
+    p.setWorkingDirectory(dir);
+    p.start(realGit(),
+            QStringList{QStringLiteral("-c"), QStringLiteral("user.email=t@example.invalid"),
+                        QStringLiteral("-c"), QStringLiteral("user.name=t"),
+                        QStringLiteral("-c"), QStringLiteral("commit.gpgsign=false")}
+                << args);
+    if (!p.waitForFinished(20000)) return false;
+    return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+}
+
+bool gitCommitAll(const QString &dir) {
+    return gitRun(dir, {QStringLiteral("add"), QStringLiteral("-A")}) &&
+           gitRun(dir, {QStringLiteral("commit"), QStringLiteral("-q"),
+                        QStringLiteral("-m"), QStringLiteral("x")});
+}
+
+QJsonObject callDocLint(const QString &root, QJsonObject req) {
+    req[QStringLiteral("caller_cwd")] = root;
+    RemoteControl rc(nullptr);
+    return rc.cmdDocLint(req).object();
+}
+
+std::string dumpJson(const QJsonObject &o) {
+    return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// The three checkers INV-29 names, and only those, so another checker's
+// findings on the fixture cannot move a count.
+QJsonArray inv29Checks() {
+    return QJsonArray{QStringLiteral("doc_integrity"), QStringLiteral("doc_citations"),
+                      QStringLiteral("doc_facts")};
+}
+
+QMap<QString, int> lineByVerb(const QJsonObject &r) {
+    QMap<QString, int> out;
+    for (const QJsonValue &v : r.value(QStringLiteral("findings")).toArray()) {
+        const QJsonObject f = v.toObject();
+        out.insert(f.value(QStringLiteral("verb")).toString(),
+                   f.value(QStringLiteral("line")).toInt());
+    }
+    return out;
+}
+
+const QByteArray kClean = "# A\n\nclean text.\n";
+// One defect per checker, on lines 4, 6 and 8.
+const QByteArray kDefects =
+    "# A\n\nclean text.\n[x](missing.md)\n\nsee `src/nothere.cpp:3` here\n\n"
+    "<invoke name=\"x\">\n";
+
+}  // namespace
+
+// INV-29 — under staged:true every checker reads the index copy, the two
+// adapters included. Each arm is the other's control: an adapter that reads
+// the disk loses its finding in the first arm and gains one in the second.
+TEST(DocLintVerb, Inv29StagedTextReachesEveryChecker) {
+    Tree t;
+    ASSERT_FALSE(realGit().isEmpty()) << "git is not installed";
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("init"), QStringLiteral("-q")}));
+    const QString doc = QStringLiteral("docs/a.md");
+    t.write(doc, kClean);
+    ASSERT_TRUE(gitCommitAll(t.root));
+
+    // Arm 1: defects staged, worktree clean.
+    t.write(doc, kDefects);
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("add"), doc}));
+    t.write(doc, kClean);
+    {
+        QJsonObject q;
+        q[QStringLiteral("checks")] = inv29Checks();
+        const QJsonObject plain = callDocLint(t.root, q);
+        ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dumpJson(plain);
+        EXPECT_EQ(0, plain.value(QStringLiteral("findings")).toArray().size())
+            << "control: the worktree copy is clean: " << dumpJson(plain);
+
+        q[QStringLiteral("staged")] = true;
+        const QJsonObject r = callDocLint(t.root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        EXPECT_EQ(3, r.value(QStringLiteral("findings")).toArray().size()) << dumpJson(r);
+        const QMap<QString, int> lines = lineByVerb(r);
+        EXPECT_EQ(4, lines.value(QStringLiteral("doc_integrity"))) << dumpJson(r);
+        EXPECT_EQ(6, lines.value(QStringLiteral("doc_citations"))) << dumpJson(r);
+        EXPECT_EQ(8, lines.value(QStringLiteral("doc_facts"))) << dumpJson(r);
+    }
+
+    // Arm 2: a clean copy that differs from HEAD staged, defects in the
+    // worktree. Differing from HEAD keeps the document in the staged set.
+    const QByteArray cleanEdited = kClean + "another line.\n";
+    t.write(doc, cleanEdited);
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("add"), doc}));
+    t.write(doc, kDefects);
+    {
+        QJsonObject q;
+        q[QStringLiteral("checks")] = inv29Checks();
+        const QJsonObject plain = callDocLint(t.root, q);
+        ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dumpJson(plain);
+        EXPECT_EQ(3, plain.value(QStringLiteral("findings")).toArray().size())
+            << "control: the worktree copy holds three defects: " << dumpJson(plain);
+
+        q[QStringLiteral("staged")] = true;
+        const QJsonObject r = callDocLint(t.root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        EXPECT_EQ(0, r.value(QStringLiteral("findings")).toArray().size()) << dumpJson(r);
+        EXPECT_EQ(QJsonArray{doc}, r.value(QStringLiteral("checked_docs")).toArray())
+            << dumpJson(r);
+    }
+}
+
+// INV-30 — the staged document set is git's, not the walk's. A tree walk
+// lists docs/b.md and, with no path, misses README.md; a listing without
+// --no-renames misses docs/e.md, and one without -z misses docs/é.md.
+TEST(DocLintVerb, Inv30StagedSetIsGits) {
+    Tree t;
+    ASSERT_FALSE(realGit().isEmpty()) << "git is not installed";
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("init"), QStringLiteral("-q")}));
+    t.write(QStringLiteral("README.md"), "# R\n");
+    t.write(QStringLiteral("docs/b.md"), "# B\n");
+    t.write(QStringLiteral("docs/c.md"), "# C\n");
+    t.write(QStringLiteral("docs/old.md"), "# Old\n\nkept body so the rename is detectable.\n");
+    ASSERT_TRUE(gitCommitAll(t.root));
+
+    t.write(QStringLiteral("README.md"), "# R\n\nedited.\n");
+    t.write(QStringLiteral("docs/a.md"), "# A\n");
+    t.write(QString::fromUtf8("docs/\xc3\xa9.md"), "# E acute\n");
+    t.write(QStringLiteral("notes.txt"), "not a document\n");
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("add"), QStringLiteral("README.md"),
+                                QStringLiteral("docs/a.md"),
+                                QString::fromUtf8("docs/\xc3\xa9.md"),
+                                QStringLiteral("notes.txt")}));
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("rm"), QStringLiteral("-q"),
+                                QStringLiteral("docs/c.md")}));
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("mv"), QStringLiteral("docs/old.md"),
+                                QStringLiteral("docs/e.md")}));
+    t.write(QStringLiteral("docs/b.md"), "# B\n\nunstaged edit.\n");
+
+    const QString eAcute = QString::fromUtf8("docs/\xc3\xa9.md");
+    {
+        QJsonObject q;
+        q[QStringLiteral("staged")] = true;
+        const QJsonObject r = callDocLint(t.root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        const QJsonArray want{QStringLiteral("README.md"), QStringLiteral("docs/a.md"),
+                              QStringLiteral("docs/e.md"), eAcute};
+        EXPECT_EQ(want, r.value(QStringLiteral("checked_docs")).toArray()) << dumpJson(r);
+    }
+    {
+        QJsonObject q;
+        q[QStringLiteral("staged")] = true;
+        q[QStringLiteral("path")]   = QStringLiteral("docs");
+        const QJsonObject r = callDocLint(t.root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        const QJsonArray want{QStringLiteral("docs/a.md"), QStringLiteral("docs/e.md"), eAcute};
+        EXPECT_EQ(want, r.value(QStringLiteral("checked_docs")).toArray()) << dumpJson(r);
+    }
+}
+
+// INV-31 — the staged refusals run no checker. The document carries a TOC gap
+// fix:true would repair, so a fix that ran instead of refusing changes bytes.
+TEST(DocLintVerb, Inv31StagedRefusalsRunNothing) {
+    Tree t;
+    ASSERT_FALSE(realGit().isEmpty()) << "git is not installed";
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("init"), QStringLiteral("-q")}));
+    const QString doc = QStringLiteral("docs/a.md");
+    const QByteArray tocGap =
+        "# Doc\n\n## Contents\n\n- [Alpha](#alpha)\n- [Gamma](#gamma)\n\n"
+        "## Alpha\n\na\n\n## Beta\n\nb\n\n## Gamma\n\ng\n";
+    t.write(doc, kClean);
+    ASSERT_TRUE(gitCommitAll(t.root));
+    t.write(doc, tocGap);
+    ASSERT_TRUE(gitRun(t.root, {QStringLiteral("add"), doc}));
+
+    // Guard: a plain fix run on a copy of this document would repair it, so
+    // byte-identical below is not vacuous.
+    {
+        Tree probe;
+        probe.write(doc, tocGap);
+        QJsonObject q;
+        q[QStringLiteral("fix")] = true;
+        const QJsonObject r = callDocLint(probe.root, q);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        ASSERT_EQ(1, r.value(QStringLiteral("files_written")).toInt())
+            << "fixture lost its repairable TOC gap: " << dumpJson(r);
+    }
+
+    {
+        QJsonObject q;
+        q[QStringLiteral("staged")] = true;
+        q[QStringLiteral("fix")]    = true;
+        const QJsonObject r = callDocLint(t.root, q);
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        EXPECT_EQ(QStringLiteral("bad_mode_combo"), r.value(QStringLiteral("code")).toString())
+            << dumpJson(r);
+        QFile f(t.root + QStringLiteral("/") + doc);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        EXPECT_EQ(tocGap, f.readAll()) << "a refused call wrote the worktree";
+    }
+
+    // Outside any git work tree.
+    {
+        Tree bare;
+        bare.write(doc, kClean);
+        QJsonObject q;
+        q[QStringLiteral("staged")] = true;
+        const QJsonObject r = callDocLint(bare.root, q);
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+        EXPECT_EQ(QStringLiteral("not_a_git_repo"), r.value(QStringLiteral("code")).toString())
+            << dumpJson(r);
+    }
 }
