@@ -1603,6 +1603,36 @@ TEST(SpecLint, Ants4890GapMessageNamesWhatItDidNotConsult) {
         << "the message does not say what it did NOT consult, which is what "
            "made it read as a coverage claim about the document: "
         << f->message.toStdString();
+    EXPECT_TRUE(f->message.contains(QStringLiteral("spec_test_clause_coverage")))
+        << "the message does not name the switch that changes the comparison: "
+        << f->message.toStdString();
+}
+
+// The user's decision (2026-10-21): a per-project switch. A project that
+// states coverage in each invariant's *Test:* clause, and does not repeat the
+// ids in its Tests section, sets `spec_test_clause_coverage` in
+// .ants/project.json. Off by default, so the ANTS-4623 cases above still pin
+// the comparison every other project gets.
+TEST(SpecLint, Ants4890TestClauseCountsAsCoverageWhenTheProjectSaysSo) {
+    const QString doc = parityDoc(
+        QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                       "- **INV-2** — two. *Test:* b.\n"
+                       "- **INV-3** — three, with no clause.\n"),
+        QStringLiteral("INV-1 is covered by the fixture.\n"));
+
+    SpecLint::Options opts;
+    opts.testClauseCoverage = true;
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), opts);
+    EXPECT_EQ(1, countKind(r, "test_coverage_gap"))
+        << "INV-2 names its test in its own clause, so only INV-3 is a gap";
+    const auto *f = firstOfKind(r, "test_coverage_gap");
+    ASSERT_NE(f, nullptr);
+    EXPECT_TRUE(f->message.contains(QStringLiteral("INV-3")))
+        << f->message.toStdString();
+
+    // The default is today's comparison: INV-2 and INV-3 both reported.
+    const auto def = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(2, countKind(def, "test_coverage_gap"));
 }
 
 // ===========================================================================

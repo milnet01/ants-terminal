@@ -702,3 +702,27 @@ TEST(ProjectSettingsVerb, Ants4903RefusalNamesEveryOp) {
         << "the refusal must name the read op: "
         << env.value(QStringLiteral("error")).toString().toStdString();
 }
+
+// ANTS-4890 — op:set writes `spec_test_clause_coverage`, and refuses a
+// non-bool. Without the verb passing the key on, the call would refuse
+// "supply at least one of" and the switch could only be hand-written.
+TEST(ProjectSettingsVerb, Ants4890SetWritesSpecTestClauseCoverage) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    RemoteControl rc(nullptr);
+    const auto set = [&](const QJsonValue &value) {
+        QJsonObject s;
+        s[QStringLiteral("caller_cwd")] = root;
+        s[QStringLiteral("op")]         = QStringLiteral("set");
+        s[QStringLiteral("spec_test_clause_coverage")] = value;
+        return rc.cmdProjectSettings(s).object();
+    };
+    const QJsonObject bad = set(QStringLiteral("yes"));
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+
+    const QJsonObject ok = set(true);
+    ASSERT_TRUE(ok.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ok).toJson().toStdString();
+    EXPECT_EQ(ProjectSettings::load(root).specTestClauseCoverage,
+              std::optional<bool>(true));
+}

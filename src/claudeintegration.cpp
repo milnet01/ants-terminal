@@ -7869,6 +7869,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "stay relative to this folder. Must be an existing "
                             "directory inside it, else bad_path.");
                     props["repo_root"]    = rrProp;
+                    // ANTS-4890 — set-only, a project's spec convention.
+                    QJsonObject tccProp; tccProp["type"] = "boolean";
+                        tccProp["description"] = QStringLiteral(
+                            "op:set only. true: an invariant's *Test:* clause "
+                            "counts as coverage, so spec_lint's test_coverage_gap "
+                            "skips it.");
+                    props["spec_test_clause_coverage"] = tccProp;
                     props["dry_run"]      = makeDryRunProp();    // ANTS-2227
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     schema["properties"]  = props;

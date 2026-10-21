@@ -1018,6 +1018,13 @@ Result check(const QString &text, const QString &relPath,
                     const QJsonObject o = parsedById.value(e.id);
                     if (isTombstone(o.value(QStringLiteral("body")).toString()))
                         continue;
+                    // ANTS-4890 — a project that opted in states coverage in
+                    // the invariant's own *Test:* clause. Blank counts as
+                    // absent, as invariant_no_test reads the same field.
+                    if (opts.testClauseCoverage &&
+                        !o.value(QStringLiteral("test_surface"))
+                             .toString().trimmed().isEmpty())
+                        continue;
                     // A CANDIDATE, never a verdict: a spec may legitimately
                     // leave an invariant to a surface the Tests section does
                     // not enumerate. Never autoFixable — nothing here knows
@@ -1033,7 +1040,10 @@ Result check(const QString &text, const QString &relPath,
                                        "here, so a document that states "
                                        "coverage there and not in the Tests "
                                        "prose is reported and is not "
-                                       "uncovered (ANTS-4890)")
+                                       "uncovered. A project that states "
+                                       "coverage in the *Test:* clause sets "
+                                       "spec_test_clause_coverage:true in "
+                                       ".ants/project.json (ANTS-4890)")
                             .arg(e.id));
                 }
             }

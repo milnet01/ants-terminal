@@ -118,6 +118,13 @@ struct Options {
     // unbounded response. Per call; the verb decrements a run-wide budget.
     int maxFindings = 500;
 
+    // ANTS-4890 — the project's `spec_test_clause_coverage` in
+    // .ants/project.json. When set, an invariant whose own *Test:* clause names
+    // a test is covered, so test_coverage_gap does not report it for missing
+    // from the Tests section's id list. Off by default: the ANTS-4623 comparison
+    // is unchanged for every project that has not opted in.
+    bool testClauseCoverage = false;
+
     // ANTS-5537 — the scope of a `since` / `staged` run (spec § 2.4).
     DiffScope diff;
 };

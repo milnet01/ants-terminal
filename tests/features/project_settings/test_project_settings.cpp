@@ -461,3 +461,37 @@ TEST(ProjectSettings, IdFormatFollowsRepoRoot) {
                   QFileInfo(outer + "/clone").canonicalFilePath()).prefix,
               QStringLiteral("HG"));
 }
+
+// ANTS-4890 — `spec_test_clause_coverage` is a bool. load() keeps a bool and
+// drops anything else; applyWrite() refuses a non-bool with bad_args.
+TEST(ProjectSettings, Ants4890SpecTestClauseCoverageIsABool) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const auto loadWith = [&](const QString &json) {
+        writeFile(root + "/.ants/project.json", json);
+        return ProjectSettings::load(root).specTestClauseCoverage;
+    };
+    EXPECT_EQ(loadWith(QStringLiteral("{\"spec_test_clause_coverage\":true}")),
+              std::optional<bool>(true));
+    EXPECT_EQ(loadWith(QStringLiteral("{\"spec_test_clause_coverage\":false}")),
+              std::optional<bool>(false));
+    EXPECT_FALSE(loadWith(QStringLiteral("{\"spec_test_clause_coverage\":\"yes\"}"))
+                     .has_value())
+        << "a string is not a declaration";
+    EXPECT_FALSE(loadWith(QStringLiteral("{}")).has_value());
+
+    QString ec, ek, ev;
+    const auto bad = ProjectSettings::applyWrite(
+        QJsonObject{},
+        QJsonObject{{QStringLiteral("spec_test_clause_coverage"), QStringLiteral("yes")}},
+        root, &ec, &ek, &ev);
+    EXPECT_FALSE(bad.has_value());
+    EXPECT_EQ(ec, QStringLiteral("bad_args"));
+    const auto good = ProjectSettings::applyWrite(
+        QJsonObject{},
+        QJsonObject{{QStringLiteral("spec_test_clause_coverage"), true}},
+        root, &ec, &ek, &ev);
+    ASSERT_TRUE(good.has_value());
+    EXPECT_TRUE(good->value(QStringLiteral("spec_test_clause_coverage")).toBool());
+}

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5807 -->
+<!-- ants-roadmap-id-high-water: ANTS=5808 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -83904,7 +83904,7 @@ Pressless and UT_Ants. Three were confirmations of shipped fixes and are closed
 in place. One duplicates an open claim in ANTS-4460 and was assigned there
 rather than refiled.
 
-- 📋 [ANTS-4890] **spec_lint's test_coverage_gap reads only the Tests section, so an invariant covered where the format puts it is still reported uncovered.**
+- ✅ [ANTS-4890] **spec_lint's test_coverage_gap reads only the Tests section, so an invariant covered where the format puts it is still reported uncovered.**
   Measured on one document: the check fired for exactly the invariants NOT
   mentioned by id inside the Tests section, and for no others — the precise
   complement. Every invariant carried a *Test:* clause naming a test
@@ -83964,6 +83964,21 @@ rather than refiled.
   which is what makes it a decision rather than a bug.
   On ship: message the Pressless session (it verifies on its code).
   Promised 2026-09-29.
+  Decision (user, 2026-10-21): a per-project switch. A project declares
+  that an invariant's *Test:* clause counts as coverage;
+  test_coverage_gap then stops reporting it. The default stays as today,
+  so this project keeps the ANTS-4623 check.
+  Shipped 2026-10-21 as the user's per-project switch:
+  `spec_test_clause_coverage` (bool) in .ants/project.json, settable
+  through project_settings op:"set". When true, test_coverage_gap skips
+  an invariant whose *Test:* clause is non-blank. Default off, so the
+  ANTS-4623 cases are unchanged. The gap message now names the switch.
+  Tests: SpecLint.Ants4890TestClauseCountsAsCoverageWhenTheProjectSaysSo
+  (red first), SpecLintVerb.Ants4890ProjectSwitchReachesTheEngine,
+  ProjectSettings.Ants4890SpecTestClauseCoverageIsABool,
+  ProjectSettingsVerb.Ants4890SetWritesSpecTestClauseCoverage; each
+  part's mutant reddened its test. Pressless to be told on ship
+  (promised 2026-09-29).
   **Layman:** A spec that names its tests in the two places the format asks for is still told its invariants have no tests.
   Kind: fix.
   Source: Pressless-feedback-2026-09-06.
@@ -84122,6 +84137,19 @@ rather than refiled.
   **Layman:** A spec whose rules the checker could not read is still not flagged as a problem; only a count shows it.
   Kind: fix.
   Source: UT_Ants-feedback-2026-09-06.
+  Lanes: mcp, specs.
+
+- 📋 [ANTS-5808] **ANTS-3662 § 2.1 never states how test_coverage_gap and test_coverage_unverifiable decide, only their diff scope.**
+  Measured 2026-10-21: in docs/specs/ANTS-3662.md the two kinds appear
+  only in § 2.4's scope table and INV-13. The ANTS-4623 comparison (Tests
+  section id list vs § Invariants, the empty-set skip, the range rule,
+  the tombstone exemption) and ANTS-4890's spec_test_clause_coverage
+  switch are specified nowhere but src/speclint.cpp comments and
+  tests/features/spec_lint. Adding them to § 2.1 sets a contract, so
+  it owes rule 14's gate.
+  **Layman:** The spec for the spec checker does not describe one of its checks, so the rules for that check live only in code and tests.
+  Kind: doc-fix.
+  Source: in-session-2026-10-21, found while shipping ANTS-4890.
   Lanes: mcp, specs.
 
 ### Ants MCP feedback from CC sessions — 2026-09-07 triage

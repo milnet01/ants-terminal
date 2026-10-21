@@ -119,6 +119,8 @@ Settings load(const QString &rootCanonical) {
     s.specsDir    = validEntry(rootCanonical, o.value(QStringLiteral("specs_dir")));
     s.idFormat    = parseIdFormat(o.value(QStringLiteral("id_format")));  // ANTS-3771
     s.repoRoot    = validEntry(rootCanonical, o.value(QStringLiteral("repo_root")));  // ANTS-5667
+    const QJsonValue tcc = o.value(QStringLiteral("spec_test_clause_coverage"));
+    if (tcc.isBool()) s.specTestClauseCoverage = tcc.toBool();         // ANTS-4890
     return s;
 }
 
@@ -526,6 +528,10 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
             if (o.isEmpty())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(empty object)"));
             out[key] = o;
+        } else if (key == QLatin1String("spec_test_clause_coverage")) {  // ANTS-4890
+            if (!v.isBool())
+                return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not a boolean)"));
+            out[key] = v;
         } else if (dirArray) {
             if (!v.isArray())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not an array)"));

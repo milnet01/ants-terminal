@@ -1111,3 +1111,29 @@ TEST(SpecLintVerb, Ants5537ProjectRootBelowRepoTop) {
     s[QStringLiteral("staged")] = true;
     expectInv2Only(callLint(root, s), "staged:true");
 }
+
+// ANTS-4890 — the verb reads `spec_test_clause_coverage` from the project's
+// .ants/project.json on every call, so INV-2, whose *Test:* clause names its
+// test, is reported only until the project opts in.
+TEST(SpecLintVerb, Ants4890ProjectSwitchReachesTheEngine) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    ASSERT_TRUE(writeText(
+        root + QLatin1Char('/') + kSpecRel,
+        QStringLiteral("# ANTS-1 — a spec\n\n## 3. Invariants\n\n"
+                       "- **INV-1** — a. *Test:* x → y.\n"
+                       "- **INV-2** — b. *Test:* x → z.\n\n"
+                       "## 6. Tests\n\nINV-1 is covered by the fixture.\n")));
+
+    const QJsonObject before = callLint(root);
+    EXPECT_EQ(findingsOfKind(before, "test_coverage_gap").size(), 1)
+        << "the default compares the Tests section's id list: "
+        << dump(before).toStdString();
+
+    ASSERT_TRUE(writeText(root + QStringLiteral("/.ants/project.json"),
+                          QStringLiteral("{\"spec_test_clause_coverage\":true}")));
+    const QJsonObject after = callLint(root);
+    EXPECT_EQ(findingsOfKind(after, "test_coverage_gap").size(), 0)
+        << "the switch was not read: " << dump(after).toStdString();
+}

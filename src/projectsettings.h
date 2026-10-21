@@ -36,6 +36,9 @@ struct Settings {
     // for an outer folder holding its clone one level down. Read through
     // repoRootOf(); the path keys above stay relative to this folder.
     std::optional<QString>     repoRoot;      // dir;  repoRootOf
+    // ANTS-4890 — an invariant's *Test:* clause counts as coverage for
+    // spec_lint's test_coverage_gap. A bool, not a path; a non-bool is dropped.
+    std::optional<bool>        specTestClauseCoverage;  // spec_lint
 };
 
 // Reads + parses <rootCanonical>/.ants/project.json on every call (no

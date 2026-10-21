@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **A project can tell spec_lint that each invariant's *Test:* clause is where its tests are named** (ANTS-4890)
+  Set `spec_test_clause_coverage: true` in `.ants/project.json`, or through
+  `project_settings op:"set"`. spec_lint then stops reporting such an
+  invariant as a coverage gap just because the Tests section does not repeat
+  its id. Projects that leave it unset see no change. The setting is re-read
+  on every call.
+
 - **The Ants MCP server keeps a survey of argument names callers send that a tool does not accept** (ANTS-4659)
   Each such call adds one line to `~/.cache/ants-terminal/mcp-undeclared-args.jsonl`: the time, the tool and the argument names, never their values. The file is private to you and stays under 256 KiB. It is the evidence for deciding whether an unknown argument should be refused rather than noted.
 

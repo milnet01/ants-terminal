@@ -1002,6 +1002,9 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     opts.existingTestDirs = specLintExistingTestDirs(rootCanonical);
     opts.wiredTestDirs    = specLintWiredTestDirs(rootCanonical,
                                                   opts.existingTestDirs);
+    // ANTS-4890 — the project's own coverage convention, re-read every call.
+    opts.testClauseCoverage =
+        ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
 
     // ANTS-4110 — decide the project's INV NUMBERING SCHEME once per run, then
     // hand the engine the numbers its siblings own. The discriminator is
@@ -1998,6 +2001,11 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     if (req.contains(QStringLiteral("repo_root")))
         changes[QStringLiteral("repo_root")] =
             req.value(QStringLiteral("repo_root"));
+    // ANTS-4890 — set-only for the same reason: a project's spec convention,
+    // not something detect can find on disk. applyWrite() wants a bool.
+    if (req.contains(QStringLiteral("spec_test_clause_coverage")))
+        changes[QStringLiteral("spec_test_clause_coverage")] =
+            req.value(QStringLiteral("spec_test_clause_coverage"));
 
     // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
     // ANTS-2227 — under dry_run, return the would-be settings + landing path
@@ -2127,7 +2135,7 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         return err(QStringLiteral("bad_args"), QStringLiteral(
             "project_settings set: supply at least one of "
             "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"
-            "/id_format/repo_root"));
+            "/id_format/repo_root/spec_test_clause_coverage"));
     QString ec, ek, ev;
     const auto merged = ProjectSettings::applyWrite(
         existing, changes, rootCanonical, &ec, &ek, &ev);
