@@ -87697,6 +87697,10 @@ measured Ants adding about 5,250 tokens to every request.
   project, the sender's own project excluded unless asked. Report the
   recipients and any refused (inbox_full). Priority: after ANTS-5734.
   Reload: runs in ants-mcpd; next reconnect.
+  2026-10-21: rule 14 gate run on the ANTS-4622 amendment
+  (review-contract loops 3 and 4, cap reached, calm). Spec accepted
+  (2026-10-21); implementation may start. Out-of-amendment findings
+  filed as ANTS-5809.
   **Layman:** A message meant for all projects reaches every project's mailbox at once, including projects with no session open yet.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user decision).
