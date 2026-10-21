@@ -30,7 +30,7 @@ reached, and the test would pass for the wrong reason.
 
 | Invariant | Route |
 |---|---|
-| INV-1, INV-2, INV-3, INV-5, INV-8, INV-9 | `RoadmapStore` against a temp store |
+| INV-1, INV-2, INV-3, INV-5, INV-8, INV-9, INV-11, INV-12, INV-13 | `RoadmapStore` against a temp store |
 | INV-6 | `tests/features/roadmap_store_upgrade/` — created vs climbed |
 | INV-4, INV-7, INV-10 | the verb and `session_orient` layer, not this file |
 
@@ -70,6 +70,15 @@ sleeping or faking a clock.
   oldest, and the row count is asserted unchanged across the refusal. The test
   then acks one message and sends again, because the cap counts **unacked**
   rows and a cap that counted every row would fail that leg.
+- **INV-11** — A broadcast (`to:"*"`, `RoadmapStore::broadcastMessage()`)
+  reaches every registered project but the sender. A deregistered `delta`
+  gets no copy, which separates the registered list from every `project`
+  row; a second call with `include_self` reaches the sender.
+- **INV-12** — A broadcast skips a full recipient with `inbox_full`, and the
+  others still receive. The second recipient's new row separates a
+  per-recipient skip from refusing the whole call.
+- **INV-13** — A broadcast dry run writes no row and reports the same split,
+  with no message id on any outcome.
 
 ## Also asserted, and not from the design contract's invariant list
 

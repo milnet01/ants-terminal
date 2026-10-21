@@ -14066,7 +14066,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "Leave a message for whoever next picks up another project, and "
                         "see when it has been read. Addressed to a project by "
                         "export_slug, never to a session. op:\"send\" (needs `to` + "
-                        "`body`), op:\"inbox\" (default: your unacked mail, newest "
+                        "`body`; to:\"*\" reaches every registered project and "
+                        "returns sent[] and refused[]), op:\"inbox\" (default: your unacked mail, newest "
                         "first), op:\"ack\" (needs `message_id`; idempotent). An entry "
                         "with `acked_at` has been read. Refusals: no_project (run "
                         "roadmap_migrate first), unknown_project, inbox_full, "
@@ -14139,7 +14140,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "the store; an unregistered slug refuses "
                             "`unknown_project`. Self-addressed mail is allowed "
                             "on purpose: it is the note for the next session on "
-                            "THIS project.");
+                            "THIS project. \"*\" sends one copy to every "
+                            "registered project but yours (ANTS-5741).");
                         props["to"] = p;
                     }
                     {
@@ -14162,6 +14164,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "routes on it; it is there so a reader can tell who "
                             "was working, not so anything can address a reply.");
                         props["from_session"] = p;
+                    }
+                    {
+                        // ANTS-5741 — read only on a `to:"*"` broadcast.
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "to:\"*\" only — also send a copy to your own "
+                            "project. Default false.");
+                        props["include_self"] = p;
                     }
                     {
                         QJsonObject p;

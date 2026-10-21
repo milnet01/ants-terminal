@@ -87690,7 +87690,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-request-2026-10-16 (oneup).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5741] **session_message sends one message to every registered project's mailbox in a single call.**
+- ✅ [ANTS-5741] **session_message sends one message to every registered project's mailbox in a single call.**
   User decision 2026-10-16 (via claude-config): project mailboxes, not a
   live-session registry, so nothing needs clearing when a session closes.
   Add to:"*" on op:"send" (or a broadcast op): one copy per registered
@@ -87701,21 +87701,30 @@ measured Ants adding about 5,250 tokens to every request.
   (review-contract loops 3 and 4, cap reached, calm). Spec accepted
   (2026-10-21); implementation may start. Out-of-amendment findings
   filed as ANTS-5809.
+  Shipped 2026-10-21: to:"*" on op:"send" via
+  RoadmapStore::broadcastMessage (ANTS-4622 § 2.7, INV-11 to INV-13);
+  include_self opts the sender in; replies sent[]/refused[], dry_run
+  would_send_to[]/would_refuse[].
   **Layman:** A message meant for all projects reaches every project's mailbox at once, including projects with no session open yet.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user decision).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5742] **A new session is told at start when its project has unread mail.**
+- 🚫 [ANTS-5742] **A new session is told at start when its project has unread mail.**
   hooks/ants-session-preamble.sh (ours) prints one line when the project
   has unacked session_message mail: "N unread messages: session_message
   inbox". Silent at zero. Today a session that starts after a broadcast
   never learns its mail is waiting. Priority: after ANTS-5734.
   Reload: the hook is re-read at each session start.
+  Closed 2026-10-21 as a duplicate of ANTS-5553:
+  hooks/ants-inbox-notice.sh already announces unread mail at
+  SessionStart (installed by tools/install-hooks.sh), and ANTS-5619/5716
+  cover mid-session mail.
   **Layman:** When Claude starts in a project, it is told if other sessions left it messages, so none are missed.
   Kind: feature.
   Source: claude-config-request-2026-10-16 (user decision).
   Lanes: mcp-tools.
+  Duplicate-of: ANTS-5553.
 
 - ✅ [ANTS-5748] **trace's walk skips git-ignored files and binaries, so it covers a large repository's source before reaching its file cap.**
   Measured 2026-10-16, first live call (trace symbol:seedContextReading

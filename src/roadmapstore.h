@@ -1062,6 +1062,24 @@ public:
                      const QString &createdAt, qint64 *messageId,
                      QString *code, QString *error = nullptr);
 
+    // ANTS-5741 (ANTS-4622 § 2.7) — `to:"*"`: one ordinary message per
+    // registered project, the sender skipped unless `includeSelf`. A recipient
+    // at kMailInboxCap lands in the outcome list with code `inbox_full` while
+    // the rest still receive. Every copy is written in one transaction, so an
+    // I/O failure writes none. `dryRun` runs the same walk and cap checks and
+    // writes nothing; each outcome's messageId is then 0. On refusal of the
+    // whole call (`bad_args`, `io_error`) returns false and sets *code.
+    struct BroadcastOutcome {
+        QString toSlug;
+        qint64 messageId = 0;  // 0 on a refusal or a dry run
+        QString code;          // empty ⇒ sent (or would be); else `inbox_full`
+    };
+    bool broadcastMessage(qint64 fromProjectId, const QString &body,
+                          const QString &fromSession, const QString &createdAt,
+                          bool includeSelf, bool dryRun,
+                          QVector<BroadcastOutcome> *outcomes, QString *code,
+                          QString *error = nullptr);
+
     // `limit <= 0` returns every row. Ordered newest first.
     bool inboxFor(qint64 projectId, bool includeAcked, int limit, int offset,
                   QVector<Message> *out, int *unackedCount,

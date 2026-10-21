@@ -410,6 +410,133 @@ TEST(SessionMessage, BodyCapIsBytesNotCharacters) {
                                      QString::fromLatin1(kT1), &id, &code, &err)) << err.toStdString();
 }
 
+// ------------------------------------------------- ANTS-5741 broadcast (§ 2.7) --
+
+namespace {
+
+int inboxRows(RoadmapStore &s, qint64 projectId) {
+    return rowCount(s, QStringLiteral("SELECT count(*) FROM message WHERE "
+                                      "to_project_id = %1").arg(projectId));
+}
+
+// Fills `to` to the cap from `from`, so the next copy there is refused.
+void fillInbox(RoadmapStore &s, qint64 from, const QString &to) {
+    QString code, err;
+    qint64 id = 0;
+    for (int i = 0; i < RoadmapStore::kMailInboxCap; ++i)
+        ASSERT_TRUE(s.sendMessage(from, to, QStringLiteral("fill %1").arg(i),
+                                  QString(), QString::fromLatin1(kT1), &id,
+                                  &code, &err)) << err.toStdString();
+}
+
+}  // namespace
+
+// INV-11 — a broadcast reaches every registered project but the sender, and
+// only those. `delta` (deregistered) separates the registered list from every
+// row in `project`; `alpha` separates the self-skip from none.
+TEST(SessionMessage, Inv11BroadcastReachesRegisteredProjectsButTheSender) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("bravo"));
+    const qint64 c = f.addProject(QStringLiteral("charlie"));
+    const qint64 d = f.addProject(QStringLiteral("delta"));
+    QString code, err;
+    RoadmapStore::DeregisterCounts counts;
+    ASSERT_TRUE(f.store->deregisterProject(d, QString::fromLatin1(kNew), &counts, &err))
+        << err.toStdString();
+
+    QVector<RoadmapStore::BroadcastOutcome> got;
+    ASSERT_TRUE(f.store->broadcastMessage(a, QStringLiteral("to all"), QString(),
+                                          QString::fromLatin1(kT1), false, false,
+                                          &got, &code, &err)) << err.toStdString();
+    EXPECT_EQ(inboxRows(*f.store, a), 0) << "the sender received its own broadcast";
+    EXPECT_EQ(inboxRows(*f.store, b), 1);
+    EXPECT_EQ(inboxRows(*f.store, c), 1);
+    EXPECT_EQ(inboxRows(*f.store, d), 0) << "a deregistered project received a copy";
+    ASSERT_EQ(got.size(), 2);
+    for (const auto &o : got) {
+        EXPECT_TRUE(o.code.isEmpty());
+        EXPECT_GT(o.messageId, 0);
+    }
+
+    ASSERT_TRUE(f.store->broadcastMessage(a, QStringLiteral("to all, me too"), QString(),
+                                          QString::fromLatin1(kT1), true, false,
+                                          &got, &code, &err)) << err.toStdString();
+    EXPECT_EQ(inboxRows(*f.store, a), 1) << "include_self did not reach the sender";
+    EXPECT_EQ(inboxRows(*f.store, d), 0);
+}
+
+// INV-12 — a full recipient is refused and the rest still receive. charlie's
+// row is what separates a per-recipient skip from refusing the whole call.
+TEST(SessionMessage, Inv12FullRecipientIsRefusedTheRestReceive) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("bravo"));
+    const qint64 c = f.addProject(QStringLiteral("charlie"));
+    fillInbox(*f.store, a, QStringLiteral("bravo"));
+    const int bravoBefore = inboxRows(*f.store, b);
+
+    QString code, err;
+    QVector<RoadmapStore::BroadcastOutcome> got;
+    ASSERT_TRUE(f.store->broadcastMessage(a, QStringLiteral("to all"), QString(),
+                                          QString::fromLatin1(kT1), false, false,
+                                          &got, &code, &err)) << err.toStdString();
+    EXPECT_EQ(inboxRows(*f.store, b), bravoBefore);
+    EXPECT_EQ(inboxRows(*f.store, c), 1);
+    ASSERT_EQ(got.size(), 2);
+    EXPECT_EQ(got[0].toSlug, QStringLiteral("bravo"));
+    EXPECT_EQ(got[0].code, QStringLiteral("inbox_full"));
+    EXPECT_EQ(got[0].messageId, 0);
+    EXPECT_EQ(got[1].toSlug, QStringLiteral("charlie"));
+    EXPECT_TRUE(got[1].code.isEmpty());
+}
+
+// INV-13 — a broadcast dry run writes nothing and reports the same split. The
+// full bravo makes the split checkable rather than an echo of the list.
+TEST(SessionMessage, Inv13BroadcastDryRunWritesNothingAndReportsTheSplit) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    f.addProject(QStringLiteral("bravo"));
+    f.addProject(QStringLiteral("charlie"));
+    fillInbox(*f.store, a, QStringLiteral("bravo"));
+    const int before = rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message"));
+
+    QString code, err;
+    QVector<RoadmapStore::BroadcastOutcome> got;
+    ASSERT_TRUE(f.store->broadcastMessage(a, QStringLiteral("to all"), QString(),
+                                          QString::fromLatin1(kT1), false, true,
+                                          &got, &code, &err)) << err.toStdString();
+    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), before)
+        << "a dry run wrote a row";
+    ASSERT_EQ(got.size(), 2);
+    EXPECT_EQ(got[0].toSlug, QStringLiteral("bravo"));
+    EXPECT_EQ(got[0].code, QStringLiteral("inbox_full"));
+    EXPECT_EQ(got[1].toSlug, QStringLiteral("charlie"));
+    EXPECT_TRUE(got[1].code.isEmpty());
+    EXPECT_EQ(got[1].messageId, 0) << "a preview carried a message id";
+}
+
+// § 2.7 — an oversized from_session refuses the whole broadcast up front, so
+// refused[] never carries bad_args.
+TEST(SessionMessage, Ants5741BroadcastValidatesSessionBeforeAnyWrite) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    f.addProject(QStringLiteral("bravo"));
+
+    QString code, err;
+    QVector<RoadmapStore::BroadcastOutcome> got;
+    const QString longSession(RoadmapStore::kMailSessionMaxBytes + 1, QLatin1Char('s'));
+    EXPECT_FALSE(f.store->broadcastMessage(a, QStringLiteral("hi"), longSession,
+                                           QString::fromLatin1(kT1), false, false,
+                                           &got, &code, &err));
+    EXPECT_EQ(code, QStringLiteral("bad_args"));
+    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 0);
+}
+
 // ---------------------------------------------------------- INV-7 (source) --
 //
 // Every argument cmdSessionMessage reads via req.value()/req.contains() is
@@ -485,7 +612,7 @@ TEST(SessionMessage, Inv7SchemaDeclaresEveryOp) {
     ASSERT_FALSE(block.isEmpty()) << "session_message tool block not found";
 
     for (const char *key : {"op", "to", "body", "from_session", "message_id",
-                            "include_acked", "limit", "offset"}) {
+                            "include_acked", "limit", "offset", "include_self"}) {
         EXPECT_TRUE(block.contains(QStringLiteral("props[\"%1\"]")
                                        .arg(QString::fromLatin1(key))))
             << "inputSchema.properties is missing \"" << key << "\"";
@@ -550,19 +677,25 @@ TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
     const QString h = readSrc("remotecontrol_session_message.cpp");
     ASSERT_FALSE(h.isEmpty());
 
-    const int at = h.indexOf(QStringLiteral("if (dryRun) {"));
-    ASSERT_GE(at, 0) << "no dry_run branch in the send path";
-    const int end = h.indexOf(QStringLiteral("return QJsonDocument(out);"), at);
-    ASSERT_GT(end, at);
-    const QString branch = codeOnly(h.mid(at, end - at));
+    // ANTS-5741 — the single-slug send and the broadcast each have a preview
+    // branch, so every one is checked rather than the first found.
+    int branches = 0;
+    for (int at = h.indexOf(QStringLiteral("if (dryRun) {")); at >= 0;
+         at = h.indexOf(QStringLiteral("if (dryRun) {"), at + 1)) {
+        const int end = h.indexOf(QStringLiteral("return QJsonDocument(out);"), at);
+        ASSERT_GT(end, at);
+        const QString branch = codeOnly(h.mid(at, end - at));
+        ++branches;
 
-    EXPECT_TRUE(branch.contains(QStringLiteral("would_send")))
-        << "ANTS-4463: a preview carries a would-be field, never message_id";
-    EXPECT_FALSE(branch.contains(QStringLiteral("message_id")))
-        << "ANTS-4463: a past-tense field on a preview lets a caller read it "
-           "as a completed write";
-    EXPECT_FALSE(branch.contains(QStringLiteral("sendMessage(")))
-        << "the preview must stop SHORT of the writer, not write and roll back";
+        EXPECT_TRUE(branch.contains(QStringLiteral("would_send")))
+            << "ANTS-4463: a preview carries a would-be field, never message_id";
+        EXPECT_FALSE(branch.contains(QStringLiteral("message_id")))
+            << "ANTS-4463: a past-tense field on a preview lets a caller read it "
+               "as a completed write";
+        EXPECT_FALSE(branch.contains(QStringLiteral("sendMessage(")))
+            << "the preview must stop SHORT of the writer, not write and roll back";
+    }
+    EXPECT_EQ(branches, 2) << "expected the single-slug and the broadcast preview";
 
     // § 2.6 — the prune is a write, so a dry run must not trigger it either.
     // Against an empty inbox a pruning preview is indistinguishable from a

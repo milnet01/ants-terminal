@@ -2253,6 +2253,65 @@ std::optional<qint64> RoadmapStore::projectIdContaining(const QString &path,
     return std::nullopt;
 }
 
+namespace {
+
+// Checked here as well as in the CHECK constraint, so the caller gets
+// `bad_args` with a reason rather than a raw SQL constraint failure. Empty
+// means the arguments are fine.
+QString mailArgsError(const QString &body, const QString &fromSession) {
+    const int bodyBytes = body.toUtf8().size();
+    if (bodyBytes == 0)
+        return QStringLiteral("message body is empty");
+    if (bodyBytes > RoadmapStore::kMailBodyMaxBytes)
+        return QStringLiteral("message body is %1 bytes; the cap is %2")
+            .arg(bodyBytes).arg(RoadmapStore::kMailBodyMaxBytes);
+    const int sessionBytes = fromSession.toUtf8().size();
+    if (sessionBytes > RoadmapStore::kMailSessionMaxBytes)
+        return QStringLiteral("from_session is %1 bytes; the cap is %2")
+            .arg(sessionBytes).arg(RoadmapStore::kMailSessionMaxBytes);
+    return QString();
+}
+
+// § 2.6 — the cap counts UNACKED rows, so acking frees a slot.
+std::optional<int> unackedCount(QSqlDatabase &db, qint64 toProjectId,
+                                QString *error) {
+    QSqlQuery c(db);
+    c.prepare(QStringLiteral(
+        "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
+    c.addBindValue(toProjectId);
+    if (!c.exec() || !c.next()) {
+        if (error) *error = lastErr(c);
+        return std::nullopt;
+    }
+    return c.value(0).toInt();
+}
+
+std::optional<qint64> insertMessage(QSqlDatabase &db, qint64 fromProjectId,
+                                    qint64 toProjectId, const QString &fromSession,
+                                    const QString &createdAt, const QString &body,
+                                    QString *error) {
+    QSqlQuery ins(db);
+    ins.prepare(QStringLiteral(
+        "INSERT INTO message (from_project_id, to_project_id, from_session, "
+        "created_at, body) VALUES (?,?,?,?,?)"));
+    ins.addBindValue(fromProjectId);
+    ins.addBindValue(toProjectId);
+    // A null QString binds as SQL NULL, not as '', so the column's
+    // `NOT NULL DEFAULT ''` would refuse the commonest call there is — a send
+    // carrying no session provenance. Normalised here rather than pushed onto
+    // every caller, since `from_session` is optional by design (§ 2.1).
+    ins.addBindValue(fromSession.isNull() ? QString::fromLatin1("") : fromSession);
+    ins.addBindValue(createdAt);
+    ins.addBindValue(body);
+    if (!ins.exec()) {
+        if (error) *error = lastErr(ins);
+        return std::nullopt;
+    }
+    return ins.lastInsertId().toLongLong();
+}
+
+}  // namespace
+
 bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                                const QString &body, const QString &fromSession,
                                const QString &createdAt, qint64 *messageId,
@@ -2263,19 +2322,8 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
         return false;
     };
 
-    // Checked here as well as in the CHECK constraint, so the caller gets
-    // `bad_args` with a reason rather than a raw SQL constraint failure.
-    const int bodyBytes = body.toUtf8().size();
-    if (bodyBytes == 0)
-        return fail("bad_args", QStringLiteral("message body is empty"));
-    if (bodyBytes > kMailBodyMaxBytes)
-        return fail("bad_args",
-                    QStringLiteral("message body is %1 bytes; the cap is %2")
-                        .arg(bodyBytes).arg(kMailBodyMaxBytes));
-    if (fromSession.toUtf8().size() > kMailSessionMaxBytes)
-        return fail("bad_args",
-                    QStringLiteral("from_session is %1 bytes; the cap is %2")
-                        .arg(fromSession.toUtf8().size()).arg(kMailSessionMaxBytes));
+    if (const QString bad = mailArgsError(body, fromSession); !bad.isEmpty())
+        return fail("bad_args", bad);
 
     ImmediateTx tx(m_db, m_inTransaction);   // ANTS-5499
     if (!tx.begin(error)) {
@@ -2291,47 +2339,83 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                                    "delivered").arg(toSlug));
     const qint64 toProjectId = *to;
 
-    // § 2.6 — the cap counts UNACKED rows, so acking frees a slot. A full
-    // inbox refuses rather than dropping the oldest: a silently dropped
+    // A full inbox refuses rather than dropping the oldest: a silently dropped
     // message is indistinguishable from one that was never sent.
-    QSqlQuery c(m_db);
-    c.prepare(QStringLiteral(
-        "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
-    c.addBindValue(toProjectId);
-    if (!c.exec() || !c.next()) {
-        if (error) *error = lastErr(c);
-        if (code)  *code  = QStringLiteral("io_error");
+    const auto unacked = unackedCount(m_db, toProjectId, error);
+    if (!unacked) {
+        if (code) *code = QStringLiteral("io_error");
         return false;
     }
-    if (c.value(0).toInt() >= kMailInboxCap)
+    if (*unacked >= kMailInboxCap)
         return fail("inbox_full",
                     QStringLiteral("\"%1\" already holds %2 unacked messages, "
                                    "which is the cap").arg(toSlug).arg(kMailInboxCap));
 
-    QSqlQuery ins(m_db);
-    ins.prepare(QStringLiteral(
-        "INSERT INTO message (from_project_id, to_project_id, from_session, "
-        "created_at, body) VALUES (?,?,?,?,?)"));
-    ins.addBindValue(fromProjectId);
-    ins.addBindValue(toProjectId);
-    // A null QString binds as SQL NULL, not as '', so the column's
-    // `NOT NULL DEFAULT ''` would refuse the commonest call there is — a send
-    // carrying no session provenance. Normalised here rather than pushed onto
-    // every caller, since `from_session` is optional by design (§ 2.1).
-    ins.addBindValue(fromSession.isNull() ? QString::fromLatin1("") : fromSession);
-    ins.addBindValue(createdAt);
-    ins.addBindValue(body);
-    if (!ins.exec()) {
-        if (error) *error = lastErr(ins);
-        if (code)  *code  = QStringLiteral("io_error");
-        return false;
-    }
-    const qint64 newId = ins.lastInsertId().toLongLong();
-    if (!tx.commit(error)) {
+    const auto newId = insertMessage(m_db, fromProjectId, toProjectId,
+                                     fromSession, createdAt, body, error);
+    if (!newId || !tx.commit(error)) {
         if (code) *code = QStringLiteral("io_error");
         return false;
     }
-    if (messageId) *messageId = newId;
+    if (messageId) *messageId = *newId;
+    if (code) code->clear();
+    return true;
+}
+
+bool RoadmapStore::broadcastMessage(qint64 fromProjectId, const QString &body,
+                                    const QString &fromSession,
+                                    const QString &createdAt, bool includeSelf,
+                                    bool dryRun, QVector<BroadcastOutcome> *outcomes,
+                                    QString *code, QString *error) {
+    const auto ioFail = [&] {
+        if (code) *code = QStringLiteral("io_error");
+        return false;
+    };
+    if (const QString bad = mailArgsError(body, fromSession); !bad.isEmpty()) {
+        if (code)  *code  = QStringLiteral("bad_args");
+        if (error) *error = bad;
+        return false;
+    }
+
+    // A dry run takes no write lock: it only reads, and INV-10 forbids a
+    // preview from holding the store other sessions share.
+    std::optional<ImmediateTx> tx;
+    if (!dryRun) {
+        tx.emplace(m_db, m_inTransaction);   // ANTS-5499
+        if (!tx->begin(error))
+            return ioFail();
+    }
+
+    QString listErr;
+    const QVector<ProjectRow> projects = listProjects(&listErr);
+    if (!listErr.isEmpty()) {
+        if (error) *error = std::move(listErr);
+        return ioFail();
+    }
+
+    QVector<BroadcastOutcome> out;
+    for (const ProjectRow &p : projects) {
+        if (p.projectId == fromProjectId && !includeSelf)
+            continue;
+        BroadcastOutcome o;
+        o.toSlug = p.exportSlug;
+        const auto unacked = unackedCount(m_db, p.projectId, error);
+        if (!unacked)
+            return ioFail();
+        if (*unacked >= kMailInboxCap) {
+            o.code = QStringLiteral("inbox_full");
+        } else if (!dryRun) {
+            const auto id = insertMessage(m_db, fromProjectId, p.projectId,
+                                          fromSession, createdAt, body, error);
+            if (!id)
+                return ioFail();
+            o.messageId = *id;
+        }
+        out.append(o);
+    }
+    if (tx && !tx->commit(error))
+        return ioFail();
+    if (outcomes) *outcomes = std::move(out);
     if (code) code->clear();
     return true;
 }

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_message` can send one message to every project at once** (ANTS-5741)
+  `to:"*"` on `op:"send"` puts a copy in every registered project's mailbox, your own excluded unless `include_self:true`. The reply lists who got a copy (`sent[]`) and any project whose inbox was full (`refused[]`); `dry_run` previews the same split.
+
 - **`roadmap_query mode:"ledger"` lists stalled in-progress work and commits that name no roadmap item** (ANTS-5516)
   An item marked in progress that nobody has touched for `stale_days` (default 14) is listed with how long it has sat. Commits since the last release tag (or a `range` you give) whose subject cites no roadmap id are listed too, so unrecorded work is found without reading the log by hand.
 

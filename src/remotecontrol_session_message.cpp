@@ -139,6 +139,48 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
                           QStringLiteral("session_message: op:\"send\" needs a "
                                          "`to` export_slug"));
 
+        // ANTS-5741 (§ 2.7) — `to:"*"` addresses every registered project.
+        // The store owns the walk, the cap split and the dry-run split; this
+        // only shapes the reply.
+        if (to == QLatin1String("*")) {
+            const bool includeSelf =
+                req.value(QStringLiteral("include_self")).toBool(false);
+            QVector<RoadmapStore::BroadcastOutcome> outcomes;
+            QString code;
+            if (!store.broadcastMessage(*self, body, from, now, includeSelf,
+                                        dryRun, &outcomes, &code, &err))
+                return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
+                              QStringLiteral("session_message: %1").arg(err));
+            QJsonArray went, refused;
+            for (const auto &o : outcomes) {
+                if (!o.code.isEmpty()) {
+                    QJsonObject r;
+                    r[QStringLiteral("to")]   = o.toSlug;
+                    r[QStringLiteral("code")] = o.code;
+                    refused.append(r);
+                } else if (!dryRun) {
+                    QJsonObject s;
+                    s[QStringLiteral("to")]         = o.toSlug;
+                    s[QStringLiteral("message_id")] = double(o.messageId);
+                    went.append(s);
+                } else {
+                    went.append(o.toSlug);
+                }
+            }
+            out[QStringLiteral("to")] = to;
+            if (dryRun) {
+                out[QStringLiteral("dry_run")]       = true;
+                out[QStringLiteral("would_send_to")] = went;
+                out[QStringLiteral("would_refuse")]  = refused;
+                return QJsonDocument(out);
+            }
+            pruneIfWriting();
+            out[QStringLiteral("sent")]       = went;
+            out[QStringLiteral("refused")]    = refused;
+            out[QStringLiteral("created_at")] = now;
+            return QJsonDocument(out);
+        }
+
         if (dryRun) {
             // ANTS-4463 — a preview carries NO past-tense field: `would_send`
             // rather than `message_id`, so a caller branching on either cannot
