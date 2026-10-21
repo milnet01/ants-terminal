@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **git_state op:"hooks" shows how a repository's push check is wired, in one call** (ANTS-5505)
+  It reports where core.hooksPath points and who set it, whether pre-push is
+  the machine-wide hook, hands off to it, or is the project's own, every
+  ants.gate.* key and where it came from, the gate script and the workflows
+  that call it, and whether HEAD's tree has already passed the gate. It gives
+  facts only; ~/.claude/tools/ci-gate still gives the verdict.
+
 - **doc_lint genre:"auto" picks each document's checks from its own Genre: line** (ANTS-5293)
   A spec outside the specs folder now gets spec_lint, and a record inside it no longer does. The response names the genre each document was judged as. Documents with no Genre: line are checked as before.
 

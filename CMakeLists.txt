@@ -683,6 +683,9 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-3368 — co_change_family pure seam (word split, run match, roles).
     src/cochangefamily.cpp
     src/gitwrap.cpp
+    # ANTS-5505 — git_state op:"hooks", its own TU so its test links it
+    # without RemoteControl.
+    src/githooksreport.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
     # ANTS-1457 — false-positive ledger helper shared across
@@ -2875,6 +2878,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 # ANTS-5098 — git_state flags a read past GitWrap's stdout cap.
                 tests/features/git_state_truncation/test_git_state_truncation.cpp
+                # ANTS-5505 — git_state op:"hooks" reports the push-gate wiring.
+                tests/features/git_hooks_report/test_git_hooks_report.cpp
                 # ANTS-1839 — GitWrap per-caller stdout budget.
                 tests/features/gitwrap_stdout_cap/test_gitwrap_stdout_cap.cpp
                 # ANTS-5527 — inside a Flatpak, tools run on the host.

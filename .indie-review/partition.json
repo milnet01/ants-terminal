@@ -323,6 +323,8 @@
       "sourcePaths": [
         "src/remotecontrol_changelog.cpp",
         "src/remotecontrol_docs.cpp",
+        "src/githooksreport.cpp",
+        "src/githooksreport.h",
         "src/remotecontrol_feedback.cpp",
         "src/remotecontrol_run_trace.cpp",
         "src/remotecontrol_quotation_check.cpp",

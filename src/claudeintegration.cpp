@@ -8787,9 +8787,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "Query git repo state as structured JSON instead of Bash git "
                     "status / log / diff. op: \"status\" (default; branch, "
                     "ahead/behind, files[] including untracked), \"log\" (n, default "
-                    "10, cap 100; path; body) or \"diff\" (path; range, omitted for "
+                    "10, cap 100; path; body), \"diff\" (path; range, omitted for "
                     "the working tree; hunks:true for per-file hunk headers, with "
-                    "include_lines, context and staged).");
+                    "include_lines, context and staged) or \"hooks\" (push-gate "
+                    "wiring).");
                 gsTool["detail"] = QStringLiteral(
                     "Query git repo state (status / log / diff) as "
                     "structured JSON. Replaces multiple Bash "
@@ -8817,7 +8818,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "vs HEAD. ANTS-5098: when git's output passes GitWrap's "
                     "stdout cap, status and diff set truncated:true and drop the "
                     "cut last line, so files[] and totals cover only what was "
-                    "read.");
+                    "read. op=\"hooks\" (ANTS-5505) reports facts about the push "
+                    "gate: core.hooksPath with its scope and origin, pre_push.kind "
+                    "(none, machine_wide, hands_off or own), every ants.gate.* key "
+                    "with its source, the gate script and the workflows calling "
+                    "it, and whether HEAD's tree has a gate-passed record. It "
+                    "gives no verdict; ~/.claude/tools/ci-gate does.");
                 gsTool["selection_hint"] = QStringLiteral(
                     "Use for git status/log/diff in one structured "
                     "call (vs three Bash invocations). Pairs with "
@@ -8831,10 +8837,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append("status");
                     opEnum.append("log");
                     opEnum.append("diff");
+                    opEnum.append("hooks");         // ANTS-5505
                     opProp["enum"]    = opEnum;
                     opProp["default"] = "status";   // ANTS-3365
                     opProp["description"] = QStringLiteral(
-                        "defaults to \"status\" when omitted");
+                        "defaults to \"status\"; \"hooks\" reports hooksPath, the "
+                        "pre-push hand-off, ants.gate.* keys, the gate script and its "
+                        "passed record");
                     QJsonObject nProp;      nProp["type"]     = "integer";
                                             nProp["default"]  = 10;
                                             nProp["minimum"]  = 1;

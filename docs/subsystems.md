@@ -175,6 +175,10 @@ Listed only where behavior isn't obvious from the name.
   verb's seam: compared lines matched in order across files, drifted copies
   kept in one group, pair matches joined so three copies are one group.
   ANTS-5785.
+- `githooksreport` (Qt6::Core, `ants_mcpcore_lib`) — `git_state
+  op:"hooks"`: the facts about a repository's push gate, with the
+  machine-wide hook asked for its own discovery list. No verdict.
+  ANTS-5505.
 - `docdedup` (Qt6::Core, `ants_core_lib`) — near-duplicate passage detection
   across a doc set: paragraph segmentation (a list item is one passage, marker
   line included), word 3-gram shingles, exact Jaccard, and connected-component

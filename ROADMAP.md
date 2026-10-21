@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5812 -->
+<!-- ants-roadmap-id-high-water: ANTS=5813 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85815,11 +85815,16 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (A3; CFG-0426, CFG-0616).
   Lanes: mcp.
 
-- 📋 [ANTS-5505] **git_state op:"hooks" reports hooksPath, the pre-push hand-off, ants.gate.* keys and the gate-passed record.**
+- ✅ [ANTS-5505] **git_state op:"hooks" reports hooksPath, the pre-push hand-off, ants.gate.* keys and the gate-passed record.**
   Also surfaced in session_orient. Replaces tools/align-report and
   tools/ci-gate for the read half: hooksPath and where it is set,
   whether pre-push hands off, the gate script found, executable and
   called by CI, and the ants-gate-passed/<tree> record.
+  2026-10-21: shipped as src/githooksreport.cpp; contract
+  tests/features/git_hooks_report/spec.md. Facts only, no verdict. Run
+  over every repository under /mnt/Games/Scripts/Linux, its pre_push.kind
+  matched ci-gate's owns_hook test on all of them. The session_orient
+  half is ANTS-5813.
   **Layman:** Checking whether a project's push check is really wired up takes a script today; one call could answer it.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A4; CFG-0608..0610, CFG-0634).
@@ -85955,6 +85960,17 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** When the run-the-tests tool's ctest run crashes or times out, it should show the last lines ctest printed, as its design says.
   Kind: fix.
   Source: ANTS-5811 doc-fix 2026-10-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5813] **session_orient carries a short push-gate summary from git_state op:"hooks".**
+  Split from ANTS-5505, which asked for this too. Every session_orient
+  would pay for it: a hook probe, three git calls and more reply bytes.
+  Decide the fields first (pre_push.kind, gate.path, gate_passed.passed
+  at most), or confirm with claude-config that op:"hooks" alone is
+  enough.
+  **Layman:** The start-of-session summary could say whether this project's push check is wired up, at a small cost to every session start.
+  Kind: feature.
+  Source: claude-config joint review 2026-09-27 (A4), split from ANTS-5505 2026-10-21.
   Lanes: mcp.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
