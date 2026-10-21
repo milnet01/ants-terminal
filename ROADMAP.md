@@ -87543,6 +87543,11 @@ measured Ants adding about 5,250 tokens to every request.
   or rg --files as workspace_search does), and drop binary files before
   the size check so they are neither parsed nor reported. Spec
   ANTS-5734 § 2.5 states the walk rules, so the fix amends it.
+  Seen again 2026-10-21: trace symbol:rlErr on this repo returned 0
+  definitions (scanned.files 5000, files_parsed 6, walk_capped:true);
+  find_definition, which honours .gitignore, found 12 across 4 src/
+  files from 1594 files. ANTS-5755 (claude-config's report) is the same
+  defect and is linked as its duplicate; close both together.
   **Layman:** The code lookup tool stops wasting its file budget on archives and build leftovers, so it sees all of a big project's real code.
   Kind: fix.
   Source: in-session-2026-10-16 (first live trace call).
@@ -87592,6 +87597,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: claude-config feedback 2026-10-16.
   Lanes: mcp.
+  Duplicate-of: ANTS-5748.
 
 - ✅ [ANTS-5760] **roadmap_log op:replace_text replaces one string across every matching item body in one call.**
   Split from ANTS-5704: UT_Ants asked for it alongside the plan id, after
