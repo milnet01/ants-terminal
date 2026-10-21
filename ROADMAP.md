@@ -88019,6 +88019,13 @@ volume classes, and the tooling/documentation gaps the run exposed.
   them. Splitting § Categories, or giving each category its own file with
   the minting rules kept central, is the change that would make the next
   gate converge.
+  2026-10-21 — review-contract gate on 0cb0f9c5 converged in three loops
+  (c1899a72, 11a92193, c2e2ec87; log rows 7–9 in
+  docs/reviews/mcp-error-codes-review-log.md). Step 1 gained a tie-break
+  and now keys on a row pairing itself with a code; the intro no longer
+  implies a § N check. One question is open for the user: step 2 passes
+  symbol_not_found but fails target_not_found, though both verbs refuse
+  not_found for a missing file. Out-of-radius findings: ANTS-5803.
   **Layman:** The error-code reference sorts codes into sections whose stated meanings do not match where the codes actually sit, so nobody can tell which section a new one belongs in.
   Kind: doc-fix.
   Source: review-contract deferred tail, ANTS-4435 run 2026-08-28.
