@@ -9962,20 +9962,26 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject t;
                     t["name"] = "test_results";
                     t["description"] = QStringLiteral(
-                        "Record or read the most recent ctest run's summary. op=record "
-                        "takes {exit_code, output, started_at_ms?, finished_at_ms?, "
-                        "duration_ms?}, parses ctest output into {passed, failed, "
-                        "skipped, total, failing_tests:[{name, excerpt}]} and writes "
+                        "Record or read the most recent test run's summary. op=record "
+                        "takes {exit_code, output, runner?, started_at_ms?, finished_at_ms?, "
+                        "duration_ms?}, parses ctest, pytest, jest, vitest, cargo test or "
+                        "go test -v output into {runner, passed, failed, skipped, total, "
+                        "nothing_ran, failing_tests:[{name, excerpt}]} and writes "
                         "<root>/.audit_cache/tests.json. op=read (default) returns it; "
                         "detail=<name> returns one failing test's full block. Refusals: "
                         "not_cached, detail_not_found.");
                     t["detail"] = QStringLiteral(
-                        "Record or read the most recent ctest run's "
+                        "Record or read the most recent test run's "
                         "summary. op=record takes {exit_code, output, "
-                        "started_at_ms?, finished_at_ms?, duration_ms?} "
-                        "and parses ctest --output-on-failure into "
-                        "{passed, failed, skipped, total, failing_tests:"
-                        "[{name, excerpt}]}; writes "
+                        "runner?, started_at_ms?, finished_at_ms?, "
+                        "duration_ms?} and parses the output of ctest "
+                        "--output-on-failure, pytest, jest, vitest, cargo "
+                        "test or go test -v (ANTS-5503; `runner` names it, "
+                        "else it is recognised from the output) into "
+                        "{runner, passed, failed, skipped, total, "
+                        "nothing_ran, collected?, failing_tests:"
+                        "[{name, excerpt}]}; nothing_ran is true when no "
+                        "test ran. Writes "
                         "<root>/.audit_cache/tests.json atomically. "
                         "op=read (default) returns the cached envelope. "
                         "op=read with detail=<name> returns one failing "
@@ -9986,8 +9992,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "wasn't in failing_tests[]). Saves ~3-15 K "
                         "tokens per test cycle.");
                     t["selection_hint"] = QStringLiteral(
-                        "Use op=record after every `ctest "
-                        "--output-on-failure`, then op=read for "
+                        "Use op=record after every test run (ctest, "
+                        "pytest, jest, vitest, cargo, go -v), then op=read for "
                         "subsequent checks. Pass detail=<name> when you "
                         "need the full body of one failing test "
                         "without re-running the suite.");
@@ -10019,9 +10025,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"]        = "string";
                         p["description"] = QStringLiteral(
-                            "Full stdout+stderr of the ctest run "
+                            "Full stdout+stderr of the test run "
                             "(required for op=record).");
                         props["output"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["enum"]        = QJsonArray{"ctest", "pytest", "jest",
+                                                      "vitest", "cargo", "go"};
+                        p["description"] = QStringLiteral(
+                            "op=record: the runner that printed `output`. "
+                            "Omitted, it is recognised from the output.");
+                        props["runner"] = p;
                     }
                     {
                         QJsonObject p;
@@ -10079,14 +10095,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject t;
                     t["name"] = "focused_test";
                     t["description"] = QStringLiteral(
-                        "Run only the tests that exercise the changed files: maps "
-                        "`changed_files` (or git status) to ctest -R patterns and runs "
-                        "them against the existing build. Returns the test_results "
-                        "envelope {ok, passed, failed, skipped, total, failing_tests[]} "
-                        "plus selection, ctest_filter and mapping fields. An unmapped "
-                        "file or empty selection falls back to the full suite "
-                        "(downgraded_to_full). Refusals: no_project, no_build_dir, "
-                        "focused_test_in_flight, bad_args, ctest_missing, ctest_failed, "
+                        "Run only the tests that exercise the changed files, under "
+                        "ctest, pytest, jest, vitest, cargo or go (detected, or `runner`). "
+                        "Maps `changed_files` (or git status) to the tests to run. Returns "
+                        "the test_results envelope {ok, runner, passed, failed, skipped, "
+                        "total, nothing_ran, failing_tests[]} plus selection, selector and "
+                        "mapping fields. An unmapped file or empty selection falls back to "
+                        "the full suite (downgraded_to_full). Refusals: no_project, "
+                        "no_runner, no_build_dir, focused_test_in_flight, bad_args, "
+                        "ctest_missing, ctest_failed, runner_missing, runner_failed, "
                         "unrecognised_output. To check a test would CATCH a defect, use "
                         "mutation_probe.");
                     t["detail"] = QStringLiteral(
@@ -10102,7 +10119,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "{selection (map/heuristic/full), ctest_filter, "
                         "changed_files, mapped_files, unmapped_files, "
                         "ignored_files, selection_reason, build_dir, "
-                        "duration_ms}. Conservative: an unmapped source "
+                        "duration_ms}. ANTS-5503 — pytest, jest, vitest, "
+                        "cargo and go run the same way: the runner comes "
+                        "from `runner` or the project's marker files "
+                        "(reported as runner and runner_evidence); jest, "
+                        "vitest, cargo and go pick related tests "
+                        "themselves, pytest matches test file names; "
+                        "`selector` lists the narrowing arguments; "
+                        "ctest_filter and build_dir are ctest only. "
+                        "nothing_ran is true when no test ran. "
+                        "Conservative: an unmapped source "
                         "file or a 0-match selection falls back to the "
                         "full suite (sets downgraded_to_full) — it never "
                         "reports green from a run that matched no tests. "
@@ -10110,7 +10136,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "rebuild). Refusals: no_project, no_build_dir "
                         "(no configured build/ with CMakeCache.txt), "
                         "focused_test_in_flight, bad_args, ctest_missing, "
-                        "ctest_failed (timeout/crash), unrecognised_output. "
+                        "ctest_failed (timeout/crash), unrecognised_output; "
+                        "for the other runners no_runner (no marker, no "
+                        "`runner`), runner_missing (program would not "
+                        "start), runner_failed (timeout/crash). "
                         "ANTS-4472 — SIBLING VERB: this one answers \"do the "
                         "tests pass?\". `mutation_probe` answers the other "
                         "half, \"would they CATCH the defect?\" — it mutates "
@@ -10142,14 +10171,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     {
                         QJsonObject p;
+                        p["type"]        = "string";
+                        p["enum"]        = QJsonArray{"ctest", "pytest", "jest",
+                                                      "vitest", "cargo", "go"};
+                        p["description"] = QStringLiteral(
+                            "The test runner. Omitted, it is detected from the "
+                            "project's marker files (CMakeLists.txt first).");
+                        props["runner"] = p;
+                    }
+                    {
+                        QJsonObject p;
                         p["type"] = "array";
                         QJsonObject item; item["type"] = "string";
                         p["items"] = item;
                         p["description"] = QStringLiteral(
                             "Project-relative changed file paths. When "
                             "omitted, derived from git working-tree "
-                            "status. Mapped to ctest patterns via "
-                            "tests/coverage-map.json.");
+                            "status. Mapped to the tests each runner "
+                            "should run.");
                         props["changed_files"] = p;
                     }
                     {

@@ -708,6 +708,9 @@ add_library(ants_mcpcore_lib STATIC
     src/testrescache.cpp
     # ANTS-1302 — focused_test changed-files -> ctest-pattern resolver.
     src/focusedtest.cpp
+    # ANTS-5503 — runner detection, output parsing and commands for
+    # test_results and focused_test beyond ctest.
+    src/testrunners.cpp
     # ANTS-1720 — `fields=` MCP response projection (pure helper).
     src/mcpprojection.cpp
     # ANTS-4547/4550 — the wrapped-quotation matching rule (pure helper),
@@ -3288,6 +3291,10 @@ if(ANTS_TESTS)
                 # coverage against real ctest output (mcp_test_results above
                 # is wiring-only source-grep and never calls the parser).
                 tests/features/testrescache_parse/test_testrescache_parse.cpp
+                # ANTS-5503 — runner detection and parsing for pytest, jest,
+                # vitest, cargo and go, against captured real runs.
+                tests/features/testrunners_detect/test_testrunners_detect.cpp
+                tests/features/testrunners_parse/test_testrunners_parse.cpp
                 # ANTS-1303 find_definition + find_caller MCP tools.
                 tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp
                 # ANTS-1305 similar_code shape matcher.

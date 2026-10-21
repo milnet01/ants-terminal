@@ -1,0 +1,31 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.16, pytest-9.1.1, pluggy-1.6.0
+rootdir: /work/py
+collected 8 items
+
+test_more.py X                                                           [ 12%]
+test_sample.py .FsxE..                                                   [100%]
+
+==================================== ERRORS ====================================
+_________________________ ERROR at setup of test_error _________________________
+
+    @pytest.fixture
+    def broken():
+>       raise RuntimeError("fixture exploded")
+E       RuntimeError: fixture exploded
+
+conftest.py:4: RuntimeError
+=================================== FAILURES ===================================
+__________________________________ test_fail ___________________________________
+
+    def test_fail():
+        x = 3
+>       assert x == 4, "x should be four"
+E       AssertionError: x should be four
+E       assert 3 == 4
+
+test_sample.py:5: AssertionError
+=========================== short test summary info ============================
+FAILED test_sample.py::test_fail - AssertionError: x should be four
+ERROR test_sample.py::test_error - RuntimeError: fixture exploded
+==== 1 failed, 3 passed, 1 skipped, 1 xfailed, 1 xpassed, 1 error in 0.02s =====

@@ -197,35 +197,40 @@ ParsedTests parseCtestOutput(const QString &output) {
     }
     for (int i = 0; i < hits.size(); ++i) {
         if (!isFailureStatus(hits[i].token)) continue;
-        if (t.failingTests.size() >= kMaxFailures) {
-            t.failingTestsTruncated = true;
-            break;
-        }
         const int blockStart = hits[i].start;
         int blockEnd = summaryStart;
         if (i + 1 < hits.size() && hits[i + 1].start < blockEnd) {
             blockEnd = hits[i + 1].start;
         }
-        QString block = output.mid(blockStart, blockEnd - blockStart);
-        // Cap full body at 8000 chars (tail-truncate so the failure
-        // detail at the end of the block is preserved).
-        if (block.size() > kFullExcerptCap) {
-            block = block.right(kFullExcerptCap);
-        }
-        // Tail 20 lines of the block → excerpt
-        const QStringList allLines = block.split(QLatin1Char('\n'),
-                                                 Qt::KeepEmptyParts);
-        const int tailStart = std::max(0, static_cast<int>(allLines.size()) - 20);
-        const QStringList tail = allLines.mid(tailStart);
-
-        ParsedFailure pf;
-        pf.name        = hits[i].name;
-        pf.excerpt     = clampExcerpt(tail);
-        pf.fullExcerpt = block;
-        t.failingTests.append(pf);
+        if (!appendFailure(t, hits[i].name,
+                           output.mid(blockStart, blockEnd - blockStart)))
+            break;
     }
 
     return t;
+}
+
+bool appendFailure(ParsedTests &tests, const QString &name, QString block) {
+    if (tests.failingTests.size() >= kMaxFailures) {
+        tests.failingTestsTruncated = true;
+        return false;
+    }
+    // Cap full body at 8000 chars (tail-truncate so the failure
+    // detail at the end of the block is preserved).
+    if (block.size() > kFullExcerptCap) {
+        block = block.right(kFullExcerptCap);
+    }
+    // Tail 20 lines of the block → excerpt
+    const QStringList allLines = block.split(QLatin1Char('\n'),
+                                             Qt::KeepEmptyParts);
+    const int tailStart = std::max(0, static_cast<int>(allLines.size()) - 20);
+
+    ParsedFailure pf;
+    pf.name        = name;
+    pf.excerpt     = clampExcerpt(allLines.mid(tailStart));
+    pf.fullExcerpt = std::move(block);
+    tests.failingTests.append(pf);
+    return true;
 }
 
 bool recordTests(const QString &canonProject, ParsedTests &tests) {
@@ -300,6 +305,8 @@ QJsonObject toJsonOnDisk(const ParsedTests &tests) {
     if (tests.finishedAtMs > 0) obj["finished_at_ms"] = tests.finishedAtMs;
     if (tests.durationMs   >= 0) obj["duration_ms"]   = tests.durationMs;
     obj["output_byte_size"] = tests.outputByteSize;
+    obj["runner"]           = tests.runner;
+    if (tests.collected >= 0) obj["collected"] = tests.collected;
     return obj;
 }
 
@@ -314,6 +321,8 @@ QJsonObject toJsonWire(const ParsedTests &tests) {
         stripped.append(fo);
     }
     obj["failing_tests"] = stripped;
+    // ANTS-5503 — a run that executed nothing must not read as a clean one.
+    obj["nothing_ran"] = tests.total == 0;
     return obj;
 }
 
@@ -358,6 +367,9 @@ ParsedTests fromJson(const QJsonObject &obj, bool *okOut) {
     }
     t.outputByteSize = static_cast<qint64>(
         obj.value(QStringLiteral("output_byte_size")).toDouble(0));
+    // ANTS-5503 INV-8 — a record written before runners existed is ctest's.
+    t.runner = obj.value(QStringLiteral("runner")).toString(QStringLiteral("ctest"));
+    t.collected = obj.value(QStringLiteral("collected")).toInt(-1);
     t.recognised = true;
     if (okOut) *okOut = true;
     return t;

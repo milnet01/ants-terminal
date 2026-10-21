@@ -207,6 +207,11 @@ Listed only where behavior isn't obvious from the name.
 - `focusedtest` (Qt6::Core) — resolves the `focused_test` MCP tool:
   changed files → `ctest -R` patterns via `tests/coverage-map.json`, with
   a basename heuristic + conservative full-suite fallback. Spec ANTS-1302.
+- `testrunners` (Qt6::Core, `ants_mcpcore_lib`) — the test runners
+  `test_results` and `focused_test` understand beyond ctest: pytest, jest,
+  vitest, cargo and go. Detects a project's runner from its marker files,
+  parses each runner's text output into `TestResCache::ParsedTests`, and
+  builds `focused_test`'s command. Spawns nothing. Spec ANTS-5503.
 - `mcpprojection` (Qt6::Core) — `fields=` response projection for MCP
   read tools; `projectFields`, universal since ANTS-4524 (read the
   predicate for the current allowlist — it grows a verb at a time, and a

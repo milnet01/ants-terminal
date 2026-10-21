@@ -54,6 +54,11 @@ Resolution resolve(const QStringList &changedFiles, const CoverageMap &map);
 // usable stem.
 QString heuristicPattern(const QString &changedFile);
 
+// True when `file` matches one of a coverage map's `ignore` entries: a
+// suffix (one leading "*" stripped) or a path-segment prefix. Not a full
+// glob. ANTS-5503 applies the same rule to every runner.
+bool matchesIgnore(const QString &file, const QStringList &globs);
+
 // OR-join patterns into one ctest -R ERE: "(p1|p2|p3)". Single
 // pattern -> "(p1)". Empty list -> "".
 QString buildCtestRegex(const QStringList &patterns);

@@ -419,6 +419,8 @@
         "src/testauditengine.h",
         "src/testrescache.cpp",
         "src/testrescache.h",
+        "src/testrunners.cpp",
+        "src/testrunners.h",
         "src/verifyengine.cpp",
         "src/verifyengine.h"
       ]

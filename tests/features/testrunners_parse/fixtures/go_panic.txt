@@ -1,0 +1,21 @@
+=== RUN   TestOk
+--- PASS: TestOk (0.00s)
+=== RUN   TestBoom
+--- FAIL: TestBoom (0.00s)
+panic: assignment to entry in nil map [recovered, repanicked]
+
+goroutine 8 [running]:
+testing.tRunner.func1.2({0x6b7bb0, 0x6eeef0})
+	/usr/lib64/go/1.27/src/testing/testing.go:2125 +0x232
+testing.tRunner.func1()
+	/usr/lib64/go/1.27/src/testing/testing.go:2128 +0x329
+panic({0x6b7bb0?, 0x6eeef0?})
+	/usr/lib64/go/1.27/src/runtime/panic.go:859 +0x125
+example.com/gp.TestBoom(0x19f5f6172488?)
+	/work/gopanic/p_test.go:4 +0x28
+testing.tRunner(0x19f5f6172488, 0x6d5648)
+	/usr/lib64/go/1.27/src/testing/testing.go:2195 +0xea
+created by testing.(*T).Run in goroutine 1
+	/usr/lib64/go/1.27/src/testing/testing.go:2260 +0x4d4
+FAIL	example.com/gp	0.004s
+FAIL

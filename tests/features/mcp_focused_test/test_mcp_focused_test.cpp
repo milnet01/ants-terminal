@@ -7,6 +7,13 @@
 #include "../../_support/srcgrep.h"
 
 #include "focusedtest.h"
+#include "remotecontrol.h"
+#include "testrunners.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSet>
 
 #include <QByteArray>
 #include <QDir>
@@ -304,4 +311,214 @@ TEST(McpFocusedTest, Ants5102PatternsAreCheckedForCMakeRegex) {
         const auto m = load(good);
         EXPECT_TRUE(m.valid) << good << " was refused: " << m.error.toStdString();
     }
+}
+
+// ----- ANTS-5503 — runners other than ctest (INV-9..13 of
+// docs/specs/ANTS-5503-multi-runner-tests.md).
+
+namespace {
+
+namespace TR = TestRunners;
+
+TR::Command build(TR::Runner r, const QString &root, const QStringList &changed,
+                  const FT::CoverageMap &map = {}) {
+    return TR::buildCommand(r, root, changed, map);
+}
+
+QStringList sl(std::initializer_list<const char *> xs) {
+    QStringList out;
+    for (const char *x : xs) out << QString::fromLatin1(x);
+    return out;
+}
+
+// Puts `dir` alone on PATH for the scope, so a stub stands in for a runner.
+struct PathGuard {
+    QByteArray saved = qgetenv("PATH");
+    explicit PathGuard(const QString &dir) { qputenv("PATH", dir.toLocal8Bit()); }
+    ~PathGuard() { qputenv("PATH", saved); }
+};
+
+void writeStub(const QString &dir, const char *program, const QByteArray &script) {
+    const QString path = dir + QLatin1Char('/') + QString::fromLatin1(program);
+    writeFile(path, "#!/bin/sh\n" + script);
+    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+}
+
+QJsonObject callFocused(const QString &root, QJsonObject req) {
+    RemoteControl rc(nullptr);
+    req[QStringLiteral("caller_cwd")] = root;
+    return rc.cmdFocusedTest(req).object();
+}
+
+std::string dump(const QJsonObject &o) { return QJsonDocument(o).toJson().toStdString(); }
+
+}  // namespace
+
+// INV-9 — each runner's narrowed and full command, as § 2.4's table says.
+TEST(McpFocusedTest, Ants5503Inv9CommandPerRunner) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    const QString root = td.path();
+    writeFile(root + "/src/foo.py", "");
+    writeFile(root + "/tests/test_foo.py", "");
+    writeFile(root + "/Cargo.toml", "[package]\nname = \"top\"\n");
+    writeFile(root + "/crates/bee/Cargo.toml", "[package]\nname = \"bee\"\n");
+
+    TR::Command c = build(TR::Runner::Pytest, root, {"src/foo.py"});
+    EXPECT_EQ(c.program, "python3");
+    EXPECT_EQ(c.args, sl({"-m", "pytest", "-rfE", "./tests/test_foo.py"}));
+    EXPECT_EQ(c.fullArgs, sl({"-m", "pytest", "-rfE"}));
+    EXPECT_EQ(c.selection, "heuristic");
+    EXPECT_EQ(c.selector, sl({"./tests/test_foo.py"}));
+    c = build(TR::Runner::Pytest, root, {"tests/test_foo.py"});
+    EXPECT_EQ(c.args, sl({"-m", "pytest", "-rfE", "./tests/test_foo.py"}));
+    c = build(TR::Runner::Pytest, root, {"src/foo.py", "README.md"});
+    EXPECT_EQ(c.selection, "full");
+    EXPECT_EQ(c.args, c.fullArgs);
+    EXPECT_TRUE(c.selector.isEmpty());
+
+    c = build(TR::Runner::Jest, root, {"src/a.js"});
+    EXPECT_EQ(c.program, "npx");
+    EXPECT_EQ(c.args, sl({"--no-install", "jest", "--ci", "--findRelatedTests", "./src/a.js"}));
+    EXPECT_EQ(c.fullArgs, sl({"--no-install", "jest", "--ci"}));
+    EXPECT_EQ(c.selection, "related");
+
+    c = build(TR::Runner::Vitest, root, {"src/a.js"});
+    EXPECT_EQ(c.args, sl({"--no-install", "vitest", "related", "--run", "./src/a.js"}));
+    EXPECT_EQ(c.fullArgs, sl({"--no-install", "vitest", "run"}));
+
+    c = build(TR::Runner::Cargo, root, {"crates/bee/src/lib.rs", "src/main.rs"});
+    EXPECT_EQ(c.program, "cargo");
+    EXPECT_EQ(c.args, sl({"test", "--no-fail-fast", "-p", "bee", "-p", "top"}));
+    EXPECT_EQ(c.fullArgs, sl({"test", "--no-fail-fast"}));
+    EXPECT_EQ(c.selection, "related");
+
+    c = build(TR::Runner::Go, root, {"pkg/a/a.go", "pkg/a/a_test.go", "cmd/b.go"});
+    EXPECT_EQ(c.program, "go");
+    EXPECT_EQ(c.args, sl({"test", "-v", "./pkg/a", "./cmd"}));
+    EXPECT_EQ(c.fullArgs, sl({"test", "-v", "./..."}));
+    c = build(TR::Runner::Go, root, {"pkg/a/a.go", "go.mod"});
+    EXPECT_EQ(c.selection, "full");
+    EXPECT_EQ(c.args, c.fullArgs);
+}
+
+// § 2.4 — a cargo file under no package, and a source with no pytest test,
+// both run full.
+TEST(McpFocusedTest, Ants5503UnplaceableChangeRunsFull) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    writeFile(td.path() + "/Cargo.toml", "[workspace]\nmembers = []\n");
+    writeFile(td.path() + "/lonely.py", "");
+    EXPECT_EQ(build(TR::Runner::Cargo, td.path(), {"x.rs"}).selection, "full");
+    const TR::Command c = build(TR::Runner::Pytest, td.path(), {"lonely.py"});
+    EXPECT_EQ(c.selection, "full");
+    EXPECT_TRUE(c.unmappedFiles.contains("lonely.py"));
+}
+
+// INV-10 — a changed entry reaches the argument list only as ./<path> under
+// the root; one outside the root is dropped into ignored_files.
+TEST(McpFocusedTest, Ants5503Inv10EntriesAreRootRelativePaths) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    for (TR::Runner r : {TR::Runner::Jest, TR::Runner::Pytest}) {
+        const TR::Command c =
+            build(r, td.path(), {"--config=x.js", "../outside.py", "/etc/passwd"});
+        EXPECT_FALSE(c.args.contains("--config=x.js")) << c.args.join(' ').toStdString();
+        for (const QString &a : c.args)
+            EXPECT_FALSE(a.contains("outside") || a.contains("passwd")) << a.toStdString();
+        EXPECT_TRUE(c.ignoredFiles.contains("../outside.py"));
+        EXPECT_TRUE(c.ignoredFiles.contains("/etc/passwd"));
+    }
+    const TR::Command j = build(TR::Runner::Jest, td.path(), {"--config=x.js", "../outside.py"});
+    EXPECT_TRUE(j.args.contains("./--config=x.js"));
+    // A valid map's ignore globs apply to every runner.
+    const TR::Command m = build(TR::Runner::Jest, td.path(), {"README.md", "src/a.js"},
+                                mapWith({}, {}, {".md"}));
+    EXPECT_TRUE(m.ignoredFiles.contains("README.md"));
+    EXPECT_EQ(m.selector, sl({"./src/a.js"}));
+}
+
+// INV-11 — a narrowed run reporting no test is re-run full, for jest too.
+TEST(McpFocusedTest, Ants5503Inv11ZeroMatchNetEveryRunner) {
+    QTemporaryDir td, bin;
+    ASSERT_TRUE(td.isValid() && bin.isValid());
+    writeFile(td.path() + "/package.json", R"({"devDependencies":{"jest":"^30"}})");
+    writeStub(bin.path(), "npx",
+              "case \"$*\" in *--findRelatedTests*)\n"
+              "  echo 'No tests found, exiting with code 1'; exit 1;;\nesac\n"
+              "echo 'Tests:       2 passed, 2 total'\necho 'Time:        0.1 s'\n");
+    PathGuard pg(bin.path());
+    QJsonObject req;
+    req["changed_files"] = QJsonArray{"src/a.js"};
+    const QJsonObject out = callFocused(td.path(), req);
+    ASSERT_TRUE(out.value("ok").toBool()) << dump(out);
+    EXPECT_EQ(out.value("runner").toString(), "jest");
+    EXPECT_EQ(out.value("runner_evidence").toString(), "package.json");
+    EXPECT_TRUE(out.value("downgraded_to_full").toBool()) << dump(out);
+    EXPECT_EQ(out.value("selection").toString(), "full");
+    EXPECT_EQ(out.value("passed").toInt(), 2);
+    EXPECT_EQ(out.value("nothing_ran"), QJsonValue(false));
+    EXPECT_TRUE(out.value("selector").toArray().isEmpty());
+    EXPECT_FALSE(out.contains("ctest_filter"));
+    EXPECT_FALSE(out.contains("build_dir"));
+}
+
+// INV-12 — no marker refuses no_runner; a runner that will not start refuses
+// runner_missing; one that crashes refuses runner_failed. ctest keeps its codes.
+TEST(McpFocusedTest, Ants5503Inv12Refusals) {
+    QTemporaryDir empty, bin;
+    ASSERT_TRUE(empty.isValid() && bin.isValid());
+    EXPECT_EQ(callFocused(empty.path(), {}).value("code").toString(), "no_runner");
+
+    QJsonObject goReq;
+    goReq["runner"] = "go";
+    goReq["changed_files"] = QJsonArray{"a.go"};
+    {
+        PathGuard pg(bin.path());  // holds no go
+        const QJsonObject out = callFocused(empty.path(), goReq);
+        EXPECT_EQ(out.value("code").toString(), "runner_missing") << dump(out);
+    }
+    writeStub(bin.path(), "go", "kill -9 $$\n");
+    {
+        PathGuard pg(bin.path());
+        const QJsonObject out = callFocused(empty.path(), goReq);
+        EXPECT_EQ(out.value("code").toString(), "runner_failed") << dump(out);
+    }
+    QJsonObject bad;
+    bad["runner"] = "mocha";
+    EXPECT_EQ(callFocused(empty.path(), bad).value("code").toString(), "bad_args");
+
+    writeFile(empty.path() + "/CMakeLists.txt", "project(x)\n");
+    EXPECT_EQ(callFocused(empty.path(), {}).value("code").toString(), "no_build_dir");
+}
+
+// INV-13 — on a ctest project the envelope keeps ANTS-1302's fields and adds
+// only runner, runner_evidence, selector and nothing_ran.
+TEST(McpFocusedTest, Ants5503Inv13CtestEnvelopeKeys) {
+    QTemporaryDir td, bin;
+    ASSERT_TRUE(td.isValid() && bin.isValid());
+    writeFile(td.path() + "/CMakeLists.txt", "project(x)\n");
+    writeFile(td.path() + "/build/CMakeCache.txt", "");
+    writeStub(bin.path(), "ctest",
+              "echo '1/1 Test #1: foo.Bar ........   Passed    0.01 sec'\n"
+              "echo '100% tests passed out of 1'\n");
+    PathGuard pg(bin.path());
+    QJsonObject req;
+    req["changed_files"] = QJsonArray{"src/foo.cpp"};
+    const QJsonObject out = callFocused(td.path(), req);
+    ASSERT_TRUE(out.value("ok").toBool()) << dump(out);
+    const QStringList keys = out.keys();
+    const QSet<QString> got(keys.begin(), keys.end());
+    const QSet<QString> want{
+        // ANTS-1302 § 3.5, with the toJsonWire base it names.
+        "ok", "passed", "failed", "skipped", "total", "failing_tests", "selection",
+        "ctest_filter", "changed_files", "mapped_files", "unmapped_files",
+        "ignored_files", "selection_reason", "duration_ms", "build_dir",
+        "exit_code", "schema_version", "recorded_at_ms", "output_byte_size",
+        "failing_tests_truncated",
+        // ANTS-5503.
+        "runner", "runner_evidence", "selector", "nothing_ran"};
+    EXPECT_EQ(got, want) << dump(out);
+    EXPECT_EQ(out.value("runner").toString(), "ctest");
+    EXPECT_EQ(out.value("selector").toArray(), (QJsonArray{"-R", "(foo)"}));
 }

@@ -36,7 +36,15 @@ struct ParsedTests {
     qint64 outputByteSize = 0;
     qint64 recordedAtMs   = 0;
     bool   recognised    = false;  // false = neither summary nor per-test line matched
+    // ANTS-5503 — which runner printed the output; a record with none is ctest.
+    QString runner = QStringLiteral("ctest");
+    int     collected = -1;   // -1 = the runner printed no collected count
 };
+
+// ANTS-5503 — append one failing test under the § 3.2 caps: the block is
+// tail-truncated to 8000 chars and the excerpt is its last 20 lines. Past 50
+// entries it sets failingTestsTruncated and returns false.
+bool appendFailure(ParsedTests &tests, const QString &name, QString block);
 
 // `<root>/.audit_cache/tests.json`. Empty when canonProject empty.
 QString cachePath(const QString &canonProject);

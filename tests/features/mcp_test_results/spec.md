@@ -39,3 +39,15 @@ new `SRC_TESTRESCACHE_H_PATH` compile def.
   cross-distro variants out of scope).
 - Per-line / per-excerpt cap correctness — bounded by the regex
   + clampExcerpt helper, exercised at runtime not at build-time.
+
+## ANTS-5503 — runners beyond ctest
+
+From `docs/specs/ANTS-5503-multi-runner-tests.md`, through `cmdTestResults`
+itself on a scratch root:
+
+- **INV-6**: every reply carrying counts has `nothing_ran`, true exactly
+  when `total` is 0.
+- **INV-8**: `op:"record"` with no `runner` stores the sniffed runner; with
+  `runner` it parses as that runner and refuses output that is not its;
+  an unknown `runner`, or `runner` on `op:"read"`, refuses `bad_args`. A
+  record with no `runner` key reads back as `ctest`.

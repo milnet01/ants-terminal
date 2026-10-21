@@ -85768,7 +85768,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5503] **test_results and focused_test parse and map pytest, jest, vitest, cargo and go, not ctest alone.**
+- ✅ [ANTS-5503] **test_results and focused_test parse and map pytest, jest, vitest, cargo and go, not ctest alone.**
   verify_changes already detects those runners (src/verifyengine.cpp)
   and mutation_probe already parses pytest/jest/vitest output. Return
   collected, passed, failed, skipped and durations. Build after
@@ -85777,6 +85777,12 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   after review-contract capped at 2 loops (calm cap; 20 findings fixed,
   1 dismissed). Before building: go, jest and vitest must be installed to
   capture their fixtures (spec § 12); their output shapes are unmeasured.
+  Shipped 2026-10-21: src/testrunners.{h,cpp}; both verbs take `runner`
+  and return runner and nothing_ran. Fixtures captured from pytest
+  9.1.1, cargo 1.99.0, go 1.27.2, jest 30.5.2 and vitest 5.0.5. The spec
+  folds back four shapes the build measured (go recognised by `=== RUN
+  `, a package-level go failure, `todo` as skipped, vitest's no-test
+  line).
   **Layman:** The test tools only understand this project's test runner; other projects' tests are invisible to them.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A2).

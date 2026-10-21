@@ -1,0 +1,23 @@
+FAIL ./math.test.js
+  ● math › breaks
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 4
+    Received: 3
+
+      2 | describe('math', () => {
+      3 |   test('adds', () => { expect(add(1, 2)).toBe(3); });
+    > 4 |   test('breaks', () => { expect(add(1, 2)).toBe(4); });
+        |                                            ^
+      5 |   test.skip('skipped one', () => {});
+      6 |   test.todo('later');
+      7 | });
+
+      at Object.toBe (math.test.js:4:44)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 skipped, 1 todo, 1 passed, 4 total
+Snapshots:   0 total
+Time:        0.337 s
+Ran all test suites.

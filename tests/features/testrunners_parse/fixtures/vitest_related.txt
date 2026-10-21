@@ -1,0 +1,35 @@
+
+ RUN  v5.0.5 /work/js/vit
+
+ ❯ math.test.js (4 tests | 1 failed | 1 skipped | 1 todo) 9ms
+   ❯ math (4)
+     × breaks 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  math.test.js > math > breaks
+AssertionError: expected 3 to be 4 // Object.is equality
+
+- Expected
++ Received
+
+- 4
++ 3
+
+ ❯ math.test.js:5:44
+      3| describe('math', () => {
+      4|   test('adds', () => { expect(add(1, 2)).toBe(3); });
+      5|   test('breaks', () => { expect(add(1, 2)).toBe(4); });
+       |                                            ^
+      6|   test.skip('skipped one', () => {});
+      7|   test.todo('later');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+   Affected  1 of 1 test files (related to math.js)
+      Tests  1 failed | 1 passed | 1 skipped | 1 todo (4)
+   Start at  22:10:59
+   Duration  198ms (import 40%, tests 35%, worker 20%, transform 5%, environment 1%)
+

@@ -1,0 +1,56 @@
+   Compiling fxcrate v0.1.0 (/work/cargo)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.38s
+     Running unittests src/lib.rs (/work/cargo-target/debug/deps/fxcrate-75e136a5bf82a77e)
+
+running 3 tests
+test tests::slow ... ignored
+test tests::adds ... ok
+test tests::breaks ... FAILED
+
+failures:
+
+---- tests::breaks stdout ----
+
+thread 'tests::breaks' (3503388) panicked at src/lib.rs:6:27:
+assertion `left == right` failed: math is off
+  left: 3
+ right: 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::breaks
+
+test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+     Running tests/integration.rs (/work/cargo-target/debug/deps/integration-14cd8f90f42ce443)
+
+running 2 tests
+test int_fail ... FAILED
+test int_pass ... ok
+
+failures:
+
+---- int_fail stdout ----
+
+thread 'int_fail' (3503390) panicked at tests/integration.rs:2:25:
+integration went wrong
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    int_fail
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test integration`
+   Doc-tests fxcrate
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 2 targets failed:
+    `--lib`
+    `--test integration`

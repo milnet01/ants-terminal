@@ -1,0 +1,7 @@
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+No files found in /work/js/jest.
+Make sure Jest's configuration does not exclude this directory.
+To set up Jest, make sure a package.json file exists.
+Jest Documentation: https://jestjs.io/docs/configuration
+Pattern: ./package.json - 0 matches

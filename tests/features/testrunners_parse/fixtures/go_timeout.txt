@@ -1,0 +1,38 @@
+=== RUN   TestOk
+--- PASS: TestOk (0.00s)
+=== RUN   TestSlow
+panic: test timed out after 1s
+	running tests:
+		TestSlow (1s)
+
+goroutine 17 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/lib64/go/1.27/src/testing/testing.go:2961 +0x34a
+created by time.goFunc
+	/usr/lib64/go/1.27/src/time/sleep.go:182 +0x2d
+
+goroutine 1 [chan receive]:
+testing.(*T).Run(0xcc5d94c8008, {0x554bc8?, 0xcc5d948caa0?}, 0x6d5660)
+	/usr/lib64/go/1.27/src/testing/testing.go:2268 +0x4f2
+testing.runTests.func1(0xcc5d94c8008)
+	/usr/lib64/go/1.27/src/testing/testing.go:2744 +0x37
+testing.tRunner(0xcc5d94c8008, 0xcc5d948cbc8)
+	/usr/lib64/go/1.27/src/testing/testing.go:2195 +0xea
+testing.runTests({0x556783, 0xe}, {0x556783, 0xe}, 0xcc5d940a0c0, {0x6f0950, 0x2, 0x2}, {0xc2ae6504063e1be8, 0x3b9cf389, ...})
+	/usr/lib64/go/1.27/src/testing/testing.go:2742 +0x510
+testing.(*M).Run(0xcc5d949c1e0)
+	/usr/lib64/go/1.27/src/testing/testing.go:2602 +0x6af
+main.main()
+	_testmain.go:48 +0x9b
+
+goroutine 8 [sleep]:
+time.Sleep(0x12a05f200)
+	/usr/lib64/go/1.27/src/runtime/time.go:368 +0x165
+example.com/gt.TestSlow(0xcc5d94c8488?)
+	/work/gotimeout/t_test.go:4 +0x1d
+testing.tRunner(0xcc5d94c8488, 0x6d5660)
+	/usr/lib64/go/1.27/src/testing/testing.go:2195 +0xea
+created by testing.(*T).Run in goroutine 1
+	/usr/lib64/go/1.27/src/testing/testing.go:2260 +0x4d4
+FAIL	example.com/gt	1.005s
+FAIL

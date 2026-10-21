@@ -10,6 +10,14 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
+
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
@@ -233,4 +241,112 @@ TEST(McpTestResults, WiringContract) {
            "INV-12",
            "Token-cost ledger must carry "
            "{QStringLiteral(\"test_results\"), {800, 3000}}");
+}
+
+// ----- ANTS-5503 — runners other than ctest (INV-6, INV-8 of
+// docs/specs/ANTS-5503-multi-runner-tests.md), through the verb itself.
+
+namespace {
+
+QString runnerFixture(const char *name) {
+#ifdef ANTS_SOURCE_DIR
+    QFile f(QStringLiteral(ANTS_SOURCE_DIR "/tests/features/testrunners_parse/fixtures/")
+            + QString::fromLatin1(name) + QStringLiteral(".txt"));
+    if (f.open(QIODevice::ReadOnly)) return QString::fromUtf8(f.readAll());
+#endif
+    Q_UNUSED(name);
+    return {};
+}
+
+const char *kPassingCtest = R"(Test project /build
+1/1 Test #1: Foo.Bar ........   Passed    0.01 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   0.01 sec
+)";
+
+QJsonObject callTestResults(RemoteControl &rc, const QString &root, QJsonObject req) {
+    req[QStringLiteral("caller_cwd")] = root;
+    return rc.cmdTestResults(req).object();
+}
+
+QJsonObject recordReq(const QString &output, const char *runner = nullptr) {
+    QJsonObject r;
+    r[QStringLiteral("op")]        = QStringLiteral("record");
+    r[QStringLiteral("exit_code")] = 1;
+    r[QStringLiteral("output")]    = output;
+    if (runner) r[QStringLiteral("runner")] = QString::fromLatin1(runner);
+    return r;
+}
+
+std::string dump(const QJsonObject &o) { return QJsonDocument(o).toJson().toStdString(); }
+
+}  // namespace
+
+// INV-6 — nothing_ran is true exactly when total is 0, on record and on read.
+TEST(McpTestResults, Ants5503Inv6NothingRan) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    RemoteControl rc(nullptr);
+    QJsonObject out = callTestResults(rc, td.path(), recordReq(runnerFixture("pytest_none")));
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump(out);
+    EXPECT_EQ(out.value(QStringLiteral("nothing_ran")), QJsonValue(true)) << dump(out);
+    out = callTestResults(rc, td.path(), QJsonObject{});
+    EXPECT_EQ(out.value(QStringLiteral("nothing_ran")), QJsonValue(true)) << dump(out);
+
+    out = callTestResults(rc, td.path(), recordReq(QString::fromUtf8(kPassingCtest)));
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump(out);
+    EXPECT_EQ(out.value(QStringLiteral("nothing_ran")), QJsonValue(false)) << dump(out);
+    EXPECT_EQ(out.value(QStringLiteral("runner")).toString(), QStringLiteral("ctest"));
+}
+
+// INV-8 — sniffed runner stored; an explicit runner used; unknown refused.
+TEST(McpTestResults, Ants5503Inv8RunnerArgument) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    RemoteControl rc(nullptr);
+    QJsonObject out = callTestResults(rc, td.path(), recordReq(runnerFixture("cargo")));
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump(out);
+    EXPECT_EQ(out.value(QStringLiteral("runner")).toString(), QStringLiteral("cargo"));
+    EXPECT_EQ(out.value(QStringLiteral("failed")).toInt(), 2);
+    out = callTestResults(rc, td.path(), QJsonObject{});
+    EXPECT_EQ(out.value(QStringLiteral("runner")).toString(), QStringLiteral("cargo")) << dump(out);
+
+    out = callTestResults(rc, td.path(), recordReq(runnerFixture("go"), "go"));
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump(out);
+    EXPECT_EQ(out.value(QStringLiteral("runner")).toString(), QStringLiteral("go"));
+
+    out = callTestResults(rc, td.path(), recordReq(runnerFixture("go"), "mocha"));
+    EXPECT_EQ(out.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args")) << dump(out);
+    // Output that is not the named runner's is refused, not read as zeros.
+    out = callTestResults(rc, td.path(), recordReq(runnerFixture("jest"), "cargo"));
+    EXPECT_EQ(out.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args")) << dump(out);
+    // Output no runner recognises names the six formats.
+    out = callTestResults(rc, td.path(), recordReq(QStringLiteral("hello\n")));
+    EXPECT_EQ(out.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+    EXPECT_TRUE(out.value(QStringLiteral("error")).toString().contains(QStringLiteral("vitest")))
+        << dump(out);
+
+    QJsonObject readWithRunner;
+    readWithRunner[QStringLiteral("runner")] = QStringLiteral("go");
+    out = callTestResults(rc, td.path(), readWithRunner);
+    EXPECT_EQ(out.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args")) << dump(out);
+}
+
+// INV-8 — a record written before runners existed reads back as ctest.
+TEST(McpTestResults, Ants5503Inv8OldRecordIsCtest) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    ASSERT_TRUE(QDir().mkpath(td.path() + QStringLiteral("/.audit_cache")));
+    QFile f(td.path() + QStringLiteral("/.audit_cache/tests.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(R"({"schema_version":1,"exit_code":0,"passed":1,"failed":0,"skipped":0,)"
+            R"("total":1,"failing_tests":[]})");
+    f.close();
+    RemoteControl rc(nullptr);
+    const QJsonObject out = callTestResults(rc, td.path(), QJsonObject{});
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump(out);
+    EXPECT_EQ(out.value(QStringLiteral("runner")).toString(), QStringLiteral("ctest"));
+    EXPECT_EQ(out.value(QStringLiteral("nothing_ran")), QJsonValue(false));
 }

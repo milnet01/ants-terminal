@@ -22,6 +22,8 @@ void addPatterns(QStringList &into, const QStringList &more) {
     }
 }
 
+}  // namespace
+
 // Limited glob support (ANTS-1775): a file matches an ignore entry if
 //   (a) it ends with the entry as a suffix — a single leading "*" is
 //       stripped so "*.md" -> ".md", and a bare ".md" / "config.cpp"
@@ -48,6 +50,8 @@ bool matchesIgnore(const QString &file, const QStringList &globs) {
     }
     return false;
 }
+
+namespace {
 
 bool isSourceLike(const QString &file) {
     static const QStringList kExts = {

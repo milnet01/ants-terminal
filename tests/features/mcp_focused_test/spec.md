@@ -52,8 +52,25 @@ constraint as `verify_changes` / the other run-a-subprocess tools).
   of surfacing as a spurious `-32000`; source-scraped in `remotecontrol.cpp`
   (`ANTS-3449` anchor + `idealThreadCount`).
 
+## ANTS-5503 — runners beyond ctest
+
+From `docs/specs/ANTS-5503-multi-runner-tests.md`:
+
+- **INV-9**: `TestRunners::buildCommand` returns § 2.4's command for each
+  runner, narrowed and full.
+- **INV-10**: a changed entry reaches the argument list only as a `./`
+  path under the root; one outside it goes to `ignored_files`.
+- **INV-11**: a narrowed run reporting no test re-runs full, for jest too
+  (a stub `npx` on PATH).
+- **INV-12**: `no_runner`, `runner_missing` and `runner_failed` fire as
+  named; ctest keeps `no_build_dir`.
+- **INV-13**: on a ctest project (a stub `ctest` on PATH) the envelope is
+  ANTS-1302's fields plus `runner`, `runner_evidence`, `selector` and
+  `nothing_ran`.
+
+INV-11 to INV-13 call `cmdFocusedTest` itself, with a stub runner first on
+PATH.
+
 ## Out of scope
 
-Running ctest end-to-end (needs a live build + MainWindow). The
-0-match safety net and ctest parsing are covered by `cmdFocusedTest`
-review + the reused `TestResCache::parseCtestOutput` tests.
+Running a real ctest end-to-end (needs a live build).

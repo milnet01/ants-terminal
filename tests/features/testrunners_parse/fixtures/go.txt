@@ -1,0 +1,22 @@
+=== RUN   TestPass
+--- PASS: TestPass (0.00s)
+=== RUN   TestFail
+    fx_test.go:4: want 4, got 3
+--- FAIL: TestFail (0.00s)
+=== RUN   TestSkip
+    fx_test.go:5: not today
+--- SKIP: TestSkip (0.00s)
+=== RUN   TestParent
+=== RUN   TestParent/ok_child
+=== RUN   TestParent/bad_child
+    fx_test.go:8: child broke
+--- FAIL: TestParent (0.00s)
+    --- PASS: TestParent/ok_child (0.00s)
+    --- FAIL: TestParent/bad_child (0.00s)
+FAIL
+FAIL	example.com/fx	0.002s
+=== RUN   TestSubPass
+--- PASS: TestSubPass (0.00s)
+PASS
+ok  	example.com/fx/sub	0.002s
+FAIL

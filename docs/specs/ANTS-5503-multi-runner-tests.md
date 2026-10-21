@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-5503 — Teach `test_results` and `focused_test` pytest, jest, vitest, cargo and go
 
-**Status:** accepted (2026-10-21).
+**Status:** shipped (2026-10-21).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5503 (claude-config joint review 2026-09-27, A2).
 **Pairs with:** ANTS-1300 (`test_results`), ANTS-1302 (`focused_test`).
@@ -48,7 +48,8 @@ What is missing today:
 
 ### 2.1 A shared runner library
 
-New `src/testrunners.{h,cpp}`, Qt6::Core only, in `ants_core_lib`:
+New `src/testrunners.{h,cpp}`, Qt6::Core only, in `ants_mcpcore_lib` beside
+`src/testrescache.cpp`:
 
 ```cpp
 namespace TestRunners {
@@ -71,6 +72,12 @@ std::optional<Runner> sniff(const QString &output);
 // § 2.3. Pure. Fills the same caps ParsedTests carries for ctest.
 TestResCache::ParsedTests parse(Runner r, const QString &output);
 
+// § 2.4. The program, narrowed and full argument lists, selector and file
+// lists focused_test needs for a runner other than ctest.
+Command buildCommand(Runner r, const QString &rootCanonical,
+                     const QStringList &changedFiles,
+                     const FocusedTest::CoverageMap &map);
+
 }  // namespace TestRunners
 ```
 
@@ -82,6 +89,9 @@ int     collected = -1;   // -1 = the runner printed no collected count
 ```
 
 `parse(Runner::Ctest, …)` is `TestResCache::parseCtestOutput`, unchanged.
+Every runner's failures go through `TestResCache::appendFailure`, which holds
+the excerpt caps. `FocusedTest::matchesIgnore` is made public, so every
+runner applies a coverage map's `ignore` globs by the same rule.
 
 ### 2.2 Detection
 
@@ -112,15 +122,19 @@ whitespace:
 |--------|---------------|-------------|
 | pytest | the closing summary line: comma-separated `<n> <word>` items, or `no tests ran`, then `in <t>s`, optionally wrapped in `=` rules (`-q` drops them) | that line's `passed`, `failed`, `error(s)`, `skipped`, `xfailed`, `xpassed`; other words, such as `deselected` and `warning(s)`, are not counted |
 | jest | `Tests:` … `<n> total`, or `No tests found` | the `Tests:` line |
-| vitest | `Tests` … `(<n>)` | the `Tests` line |
+| vitest | `Tests` … `(<n>)`, or `No test files found` | the `Tests` line |
 | cargo | `test result: (ok\|FAILED). <n> passed` | the sum over every `test result:` line |
-| go | `--- (PASS\|FAIL\|SKIP): ` or `=== RUN ` | one count per un-indented `--- ` line |
+| go | `=== RUN `, which only `-v` prints | one count per un-indented `--- ` line |
 
 Count mapping: pytest `error(s)` count as failed, `xfailed` as skipped and
-`xpassed` as passed. cargo `ignored` counts as skipped. `total` is
+`xpassed` as passed. cargo `ignored` counts as skipped. jest's and vitest's `todo` count as
+skipped, so `total` matches the runner's own total. `total` is
 `passed + failed + skipped` for every runner but ctest, which keeps its own
 summary. Go counts top-level tests only; an indented `--- ` line is a
-subtest, and a failing subtest already fails its parent.
+subtest, and a failing subtest already fails its parent. A `FAIL <pkg>` line
+with no failing test since the previous package line counts as one failure
+named after the package: a timed-out test, a panic outside a test and a
+build failure print no `--- FAIL:` line of their own.
 
 Failing test names come from pytest's `FAILED <id>` and `ERROR <id>` lines,
 jest's `● <suite> › <name>` headers, vitest's `FAIL <file> > <name>` lines,
@@ -135,8 +149,8 @@ package lines (`ok`/`FAIL <pkg> <t>s`). A caller-supplied `duration_ms`
 still wins.
 
 `recognised` is false when no recognising line matched. Go output without
-`-v` (package lines only) is not recognised, nor is a go run that ran no
-test.
+`-v` is not recognised, even when a failing run prints `--- FAIL:` lines,
+nor is a go run that ran no test.
 
 ### 2.4 Choosing the tests to run (`focused_test`)
 
@@ -185,7 +199,9 @@ unknown name refuses `bad_args`.
   naming the six formats. `runner` on `op:"read"` refuses `bad_args`, as
   `detail` does on `op:"record"`.
 - **`focused_test`**: `runner` given → use it; absent → `detect`. Nothing
-  detected refuses `no_runner`.
+  detected refuses `no_runner`. A non-ctest `runner_failed` or
+  `unrecognised_output` refusal carries `output_tail`, the last 2 000
+  characters the run printed.
 
 Envelope additions, on every `test_results` reply that carries counts and
 on `focused_test`:
@@ -267,10 +283,10 @@ additions (INV-13).
   dropped.
 
 - **INV-5** — Go counts un-indented `--- ` lines only, and go output with
-  no `--- ` or `=== RUN ` line is not recognised.
+  no `=== RUN ` line is not recognised.
   *Test:* `tests/features/testrunners_parse/` — a go fixture with a failing
-  subtest under a failing parent counts one failure; package-lines-only
-  output gives `recognised:false`.
+  subtest under a failing parent counts one failure; a failing run without
+  `-v`, and a run with no test, give `recognised:false`.
   *Breaks when:* subtests are counted, or non-`-v` output is accepted with
   zero counts.
 
@@ -361,7 +377,7 @@ additions (INV-13).
 
 No new state and no new cache. The pytest walk is capped at 20 000 files.
 Every other cap is ANTS-1300's and ANTS-1302's, unchanged. No new library
-dependency; the new source files join `ants_core_lib`.
+dependency; the new source files join `ants_mcpcore_lib`.
 
 ## 6. Out of scope
 
@@ -378,9 +394,8 @@ dependency; the new source files join `ants_core_lib`.
 
 - `tests/features/testrunners_detect/` — INV-1.
 - `tests/features/testrunners_parse/` — INV-2, INV-3, INV-4, INV-5, INV-7.
-  Fixtures are captured from real runs; this host has pytest and cargo,
-  while go, jest and vitest must be installed before their fixtures can be
-  captured (§ 12).
+  Fixtures are captured from real runs; the runner versions are in
+  `tests/features/testrunners_parse/fixtures/VERSIONS.md`.
 - `tests/features/mcp_test_results/` (extended) — INV-6, INV-8.
 - `tests/features/mcp_focused_test/` (extended) — INV-9, INV-10, INV-11,
   INV-12, INV-13. The command builder is pure, so INV-9 and INV-10 run no
@@ -459,9 +474,8 @@ Rejected:
 
 ## 12. Open questions
 
-- **Go, jest and vitest are not on this host.** Their fixtures need them
-  installed: go through the system package manager, which needs the user;
-  jest and vitest from npm, into a scratch directory on `/mnt/Games`.
+None. go, jest and vitest were installed on 2026-10-21 and the fixtures
+captured from them.
 
 ## Cold-eyes loop log
 

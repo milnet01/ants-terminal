@@ -9,6 +9,7 @@
 #include "remotecontrolgate.h"
 #include "sessionmemoryengine.h"
 #include "testrescache.h"
+#include "testrunners.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -990,15 +991,31 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
                 QStringLiteral("test_results: \"output\" must be "
                                "non-empty for op=record")));
         }
-        TestResCache::ParsedTests tests =
-            TestResCache::parseCtestOutput(output);
+        // ANTS-5503 — parse as the named runner, else as the one the output
+        // looks like.
+        std::optional<TestRunners::Runner> runner;
+        if (req.contains(QStringLiteral("runner"))) {
+            runner = TestRunners::fromName(
+                req.value(QStringLiteral("runner")).toString());
+            if (!runner) {
+                return QJsonDocument(btErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("test_results: \"runner\" must be one of: %1")
+                        .arg(TestRunners::allNames())));
+            }
+        } else {
+            runner = TestRunners::sniff(output);
+        }
+        TestResCache::ParsedTests tests;
+        if (runner) tests = TestRunners::parse(*runner, output);
         if (!tests.recognised) {
             return QJsonDocument(btErr(
                 QStringLiteral("bad_args"),
-                QStringLiteral("test_results: \"output\" does not look "
-                               "like ctest --output-on-failure output "
-                               "(no summary footer or per-test status "
-                               "line recognised)")));
+                QStringLiteral("test_results: \"output\" does not look like "
+                               "the output of %1 (ctest --output-on-failure, "
+                               "pytest, jest, vitest, cargo test, go test -v)")
+                    .arg(runner ? TestRunners::name(*runner)
+                                : QStringLiteral("any known runner"))));
         }
         tests.exitCode = exitV.toInt();
         if (req.contains(QStringLiteral("started_at_ms"))) {
@@ -1025,6 +1042,12 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
     }
 
     // op == "read"
+    if (req.contains(QStringLiteral("runner"))) {
+        return QJsonDocument(btErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("test_results: \"runner\" not allowed on op=read "
+                           "(record-only argument)")));
+    }
     auto loaded = TestResCache::loadTests(rootCanonical);
     if (!loaded) {
         return QJsonDocument(btErr(
