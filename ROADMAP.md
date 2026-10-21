@@ -86614,11 +86614,17 @@ project. Reported causes are claims until checked in source.
   Source: finbreak session message 341, 2026-10-01.
   Lanes: mcp.
 
-- 📋 [ANTS-5590] **changelog_query with `fields` drops an empty `findings` key instead of returning it empty.**
+- ✅ [ANTS-5590] **changelog_query with `fields` drops an empty `findings` key instead of returning it empty.**
   Reported by demoreel: changelog_query with fields:["findings"] returned
   no `findings` key when there were none, rather than findings:[]. A
   caller cannot tell "no findings" from "field not carried". Check whether
   the projection drops empty arrays (compact-style) on this verb only.
+  Resolved 2026-10-21 — already fixed by ANTS-5585 (d8f202c0,
+  2026-09-30, "lint keeps an empty findings list"), one day before this
+  was filed. Checked: changelog_query mode:lint version:Unreleased
+  fields:["findings"] returns {"findings":[]}. Release note
+  (2026-10-21): no CHANGELOG entry, deliberately — ANTS-5585 carries the
+  fix.
   **Layman:** Asking the changelog checker for one result field returns nothing at all when that result is empty, which reads like an error.
   Kind: fix.
   Source: demoreel session message 326, relayed by claude-config 2026-10-01.
@@ -86776,13 +86782,17 @@ project. Reported causes are claims until checked in source.
   Source: dantes-inferno-recomp feedback 2026-10-12.
   Lanes: remotecontrol, roadmap, statusbar, hooks.
 
-- 📋 [ANTS-5668] **project_settings detect proposes an existing src/ as the source root even when it is empty.**
+- ✅ [ANTS-5668] **project_settings detect proposes an existing src/ as the source root even when it is empty.**
   Reported 2026-10-12 by claude-config (claude-03) while wiring
   start-project to run project_settings op:"init". On a fresh skeleton,
   src/ holds only .gitkeep and scripts/ holds two .sh files, so detect
   proposed source_roots ["scripts"]. start-project now overrides it with
   ["src"] (claude-config 787c10f). Proposed rule: an existing src/ wins
   in detect's suggestion even when it holds no source yet.
+  Shipped 2026-10-21: an existing empty src/ leads the suggestion, other
+  source dirs kept beside it — skeleton gives ["src","scripts"], not
+  ["src"] alone, so a project whose code really is elsewhere stays
+  covered.
   **Layman:** A brand-new project's settings point at the folder where its code will go, not at a helper-scripts folder.
   Kind: enhancement.
   Source: claude-config session report 2026-10-12.

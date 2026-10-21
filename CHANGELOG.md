@@ -129,6 +129,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`project_settings` detect suggests an existing empty `src/` as the first source folder** (ANTS-5668)
+  On a brand-new project whose `src/` holds no code yet, the suggestion now starts with `src` instead of naming only a helper-scripts folder, so the first code written there is indexed.
+
 - **`mutation_probe` now tells the caller what a transport timeout means: the outcome is unknown, `path` is the file at risk, and it should be re-read, never hand-repaired or committed** (ANTS-4830)
 
 - **The MCP error-code standard now says how to place a new code and when a tool-specific code is justified** (ANTS-4752)

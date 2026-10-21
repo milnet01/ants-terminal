@@ -267,6 +267,23 @@ TEST(ProjectSettingsVerb, MissSuggestsAllSourceSubdirs) {
     EXPECT_FALSE(s.reason.isEmpty());
 }
 
+// ANTS-5668 — a fresh skeleton: src/ exists but holds no source yet, and the
+// only counted source is helper scripts. src/ is where the code will go, so it
+// leads the suggestion; the scripts stay covered beside it.
+TEST(ProjectSettingsVerb, Ants5668EmptySrcLeadsTheSuggestion) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/.gitkeep", QString());
+    writeFile(root + "/scripts/a.sh", QStringLiteral("#!/bin/sh\necho a\n"));
+    writeFile(root + "/scripts/b.sh", QStringLiteral("#!/bin/sh\necho b\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    ASSERT_TRUE(s.sourceRoots.has_value()) << s.reason.toStdString();
+    EXPECT_EQ(*s.sourceRoots,
+              (QStringList{QStringLiteral("src"), QStringLiteral("scripts")}));
+    EXPECT_FALSE(s.reason.isEmpty());
+}
+
 // INV-17 (ANTS-3390) — a miss with source loose AT the repo root (rootLevel>0)
 // suggests the whole-root ["."] walk, which subsumes both the depth-0 files
 // and the subdir library in one entry (the RetroArch-class layout). Takes the

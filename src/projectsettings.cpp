@@ -328,6 +328,7 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
     int budget = kDetectFileCeiling;
     QList<QPair<QString, int>> dirCounts;       // top-level dir → admitted count
     QStringList excludedDirs;                    // ANTS-3369: skipped noise dirs (non-dot)
+    bool srcDirExists = false;                   // ANTS-5668: walked, source or not
     const QFileInfoList dirs = root.entryInfoList(
         QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks, QDir::Name);
     // ANTS-4092 — one `git check-ignore` over the surviving candidates, ahead
@@ -349,6 +350,7 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
             excludedDirs << name;
             continue;
         }
+        if (name == QLatin1String("src")) srcDirExists = true;   // ANTS-5668
         if (budget <= 0) continue;
         const int c = countSourceFiles(rootCanonical, name, budget);
         budget -= c;
@@ -447,6 +449,9 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
     }
     QStringList chosen;
     int covered = 0;
+    // ANTS-5668 — an existing but empty src/ is a fresh skeleton's code home:
+    // it leads the suggestion, so the first file written there is indexed.
+    if (srcDirExists && srcCount == 0) chosen << QStringLiteral("src");
     for (const auto &p : cands) { chosen << p.first; covered += p.second; }
     s.sourceRoots = chosen;
     proposeAuxLayout(s, rootCanonical, aux);                // ANTS-3588 (INV-19)
@@ -454,6 +459,8 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
         "default src/+tests/ walk indexed %1 of %2 source files; %3 hold(s) %4")
         .arg(s.defaultSourceCount).arg(total)
         .arg(chosen.join(QStringLiteral(", "))).arg(covered);
+    if (srcDirExists && srcCount == 0)
+        s.reason += QStringLiteral("; src/ holds no source yet and is kept as the code home");
     return s;
 }
 

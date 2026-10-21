@@ -35,7 +35,10 @@ the ANTS-2160 suite used for its consumer-wiring check.
   codebase_index can reach the depth-0 files.
 - **INV-14** (ANTS-3369) — a miss with NO root source (`rootLevel==0`) →
   suggests ALL first-party source subdirs, count desc / name asc
-  (`app/a.c`+`engine/b.c` → `["app","engine"]`, total 2).
+  (`app/a.c`+`engine/b.c` → `["app","engine"]`, total 2). An existing `src/`
+  holding no source leads that list (ANTS-5668): `src/.gitkeep` +
+  `scripts/a.sh`, `scripts/b.sh` → `["src","scripts"]`
+  (`Ants5668EmptySrcLeadsTheSuggestion`).
 - **INV-17** (ANTS-3390) — a miss with source loose AT the repo root
   (`rootLevel>0`) → whole-root `source_roots:["."]` (subsumes the depth-0
   files + subdirs); `retroarch.c`+`libretro-common/x.c` → `["."]`, total 2.
