@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5802 -->
+<!-- ants-roadmap-id-high-water: ANTS=5803 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88089,6 +88089,37 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: enhancement.
   Source: in-session-2026-08-28, measured while shipping ANTS-4748.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-5803] **mcp-error-codes.md: five out-of-radius findings from the ANTS-4752 gate.**
+  Filed by the review-contract run that gated ANTS-4752 (0cb0f9c5).
+  Each lies outside that edit, so it exits the loop here.
+
+  1. [Q3, lane A, verified] An unknown `op` on a multi-op write verb
+     is split by verb list: `bad_op_combo` owns it on `roadmap_log` /
+     `changelog_log`, `bad_mode` on `feedback_log` / `spec_log`. A fifth
+     verb's author could pick either. Say which a new verb uses and mark
+     the other legacy.
+  2. [Q1, lane A, verified] "This standard is enforced by convention."
+     Feature tests pin text in it: test_mcp_master_toggle needs the
+     "Dispatcher / registry" heading, the `mcp_disabled` row and
+     "## Adding a new code" in that order; three more tests need named
+     codes present. Name the pinned text, or drop "by convention".
+  3. [Q1, lanes A+B open question, verified] The `target_not_found` and
+     `target_ambiguous` rows name `compact_shipped` and `assign_id` as
+     emitters; `assign_id_batch` emits both too
+     (src/remotecontrol_feedback.cpp, the assign_id_batch branch).
+  4. [Q1, lane A open question, unverified] The `too_large` row says
+     `read_region` emits it on an oversized file; src/readregion.cpp
+     carries no such literal. apply_edits does
+     (src/remotecontrol_workspace.cpp). Find the read_region site or
+     narrow the row.
+  5. [code comment, lane B open question, verified]
+     src/testauditengine.cpp cites "mcp-error-codes.md § 1" for the
+     24-character name rule, which lives in "Adding a new code" step 5.
+     Under the new Categories intro that citation is wrong.
+  **Layman:** Five smaller mistakes in the error-code rulebook, found while checking the ANTS-4752 change, written down to fix later.
+  Kind: doc-fix.
+  Source: review-contract mcp-error-codes.md 2026-10-21 (ANTS-4752 gate, out-of-radius findings).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

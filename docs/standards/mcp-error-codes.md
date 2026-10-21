@@ -51,8 +51,8 @@ against the table below.
 
 A heading names its section's usual case. It is not a test every row
 passes: some rows sit elsewhere, and a few say why. A code's section is
-the section its row sits in, so a source comment's `§ N` is checked
-against the table. An existing row is not moved to fit a heading,
+the section its row sits in, and a source comment's `§ N` is right
+when it names that section. An existing row is not moved to fit a heading,
 because source comments cite its section.
 
 ### 1 — Input validation
@@ -253,8 +253,11 @@ narrow the data / aggregate harder. The feature's own off switch,
 
 1. Pick the section. Where your row names an existing code as its
    twin, sibling or analogue, or as the code it is distinct from, use
-   that code's section. `query_disabled` sits beside `mcp_disabled` this
-   way. Otherwise use the section whose heading names your case.
+   that code's section. Where it names several, in different sections,
+   a twin, sibling or analogue outranks a code it is distinct from, and
+   the first named wins among equals. `query_disabled` sits beside
+   `mcp_disabled` this way. Otherwise use the section whose heading
+   names your case.
 2. Check the table — if an existing code's meaning covers your
    case, reuse it. **The test is the caller's next action: mint a new
    code only where a caller would do something different** (§ 6's
