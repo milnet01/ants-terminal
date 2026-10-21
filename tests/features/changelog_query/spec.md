@@ -62,6 +62,18 @@ fixture moved those shapes into flat category blocks); never check order;
 treat a dated topic as flat; ignore `version`; never report prose in a
 category.
 
+## The release checks (ANTS-5507, `release:true`)
+
+- **`ChangelogQueryLint.Ants5507ReleaseChecksEachKind`** — a planned id and
+  an id the roadmap lacks are `cited_not_shipped`; a shipped id named only in
+  continuation prose or a fence is `shipped_not_cited`; a decided id is not;
+  a tag with no section is `tag_without_section`.
+- **`ChangelogQueryLint.Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsClean`**
+  — `version` moves the cited check to that section, and a tag whose section
+  exists is no finding.
+- **`ChangelogQueryHandler.Ants5507ReleaseSinceMustBeADate`** — a malformed
+  `since` refuses `bad_args`.
+
 ## Wiring (source-scrape, INV-1/6/9)
 
 - `changelog_query` registered via `rcDelegate(rc, &RemoteControl::cmdChangelogQuery)`.

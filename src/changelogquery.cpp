@@ -7,6 +7,7 @@
 
 #include <QDate>
 #include <QHash>
+#include <QSet>
 #include <QRegularExpression>
 #include <QMutexLocker>
 #include <QMutex>
@@ -480,6 +481,75 @@ QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
                          return x.line < y.line;
                      });
     for (int k = 0; k < out.size(); ++k) out[k].emissionIndex = k;
+    return out;
+}
+
+QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &idPrefix,
+                                       const QString &relPath, const QString &version,
+                                       const ReleaseFacts &facts) {
+    static const QRegularExpression bullet(QStringLiteral(R"(^\s*[-*+]\s)"));
+
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+    for (QString &l : lines)
+        if (l.endsWith(QLatin1Char('\r'))) l.chop(1);
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    const QString wanted =
+        version.isEmpty() ||
+                version.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0
+            ? QStringLiteral("Unreleased") : version;
+
+    QList<DocFinding::Finding> out;
+    const auto add = [&out, &relPath](int line, const QString &kind, const QString &msg) {
+        DocFinding::Finding f;
+        f.verb          = QStringLiteral("changelog_query");
+        f.kind          = kind;
+        f.file          = relPath;
+        f.line          = line;
+        f.message       = msg;
+        f.emissionIndex = int(out.size());
+        out.append(f);
+    };
+
+    QSet<QString> cited, versions;
+    int unreleasedLine = 0;
+    QString section;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &l = lines.at(i);
+        QString ver, date;
+        bool unreleased = false;
+        if (parseVersionHeading(l, ver, date, unreleased)) {
+            section = ver;
+            versions.insert(ver);
+            if (unreleased) unreleasedLine = i + 1;
+            continue;
+        }
+        if (fence.at(i) || section.isEmpty()) continue;
+        if (!bullet.match(l).hasMatch() && !l.startsWith(QLatin1String("### "))) continue;
+        for (const QString &id : extractIds(l, idPrefix)) {
+            cited.insert(id);
+            if (section != wanted) continue;
+            const QString status = facts.statusById.value(id);
+            if (status == QLatin1String("shipped")) continue;
+            add(i + 1, QStringLiteral("cited_not_shipped"),
+                status.isEmpty()
+                    ? QStringLiteral("%1 is cited but is not in the roadmap").arg(id)
+                    : QStringLiteral("%1 is cited but its roadmap status is %2")
+                          .arg(id, status));
+        }
+    }
+
+    const QSet<QString> decided(facts.decided.cbegin(), facts.decided.cend());
+    for (const QString &id : facts.shippedSince)
+        if (!cited.contains(id) && !decided.contains(id))
+            add(0, QStringLiteral("shipped_not_cited"),
+                QStringLiteral("%1 shipped in the window but no CHANGELOG bullet cites it, "
+                               "and its roadmap body records no \"no CHANGELOG entry\" "
+                               "decision").arg(id));
+
+    if (!facts.latestTag.isEmpty() && !versions.contains(facts.latestTag))
+        add(unreleasedLine, QStringLiteral("tag_without_section"),
+            QStringLiteral("tag v%1 has no ## [%1] section; move its [Unreleased] "
+                           "entries under one").arg(facts.latestTag));
     return out;
 }
 

@@ -704,3 +704,101 @@ TEST(ChangelogQueryHandler, Ants5543LintModeIsReadOnly) {
         << "a clean file still carries findings:[]";
     EXPECT_TRUE(clean.value(QStringLiteral("findings")).toArray().isEmpty());
 }
+
+// ANTS-5507 — the release checks. Pure: the store's and git's answers arrive
+// as ReleaseFacts, so each kind is driven by one fact.
+namespace {
+
+const char kReleaseFixture[] =
+    "# Changelog\n"
+    "\n"
+    "## [Unreleased]\n"
+    "\n"
+    "### Added\n"
+    "\n"
+    "- **Shipped and cited.** (ANTS-1)\n"
+    "- **Still planned.** (ANTS-2)\n"
+    "- **Not in the roadmap.** (ANTS-9)\n"
+    "  Continuation prose names ANTS-4, which does not cite it.\n"
+    "\n"
+    "## [1.0.0] - 2026-01-01\n"
+    "\n"
+    "### Fixed\n"
+    "\n"
+    "- **Old work.** (ANTS-3)\n"
+    "\n"
+    "```\n"
+    "- (ANTS-5) inside a fence is not a citation\n"
+    "```\n";
+
+ChangelogQuery::ReleaseFacts releaseFacts() {
+    ChangelogQuery::ReleaseFacts f;
+    f.statusById = {{QStringLiteral("ANTS-1"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-2"), QStringLiteral("planned")},
+                    {QStringLiteral("ANTS-3"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-4"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-5"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-6"), QStringLiteral("shipped")}};
+    f.shippedSince = {QStringLiteral("ANTS-1"), QStringLiteral("ANTS-4"),
+                      QStringLiteral("ANTS-5"), QStringLiteral("ANTS-6")};
+    f.decided   = {QStringLiteral("ANTS-6")};
+    f.latestTag = QStringLiteral("1.1.0");
+    return f;
+}
+
+int releaseLineOf(const QString &needle) {
+    return QString::fromUtf8(kReleaseFixture).split(QLatin1Char('\n')).indexOf(needle) + 1;
+}
+
+}  // namespace
+
+TEST(ChangelogQueryLint, Ants5507ReleaseChecksEachKind) {
+    const auto fs = ChangelogQuery::releaseLint(
+        QString::fromUtf8(kReleaseFixture), QStringLiteral("ANTS"),
+        QStringLiteral("CHANGELOG.md"), QString(), releaseFacts());
+    const QStringList want = {
+        QStringLiteral("%1:cited_not_shipped").arg(releaseLineOf(QStringLiteral("- **Still planned.** (ANTS-2)"))),
+        QStringLiteral("%1:cited_not_shipped").arg(releaseLineOf(QStringLiteral("- **Not in the roadmap.** (ANTS-9)"))),
+        // ANTS-4 only in continuation prose, ANTS-5 only in a fence: both
+        // uncited. ANTS-6 carries a recorded decision; ANTS-1 is cited.
+        QStringLiteral("0:shipped_not_cited"),
+        QStringLiteral("0:shipped_not_cited"),
+        QStringLiteral("%1:tag_without_section").arg(releaseLineOf(QStringLiteral("## [Unreleased]"))),
+    };
+    EXPECT_EQ(want, lintShape(fs)) << lintShape(fs).join(QLatin1Char(' ')).toStdString();
+    EXPECT_TRUE(fs.at(2).message.startsWith(QStringLiteral("ANTS-4 ")));
+    EXPECT_TRUE(fs.at(3).message.startsWith(QStringLiteral("ANTS-5 ")));
+    EXPECT_TRUE(fs.at(1).message.contains(QStringLiteral("not in the roadmap")));
+}
+
+TEST(ChangelogQueryLint, Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsClean) {
+    ChangelogQuery::ReleaseFacts f = releaseFacts();
+    f.statusById.insert(QStringLiteral("ANTS-3"), QStringLiteral("in-progress"));
+    f.shippedSince.clear();
+    f.latestTag = QStringLiteral("1.0.0");
+    const auto fs = ChangelogQuery::releaseLint(
+        QString::fromUtf8(kReleaseFixture), QStringLiteral("ANTS"),
+        QStringLiteral("CHANGELOG.md"), QStringLiteral("1.0.0"), f);
+    ASSERT_EQ(1, fs.size()) << lintShape(fs).join(QLatin1Char(' ')).toStdString();
+    EXPECT_EQ(QStringLiteral("cited_not_shipped"), fs.at(0).kind);
+    EXPECT_EQ(releaseLineOf(QStringLiteral("- **Old work.** (ANTS-3)")), fs.at(0).line);
+}
+
+// A malformed window refuses before the store is touched.
+TEST(ChangelogQueryHandler, Ants5507ReleaseSinceMustBeADate) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    {
+        QFile f(tmp.path() + QStringLiteral("/CHANGELOG.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kReleaseFixture);
+    }
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdChangelogQuery(QJsonObject{
+        {QStringLiteral("caller_cwd"), tmp.path()},
+        {QStringLiteral("mode"), QStringLiteral("lint")},
+        {QStringLiteral("release"), true},
+        {QStringLiteral("since"), QStringLiteral("last week")}}).object();
+    EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(QStringLiteral("bad_args"), r.value(QStringLiteral("code")).toString());
+}

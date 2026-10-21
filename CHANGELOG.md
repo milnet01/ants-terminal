@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_query mode:"lint"` with `release:true` checks the changelog against the roadmap before a release** (ANTS-5507)
+  It lists bullets citing work the roadmap does not show as shipped, work shipped since the last release that no bullet mentions, and a release tag with no changelog section of its own. Items whose roadmap entry records a deliberate "no CHANGELOG entry" decision are left out. A project the roadmap store does not hold gets `release_skipped` with the reason, never a silent pass.
+
 - **`session_message` reads one message by its number: `op:"inbox"` with `message_id` returns it, read or not.** (ANTS-5601)
 
 - **A project can tell spec_lint that each invariant's *Test:* clause is where its tests are named** (ANTS-4890)

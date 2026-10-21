@@ -85784,11 +85784,16 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (A4; CFG-0608..0610, CFG-0634).
   Lanes: mcp.
 
-- 📋 [ANTS-5507] **roadmap_query and changelog_query gain a lint mode for release consistency.**
+- ✅ [ANTS-5507] **roadmap_query and changelog_query gain a lint mode for release consistency.**
   Changelog ids that are not shipped; shipped ids no entry cites;
   [Unreleased] not emptied after a tag. tools/check-shipped-coverage.sh
   (ANTS-4714) does part of it; ANTS-4734 moves that script onto
   roadmap_query.
+  Shipped 2026-10-21 on changelog_query only: `mode:"lint"` +
+  `release:true` (and `since`). roadmap_query gained no lint mode — the
+  same three checks there would be a second copy. First run on this
+  repo: 41 shipped since 2026-10-12 uncited; ANTS-4659 and ANTS-5734
+  cited in [Unreleased] while in-progress.
   **Layman:** Before a release, a person checks by hand that the changelog and the roadmap agree.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A6).

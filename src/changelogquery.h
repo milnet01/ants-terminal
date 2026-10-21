@@ -81,4 +81,32 @@ QHash<QString, QStringList> citationsByVersion(const QString &markdown,
 QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
                                 const QString &version = QString());
 
+// ANTS-5507 — what the release check knows that the file does not: the
+// roadmap store's view, and git's newest stable tag. The caller gathers it so
+// releaseLint stays pure and testable without a store or a repository.
+struct ReleaseFacts {
+    QHash<QString, QString> statusById;  // every store item: id -> status ("shipped", …)
+    QStringList shippedSince;            // ids the store dates shipped on or after the window start
+    QStringList decided;                 // of those, ids whose body records "no CHANGELOG entry"
+    QString     latestTag;               // newest stable tag's X.Y.Z; "" when none
+};
+
+// ANTS-5507 — release consistency, read-only, verb "changelog_query":
+//
+//   cited_not_shipped        a bullet in the checked section cites an id the
+//                            store does not hold as shipped
+//   shipped_not_cited        an id in facts.shippedSince that no bullet in the
+//                            whole file cites, and that carries no recorded
+//                            decision
+//   tag_without_section      the newest stable tag has no `## [X.Y.Z]` section,
+//                            so [Unreleased] was not moved under it
+//
+// A citation is an id on a bullet's first line or on a `###` heading line, in
+// any section. An id in continuation prose is a cross-reference, not a claim
+// it shipped. `version` picks the section cited_not_shipped checks; empty
+// means [Unreleased].
+QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &idPrefix,
+                                       const QString &relPath, const QString &version,
+                                       const ReleaseFacts &facts);
+
 }  // namespace ChangelogQuery

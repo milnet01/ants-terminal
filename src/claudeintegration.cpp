@@ -15524,6 +15524,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     cqProps["ids"]          = cqIds;
                     cqProps["mode"]         = cqMode;
                     cqProps["include_body"] = cqIncludeBody;
+                    // ANTS-5507 — lint's release checks against the store and git.
+                    QJsonObject cqRelease;
+                    cqRelease["type"] = "boolean";
+                    cqRelease["description"] = QStringLiteral(
+                        "lint only: also check against the roadmap store and the newest "
+                        "git tag (cited ids shipped, shipped ids cited, tag has a section).");
+                    cqProps["release"] = cqRelease;
+                    QJsonObject cqSince;
+                    cqSince["type"] = "string";
+                    cqSince["description"] = QStringLiteral(
+                        "release:true only: YYYY-MM-DD window start for shipped ids "
+                        "(default: the newest dated release section).");
+                    cqProps["since"] = cqSince;
                     cqProps["offset"]       = cqOffset;
                     cqProps["limit"]        = cqLimit;
                     cqProps["etag_match"]   = makeEtagMatchProp();  // ANTS-1499

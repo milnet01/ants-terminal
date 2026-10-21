@@ -5,14 +5,97 @@
 #include "roadmapfoldin.h"
 #include "changeloglog.h"
 #include "pathvalidation.h"
+#include "changelogquery.h"
+#include "gitwrap.h"
+#include "roadmapstore.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QSaveFile>
+
+#include <optional>
+#include <tuple>
 
 using namespace rcdetail;  // ANTS-3833
 
 namespace {
+
+// ANTS-5507 — gather what changelog_query's release check needs from the
+// store and git. nullopt with *skipped set when the project is not
+// store-backed or the store could not answer: those are skips, not refusals,
+// because a markdown-backed project has no ship dates to check.
+//
+// *since in: the caller's window start, or invalid. Out: the start used —
+// by default the newest dated version section, "since the last release".
+// Same marker as tools/check-shipped-coverage.sh (ANTS-4765) for a decided
+// item.
+std::optional<ChangelogQuery::ReleaseFacts> clReleaseFacts(
+        RoadmapStore *store, const QString &projectRoot,
+        const ChangelogQuery::ParseResult &pr, QDate *since, QString *skipped) {
+    if (!store) {
+        *skipped = QStringLiteral("the roadmap store is absent or could not be opened");
+        return std::nullopt;
+    }
+    QString err;
+    const auto pid = store->projectIdForRoot(projectRoot, &err);
+    if (!pid) {
+        *skipped = QStringLiteral("this project is not registered in the roadmap store");
+        return std::nullopt;
+    }
+    if (!since->isValid())
+        for (const ChangelogQuery::VersionInfo &vi : pr.versions) {
+            if (vi.unreleased) continue;
+            *since = QDate::fromString(vi.date.left(10), Qt::ISODate);
+            if (since->isValid()) break;
+        }
+    if (!since->isValid()) {
+        *skipped = QStringLiteral("no dated release section and no `since`, so "
+                                  "there is no window to check");
+        return std::nullopt;
+    }
+
+    ChangelogQuery::ReleaseFacts facts;
+    const auto all = store->itemsForDateBackfill(*pid, &err);
+    const auto shipped = store->idsShippedInWindow(
+        *pid, *since, QDate::currentDate().addDays(1), &err);
+    if (!all || !shipped) {
+        *skipped = QStringLiteral("the roadmap store query failed: %1").arg(err);
+        return std::nullopt;
+    }
+    for (const RoadmapStore::DateTarget &t : *all) facts.statusById.insert(t.id, t.status);
+    facts.shippedSince = *shipped;
+    for (const QString &id : std::as_const(facts.shippedSince)) {
+        const auto pk = store->findItem(*pid, id, &err);
+        const auto item = pk ? store->readItem(*pk, &err) : std::nullopt;
+        if (item && item->body.contains(QLatin1String("Release note (")) &&
+            item->body.contains(QLatin1String("no CHANGELOG entry")))
+            facts.decided << id;
+    }
+
+    // The newest stable tag; a suffixed one (`v1.0.0-rc1`) is not a release.
+    // Not a repository, or no tags: no tag check, which is no error.
+    static const QRegularExpression stable(QStringLiteral("^v?(\\d+)\\.(\\d+)\\.(\\d+)$"));
+    const GitWrap::Result g = GitWrap::run(
+        projectRoot, {QStringLiteral("for-each-ref"),
+                      QStringLiteral("--format=%(refname:short)"),
+                      QStringLiteral("refs/tags")});
+    std::tuple<int, int, int> best{-1, -1, -1};
+    if (g.started && g.exitCode == 0)
+        for (const QByteArray &raw : g.stdoutBytes.split('\n')) {
+            const auto m = stable.match(QString::fromUtf8(raw).trimmed());
+            if (!m.hasMatch()) continue;
+            const std::tuple<int, int, int> k{m.captured(1).toInt(),
+                                              m.captured(2).toInt(),
+                                              m.captured(3).toInt()};
+            if (k > best) {
+                best = k;
+                facts.latestTag = QStringLiteral("%1.%2.%3")
+                    .arg(m.captured(1), m.captured(2), m.captured(3));
+            }
+        }
+    return facts;
+}
 
 // ANTS-4812 — resolve which changelog to act on, honouring an optional `path`.
 //
@@ -382,10 +465,49 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         QFile f(clPath);
         if (f.open(QIODevice::ReadOnly | QIODevice::Text))
             md = QString::fromUtf8(f.readAll());
-        const QList<DocFinding::Finding> fs = ChangelogQuery::lint(
-            md, QDir(callerCanonical).relativeFilePath(clPath),
-            hasVersionFilter ? versionFilter : QString());
+        const QString relPath = QDir(callerCanonical).relativeFilePath(clPath);
+        QList<DocFinding::Finding> fs = ChangelogQuery::lint(
+            md, relPath, hasVersionFilter ? versionFilter : QString());
         QJsonObject out;
+        // ANTS-5507 — `release:true` adds the checks that need the roadmap
+        // store and git. Opt-in, so the format gate's findings do not move.
+        if (req.value(QStringLiteral("release")).toBool(false)) {
+            QDate since;
+            const QString sinceArg = req.value(QStringLiteral("since")).toString();
+            if (!sinceArg.isEmpty()) {
+                since = QDate::fromString(sinceArg, Qt::ISODate);
+                if (!since.isValid())
+                    return err(QStringLiteral("bad_args"),
+                               QStringLiteral("changelog_query: since takes a "
+                                              "YYYY-MM-DD date"));
+            }
+            RoadmapSource::ReadError storeWhy = RoadmapSource::ReadError::None;
+            QString skipped;
+            const auto facts = clReleaseFacts(
+                roadmapStoreOrNull(&storeWhy, nullptr),
+                rcProjectRootFor(callerCanonical), pr, &since, &skipped);
+            if (facts) {
+                // Format findings first, then these: emission order is the order
+                // a reader works through them.
+                const QList<DocFinding::Finding> rf = ChangelogQuery::releaseLint(
+                    md, m_changelogCachePrefix, relPath,
+                    hasVersionFilter ? versionFilter : QString(), *facts);
+                for (DocFinding::Finding f : rf) {
+                    f.emissionIndex = int(fs.size());
+                    fs.append(f);
+                }
+                QJsonObject rel;
+                rel[QStringLiteral("since")] = since.toString(Qt::ISODate);
+                rel[QStringLiteral("shipped_in_window")] = int(facts->shippedSince.size());
+                rel[QStringLiteral("decided")]    = int(facts->decided.size());
+                rel[QStringLiteral("latest_tag")] = facts->latestTag;
+                out[QStringLiteral("release")] = rel;
+            } else {
+                // Said, never a silent clean pass: a check that did not run
+                // must not read as one that found nothing.
+                out[QStringLiteral("release_skipped")] = skipped;
+            }
+        }
         out[QStringLiteral("ok")]       = true;
         out[QStringLiteral("path")]     = clPath;
         out[QStringLiteral("mode")]     = mode;
