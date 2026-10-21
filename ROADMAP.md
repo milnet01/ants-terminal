@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5801 -->
+<!-- ants-roadmap-id-high-water: ANTS=5802 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -83104,7 +83104,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: doc-fix.
   Source: in-session-2026-08-26.
 
-- 📋 [ANTS-4709] **apply_edits states no payload limit, so a caller cannot tell a protocol parse failure from a verb refusal.**
+- ✅ [ANTS-4709] **apply_edits states no payload limit, so a caller cannot tell a protocol parse failure from a verb refusal.**
   REPORTED, not reproduced here. A multi-line C++ body of a few kilobytes
   carrying escaped quotes failed to parse when passed as an edit payload;
   the batch was redone as a shell script.
@@ -83184,6 +83184,21 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   payload has to be emitted into the conversation to be sent, so measuring
   a megabyte costs a megabyte of context. Whatever runs this should
   generate the payload outside the transcript.
+  Shipped (2026-10-21). MEASURED outside the transcript: a script drove
+  ants-mcpd over stdio with apply_edits dry runs of growing size. Up to
+  the ANTS-1659 ceiling of 262,144 bytes per request line every call
+  answered in under 10 ms; above it the server refused with -32600, but
+  under id:null, so a client matching replies by id never saw it and
+  waited out its own timeout. That is the Ants-side layer; the
+  Claude-Code-to-MCP bridge was not measured.
+
+  Both routes delivered. Route 2: the refusal now carries the request's
+  id, read from the line's head at once or from its tail at the newline
+  (the MCP SDK writes id last). Route 1: apply_edits' description states
+  the 256 KiB limit. Tests: StandaloneMcpServer.OversizedStdinRefusal*.
+
+  NOT explained: the original few-kilobyte parse failure sits far under
+  the ceiling. The completed-after-timeout sighting is ANTS-4733's.
   **Layman:** A tool for editing files can fail on a big paste, and nothing tells you why or how big is too big.
   Kind: doc-fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (relayed from a write-code session on a C++ project).
@@ -87737,6 +87752,18 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).
   Lanes: mcp.
+
+- 📋 [ANTS-5802] **OversizedStdinRequestInPiecesIsRefusedOnce's "tail was parsed" check reads a stored reply and cannot fail.**
+  The test's last assertion calls mcpd.await(0, 500) to catch a second
+  -32600 from the skipped tail. McpdSession keeps replies in a map keyed
+  by id, and the first refusal already sits under 0, so await returns it
+  at once and the assertion holds whether or not a second reply came.
+  Fix: count id:null refusals (or clear the stored reply before the tail
+  is written) and assert exactly one.
+  **Layman:** One check in a server test looks at an old saved answer, so it would pass even if the bug it guards against came back.
+  Kind: test.
+  Source: in-session-2026-10-21, found while fixing ANTS-4709.
+  Lanes: mcp, tests.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

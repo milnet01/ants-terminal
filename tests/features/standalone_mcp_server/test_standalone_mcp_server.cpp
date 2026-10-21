@@ -448,18 +448,19 @@ TEST(StandaloneMcpServer, OversizedStdinRequestIsRefusedOnce) {
 }
 
 // The same ceiling when the line arrives in pieces: the first 300 KiB with
-// no newline trips it mid-line, and the tail sent later is skipped.
+// no newline trips it mid-line, and the tail sent later is skipped. With no
+// id at the head, the refusal waits for the newline, where an id may sit.
 TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
     ASSERT_TRUE(mcpd.started());
     mcpd.writeRaw(QByteArray(qsizetype(300) * 1024, 'a'));
+    mcpd.writeRaw(QByteArray(qsizetype(10) * 1024, 'a') + '\n');
     const QJsonObject err = mcpd.await(0, 5000);
     EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
                   .value(QStringLiteral("code")).toInt(), -32600)
         << QJsonDocument(err).toJson().toStdString();
-    mcpd.writeRaw(QByteArray(qsizetype(10) * 1024, 'a') + '\n');
     const QJsonObject listed = mcpd.await(mcpd.send(QStringLiteral("tools/list")));
     EXPECT_TRUE(listed.contains(QStringLiteral("result")))
         << QJsonDocument(listed).toJson().toStdString();
@@ -468,6 +469,51 @@ TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
                   .value(QStringLiteral("code")).toInt(), -32600)
         << "the tail was parsed as a request: "
         << QJsonDocument(after).toJson().toStdString();
+}
+
+namespace {
+QByteArray oversizedPad() { return QByteArray(qsizetype(300) * 1024, 'a'); }
+}
+
+// ANTS-4709 — a client matches replies by id, so a refusal under id:null
+// reaches none of them and the caller waits for its own timeout. The MCP
+// SDK writes `id` as the last key, so the refusal waits for the newline and
+// reads the id there.
+TEST(StandaloneMcpServer, OversizedStdinRefusalCarriesTheTrailingId) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
+    ASSERT_TRUE(mcpd.started());
+    mcpd.writeRaw(R"({"method":"tools/call","params":{"name":"apply_edits",)"
+                  R"("arguments":{"pad":")" + oversizedPad()
+                  + R"("}},"jsonrpc":"2.0","id":4242})" + '\n');
+    const QJsonObject err = mcpd.await(4242, 5000);
+    EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
+                  .value(QStringLiteral("code")).toInt(), -32600)
+        << QJsonDocument(err).toJson().toStdString();
+    const QJsonObject listed = mcpd.await(mcpd.send(QStringLiteral("tools/list")));
+    EXPECT_TRUE(listed.contains(QStringLiteral("result")))
+        << QJsonDocument(listed).toJson().toStdString();
+}
+
+// An id at the head is readable once the ceiling trips, so the refusal goes
+// out then, before the newline, and the tail is still skipped.
+TEST(StandaloneMcpServer, OversizedStdinRefusalCarriesTheLeadingId) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    McpdSession mcpd(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(tmp));
+    ASSERT_TRUE(mcpd.started());
+    mcpd.writeRaw(R"({"jsonrpc":"2.0","id":4343,"method":"tools/call",)"
+                  R"("params":{"name":"apply_edits","arguments":{"pad":")"
+                  + oversizedPad());
+    const QJsonObject err = mcpd.await(4343, 5000);
+    EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
+                  .value(QStringLiteral("code")).toInt(), -32600)
+        << QJsonDocument(err).toJson().toStdString();
+    mcpd.writeRaw(R"("}}})" + QByteArray("\n"));
+    const QJsonObject listed = mcpd.await(mcpd.send(QStringLiteral("tools/list")));
+    EXPECT_TRUE(listed.contains(QStringLiteral("result")))
+        << QJsonDocument(listed).toJson().toStdString();
 }
 
 // ANTS-5320 — a client that pipes requests and closes stdin still gets every

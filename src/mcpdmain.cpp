@@ -31,7 +31,10 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
 #include <QSocketNotifier>
@@ -51,6 +54,41 @@ namespace {
 void writeStdout(const QByteArray &line) {
     std::fwrite(line.constData(), 1, static_cast<size_t>(line.size()), stdout);
     std::fflush(stdout);
+}
+
+// ANTS-4709 — an over-ceiling line is never parsed, but a client matches
+// replies by id, so a refusal under id:null reaches nobody and the caller
+// waits out its own timeout. The id is read where clients write it: first
+// (after an optional "jsonrpc"), or as the last key, which is the MCP SDK's
+// order. Anything else stays null: a guessed id would answer the wrong call.
+constexpr qsizetype kIdWindowBytes = 256;
+
+// Capture 1 is the id: a number or a JSON string.
+QJsonValue idFrom(const QByteArray &window, const QRegularExpression &re) {
+    const QRegularExpressionMatch m = re.match(QString::fromUtf8(window));
+    if (!m.hasMatch()) return QJsonValue::Null;
+    return QJsonDocument::fromJson("[" + m.captured(1).toUtf8() + "]").array().at(0);
+}
+
+QJsonValue idAtHead(const QByteArray &line) {
+    static const QRegularExpression re(QStringLiteral(
+        R"(^\s*\{\s*(?:"jsonrpc"\s*:\s*"2\.0"\s*,\s*)?"id"\s*:\s*(-?\d+|"(?:[^"\\]|\\.)*")\s*,)"));
+    return idFrom(line.left(kIdWindowBytes), re);
+}
+
+QJsonValue idAtTail(const QByteArray &line) {
+    static const QRegularExpression re(QStringLiteral(
+        R"([,{]\s*"id"\s*:\s*(-?\d+|"(?:[^"\\]|\\.)*")\s*\}\s*$)"));
+    return idFrom(line.right(kIdWindowBytes), re);
+}
+
+// Written directly, not through the reply channel: no request was
+// dispatched, so none ends here (ANTS-5320's in-flight count).
+void refuseOversized(const QJsonValue &id) {
+    const QJsonObject error{{"code", -32600},
+                            {"message", "request exceeds the 262144-byte ceiling; discarded"}};
+    writeStdout(QJsonDocument(QJsonObject{{"jsonrpc", "2.0"}, {"id", id}, {"error", error}})
+                    .toJson(QJsonDocument::Compact) + '\n');
 }
 
 }  // namespace
@@ -262,6 +300,8 @@ int main(int argc, char **argv) {
 
     QByteArray pending;
     bool discarding = false;   // inside an over-ceiling line; drop to its '\n'
+    bool discardRefused = false;   // its refusal already went out, by head id
+    QByteArray discardTail;        // its last bytes, where a trailing id sits
     constexpr qsizetype kMaxRequestBytes = qsizetype{256} * 1024;  // ANTS-1659
     QSocketNotifier stdinNotifier(STDIN_FILENO, QSocketNotifier::Read);
     QObject::connect(&stdinNotifier, &QSocketNotifier::activated, &app,
@@ -280,26 +320,25 @@ int main(int argc, char **argv) {
         pending.append(chunk, n);
         if (discarding) {
             const qsizetype nl0 = pending.indexOf('\n');
+            discardTail = (discardTail + pending.left(nl0 < 0 ? pending.size() : nl0))
+                              .right(kIdWindowBytes);
             if (nl0 < 0) { pending.clear(); return; }
             pending.remove(0, nl0 + 1);
+            if (!discardRefused) refuseOversized(idAtTail(discardTail));
             discarding = false;
         }
         // ANTS-1659 — the same request ceiling the socket enforces. The
         // socket disconnects; stdio cannot reconnect, so an over-ceiling line
-        // is refused once (its id is unreadable) and never parsed. It applies
-        // to a whole line in the buffer and to one still arriving, whose rest
-        // is then skipped up to its newline.
-        // Written directly, not through `out`: no request was dispatched, so
-        // none ends here (ANTS-5320's in-flight count).
-        const auto refuseOversized = [] {
-            writeStdout(QByteArrayLiteral(
-                "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,"
-                "\"message\":\"request exceeds the 262144-byte ceiling; discarded\"}}\n"));
-        };
+        // is refused once and never parsed. It applies to a whole line in the
+        // buffer and to one still arriving, whose rest is then skipped up to
+        // its newline. The refusal carries the line's id where it can be read
+        // (ANTS-4709): at once from the head, else at the newline from the tail.
         qsizetype nl;
         while ((nl = pending.indexOf('\n')) >= 0) {
             if (nl > kMaxRequestBytes) {
-                refuseOversized();
+                const QByteArray line = pending.left(nl);
+                const QJsonValue head = idAtHead(line);
+                refuseOversized(head.isNull() ? idAtTail(line) : head);
             } else {
                 const QByteArray line = pending.left(nl).trimmed();
                 if (!line.isEmpty()) {
@@ -310,9 +349,12 @@ int main(int argc, char **argv) {
             pending.remove(0, nl + 1);
         }
         if (pending.size() > kMaxRequestBytes) {
+            const QJsonValue head = idAtHead(pending);
+            discardRefused = !head.isNull();
+            if (discardRefused) refuseOversized(head);
+            discardTail = pending.right(kIdWindowBytes);
             pending.clear();
             discarding = true;
-            refuseOversized();
         }
     });
 

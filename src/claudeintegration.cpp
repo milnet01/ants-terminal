@@ -6335,7 +6335,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "range_out_of_bounds). Atomic per file; edits to one file apply "
                     "in order. Returns applied[] + skipped[] + counts. A path "
                     "escaping the root fails the call (bad_path). A transport "
-                    "timeout means UNKNOWN: re-read before re-sending. Split large "
+                    "timeout means UNKNOWN: re-read before re-sending. A request "
+                    "over 256 KiB is refused unapplied; split large "
                     "batches. caller_cwd required.");
                 aeTool["detail"] = QStringLiteral(
                     "Apply a batch of {path, old, new} edits across one or "

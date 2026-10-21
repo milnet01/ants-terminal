@@ -17,7 +17,9 @@ invariant.
 | `Inv13HoldIsSeenAcrossProcesses` | INV-13 | A migration hold taken in the test process makes `roadmap_log` through `ants-mcpd` refuse `roadmap_busy`; after release it is `ok:true`. |
 | `ThrowingVerbRefusesHandlerFailed` | — | A registered verb that throws, on the sync path and the deferred path, answers `code:"handler_failed"` (`mcp-error-codes.md` § 5) rather than terminating the process that hosts every session's PTY. |
 | `OversizedStdinRequestIsRefusedOnce` | — | A stdin line over the 256 KiB request ceiling (ANTS-1659) gets exactly one JSON-RPC `-32600` reply with `id:null`; its tail is skipped, never parsed as a request, and the next request is answered. |
-| `OversizedStdinRequestInPiecesIsRefusedOnce` | — | The same when the line arrives in pieces: the ceiling trips before its newline, one `-32600` is sent, and the tail written later is skipped rather than parsed. |
+| `OversizedStdinRequestInPiecesIsRefusedOnce` | — | The same when the line arrives in pieces: the ceiling trips before its newline, one `-32600` is sent once the newline arrives, and the tail is skipped rather than parsed. |
+| `OversizedStdinRefusalCarriesTheTrailingId` | — | ANTS-4709: an over-ceiling line ending `"id":N}` gets its `-32600` under id N, so a client matching by id sees the refusal. The next request is answered. |
+| `OversizedStdinRefusalCarriesTheLeadingId` | — | An over-ceiling line opening with its `id` is refused under that id as soon as the ceiling trips, before its newline. The tail is skipped and the next request is answered. |
 | `RepliesInFlightAtStdinEofAreStillSent` | — | ANTS-5320: a forwarded `get_text` (to a stub terminal that answers only when the test pumps events) and a `tools/list` are sent, then stdin is closed. `ants-mcpd` exits, and both ids have a reply. |
 
 INV-4 lives in `tests/features/mcp_dispatch_forward_completeness/` and INV-7

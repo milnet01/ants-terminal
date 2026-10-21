@@ -220,6 +220,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An Ants MCP request over 256 KiB is refused under its own id, so the caller sees the refusal at once instead of a transport timeout** (ANTS-4709)
+  `ants-mcpd` reads the id from the head of the oversized line, or from its tail once the newline arrives. `apply_edits`' description now states the limit.
+
 - **`trace` searches a project's real files: in a git checkout it skips git-ignored files, and it skips binary files before its size limit** (ANTS-5748)
   Archive and backup folders no longer use up its file budget, so definitions in source folders are found in large projects.
 
