@@ -4624,7 +4624,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
                 return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
             return QJsonDocument(rlSectionNotFound(store, target->projectId, slug));
         }
-        const auto sections = store.listSections(target->projectId, &err);
+        const auto sections = store.listSectionsOrdered(target->projectId, &err);
         if (!sections)
             return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
         QHash<qint64, QList<qint64>> childrenOf;
