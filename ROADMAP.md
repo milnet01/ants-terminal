@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5804 -->
+<!-- ants-roadmap-id-high-water: ANTS=5805 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87786,6 +87786,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: test.
   Source: in-session-2026-10-21, found while fixing ANTS-4709.
   Lanes: mcp, tests.
+
+- 📋 [ANTS-5805] **roadmap_log's batch_hint recommends flip_batch and annotate_batch where they refuse: a store-served pass-headings roadmap.**
+  rlBatchHint keys on the op alone. On a store-served pass-headings
+  roadmap, flip_batch and annotate_batch refuse unsupported_format
+  (ANTS-5334), so a caller following the hint wastes a call. The
+  single-op reply already says which case it is: format
+  "pass-headings" with write_path "render". Skip the hint there.
+  append_batch has a store route, so append keeps its hint.
+  **Layman:** The roadmap tool suggests a faster way to update items that then refuses to work on some projects.
+  Kind: fix.
+  Source: cc-feedback-2026-10-21 RetroDB.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
