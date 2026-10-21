@@ -2790,6 +2790,8 @@ if(ANTS_TESTS)
                 # ANTS-3669 — doc_lint FIX path: the autoFixable gate, the
                 # patch-not-regeneration contract and the write preconditions.
                 tests/features/doc_lint_fix/test_doc_lint_fix.cpp
+                # ANTS-5293 — doc_lint genre:"auto": checks by declared genre.
+                tests/features/doc_lint_genre/test_doc_lint_genre.cpp
                 # ANTS-5099 — shared fence rule in the TOC writer; checked cache commit.
                 tests/features/doc_engine_guards/test_doc_engine_guards.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.

@@ -2325,6 +2325,19 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         return QJsonDocument(gitErr("bad_mode_combo",
             QStringLiteral("doc_lint: staged:true and fix:true are exclusive")));
 
+    // ANTS-5293 — "path" is today's rule; "auto" reads each document's Genre:
+    // line. Anything else refuses: a typo must not read as the default.
+    const QString genreMode =
+        req.value(QStringLiteral("genre")).toString(QStringLiteral("path"));
+    if (genreMode != QLatin1String("path") && genreMode != QLatin1String("auto")) {
+        QJsonObject bad;
+        bad[QStringLiteral("ok")]    = false;
+        bad[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        bad[QStringLiteral("error")] =
+            QStringLiteral("doc_lint: genre must be \"path\" or \"auto\"");
+        return QJsonDocument(bad);
+    }
+
     const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
     const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
     const QString specsDir = layout.specsDir.value_or(QStringLiteral("docs/specs"));
@@ -2342,6 +2355,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
 
     opts.rootCanonical = rootCanonical;
     opts.specsDirRel   = specsDir;
+    opts.genreAuto     = genreMode == QLatin1String("auto");
     opts.checks        = checks;
     opts.fix           = wantFix;
     opts.dryRun        = dryRun;
@@ -2421,6 +2435,18 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
     // One flag, two causes: max_findings elided findings, OR a cap elided a
     // document. Both mean this response does not describe the whole tree.
     if (capped || result.truncated) o[QStringLiteral("truncated")] = true;
+
+    // ANTS-5293 — the genre each document was judged as, and the declared
+    // words the table did not know. Both empty under genre:"path".
+    const auto toObj = [](const QMap<QString, QString> &m) {
+        QJsonObject obj;
+        for (auto it = m.cbegin(); it != m.cend(); ++it) obj[it.key()] = it.value();
+        return obj;
+    };
+    if (!result.genres.isEmpty())
+        o[QStringLiteral("genres")] = toObj(result.genres);
+    if (!result.unknownGenres.isEmpty())
+        o[QStringLiteral("genre_unknown")] = toObj(result.unknownGenres);
 
     if (!result.skipped.isEmpty()) {
         QJsonArray arr;

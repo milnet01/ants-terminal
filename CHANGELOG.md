@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_lint genre:"auto" picks each document's checks from its own Genre: line** (ANTS-5293)
+  A spec outside the specs folder now gets spec_lint, and a record inside it no longer does. The response names the genre each document was judged as. Documents with no Genre: line are checked as before.
+
 - **`test_results` and `focused_test` read and run pytest, jest, vitest, cargo and go tests, not only ctest** (ANTS-5503)
   Claude's test tools now work on Python, JavaScript, Rust and Go projects. `focused_test` finds the project's test runner from its files, or takes `runner`, and runs only the tests a change touches. Both tools name the runner and say `nothing_ran:true` when no test ran at all.
 

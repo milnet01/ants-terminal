@@ -7510,6 +7510,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         dlStaged["description"] = QStringLiteral(
                             "Check the git index copy of each staged *.md, not the worktree; no path means the whole project. fix:true refuses bad_mode_combo.");
                     props["staged"] = dlStaged;
+                    // ANTS-5293 — tests/features/doc_lint_genre/spec.md.
+                    QJsonObject dlGenre; dlGenre["type"] = "string";
+                        dlGenre["enum"] = QJsonArray{QStringLiteral("path"), QStringLiteral("auto")};
+                        dlGenre["description"] = QStringLiteral(
+                            "path (default): spec_lint by specs dir. auto: each document's Genre: line picks its checks; adds genres and genre_unknown.");
+                    props["genre"] = dlGenre;
                     // NO etag_match, deliberately: doc_lint is absent from
                     // isEtagSupportedTool (INV-13) and offering the argument
                     // would advertise a short-circuit it never performs.

@@ -35,6 +35,39 @@ const QStringList &checkNames() {
     return v;
 }
 
+QString declaredGenre(const QString &text) {
+    // check-doc.py's GENRE_RE, searched over the same 25-line head.
+    static const QRegularExpression re(
+        QStringLiteral("^[ \\t]*(?:[-*][ \\t]+)?\\**Genre:?\\**[ \\t]*`?([A-Za-z]+)`?[ \\t]*$"),
+        QRegularExpression::MultilineOption);
+    const QString head = text.section(QLatin1Char('\n'), 0, 24);
+    const QRegularExpressionMatch m = re.match(head);
+    return m.hasMatch() ? m.captured(1).toLower() : QString();
+}
+
+const QSet<QString> *genreChecks(const QString &genre) {
+    static const QSet<QString> all(checkNames().cbegin(), checkNames().cend());
+    static const QSet<QString> allButSpec = [] {
+        QSet<QString> s = all;
+        s.remove(QStringLiteral("spec_lint"));
+        return s;
+    }();
+    static const QHash<QString, QSet<QString>> table = {
+        {QStringLiteral("spec"),     all},
+        {QStringLiteral("plan"),     allButSpec},
+        {QStringLiteral("adr"),      allButSpec},
+        {QStringLiteral("standard"), allButSpec},
+        {QStringLiteral("prose"),
+         {QStringLiteral("doc_integrity"), QStringLiteral("doc_dedup"),
+          QStringLiteral("doc_facts")}},
+        {QStringLiteral("instructions"),
+         {QStringLiteral("doc_integrity"), QStringLiteral("doc_citations")}},
+        {QStringLiteral("record"), {QStringLiteral("doc_integrity")}},
+    };
+    const auto it = table.constFind(genre);
+    return it == table.cend() ? nullptr : &it.value();
+}
+
 namespace {
 
 const QString kIntegrity = QStringLiteral("doc_integrity");
@@ -50,8 +83,11 @@ bool selected(const Options &o, const QString &name) {
 
 // spec_lint is the only checker narrower than "every enumerated *.md"
 // (spec § 2.1's eligibility table). A filtered-out document is NOT a skip:
-// nothing failed.
-bool eligible(const QString &verb, const QString &rel, const Options &o) {
+// nothing failed. ANTS-5293 — under genreAuto a document's declared genre, when
+// genreChecks() knows it, decides instead: `checks` is that genre's set.
+bool eligible(const QString &verb, const QString &rel, const Options &o,
+              const QSet<QString> *checks = nullptr) {
+    if (checks) return checks->contains(verb);
     if (verb != kSpecLint) return true;
     if (o.specsDirRel.isEmpty()) return false;
     const QString dir = o.specsDirRel.endsWith(QLatin1Char('/'))
@@ -352,6 +388,9 @@ Result run(const QStringList &relDocs, const Options &opts) {
     QElapsedTimer symbolClock;
     symbolClock.start();
 
+    // ANTS-5293 — Phase 2's adapter needs each document's genre set again.
+    QHash<QString, const QSet<QString> *> genreSetByRel;
+
     // ---- Phase 1: one enumeration, one read, four native checkers -----------
     for (int i = 0; i < relDocs.size(); ++i) {
         const QString &rel = relDocs.at(i);
@@ -405,13 +444,27 @@ Result run(const QStringList &relDocs, const Options &opts) {
 
         r.checkedDocs << rel;
 
-        if (wantDedup && eligible(kDedup, rel, opts)) {
+        // ANTS-5293 — null keeps the path rule: genre:"path", no declaration,
+        // or a genre the table does not know.
+        const QSet<QString> *genreSet = nullptr;
+        if (opts.genreAuto) {
+            const QString genre = declaredGenre(text);
+            genreSet = genreChecks(genre);
+            if (genreSet) {
+                r.genres.insert(rel, genre);
+                genreSetByRel.insert(rel, genreSet);
+            } else if (!genre.isEmpty()) {
+                r.unknownGenres.insert(rel, genre);
+            }
+        }
+
+        if (wantDedup && eligible(kDedup, rel, opts, genreSet)) {
             dedupRan = true;
             if (!DocDedup::isExcludedPath(rel, opts.dedup))
                 acc.add(text, rel, opts.dedup);
         }
 
-        if (wantSymbols && eligible(kSymbols, rel, opts)) {
+        if (wantSymbols && eligible(kSymbols, rel, opts, genreSet)) {
             symbolsRan = true;
             DocSymbols::Options so = opts.symbols;
             so.maxSymbolsPerRun = qMax(0, symbolBudget);
@@ -427,7 +480,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
             r.stats.symbolsTruncated   = r.stats.symbolsTruncated || sr.truncated;
         }
 
-        if (wantSpecLint && eligible(kSpecLint, rel, opts)) {
+        if (wantSpecLint && eligible(kSpecLint, rel, opts, genreSet)) {
             specLintRan = true;
             const SpecLint::Result sl = SpecLint::check(text, rel, opts.spec);
             r.findings.append(sl.findings);
@@ -441,7 +494,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
         }
 
         // ANTS-5506 — every document is eligible; each kind scopes itself.
-        if (wantFacts && eligible(kFacts, rel, opts)) {
+        if (wantFacts && eligible(kFacts, rel, opts, genreSet)) {
             factsRan = true;
             const DocFacts::Result fr = DocFacts::check(text, rel, factsOpts);
             r.findings.append(fr.findings);
@@ -472,6 +525,8 @@ Result run(const QStringList &relDocs, const Options &opts) {
     }
 
     // ---- Phase 2: the two frozen adapters ----------------------------------
+    // Every genre in genreChecks() keeps doc_integrity, so it still takes the
+    // whole checked list; its anchor checks need every document beside it.
     if (wantIntegrity && !r.checkedDocs.isEmpty()) {
         const QList<DocIntegrity::Finding> got =
             DocIntegrity::check(opts.rootCanonical, r.checkedDocs, opts.walk);
@@ -490,9 +545,12 @@ Result run(const QStringList &relDocs, const Options &opts) {
         }
     }
 
+    bool citationsRan = false;
     if (wantCitations) {
         int emission = 0;
         for (const QString &rel : std::as_const(r.checkedDocs)) {
+            if (!eligible(kCitations, rel, opts, genreSetByRel.value(rel))) continue;
+            citationsRan = true;
             const QString abs = QDir::cleanPath(rootDir.filePath(rel));
             DocCitations::Options co = opts.citations;
             const auto given = opts.walk.textByRel.constFind(rel);   // ANTS-5294
@@ -568,7 +626,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
 
     // ---- checks_run: ran clean is not the same as did not run ---------------
     if (wantIntegrity && !r.checkedDocs.isEmpty()) r.checksRun << kIntegrity;
-    if (wantCitations && !r.checkedDocs.isEmpty()) r.checksRun << kCitations;
+    if (citationsRan) r.checksRun << kCitations;
     if (dedupRan)    r.checksRun << kDedup;
     if (symbolsRan)  r.checksRun << kSymbols;
     if (specLintRan) r.checksRun << kSpecLint;

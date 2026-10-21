@@ -85665,7 +85665,7 @@ The blocking constraint, and it decides the sequencing: a git hook cannot call a
 verb, because `--remote-json` needs a running GUI instance and these gates must
 work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
 
-- 📋 [ANTS-5293] **doc_lint selects its checks by the document's DECLARED genre, not by the specs directory.**
+- ✅ [ANTS-5293] **doc_lint selects its checks by the document's DECLARED genre, not by the specs directory.**
   The lean workflow declares `Genre: spec|plan|adr|standard|prose|record` in
   the file and says genre is never inferred from the path. doc_lint today
   applies spec_lint only to documents under the project's specs dir, which is
@@ -85674,6 +85674,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Add `genre:"auto"` — read the declared line, select the check set from it,
   and report the genre each document was judged as. A document with no
   declaration keeps today's behaviour.
+  Shipped 2026-10-21: genre:"path"|"auto"; table follows check-doc.py's
+  GENRE_CHECKS. Contract: tests/features/doc_lint_genre/spec.md.
   **Layman:** Let the document checker read what kind of document it is from the document itself.
   Kind: feature.
   Source: claude-config-session-2026-09-21.

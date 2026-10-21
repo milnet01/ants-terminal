@@ -47,6 +47,16 @@ namespace DocLint {
 // so a caller filtering by a name it read off a finding cannot miss.
 const QStringList &checkNames();
 
+// ANTS-5293 — the genre a document declares on a `Genre: <word>` line in its
+// first 25 lines, lower-cased; empty when it declares none. The line shape is
+// ~/.claude/tools/check-doc.py's GENRE_RE, so both tools read one declaration.
+QString declaredGenre(const QString &text);
+
+// The checks a genre selects, or nullptr for a genre this engine does not
+// know. The table mirrors check-doc.py's GENRE_CHECKS (tests/features/
+// doc_lint_genre/spec.md maps each row).
+const QSet<QString> *genreChecks(const QString &genre);
+
 // INV-1's instrument: documents opened by the shared read. It counts what this
 // engine owns and nothing else — the two frozen adapters open their own files
 // and expose no counter, which is why spec § 2.1 states nine as a budget and
@@ -64,6 +74,12 @@ struct Options {
     // missing_section and loop_row_no_outcome — which is what the primary caller
     // gets on its first run.
     QString specsDirRel = QStringLiteral("docs/specs");
+
+    // ANTS-5293 — genre:"auto". A document whose head declares a genre this
+    // engine knows takes its checks from genreChecks() instead, and specsDirRel
+    // no longer decides spec_lint for it. A document with no declaration, or
+    // one naming an unknown genre, keeps the path rule above.
+    bool genreAuto = false;
 
     // Empty selects all six. An unknown name is the VERB's refusal to make
     // (bad_args), not this engine's: it has no error channel and silently
@@ -198,6 +214,12 @@ struct Result {
     // Ran clean != did not run. A checker appears here when it was selected AND
     // eligible for at least one enumerated document.
     QStringList checksRun;
+
+    // ANTS-5293 — filled only under genreAuto, one entry per checked document
+    // that declares a genre. `genres` holds the ones judged by it;
+    // `unknownGenres` the declared word of the ones judged by path instead.
+    QMap<QString, QString> genres;
+    QMap<QString, QString> unknownGenres;
 
     QList<Skip>       skipped;
     QList<CheckError> checkErrors;

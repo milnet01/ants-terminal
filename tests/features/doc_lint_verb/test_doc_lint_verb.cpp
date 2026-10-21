@@ -683,3 +683,38 @@ TEST(DocLintVerb, Inv31StagedRefusalsRunNothing) {
             << dumpJson(r);
     }
 }
+
+// ANTS-5293 — genre:"auto" reaches the engine and its report reaches the
+// response; the default and an unknown value do neither. Contract:
+// tests/features/doc_lint_genre/spec.md.
+TEST(DocLintVerb, GenreArgReachesTheEngine) {
+    Tree t;
+    t.write(QStringLiteral("docs/design.md"), QByteArray("# D\n\nGenre: spec\n\nBody.\n"));
+    t.write(QStringLiteral("docs/odd.md"), QByteArray("# O\n\nGenre: poem\n"));
+
+    QJsonObject q;
+    q[QStringLiteral("genre")] = QStringLiteral("auto");
+    const QJsonObject autoRun = callDocLint(t.root, q);
+    ASSERT_TRUE(autoRun.value(QStringLiteral("ok")).toBool()) << dumpJson(autoRun);
+    EXPECT_EQ(QStringLiteral("spec"),
+              autoRun.value(QStringLiteral("genres")).toObject()
+                  .value(QStringLiteral("docs/design.md")).toString()) << dumpJson(autoRun);
+    EXPECT_EQ(QStringLiteral("poem"),
+              autoRun.value(QStringLiteral("genre_unknown")).toObject()
+                  .value(QStringLiteral("docs/odd.md")).toString()) << dumpJson(autoRun);
+    EXPECT_TRUE(autoRun.value(QStringLiteral("checks_run")).toArray()
+                    .contains(QJsonValue(QStringLiteral("spec_lint")))) << dumpJson(autoRun);
+
+    const QJsonObject pathRun = callDocLint(t.root, QJsonObject{});
+    ASSERT_TRUE(pathRun.value(QStringLiteral("ok")).toBool()) << dumpJson(pathRun);
+    EXPECT_FALSE(pathRun.contains(QStringLiteral("genres"))) << dumpJson(pathRun);
+    EXPECT_FALSE(pathRun.contains(QStringLiteral("genre_unknown"))) << dumpJson(pathRun);
+    EXPECT_FALSE(pathRun.value(QStringLiteral("checks_run")).toArray()
+                     .contains(QJsonValue(QStringLiteral("spec_lint")))) << dumpJson(pathRun);
+
+    q[QStringLiteral("genre")] = QStringLiteral("poem");
+    const QJsonObject bad = callDocLint(t.root, q);
+    EXPECT_FALSE(bad.value(QStringLiteral("ok")).toBool()) << dumpJson(bad);
+    EXPECT_EQ(QStringLiteral("bad_args"), bad.value(QStringLiteral("code")).toString())
+        << dumpJson(bad);
+}
