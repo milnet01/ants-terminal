@@ -69,6 +69,9 @@ touches it. So:
   project;"`).
 - An unresolvable slug **refuses** `unknown_project` and lists the known slugs.
   Mail that can never be delivered must not be accepted.
+- `to:"*"` is the one non-slug value: it addresses every registered project
+  (§ 2.7). The `export_slug` CHECK admits no `*`, so it cannot collide with a
+  slug.
 - The sending session is recorded as **provenance, not as a key**:
   `from_session` is free text a reader may use to reply in prose, and nothing
   routes on it.
@@ -141,7 +144,7 @@ three thin verbs.
 
 | op | Required | Optional | Returns |
 |---|---|---|---|
-| `send` | `caller_cwd`, `to`, `body` | `from_session`, `dry_run` | `message_id`, `to`, `created_at` |
+| `send` | `caller_cwd`, `to`, `body` | `from_session`, `dry_run`, `include_self` (§ 2.7) | `message_id`, `to`, `created_at`; for `to:"*"`, § 2.7's shape |
 | `inbox` | `caller_cwd` | `include_acked`, `limit`, `offset`, `message_id` | `messages[]`, `unacked_count` |
 | `ack` | `caller_cwd`, `message_id` | — | `acked_at`, `already_acked` |
 
@@ -286,6 +289,36 @@ Unbounded unacked mail is therefore bounded by a **cap instead of a clock**:
 `inbox_full` rather than dropping the oldest, because a silently dropped
 message is indistinguishable from one never sent.
 
+### 2.7 Broadcast — `to:"*"` (ANTS-5741)
+
+A notice every project should know — a verb shipped, a rule changed — is
+something to KNOW, not work to file, so § 1.1 puts it here rather than in the
+feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
+
+- **Recipients.** `send` with `to:"*"` writes one ordinary `message` row per
+  project `RoadmapStore::listProjects()` returns under its default
+  `Visibility::Registered`. A deregistered project gets no copy. The caller's
+  own project is skipped unless `include_self:true`.
+- **Each copy is an ordinary message.** It has its own `message_id` and is
+  acked by its own recipient. Nothing records that the rows were one
+  broadcast; a reply is addressed to the sender's slug as before.
+- **A full inbox skips that recipient, not the call.** § 2.6's cap is checked
+  per recipient. A recipient at the cap is listed in `refused[]` with code
+  `inbox_full`, and every other recipient still gets its copy.
+- **One transaction.** Every copy is written in one store transaction. An I/O
+  failure rolls all of them back and the call refuses `io_error`.
+- **Validated once, before any write.** An empty or oversized body refuses
+  `bad_args` for the whole call and writes nothing.
+- **Reply.** `sent[]` holds `{to, message_id}` per copy written, `refused[]`
+  holds `{to, code}` per recipient skipped, and `created_at` is the one stamp
+  every copy carries. A call with no recipient left returns both arrays empty
+  and `ok:true`.
+- **`dry_run`.** Runs the same recipient and cap checks and writes nothing.
+  It returns `would_send_to[]` (slugs) and `would_refuse[]` (`{to, code}`),
+  and no `sent[]` or `message_id` (ANTS-4463).
+- **Prune.** § 2.6's prune runs once, over the caller's own inbox, as for any
+  writing `send`.
+
 ## 3. Invariants
 
 - **INV-1** — A message is addressed to a project. `send` resolves `to` against
@@ -352,6 +385,22 @@ message is indistinguishable from one never sent.
   carrying `would_send` and no `message_id` (ANTS-4463). The aged row is what
   makes the test discriminating: against an empty table a preview that fires the
   prune is indistinguishable from one that does not.
+- **INV-11** — A broadcast reaches every registered project but the sender,
+  and only those. *Test:* register `alpha`, `bravo`, `charlie` and `delta`;
+  deregister `delta`; broadcast from `alpha`. `bravo` and `charlie` each hold
+  one row, and `alpha` and `delta` hold none. Repeat with `include_self:true`:
+  `alpha` now holds one. `delta` is the leg that separates the registered list
+  from every row in `project`; `alpha` separates the self-skip from none.
+- **INV-12** — A full recipient is refused and the rest still receive.
+  *Test:* fill `bravo` to § 2.6's cap, broadcast from `alpha`. `refused[]`
+  names `bravo` with `inbox_full`, `bravo`'s row count is unchanged, and
+  `charlie` holds one new row. `charlie`'s row is what separates a
+  per-recipient skip from refusing the whole call.
+- **INV-13** — A broadcast `dry_run` writes nothing and reports the same
+  split. *Test:* the INV-12 fixture with the dry-run flag: the `message` row
+  count is unchanged, `would_send_to[]` names `charlie` and `would_refuse[]`
+  names `bravo`. The full `bravo` is what makes the preview's split checkable
+  rather than an echo of the recipient list.
 
 ## 4. RAM / build cost
 
@@ -399,9 +448,9 @@ sits at exactly the 6000 lines ANTS-3833 INV-6 caps a TU at, with no headroom
   `session_orient`. Interrupting a running session is a different feature with a
   different failure mode (an interruption nobody asked for), and the desktop
   notification rule already restricts what may fire unprompted.
-- **Broadcast or group addressing.** `to` resolves to exactly one project. A
-  session wanting every project's attention is writing a finding, which is what
-  the feedback corpus is for — § 1.1.
+- **Group addressing.** `to` names one project, or every registered project
+  (§ 2.7). No named subset of projects is addressable. Broadcast was out of
+  scope here until ANTS-5741.
 - **Message editing or recall.** A sent message is immutable. Recall implies
   the sender can know it was not yet read, which the ack model deliberately
   does not promise.
@@ -420,7 +469,7 @@ sits at exactly the 6000 lines ANTS-3833 INV-6 caps a TU at, with no headroom
 ## 6. Tests
 
 Feature test: `tests/features/session_message/`, covering INV-1, INV-2, INV-3,
-INV-4, INV-5, INV-8, INV-9 and INV-10 — written out rather than as a range, so
+INV-4, INV-5, INV-8, INV-9, INV-10, INV-11, INV-12 and INV-13 — written out rather than as a range, so
 the parity between this list and § 3 stays mechanically checkable. Label
 `features`. Wired into an existing bundle's `SOURCES`
 list — ask `build_target_for` which bundle owns the file rather than guessing,
@@ -453,6 +502,14 @@ however well it reads.
 - `tool_info {catalog:true}` — the live verb catalogue picks the verb up
   automatically; no hand edit.
 
+## Reload
+
+`session_message` is registered in `mcp::registerProjectScopedVerbs()`, so
+`ants-mcpd` serves it. A rebuilt `ants-mcpd` reaches a client on its next
+reconnect (`/mcp`), with no terminal relaunch. The verb holds no running
+state, so it has no stop/start control of its own. § 2.7 changes nothing
+here.
+
 ## Cold-eyes loop log
 
 | Loop | Date | Lanes | Q-count | Outcome |
@@ -460,3 +517,4 @@ however well it reads.
 | 1 | 2026-08-22 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying the `roadmapstore` DDL rules, `deregisterProject()`, the upgrade ladder, the PID-identity branch and the `feedback_pending` window | **Q1 3 · Q2 3 · Q3 4** (10 verified / 0 dismissed) | **Ten verified, ten fixed; nothing deferred.** **All three lanes independently found the same Q1**, and it is the run's most consequential: SQLite's `length()` counts **characters** on a TEXT value, so the draft's `length(body) <= 4096` capped 4096 *characters* — up to 16 KiB of UTF-8 — making every figure in § 4 understated by up to 4×, and leaving a handler that validates bytes accepting bodies the constraint then rejects. Now `length(CAST(body AS BLOB))`, verified by the refuting case (2000 three-byte characters refused, 1000 accepted at 3000 bytes). One lane added the other half: `from_session` carried no CHECK at all, so a row was unbounded whatever the body cap said. **The best Q3 was a coupling the roadmap item never named** — `src/roadmapexport.cpp` serialises nine `"t"`-tagged per-project record types, and the draft said nothing about whether mail joins them. It does not, and the reason is structural: a message references TWO projects and an export carries one, so exporting mail would import rows whose other end does not exist — the dangling reference § 2.5 exists to prevent, arriving through the import path. **Two Q3s were one ambiguity with two victims:** *"the next `send` by the same project"* never said which side it scoped, and under the `from_project_id` reading INV-8 passed without exercising anything — the vacuous-fixture trap, in a clause written the same day the drafting rule warning about it was read. The prune now fires on any op by the calling project over its own inbox, which also closes the Q2 where a project that acks and never sends again would never prune while § 4 promised a 30-day bound. **Three of the ten were the spec claiming things about documents it had not re-read:** `forbidden`, `unknown_project` and `inbox_full` were cited *per* `mcp-error-codes.md` and are absent from it, while `no_project` — the exact code for the unregistered-caller case the draft left unspecified — was already there. `forbidden` is dropped outright: reusing `not_found` for a message addressed elsewhere removes a new code and stops a probe learning that an id exists. **Open questions, none of which became findings:** the upgrade harness's ANTS-3815 INV-3 comparison is `SELECT sql FROM sqlite_master … ORDER BY rowid`, derived rather than a hardcoded list, so INV-6 needed its claim widened rather than the harness extended; `forbidden` appears 0 times in `src/`; and no other length CHECK exists in `roadmapstore.cpp` to set a character-vs-byte precedent. |
 | 2 | 2026-08-22 | 3, cold — identical brief, packet rebuilt whole from disk; two packet gaps loop 1's lanes had flagged were closed first (the error-code list was headings-only, and § 5 now cites `roadmapexport.cpp`) | **Q1 2 · Q2 3 · Q3 4** (9 verified / 0 dismissed) | **Nine verified, nine fixed. Cap reached (2 for a spec); nothing deferred.** **Five of the nine landed on text loop 1 wrote** — 4a-min's measured pattern, and worth stating plainly rather than in prose: this is a moderately oscillating cap, not a calm one. **The worst was loop 1's own repair being false.** Loop 1 widened INV-6 by asserting the harness compares `sqlite_master` byte-identically `ORDER BY rowid`; that query is the FIXTURE-GENERATION dump, and the live comparison is `schemaStatements()`, which ends `out.sort()` and passes every statement through a `norm` callback. So the comparison is SORTED and NORMALISED, and an implementer taking INV-6 literally would have concluded rowid order can never match between a created and a climbed store and declared the invariant unachievable. One lane found it, a second raised it as an open question, and the source settled it. **Loop 1 also introduced two of its own:** the index it added covered one FK end while `ddl[]`'s own block says SQLite does not auto-index foreign keys and `relationship` carries `idx_rel_src` AND `idx_rel_dst` — both ends, exactly as its delete is both ends; and the export bullet it added counted nine `"t"`-tagged record types where there are ten. All three lanes raised that count as an open question and none filed it, correctly — nothing is built differently either way — so the number was DELETED rather than corrected, since it was carrying nothing. **And loop 1's fix for the vacuous-fixture trap contained the trap again:** pinning the prune's side left its COLUMN unpinned, and under the `acked_at` reading an unacked row has `acked_at IS NULL`, so a pure age filter deletes nothing and INV-8 passed against a broken prune. Three lanes reached that column from three directions. INV-8 now carries two rows and says why neither leg alone is sufficient. **Four were pre-existing and loop 1 never reached them:** the 500 cap counts UNACKED rows, so § 4's 31.2 MiB was never a bound on the table — the spec now states outright which half is hard-capped and which is a deliberate trade; `mail_pending`'s keys were never named though INV-4 asserts against them; "a project with no mail" admitted *no rows* and *no unacked rows*, the second being ANTS-3631's failure the same section cites; and a `dry_run` send is an op, so loop 1's "any op" trigger had previews pruning. **Open questions, none of which became findings:** `project_not_registered` is scoped by the taxonomy to one op's remap of `op_unsupported` and is a statement about the CALLER, so it does not cover an unknown addressee — recorded in § 2.3 because three lanes asked. |
 | impl | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment recording code verified in the same commit | — | § 2.3 records two shipped changes. ANTS-5601: `inbox` takes `message_id` and returns that one message, acked or not; another project's id is `not_found`, as for `ack`. ANTS-5591: `limit` of 0 or less asks for the 200-row ceiling instead of 1. Rule 14: the code-already-exists exception, so no gate. |
+| amend | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment before implementation | — | ANTS-5741 (user decision 2026-10-16): adds § 2.7, broadcast by `to:"*"`, with INV-11 to INV-13; § 2.1 and § 2.3 gain the `*` value and `include_self`; § 5 withdraws broadcast from out of scope. It changes direction, so rule 14's gate runs next as loop 3. |
