@@ -21,6 +21,7 @@ invariant.
 | `OversizedStdinRefusalCarriesTheTrailingId` | — | ANTS-4709: an over-ceiling line ending `"id":N}` gets its `-32600` under id N, so a client matching by id sees the refusal. The next request is answered. |
 | `OversizedStdinRefusalCarriesTheLeadingId` | — | An over-ceiling line opening with its `id` is refused under that id as soon as the ceiling trips, before its newline. The tail is skipped and the next request is answered. |
 | `RepliesInFlightAtStdinEofAreStillSent` | — | ANTS-5320: a forwarded `get_text` (to a stub terminal that answers only when the test pumps events) and a `tools/list` are sent, then stdin is closed. `ants-mcpd` exits, and both ids have a reply. |
+| `Ants4845SlowTerminalIsATimeoutNotNoTerminal` | — | ANTS-4845: a `mcpd::Forwarder` with a 300 ms deadline, pointed at a socket that takes the request and never answers, refuses `code:"terminal_timeout"`, and its `hint` does not tell the caller to start Ants Terminal. |
 
 INV-4 lives in `tests/features/mcp_dispatch_forward_completeness/` and INV-7
 in `tests/features/mcp_tabspecific_contract/`, which own those contracts. INV-10

@@ -1926,7 +1926,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     // ANTS-4736 — the batch deadline.
     //
     // The client stops waiting for a reply after its read timeout (ants-mcpd:
-    // kTimeoutMs in src/mcpdforwarder.cpp, 60 s) while this loop keeps
+    // Forwarder::m_timeoutMs in src/mcpdforwarder.h, 60 s) while this loop keeps
     // running. So a
     // batch that outlives it went on mutating the file BETWEEN the caller's
     // next commands: observed as a suite that failed one test, then passed it

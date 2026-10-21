@@ -13,9 +13,8 @@
 namespace mcpd {
 
 namespace {
-// The terminal's reply cap, and the connect and read timeout.
+// The terminal's reply cap.
 constexpr qsizetype kMaxReplyBytes = 10 * 1024 * 1024;
-constexpr int kTimeoutMs = 60 * 1000;
 }  // namespace
 
 QString Forwarder::noTerminalEnvelope(const QString &detail) {
@@ -27,6 +26,18 @@ QString Forwarder::noTerminalEnvelope(const QString &detail) {
         : QStringLiteral("no Ants Terminal is running (%1)").arg(detail);
     env[QStringLiteral("hint")]  = QStringLiteral(
         "start Ants Terminal, or pass caller_cwd to a project-scoped verb");
+    return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+}
+
+QString Forwarder::terminalTimeoutEnvelope(const QString &detail) {
+    QJsonObject env;
+    env[QStringLiteral("ok")]    = false;
+    env[QStringLiteral("code")]  = QStringLiteral("terminal_timeout");
+    env[QStringLiteral("error")] = QStringLiteral(
+        "Ants Terminal took the request and did not answer in time (%1)").arg(detail);
+    env[QStringLiteral("hint")]  = QStringLiteral(
+        "the terminal may still finish the call: check its effect before "
+        "retrying anything that writes; a read can be retried unchanged");
     return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
 }
 
@@ -42,6 +53,7 @@ void Forwarder::forward(const QByteArray &requestLine, ReplyFn onReply,
 
     struct State {
         bool done = false;
+        bool sent = false;   // the terminal has the request
         QByteArray buf;
         ReplyFn onReply;
         FailFn onFail;
@@ -54,38 +66,45 @@ void Forwarder::forward(const QByteArray &requestLine, ReplyFn onReply,
     auto *timer = new QTimer(sock);
     timer->setSingleShot(true);
 
-    // Every exit goes through here, so exactly one callback runs.
-    auto finish = [st, sock](bool ok, const QString &detail) {
+    // Every exit goes through here, so exactly one callback runs. A failure
+    // passes its finished envelope; success passes an empty one.
+    auto finish = [st, sock](bool ok, const QString &failEnvelope) {
         if (st->done) return;
         st->done = true;
         sock->disconnect();
         sock->abort();
         sock->deleteLater();
         if (ok) st->onReply(st->buf);
-        else    st->onFail(noTerminalEnvelope(detail));
+        else    st->onFail(failEnvelope);
     };
 
-    connect(timer, &QTimer::timeout, sock, [finish, path] {
-        finish(false, QStringLiteral("%1 did not answer within %2 s")
-                          .arg(path).arg(kTimeoutMs / 1000));
+    // ANTS-4845 — once the request is written the terminal is running, so a
+    // missed deadline is a slow call, not a missing terminal.
+    connect(timer, &QTimer::timeout, sock, [st, finish, path, ms = m_timeoutMs] {
+        const QString detail = QStringLiteral("%1 did not answer within %2 s")
+                                   .arg(path, QString::number(ms / 1000.0));
+        finish(false, st->sent ? terminalTimeoutEnvelope(detail)
+                               : noTerminalEnvelope(detail));
     });
     connect(sock, &QLocalSocket::connected, sock,
-            [sock, me, finish, path, requestLine] {
+            [sock, st, me, finish, path, requestLine] {
         // INV-11 — the second check, on the connected peer.
         if (!peerUidIs(static_cast<int>(sock->socketDescriptor()), me)) {
-            finish(false, QStringLiteral("the peer on %1 is not uid %2 (uid check)")
-                              .arg(path).arg(me));
+            finish(false, noTerminalEnvelope(
+                QStringLiteral("the peer on %1 is not uid %2 (uid check)")
+                    .arg(path).arg(me)));
             return;
         }
         QByteArray out = requestLine;
         if (!out.endsWith('\n')) out.append('\n');
         sock->write(out);
         sock->flush();
+        st->sent = true;
     });
     connect(sock, &QLocalSocket::readyRead, sock, [sock, st, finish] {
         st->buf += sock->readAll();
         if (st->buf.size() > kMaxReplyBytes) {
-            finish(false, QStringLiteral("reply exceeded 10 MiB"));
+            finish(false, noTerminalEnvelope(QStringLiteral("reply exceeded 10 MiB")));
             return;
         }
         // ANTS-1769 — '\n' ends a reply; compact JSON carries no raw newline.
@@ -97,20 +116,23 @@ void Forwarder::forward(const QByteArray &requestLine, ReplyFn onReply,
     });
     connect(sock, &QLocalSocket::disconnected, sock, [st, finish, path] {
         if (st->buf.isEmpty()) {
-            finish(false, QStringLiteral("%1 closed without replying").arg(path));
+            finish(false, noTerminalEnvelope(
+                QStringLiteral("%1 closed without replying").arg(path)));
             return;
         }
         // A reply cut off before its terminator is not a reply.
-        finish(false, QStringLiteral("%1 closed mid-reply").arg(path));
+        finish(false, noTerminalEnvelope(
+            QStringLiteral("%1 closed mid-reply").arg(path)));
     });
     connect(sock, &QLocalSocket::errorOccurred, sock,
             [sock, st, finish, path](QLocalSocket::LocalSocketError) {
         // PeerClosedError after a complete reply is handled by readyRead.
         if (st->done) return;
-        finish(false, QStringLiteral("%1: %2").arg(path, sock->errorString()));
+        finish(false, noTerminalEnvelope(
+            QStringLiteral("%1: %2").arg(path, sock->errorString())));
     });
 
-    timer->start(kTimeoutMs);
+    timer->start(m_timeoutMs);
     sock->connectToServer(path);
 }
 

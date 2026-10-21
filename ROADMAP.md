@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5806 -->
+<!-- ants-roadmap-id-high-water: ANTS=5807 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -83787,8 +83787,17 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 OneUp.
 
-- 📋 [ANTS-4845] **A transport timeout returns a bare string with no envelope, so it cannot be told from a refusal or an empty result.**
+- ✅ [ANTS-4845] **A transport timeout returns a bare string with no envelope, so it cannot be told from a refusal or an empty result.**
   RetroDB saw it on workspace_search dispatched in a parallel block, where the identical retry ran in 42 ms; Slipcase saw a third project_settings op:"detect" sighting, this time on the present:true path that short-circuits before walking, so a cold-walk explanation does not cover it. The remedies a caller reaches for (narrow the pattern, raise timeout_sec) all address the wrong layer. Return {ok:false, code:"transport_timeout"} with a hint that the call may be retried unchanged, and say in the schema whether concurrent calls to one verb are safe. Parallel dispatch is the documented way to use these verbs.
+  Shipped 2026-10-21, re-scoped. The bare-string timeout was
+  tools/mcp-bridge.py's, retired by ANTS-5308; a timeout Claude Code
+  raises itself is outside Ants. The one deadline left on Ants' side,
+  ants-mcpd's forwarder (60 s), answered no_terminal ("start Ants
+  Terminal") for a running but slow terminal; it now answers
+  terminal_timeout with a hint to check a write before retrying.
+  Registered in mcp-error-codes.md. Locked by
+  StandaloneMcpServer.Ants4845SlowTerminalIsATimeoutNotNoTerminal. The
+  concurrency-safety half moved to ANTS-5807.
   **Layman:** When the connection gives up, the error looks like the tool answering "nothing found".
   Kind: fix.
   Source: cc-feedback-2026-09-03 RetroDB/Slipcase.
@@ -83840,9 +83849,27 @@ two projects).
   only reader of that variable. The timeout a caller now meets is
   Claude Code's own MCP tool timeout. Measure what that is, re-derive
   the default from it, and replace every mention of the variable.
+  2026-10-21: mutation_probe is served inside ants-mcpd, so the
+  forwarder's 60 s deadline does not bound it either; the comment above
+  the batch deadline in src/remotecontrol_workspace.cpp says it does and
+  is stale too. Claude Code's docs (code.claude.com/docs/en/mcp.md,
+  env-vars.md, read 2026-10-21 through a truncated fetch) give
+  MCP_TOOL_TIMEOUT a default of about 28 hours and stdio servers a
+  30-minute idle timeout (CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT). Confirm
+  with a real call longer than 60 s before re-deriving the default.
+  ANTS-4831 rests on the same bound.
   **Layman:** The mutation test tool's time limit is tuned to a part that was removed, so it may stop too early or too late.
   Kind: fix.
   Source: self-found-2026-10-21 ANTS-4830 work.
+
+- 📋 [ANTS-5807] **Verb schemas do not say whether concurrent calls to one verb are safe.**
+  Parallel dispatch is the documented way to use the Ants MCP verbs,
+  but no schema states whether two concurrent calls to the same verb
+  are safe (a read always is; a write to one file or store row may
+  not be). Split from ANTS-4845, whose timeout half shipped.
+  **Layman:** The tools don't say whether two copies of the same request can safely run at once.
+  Kind: doc-fix.
+  Source: split from ANTS-4845 2026-10-21 (cc-feedback-2026-09-03 RetroDB/Slipcase).
 
 ### Ants MCP feedback from CC sessions — 2026-09-04 triage
 

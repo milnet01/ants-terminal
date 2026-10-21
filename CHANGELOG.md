@@ -225,6 +225,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A terminal-scoped verb that takes longer than 60 s now answers `terminal_timeout`, saying the terminal may still finish the call, instead of `no_terminal`'s advice to start Ants Terminal** (ANTS-4845)
+
 - **`roadmap_log` suggests `flip_batch` or `annotate_batch` only where they can write, not on a store-served pass-headings roadmap** (ANTS-5805)
 
 - **An Ants MCP request over 256 KiB is refused under its own id, so the caller sees the refusal at once instead of a transport timeout** (ANTS-4709)

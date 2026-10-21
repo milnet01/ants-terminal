@@ -10,6 +10,7 @@
 
 #include "claudeintegration.h"
 #include "mcpdsocket.h"
+#include "mcpdforwarder.h"
 #include "mcptoolregistry.h"
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
@@ -25,7 +26,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QEventLoop>
 #include <QLocalServer>
+#include <QLocalSocket>
+#include <QTimer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
@@ -533,4 +537,48 @@ TEST(StandaloneMcpServer, RepliesInFlightAtStdinEofAreStillSent) {
     EXPECT_TRUE(mcpd.closeInputAndDrain()) << "ants-mcpd did not exit after stdin closed";
     EXPECT_TRUE(mcpd.hasReply(list)) << "tools/list's reply was dropped at EOF";
     EXPECT_TRUE(mcpd.hasReply(forwarded)) << "the forwarded get_text reply was dropped at EOF";
+}
+
+// ANTS-4845 — a terminal that took the request and did not answer in time is
+// not a missing terminal. The forwarder called it `no_terminal`, whose hint
+// says to start Ants Terminal: wrong advice for a slow verb that may still
+// finish its write. The silent server here accepts and reads, and never
+// answers.
+TEST(StandaloneMcpServer, Ants4845SlowTerminalIsATimeoutNotNoTerminal) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.filePath(QStringLiteral("silent.sock"));
+    QLocalServer silent;
+    QLocalServer::removeServer(path);
+    ASSERT_TRUE(silent.listen(path));
+    QObject::connect(&silent, &QLocalServer::newConnection, &silent, [&silent] {
+        while (QLocalSocket *s = silent.nextPendingConnection())
+            QObject::connect(s, &QLocalSocket::readyRead, s, [s] { s->readAll(); });
+    });
+    const QByteArray oldSocket = qgetenv("ANTS_MCP_SOCKET");
+    qputenv("ANTS_MCP_SOCKET", path.toUtf8());
+
+    mcpd::Forwarder forwarder;
+    forwarder.setTimeoutMs(300);
+    QString failure;
+    bool replied = false;
+    QEventLoop loop;
+    QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+    forwarder.forward(
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"tab_list"}})",
+        [&](const QByteArray &) { replied = true; loop.quit(); },
+        [&](const QString &env) { failure = env; loop.quit(); });
+    loop.exec();
+    if (oldSocket.isNull()) qunsetenv("ANTS_MCP_SOCKET");
+    else qputenv("ANTS_MCP_SOCKET", oldSocket);
+
+    ASSERT_FALSE(replied);
+    ASSERT_FALSE(failure.isEmpty()) << "the forwarder never gave up";
+    const QJsonObject env = QJsonDocument::fromJson(failure.toUtf8()).object();
+    EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool(true));
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+              QStringLiteral("terminal_timeout")) << failure.toStdString();
+    EXPECT_FALSE(env.value(QStringLiteral("hint")).toString()
+                     .contains(QStringLiteral("start Ants Terminal")))
+        << "a running terminal was told to be started: " << failure.toStdString();
 }
