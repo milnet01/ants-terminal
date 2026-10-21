@@ -114,6 +114,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`mutation_probe` now tells the caller what a transport timeout means: the outcome is unknown, `path` is the file at risk, and it should be re-read, never hand-repaired or committed** (ANTS-4830)
+
 - **The MCP error-code standard now says how to place a new code and when a tool-specific code is justified** (ANTS-4752)
   A new code goes in the section of the code it pairs with. A tool's own "not found" code is justified when the same tool also answers plain `not_found` for a missing file.
 

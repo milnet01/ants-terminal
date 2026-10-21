@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5803 -->
+<!-- ants-roadmap-id-high-water: ANTS=5804 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -83752,8 +83752,15 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 DOOM/Slipcase/Snatch.
 
-- 📋 [ANTS-4830] **A mutation_probe transport timeout cannot be told from a leaked mutant, and the error names no path.**
+- ✅ [ANTS-4830] **A mutation_probe transport timeout cannot be told from a leaked mutant, and the error names no path.**
   ANTS-4736's budget guard fired on neither call. Games_Hub observed the file still mutated with nothing running; LocalWebServerManager observed a mutation present and then restored seconds later. From the caller's side those are one observation, and both wrong reactions are worse than the timeout: hand-repairing races the restore, committing ships a mutant. Cheapest half is to say in the description that a transport timeout means UNKNOWN and to re-read rather than repair. Stronger: hold the baseline server-side and restore on disconnect. Either way the timeout error should name the path that may be dirty.
+  Shipped 2026-10-21. The description and detail now say a transport
+  timeout leaves the outcome unknown, `path` is the only file at risk,
+  the probe or the ANTS-5096 journal restores it, and the caller
+  re-reads rather than repairs or commits. The "error names the path"
+  half cannot be done here: since ANTS-5308 the timeout error is
+  produced by the client, not by Ants. Locked by
+  MutationProbe.Ants4830DescriptionSaysATimeoutIsUnknown (spec INV-7).
   **Layman:** When a mutation test times out, the caller cannot tell whether a damaged source file is about to be repaired or left that way.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub/LocalWebServerManager.
@@ -83824,6 +83831,18 @@ two projects).
   **Layman:** A batch of linked edits cannot be told to change nothing at all if any one of them would fail.
   Kind: enhancement.
   Source: split from ANTS-4856, 2026-09-14.
+
+- 📋 [ANTS-5804] **mutation_probe's transport budget is set to match a bridge read timeout that no longer exists.**
+  `transport_budget_sec` defaults to 60 "matching the bridge's read
+  timeout", and its schema text, the budget_hint and the
+  mutation_probe spec (INV-5 rationale) tell callers to raise it with
+  ANTS_MCP_READ_TIMEOUT_S. ANTS-5308 retired tools/mcp-bridge.py, the
+  only reader of that variable. The timeout a caller now meets is
+  Claude Code's own MCP tool timeout. Measure what that is, re-derive
+  the default from it, and replace every mention of the variable.
+  **Layman:** The mutation test tool's time limit is tuned to a part that was removed, so it may stop too early or too late.
+  Kind: fix.
+  Source: self-found-2026-10-21 ANTS-4830 work.
 
 ### Ants MCP feedback from CC sessions — 2026-09-04 triage
 

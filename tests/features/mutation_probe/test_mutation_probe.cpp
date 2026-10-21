@@ -456,6 +456,26 @@ TEST(MutationProbe, Ants4736DeadlineIsWiredIntoTheMutationLoop) {
     EXPECT_NE(ci.find("transport_budget_sec"), std::string::npos);
 }
 
+// ANTS-4830 — a transport timeout is the client giving up, and its error names
+// no path. Two callers read it as a leaked mutant: one hand-repaired a file the
+// probe was about to restore, one nearly committed it. Only the description can
+// reach the caller then, so it must say the outcome is unknown, name the file
+// at risk, and say to re-read rather than repair.
+TEST(MutationProbe, Ants4830DescriptionSaysATimeoutIsUnknown) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const auto start = ci.find("mp[\"name\"] = \"mutation_probe\"");
+    ASSERT_NE(start, std::string::npos) << "mutation_probe descriptor not found";
+    const auto end = ci.find("mp[\"selection_hint\"]", start);
+    ASSERT_NE(end, std::string::npos);
+    const std::string text = ci.substr(start, end - start);
+
+    EXPECT_NE(text.find("transport timeout leaves the outcome UNKNOWN"),
+              std::string::npos) << "the short description must say it";
+    EXPECT_NE(text.find("ANTS-4830"), std::string::npos)
+        << "the detail must explain who restores the file";
+    EXPECT_NE(text.find("never hand-repair"), std::string::npos);
+}
+
 // ANTS-4996 — ctest prints no "tests failed" clause when nothing failed, and
 // the parser required it, so a green run read as unknown and
 // require_green_baseline refused every green ctest batch (ANTS-5119).

@@ -5634,8 +5634,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "baseline (baseline_unreadable) or one that collected nothing "
                         "(baseline_did_not_run); expect_occurrences refuses a "
                         "mismatch (occurrence_mismatch); transport_budget_sec stops the "
-                        "batch before the transport times out. test_command is an argv "
-                        "array. caller_cwd required.");
+                        "batch before the transport times out. "
+                        "A transport timeout leaves the outcome UNKNOWN: "
+                        "re-read `path`; never hand-repair or commit it. "
+                        "test_command is an argv array. caller_cwd required.");
                     mp["detail"] = QStringLiteral(
                         "Apply a textual mutation to a source file, run a test "
                         "command, restore the file — and REFUSE a mutation that "
@@ -5692,6 +5694,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "({path, outcome}: restored | left_edited | "
                         "left_missing | restore_failed). A journal whose writer "
                         "is still running is left alone. "
+                        "ANTS-4830: a transport timeout is the client giving "
+                        "up, not the probe, and its error names no path. The "
+                        "outcome is UNKNOWN, and the only file at risk is "
+                        "`path`. The probe goes on and restores it when its "
+                        "batch ends; if its process died, the next call in "
+                        "any session restores it from the journal. So re-read "
+                        "`path` (git diff) before acting, and never hand-repair "
+                        "it: a repair races that restore, and a commit can "
+                        "ship the mutant. "
                         "`test_command` is an ARGV ARRAY, never a shell string — "
                         "a deliberate narrowing, because this verb writes to a "
                         "source file and spawns a process. caller_cwd required.");
