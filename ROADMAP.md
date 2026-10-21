@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5796 -->
+<!-- ants-roadmap-id-high-water: ANTS=5797 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -73322,6 +73322,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: chore.
   Source: ANTS-5315-spec-research-2026-10-19.
   Lanes: roadmap.
+
+- 📋 [ANTS-5797] **spec_log op:append_loop follows a spec's pointer to its loop log under docs/reviews/.**
+  Seen 2026-10-21: spec_log op:append_loop id:ANTS-5734 with cells refused
+  bad_args ("this file's loop log is bullet-shaped"). The spec's
+  "Cold-eyes loop log" section holds only the line "Rows live in
+  ../reviews/ANTS-5734-trace-verb-loop-log.md", which the verb read as a
+  bullet log. Passing that file as `path` worked. Fix: when the section's
+  only content is a link to a docs/reviews/ file, append there and say so
+  in the reply.
+  **Layman:** Logging a review round against a spec works even when the spec keeps its review log in a separate file.
+  Kind: enhancement.
+  Source: in-session-2026-10-21.
+  Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

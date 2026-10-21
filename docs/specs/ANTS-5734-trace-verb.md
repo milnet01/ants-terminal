@@ -148,7 +148,8 @@ The source copies live in `assets/trace-queries/` and are compiled into `ants-mc
 ### 2.5 The walk, the parse and the cache
 
 - **The walk** reuses `SymbolQuery`'s rules: it skips dot-directories, `build`, `build-*` and `node_modules`, never follows a symlink, and stops after visiting 5000 regular files of any kind (`walk_capped:true`). Those rules (`skippedDir` and the symlink test in `walk`, `src/symbolquery.cpp`) move to a shared header so the two walks cannot drift.
-- **The parse.** A file over 2 MiB is not parsed (`file_too_large`). A parse is abandoned after 2 seconds through `TSParseOptions::progress_callback` (`parse_timeout`). A tree with error nodes is still queried, and the file is counted in `files_with_parse_errors`. Measured 2026-10-16 with the CLI and the system C++ grammar: 90 of the 396 files in `src/` parse with errors, and files with errors yield definitions at the same rate as clean ones. In the 72 `.cpp` files with errors, a `function_definition` query found 604 definitions against 618 column-0 closing braces; in 60 clean ones, 1054 against 1100. Recipe: `tree-sitter parse --stat`, then `tree-sitter query` with that pattern.
+- **In a git checkout the walk also skips every file git ignores** (ANTS-5748). It takes the file list from `git -C <root> ls-files --cached --others --exclude-standard -z` and applies the rules above to each path, in the order git prints them. Where the root is not in a git checkout, or `git` is absent or fails, the walk is the directory walk alone. Without this step a git-ignored tree of logs and backups filled the 5000-file cap before the walk reached the source. `SymbolQuery` does not take this step: it skips a file with an unknown extension before counting it.
+- **The parse.** A file whose first 8000 bytes hold a NUL byte is binary. It is skipped before the size check, so it is neither parsed nor reported (ANTS-5748). A text file over 2 MiB is not parsed (`file_too_large`). A parse is abandoned after 2 seconds through `TSParseOptions::progress_callback` (`parse_timeout`). A tree with error nodes is still queried, and the file is counted in `files_with_parse_errors`. Measured 2026-10-16 with the CLI and the system C++ grammar: 90 of the 396 files in `src/` parse with errors, and files with errors yield definitions at the same rate as clean ones. In the 72 `.cpp` files with errors, a `function_definition` query found 604 definitions against 618 column-0 closing braces; in 60 clean ones, 1054 against 1100. Recipe: `tree-sitter parse --stat`, then `tree-sitter query` with that pattern.
 - **The cache** keeps, per file, the extracted rows (definitions, calls, imports, identifier hits), never the tree. It is keyed by path, mtime, size and the query file's hash. Budget and eviction are § 5's.
 - **Name matching is syntactic.** A caller is any call whose `@name` text equals the symbol's last segment. No type resolution is done, so two unrelated functions with one name share callers. That is why the reply says `precision:"syntactic"`, and why `scope` lets a caller narrow the definitions.
 
@@ -217,6 +218,8 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-19** — (Ship 2.) A depth-2 trace returns callers of callers with `depth:2`, and terminates on recursion. *Test:* `tests/features/trace/` traces `leaf` with `depth:3` in `fixture/chain.py` (`top` calls `mid`, `mid` calls `leaf`, `leaf` calls `mid`), expecting `mid` at depth 1, `top` and `leaf` at depth 2, and no depth-3 row: `leaf` is the traced definition, so it is not expanded again. *Breaks when:* a visited definition is walked again.
 - **INV-20** — (Ship 2.) Callees are the calls inside a definition's own range. *Test:* `tests/features/trace/` traces `mid` with `include:["callees"]`, expecting `leaf` and not `top`. *Breaks when:* the range is the whole file.
 - **INV-21** — The script form reaches `trace`. *Test:* `tests/features/trace/` runs `ants-mcpd --call trace '{"symbol":"spanFn","include":["definitions"]}'` from the fixture's temporary copy, expecting exit `0` and one definition with `end_line:9`. *Breaks when:* `mcp::registerMcpdOnlyVerbs` runs after the `--call` early return in `src/mcpdmain.cpp`.
+- **INV-22** — In a git checkout, a git-ignored file is not walked. *Test:* `tests/features/trace/` runs `git init` in a temporary copy of the fixture, writes a `.gitignore` holding `archive/`, and writes `archive/hidden.py` defining `ignoredProbe`. Tracing `ignoredProbe` expects no definition. The same copy without the `.gitignore` gives one. *Breaks when:* the walk lists the directory instead of git's file list.
+- **INV-23** — A binary file is never reported as `file_too_large`. *Test:* `tests/features/trace/` writes a 3 MiB `blob.bin` holding NUL bytes and the text `kindProbe` into a temporary copy of the fixture, expecting no `not_covered` entry naming it. *Breaks when:* the size check runs before the binary check.
 
 ## 4. Failure modes
 
@@ -248,7 +251,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 
 Feature test: `tests/features/trace/`, label `features`, its bundle taken from `build_target_for` once it exists. Every case runs against `tests/features/trace/fixture/`. Each case is run against the code before the change that makes it pass, and is seen to fail there.
 
-- INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16 and INV-18: one case each, calling `trace::serve` directly.
+- INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16, INV-18, INV-22 and INV-23: one case each, calling `trace::serve` directly. INV-22's case needs `git` on the test host.
 - INV-13: builds two `ClaudeIntegration` pipelines and compares their `tools/list` replies.
 - INV-14: the query re-read case, with `XDG_DATA_HOME` set for the test process.
 - INV-17: the `nm` and `ldd` commands, run by the bundle against the built `ants-mcpd`.
@@ -290,6 +293,7 @@ The fixture's `.dart` file is never parsed; it exists to be reported.
 | INV-1 to INV-16, INV-18 | `tests/features/trace/` |
 | INV-17 | **Partial:** `tests/features/trace/` (the `nm` and `ldd` checks) catches a shared link; nothing catches a `dlopen` of a system grammar |
 | INV-21 | `tests/features/trace/` |
+| INV-22, INV-23 | `tests/features/trace/` |
 | INV-19, INV-20 | `tests/features/trace/`, from ship 2 |
 | § 2.3 grammar pins match the vendored files | **nothing** — `tools/vendor-grammars.sh` checks hashes only when it runs; deferred; not yet queued |
 | § 2.8 preamble stays within 500 bytes | ANTS-1252 INV-3's test |
