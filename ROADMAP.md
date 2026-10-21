@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5808 -->
+<!-- ants-roadmap-id-high-water: ANTS=5809 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87849,6 +87849,40 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: optimize.
   Source: in-session-2026-10-21.
   Lanes: mcp.
+
+- 📋 [ANTS-5809] **The ANTS-4622 mailbox spec matches shipped behaviour in four older passages.**
+  Found by the 2026-10-21 review-contract run on
+  docs/specs/ANTS-4622-cross-session-mailbox.md (the ANTS-5741 gate).
+  Each is outside that amendment, so filed rather than fixed in the run.
+
+  1. [Q2] INV-5 is marked withdrawn by ANTS-5366 INV-2 but keeps its old
+     delete-both-ends text and test; § 6 lists it as covered; § 7 says
+     CLAUDE.md's nine-table delete order "becomes ten". ANTS-5366 § 2.2
+     deletes no message row, and tests/features/session_message/spec.md
+     INV-5 asserts mail is KEPT. Fix: replace INV-5's body with a pointer
+     to ANTS-5366 INV-2 (keep at both ends); strike the § 7 CLAUDE.md
+     bullet; mark § 2.5's DeregisterCounts sentence superseded.
+  2. [Q1] § 2.3 says ack returns `acked_at` and each messages[] entry
+     carries `acked_at`. The handler omits the key when unread
+     (messageToJson: "Absent rather than null when unread") and on an
+     already_acked:true reply. Fix: say `acked_at` is present only once
+     acked, and ack returns it only on the first ack; INV-3's "unchanged"
+     is checked in the store, not the reply.
+  3. [Q1] § 2.1 says an unknown slug's refusal "lists the known slugs".
+     The handler attaches candidates[] from slugCandidates(), the nearest
+     registered slugs, leaving out slugs that share nothing (ANTS-5473;
+     mcp-error-codes.md agrees). Fix: "...refuses unknown_project with
+     candidates[], the nearest registered slugs (ANTS-5473)."
+  4. [Q4] INV-4 and INV-10 are written as behavioural tests, but both
+     behaviours sit in the handler or orient layer, which opens the real
+     store; the feature test checks them by source inspection
+     (test_session_message.cpp, the INV-10/INV-4 inspection block). Fix:
+     restate both test clauses as source-inspection clauses, as the
+     feature spec.md does, and say so in § 6.
+  **Layman:** Four older parts of the mailbox design document still describe how it used to work; they get brought up to date.
+  Kind: doc-fix.
+  Source: review-contract-2026-10-21 ANTS-4622 blast-radius exit.
+  Lanes: mcp-tools.
 
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 

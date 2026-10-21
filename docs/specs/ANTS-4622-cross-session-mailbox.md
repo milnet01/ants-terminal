@@ -1,6 +1,6 @@
 # ANTS-4622 — Cross-session mailbox: a `message` table and its verb
 
-**Status:** accepted, review-contract loops 1 + 2 folded, cap reached (2026-08-22).
+**Status:** accepted (2026-10-21).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-4622 (user-request-2026-08-22).
 **Composes with:** ANTS-4617 (`roadmap_migrate op:"deregister"` — the delete
@@ -313,11 +313,13 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
   nothing. So `refused[]` carries only `inbox_full`.
 - **Reply.** `sent[]` holds `{to, message_id}` per copy written, `refused[]`
   holds `{to, code}` per recipient skipped, and `created_at` is the one stamp
-  every copy carries. A call with no recipient left returns both arrays empty
-  and `ok:true`.
+  every copy carries, beside `to:"*"`. A call with no recipient left returns
+  both arrays empty and `ok:true`.
 - **`dry_run`.** Runs the same recipient and cap checks and writes nothing.
-  It returns `would_send_to[]` (slugs) and `would_refuse[]` (`{to, code}`),
-  and no `sent[]` or `message_id` (ANTS-4463).
+  It returns `to:"*"`, `dry_run:true`, `would_send_to[]` (slugs) and
+  `would_refuse[]` (`{to, code}`), and no `sent[]` or `message_id`
+  (ANTS-4463). `would_send_to[]` stands in for the single-slug preview's
+  `would_send`.
 - **Prune.** § 2.6's prune runs once, over the caller's own inbox, as for any
   writing `send`.
 - **Where it lives.** The recipient walk, the per-recipient cap check and the
@@ -526,3 +528,4 @@ here.
 | impl | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment recording code verified in the same commit | — | § 2.3 records two shipped changes. ANTS-5601: `inbox` takes `message_id` and returns that one message, acked or not; another project's id is `not_found`, as for `ack`. ANTS-5591: `limit` of 0 or less asks for the 200-row ceiling instead of 1. Rule 14: the code-already-exists exception, so no gate. |
 | amend | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment before implementation | — | ANTS-5741 (user decision 2026-10-16): adds § 2.7, broadcast by `to:"*"`, with INV-11 to INV-13; § 2.1 and § 2.3 gain the `*` value and `include_self`; § 5 withdraws broadcast from out of scope. It changes direction, so rule 14's gate runs next as loop 3. |
 | 3 | 2026-10-21 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; one shared packet carrying the handler whole, the `RoadmapStore` mailbox, transaction and project-list windows, the tool schema, the test fixture and the ANTS-5366 passages. Gated span: commit 6a71f24f (ANTS-5741) | **Q1 0 · Q2 0 · Q3 1 · Q4 1** (2 verified, 2 fixed / 2 dismissed) | **[Q4], both lanes:** § 2.7 placed the broadcast nowhere, and the handler opens the real store, so a handler-side broadcast left INV-11 to INV-13 with no runnable test. § 2.7 now puts the walk, the cap split and the dry-run split in one `RoadmapStore` method that the invariants drive on a temporary store. **[Q3], one lane:** only the body was validated up front, so an oversized `from_session` could come back `ok:true` with every recipient refused; it now refuses `bad_args` for the whole call and `refused[]` carries only `inbox_full`. § 2.3's `bad_args` gloss gains the same case. **Dismissed:** the single-slug preview not checking the cap while the broadcast preview does (two paths, each stated, neither false); a claim that § 6 overstates INV-10's coverage (the feature test covers it by source inspection, in that directory). **Outside the amendment's radius, filed on the roadmap:** INV-5, § 2.5 and § 7 still describe the pre-ANTS-5366 delete; § 2.3 says `acked_at` is always returned; § 2.1 says the refusal lists the known slugs. **Open questions, none became a finding:** a deregistered caller's `include_self`, `include_self` on a single-slug send, and whether a broadcast writing no row prunes — local choices nothing else binds to. |
+| 4 | 2026-10-21 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt whole from disk; every lane held every question | **Q1 0 · Q2 0 · Q3 1 · Q4 0** (1 verified, 1 fixed / 0 dismissed) | **Cap reached (2 for a spec); calm, not oscillating.** **[Q3], one lane, the other asking it as an open question:** § 2.7 never said whether the broadcast reply and its preview carry the top-level `to` and `dry_run` keys a single-slug send returns. Both now carry `to:"*"`, the preview carries `dry_run:true`, and `would_send_to[]` stands in for `would_send`. That fix is read by no lane; implementation is its reader. **Own-fix share of this loop: 0 of 1** — the finding sat on text the ANTS-5741 commit wrote. **Run share inside the gated span (6a71f24f): 3 of 7 verified findings**; the other four lie outside the amendment and are filed as ANTS-5809 (INV-5 and § 7 against ANTS-5366, § 2.3's `acked_at`, § 2.1's slug list, INV-4 and INV-10 written as behavioural tests the handler's real store rules out). Status set to `accepted (2026-10-21)`. **Open questions, none became a finding:** whether a broadcast that writes no row prunes, and whether a broadcast preview refuses a bad body — local choices nothing else binds to. |
