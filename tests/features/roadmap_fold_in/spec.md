@@ -28,7 +28,8 @@ and AuditEngine::templateRoadmapFoldInBlock.
   not raise the floor. INV-6b's safety property is unchanged: a committed
   bullet above the counter still floors allocation. Verified by
   `CorpusHighWaterCountsOnlyDeclaringLines`, whose fixture puts a sample id
-  in all three excluded positions beside one real bullet.
+  in all three excluded positions beside one real bullet. It adds a bullet
+  indented four spaces, which pins the three-space cap.
 
   This is the **un-migrated** path only. A migrated project allocates from
   the store's own id columns with no text scan at all

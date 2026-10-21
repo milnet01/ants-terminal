@@ -179,6 +179,10 @@ TEST(RoadmapFoldIn, CorpusHighWaterCountsOnlyDeclaringLines) {
               "    changelog_log {op:\"add\", id:\"ANTS-9998\",\n"
               "                   summary:\"**Bold** (ANTS-9998)\"}\n"
               "\n"
+              // ANTS-4747 — a bullet one space past the cap: the marker is
+              // there, so only the indent excludes it.
+              "    - [ANTS-9996] **A bullet indented four spaces.**\n"
+              "\n"
               "  ```\n"
               "  - [ANTS-9997] **A bullet quoted inside a fence.**\n"
               "  ```\n");

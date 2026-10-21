@@ -83237,7 +83237,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, compiler diagnostic seen while editing an adjacent schema string.
   Lanes: claude.
 
-- 📋 [ANTS-4757] **The stale remotecontrol.cpp line pins run well past ANTS-4711's two classes, across every verb family.**
+- ✅ [ANTS-4757] **The stale remotecontrol.cpp line pins run well past ANTS-4711's two classes, across every verb family.**
   ANTS-4711 swept the roadmap-QUERY attributions and the deleted
   `isFieldProjectionTool`. Its classification lane found the same damage
   across families that bullet did not name, and they were left rather than
@@ -83361,6 +83361,9 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   STILL OPEN, and deliberately. A pin that is IN range can still point at unrelated code, and no mechanical check finds it — each needs a read. User decision 2026-09-07: leave that residue for per-file repair on next touch, which is ANTS-3647's own prescription. So this item's remaining scope is now exactly that residue, with no stateable class left in it.
 
   Also left, unmeasured: ANTS-2049's main.cpp / mainwindow.cpp pins, and bare continuations of claudeintegration.cpp pins. Different files, different cause than the ANTS-3833 split.
+  Closed as covered by ANTS-3647 (user, 2026-10-21). Every stateable
+  class is fixed; the residue is per-file repair on next touch, which
+  ANTS-3647 already tracks, so it is not tracked twice.
   **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
   Kind: doc-fix.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
@@ -93772,7 +93775,7 @@ here.)
   Kind: chore.
   Source: user-request-2026-08-24.
 
-- 📋 [ANTS-4747] **maxDeclaredId counts a nested body sub-bullet as a declaration, leaving the ANTS-4406 trap open on a narrower path.**
+- 💭 [ANTS-4747] **maxDeclaredId counts a nested body sub-bullet as a declaration, leaving the ANTS-4406 trap open on a narrower path.**
   Found while verifying ANTS-4406/4410/4430, all three of which are
   genuinely fixed. This is the residue.
 
@@ -93841,6 +93844,13 @@ here.)
   that already shipped. A safer narrowing needs a per-file rule (roadmap
   files: id after the marker; CHANGELOG: any top-level bullet), which
   changes the one shared rule ANTS-4631 exists to keep.
+  Decision (user, 2026-10-21): park the narrowing; add the missing test
+  only. The defect is latent here, and a stricter scan that missed a
+  real declaration would hand out a colliding id, which is worse than
+  the false warning. CorpusHighWaterCountsOnlyDeclaringLines now holds a
+  bullet indented four spaces; with the cap mutated from 3 to 4 the test
+  fails (high water 9996, expected 150), so the cap is pinned in both
+  directions. Reopen only if the false warning is ever seen live.
   **Layman:** The check that spots a roadmap file running ahead of the database can still be fooled by an example id written as an indented sub-point inside an entry.
   Kind: fix.
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.
