@@ -85773,6 +85773,10 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   and mutation_probe already parses pytest/jest/vitest output. Return
   collected, passed, failed, skipped and durations. Build after
   ANTS-5498, so nothing-ran never reads as green.
+  Spec (2026-10-21): docs/specs/ANTS-5503-multi-runner-tests.md, accepted
+  after review-contract capped at 2 loops (calm cap; 20 findings fixed,
+  1 dismissed). Before building: go, jest and vitest must be installed to
+  capture their fixtures (spec § 12); their output shapes are unmeasured.
   **Layman:** The test tools only understand this project's test runner; other projects' tests are invisible to them.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A2).
