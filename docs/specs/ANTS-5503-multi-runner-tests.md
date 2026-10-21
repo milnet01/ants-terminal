@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-5503 — Teach `test_results` and `focused_test` pytest, jest, vitest, cargo and go
 
-**Status:** spec draft (2026-10-21).
+**Status:** accepted (2026-10-21).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5503 (claude-config joint review 2026-09-27, A2).
 **Pairs with:** ANTS-1300 (`test_results`), ANTS-1302 (`focused_test`).
@@ -105,11 +105,12 @@ often keeps jest-style config. A caller whose project mixes runners passes
 ### 2.3 Parsing
 
 `sniff` tries ctest first (`parseCtestOutput(...).recognised`), then these
-line shapes in table order, each anchored at a line start:
+line shapes in table order, each matched at a line start after any leading
+whitespace:
 
 | Runner | Recognised by | Counts from |
 |--------|---------------|-------------|
-| pytest | the closing summary line: optional `=` rule, then `<n> <outcome>` or `no tests ran`, ending `in <t>s` (`-q` drops the rule) | that line's `passed`, `failed`, `error(s)`, `skipped`, `xfailed`, `xpassed` |
+| pytest | the closing summary line: comma-separated `<n> <word>` items, or `no tests ran`, then `in <t>s`, optionally wrapped in `=` rules (`-q` drops them) | that line's `passed`, `failed`, `error(s)`, `skipped`, `xfailed`, `xpassed`; other words, such as `deselected` and `warning(s)`, are not counted |
 | jest | `Tests:` … `<n> total`, or `No tests found` | the `Tests:` line |
 | vitest | `Tests` … `(<n>)` | the `Tests` line |
 | cargo | `test result: (ok\|FAILED). <n> passed` | the sum over every `test result:` line |
@@ -135,14 +136,14 @@ still wins.
 
 `recognised` is false when no recognising line matched. Go output without
 `-v` (package lines only) is not recognised, nor is a go run that ran no
-test, so that run refuses rather than reporting `nothing_ran`.
+test.
 
 ### 2.4 Choosing the tests to run (`focused_test`)
 
 The changed-file set works as ANTS-1302 § 3.4 step 4 says. For every
 runner, a valid coverage map's `ignore` globs drop matching files into
-`ignored_files` first (ANTS-1302 § 3.3); with no valid map nothing is
-ignored. Then, per runner:
+`ignored_files` first (ANTS-1302 § 3.3); with no valid map, only the
+entries INV-10 drops are ignored. Then, per runner:
 
 | Runner | Narrowed run | Full run | `selection` |
 |--------|--------------|----------|-------------|
@@ -171,7 +172,8 @@ ignored. Then, per runner:
   dependency walk.
 
 The 0-match safety net (ANTS-1302 INV-16) applies to every runner: a narrowed
-run reporting `total == 0` is re-run full once, with `downgraded_to_full`.
+run reporting `total == 0`, recognised or not, is re-run full once, with
+`downgraded_to_full`. Only the final output must be recognised.
 
 ### 2.5 Arguments, envelope and refusals
 
@@ -180,7 +182,8 @@ unknown name refuses `bad_args`.
 
 - **`test_results op:"record"`**: `runner` given → parse as that runner;
   absent → `sniff`. Unrecognised output still refuses `bad_args`, now
-  naming the six formats.
+  naming the six formats. `runner` on `op:"read"` refuses `bad_args`, as
+  `detail` does on `op:"record"`.
 - **`focused_test`**: `runner` given → use it; absent → `detect`. Nothing
   detected refuses `no_runner`.
 
@@ -212,7 +215,10 @@ change.
 ### 2.6 Running a project's tests
 
 `focused_test` already runs code the project owns, through ctest, and
-`verify_changes` does the same. This adds no new kind of trust. It passes
+`verify_changes` does the same. This adds no new kind of trust. Every
+runner starts through `HostExec::start` (`src/hostexec.h`), as ctest does.
+Inside a Flatpak that starts `flatpak-spawn`, so a missing runner there
+refuses `unrecognised_output`, not `runner_missing`. `focused_test` passes
 arguments as a list, never through a shell. `npx --no-install` stops a run
 from downloading a package. A changed-file path reaches the command line
 only as a root-relative path beginning `./`, so an entry such as
@@ -297,10 +303,11 @@ additions (INV-13).
   *Breaks when:* jest loses `--no-install` or `--ci`, cargo loses
   `--no-fail-fast`, or go loses `-v`.
 
-- **INV-10** — No changed-file entry reaches a runner's argument list except
-  as a root-relative path beginning `./`; an entry outside the root is
-  dropped and listed in `ignored_files`, so it does not change the
-  selection.
+- **INV-10** — For every runner but ctest, no changed-file entry reaches
+  the argument list except as a root-relative path beginning `./`, and an
+  entry outside the root is dropped and listed in `ignored_files`, so it
+  does not change the selection. ctest resolves entries as ANTS-1302 § 3.3
+  says.
   *Test:* `tests/features/mcp_focused_test/` passes
   `changed_files:["--config=x.js", "../outside.py"]` to the builder for
   jest and pytest.
@@ -325,8 +332,8 @@ additions (INV-13).
   field ANTS-1302 INV-17 lists, and adds only `runner`, `runner_evidence`,
   `selector`, `nothing_ran` and `collected`.
   *Test:* `tests/features/mcp_focused_test/` compares the envelope's key set
-  on a ctest scratch project, called with no `runner`, with ANTS-1302
-  INV-17's list plus `runner`, `runner_evidence`, `selector` and
+  on a ctest scratch project, called with no `runner`, with the fields
+  ANTS-1302 § 3.5 lists plus `runner`, `runner_evidence`, `selector` and
   `nothing_ran`. ctest prints no collected count, so `collected` is absent
   (INV-7).
   *Breaks when:* `ctest_filter` or `build_dir` disappears for ctest.
