@@ -14149,8 +14149,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"] = "integer";
                         p["description"] = QStringLiteral(
-                            "op:\"ack\" — the message to mark read, from an "
-                            "`inbox` entry's `message_id`.");
+                            "op:\"ack\" — the message to mark read. "
+                            "op:\"inbox\" — return just this message, acked "
+                            "or not.");
                         props["message_id"] = p;
                     }
                     {
@@ -14168,8 +14169,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["type"] = "integer";
                         p["default"] = 20;
                         p["description"] = QStringLiteral(
-                            "op:\"inbox\" — cap on `messages[]`. 0 or less "
-                            "returns every row. `unacked_count` is the TRUE "
+                            "op:\"inbox\" — cap on `messages[]`, at most 200; "
+                            "0 or less asks for 200. `unacked_count` is the TRUE "
                             "total either way, so a capped page still reports "
                             "how much is waiting.");
                         props["limit"] = p;

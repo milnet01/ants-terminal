@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_message` reads one message by its number: `op:"inbox"` with `message_id` returns it, read or not.** (ANTS-5601)
+
 - **A project can tell spec_lint that each invariant's *Test:* clause is where its tests are named** (ANTS-4890)
   Set `spec_test_clause_coverage: true` in `.ants/project.json`, or through
   `project_settings op:"set"`. spec_lint then stops reporting such an
@@ -231,6 +233,8 @@ for security-relevant changes.
   `claude mcp add` command in the README again.
 
 ### Fixed
+
+- **`session_message` inbox with `limit` 0 or less returns up to 200 messages, the page ceiling.** (ANTS-5591)
 
 - **changelog_log op:"add" refuses a changelog of dated topics written as plain prose, and points at op:"add_subsection"** (ANTS-4946)
   A section whose every `### ` heading is a dated topic now counts as

@@ -181,20 +181,23 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
+    // ANTS-5098 — range-checked before the cast. A fractional, negative or
+    // out-of-range double cast to qint64 is undefined behaviour or names a
+    // different row. Shared by ack and by inbox's single-message read.
+    const bool hasId = req.contains(QStringLiteral("message_id"));
+    const double rawId = req.value(QStringLiteral("message_id")).toDouble(-1);
+    if (hasId && (!(rawId >= 1.0 && rawId <= 9007199254740992.0)
+                  || rawId != std::floor(rawId)))
+        return refuse("bad_args",
+                      QStringLiteral("session_message: `message_id` must be a "
+                                     "positive integer"));
+    const qint64 id = hasId ? qint64(rawId) : 0;
+
     if (op == QStringLiteral("ack")) {
-        if (!req.contains(QStringLiteral("message_id")))
+        if (!hasId)
             return refuse("bad_args",
                           QStringLiteral("session_message: op:\"ack\" needs a "
                                          "`message_id`"));
-        // ANTS-5098 — range-checked before the cast. A fractional, negative
-        // or out-of-range double cast to qint64 is undefined behaviour or
-        // names a different row.
-        const double rawId = req.value(QStringLiteral("message_id")).toDouble(-1);
-        if (!(rawId >= 1.0 && rawId <= 9007199254740992.0) || rawId != std::floor(rawId))
-            return refuse("bad_args",
-                          QStringLiteral("session_message: `message_id` must be a "
-                                         "positive integer"));
-        const qint64 id = qint64(rawId);
         bool already = false;
         QString code;
         if (!store.ackMessage(*self, id, now, &already, &code, &err))
@@ -209,19 +212,30 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     }
 
     // op == "inbox"
-    const bool includeAcked =
-        req.value(QStringLiteral("include_acked")).toBool(false);
-    // ANTS-5098 — bounded: 0 or a negative limit reached the store as "no
-    // limit" and returned the whole mailbox.
-    const int limit  = qBound(1, req.contains(QStringLiteral("limit"))
-                                     ? req.value(QStringLiteral("limit")).toInt(20) : 20,
-                              200);
-    const int offset = qMax(0, req.value(QStringLiteral("offset")).toInt(0));
-
     QVector<RoadmapStore::Message> rows;
     int unacked = 0;
-    if (!store.inboxFor(*self, includeAcked, limit, offset, &rows, &unacked, &err))
-        return refuse("io_error", QStringLiteral("session_message: %1").arg(err));
+    if (hasId) {
+        // ANTS-5601 — one message by id, acked or not, so a note citing
+        // "mailbox 295" costs one read rather than a paged scan.
+        RoadmapStore::Message m;
+        QString code;
+        if (!store.messageFor(*self, id, &m, &code, &err))
+            return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
+                          QStringLiteral("session_message: %1").arg(err));
+        rows.append(m);
+        if (!store.inboxFor(*self, false, 0, 0, nullptr, &unacked, &err))
+            return refuse("io_error", QStringLiteral("session_message: %1").arg(err));
+    } else {
+        const bool includeAcked =
+            req.value(QStringLiteral("include_acked")).toBool(false);
+        // ANTS-5098 bounds the page; ANTS-5591 maps 0 or less to that bound.
+        const int limit = RoadmapStore::inboxPageLimit(
+            req.value(QStringLiteral("limit")).toInt(20));
+        const int offset = qMax(0, req.value(QStringLiteral("offset")).toInt(0));
+        if (!store.inboxFor(*self, includeAcked, limit, offset, &rows, &unacked,
+                            &err))
+            return refuse("io_error", QStringLiteral("session_message: %1").arg(err));
+    }
 
     QJsonArray arr;
     for (const auto &m : rows)

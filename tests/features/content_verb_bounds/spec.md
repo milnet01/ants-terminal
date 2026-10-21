@@ -2,9 +2,10 @@
 
 ## Invariants
 
-**INV-1 — session_message bounds its inbox page.** `op:"inbox"` clamps
-`limit` to 1-200 and `offset` to zero or more, so 0 or a negative limit no
-longer returns the whole mailbox.
+**INV-1 — session_message bounds its inbox page.** `op:"inbox"` caps
+`limit` at 200 through `RoadmapStore::inboxPageLimit`, and clamps `offset` to
+zero or more, so 0 or a negative limit never returns the whole mailbox. Since
+ANTS-5591 it asks for 200; `SessionMessage.Ants5591…` tests the values.
 
 **INV-2 — session_message range-checks `message_id`.** `op:"ack"` refuses a
 `message_id` that is not a positive integer within the exact range of a

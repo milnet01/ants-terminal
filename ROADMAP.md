@@ -86615,17 +86615,22 @@ project. Reported causes are claims until checked in source.
   Source: demoreel session message 326, relayed by claude-config 2026-10-01.
   Lanes: mcp.
 
-- 📋 [ANTS-5591] **session_message inbox with limit:0 returns one row, not every row.**
+- ✅ [ANTS-5591] **session_message inbox with limit:0 returns one row, not every row.**
   The schema says limit 0 or less returns every row. Reported: 1 row with
   53 unacked. Reproduced here: op inbox, include_acked:true, limit:0
   returned 1 message where at least 2 were acked (341, 342). Likely a
   0 passed straight to SQL LIMIT or a clamp to 1.
+  Shipped 2026-10-21. RoadmapStore::inboxPageLimit maps 0 or less to the
+  ANTS-5098 ceiling (kMailInboxPageMax, 200) instead of 1; the schema
+  text now says so. Test:
+  SessionMessage.Ants5591NonPositiveLimitAsksForTheCeiling, red against
+  the old qBound(1, ..., 200).
   **Layman:** Asking for all waiting messages returns just one of them.
   Kind: fix.
   Source: claude-config feedback 2026-10-01; reproduced here 2026-10-01.
   Lanes: mcp.
 
-- 📋 [ANTS-5601] **session_message cannot read one message by its id.**
+- ✅ [ANTS-5601] **session_message cannot read one message by its id.**
   op:"inbox" pages newest first by limit/offset only. Reported by
   claude-config: rereading acked message 295 took three calls and about
   12 kB of unrelated bodies. Roadmap notes cite messages by number
@@ -86633,6 +86638,10 @@ project. Reported causes are claims until checked in source.
   accept message_id (or message_ids[]) on op:"inbox", or add op:"get",
   returning the message whether acked or not. Store-backed; the message
   table is keyed by id, so this is one SELECT.
+  Shipped 2026-10-21. op:"inbox" with message_id returns that one
+  message, acked or not, through RoadmapStore::messageFor; another
+  project's id is not_found, as for ack. Test:
+  SessionMessage.Ants5601MessageForReadsOneMessageScopedToTheInbox.
   **Layman:** A session that knows a message's number has to page through its mailbox to read it again.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-10-01.

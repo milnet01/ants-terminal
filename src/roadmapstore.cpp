@@ -2336,6 +2336,61 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
     return true;
 }
 
+int RoadmapStore::inboxPageLimit(int requested) {
+    return (requested <= 0 || requested > kMailInboxPageMax) ? kMailInboxPageMax
+                                                             : requested;
+}
+
+namespace {
+
+// The sender's export_slug rather than its id: § 2.3 makes it the field a
+// reply addresses `to`, so an inbox read that returned only the numeric id
+// would leave the reply path unusable. Shared by inboxFor and messageFor so
+// the two reads cannot disagree on a column.
+const char *const kMessageSelect =
+    "SELECT m.message_id, p.export_slug, m.from_session, m.created_at, "
+    "m.body, m.acked_at FROM message m "
+    "JOIN project p ON p.project_id = m.from_project_id "
+    "WHERE m.to_project_id = ?";
+
+RoadmapStore::Message messageFromRow(const QSqlQuery &q) {
+    RoadmapStore::Message m;
+    m.id          = q.value(0).toLongLong();
+    m.fromSlug    = q.value(1).toString();
+    m.fromSession = q.value(2).toString();
+    m.createdAt   = q.value(3).toString();
+    m.body        = q.value(4).toString();
+    m.ackedAt     = q.value(5).isNull() ? QString() : q.value(5).toString();
+    return m;
+}
+
+}  // namespace
+
+bool RoadmapStore::messageFor(qint64 projectId, qint64 messageId, Message *out,
+                              QString *code, QString *error) const {
+    QSqlQuery q(m_db);
+    q.prepare(QString::fromLatin1(kMessageSelect)
+              + QStringLiteral(" AND m.message_id = ?"));
+    q.addBindValue(projectId);
+    q.addBindValue(messageId);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    // Same scoping and code as ackMessage: another project's message is
+    // indistinguishable from an absent id (§ 2.3).
+    if (!q.next()) {
+        if (code)  *code  = QStringLiteral("not_found");
+        if (error) *error = QStringLiteral("no message %1 in this project's inbox")
+                                .arg(messageId);
+        return false;
+    }
+    if (out) *out = messageFromRow(q);
+    if (code) code->clear();
+    return true;
+}
+
 bool RoadmapStore::inboxFor(qint64 projectId, bool includeAcked, int limit,
                             int offset, QVector<Message> *out, int *unackedCount,
                             QString *error) const {
@@ -2355,14 +2410,7 @@ bool RoadmapStore::inboxFor(qint64 projectId, bool includeAcked, int limit,
     if (!out)
         return true;
 
-    // The sender's export_slug rather than its id: § 2.3 makes it the field a
-    // reply addresses `to`, so an inbox read that returned only the numeric id
-    // would leave the reply path unusable.
-    QString sql = QStringLiteral(
-        "SELECT m.message_id, p.export_slug, m.from_session, m.created_at, "
-        "m.body, m.acked_at FROM message m "
-        "JOIN project p ON p.project_id = m.from_project_id "
-        "WHERE m.to_project_id = ?");
+    QString sql = QString::fromLatin1(kMessageSelect);
     if (!includeAcked)
         sql += QStringLiteral(" AND m.acked_at IS NULL");
     sql += QStringLiteral(" ORDER BY m.message_id DESC");
@@ -2376,16 +2424,8 @@ bool RoadmapStore::inboxFor(qint64 projectId, bool includeAcked, int limit,
         if (error) *error = lastErr(q);
         return false;
     }
-    while (q.next()) {
-        Message m;
-        m.id          = q.value(0).toLongLong();
-        m.fromSlug    = q.value(1).toString();
-        m.fromSession = q.value(2).toString();
-        m.createdAt   = q.value(3).toString();
-        m.body        = q.value(4).toString();
-        m.ackedAt     = q.value(5).isNull() ? QString() : q.value(5).toString();
-        out->append(m);
-    }
+    while (q.next())
+        out->append(messageFromRow(q));
     return true;
 }
 

@@ -206,6 +206,53 @@ TEST(SessionMessage, AckOnAnotherProjectsMessageIsNotFound) {
     EXPECT_EQ(code, QStringLiteral("not_found"));
 }
 
+// ANTS-5591 — the page ceiling is ANTS-5098's 200. A limit of 0 or less asks
+// for as many as allowed, so it maps to the ceiling; it was clamped to 1.
+TEST(SessionMessage, Ants5591NonPositiveLimitAsksForTheCeiling) {
+    EXPECT_EQ(RoadmapStore::inboxPageLimit(0), RoadmapStore::kMailInboxPageMax);
+    EXPECT_EQ(RoadmapStore::inboxPageLimit(-1), RoadmapStore::kMailInboxPageMax);
+    EXPECT_EQ(RoadmapStore::inboxPageLimit(1), 1);
+    EXPECT_EQ(RoadmapStore::inboxPageLimit(20), 20);
+    EXPECT_EQ(RoadmapStore::inboxPageLimit(RoadmapStore::kMailInboxPageMax + 1),
+              RoadmapStore::kMailInboxPageMax);
+}
+
+// ANTS-5601 — one message by id, acked or not, scoped like ack: another
+// project's id and an absent id are the same `not_found`.
+TEST(SessionMessage, Ants5601MessageForReadsOneMessageScopedToTheInbox) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("bravo"));
+
+    QString code, err;
+    qint64 first = 0, second = 0;
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("bravo"),
+                                     QStringLiteral("first"), QStringLiteral("s1"),
+                                     QString::fromLatin1(kT1), &first, &code, &err));
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("bravo"),
+                                     QStringLiteral("second"), QString(),
+                                     QString::fromLatin1(kT1), &second, &code, &err));
+    bool already = false;
+    ASSERT_TRUE(f.store->ackMessage(b, first, QString::fromLatin1(kNew), &already,
+                                    &code, &err));
+
+    // The OLDER, acked message: neither newest-first order nor the unacked
+    // filter can hand it back by accident.
+    RoadmapStore::Message m;
+    ASSERT_TRUE(f.store->messageFor(b, first, &m, &code, &err)) << err.toStdString();
+    EXPECT_EQ(m.id, first);
+    EXPECT_EQ(m.body, QStringLiteral("first"));
+    EXPECT_EQ(m.fromSlug, QStringLiteral("alpha"));
+    EXPECT_EQ(m.fromSession, QStringLiteral("s1"));
+    EXPECT_EQ(m.ackedAt, QString::fromLatin1(kNew));
+
+    EXPECT_FALSE(f.store->messageFor(a, first, &m, &code, &err));
+    EXPECT_EQ(code, QStringLiteral("not_found"));
+    EXPECT_FALSE(f.store->messageFor(b, 999999, &m, &code, &err));
+    EXPECT_EQ(code, QStringLiteral("not_found"));
+}
+
 // INV-5 — deregistering KEEPS a project's mail at both ends (ANTS-5366 § 2.2,
 // which withdrew the old clear-both-ends rule): the project row stays, so the
 // mail it sent and the mail sent to it both still have a row to point at.

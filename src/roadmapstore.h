@@ -1067,6 +1067,17 @@ public:
                   QVector<Message> *out, int *unackedCount,
                   QString *error = nullptr) const;
 
+    // The verb's page ceiling (ANTS-5098: one call never reads the whole
+    // mailbox). ANTS-5591 — 0 or less asks for "as many as allowed", so it
+    // maps to the ceiling, not to 1.
+    static constexpr int kMailInboxPageMax = 200;
+    static int inboxPageLimit(int requested);
+
+    // ANTS-5601 — one message from this project's inbox, acked or not.
+    // Another project's message is `not_found`, as in ackMessage.
+    bool messageFor(qint64 projectId, qint64 messageId, Message *out,
+                    QString *code, QString *error = nullptr) const;
+
     // Idempotent: a second ack succeeds, leaves `acked_at` alone and reports
     // *alreadyAcked. A message addressed to another project is `not_found`
     // rather than a distinct code, so a probe cannot use the refusal to learn

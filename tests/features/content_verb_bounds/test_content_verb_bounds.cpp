@@ -21,8 +21,9 @@ QString source(const char *rel) {
 TEST(ContentVerbBounds, InboxPageIsBounded) {
     const QString s = source("remotecontrol_session_message.cpp");
     ASSERT_FALSE(s.isEmpty());
-    EXPECT_TRUE(s.contains(QStringLiteral("const int limit  = qBound(1,")))
-        << "a limit of 0 or less returns the whole mailbox";
+    EXPECT_TRUE(s.contains(QStringLiteral("const int limit = RoadmapStore::inboxPageLimit(")))
+        << "the inbox limit bypasses the page ceiling, so a limit of 0 or less "
+           "can return the whole mailbox";
     EXPECT_TRUE(s.contains(QStringLiteral("const int offset = qMax(0,")));
 }
 
