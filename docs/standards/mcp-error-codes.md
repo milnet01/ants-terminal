@@ -261,11 +261,12 @@ narrow the data / aggregate harder. The feature's own off switch,
    case, reuse it. **The test is the caller's next action: mint a new
    code only where a caller would do something different** (§ 6's
    criterion, applied everywhere). Don't split for stylistic reasons.
-   `symbol_not_found` passes: the file exists, so the caller changes
-   the symbol rather than the path. Three codes fail and predate the
-   rule, as `not_audited` beside `not_cached` does. `target_not_found`
-   and `target_ambiguous` are `bullet_not_found` and `bullet_ambiguous`
-   on another verb; the caller corrects the locator either way.
+   `symbol_not_found` and `target_not_found` pass: each verb also
+   answers `not_found` for a missing file, so the code tells the caller
+   to change the symbol or heading rather than the path. Two codes fail
+   and predate the rule, as `not_audited` beside `not_cached` does.
+   `target_ambiguous` is `bullet_ambiguous` on another verb; the caller
+   corrects the locator either way.
    `widget_not_found` is answered as `not_found` is, by correcting the
    name.
 3. If you need a new code, add the row + 1-line meaning + at least

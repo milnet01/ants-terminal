@@ -87978,7 +87978,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
   Lanes: mcp, session.
 
-- 📋 [ANTS-4752] **mcp-error-codes.md: the category scheme is unfalsifiable, and the run that found it hit its cap.**
+- ✅ [ANTS-4752] **mcp-error-codes.md: the category scheme is unfalsifiable, and the run that found it hit its cap.**
   Deferred tail of the ANTS-4435 gate, which reached its 3-loop cap for a
   standard. Twenty-two findings were verified and fixed across three
   loops; these three survive, and they share one subject the run could
@@ -88026,6 +88026,13 @@ volume classes, and the tooling/documentation gaps the run exposed.
   implies a § N check. One question is open for the user: step 2 passes
   symbol_not_found but fails target_not_found, though both verbs refuse
   not_found for a missing file. Out-of-radius findings: ANTS-5803.
+  Shipped 2026-10-21, fixed in place (user ruling 2026-10-21, over a
+  split). Headings are labels; a code's section is where its row sits; a
+  new code goes in its pair's section; query_disabled sits in § 5. Step
+  2 is per verb (user ruling 2026-10-21): symbol_not_found and
+  target_not_found pass; target_ambiguous and widget_not_found predate
+  the rule. Gate converged at loop 3; out-of-radius findings filed as
+  ANTS-5803.
   **Layman:** The error-code reference sorts codes into sections whose stated meanings do not match where the codes actually sit, so nobody can tell which section a new one belongs in.
   Kind: doc-fix.
   Source: review-contract deferred tail, ANTS-4435 run 2026-08-28.

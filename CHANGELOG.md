@@ -114,6 +114,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The MCP error-code standard now says how to place a new code and when a tool-specific code is justified** (ANTS-4752)
+  A new code goes in the section of the code it pairs with. A tool's own "not found" code is justified when the same tool also answers plain `not_found` for a missing file.
+
 - **The workspace_search zero-match test contract now states every advisory its test checks, and the order they are tried in** (ANTS-4755)
 
 - **Roadmap dialog columns keep their place when you filter** (ANTS-5793)
