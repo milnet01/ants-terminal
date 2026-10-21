@@ -17,8 +17,8 @@ plainly when no test ran at all.
 After this ships, `test_results op:"record"` accepts the output of pytest,
 jest, vitest, `cargo test` and `go test -v` as well as ctest, and
 `focused_test` runs the tests a change touches under any of those six
-runners. Both replies name the runner and say `nothing_ran:true` when the
-run executed no test.
+runners. Both replies name the runner and say `nothing_ran:true` when
+recognised output shows no test ran.
 
 What is missing today:
 
@@ -105,11 +105,11 @@ often keeps jest-style config. A caller whose project mixes runners passes
 ### 2.3 Parsing
 
 `sniff` tries ctest first (`parseCtestOutput(...).recognised`), then these
-line shapes, each anchored at a line start:
+line shapes in table order, each anchored at a line start:
 
 | Runner | Recognised by | Counts from |
 |--------|---------------|-------------|
-| pytest | the closing `= … in <t>s =` line, or `no tests ran` | that line's `passed`, `failed`, `error(s)`, `skipped`, `xfailed`, `xpassed` |
+| pytest | the closing summary line: optional `=` rule, then `<n> <outcome>` or `no tests ran`, ending `in <t>s` (`-q` drops the rule) | that line's `passed`, `failed`, `error(s)`, `skipped`, `xfailed`, `xpassed` |
 | jest | `Tests:` … `<n> total`, or `No tests found` | the `Tests:` line |
 | vitest | `Tests` … `(<n>)` | the `Tests` line |
 | cargo | `test result: (ok\|FAILED). <n> passed` | the sum over every `test result:` line |
@@ -134,35 +134,39 @@ package lines (`ok`/`FAIL <pkg> <t>s`). A caller-supplied `duration_ms`
 still wins.
 
 `recognised` is false when no recognising line matched. Go output without
-`-v` (package lines only) is not recognised.
+`-v` (package lines only) is not recognised, nor is a go run that ran no
+test, so that run refuses rather than reporting `nothing_ran`.
 
 ### 2.4 Choosing the tests to run (`focused_test`)
 
-The changed-file set and the ignore globs work as ANTS-1302 § 3.4 step 4
-and § 3.3 say. Then, per runner:
+The changed-file set works as ANTS-1302 § 3.4 step 4 says. For every
+runner, a valid coverage map's `ignore` globs drop matching files into
+`ignored_files` first (ANTS-1302 § 3.3); with no valid map nothing is
+ignored. Then, per runner:
 
 | Runner | Narrowed run | Full run | `selection` |
 |--------|--------------|----------|-------------|
 | ctest | as today (ANTS-1302 § 3.4 steps 3, 6) | as today | `map` / `heuristic` / `full` |
-| pytest | `python3 -m pytest -rfE <paths>` | `python3 -m pytest -rfE` | `map` / `heuristic` / `full` |
+| pytest | `python3 -m pytest -rfE <paths>` | `python3 -m pytest -rfE` | `heuristic` / `full` |
 | jest | `npx --no-install jest --ci --findRelatedTests <paths>` | `npx --no-install jest --ci` | `related` / `full` |
 | vitest | `npx --no-install vitest related --run <paths>` | `npx --no-install vitest run` | `related` / `full` |
-| cargo | `cargo test -p <pkg> [-p <pkg> …]` | `cargo test` | `related` / `full` |
+| cargo | `cargo test --no-fail-fast -p <pkg> [-p <pkg> …]` | `cargo test --no-fail-fast` | `related` / `full` |
 | go | `go test -v <./dir> [<./dir> …]` | `go test -v ./...` | `related` / `full` |
 
-- **The coverage map steers ctest and pytest only.** jest, vitest, cargo
-  and go have their own way to pick related tests, which knows more than a
-  hand-kept map.
+- **The coverage map steers ctest only.** Its entries are `ctest -R`
+  fragments (ANTS-1302 § 3.2). jest, vitest, cargo and go have their own
+  way to pick related tests, which knows more than a hand-kept map.
 - **pytest's heuristic.** A changed `test_*.py` or `*_test.py` runs itself.
   A changed source `foo.py` runs every `test_foo.py` and `foo_test.py` in the
-  tree. One changed `.py` file with no test found makes the run full, as an
-  unmapped file does under ANTS-1302 § 3.3. The walk skips dot-directories,
+  tree. A changed `.py` file with no test found, or any changed file that
+  is not `.py`, makes the run full, as an unmapped file does under
+  ANTS-1302 § 3.3. The walk skips dot-directories,
   `node_modules`, `build` and any directory holding `pyvenv.cfg`, and stops
   at 20 000 files with a full run and a reason saying so.
 - **cargo's package** is the `[package] name` in the nearest `Cargo.toml`
   above the changed file. A changed file under no package runs full.
-- **go's directory** is the changed `.go` file's directory. A changed
-  `go.mod` or `go.sum` runs full.
+- **go's directory** is the changed `.go` file's directory. Any other
+  changed file, `go.mod` and `go.sum` included, runs full.
 - **jest and vitest** receive the changed files themselves and do their own
   dependency walk.
 
@@ -180,7 +184,8 @@ unknown name refuses `bad_args`.
 - **`focused_test`**: `runner` given → use it; absent → `detect`. Nothing
   detected refuses `no_runner`.
 
-Envelope additions, on `test_results` reads and on `focused_test`:
+Envelope additions, on every `test_results` reply that carries counts and
+on `focused_test`:
 
 | Field | Meaning |
 |-------|---------|
@@ -232,14 +237,15 @@ additions (INV-13).
 
 - **INV-2** — `sniff` returns ctest for any output `parseCtestOutput`
   recognises, before trying another runner.
-  *Test:* `tests/features/testrunners_parse/` sniffs every ctest fixture of
-  `tests/features/testrescache_parse/`.
+  *Test:* `tests/features/testrunners_parse/` sniffs copies of the ctest
+  fixtures in `tests/features/testrescache_parse/`, plus a ctest log
+  carrying a pytest summary line.
   *Breaks when:* a ctest log holding a pytest-shaped line is sniffed as
   pytest.
 
 - **INV-3** — For each of the five new runners, `parse` of a captured real
-  run yields the `passed`, `failed`, `skipped`, `total` and failing names
-  that run printed.
+  run yields the `passed`, `failed`, `skipped` and failing names that run
+  printed, and `total` as § 2.3 computes it.
   *Test:* `tests/features/testrunners_parse/` — one fixture per runner with
   at least one pass, one failure and one skip, captured from a real run, the
   runner's version recorded beside it.
@@ -263,7 +269,7 @@ additions (INV-13).
   zero counts.
 
 - **INV-6** — `nothing_ran` is `true` exactly when `total == 0`, on every
-  runner, on `test_results` reads and on `focused_test`.
+  runner, on `test_results` replies and on `focused_test`.
   *Test:* `tests/features/mcp_test_results/` records pytest's `no tests ran`
   output and reads `nothing_ran:true`; it records a passing ctest log and
   reads `nothing_ran:false`.
@@ -288,11 +294,13 @@ additions (INV-13).
   runner and selection.
   *Test:* `tests/features/mcp_focused_test/` checks the argument list a pure
   builder returns, without running anything.
-  *Breaks when:* jest loses `--no-install` or `--ci`, or go loses `-v`.
+  *Breaks when:* jest loses `--no-install` or `--ci`, cargo loses
+  `--no-fail-fast`, or go loses `-v`.
 
 - **INV-10** — No changed-file entry reaches a runner's argument list except
   as a root-relative path beginning `./`; an entry outside the root is
-  dropped and listed in `unmapped_files`.
+  dropped and listed in `ignored_files`, so it does not change the
+  selection.
   *Test:* `tests/features/mcp_focused_test/` passes
   `changed_files:["--config=x.js", "../outside.py"]` to the builder for
   jest and pytest.
@@ -317,7 +325,10 @@ additions (INV-13).
   field ANTS-1302 INV-17 lists, and adds only `runner`, `runner_evidence`,
   `selector`, `nothing_ran` and `collected`.
   *Test:* `tests/features/mcp_focused_test/` compares the envelope's key set
-  on a ctest scratch project with ANTS-1302 INV-17's list plus these five.
+  on a ctest scratch project, called with no `runner`, with ANTS-1302
+  INV-17's list plus `runner`, `runner_evidence`, `selector` and
+  `nothing_ran`. ctest prints no collected count, so `collected` is absent
+  (INV-7).
   *Breaks when:* `ctest_filter` or `build_dir` disappears for ctest.
 
 ## 4. Failure modes
