@@ -85733,7 +85733,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
-- 📋 [ANTS-5297] **A required-sections check per declared genre, behind doc_lint.**
+- 💭 [ANTS-5297] **A required-sections check per declared genre, behind doc_lint.**
   spec_lint covers the spec genre only and selects by directory. The lean
   workflow states required sections per genre in the project's own declaration
   file.
@@ -85741,6 +85741,12 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Where the declaration names no sections for a genre, the check does not run
   and says so — a check that could not run is not a defect, and the reply must
   distinguish the two.
+  Deferred by the user 2026-10-21. No project declares
+  check_doc.required_sections in .claude/workflow.json yet (Rolodex and
+  rusty-psn empty, Games_Hub absent), and ~/.claude/tools/check-doc.py
+  already runs this check. A seventh doc_lint checker would amend
+  ANTS-3663's six-checker contract and owe a review-contract gate.
+  Reopen when a project declares sections.
   **Layman:** Tell an author which section their document is missing.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
