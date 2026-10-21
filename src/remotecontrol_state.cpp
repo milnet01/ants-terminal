@@ -3684,19 +3684,25 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     bool isFull = (res.selection == FocusedTest::Selection::Full);
     QString filter = FocusedTest::buildCtestRegex(res.patterns);
 
+    // ANTS-5812 — ANTS-1302 § 3.4 step 7: a timeout or crash refuses with
+    // the tail ctest printed, which usually names the cause.
+    auto ctestFailed = [](const FocusedRun &r, const QString &message) {
+        QJsonObject e = tpErr(QStringLiteral("ctest_failed"), message);
+        e[QStringLiteral("output_tail")] = r.output.right(2000);
+        return QJsonDocument(e);
+    };
+
     FocusedRun run = runCtest(isFull ? QString() : filter);
     if (!run.started) {
         return QJsonDocument(tpErr(QStringLiteral("ctest_missing"),
             QStringLiteral("focused_test: ctest binary not found on PATH")));
     }
     if (run.timedOut) {
-        return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
-            QStringLiteral("focused_test: ctest exceeded %1 s budget")
-                .arg(timeoutSec)));
+        return ctestFailed(run, QStringLiteral("focused_test: ctest exceeded %1 s budget")
+                                    .arg(timeoutSec));
     }
     if (run.crashed) {
-        return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
-            QStringLiteral("focused_test: ctest crashed")));
+        return ctestFailed(run, QStringLiteral("focused_test: ctest crashed"));
     }
 
     TestResCache::ParsedTests parsed =
@@ -3713,13 +3719,11 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
                 QStringLiteral("focused_test: ctest binary not found on PATH")));
         }
         if (full.timedOut) {
-            return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
-                QStringLiteral("focused_test: full-suite re-run exceeded "
-                               "%1 s budget").arg(timeoutSec)));
+            return ctestFailed(full, QStringLiteral("focused_test: full-suite re-run "
+                                                    "exceeded %1 s budget").arg(timeoutSec));
         }
         if (full.crashed) {
-            return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
-                QStringLiteral("focused_test: full-suite re-run crashed")));
+            return ctestFailed(full, QStringLiteral("focused_test: full-suite re-run crashed"));
         }
         parsed          = TestResCache::parseCtestOutput(full.output);
         downgraded      = true;

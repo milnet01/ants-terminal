@@ -213,7 +213,7 @@ because source comments cite its section.
 | `mkdir_failed` | Directory creation returned an error. | engine couldn't create its workspace dir. |
 | `io_error` | Generic catch-all for an OS-level I/O failure that doesn't fit one of the above. | Use sparingly — prefer the specific variants when the failing op is known. |
 | `ctest_missing` | `focused_test`: the `ctest` binary failed to start (ANTS-1302). The other runners refuse `runner_missing`. | `focused_test` on a host with no CMake installed. |
-| `ctest_failed` | `focused_test`: ctest crashed or ran past `timeout_sec` (ANTS-1302). The other runners refuse `runner_failed`. | A full-suite re-run that outlasts a 10 s `timeout_sec`. |
+| `ctest_failed` | `focused_test`: ctest crashed or ran past `timeout_sec` (ANTS-1302). The envelope carries `output_tail`, the last 2 000 characters ctest printed (ANTS-5812). The other runners refuse `runner_failed`. | A full-suite re-run that outlasts a 10 s `timeout_sec`. |
 | `unrecognised_output` | `focused_test`: the final run's output matched no shape its runner prints (ANTS-1302, ANTS-5503). For a runner other than ctest the envelope carries `output_tail`, the last 2 000 characters printed, which usually names the cause (`npx` finding no jest, say). | `focused_test runner:"jest"` in a project where jest is not installed. |
 
 ### 5 — Dispatcher / registry

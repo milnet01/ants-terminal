@@ -85930,13 +85930,16 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: ANTS-5503 spec drafting 2026-10-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5812] **focused_test's ctest_failed refusal carries the captured output tail ANTS-1302 promises.**
+- ✅ [ANTS-5812] **focused_test's ctest_failed refusal carries the captured output tail ANTS-1302 promises.**
   ANTS-1302 § 3.4 step 7 says a ctest timeout or crash refuses
   ctest_failed "(with the captured tail)". RemoteControl::cmdFocusedTest
   (src/remotecontrol_state.cpp) returns only code and message; no tail.
   The non-ctest runner_failed refusal already carries output_tail
   (ANTS-5503), so ctest_failed can take the same field. Found
   registering the code in docs/standards/mcp-error-codes.md.
+  Shipped 2026-10-21: all four ctest_failed returns attach output_tail
+  (last 2000 chars). Test:
+  McpFocusedTest.Ants5812CtestFailedCarriesTail, seen red first.
   **Layman:** When the run-the-tests tool's ctest run crashes or times out, it should show the last lines ctest printed, as its design says.
   Kind: fix.
   Source: ANTS-5811 doc-fix 2026-10-21.

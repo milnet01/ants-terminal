@@ -258,6 +258,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`focused_test` shows the last lines ctest printed when ctest crashes or times out** (ANTS-5812)
+  The `ctest_failed` refusal now carries `output_tail`, so the cause is visible without re-running the suite.
+
 - **`session_message` inbox with `limit` 0 or less returns up to 200 messages, the page ceiling.** (ANTS-5591)
 
 - **changelog_log op:"add" refuses a changelog of dated topics written as plain prose, and points at op:"add_subsection"** (ANTS-4946)

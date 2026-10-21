@@ -522,3 +522,18 @@ TEST(McpFocusedTest, Ants5503Inv13CtestEnvelopeKeys) {
     EXPECT_EQ(out.value("runner").toString(), "ctest");
     EXPECT_EQ(out.value("selector").toArray(), (QJsonArray{"-R", "(foo)"}));
 }
+
+// ANTS-5812 — a ctest crash refuses ctest_failed with the tail ctest printed,
+// as ANTS-1302 § 3.4 step 7 says.
+TEST(McpFocusedTest, Ants5812CtestFailedCarriesTail) {
+    QTemporaryDir td, bin;
+    ASSERT_TRUE(td.isValid() && bin.isValid());
+    writeFile(td.path() + "/CMakeLists.txt", "project(x)\n");
+    writeFile(td.path() + "/build/CMakeCache.txt", "");
+    writeStub(bin.path(), "ctest", "echo 'last words before the crash'\nkill -9 $$\n");
+    PathGuard pg(bin.path());
+    const QJsonObject out = callFocused(td.path(), {});
+    EXPECT_EQ(out.value("code").toString(), "ctest_failed") << dump(out);
+    EXPECT_TRUE(out.value("output_tail").toString().contains("last words before the crash"))
+        << dump(out);
+}
