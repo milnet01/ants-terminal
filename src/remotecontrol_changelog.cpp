@@ -7,15 +7,14 @@
 #include "pathvalidation.h"
 #include "changelogquery.h"
 #include "gitwrap.h"
+#include "roadmapledger.h"
 #include "roadmapstore.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QRegularExpression>
 #include <QSaveFile>
 
 #include <optional>
-#include <tuple>
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -73,27 +72,15 @@ std::optional<ChangelogQuery::ReleaseFacts> clReleaseFacts(
             facts.decided << id;
     }
 
-    // The newest stable tag; a suffixed one (`v1.0.0-rc1`) is not a release.
     // Not a repository, or no tags: no tag check, which is no error.
-    static const QRegularExpression stable(QStringLiteral("^v?(\\d+)\\.(\\d+)\\.(\\d+)$"));
     const GitWrap::Result g = GitWrap::run(
         projectRoot, {QStringLiteral("for-each-ref"),
                       QStringLiteral("--format=%(refname:short)"),
                       QStringLiteral("refs/tags")});
-    std::tuple<int, int, int> best{-1, -1, -1};
-    if (g.started && g.exitCode == 0)
-        for (const QByteArray &raw : g.stdoutBytes.split('\n')) {
-            const auto m = stable.match(QString::fromUtf8(raw).trimmed());
-            if (!m.hasMatch()) continue;
-            const std::tuple<int, int, int> k{m.captured(1).toInt(),
-                                              m.captured(2).toInt(),
-                                              m.captured(3).toInt()};
-            if (k > best) {
-                best = k;
-                facts.latestTag = QStringLiteral("%1.%2.%3")
-                    .arg(m.captured(1), m.captured(2), m.captured(3));
-            }
-        }
+    if (g.started && g.exitCode == 0) {
+        facts.latestTag = RoadmapLedger::newestStableTag(g.stdoutBytes);
+        if (facts.latestTag.startsWith(QLatin1Char('v'))) facts.latestTag.remove(0, 1);
+    }
     return facts;
 }
 

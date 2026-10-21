@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query mode:"ledger"` lists stalled in-progress work and commits that name no roadmap item** (ANTS-5516)
+  An item marked in progress that nobody has touched for `stale_days` (default 14) is listed with how long it has sat. Commits since the last release tag (or a `range` you give) whose subject cites no roadmap id are listed too, so unrecorded work is found without reading the log by hand.
+
 - **`changelog_query mode:"lint"` with `release:true` checks the changelog against the roadmap before a release** (ANTS-5507)
   It lists bullets citing work the roadmap does not show as shipped, work shipped since the last release that no bullet mentions, and a release tag with no changelog section of its own. Items whose roadmap entry records a deliberate "no CHANGELOG entry" decision are left out. A project the roadmap store does not hold gets `release_skipped` with the reason, never a silent pass.
 

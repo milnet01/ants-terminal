@@ -85861,10 +85861,14 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B1).
   Lanes: mcp, audit.
 
-- 📋 [ANTS-5516] **A ledger check reports stale in-progress roadmap items and commits that name no roadmap id.**
+- ✅ [ANTS-5516] **A ledger check reports stale in-progress roadmap items and commits that name no roadmap id.**
   Over a git range. roadmap_branch_drift retires under ANTS-5485, so
   this lands on a live verb (roadmap_query or git_state). Adjacent:
   ANTS-3670, tools/check-shipped-coverage.sh.
+  Shipped 2026-10-21 as roadmap_query mode:"ledger" (stale_days, range).
+  Stale = in-progress with last_modified at least stale_days old. First
+  run: 29 of 377 commits since v0.7.114 name no id; no stale items at 14
+  days.
   **Layman:** Work marked in progress for weeks, and commits with no roadmap id, are only found by reading.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B3).

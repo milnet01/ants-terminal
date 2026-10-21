@@ -3779,6 +3779,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     modeEnum.append("report");
                     // ANTS-4119 / ANTS-4993 — the provenance vocabulary.
                     modeEnum.append("sources");
+                    // ANTS-5516 — stale in-progress items and commits with no id.
+                    modeEnum.append("ledger");
                     modeProp["enum"] = modeEnum;
                     modeProp["default"] = "bullets";
                     // ANTS-4501 — the report's gloss lives HERE and not in the
@@ -4122,6 +4124,22 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "distinct_count and truncated. Refuses section, id and "
                             "ids.");
                         props["source_group"] = p;
+                    }
+                    {   // ANTS-5516 — mode:"ledger"'s two arguments.
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["description"] = QStringLiteral(
+                            "mode:\"ledger\" only. An in-progress item untouched "
+                            "this many days is stale. Default 14.");
+                        props["stale_days"] = p;
+                        QJsonObject r;
+                        r["type"] = "string";
+                        r["description"] = QStringLiteral(
+                            "mode:\"ledger\" only. Git range whose commits are "
+                            "checked for a roadmap id. Default: newest release "
+                            "tag..HEAD.");
+                        props["range"] = r;
                     }
                     {   // ANTS-4462 — opt-in file-vs-store staleness check.
                         QJsonObject p;
@@ -16487,10 +16505,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_query/limit"), QStringLiteral("Cap on bullets[] (1-500). Omitted, a large reply downshifts to headline rows.")},
                         {QStringLiteral("roadmap_query/max_body_bytes"), QStringLiteral("Body cap: one id up to 1 MiB, ids up to 16 KiB each; on lists it may only lower the 2000 cap.")},
                         {QStringLiteral("roadmap_query/max_results"), QStringLiteral("Alias for limit.")},
-                        {QStringLiteral("roadmap_query/mode"), QStringLiteral("bullets (default), section_index (slugs and counts), headline_only, bundles, report, or sources.")},
+                        {QStringLiteral("roadmap_query/mode"), QStringLiteral("bullets (default), section_index (slugs and counts), headline_only, bundles, report, sources, or ledger.")},
                         {QStringLiteral("roadmap_query/offset"), QStringLiteral("0-based start into the filtered bullets; use with limit to page.")},
                         {QStringLiteral("roadmap_query/q"), QStringLiteral("Alias for query.")},
                         {QStringLiteral("roadmap_query/query"), QStringLiteral("Case-insensitive substring filter on headline, body or id. On section_index it filters section names.")},
+                        {QStringLiteral("roadmap_query/range"), QStringLiteral("mode:ledger only: git range checked for commits naming no roadmap id (default newest tag..HEAD).")},
                         {QStringLiteral("roadmap_query/regex"), QStringLiteral("Read query as a case-insensitive regular expression.")},
                         {QStringLiteral("roadmap_query/scope"), QStringLiteral("mode:report only: project (default) or all registered projects.")},
                         {QStringLiteral("roadmap_query/section"), QStringLiteral("Slug of a ## or ### heading; returns its bullets and its subsections' bullets.")},
@@ -16501,6 +16520,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_query/slugs_only"), QStringLiteral("section_index only: return a flat slugs array.")},
                         {QStringLiteral("roadmap_query/source"), QStringLiteral("Keep bullets whose Source: starts with this prefix (string or array, case-insensitive).")},
                         {QStringLiteral("roadmap_query/source_group"), QStringLiteral("mode:sources: stem (default; drops the date onward) or exact.")},
+                        {QStringLiteral("roadmap_query/stale_days"), QStringLiteral("mode:ledger only: an in-progress item untouched this many days is stale (default 14).")},
                         {QStringLiteral("roadmap_query/status"), QStringLiteral("active (planned + in-progress), shipped, all, one lifecycle name or emoji, or an array of them.")},
                         {QStringLiteral("roadmap_query/version"), QStringLiteral("A release such as \"0.10.0\"; answers as section= does for that release's section.")},
                         {QStringLiteral("roadmap_query/whole_word"), QStringLiteral("Match query on word boundaries, so a short acronym stops matching inside words.")},

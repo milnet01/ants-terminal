@@ -455,6 +455,9 @@ add_library(ants_roadmapparse_lib STATIC
     # because both the stamping paths and the report builder read it, and this
     # is the leaf both their libraries already link.
     src/roadmapclock.cpp
+    # ANTS-5516 — roadmap_query mode:"ledger"'s pure half (stale items,
+    # commits with no id, newest stable tag). Core-only, so a leaf.
+    src/roadmapledger.cpp
     # ANTS-3603 — shared CommonMark fence primitives (Qt6::Core-only), hoisted
     # from the verbatim copies in feedbackfile.cpp + speclog.cpp. Moved down
     # here from ants_core_lib by ANTS-4504: the bullet grammar needs
@@ -4284,6 +4287,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_store_identity/test_roadmap_store_identity.cpp
                 tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp
     tests/features/roadmap_report/test_roadmap_report.cpp   # ANTS-4501
+    tests/features/roadmap_ledger/test_roadmap_ledger.cpp   # ANTS-5516
                 # INV-15 forks two openers; the fork lives INSIDE the bundle,
                 # so no separate target is needed for process isolation.
                 tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp

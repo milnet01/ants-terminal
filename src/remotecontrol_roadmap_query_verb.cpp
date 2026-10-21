@@ -14,6 +14,8 @@
 #include "roadmapfoldin.h"
 #include "roadmaplinks.h"   // ANTS-4079 — `links` on id fetches
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the report reads "today" through the seam
+#include "roadmapledger.h"  // ANTS-5516 — mode:"ledger"
+#include "gitwrap.h"        // ANTS-5516 — mode:"ledger" reads tags and the log
 #include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include "passheadingwrite.h"   // ANTS-2126 — the pass-headings writer (moved from TU 2)
 #include <QDateTime>
@@ -25,6 +27,7 @@
 #include <QDir>
 #include <QRandomGenerator>   // ANTS-5704 — plan ids
 #include <QSet>
+#include <cmath>
 #include <optional>
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
 
@@ -571,6 +574,125 @@ QJsonObject rcSpreadObj(const RoadmapStore::DaySpread &s, bool withOldest) {
     }
     o[QStringLiteral("sample")] = s.sample;    // INV-9 — never the population
     return o;
+}
+
+// ANTS-5516 — mode:"ledger": in-progress items nobody has touched for
+// `stale_days` (default 14), and commits in `range` (default: newest stable
+// tag..HEAD) whose subject names no roadmap id. `out` arrives carrying the
+// verb's envelope keys; a refusal returns it with ok:false.
+QJsonObject rcLedgerEnvelope(const QJsonObject &req, RoadmapStore *store,
+                             const QString &callerCanonical, QJsonObject out) {
+    const auto refuse = [&out](const QString &code, const QString &msg) {
+        out["ok"] = false;
+        out["code"] = code;
+        out["error"] = msg;
+        return out;
+    };
+    constexpr int kCommitCap = 500;
+    int staleDays = 14;
+    if (req.contains(QStringLiteral("stale_days"))) {
+        const QJsonValue v = req.value(QStringLiteral("stale_days"));
+        if (!v.isDouble() || v.toDouble() < 1 || v.toDouble() != std::floor(v.toDouble()))
+            return refuse(QStringLiteral("bad_args"),
+                          QStringLiteral("stale_days must be an integer >= 1"));
+        staleDays = v.toInt();
+    }
+    QString range = req.value(QStringLiteral("range")).toString().trimmed();
+    // A range is passed to git as one argument; a leading '-' would be read as
+    // an option.
+    static const QRegularExpression rangeShape(QStringLiteral("^[A-Za-z0-9_./~^@{}-]+$"));
+    if (!range.isEmpty() &&
+        (range.startsWith(QLatin1Char('-')) || !rangeShape.match(range).hasMatch()))
+        return refuse(QStringLiteral("bad_args"),
+                      QStringLiteral("range must be a git revision range such as "
+                                     "v0.7.114..HEAD"));
+    if (!store)
+        return refuse(QStringLiteral("store_unavailable"),
+                      QStringLiteral("roadmap store unavailable"));
+    if (callerCanonical.isEmpty())
+        return refuse(QStringLiteral("caller_cwd_required"),
+                      QStringLiteral("ledger mode needs caller_cwd to resolve the project"));
+    const QString root = rcProjectRootFor(callerCanonical);
+    QString err;
+    const auto row = store->readProjectByRoot(root, &err);
+    if (!row)
+        return refuse(QStringLiteral("project_not_registered"),
+                      err.isEmpty() ? QStringLiteral("project is not in the roadmap "
+                                                     "store: %1 — run roadmap_migrate "
+                                                     "first").arg(callerCanonical)
+                                    : err);
+
+    // Stale in-progress items. The status list is one query; the few
+    // in-progress rows are then read for their headline and date.
+    const auto all = store->itemsForDateBackfill(row->projectId, &err);
+    if (!all) return refuse(QStringLiteral("store_error"), err);
+    QVector<RoadmapLedger::InProgressItem> inProgress;
+    for (const RoadmapStore::DateTarget &t : *all) {
+        if (t.status != QLatin1String("in-progress")) continue;
+        const auto item = store->readItem(t.itemPk, &err);
+        if (!item) return refuse(QStringLiteral("store_error"), err);
+        inProgress.push_back({t.id, item->headline, item->lastModified});
+    }
+    const QDate today = RoadmapClock::today();
+    QJsonArray staleRows;
+    for (const RoadmapLedger::StaleItem &s :
+         RoadmapLedger::staleInProgress(inProgress, today, staleDays)) {
+        QJsonObject o;
+        o[QStringLiteral("id")]            = s.id;
+        o[QStringLiteral("headline")]      = s.headline;
+        o[QStringLiteral("last_modified")] = s.lastModified;
+        o[QStringLiteral("days")]          = s.days < 0 ? QJsonValue(QJsonValue::Null)
+                                                        : QJsonValue(s.days);
+        staleRows.append(o);
+    }
+    out[QStringLiteral("stale_days")]        = staleDays;
+    out[QStringLiteral("in_progress_count")] = int(inProgress.size());
+    out[QStringLiteral("stale_in_progress")] = staleRows;
+
+    // Commits naming no id. Not a repository: said, not refused, since the
+    // stale half above still answered.
+    if (range.isEmpty()) {
+        const GitWrap::Result tags = GitWrap::run(
+            root, {QStringLiteral("for-each-ref"),
+                   QStringLiteral("--format=%(refname:short)"),
+                   QStringLiteral("refs/tags")});
+        const QString tag = (tags.started && tags.exitCode == 0)
+            ? RoadmapLedger::newestStableTag(tags.stdoutBytes) : QString();
+        range = tag.isEmpty() ? QStringLiteral("HEAD") : tag + QStringLiteral("..HEAD");
+    }
+    const GitWrap::Result log = GitWrap::run(
+        root, {QStringLiteral("log"), QStringLiteral("--no-merges"),
+               QStringLiteral("-n"), QString::number(kCommitCap + 1),
+               QStringLiteral("--format=%h%x09%s"), range, QStringLiteral("--")});
+    out[QStringLiteral("range")] = range;
+    if (!log.started || log.exitCode != 0) {
+        out[QStringLiteral("commits_skipped")] = QStringLiteral("git log failed: %1")
+            .arg(QString::fromUtf8(log.stderrTail).trimmed().left(200));
+    } else {
+        int checked = int(log.stdoutBytes.count('\n'));
+        const bool truncated = checked > kCommitCap;
+        QByteArray body = log.stdoutBytes;
+        if (truncated) {
+            // Drop the probe line: it says only that more exist.
+            body.truncate(body.lastIndexOf('\n', body.size() - 2) + 1);
+            checked = kCommitCap;
+        }
+        const QString prefix = store->idPrefixFor(row->projectId, &err)
+                                   .value_or(QStringLiteral("ANTS"));
+        QJsonArray rows;
+        for (const RoadmapLedger::Commit &c : RoadmapLedger::commitsWithoutId(body, prefix)) {
+            QJsonObject o;
+            o[QStringLiteral("sha")]     = c.sha;
+            o[QStringLiteral("subject")] = c.subject;
+            rows.append(o);
+        }
+        out[QStringLiteral("commits_checked")]    = checked;
+        out[QStringLiteral("commits_without_id")] = rows;
+        if (truncated) out[QStringLiteral("commits_truncated")] = true;
+    }
+    out[QStringLiteral("ok")]   = true;
+    out[QStringLiteral("mode")] = QStringLiteral("ledger");
+    return out;
 }
 
 }  // namespace
@@ -1407,7 +1529,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                         QStringLiteral("headline_only"),
                                         QStringLiteral("bundles"),   // ANTS-1922
                                         QStringLiteral("report"),    // ANTS-4501
-                                        QStringLiteral("sources") }; // ANTS-4119
+                                        QStringLiteral("sources"),   // ANTS-4119
+                                        QStringLiteral("ledger") };  // ANTS-5516
     if (!kModes.contains(mode)) {
         QString verbatim = req.value(QStringLiteral("mode")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
@@ -1873,6 +1996,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const QString callerCanonical =
         callerRaw.isEmpty() ? QString()
                             : QFileInfo(callerRaw).canonicalFilePath();
+    // ANTS-5516 — mode:"ledger" is store-and-git only, like report.
+    if (mode == QLatin1String("ledger")) {
+        // Every row selector and list filter is refused, not ignored: the
+        // ledger answers for the whole project, and a filter it dropped would
+        // read as one it applied.
+        static const QStringList kNotWithLedger = {
+            QStringLiteral("section"), QStringLiteral("id"), QStringLiteral("ids"),
+            QStringLiteral("version"), QStringLiteral("query"), QStringLiteral("q"),
+            QStringLiteral("status"), QStringLiteral("filter"), QStringLiteral("kind"),
+            QStringLiteral("bullet_fields"), QStringLiteral("body_match"),
+            QStringLiteral("shipped_since"), QStringLiteral("shipped_until")};
+        for (const QString &k : kNotWithLedger)
+            if (req.contains(k)) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "mode:\"ledger\" covers the whole project and takes only "
+                    "stale_days and range; it does not accept `%1`").arg(k);
+                out["code"] = QStringLiteral("bad_mode_combo");
+                return QJsonDocument(out);
+            }
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString storeErr;
+        RoadmapStore *store = roadmapStoreOrNull(&why, &storeErr);
+        if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
+            return QJsonDocument(out);
+        return QJsonDocument(rcLedgerEnvelope(req, store, callerCanonical, out));
+    }
     // ANTS-4501 — mode:"report" dispatches HERE, before the roadmap-file
     // search below, because it reads the store and never the markdown. A
     // project whose ROADMAP.md has moved still has a store row and still has a
