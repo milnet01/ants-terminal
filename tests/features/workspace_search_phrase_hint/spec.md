@@ -1,28 +1,56 @@
-# workspace_search multi-word phrase hint (ANTS-2045)
+# workspace_search zero-match advisories
 
-`workspace_search` matches its `query` as a single literal/regex pattern,
-not as AND-combined terms. A natural-language query ("About modal RetroDB
-version") silently returns zero matches even when each word exists —
-reproduced across four CC sessions.
+`workspace_search` matches its `query` as one literal or regex pattern. A
+zero-match reply used to say nothing about why, so a caller could not tell
+an absent string from a pattern that was written wrong or a path that was
+never read. Each invariant below adds an advisory to the `ok:true` envelope.
+None changes what the search matches.
 
-## Invariant
+The directory keeps its first item's name, `phrase_hint` (ANTS-2045). The
+name is cited elsewhere, so the contract grew here instead (ANTS-4755).
 
-- **INV-1** — When a whitespace-bearing query returns zero matches, the
-  `ok:true` envelope carries an advisory `hint` string explaining the query
-  was matched as one phrase (and how to AND terms). Pure response-shaping:
-  no change to search semantics, and a single-token / non-empty-result
-  query never gets the hint.
+## Invariants
+
+- **INV-1 (ANTS-2045)** — A zero-match query containing whitespace gets a
+  `hint` saying it was matched as one phrase, worded for literal or regex
+  mode. A single-token query, or one with matches, gets no such hint.
+  *Test:* `WorkspaceSearchPhraseHint.Inv1ZeroMatchPhraseHint`.
+- **INV-2 (ANTS-2181)** — A regex whose top-level alternation holds a bare
+  term of one to three letters gets a `regex_advisory` suggesting `\b`
+  anchors. Anchored or metacharacter-bearing alternatives are exempt.
+  *Test:* `WorkspaceSearchPhraseHint.Ants2181RegexShortBareTermAdvisory`.
+- **INV-3 (ANTS-5139)** — A pattern that is one group bounded by `\b` on both
+  sides, capturing or not, draws no `regex_advisory`. Any other pattern is
+  judged per alternative, so `tan|cosine` and `(tan)|\b(TBD)\b` still name
+  `tan`. *Test:* `WorkspaceSearchPhraseHint.Ants5139BoundedGroupIsAnchored`.
+- **INV-4 (ANTS-3466)** — A zero-match `regex:false` pattern with no
+  whitespace that carries regex metacharacters, alternation `|` among them,
+  gets a `hint` asking "did you mean regex:true?".
+  *Test:* `WorkspaceSearchPhraseHint.Ants3466MetacharRegexFalseHint`.
+- **INV-5 (ANTS-4420)** — A zero-match pattern containing a terminated HTML
+  entity (`&lt;`, `&#60;` and the like; a bare `&` does not count) gets a
+  `hint` pointing at the literal characters.
+  *Test:* `WorkspaceSearchPhraseHint.Ants4420HtmlEntityHint`.
+- **INV-6 (ANTS-4753)** — With `include_hidden` off, a zero-match search whose
+  `glob` names a dot-path sets `hidden_paths_skipped:true` and a `hint` naming
+  `include_hidden:true`. This holds on every zero-result path:
+  `count_only`, `files_only` and `matches_only` too. A `lane` under a hidden
+  directory is searched anyway, so it never triggers this.
+  *Test:* `WorkspaceSearchPhraseHint.Ants4753HiddenGlobHint`.
+- **INV-7** — `hint` is set at most once. The zero-match branches run in
+  order — hidden path (INV-6), HTML entity (INV-5), phrase (INV-1), regex
+  metacharacters (INV-4) — and the first that applies wins. `regex_advisory`
+  is a separate key and can appear beside any of them. *Tests:* the ordering
+  assertions in `WorkspaceSearchPhraseHint.Ants4420HtmlEntityHint` and
+  `WorkspaceSearchPhraseHint.Ants4753HiddenGlobHint`.
+
+## How it is tested
+
+The envelope builder needs a live `RemoteControl`, so INV-1, INV-2 and INV-4
+to INV-7 read the source as text and pin the wiring. INV-3 calls
+`rcShortBareAltTerms` directly.
 
 ## Out of scope
 
-The optional OR-fallback that ranks by significant-term overlap (a separate
-follow-up if the advisory hint proves insufficient).
-
-## ANTS-5139 — a word-bounded group is already anchored
-
-`rcShortBareAltTerms` returns no terms when the whole pattern is a single group
-bounded by `\b` on both sides, capturing or not, so `\b(TODO|FIXME|TBD|XXX)\b`
-draws no `regex_advisory`. The group must open right after the leading `\b` and
-close just before the trailing one; any other pattern is judged per alternative
-as before, so `tan|cosine` and `(tan)|\b(TBD)\b` still name `tan`. *Test:*
-`WorkspaceSearchPhraseHint.Ants5139BoundedGroupIsAnchored`.
+An OR-fallback that ranks results by significant-term overlap, kept for a
+follow-up if the advisories prove insufficient.

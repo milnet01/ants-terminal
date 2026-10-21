@@ -114,6 +114,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The workspace_search zero-match test contract now states every advisory its test checks, and the order they are tried in** (ANTS-4755)
+
 - **Roadmap dialog columns keep their place when you filter** (ANTS-5793)
   Each column's width is a share of the dialog's width, with a minimum, so it grows and shrinks with the window but no longer with what is shown. A long status label or kind now wraps inside its column instead of pushing the titles to the right.
 

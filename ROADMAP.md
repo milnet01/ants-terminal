@@ -87962,7 +87962,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: review-contract deferred tail, ANTS-4435 run 2026-08-28.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4755] **A feature dir's spec.md states only its original invariant while its test file has absorbed several later items' contracts.**
+- ✅ [ANTS-4755] **A feature dir's spec.md states only its original invariant while its test file has absorbed several later items' contracts.**
   `tests/features/workspace_search_phrase_hint/` pairs a spec.md stating
   the ANTS-2045 phrase-hint invariant with a test file that has since
   absorbed the ANTS-2181, ANTS-3466, ANTS-4420 and ANTS-4753 advisories.
@@ -87986,6 +87986,10 @@ volume classes, and the tooling/documentation gaps the run exposed.
   breaks those citations; the spec is the cheaper thing to correct.
   Scope is now: bring spec.md up to the contracts its test file actually
   asserts.
+  Shipped 2026-10-21: spec.md restated as seven invariants, one per
+  contract the test file asserts (ANTS-2045, 2181, 5139, 3466, 4420,
+  4753) plus the hint-ordering chain, each naming its test. Directory
+  name kept, per the 2026-09-07 decision.
   **Layman:** A test folder's written description still covers only the first thing it tested, though several more contracts have been added to it since.
   Kind: doc-fix.
   Source: in-session-2026-08-28, found while adding ANTS-4753's test.
