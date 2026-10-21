@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5811 -->
+<!-- ants-roadmap-id-high-water: ANTS=5812 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85915,16 +85915,31 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: doc-fix.
   Source: doc_integrity list_count first run 2026-10-21.
 
-- 📋 [ANTS-5811] **Register focused_test's five refusal codes in mcp-error-codes.md.**
+- ✅ [ANTS-5811] **Register focused_test's five refusal codes in mcp-error-codes.md.**
   no_build_dir, focused_test_in_flight, ctest_missing, ctest_failed and
   unrecognised_output are emitted by RemoteControl::cmdFocusedTest
   (src/remotecontrol_state.cpp) and listed in ANTS-1302 § 3.6, but no file
   under docs/standards/ names them (workspace_search, 2026-10-21). The
   register's own rule 3 wants a row per code in the commit that adds it.
   Found while drafting the ANTS-5503 spec, which adds three more codes.
+  Shipped 2026-10-21: rows for no_build_dir and focused_test_in_flight
+  (§ 2) and ctest_missing, ctest_failed and unrecognised_output (§ 4),
+  placed as ANTS-1302 § 3.6 assigns them.
   **Layman:** The list of error messages Claude's tools can give is missing five that the run-the-tests tool already uses.
   Kind: doc-fix.
   Source: ANTS-5503 spec drafting 2026-10-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5812] **focused_test's ctest_failed refusal carries the captured output tail ANTS-1302 promises.**
+  ANTS-1302 § 3.4 step 7 says a ctest timeout or crash refuses
+  ctest_failed "(with the captured tail)". RemoteControl::cmdFocusedTest
+  (src/remotecontrol_state.cpp) returns only code and message; no tail.
+  The non-ctest runner_failed refusal already carries output_tail
+  (ANTS-5503), so ctest_failed can take the same field. Found
+  registering the code in docs/standards/mcp-error-codes.md.
+  **Layman:** When the run-the-tests tool's ctest run crashes or times out, it should show the last lines ctest printed, as its design says.
+  Kind: fix.
+  Source: ANTS-5811 doc-fix 2026-10-21.
   Lanes: mcp.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
