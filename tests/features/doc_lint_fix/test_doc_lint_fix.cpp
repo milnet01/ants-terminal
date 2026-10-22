@@ -328,6 +328,64 @@ TEST(DocLintFix, Inv18NoTemplateRefusesRatherThanGuessing) {
     EXPECT_TRUE(reasonsOf(r).contains(QStringLiteral("no_template"))) << renderResult(r);
 }
 
+// ANTS-6135 (L26-F2) — the repair finds the TOC region DocIntegrity reported
+// against. Its copy of the locator had drifted: it stopped at a fence inside an
+// entry and refused a first entry indented past eight spaces, both of which
+// DocIntegrity reads as part of the run.
+TEST(DocLintFix, Ants6135RepairReadsTheRegionDocIntegrityReads) {
+    // Gamma is missing. Beta sits below a fenced example, so a region cut at
+    // the fence anchors Gamma on Alpha and writes it above Beta.
+    const QString fenced = QStringLiteral(
+        "# Doc\n"
+        "\n"
+        "## Contents\n"
+        "\n"
+        "- [Alpha](#alpha)\n"
+        "\n"
+        "  ```\n"
+        "  an example inside the entry\n"
+        "  ```\n"
+        "\n"
+        "- [Beta](#beta)\n"
+        "\n"
+        "## Alpha\n"
+        "\n"
+        "## Beta\n"
+        "\n"
+        "## Gamma\n");
+    Tree t;
+    t.write(QStringLiteral("docs/f.md"), fenced);
+    const DocLint::Result r =
+        DocLint::run({QStringLiteral("docs/f.md")}, optsFor(t, /*fix=*/true));
+    ASSERT_EQ(1, r.filesWritten) << renderResult(r);
+    const QString after = t.read(QStringLiteral("docs/f.md"));
+    EXPECT_LT(after.indexOf(QStringLiteral("- [Beta](#beta)")),
+              after.indexOf(QStringLiteral("- [Gamma](#gamma)")))
+        << after.toStdString();
+
+    // Beta is missing, and the first entry is indented nine spaces.
+    const QString deep = QStringLiteral(
+        "# Doc\n"
+        "\n"
+        "## Contents\n"
+        "\n"
+        "         - [Alpha](#alpha)\n"
+        "- [Gamma](#gamma)\n"
+        "\n"
+        "## Alpha\n"
+        "\n"
+        "## Beta\n"
+        "\n"
+        "## Gamma\n");
+    Tree t2;
+    t2.write(QStringLiteral("docs/d.md"), deep);
+    const DocLint::Result r2 =
+        DocLint::run({QStringLiteral("docs/d.md")}, optsFor(t2, /*fix=*/true));
+    EXPECT_FALSE(reasonsOf(r2).contains(QStringLiteral("no_template"))) << renderResult(r2);
+    EXPECT_TRUE(t2.read(QStringLiteral("docs/d.md")).contains(QStringLiteral("[Beta](#beta)")))
+        << renderResult(r2);
+}
+
 // ---------------------------------------------------------------------------
 // INV-12 — dry_run computes the same envelope down the same path, and writes
 // nothing.

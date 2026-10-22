@@ -305,6 +305,8 @@ QSet<int> accountedNumbers(const QStringList &lines,
 }
 
 // Locate a TOC region (§ 2.5) and populate d.tocEntries + d.tocEndLine.
+// DocLint's detectTocRegion (src/doclint.cpp) copies this rule to find the
+// region it repairs; a change here is a change there.
 void detectToc(const QStringList &lines, DocData &d) {
     int contentsLine = -1;  // 1-based line of the `## Contents` heading
     for (const Heading &h : d.headings) {

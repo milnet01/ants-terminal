@@ -278,6 +278,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_lint's fix:true now repairs a Contents list that holds a code fence inside an entry, or whose first entry is deeply indented, writing the new entry in document order** (ANTS-6135)
+
 - **Every spec-reading verb now finds the specs folder by one rule** (ANTS-6131)
   invariant_check, task_priors, spec_lint and doc_lint now read `docs/specs` when `.ants/project.json`'s `specs_dir` names a file rather than a folder, as spec_query, spec_log, session_orient and trace already did.
 

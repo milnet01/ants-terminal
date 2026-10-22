@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6165 -->
+<!-- ants-roadmap-id-high-water: ANTS=6166 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95073,6 +95073,13 @@ worked after these.
   (ids L26-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH L26-F2 fixed. DocLint::detectTocRegion now reads the
+  TOC run exactly as DocIntegrity::detectToc does (any indent; a fence
+  inside an entry is a continuation), and detectToc points back to it.
+  Test DocLintFix.Ants6135RepairReadsTheRegionDocIntegrityReads, red
+  before on both halves. HIGH L26-F1 queued on ANTS-5958 (same root
+  cause; the fix changes ANTS-3663 INV-22, so it needs a spec amendment
+  first). Mediums and lows still open.
   **Layman:** Tidy the document checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97134,6 +97141,15 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-22: now also carries L26-F1 (HIGH, ANTS-6135): doc_facts
+  count_mismatch and doc_integrity list_count are two rules for one
+  check, and neither file names the other. Recommended fix: keep
+  list_count's calibrated rule (ANTS-5295: 15 of 17 findings real across
+  the machine) and make count_mismatch use it, so doc_lint files one
+  finding per lead-in. ANTS-3663 records count_mismatch as about half
+  real. Hazard: that changes ANTS-3663 INV-22 (an under-counted list
+  would stop being reported), so the spec is amended through
+  review-contract before the code changes.
   **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99070,6 +99086,20 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: investigate.
   Source: full-suite-run-2026-10-22.
   Lanes: tests.
+
+- 📋 [ANTS-6166] **doc_lint's TOC repair inserts a missing entry between an entry and its nested sub-entries, so the sub-entries move under the new one.**
+  Found 2026-10-22 next door to ANTS-6135 (L26-F2), by reading
+  src/doclint.cpp patchTocRegion: an insertion is keyed on the anchor
+  entry's own line, and the output loop writes it straight after that
+  line. Where the anchor entry has indented children ("  - [Sub](#sub)"),
+  the new row lands above them. kRich in test_doc_lint_fix.cpp is this
+  shape (Beta goes in after Alpha, above Alpha's Sub thing), and
+  Inv18TocRepairIsAPatch asserts only that Sub survives, not where.
+  Fix: insert after the anchor entry's last continuation line.
+  **Layman:** When the document checker adds a missing line to a table of contents, it can put it in the middle of another entry's sub-list.
+  Kind: fix.
+  Source: close-findings-2026-10-22 (ANTS-6135 sweep).
+  Lanes: doc-engines.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

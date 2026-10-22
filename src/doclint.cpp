@@ -175,7 +175,7 @@ QVector<Hd> headingsOf(const QStringList &lines, const QVector<bool> &fence) {
 }
 
 bool isTocListItem(const QString &s) {
-    static const QRegularExpression re(QStringLiteral(R"(^\s{0,8}(?:[-*+]|\d+[.)])\s)"));
+    static const QRegularExpression re(QStringLiteral(R"(^\s*(?:[-*+]|\d+[.)])\s)"));
     return re.match(s).hasMatch();
 }
 
@@ -196,12 +196,10 @@ struct TocRegion {
 //
 // It is a deliberate second copy of the smallest part the patch needs, because
 // spec § 2.2 freezes that engine and its locator is file-static over types
-// (`DocData`, `Heading`) that are not exported. What bounds the drift is that
-// this function's only failure mode is returning `found:false`, which the
-// caller turns into `no_template` and writes nothing: the two disagreeing costs
-// a declined repair, never an edit to the wrong region.
-TocRegion detectTocRegion(const QStringList &lines, const QVector<bool> &fence,
-                          const QVector<Hd> &heads) {
+// (`DocData`, `Heading`) that are not exported. Keep the two identical, and
+// detectToc points back here: a region shorter than DocIntegrity's anchors an
+// inserted entry on the wrong row (ANTS-6135).
+TocRegion detectTocRegion(const QStringList &lines, const QVector<Hd> &heads) {
     TocRegion t;
     int contentsLine = -1;
     for (const Hd &h : heads) {
@@ -221,7 +219,6 @@ TocRegion detectTocRegion(const QStringList &lines, const QVector<bool> &fence,
     static const QRegularExpression linkRe(QStringLiteral(R"(\[[^\]]*\]\(([^)]*)\))"));
     int lastItem = -1;
     for (int j = idx; j < n; ++j) {
-        if (fence.at(j)) break;
         if (lines.at(j).trimmed().isEmpty()) continue;
         const bool continuation =
             lastItem >= 0 && !lines.at(j).isEmpty() && lines.at(j).at(0).isSpace();
@@ -274,7 +271,7 @@ bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
                     QString *reason) {
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
     const QVector<Hd>   heads = headingsOf(lines, fence);
-    const TocRegion     toc   = detectTocRegion(lines, fence, heads);
+    const TocRegion     toc   = detectTocRegion(lines, heads);
     if (!toc.found) { *reason = QStringLiteral("no_template"); return false; }
 
     QHash<QString, const Hd *> bySlug;
