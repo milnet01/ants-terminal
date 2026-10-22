@@ -140,23 +140,27 @@ TEST(QuotationCheck, Inv2OneResultPerItemInOrder)
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
     ASSERT_TRUE(writeFile(dir.filePath("a.md"), "alpha beta gamma\n"));
+    QJsonObject displaced = item("a.md", "gamma");
+    displaced["line"] = 9;  // ANTS-5732: found on line 1, cited at 9
     const QJsonObject env = call(dir.path(), QJsonArray{
         item("a.md", "beta"), item("a.md", "delta"), item("gone.md", "x"),
-        item("../outside.md", "x")});
+        item("../outside.md", "x"), displaced});
     ASSERT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().toStdString();
     const QJsonArray results = env.value("results").toArray();
-    ASSERT_EQ(results.size(), 4);
-    for (int i = 0; i < 4; ++i)
+    ASSERT_EQ(results.size(), 5);
+    for (int i = 0; i < 5; ++i)
         EXPECT_EQ(results.at(i).toObject().value("index").toInt(-1), i);
     EXPECT_EQ(resultAt(env, 0), "hit");
     EXPECT_EQ(resultAt(env, 1), "miss");
     EXPECT_EQ(resultAt(env, 2), "not_run");
     EXPECT_EQ(resultAt(env, 3), "outside_allowed");
-    EXPECT_EQ(env.value("items_checked").toInt(), 4);
+    EXPECT_EQ(resultAt(env, 4), "hit_displaced");
+    EXPECT_EQ(env.value("items_checked").toInt(), 5);
     const QJsonObject c = env.value("counts").toObject();
-    EXPECT_EQ(c.value("hit").toInt() + c.value("miss").toInt() + c.value("not_run").toInt()
+    EXPECT_EQ(c.value("hit").toInt() + c.value("hit_displaced").toInt()
+                  + c.value("miss").toInt() + c.value("not_run").toInt()
                   + c.value("outside_allowed").toInt(),
-              4);
+              5);
     EXPECT_EQ(env.value("normaliser").toString(), QString::fromLatin1(QuotationCheck::kNormaliser));
 }
 
@@ -351,4 +355,97 @@ TEST(QuotationCheck, Inv10Registration)
     const std::string body = ci.substr(schema, end - schema);
     EXPECT_NE(body.find("schema[\"type\"] = \"object\";"), std::string::npos);
     EXPECT_NE(body.find("schema[\"additionalProperties\"] = false;"), std::string::npos);
+}
+
+// INV-11 (ANTS-5732)
+TEST(QuotationCheck, Inv11DisplacedQuoteNearestOccurrenceDecides)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QByteArray subject;
+    for (int n = 1; n <= 45; ++n) {
+        if (n == 4)
+            subject += "the needle text here, then wrapped\n";
+        else if (n == 5)
+            subject += "needle continues\n";
+        else if (n == 40)
+            subject += "the needle text here\n";
+        else
+            subject += "filler " + QByteArray::number(n) + "\n";
+    }
+    ASSERT_TRUE(writeFile(dir.filePath("s.md"), subject));
+    const auto cited = [](const QString &text, int line, int tol = -1) {
+        QJsonObject o = item("s.md", text);
+        o["line"] = line;
+        if (tol >= 0)
+            o["tolerance"] = tol;
+        return o;
+    };
+    const QString q = QStringLiteral("the needle text here");
+    const QJsonObject env = call(dir.path(), QJsonArray{
+        cited(q, 41), cited(q, 10), cited(q, 10, 6),
+        cited(QStringLiteral("wrapped needle continues"), 4, 0)});
+    ASSERT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(resultAt(env, 0), "hit") << "only the first occurrence was tested";
+    EXPECT_EQ(resultAt(env, 1), "hit_displaced");
+    EXPECT_EQ(findingFor(env, 1).value("line").toInt(), 4);
+    EXPECT_EQ(resultAt(env, 2), "hit");
+    EXPECT_EQ(resultAt(env, 3), "hit") << "a wrapped quotation takes the line it starts on";
+    EXPECT_EQ(env.value("counts").toObject().value("hit_displaced").toInt(), 1);
+
+    // The item's tolerance wins over the call's.
+    const QJsonObject callTol = call(dir.path(), QJsonArray{cited(q, 10, 0)},
+                                     QJsonObject{{"tolerance", 6}});
+    EXPECT_EQ(resultAt(callTol, 0), "hit_displaced");
+    const QJsonObject callOnly = call(dir.path(), QJsonArray{cited(q, 10)},
+                                      QJsonObject{{"tolerance", 6}});
+    EXPECT_EQ(resultAt(callOnly, 0), "hit") << "the call-level tolerance is not read";
+}
+
+// INV-12 (ANTS-5732)
+TEST(QuotationCheck, Inv12NoLineChangesNothingAndShapesRefuse)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QByteArray subject;
+    for (int n = 1; n <= 45; ++n)
+        subject += n == 40 ? QByteArray("far down here\n") : "filler " + QByteArray::number(n) + "\n";
+    ASSERT_TRUE(writeFile(dir.filePath("s.md"), subject));
+    const QJsonObject env = call(dir.path(), QJsonArray{item("s.md", "far down here")});
+    EXPECT_EQ(resultAt(env, 0), "hit");
+    ASSERT_TRUE(env.value("counts").toObject().contains("hit_displaced"));
+    EXPECT_EQ(env.value("counts").toObject().value("hit_displaced").toInt(), 0);
+
+    const auto refusesAtIndex = [&](const QString &key, const QJsonValue &v) {
+        QJsonObject o = item("s.md", "far down here");
+        o[key] = v;
+        const QJsonObject r = call(dir.path(), QJsonArray{o});
+        EXPECT_EQ(r.value("code").toString(), "bad_args") << key.toStdString();
+        EXPECT_TRUE(r.value("error").toString().contains("items[0]"))
+            << r.value("error").toString().toStdString();
+    };
+    refusesAtIndex("line", 0);
+    refusesAtIndex("line", 1.5);
+    refusesAtIndex("line", "3");
+    refusesAtIndex("tolerance", -1);
+    const QJsonObject callBad = call(dir.path(), QJsonArray{item("s.md", "x")},
+                                     QJsonObject{{"tolerance", -1}});
+    EXPECT_EQ(callBad.value("code").toString(), "bad_args");
+
+    // The handler forwards the call-level tolerance, and the schema declares
+    // both new arguments (ANTS-4621: a strict client refuses an undeclared one).
+    std::ifstream h(std::string(ANTS_SRC_DIR) + "/remotecontrol_quotation_check.cpp");
+    std::stringstream hs;
+    hs << h.rdbuf();
+    EXPECT_NE(hs.str().find("args[QStringLiteral(\"tolerance\")]"), std::string::npos);
+    std::ifstream c(std::string(ANTS_SRC_DIR) + "/claudeintegration.cpp");
+    std::stringstream cs;
+    cs << c.rdbuf();
+    const std::string ci = cs.str();
+    const auto schema = ci.find("t[\"name\"] = \"quotation_check\";");
+    ASSERT_NE(schema, std::string::npos);
+    const std::string body = ci.substr(schema, ci.find("tools.append(t);", schema) - schema);
+    EXPECT_NE(body.find("props[\"tolerance\"]"), std::string::npos);
+    EXPECT_NE(body.find("ip[\"line\"]"), std::string::npos);
+    EXPECT_NE(body.find("ip[\"tolerance\"]"), std::string::npos);
 }

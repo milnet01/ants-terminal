@@ -12,6 +12,9 @@
 #include <QFileInfo>
 #include <QJsonArray>
 
+#include <algorithm>
+#include <climits>
+#include <cstdlib>
 #include <map>
 #include <utility>
 
@@ -193,7 +196,18 @@ struct Subject {
     QString reason;  // non-empty: the read failed, and this is the not_run reason
     QByteArray raw;
     Normalised norm;
+    std::vector<qsizetype> newlines;  // ANTS-5732: offsets of '\n' in raw, for lineOf
 };
+
+// ANTS-5732 — a JSON number holding an integer of at least `min`. "3" and
+// 1.5 are not one.
+bool isIntAtLeast(const QJsonValue &v, int min)
+{
+    if (!v.isDouble())
+        return false;
+    const double d = v.toDouble();
+    return d == double(qint64(d)) && d >= min && d <= INT_MAX;
+}
 
 QJsonObject refuse(const QString &message)
 {
@@ -275,6 +289,13 @@ std::vector<qsizetype> charBoundaries(const QByteArray &q)
     return b;
 }
 
+// ANTS-5732 — the 1-based subject line holding original byte `src`.
+int lineOf(const Subject &s, qsizetype src)
+{
+    return int(std::lower_bound(s.newlines.begin(), s.newlines.end(), src)
+               - s.newlines.begin()) + 1;
+}
+
 // Fills a miss's matched_prefix_chars, line and nearest (§ 2.3). A prefix
 // that occurs implies every shorter one does, so the length is searched.
 void describeMiss(QJsonObject &f, const QByteArray &needle, const Subject &s)
@@ -296,11 +317,33 @@ void describeMiss(QJsonObject &f, const QByteArray &needle, const Subject &s)
     const qsizetype src = s.norm.source[size_t(at)];
     // lastIndexOf(c, -1) searches from the end, so offset 0 is its own case.
     const qsizetype lineStart = src == 0 ? 0 : s.raw.lastIndexOf('\n', src - 1) + 1;
-    f[QStringLiteral("line")] = int(s.raw.left(lineStart).count('\n') + 1);
+    f[QStringLiteral("line")] = lineOf(s, src);
     qsizetype end = qMin(s.raw.size(), lineStart + kNearestBytes);
     while (end > lineStart && end < s.raw.size() && (uchar(s.raw[end]) & 0xC0) == 0x80)
         --end;
     f[QStringLiteral("nearest")] = QString::fromUtf8(s.raw.mid(lineStart, end - lineStart));
+}
+
+// ANTS-5732 (§ 2.3) — the line of the occurrence nearest `cited`, the earlier
+// on a tie, and whether it starts within `tolerance` of it. Every occurrence
+// is weighed, since a quotation can sit in the file more than once.
+std::pair<int, bool> nearestOccurrence(const QByteArray &needle, const Subject &s,
+                                       int cited, int tolerance)
+{
+    int best = 0;
+    int bestDistance = INT_MAX;
+    for (qsizetype at = s.norm.text.indexOf(needle); at >= 0;
+         at = s.norm.text.indexOf(needle, at + 1)) {
+        const int line = lineOf(s, s.norm.source[size_t(at)]);
+        const int distance = std::abs(line - cited);
+        if (distance <= tolerance)
+            return {line, true};
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = line;
+        }
+    }
+    return {best, false};
 }
 
 } // namespace
@@ -328,8 +371,20 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
             why = QStringLiteral("\"text\" is not a string");
         else if (o.contains(QStringLiteral("ref")) && !o.value(QStringLiteral("ref")).isString())
             why = QStringLiteral("\"ref\" is not a string");
+        else if (o.contains(QStringLiteral("line")) && !isIntAtLeast(o.value(QStringLiteral("line")), 1))
+            why = QStringLiteral("\"line\" is not an integer of 1 or more");
+        else if (o.contains(QStringLiteral("tolerance"))
+                 && !isIntAtLeast(o.value(QStringLiteral("tolerance")), 0))
+            why = QStringLiteral("\"tolerance\" is not an integer of 0 or more");
         if (!why.isEmpty())
             return refuse(QStringLiteral("items[%1] %2").arg(i).arg(why));
+    }
+    // ANTS-5732 — default 3, measured (§ 2.3).
+    int callTolerance = 3;
+    if (args.contains(QStringLiteral("tolerance"))) {
+        if (!isIntAtLeast(args.value(QStringLiteral("tolerance")), 0))
+            return refuse(QStringLiteral("\"tolerance\" is not an integer of 0 or more"));
+        callTolerance = args.value(QStringLiteral("tolerance")).toInt();
     }
     QStringList allowed;
     const bool hasAllowed = args.contains(QStringLiteral("allowed"));
@@ -349,7 +404,7 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
     const QDir rootDir(root);
     std::map<std::pair<QString, QString>, Subject> subjects;
     int filesRead = 0;
-    int nHit = 0, nMiss = 0, nNotRun = 0, nOutside = 0;
+    int nHit = 0, nDisplaced = 0, nMiss = 0, nNotRun = 0, nOutside = 0;
     QJsonArray results, findings, checkErrors;
 
     for (qsizetype i = 0; i < items.size(); ++i) {
@@ -416,6 +471,8 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
                 Subject s = hasRef ? readBlob(root, ref, rel) : readWorkingTree(abs);
                 if (s.reason.isEmpty()) {
                     s.norm = normalise(s.raw);
+                    for (qsizetype n = s.raw.indexOf('\n'); n >= 0; n = s.raw.indexOf('\n', n + 1))
+                        s.newlines.push_back(n);
                     ++filesRead;
                 }
                 it = subjects.emplace(key, std::move(s)).first;
@@ -426,6 +483,17 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
                 reason = s.reason;
             } else if (s.norm.text.indexOf(needle) >= 0) {
                 result = QStringLiteral("hit");
+                if (o.contains(QStringLiteral("line"))) {
+                    const int tolerance = o.contains(QStringLiteral("tolerance"))
+                                              ? o.value(QStringLiteral("tolerance")).toInt()
+                                              : callTolerance;
+                    const auto [line, near] = nearestOccurrence(
+                        needle, s, o.value(QStringLiteral("line")).toInt(), tolerance);
+                    if (!near) {
+                        result = QStringLiteral("hit_displaced");
+                        finding[QStringLiteral("line")] = line;
+                    }
+                }
             } else {
                 result = QStringLiteral("miss");
                 describeMiss(finding, needle, s);
@@ -438,7 +506,9 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
             ++nHit;
             continue;
         }
-        if (result == QLatin1String("miss"))
+        if (result == QLatin1String("hit_displaced"))
+            ++nDisplaced;
+        else if (result == QLatin1String("miss"))
             ++nMiss;
         else if (result == QLatin1String("outside_allowed"))
             ++nOutside;
@@ -461,6 +531,7 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
         {QStringLiteral("ok"), true},
         {QStringLiteral("items_checked"), int(items.size())},
         {QStringLiteral("counts"), QJsonObject{{QStringLiteral("hit"), nHit},
+                                               {QStringLiteral("hit_displaced"), nDisplaced},
                                                {QStringLiteral("miss"), nMiss},
                                                {QStringLiteral("not_run"), nNotRun},
                                                {QStringLiteral("outside_allowed"), nOutside}}},

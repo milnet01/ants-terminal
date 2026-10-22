@@ -38,5 +38,7 @@ QJsonDocument RemoteControl::cmdQuotationCheck(const QJsonObject &req) {
         args[QStringLiteral("allowed")] = req.value(QStringLiteral("allowed"));
     if (req.contains(QStringLiteral("max_bytes")))
         args[QStringLiteral("max_bytes")] = req.value(QStringLiteral("max_bytes"));
+    if (req.contains(QStringLiteral("tolerance")))  // ANTS-5732
+        args[QStringLiteral("tolerance")] = req.value(QStringLiteral("tolerance"));
     return QJsonDocument(QuotationCheck::run(rr.cwd, args));
 }

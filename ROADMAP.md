@@ -87589,7 +87589,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: user-report-2026-10-16.
   Lanes: claude-integration.
 
-- 📋 [ANTS-5732] **quotation_check flags a quote found far from the line its finding cites.**
+- ✅ [ANTS-5732] **quotation_check flags a quote found far from the line its finding cites.**
   claude-config, 2026-10-16: review lanes cite file:line, and a quote far
   from its citation is a stale or wrong finding. Today quotation_check
   answers hit/miss per {path, text, ref?} only. Add an optional per-item
@@ -87608,6 +87608,15 @@ measured Ants adding about 5,250 tokens to every request.
   (docs/specs/ANTS-5502-quotation-check.md) passed review-contract,
   loops 3 and 4, cap reached; ready to build. Pre-existing INV-10 test
   gap filed as ANTS-6168.
+  2026-10-22: shipped to the gated amendment of
+  docs/specs/ANTS-5502-quotation-check.md (INV-11, INV-12;
+  review-contract loops 3 + 4, cap reached, calm). Per-item `line` and
+  `tolerance`, call-level `tolerance` (default 3), result
+  `hit_displaced` carrying the nearest occurrence's line,
+  counts.hit_displaced on every call. Tests
+  QuotationCheck.Inv11DisplacedQuoteNearestOccurrenceDecides and
+  .Inv12NoLineChangesNothingAndShapesRefuse, red before; INV-2's test
+  now includes a displaced item. Reload: an ants-mcpd rebuild and /mcp.
   **Layman:** Checking a reviewer's quotes can also say when a quote is in the file but not where the reviewer said it was.
   Kind: enhancement.
   Source: claude-config-request-2026-10-16.

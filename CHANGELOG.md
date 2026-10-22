@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **quotation_check checks a quote against the line its finding cites: an item may carry `line` (and `tolerance`, default 3), and a quote found elsewhere in the file is `hit_displaced`, with the line it was found on** (ANTS-5732)
+  A call-level `tolerance` sets the default for every item. An item without `line` gets the same result as before.
+
 - **A project can opt in to Claude in Chrome: with "claude_chrome": true in its .ants/project.json (set by project_settings), Ants starts that project's Claude Code sessions with --chrome** (ANTS-5728)
   Covers the Projects & Sessions dialog's new, continue and resume, and the audit dialog's review launch. The key is read at each launch, so a running terminal picks up a change with no relaunch.
 

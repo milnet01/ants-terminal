@@ -14673,9 +14673,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "Check that each quotation occurs in the file it names, "
                         "normalised as quotation-check.sh does (blockquote markers, "
                         "whitespace, [text](url), ** and backquotes). `items` is 1 to "
-                        "500 {path, text, ref?}. Each gets hit, miss (with the nearest "
-                        "line), not_run (with a reason; never a miss) or "
-                        "outside_allowed. `findings` lists every non-hit and is never "
+                        "500 {path, text, ref?, line?, tolerance?}. Each gets hit, "
+                        "hit_displaced (found, but not within tolerance of `line`; "
+                        "carries the found line), miss (with the nearest line), "
+                        "not_run (with a reason; never a miss) or outside_allowed. "
+                        "`findings` lists every non-hit and is never "
                         "trimmed; `check_errors` lists the not_run ones. Refusals: "
                         "bad_args. caller_cwd Required.");
                     t["detail"] = QStringLiteral(
@@ -14686,7 +14688,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "blob via git cat-file at that revision. `allowed` globs: ** "
                         "crosses /, * and ? do not, all else literal; matched against "
                         "the path after symlinks resolve. max_bytes trims `results` "
-                        "only.");
+                        "only. ANTS-5732: an item's `line` is the line its finding "
+                        "cites, the first where it cites a range; an occurrence's line "
+                        "is the one it starts on, and the nearest decides.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -14706,6 +14710,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         ip["path"] = s;
                         ip["text"] = s;
                         ip["ref"] = s;
+                        // ANTS-5732 — the cited line, and this item's tolerance.
+                        QJsonObject lineP;
+                        lineP["type"] = "integer";
+                        lineP["minimum"] = 1;
+                        ip["line"] = lineP;
+                        QJsonObject tolP;
+                        tolP["type"] = "integer";
+                        tolP["minimum"] = 0;
+                        ip["tolerance"] = tolP;
                         item["properties"] = ip;
                         QJsonArray req;
                         req.append(QStringLiteral("path"));
@@ -14717,9 +14730,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["minItems"] = 1;
                         p["maxItems"] = 500;
                         p["description"] = QStringLiteral(
-                            "{path, text, ref?}: path relative to the project root or "
-                            "absolute; text the quotation as written; ref an optional "
-                            "git revision.");
+                            "{path, text, ref?, line?, tolerance?}: path relative or "
+                            "absolute; text as written; ref a git revision; line the "
+                            "cited line.");
                         props["items"] = p;
                     }
                     {
@@ -14741,6 +14754,16 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "Response cap in bytes (default 512 KiB). Trims `results` "
                             "only; `findings` is never trimmed.");
                         props["max_bytes"] = p;
+                    }
+                    {
+                        // ANTS-5732 — default 3, measured (spec § 2.3).
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 0;
+                        p["description"] = QStringLiteral(
+                            "Lines an occurrence may start from an item's `line` and "
+                            "still be a hit (default 3). An item's own tolerance wins.");
+                        props["tolerance"] = p;
                     }
                     schema["properties"] = props;
                     QJsonArray req;
