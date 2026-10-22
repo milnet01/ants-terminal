@@ -287,6 +287,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Settings lists every configurable keyboard shortcut, and Reset to Defaults sets the bookmark jumps to Ctrl+Alt+Down/Up, the chords that work** (ANTS-6146)
+
 - **Automatic model switching judges a switch by what you type next, not by a tool's reply, so its regret and override counts reflect your own corrections** (ANTS-6011)
 
 - **file_outline lists C++ functions whose wrapped argument list holds brackets, such as a QString() default or a std::function<void()>, and no longer lists a statement such as `do foo();` as a function** (ANTS-5994)

@@ -17,6 +17,9 @@
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
+#ifndef SRC_CONFIG_CPP_PATH
+#error "SRC_CONFIG_CPP_PATH compile definition required"
+#endif
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
 #endif
@@ -27,6 +30,7 @@ TEST(Osc133LastCommand, Main) {
     const std::string impl  = ants_test::slurpFile(SRC_TERMINALWIDGET_IMPL_PATH);
     const std::string mw    = ants_test::slurpMainWindow();
     const std::string cmake = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
+    const std::string cfg   = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
     int failures = 0;
 
     auto fail = [&](const char *msg) {
@@ -85,15 +89,19 @@ TEST(Osc133LastCommand, Main) {
             fail("copyLastCommandOutput must NOT call lastCommandOutput (100-line cap)");
     }
 
-    // (4) MainWindow wires both actions through config.keybinding with the
-    //     expected keys + defaults. Pinning the defaults to Ctrl+Alt+O/R is
-    //     deliberate: both are unused elsewhere in mainwindow.cpp.
+    // (4) MainWindow wires both actions through config.keybinding; the
+    //     defaults sit in Config::defaultKeybindings() (ANTS-6146). Pinning
+    //     them to Ctrl+Alt+O/R is deliberate: both are unused elsewhere.
     if (!std::regex_search(mw, std::regex(
-            R"(m_config\.keybinding\s*\(\s*"copy_last_output"\s*,\s*"Ctrl\+Alt\+O"\s*\))")))
-        fail("mainwindow.cpp: copy_last_output must default to Ctrl+Alt+O via config.keybinding");
+            R"(m_config\.keybinding\s*\(\s*"copy_last_output"\s*\))")))
+        fail("mainwindow.cpp: copy_last_output must be bound via config.keybinding");
     if (!std::regex_search(mw, std::regex(
-            R"(m_config\.keybinding\s*\(\s*"rerun_last_command"\s*,\s*"Ctrl\+Alt\+R"\s*\))")))
-        fail("mainwindow.cpp: rerun_last_command must default to Ctrl+Alt+R via config.keybinding");
+            R"(m_config\.keybinding\s*\(\s*"rerun_last_command"\s*\))")))
+        fail("mainwindow.cpp: rerun_last_command must be bound via config.keybinding");
+    if (cfg.find(R"({"copy_last_output", "Ctrl+Alt+O"})") == std::string::npos)
+        fail("config.cpp: copy_last_output must default to Ctrl+Alt+O");
+    if (cfg.find(R"({"rerun_last_command", "Ctrl+Alt+R"})") == std::string::npos)
+        fail("config.cpp: rerun_last_command must default to Ctrl+Alt+R");
 
     // (5) Defaults don't collide with other bindings — a second Ctrl+Alt+O
     //     or Ctrl+Alt+R would mean we're shadowing an existing feature.
@@ -103,10 +111,10 @@ TEST(Osc133LastCommand, Main) {
             std::sregex_iterator(s.begin(), s.end(), r),
             std::sregex_iterator());
     };
-    if (countOccurrences(mw, R"("Ctrl\+Alt\+O")") != 1)
-        fail("Ctrl+Alt+O must appear exactly once in mainwindow.cpp (ours); another binding shadows it");
-    if (countOccurrences(mw, R"("Ctrl\+Alt\+R")") != 1)
-        fail("Ctrl+Alt+R must appear exactly once in mainwindow.cpp (ours); another binding shadows it");
+    if (countOccurrences(cfg, R"("Ctrl\+Alt\+O")") != 1)
+        fail("Ctrl+Alt+O must appear exactly once in config.cpp (ours); another binding shadows it");
+    if (countOccurrences(cfg, R"("Ctrl\+Alt\+R")") != 1)
+        fail("Ctrl+Alt+R must appear exactly once in config.cpp (ours); another binding shadows it");
 
     // (6) MainWindow surfaces status-bar feedback on both success and
     //     failure for each action.

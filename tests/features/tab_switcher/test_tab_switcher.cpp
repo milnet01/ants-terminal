@@ -128,11 +128,11 @@ TEST(TabSwitcher, Inv6MenuAndShortcutTable) {
     const std::string src = mainWindowSource();
     EXPECT_NE(src.find("\"Go to &Tab...\""), std::string::npos);
     EXPECT_NE(src.find("keybinding(\"tab_switcher\""), std::string::npos);
-    const std::string settings = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
-    ASSERT_FALSE(settings.empty());
+    const std::string config = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
+    ASSERT_FALSE(config.empty());
     std::size_t count = 0;
-    for (std::size_t at = settings.find("{\"tab_switcher\""); at != std::string::npos;
-         at = settings.find("{\"tab_switcher\"", at + 1))
+    for (std::size_t at = config.find("{\"tab_switcher\""); at != std::string::npos;
+         at = config.find("{\"tab_switcher\"", at + 1))
         ++count;
-    EXPECT_EQ(count, 2u) << "both shortcut tables (load and reset) list tab_switcher";
+    EXPECT_EQ(count, 1u) << "the one shortcut table lists tab_switcher";
 }

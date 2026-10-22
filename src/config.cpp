@@ -1041,6 +1041,38 @@ void Config::setBackgroundBlur(bool enabled) {
     save();
 }
 
+// In menu order. next/prev_bookmark are Ctrl+Alt because TerminalWidget takes
+// Ctrl+Shift+Up/Down for prompt navigation before any shortcut sees it
+// (ANTS-1165).
+const QVector<QPair<QString, QString>> &Config::defaultKeybindings() {
+    static const QVector<QPair<QString, QString>> v = {
+        {"new_tab", "Ctrl+Shift+T"},         {"close_tab", "Ctrl+Shift+W"},
+        {"undo_close_tab", "Ctrl+Shift+Z"},  {"next_tab", "Ctrl+PgDown"},
+        {"prev_tab", "Ctrl+PgUp"},           {"new_window", "Ctrl+Shift+N"},
+        {"ssh_manager", "Ctrl+Shift+S"},     {"exit", "Ctrl+Shift+Q"},
+        {"rich_copy", "Ctrl+Shift+Alt+C"},   {"clear_line", "Ctrl+Shift+U"},
+        {"tab_list_panel", "Ctrl+Shift+Y"},  {"tab_switcher", "Ctrl+Shift+H"},
+        {"command_palette", "Ctrl+Shift+P"}, {"copy_last_output", "Ctrl+Alt+O"},
+        {"rerun_last_command", "Ctrl+Alt+R"},
+        {"split_horizontal", "Ctrl+Shift+E"},
+        {"split_vertical", "Ctrl+Shift+O"},  {"close_pane", "Ctrl+Shift+X"},
+        {"ai_assistant", "Ctrl+Shift+A"},    {"claude_allowlist", "Ctrl+Shift+L"},
+        {"claude_projects", "Ctrl+Shift+J"}, {"scratchpad", "Ctrl+Shift+Return"},
+        {"snippets", "Ctrl+Shift+;"},        {"toggle_fold", "Ctrl+Shift+."},
+        {"record_session", "Ctrl+Shift+R"},  {"toggle_bookmark", "Ctrl+Shift+B"},
+        {"next_bookmark", "Ctrl+Alt+Down"},  {"prev_bookmark", "Ctrl+Alt+Up"},
+        {"url_quick_select", "Ctrl+Shift+G"},
+        {"broadcast_input", "Ctrl+Shift+I"}, {"preferences", "Ctrl+,"},
+    };
+    return v;
+}
+
+QString Config::keybinding(const QString &action) const {
+    for (const auto &[name, key] : defaultKeybindings())
+        if (name == action) return keybinding(action, key);
+    return keybinding(action, QString());
+}
+
 QString Config::keybinding(const QString &action, const QString &defaultKey) const {
     QJsonObject kb = m_data.value("keybindings").toObject();
     return kb.value(action).toString(defaultKey);

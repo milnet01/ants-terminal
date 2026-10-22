@@ -2335,6 +2335,8 @@ if(ANTS_TESTS)
                 tests/features/tab_list_panel/test_tab_list_panel.cpp
                 # ANTS-5646 — go to a tab by typing its name.
                 tests/features/tab_switcher/test_tab_switcher.cpp
+                # ANTS-6146 — one table of default keyboard shortcuts.
+                tests/features/keybinding_defaults/test_keybinding_defaults.cpp
                 tests/features/shell_command_wiring/test_shell_command_wiring.cpp
                 tests/features/wayland_quake_mode/test_wayland_quake_mode.cpp
                 tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp

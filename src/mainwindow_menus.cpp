@@ -70,15 +70,15 @@ void MainWindow::setupFileMenu() {
     QMenu *fileMenu = m_menuBar->addMenu("&File");
 
     QAction *newTabAction = fileMenu->addAction("New &Tab");
-    newTabAction->setShortcut(QKeySequence(m_config.keybinding("new_tab", "Ctrl+Shift+T")));
+    newTabAction->setShortcut(QKeySequence(m_config.keybinding("new_tab")));
     connect(newTabAction, &QAction::triggered, this, &MainWindow::newTab);
 
     QAction *closeTabAction = fileMenu->addAction("&Close Tab");
-    closeTabAction->setShortcut(QKeySequence(m_config.keybinding("close_tab", "Ctrl+Shift+W")));
+    closeTabAction->setShortcut(QKeySequence(m_config.keybinding("close_tab")));
     connect(closeTabAction, &QAction::triggered, this, &MainWindow::closeCurrentTab);
 
     QAction *undoCloseAction = fileMenu->addAction("&Undo Close Tab");
-    undoCloseAction->setShortcut(QKeySequence(m_config.keybinding("undo_close_tab", "Ctrl+Shift+Z")));
+    undoCloseAction->setShortcut(QKeySequence(m_config.keybinding("undo_close_tab")));
     connect(undoCloseAction, &QAction::triggered, this, [this]() {
         if (m_closedTabs.isEmpty()) {
             showStatusMessage("No closed tabs to restore", 3000);
@@ -98,7 +98,7 @@ void MainWindow::setupFileMenu() {
     });
 
     QAction *nextTabAction = fileMenu->addAction("Ne&xt Tab");
-    nextTabAction->setShortcut(QKeySequence(m_config.keybinding("next_tab", "Ctrl+PgDown")));
+    nextTabAction->setShortcut(QKeySequence(m_config.keybinding("next_tab")));
     connect(nextTabAction, &QAction::triggered, this, [this]() {
         int next = m_tabWidget->currentIndex() + 1;
         if (next >= m_tabWidget->count()) next = 0;
@@ -106,7 +106,7 @@ void MainWindow::setupFileMenu() {
     });
 
     QAction *prevTabAction = fileMenu->addAction("Pre&v Tab");
-    prevTabAction->setShortcut(QKeySequence(m_config.keybinding("prev_tab", "Ctrl+PgUp")));
+    prevTabAction->setShortcut(QKeySequence(m_config.keybinding("prev_tab")));
     connect(prevTabAction, &QAction::triggered, this, [this]() {
         int prev = m_tabWidget->currentIndex() - 1;
         if (prev < 0) prev = m_tabWidget->count() - 1;
@@ -128,7 +128,7 @@ void MainWindow::setupFileMenu() {
     fileMenu->addSeparator();
 
     QAction *newWindowAction = fileMenu->addAction("&New Window");
-    newWindowAction->setShortcut(QKeySequence(m_config.keybinding("new_window", "Ctrl+Shift+N")));
+    newWindowAction->setShortcut(QKeySequence(m_config.keybinding("new_window")));
     connect(newWindowAction, &QAction::triggered, this, []() {
         auto *win = new MainWindow();
         win->setAttribute(Qt::WA_DeleteOnClose);
@@ -139,7 +139,7 @@ void MainWindow::setupFileMenu() {
 
     // SSH Manager
     QAction *sshAction = fileMenu->addAction("SSH &Manager...");
-    sshAction->setShortcut(QKeySequence(m_config.keybinding("ssh_manager", "Ctrl+Shift+S")));
+    sshAction->setShortcut(QKeySequence(m_config.keybinding("ssh_manager")));
     connect(sshAction, &QAction::triggered, this, [this]() {
         if (!m_sshDialog) {
             m_sshDialog = new SshDialog(this);
@@ -167,7 +167,7 @@ void MainWindow::setupFileMenu() {
     fileMenu->addSeparator();
 
     QAction *exitAction = fileMenu->addAction("E&xit");
-    exitAction->setShortcut(QKeySequence(m_config.keybinding("exit", "Ctrl+Shift+Q")));
+    exitAction->setShortcut(QKeySequence(m_config.keybinding("exit")));
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
 }
 
@@ -175,7 +175,7 @@ void MainWindow::setupEditMenu() {
     QMenu *editMenu = m_menuBar->addMenu("&Edit");
 
     QAction *richCopyAction = editMenu->addAction("Copy with &Colors");
-    richCopyAction->setShortcut(QKeySequence(m_config.keybinding("rich_copy", "Ctrl+Shift+Alt+C")));
+    richCopyAction->setShortcut(QKeySequence(m_config.keybinding("rich_copy")));
     connect(richCopyAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -185,7 +185,7 @@ void MainWindow::setupEditMenu() {
     editMenu->addSeparator();
 
     QAction *clearLineAction = editMenu->addAction("Clear &Input Line");
-    clearLineAction->setShortcut(QKeySequence(m_config.keybinding("clear_line", "Ctrl+Shift+U")));
+    clearLineAction->setShortcut(QKeySequence(m_config.keybinding("clear_line")));
     connect(clearLineAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -272,7 +272,7 @@ void MainWindow::setupViewMenu() {
     m_tabListPanelAction->setCheckable(true);
     m_tabListPanelAction->setChecked(m_config.tabListPanel());
     m_tabListPanelAction->setShortcut(
-        QKeySequence(m_config.keybinding("tab_list_panel", "Ctrl+Shift+Y")));
+        QKeySequence(m_config.keybinding("tab_list_panel")));
     connect(m_tabListPanelAction, &QAction::toggled, this, [this](bool on) {
         m_config.setTabListPanel(on);
         applyTabListPanelConfig();
@@ -280,7 +280,7 @@ void MainWindow::setupViewMenu() {
     // ANTS-5646 — type part of a tab's name, Enter to switch.
     QAction *goToTab = viewMenu->addAction("Go to &Tab...");
     goToTab->setShortcut(
-        QKeySequence(m_config.keybinding("tab_switcher", "Ctrl+Shift+H")));
+        QKeySequence(m_config.keybinding("tab_switcher")));
     connect(goToTab, &QAction::triggered, this, &MainWindow::showTabSwitcher);
     m_tabListHidesBarAction =
         viewMenu->addAction("&Hide Tab Bar While the Tab List Shows");
@@ -321,7 +321,7 @@ void MainWindow::setupViewMenu() {
     viewMenu->addSeparator();
 
     QAction *paletteAction = viewMenu->addAction("Command &Palette");
-    paletteAction->setShortcut(QKeySequence(m_config.keybinding("command_palette", "Ctrl+Shift+P")));
+    paletteAction->setShortcut(QKeySequence(m_config.keybinding("command_palette")));
     connect(paletteAction, &QAction::triggered, this, [this]() {
         if (m_commandPalette) m_commandPalette->show();
     });
@@ -347,7 +347,7 @@ void MainWindow::setupViewMenu() {
     // iTerm2 ⇧⌘O / WezTerm CopyLastOutput convention. Ctrl+Alt+O/R avoid the
     // already-taken Ctrl+Shift+O (split_vertical) / Ctrl+Shift+R (record).
     QAction *copyLastOutputAction = viewMenu->addAction("Copy Last Command &Output");
-    copyLastOutputAction->setShortcut(QKeySequence(m_config.keybinding("copy_last_output", "Ctrl+Alt+O")));
+    copyLastOutputAction->setShortcut(QKeySequence(m_config.keybinding("copy_last_output")));
     connect(copyLastOutputAction, &QAction::triggered, this, [this]() {
         auto *t = focusedTerminal();
         if (!t) return;
@@ -357,7 +357,7 @@ void MainWindow::setupViewMenu() {
     });
 
     QAction *rerunLastAction = viewMenu->addAction("Re-run Last Comman&d");
-    rerunLastAction->setShortcut(QKeySequence(m_config.keybinding("rerun_last_command", "Ctrl+Alt+R")));
+    rerunLastAction->setShortcut(QKeySequence(m_config.keybinding("rerun_last_command")));
     connect(rerunLastAction, &QAction::triggered, this, [this]() {
         auto *t = focusedTerminal();
         if (!t) return;
@@ -423,15 +423,15 @@ void MainWindow::setupSplitMenu() {
     QMenu *splitMenu = m_menuBar->addMenu("&Split");
 
     QAction *splitH = splitMenu->addAction("Split &Horizontal");
-    splitH->setShortcut(QKeySequence(m_config.keybinding("split_horizontal", "Ctrl+Shift+E")));
+    splitH->setShortcut(QKeySequence(m_config.keybinding("split_horizontal")));
     connect(splitH, &QAction::triggered, this, &MainWindow::splitHorizontal);
 
     QAction *splitV = splitMenu->addAction("Split &Vertical");
-    splitV->setShortcut(QKeySequence(m_config.keybinding("split_vertical", "Ctrl+Shift+O")));
+    splitV->setShortcut(QKeySequence(m_config.keybinding("split_vertical")));
     connect(splitV, &QAction::triggered, this, &MainWindow::splitVertical);
 
     QAction *closePane = splitMenu->addAction("&Close Pane");
-    closePane->setShortcut(QKeySequence(m_config.keybinding("close_pane", "Ctrl+Shift+X")));
+    closePane->setShortcut(QKeySequence(m_config.keybinding("close_pane")));
     connect(closePane, &QAction::triggered, this, &MainWindow::closeFocusedPane);
 }
 
@@ -440,7 +440,7 @@ void MainWindow::setupToolsMenu() {
 
     // AI Assistant
     QAction *aiAction = toolsMenu->addAction("&AI Assistant...");
-    aiAction->setShortcut(QKeySequence(m_config.keybinding("ai_assistant", "Ctrl+Shift+A")));
+    aiAction->setShortcut(QKeySequence(m_config.keybinding("ai_assistant")));
     connect(aiAction, &QAction::triggered, this, [this]() {
         if (!m_aiDialog) {
             m_aiDialog = new AiDialog(this);
@@ -527,13 +527,13 @@ void MainWindow::setupToolsMenu() {
     QMenu *claudeMenu = toolsMenu->addMenu("&Claude Code");
 
     QAction *editAllowlist = claudeMenu->addAction("Edit &Allowlist...");
-    editAllowlist->setShortcut(QKeySequence(m_config.keybinding("claude_allowlist", "Ctrl+Shift+L")));
+    editAllowlist->setShortcut(QKeySequence(m_config.keybinding("claude_allowlist")));
     connect(editAllowlist, &QAction::triggered, this, [this]() {
         openClaudeAllowlistDialog();
     });
 
     QAction *viewProjects = claudeMenu->addAction("&Projects && Sessions...");
-    viewProjects->setShortcut(QKeySequence(m_config.keybinding("claude_projects", "Ctrl+Shift+J")));
+    viewProjects->setShortcut(QKeySequence(m_config.keybinding("claude_projects")));
     connect(viewProjects, &QAction::triggered, this, [this]() {
         openClaudeProjectsDialog();
     });
@@ -607,19 +607,19 @@ void MainWindow::setupToolsMenu() {
     // Tools: Scratchpad
     toolsMenu->addSeparator();
     QAction *scratchpadAction = toolsMenu->addAction("&Scratchpad Editor...");
-    scratchpadAction->setShortcut(QKeySequence(m_config.keybinding("scratchpad", "Ctrl+Shift+Return")));
+    scratchpadAction->setShortcut(QKeySequence(m_config.keybinding("scratchpad")));
     connect(scratchpadAction, &QAction::triggered, this, [this]() {
         if (auto *t = focusedTerminal()) t->showScratchpad();
     });
 
     // Tools: Command Snippets
     QAction *snippetsAction = toolsMenu->addAction("Command Sni&ppets...");
-    snippetsAction->setShortcut(QKeySequence(m_config.keybinding("snippets", "Ctrl+Shift+;")));
+    snippetsAction->setShortcut(QKeySequence(m_config.keybinding("snippets")));
     connect(snippetsAction, &QAction::triggered, this, &MainWindow::showSnippetsDialog);
 
     // Tools: Fold/Unfold command output
     QAction *foldAction = toolsMenu->addAction("Toggle &Fold Output");
-    foldAction->setShortcut(QKeySequence(m_config.keybinding("toggle_fold", "Ctrl+Shift+.")));
+    foldAction->setShortcut(QKeySequence(m_config.keybinding("toggle_fold")));
     connect(foldAction, &QAction::triggered, this, [this]() {
         if (auto *t = focusedTerminal()) t->toggleFoldAtCursor();
     });
@@ -805,7 +805,7 @@ void MainWindow::setupSettingsMenu() {
 
     QAction *recordAction = settingsMenu->addAction("&Record Session");
     recordAction->setCheckable(true);
-    recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session", "Ctrl+Shift+R")));
+    recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session")));
     connect(recordAction, &QAction::toggled, this, [this, recordAction](bool checked) {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -847,7 +847,7 @@ void MainWindow::setupSettingsMenu() {
 
     // Bookmarks
     QAction *bookmarkAction = settingsMenu->addAction("Toggle &Bookmark");
-    bookmarkAction->setShortcut(QKeySequence(m_config.keybinding("toggle_bookmark", "Ctrl+Shift+B")));
+    bookmarkAction->setShortcut(QKeySequence(m_config.keybinding("toggle_bookmark")));
     connect(bookmarkAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -862,7 +862,7 @@ void MainWindow::setupSettingsMenu() {
     // terminal had focus. Move both defaults to Ctrl+Alt+Up/Down,
     // which TerminalWidget does not intercept.
     QAction *nextBmAction = settingsMenu->addAction("Next Bookmark");
-    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Alt+Down")));
+    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark")));
     connect(nextBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -870,7 +870,7 @@ void MainWindow::setupSettingsMenu() {
     });
 
     QAction *prevBmAction = settingsMenu->addAction("Previous Bookmark");
-    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark", "Ctrl+Alt+Up")));
+    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark")));
     connect(prevBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -878,7 +878,7 @@ void MainWindow::setupSettingsMenu() {
     });
 
     QAction *urlSelectAction = settingsMenu->addAction("Quick Select &URL");
-    urlSelectAction->setShortcut(QKeySequence(m_config.keybinding("url_quick_select", "Ctrl+Shift+G")));
+    urlSelectAction->setShortcut(QKeySequence(m_config.keybinding("url_quick_select")));
     connect(urlSelectAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -912,7 +912,7 @@ void MainWindow::setupSettingsMenu() {
     // shows a status-bar chip while on.
     m_broadcastAction = settingsMenu->addAction("&Broadcast Input to Panes in This Tab");
     m_broadcastAction->setCheckable(true);
-    m_broadcastAction->setShortcut(QKeySequence(m_config.keybinding("broadcast_input", "Ctrl+Shift+I")));
+    m_broadcastAction->setShortcut(QKeySequence(m_config.keybinding("broadcast_input")));
     connect(m_broadcastAction, &QAction::toggled, this, [this](bool checked) {
         m_broadcastMode = checked;
         refreshBroadcastChip();
@@ -948,7 +948,7 @@ void MainWindow::setupSettingsMenu() {
 
     // Settings dialog
     QAction *settingsAction = settingsMenu->addAction("&Preferences...");
-    settingsAction->setShortcut(QKeySequence(m_config.keybinding("preferences", "Ctrl+,")));
+    settingsAction->setShortcut(QKeySequence(m_config.keybinding("preferences")));
     connect(settingsAction, &QAction::triggered, this, [this]() {
         if (!m_settingsDialog) {
             m_settingsDialog = new SettingsDialog(&m_config, this);

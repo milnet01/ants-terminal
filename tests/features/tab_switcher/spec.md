@@ -23,10 +23,11 @@ roadmap item asked.
 - **INV-5 — back to commands.** Closing tab mode restores the command
   placeholder and font, and leaves tab mode.
 - **INV-6 — wiring.** The View menu has a "Go to Tab" action on the
-  `tab_switcher` keybinding, which the Settings shortcut table lists.
+  `tab_switcher` keybinding. Its default is in `Config::defaultKeybindings()`,
+  the table the Settings shortcut list reads (ANTS-6146).
 
 ## Test
 
 `test_tab_switcher.cpp`, suite `TabSwitcher`, in the `test_chrome`
-bundle. INV-3's deferral and INV-6 read the MainWindow and Settings
+bundle. INV-3's deferral and INV-6 read the MainWindow and Config
 sources.

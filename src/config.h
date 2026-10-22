@@ -4,7 +4,9 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QList>
+#include <QPair>
 #include <QSize>
+#include <QVector>
 
 #include <memory>
 
@@ -350,6 +352,11 @@ public:
     void setBackgroundBlur(bool enabled);
 
     // Custom keybindings (action -> key sequence string)
+    // ANTS-6146 — every configurable action and its default shortcut, the one
+    // copy: the menus bind from it and the Settings table lists and resets it.
+    static const QVector<QPair<QString, QString>> &defaultKeybindings();
+    // The user's shortcut for `action`, else its defaultKeybindings() entry.
+    QString keybinding(const QString &action) const;
     QString keybinding(const QString &action, const QString &defaultKey) const;
     void setKeybinding(const QString &action, const QString &key);
 

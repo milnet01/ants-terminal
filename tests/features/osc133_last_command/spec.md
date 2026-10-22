@@ -48,17 +48,18 @@ to `outputTextAt(idx)` (unbounded) not `lastCommandOutput()`.
 
 `mainwindow.cpp` must call `m_config.keybinding(...)` with keys
 `copy_last_output` (default `Ctrl+Alt+O`) and `rerun_last_command`
-(default `Ctrl+Alt+R`). Hard-coded shortcuts would lock users out of
+(default `Ctrl+Alt+R`). The defaults live in `Config::defaultKeybindings()`
+(`config.cpp`, ANTS-6146). Hard-coded shortcuts would lock users out of
 rebinding via config.json, which is the established pattern for every
 other user-facing keybinding.
 
 ### (5) Defaults do not collide with existing keybindings
 
-`Ctrl+Alt+O` and `Ctrl+Alt+R` must not already be bound elsewhere in
-`mainwindow.cpp`. `Ctrl+Shift+O` is taken by split_vertical and
-`Ctrl+Shift+R` by record_session — picking those defaults would shadow
-existing features. The test greps `mainwindow.cpp` for any other
-`Ctrl+Alt+O` / `Ctrl+Alt+R` binding and fails if one appears.
+`Ctrl+Alt+O` and `Ctrl+Alt+R` must not already be bound elsewhere.
+`Ctrl+Shift+O` is taken by split_vertical and `Ctrl+Shift+R` by
+record_session — picking those defaults would shadow existing features.
+The test fails if either chord appears more than once in `config.cpp`'s
+table. `keybinding_defaults` INV-1 checks every chord in it.
 
 ### (6) MainWindow surfaces status-bar feedback
 

@@ -95325,6 +95325,13 @@ worked after these.
   (ids L37-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22, the HIGH fixed: Config::defaultKeybindings() is the
+  one table of default shortcuts. The menus' 31 keybinding() calls,
+  the Settings load and its Reset to Defaults all read it. The copies
+  had drifted: Settings listed and reset the bookmark jumps to
+  Ctrl+Shift+Down/Up (dead since ANTS-1165) and lacked 8 menu
+  actions. New test keybinding_defaults; osc133_last_command and
+  tab_switcher read the table now. Mediums and lows remain.
   **Layman:** Tidy app start-up and the settings window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

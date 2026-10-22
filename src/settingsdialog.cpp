@@ -806,23 +806,8 @@ void SettingsDialog::setupKeybindingsTab(QWidget *tab) {
 
     auto *resetBtn = new QPushButton("Reset to Defaults", tab);
     connect(resetBtn, &QPushButton::clicked, this, [this]() {
-        // Reload defaults
-        static const QVector<QPair<QString, QString>> defaults = {
-            {"new_tab", "Ctrl+Shift+T"}, {"close_tab", "Ctrl+Shift+W"},
-            {"new_window", "Ctrl+Shift+N"}, {"ssh_manager", "Ctrl+Shift+S"},
-            {"exit", "Ctrl+Shift+Q"}, {"clear_line", "Ctrl+Shift+U"},
-            {"command_palette", "Ctrl+Shift+P"}, {"split_horizontal", "Ctrl+Shift+E"},
-            {"split_vertical", "Ctrl+Shift+O"}, {"close_pane", "Ctrl+Shift+X"},
-            {"ai_assistant", "Ctrl+Shift+A"}, {"claude_allowlist", "Ctrl+Shift+L"},
-            {"claude_projects", "Ctrl+Shift+J"}, {"record_session", "Ctrl+Shift+R"},
-            {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
-            {"prev_bookmark", "Ctrl+Shift+Up"}, {"url_quick_select", "Ctrl+Shift+G"},
-            {"scratchpad", "Ctrl+Shift+Return"}, {"snippets", "Ctrl+Shift+;"},
-            {"toggle_fold", "Ctrl+Shift+."}, {"tab_list_panel", "Ctrl+Shift+Y"},
-            {"tab_switcher", "Ctrl+Shift+H"},
-        };
         m_keybindingTable->setRowCount(0);
-        for (auto &[action, key] : defaults) {
+        for (const auto &[action, key] : Config::defaultKeybindings()) {
             int row = m_keybindingTable->rowCount();
             m_keybindingTable->insertRow(row);
             auto *actionItem = new QTableWidgetItem(action);
@@ -1208,21 +1193,7 @@ void SettingsDialog::loadSettings() {
     }
 
     // Keybindings
-    static const QVector<QPair<QString, QString>> defaults = {
-        {"new_tab", "Ctrl+Shift+T"}, {"close_tab", "Ctrl+Shift+W"},
-        {"new_window", "Ctrl+Shift+N"}, {"ssh_manager", "Ctrl+Shift+S"},
-        {"exit", "Ctrl+Shift+Q"}, {"clear_line", "Ctrl+Shift+U"},
-        {"command_palette", "Ctrl+Shift+P"}, {"split_horizontal", "Ctrl+Shift+E"},
-        {"split_vertical", "Ctrl+Shift+O"}, {"close_pane", "Ctrl+Shift+X"},
-        {"ai_assistant", "Ctrl+Shift+A"}, {"claude_allowlist", "Ctrl+Shift+L"},
-        {"claude_projects", "Ctrl+Shift+J"}, {"record_session", "Ctrl+Shift+R"},
-        {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
-        {"prev_bookmark", "Ctrl+Shift+Up"}, {"url_quick_select", "Ctrl+Shift+G"},
-        {"scratchpad", "Ctrl+Shift+Return"}, {"snippets", "Ctrl+Shift+;"},
-        {"toggle_fold", "Ctrl+Shift+."}, {"tab_list_panel", "Ctrl+Shift+Y"},
-        {"tab_switcher", "Ctrl+Shift+H"},
-    };
-    for (auto &[action, defaultKey] : defaults) {
+    for (const auto &[action, defaultKey] : Config::defaultKeybindings()) {
         int row = m_keybindingTable->rowCount();
         m_keybindingTable->insertRow(row);
         auto *actionItem = new QTableWidgetItem(action);
