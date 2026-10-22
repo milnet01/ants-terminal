@@ -1044,17 +1044,33 @@ QJsonObject rcCompactBullet(const QString &id, const QString &statusWord,
     return o;
 }
 
-// ANTS-2089 — reverse a status emoji to its canonical word form for the
-// post_bullets compact echo. The flip path stores status as an emoji
-// (✅ 🚧 💭 📋); rcCompactBullet wants the word (the inverse of the
-// word→emoji map op:flip applies). Already-word / unknown input passes
+// ANTS-4977 — the five lifecycle statuses, word and emoji, in one table.
+// Every walker, flipper and mapper in this file reads it, so a new status
+// is added here once.
+struct RcStatus { const char *word; const char *emoji; };
+constexpr RcStatus kRcStatuses[] = {
+    {"shipped",     RoadmapParse::kEmojiDone},
+    {"planned",     RoadmapParse::kEmojiPlanned},
+    {"in-progress", RoadmapParse::kEmojiInProgress},
+    {"considered",  RoadmapParse::kEmojiConsidered},
+    {"dropped",     RoadmapParse::kEmojiDropped},
+};
+
+// The status emoji that starts at `pos` in `line`, or empty.
+QString rcStatusEmojiAt(const QString &line, int pos) {
+    for (const RcStatus &st : kRcStatuses) {
+        const QString e = QString::fromUtf8(st.emoji);
+        if (QStringView(line).mid(pos, e.size()) == e) return e;
+    }
+    return QString();
+}
+
+// ANTS-2089 — a status emoji's word, for the post_bullets compact echo
+// (rcCompactBullet wants the word). Already-word / unknown input passes
 // through unchanged.
 QString rcStatusWord(const QString &emoji) {
-    if (emoji == QString::fromUtf8("\xE2\x9C\x85"))     return QStringLiteral("shipped");     // ✅
-    if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) return QStringLiteral("in-progress"); // 🚧
-    if (emoji == QString::fromUtf8("\xF0\x9F\x92\xAD")) return QStringLiteral("considered");  // 💭
-    if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) return QStringLiteral("planned");      // 📋
-    if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xAB")) return QStringLiteral("dropped");      // 🚫 ANTS-4977
+    for (const RcStatus &st : kRcStatuses)
+        if (emoji == QString::fromUtf8(st.emoji)) return QLatin1String(st.word);
     return emoji;
 }
 
@@ -1070,11 +1086,8 @@ QString rcStatusWord(const QString &emoji) {
 // also has to REFUSE an unknown status (bad_status), and a mapper that both
 // converts and refuses is two jobs.
 QString rcStatusEmoji(const QString &word) {
-    if (word == QStringLiteral("shipped"))     return QString::fromUtf8("\xE2\x9C\x85");     // ✅
-    if (word == QStringLiteral("in-progress")) return QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-    if (word == QStringLiteral("considered"))  return QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
-    if (word == QStringLiteral("planned"))     return QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-    if (word == QStringLiteral("dropped"))     return QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫 ANTS-4977
+    for (const RcStatus &st : kRcStatuses)
+        if (word == QLatin1String(st.word)) return QString::fromUtf8(st.emoji);
     return word;
 }
 
@@ -2010,15 +2023,6 @@ QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
 }
 
 
-// kAdapterEmoji* — same byte sequences as roadmapdialog.cpp's
-// kEmojiDone/etc. Duplicated locally for the walker's inline-emoji
-// prefix strip.
-constexpr const char *kAdapterEmojiDone       = "\xE2\x9C\x85";        // ✅
-constexpr const char *kAdapterEmojiPlanned    = "\xF0\x9F\x93\x8B";    // 📋
-constexpr const char *kAdapterEmojiInProgress = "\xF0\x9F\x9A\xA7";    // 🚧
-constexpr const char *kAdapterEmojiConsidered = "\xF0\x9F\x92\xAD";    // 💭
-constexpr const char *kAdapterEmojiDropped    = "\xF0\x9F\x9A\xAB";    // 🚫 ANTS-4977
-
 // ANTS-4404 — fence extents are MarkdownScan's (ANTS-3603), never a local
 // `trimmed().startsWith("```")` toggle. The hand-rolled test both walkers
 // carried was wrong the same two ways ANTS-4403 removed from the migration
@@ -2130,10 +2134,10 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
         // Head = post-`- [ ] ` strip (6 chars; tolerate missing space).
         QString head = ln.mid(5).trimmed();
         // Inline emoji prefix overrides checkbox state.
-        auto tryStrip = [&](const char *emoji, const QString &st) {
+        auto tryStrip = [&](const char *emoji) {
             const QString e = QString::fromUtf8(emoji);
             if (head.startsWith(e)) {
-                b.status = st;
+                b.status = e;
                 head.remove(0, e.size());
                 while (!head.isEmpty() && head.front().isSpace())
                     head.remove(0, 1);
@@ -2141,14 +2145,8 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
             }
             return false;
         };
-        // Try each emoji in turn — short-circuit on first match.
-        // Plain if-else chain (not nested-if) so clang-tidy doesn't
-        // mis-read the indentation as a misleading block boundary.
-        if      (tryStrip(kAdapterEmojiDone,       QStringLiteral("✅"))) {}
-        else if (tryStrip(kAdapterEmojiPlanned,    QStringLiteral("📋"))) {}
-        else if (tryStrip(kAdapterEmojiInProgress, QStringLiteral("🚧"))) {}
-        else if (tryStrip(kAdapterEmojiConsidered, QStringLiteral("💭"))) {}
-        else    {  tryStrip(kAdapterEmojiDropped, QString::fromUtf8(kAdapterEmojiDropped)); }
+        for (const RcStatus &st : kRcStatuses)
+            if (tryStrip(st.emoji)) break;
 
         QString boldId;
         if (rcExtractBoldId(head, &boldId)) {
@@ -2225,14 +2223,8 @@ void applyGfmFlip(QStringList &lines,
     // Trim a leading space to normalise — re-added on emit.
     while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
     // Strip any inline status emoji prefix.
-    const QStringList kEmojiPrefixes = {
-        QString::fromUtf8(kAdapterEmojiDone),
-        QString::fromUtf8(kAdapterEmojiPlanned),
-        QString::fromUtf8(kAdapterEmojiInProgress),
-        QString::fromUtf8(kAdapterEmojiConsidered),
-        QString::fromUtf8(kAdapterEmojiDropped),
-    };
-    for (const QString &e : kEmojiPrefixes) {
+    for (const RcStatus &st : kRcStatuses) {
+        const QString e = QString::fromUtf8(st.emoji);
         if (head.startsWith(e)) {
             head.remove(0, e.size());
             while (!head.isEmpty() && head.front().isSpace())
@@ -2246,7 +2238,7 @@ void applyGfmFlip(QStringList &lines,
         rewritten = QStringLiteral("- [x] ") + head;
     } else if (statusEmoji == QStringLiteral("📋")) {
         rewritten = QStringLiteral("- [ ] ") + head;
-    } else if (statusEmoji == QString::fromUtf8(kAdapterEmojiDropped)) {
+    } else if (statusEmoji == QString::fromUtf8(RoadmapParse::kEmojiDropped)) {
         // ANTS-4977 — closed, so the box is checked; the marker says how.
         rewritten = QStringLiteral("- [x] ") + statusEmoji + QLatin1Char(' ') + head;
     } else {
@@ -2287,24 +2279,11 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;
     const QVector<bool> fenced = rcFenceExtents(lines);
     const QVector<int>  openerOf = rcFenceOpenerOf(fenced);
-    auto matchEmojiAt = [](const QString &line, int pos) -> QString {
-        const QString done = QString::fromUtf8(kAdapterEmojiDone);
-        const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
-        const QString prog = QString::fromUtf8(kAdapterEmojiInProgress);
-        const QString cons = QString::fromUtf8(kAdapterEmojiConsidered);
-        const QString drop = QString::fromUtf8(kAdapterEmojiDropped);
-        if (line.mid(pos, drop.size()) == drop) return drop;
-        if (line.mid(pos, done.size()) == done) return done;
-        if (line.mid(pos, plan.size()) == plan) return plan;
-        if (line.mid(pos, prog.size()) == prog) return prog;
-        if (line.mid(pos, cons.size()) == cons) return cons;
-        return QString();
-    };
     for (int i = 0; i < lines.size(); ++i) {
         const QString &ln = lines.at(i);
         if (!ln.startsWith(QStringLiteral("- "))) continue;
         // Status emoji sits at position 2 (just past "- ").
-        const QString emoji = matchEmojiAt(ln, 2);
+        const QString emoji = rcStatusEmojiAt(ln, 2);
         if (emoji.isEmpty()) continue;
         const int afterEmoji = 2 + emoji.size();
         // Expect a space, then optionally a [PROJ-NNNN] id bracket.
@@ -2335,16 +2314,7 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
                 headStart = m.capturedEnd(0);
             }
         }
-        if      (emoji == QString::fromUtf8(kAdapterEmojiDone))
-            b.status = QStringLiteral("✅");
-        else if (emoji == QString::fromUtf8(kAdapterEmojiPlanned))
-            b.status = QStringLiteral("📋");
-        else if (emoji == QString::fromUtf8(kAdapterEmojiInProgress))
-            b.status = QStringLiteral("🚧");
-        else if (emoji == QString::fromUtf8(kAdapterEmojiDropped))
-            b.status = QString::fromUtf8(kAdapterEmojiDropped);
-        else
-            b.status = QStringLiteral("💭");
+        b.status = emoji;
         // Headline: post-id text (or post-emoji when id-less), strip
         // leading space + bold wrapper.
         QString head = ln.mid(headStart).trimmed();
@@ -2385,16 +2355,8 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
 void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b,
                      const QString &targetEmoji) {
     QString line = lines.at(b.firstLine);
-    const QString done = QString::fromUtf8(kAdapterEmojiDone);
-    const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
-    const QString prog = QString::fromUtf8(kAdapterEmojiInProgress);
-    const QString cons = QString::fromUtf8(kAdapterEmojiConsidered);
-    QString oldEmoji;
-    if      (line.mid(2, done.size()) == done) oldEmoji = done;
-    else if (line.mid(2, plan.size()) == plan) oldEmoji = plan;
-    else if (line.mid(2, prog.size()) == prog) oldEmoji = prog;
-    else if (line.mid(2, cons.size()) == cons) oldEmoji = cons;
-    if (oldEmoji.isEmpty()) return;  // walker guarantees one of the four
+    const QString oldEmoji = rcStatusEmojiAt(line, 2);
+    if (oldEmoji.isEmpty()) return;  // the walker only yields status bullets
     line.remove(2, oldEmoji.size());
     line.insert(2, targetEmoji);
     lines[b.firstLine] = line;

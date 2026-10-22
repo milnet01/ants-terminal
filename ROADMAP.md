@@ -94941,6 +94941,12 @@ worked after these.
   (ids L18-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH done. kRcStatuses in remotecontrol.cpp is the one
+  word/emoji table (built on RoadmapParse::kEmoji*); rcStatusWord,
+  rcStatusEmoji, the GFM strip, the ants-v1 walker, applyAntsV1Flip and
+  the GFM rewrite read it, and the kAdapterEmoji* copies are gone.
+  remotecontrol_internal.h's struct comments point at the table. Medium
+  and low still open.
   **Layman:** Tidy the connection Claude Code sessions use so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96519,6 +96525,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-22: the ANTS-6127 L18 fix makes applyAntsV1Flip find the old
+  emoji through rcStatusEmojiAt(), which knows 🚫, so a dropped ants-v1
+  bullet now flips on the markdown path. Still owed: a regression test,
+  then the flip.
   **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
