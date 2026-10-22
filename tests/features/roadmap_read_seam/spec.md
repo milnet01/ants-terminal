@@ -23,7 +23,7 @@ changing what a record contains.
 | `Inv1DispatchMarker` | INV-1 | five dispatch outcomes in one process |
 | `Inv2BackendsAgree` | INV-2 | record-for-record equality, store vs the rendered file |
 | `Inv2Membership` | INV-2's membership half | `dropped` excluded, `internal` kept, unfiled kept and last |
-| `Inv3Ceiling` | INV-3's refusal | 3,501 items refuse, 3,500 do not |
+| `Inv3Ceiling` | INV-3's refusal | one item over `kItemCeiling` refuses, exactly `kItemCeiling` does not |
 | `Inv3Latency` | INV-3's budget | p95 < 50 ms on a corpus-sized project |
 | `Ants3863Inv1DispatchReadsOnlyTheDetectorWindow` | 3863 INV-1 | a migrated dispatch over a 3 MiB roadmap reads only the detector's window (`perf`) |
 | `Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap` | 3863 INV-1 | `kDetectorByteCap` bounds a 2 MiB all-blank file the line cap cannot (`perf`) |
@@ -126,15 +126,17 @@ beside two ordinary ones, at `includeArchive == false`:
 
 ### `Inv3Ceiling`
 
-Two generated projects sized **from the ceiling**: 3,501 items must refuse with
-`TooLarge`, and 3,500 must not — which is what pins `>` rather than `>=`. The
+Two generated projects sized **from the ceiling**: `kItemCeiling + 1` items must
+refuse with `TooLarge`, and `kItemCeiling` must not — which is what pins `>`
+rather than `>=`. The
 refusal fires on `listItems().size()`, before any `readItem()` runs, so a
 project over the ceiling never materialises the bodies the ceiling exists to
 bound.
 
-The count is a deliberately over-inclusive proxy for a 16 MiB record budget: it
-counts every item row, including the `internal` and `dropped` ones the reader
-does not return. No case measures resident bytes — 16 MiB is a sizing input, not
+The count is a deliberately over-inclusive proxy for ANTS-3793 § 4's record
+budget: it counts every item row, including the `internal` and `dropped` ones
+the reader does not return. No case measures resident bytes — the budget is a
+sizing input, not
 something this invariant asserts.
 
 ### `Inv3Latency`

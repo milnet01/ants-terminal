@@ -271,6 +271,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap reader handles projects with up to 7,000 items.** (ANTS-6048)
+  The whole-project read limit was 3,500 items, below this project's own roadmap, so `roadmap_query` and the Roadmap window's store read refused it. The limit now follows the same memory budget rule at today's size. Reaches running sessions on their next `/mcp` reconnect; the Roadmap window needs a terminal restart.
+
 - **`focused_test` shows the last lines ctest printed when ctest crashes or times out** (ANTS-5812)
   The `ctest_failed` refusal now carries `output_tail`, so the cause is visible without re-running the suite.
 

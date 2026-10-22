@@ -683,7 +683,7 @@ public:
     // it. One aggregate query; the point is that asking costs no rows.
     //
     // Exists because ANTS-3793's INV-3 gates a whole-project read on ITEM COUNT
-    // as an over-inclusive proxy for a 16 MiB record budget, and says why: at
+    // as an over-inclusive proxy for a record budget in bytes, and says why: at
     // the time, "resident size is knowable only after materialising, which is
     // the thing being guarded". That is the sentence this reader retires.
     //

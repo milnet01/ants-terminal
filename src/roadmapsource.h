@@ -54,11 +54,11 @@ enum class ReadError {
 };
 
 // INV-3 — the whole-project read ceiling, in items. Derived in § 4: ~4.5 KiB
-// of records per item against a 16 MiB budget is ~3,678, rounded down. It is a
+// of records per item against a 32 MiB budget, rounded down. It is a
 // runaway guard at ~2× the largest real project, not a working limit, and it is
 // deliberately a COUNT rather than a byte total — the gate has to decide before
 // materialising, which is the thing it exists to guard.
-inline constexpr int kItemCeiling = 3500;
+inline constexpr int kItemCeiling = 7000;
 
 // ANTS-3863 § 2.1 — the detector's window, in both of its units.
 //

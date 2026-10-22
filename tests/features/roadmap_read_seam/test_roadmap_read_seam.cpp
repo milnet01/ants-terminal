@@ -903,10 +903,10 @@ TEST(RoadmapReadSeam, Inv3Latency) {
                            RoadmapStore::Access::Bulk);
     ASSERT_NE(store, nullptr);
 
-    // Corpus-sized: this project's own live roadmap carried 1,839 top-level
-    // emoji bullets when § 4 measured it. The figure moves with every append;
-    // the budget is insensitive to the last digits.
-    constexpr int kCorpusItems = 1839;
+    // Corpus-sized: this project's store, the corpus's largest, held 3,680
+    // items on 2026-10-22 (ANTS-6048), rounded up here. The figure moves with
+    // every append; re-measure it when this case nears its budget (ANTS-6049).
+    constexpr int kCorpusItems = 3700;
     const qint64 projectId = makeSizedProject(*store, dir.path(), kCorpusItems);
     ASSERT_NE(projectId, 0);
 

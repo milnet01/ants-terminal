@@ -531,7 +531,7 @@ Listed only where behavior isn't obvious from the name.
   outcomes — store, markdown, or refuse, never a silent fallback;
   `bulletsFromStore()` walks sections in `sectionOrderLess()` order and
   builds each record by parsing `RoadmapRender::bulletText()`, so the two
-  backends agree by construction. Refuses over 3,500 items. Spec
+  backends agree by construction. Refuses a project over `kItemCeiling` items. Spec
   ANTS-3793.
 - `roadmapwrite` (`ants_roadmapstore_lib`) — the write seam's ordering,
   in one function because eight `roadmap_log` ops would each get a chance

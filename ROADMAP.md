@@ -97420,7 +97420,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: shared-utilities.
 
-- 🚧 [ANTS-6048] **Raise the 3,500-item whole-project roadmap read ceiling (ANTS-3793 INV-3), now below the largest real project.**
+- ✅ [ANTS-6048] **Raise the 3,500-item whole-project roadmap read ceiling (ANTS-3793 INV-3), now below the largest real project.**
   Filing 231 review items on 2026-10-22 took Ants Terminal to 3,680
   live store items (all public; headline+body text 6.1 MiB), over
   kItemCeiling = 3,500 (src/roadmapsource.h). Every whole-project read
@@ -97430,6 +97430,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   project; it no longer is. User chose 2026-10-22: raise the limit.
   Needs an INV-3 / § 4 amendment, gated, then the constant, its
   Inv3Ceiling tests and the p95 case re-measured.
+  Shipped 2026-10-22: kItemCeiling 7,000; spec INV-3 and § 4 amended;
+  Inv3Latency sized to 3,700. No review gate, by user ruling (a value
+  change).
   **Layman:** The roadmap reader stopped working because this project's roadmap grew past a safety limit set too low; the limit needs raising.
   Kind: fix.
   Source: user-request-2026-10-22.
