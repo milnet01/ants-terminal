@@ -286,8 +286,13 @@ struct IdHighWaterMark {
     int  line    = 0;       // 1-based; 0 when !present
     QMap<QString, qint64> pairs;
 };
-// Looks for the notice in the file's first six lines, the window
-// RoadmapRender::hasGeneratedNotice() searches, and reads the line after it.
+// ANTS-4555 — the text that identifies a rendered file's generated notice
+// (RoadmapRender::generatedNotice()), and how many opening lines every
+// search for it, or for the format marker above it, reads.
+inline constexpr QLatin1String kGeneratedNoticeTag("Generated from the Ants Terminal roadmap store");
+inline constexpr int kGeneratedNoticeWindow = 6;
+// Looks for the notice in the file's first kGeneratedNoticeWindow lines and
+// reads the line after it.
 IdHighWaterMark findIdHighWaterMark(const QStringList &lines);
 
 // ANTS-3808 § 2.2 — the trailer matchers, asked rather than duplicated. INV-2

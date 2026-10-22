@@ -1843,10 +1843,10 @@ QString formatIdHighWaterMark(const QMap<QString, qint64> &pairs) {
 
 IdHighWaterMark findIdHighWaterMark(const QStringList &lines) {
     IdHighWaterMark mark;
-    const int n = std::min(6, int(lines.size()));
+    const int n = std::min(kGeneratedNoticeWindow, int(lines.size()));
     int notice = -1;
     for (int i = 0; i < n && notice < 0; ++i)
-        if (lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+        if (lines.at(i).contains(kGeneratedNoticeTag))
             notice = i;
     if (notice < 0 || notice + 1 >= lines.size())
         return mark;

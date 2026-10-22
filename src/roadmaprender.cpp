@@ -284,18 +284,18 @@ TrailerLines trailerLines(const RoadmapStore::ItemWrite &it) {
 // renders as nothing, and a re-import that carries it into the root intro is
 // not given a second copy.
 QString generatedNotice() {
-    return QStringLiteral(
-        "<!-- Generated from the Ants Terminal roadmap store. Edit it with "
-        "roadmap_log; hand edits are discarded by the next write. -->");
+    return QStringLiteral("<!-- ") + RoadmapParse::kGeneratedNoticeTag
+         + QStringLiteral(". Edit it with roadmap_log; hand edits are discarded by "
+                          "the next write. -->");
 }
 
 // The same window withGeneratedNotice() searches: the notice sits directly
 // under the format marker, or opens a pass-headings file.
 bool hasGeneratedNotice(const QString &text) {
     const QStringList lines = text.left(4096).split(QLatin1Char('\n'));
-    const int n = std::min(6, int(lines.size()));
+    const int n = std::min(RoadmapParse::kGeneratedNoticeWindow, int(lines.size()));
     for (int i = 0; i < n; ++i)
-        if (lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+        if (lines.at(i).contains(RoadmapParse::kGeneratedNoticeTag))
             return true;
     return false;
 }
@@ -344,10 +344,10 @@ QString formatMarker() {
 // an HTML comment, which detectRoadmapFormat() reads past.
 QString withGeneratedNotice(const QString &text, bool atTop = false) {
     QStringList lines = text.split(QLatin1Char('\n'));
-    const int n = std::min(6, int(lines.size()));
+    const int n = std::min(RoadmapParse::kGeneratedNoticeWindow, int(lines.size()));
     int markerAt = -1;
     for (int i = 0; i < n; ++i) {
-        if (lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+        if (lines.at(i).contains(RoadmapParse::kGeneratedNoticeTag))
             return text;
         if (markerAt < 0 && lines.at(i).contains(QLatin1String("ants-roadmap-format")))
             markerAt = i;
@@ -368,9 +368,9 @@ QString withGeneratedNotice(const QString &text, bool atTop = false) {
 // removes it, so the line always comes fresh from the store and never twice.
 QString withIdMark(const QString &text, const QString &markLine) {
     QStringList lines = text.split(QLatin1Char('\n'));
-    const int n = std::min(6, int(lines.size()));
+    const int n = std::min(RoadmapParse::kGeneratedNoticeWindow, int(lines.size()));
     for (int i = 0; i < n; ++i) {
-        if (!lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+        if (!lines.at(i).contains(RoadmapParse::kGeneratedNoticeTag))
             continue;
         const bool had = i + 1 < lines.size()
             && lines.at(i + 1).startsWith(QLatin1String("<!-- ants-roadmap-id-high-water:"));
@@ -387,7 +387,7 @@ QString withIdMark(const QString &text, const QString &markLine) {
 
 bool hasMarkerInHead(const QString &text) {
     const QStringList lines = text.split(QLatin1Char('\n'));
-    const int n = std::min(5, int(lines.size()));
+    const int n = std::min(RoadmapParse::kGeneratedNoticeWindow, int(lines.size()));
     for (int i = 0; i < n; ++i)
         if (lines.at(i).contains(QLatin1String("ants-roadmap-format")))
             return true;

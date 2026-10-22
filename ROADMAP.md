@@ -94835,6 +94835,13 @@ worked after these.
   (ids L12-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: both HIGH done. (1) allocateIds and peekIds floor to one
+  allocationFloor() (corpus high-water, then the store floor), so the
+  dry-run preview now includes the store floor. (2) the notice text and
+  the opening-line window are RoadmapParse::kGeneratedNoticeTag and
+  kGeneratedNoticeWindow; generatedNotice() builds from the tag, and
+  every search (including hasMarkerInHead, which read 5 lines) uses
+  them. Medium and low still open.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94847,6 +94854,9 @@ worked after these.
   (ids L13-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH 1 (rxLeadId and rxInProgress copying the id regex)
+  done by the ANTS-6120 commit e2715157; both build from
+  idTokenPattern(). HIGH 2 (status checkbox lists) in progress.
   **Layman:** Tidy the roadmap window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96087,6 +96097,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-22: the ANTS-6121 L12 fix makes peekIds use the same
+  allocationFloor() as allocateIds, so the preview includes the store
+  floor. Still owed: a regression test on a migrated project, then the
+  flip.
   **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

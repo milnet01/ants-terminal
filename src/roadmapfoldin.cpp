@@ -565,6 +565,38 @@ bool isValidIdPrefix(const QString &prefix) {
     return RoadmapParse::isIdPrefix(prefix);
 }
 
+namespace {
+
+// The lowest id the next allocation may follow. allocateIds and peekIds both
+// floor to it, so a dry_run preview reports the first id the real call hands
+// out (mcp_dry_run_parity).
+//
+// ANTS-3450 — the committed high-water mark. The counter is an untracked
+// cache; a stale-low (or fresh-clone absent → 0) value must never let the
+// batch path reissue a live id. corpusHighWater scans ROADMAP + CHANGELOG +
+// docs/roadmap/*.md, so it also respects ids that have already migrated out
+// of ROADMAP.md, and sniffs the project prefix itself.
+//
+// ANTS-5087 — and on a MIGRATED project, to the store as well. Those files
+// are a rendered OUTPUT of the store and the render is lossy in membership
+// by design (roadmap-data-model.md § 7.5 excludes `internal` and `dropped`),
+// so an id can be held in the store and appear in no file this scan reads.
+// The allocator's own counter also remembers an id whose item was later
+// deleted, which no file records at all. Either way the text scan reports a
+// high-water below the store's and the next fold-in reissues a live id.
+//
+// The store floor is 0 on every other path, each an ordinary state rather than
+// a failure: no store on this machine, a project that was never migrated,
+// or one with no id_prefix row yet. A project whose ids the store does not
+// know is exactly the project whose files ARE the corpus.
+qint64 allocationFloor(const QString &projectPath) {
+    QString corpusPrefix;
+    const qint64 corpus = corpusHighWater(projectPath, QString(), &corpusPrefix);
+    return qMax(corpus, storeAllocationFloor(projectPath, corpusPrefix));
+}
+
+}  // namespace
+
 QList<int> allocateIds(const QString &projectPath, int n, LockWait wait,
                        bool *busy) {
     if (busy) *busy = false;
@@ -608,30 +640,7 @@ QList<int> allocateIds(const QString &projectPath, int n, LockWait wait,
         }
     }
 
-    // ANTS-3450 — floor to the committed high-water mark. The counter is
-    // now an untracked cache; a stale-low (or fresh-clone absent → 0) value
-    // must never let the batch path reissue a live id. corpusHighWater
-    // scans ROADMAP + CHANGELOG + docs/roadmap/*.md, so it also respects ids
-    // that have already migrated out of ROADMAP.md. Sniffs the project
-    // prefix itself, so callers need not thread one through.
-    QString corpusPrefix;
-    current = static_cast<int>(
-        qMax<qint64>(current, corpusHighWater(projectPath, QString(), &corpusPrefix)));
-
-    // ANTS-5087 — and on a MIGRATED project, to the store as well. Those files
-    // are a rendered OUTPUT of the store and the render is lossy in membership
-    // by design (roadmap-data-model.md § 7.5 excludes `internal` and `dropped`),
-    // so an id can be held in the store and appear in no file this scan reads.
-    // The allocator's own counter also remembers an id whose item was later
-    // deleted, which no file records at all. Either way the text scan reports a
-    // high-water below the store's and the next fold-in reissues a live id.
-    //
-    // 0 on every other path, and each of them is an ordinary state rather than
-    // a failure: no store on this machine, a project that was never migrated,
-    // or one with no id_prefix row yet. A project whose ids the store does not
-    // know is exactly the project whose files ARE the corpus.
-    current = static_cast<int>(
-        qMax<qint64>(current, storeAllocationFloor(projectPath, corpusPrefix)));
+    current = static_cast<int>(qMax<qint64>(current, allocationFloor(projectPath)));
 
     QList<int> ids;
     ids.reserve(n);
@@ -666,11 +675,7 @@ QList<int> peekIds(const QString &projectPath, int n) {
     // refusal so the caller's counter_failed path fires identically.
     if (insp.state != CounterState::Ok &&
         insp.state != CounterState::EmptyOrAbsent) return {};
-    // ANTS-3450 — floor to the committed high-water mark, exactly as
-    // allocateIds does, so a dry_run preview reports the same first id the
-    // real allocate would hand out (mcp_dry_run_parity).
-    const int base = static_cast<int>(
-        qMax<qint64>(insp.value, corpusHighWater(projectPath)));
+    const int base = static_cast<int>(qMax<qint64>(insp.value, allocationFloor(projectPath)));
     QList<int> ids;
     ids.reserve(n);
     for (int i = 1; i <= n; ++i) ids.append(base + i);
