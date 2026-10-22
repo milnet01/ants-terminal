@@ -1135,22 +1135,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // matches that kind" — indistinguishable from a real empty result, and
     // the caller has no way to tell.
     //
-    // The vocabulary is roadmap_log's `kind` enum. Kept as a literal list
-    // rather than derived: the write side's enum lives in the schema builder
-    // in claudeintegration.cpp, and reaching across for it from a read verb
-    // would couple the two the wrong way round.
-    static const QStringList kAcceptedKinds = {
-        QStringLiteral("implement"),    QStringLiteral("fix"),
-        QStringLiteral("audit-fix"),    QStringLiteral("review-fix"),
-        QStringLiteral("doc"),          QStringLiteral("doc-fix"),
-        QStringLiteral("refactor"),     QStringLiteral("test"),
-        QStringLiteral("chore"),        QStringLiteral("release"),
-        QStringLiteral("perf"),         QStringLiteral("security"),
-        QStringLiteral("feature"),      QStringLiteral("enhancement"),
-        QStringLiteral("investigate"),  QStringLiteral("research"),
-        QStringLiteral("accessibility"),QStringLiteral("optimize"),
-        QStringLiteral("package"),      QStringLiteral("marketing"),
-        QStringLiteral("ux") };
+    // The vocabulary is RoadmapParse::canonicalKinds(), the set roadmap_log
+    // writes; sorted so the refusal's `accepted` list reads the same each time.
+    static const QStringList kAcceptedKinds = [] {
+        QStringList k(RoadmapParse::canonicalKinds().cbegin(),
+                      RoadmapParse::canonicalKinds().cend());
+        k.sort();
+        return k;
+    }();
     QString kindArg = req.value(QStringLiteral("kind")).toString().trimmed();
     if (!kindArg.isEmpty()) {
         // Same 64-byte + control-char hygiene the status / id echoes use, so

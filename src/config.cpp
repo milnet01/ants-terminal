@@ -4,6 +4,7 @@
 
 #include "configbackup.h"
 #include "debuglog.h"
+#include "roadmapparse.h"
 #include "secureio.h"
 
 #include <QCryptographicHash>
@@ -422,22 +423,14 @@ void Config::setRoadmapActivePreset(const QString &name) {
 }
 
 QStringList Config::roadmapKindFilters() const {
-    static const QStringList kKnown = {
-        QStringLiteral("implement"),  QStringLiteral("fix"),
-        QStringLiteral("audit-fix"),  QStringLiteral("review-fix"),
-        QStringLiteral("doc"),        QStringLiteral("doc-fix"),
-        QStringLiteral("refactor"),   QStringLiteral("test"),
-        QStringLiteral("chore"),      QStringLiteral("release"),
-        QStringLiteral("research"),   QStringLiteral("ux"),
-    };
+    const QSet<QString> &kKnown = RoadmapParse::canonicalKinds();
     const QJsonArray arr = m_data.value("roadmap_kind_filters").toArray();
     QStringList result;
     result.reserve(arr.size());
     for (const QJsonValue &v : arr) {
         const QString s = v.toString();
         // Drop unknowns silently — defends against a stale entry
-        // surviving a future KindEntry rename. Spec says known set
-        // is the KindEntry table in roadmapdialog.cpp.
+        // surviving a future kind rename.
         if (kKnown.contains(s)) result.append(s);
     }
     return result;
@@ -446,16 +439,8 @@ QStringList Config::roadmapKindFilters() const {
 void Config::setRoadmapKindFilters(const QStringList &kinds) {
     // ANTS-1179: filter to the known kind set so unknowns can't
     // sneak through the setter and live on as zombies in the JSON
-    // file. Mirrors the getter's validation list so the in-memory
-    // and on-disk views stay in sync.
-    static const QSet<QString> kKnown = {
-        QStringLiteral("implement"),  QStringLiteral("fix"),
-        QStringLiteral("audit-fix"),  QStringLiteral("review-fix"),
-        QStringLiteral("doc"),        QStringLiteral("doc-fix"),
-        QStringLiteral("refactor"),   QStringLiteral("test"),
-        QStringLiteral("chore"),      QStringLiteral("release"),
-        QStringLiteral("research"),   QStringLiteral("ux"),
-    };
+    // file. The getter checks the same set.
+    const QSet<QString> &kKnown = RoadmapParse::canonicalKinds();
     QStringList filtered;
     filtered.reserve(kinds.size());
     for (const QString &k : kinds) {

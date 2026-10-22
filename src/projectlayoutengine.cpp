@@ -20,6 +20,27 @@ namespace ProjectLayoutEngine {
 
 namespace {
 
+// The two bullet shapes, shared by detectFormat() and countBullets() so
+// detection and count agree on what a bullet is. Native ants-v1:
+// `- <status-emoji>` at line start, in UTF-8. GFM: a task-list box.
+bool matchesAnts(const QByteArray &ln) {
+    static const QByteArray kAntsPrefixes[5] = {
+        QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
+        QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
+        QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
+        QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
+        QByteArrayLiteral("- \xF0\x9F\x9A\xAB"),     // 🚫 ANTS-4977
+    };
+    for (const auto &p : kAntsPrefixes) {
+        if (ln.startsWith(p)) return true;
+    }
+    return false;
+}
+
+bool matchesGfm(const QByteArray &ln) {
+    return ln.startsWith("- [ ]") || ln.startsWith("- [x]") || ln.startsWith("- [X]");
+}
+
 // Detect Ants-format marker / GFM task-list / ants-v1 emoji shape
 // from the head of a ROADMAP.md. See spec § Scan logic for the rule
 // list. ANTS-1632 — when multiple shapes hit (mixed-format roadmaps
@@ -43,28 +64,10 @@ QString detectFormat(const QByteArray &slice,
     // ANTS-1632 — scan once, score both shapes.
     bool gfmHit  = false;
     bool antsHit = false;
-    // ants-v1 emoji status prefixes (UTF-8). Mirror countBullets'
-    // kPrefixes set so detection and count agree on what counts
-    // as an ants-v1 bullet.
-    static const QByteArray kAntsPrefixes[5] = {
-        QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
-        QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
-        QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
-        QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
-        QByteArrayLiteral("- \xF0\x9F\x9A\xAB"),     // 🚫 ANTS-4977
-    };
     const auto lines = slice.split('\n');
     for (const auto &ln : lines) {
-        if (!gfmHit &&
-            (ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
-             ln.startsWith("- [X]"))) {
-            gfmHit = true;
-        }
-        if (!antsHit) {
-            for (const auto &p : kAntsPrefixes) {
-                if (ln.startsWith(p)) { antsHit = true; break; }
-            }
-        }
+        gfmHit  = gfmHit  || matchesGfm(ln);
+        antsHit = antsHit || matchesAnts(ln);
         if (gfmHit && antsHit) break;
     }
     trace.gfmTaskListHit = gfmHit;
@@ -85,26 +88,6 @@ QString detectFormat(const QByteArray &slice,
 int countBullets(const QByteArray &body, const QString &format) {
     const auto lines = body.split('\n');
     int n = 0;
-    // Native ants-v1 shape: `- <status-emoji>` at line start. The
-    // five status emoji glyphs in UTF-8. Used by the ants-v1,
-    // mixed, unknown, and empty-format paths.
-    static const QByteArray kAntsPrefixes[5] = {
-        QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
-        QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
-        QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
-        QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
-        QByteArrayLiteral("- \xF0\x9F\x9A\xAB"),     // 🚫 ANTS-4977
-    };
-    auto matchesAnts = [&](const QByteArray &ln) {
-        for (const auto &p : kAntsPrefixes) {
-            if (ln.startsWith(p)) return true;
-        }
-        return false;
-    };
-    auto matchesGfm = [](const QByteArray &ln) {
-        return ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
-               ln.startsWith("- [X]");
-    };
     const bool wantAnts = (format == QStringLiteral("ants-v1") ||
                            format == QStringLiteral("mixed") ||
                            format == QStringLiteral("unknown") ||

@@ -47,6 +47,24 @@ QString SessionManager::sessionPath(const QString &tabId) {
     return sessionDir() + "/session_" + tabId + ".dat";
 }
 
+// One cell on disk: codepoint, fg, bg, then a flags byte. restore()'s
+// readCell lambda is the other half and must read the same order and bits.
+static void writeCell(QDataStream &out, const Cell &c) {
+    out << c.codepoint;
+    out << c.attrs.fg.rgba();
+    out << c.attrs.bg.rgba();
+    uint8_t flags = 0;
+    if (c.attrs.bold) flags |= 0x01;
+    if (c.attrs.italic) flags |= 0x02;
+    if (c.attrs.underline) flags |= 0x04;
+    if (c.attrs.inverse) flags |= 0x08;
+    if (c.attrs.dim) flags |= 0x10;
+    if (c.attrs.strikethrough) flags |= 0x20;
+    if (c.isWideChar) flags |= 0x40;
+    if (c.isWideCont) flags |= 0x80;
+    out << flags;
+}
+
 QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
                                            const QString &cwd,
                                            const QString &pinnedTitle,
@@ -72,21 +90,7 @@ QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
         out << static_cast<int32_t>(cells.size());
         out << wrapped;
 
-        for (const auto &c : cells) {
-            out << c.codepoint;
-            out << c.attrs.fg.rgba();
-            out << c.attrs.bg.rgba();
-            uint8_t flags = 0;
-            if (c.attrs.bold) flags |= 0x01;
-            if (c.attrs.italic) flags |= 0x02;
-            if (c.attrs.underline) flags |= 0x04;
-            if (c.attrs.inverse) flags |= 0x08;
-            if (c.attrs.dim) flags |= 0x10;
-            if (c.attrs.strikethrough) flags |= 0x20;
-            if (c.isWideChar) flags |= 0x40;
-            if (c.isWideCont) flags |= 0x80;
-            out << flags;
-        }
+        for (const auto &c : cells) writeCell(out, c);
 
         // Combining characters
         const auto &combining = grid->scrollbackCombining(i);
@@ -104,22 +108,8 @@ QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
     for (int row = 0; row < screenRows; ++row) {
         int colCount = grid->cols();
         out << static_cast<int32_t>(colCount);
-        for (int col = 0; col < colCount; ++col) {
-            const Cell &c = grid->cellAt(row, col);
-            out << c.codepoint;
-            out << c.attrs.fg.rgba();
-            out << c.attrs.bg.rgba();
-            uint8_t flags = 0;
-            if (c.attrs.bold) flags |= 0x01;
-            if (c.attrs.italic) flags |= 0x02;
-            if (c.attrs.underline) flags |= 0x04;
-            if (c.attrs.inverse) flags |= 0x08;
-            if (c.attrs.dim) flags |= 0x10;
-            if (c.attrs.strikethrough) flags |= 0x20;
-            if (c.isWideChar) flags |= 0x40;
-            if (c.isWideCont) flags |= 0x80;
-            out << flags;
-        }
+        for (int col = 0; col < colCount; ++col)
+            writeCell(out, grid->cellAt(row, col));
 
         // Screen combining characters
         const auto &combining = grid->screenCombining(row);
@@ -346,7 +336,8 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     // only once the whole stream has been read. Resizing up front left a
     // refused stream's tab part-restored.
 
-    // Read a cell from the stream. Returns false if the stream went bad
+    // Read a cell from the stream — writeCell()'s other half, same order and
+    // flag bits. Returns false if the stream went bad
     // mid-cell — refusing to commit half-decoded codepoints/colors/flags
     // to the grid. Pre-fix, a truncated stream silently wrote
     // uninitialized fg/bg/flags into Cell.

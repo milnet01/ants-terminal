@@ -10,8 +10,11 @@ class SessionManager {
 public:
     // ANTS-5031 — the largest file restore() accepts and the largest
     // uncompressed stream it decodes. serialize() writes no more than these.
-    static constexpr qint64 MAX_RESTORE_FILE_BYTES = 100LL * 1024 * 1024;
-    static constexpr qint64 MAX_RESTORE_RAW_BYTES  = 500LL * 1024 * 1024;
+    // MAX_UNCOMPRESSED is the cap restore() checks, both on qCompress's
+    // 4-byte length claim (before qUncompress allocates) and on the result.
+    static constexpr qint64   MAX_RESTORE_FILE_BYTES = 100LL * 1024 * 1024;
+    static constexpr uint32_t MAX_UNCOMPRESSED = 500u * 1024u * 1024u;
+    static constexpr qint64   MAX_RESTORE_RAW_BYTES  = MAX_UNCOMPRESSED;
 
     // Serialize grid state to compressed binary data. `pinnedTitle` is
     // the manual right-click "Rename Tab…" label (empty if the user
@@ -105,8 +108,4 @@ private:
     static constexpr uint32_t ENVELOPE_MAGIC = 0x53484543; // "SHEC"
     static constexpr uint32_t ENVELOPE_VERSION = 1;
     static constexpr int      ENVELOPE_HEADER_SIZE = 4 + 4 + 32 + 4;
-    // Hard cap on the uncompressed-length claim inside qCompress's
-    // 4-byte big-endian prefix. Mirrors the post-decompression cap so
-    // we reject the allocation BEFORE qUncompress sees the file.
-    static constexpr uint32_t MAX_UNCOMPRESSED = 500u * 1024u * 1024u;
 };

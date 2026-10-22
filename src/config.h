@@ -66,12 +66,10 @@ public:
     QString roadmapActivePreset() const;
     void setRoadmapActivePreset(const QString &name);
 
-    // RoadmapDialog Kind facet checkbox set. Values from the
-    // KindEntry table in roadmapdialog.cpp ("implement", "fix",
-    // "audit-fix", "review-fix", "doc", "doc-fix", "refactor",
-    // "test", "chore", "release", "research", "ux"). Persisted
-    // sorted (ASCII codepoint) for diffability. Unknown values
-    // are silently dropped on read.
+    // RoadmapDialog Kind facet checkbox set: values from
+    // RoadmapParse::canonicalKinds(). Persisted sorted (ASCII
+    // codepoint) for diffability. Unknown values are silently
+    // dropped on read.
     QStringList roadmapKindFilters() const;
     void setRoadmapKindFilters(const QStringList &kinds);
 
