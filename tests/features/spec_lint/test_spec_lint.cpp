@@ -621,10 +621,12 @@ TEST(SpecLint, Ants3784DeclaredIdBaseSuppressesGapsBelowIt) {
         QStringLiteral("s.md"), {});
     EXPECT_EQ(countKind(r, "invariant_id_gap"), 1);
     EXPECT_EQ(r.idGapsSuppressed, 11);
-    for (const auto &f : r.findings)
-        if (f.kind == QLatin1String("invariant_id_gap"))
+    for (const auto &f : r.findings) {
+        if (f.kind == QLatin1String("invariant_id_gap")) {
             EXPECT_TRUE(f.message.contains(QStringLiteral("INV-27")))
                 << f.message.toStdString();
+        }
+    }
 
     // A document DOCUMENTING the syntax has not declared one: the line is read
     // outside fenced code only. Without this, this very test file's spec would
