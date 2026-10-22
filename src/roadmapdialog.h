@@ -51,6 +51,7 @@
 #include <QTimer>
 #include <QVector>
 
+#include <array>
 #include <memory>
 #include <optional>
 
@@ -544,6 +545,9 @@ private:
     // handlers.
     void showTabFilters(const TabFilters &f);
     unsigned statusMaskFromBoxes() const;
+    // The six status checkboxes in kStatusBits order (the .cpp checks the
+    // count). Every loop over them uses this list.
+    std::array<QCheckBox *, 6> statusBoxes() const;
     // Write the active tab and every tab's filters to Config.
     void saveViewState();
     static QString presetName(Preset p);

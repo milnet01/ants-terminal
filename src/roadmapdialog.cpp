@@ -2006,12 +2006,8 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         wa->setDefaultWidget(cb);
         menu->addAction(wa);
     };
-    addToMenu(statusMenu, m_filterDone);
-    addToMenu(statusMenu, m_filterPlanned);
-    addToMenu(statusMenu, m_filterInProgress);
-    addToMenu(statusMenu, m_filterConsidered);
-    addToMenu(statusMenu, m_filterDropped);
-    addToMenu(statusMenu, m_filterCurrent);
+    for (QCheckBox *cb : statusBoxes())
+        addToMenu(statusMenu, cb);
 
     m_statusFilterBtn = new QToolButton(this);
     m_statusFilterBtn->setObjectName(QStringLiteral("roadmap-filter-status-button"));
@@ -2137,9 +2133,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     root->addLayout(filterRow);
 
     // Keep the summaries honest on every toggle, whichever control moved.
-    for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
-                          m_filterInProgress.data(), m_filterConsidered.data(),
-                          m_filterDropped.data(), m_filterCurrent.data()})
+    for (QCheckBox *cb : statusBoxes())
         if (cb) connect(cb, &QCheckBox::toggled, this,
                         [this] { updateFilterSummaries(); });
     for (QCheckBox *cb : std::as_const(m_kindCheckboxes))
@@ -2374,12 +2368,8 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         QList<QWidget *> tabChain;
         if (m_tabs)             tabChain << m_tabs.data();
         if (m_searchBox)        tabChain << m_searchBox.data();
-        if (m_filterDone)       tabChain << m_filterDone.data();
-        if (m_filterPlanned)    tabChain << m_filterPlanned.data();
-        if (m_filterInProgress) tabChain << m_filterInProgress.data();
-        if (m_filterConsidered) tabChain << m_filterConsidered.data();
-        if (m_filterDropped)    tabChain << m_filterDropped.data();
-        if (m_filterCurrent)    tabChain << m_filterCurrent.data();
+        for (QCheckBox *cb : statusBoxes())
+            if (cb) tabChain << cb;
         if (m_densityCombo)     tabChain << m_densityCombo.data();
         for (const KindEntry &k : kKinds) {
             if (QCheckBox *cb = m_kindCheckboxes.value(QString::fromLatin1(k.value)))
@@ -2438,18 +2428,8 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
             this, &RoadmapDialog::scheduleRebuild);
 
-    connect(m_filterDone, &QCheckBox::toggled,
-            this, &RoadmapDialog::onCheckboxToggled);
-    connect(m_filterPlanned, &QCheckBox::toggled,
-            this, &RoadmapDialog::onCheckboxToggled);
-    connect(m_filterInProgress, &QCheckBox::toggled,
-            this, &RoadmapDialog::onCheckboxToggled);
-    connect(m_filterConsidered, &QCheckBox::toggled,
-            this, &RoadmapDialog::onCheckboxToggled);
-    connect(m_filterDropped, &QCheckBox::toggled,
-            this, &RoadmapDialog::onCheckboxToggled);
-    connect(m_filterCurrent, &QCheckBox::toggled,
-            this, &RoadmapDialog::onCheckboxToggled);
+    for (QCheckBox *cb : statusBoxes())
+        connect(cb, &QCheckBox::toggled, this, &RoadmapDialog::onCheckboxToggled);
 
     connect(m_tabs, &QTabBar::currentChanged, this,
             [this](int index) {
@@ -3042,9 +3022,7 @@ void RoadmapDialog::refreshLastTouchDatesIfStale() {
 // summary can be derived from the other's shape.
 void RoadmapDialog::updateFilterSummaries() {
     int statusOn = 0, statusTotal = 0;
-    for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
-                          m_filterInProgress.data(), m_filterConsidered.data(),
-                          m_filterDropped.data(), m_filterCurrent.data()}) {
+    for (QCheckBox *cb : statusBoxes()) {
         if (!cb) continue;
         ++statusTotal;
         if (cb->isChecked()) ++statusOn;
@@ -3148,22 +3126,24 @@ RoadmapDialog::TabFilters RoadmapDialog::tabFiltersFor(Preset p) const {
     return f;
 }
 
+std::array<QCheckBox *, 6> RoadmapDialog::statusBoxes() const {
+    static_assert(std::size(kStatusBits) == 6, "one checkbox per status bit");
+    return {m_filterDone.data(), m_filterPlanned.data(), m_filterInProgress.data(),
+            m_filterConsidered.data(), m_filterDropped.data(), m_filterCurrent.data()};
+}
+
 unsigned RoadmapDialog::statusMaskFromBoxes() const {
     unsigned mask = 0;
-    const QCheckBox *boxes[] = {m_filterDone.data(), m_filterPlanned.data(),
-                                m_filterInProgress.data(), m_filterConsidered.data(),
-                                m_filterDropped.data(), m_filterCurrent.data()};
-    for (size_t i = 0; i < std::size(kStatusBits); ++i)
+    const auto boxes = statusBoxes();
+    for (size_t i = 0; i < boxes.size(); ++i)
         if (boxes[i] && boxes[i]->isChecked()) mask |= kStatusBits[i].bit;
     return mask;
 }
 
 void RoadmapDialog::showTabFilters(const TabFilters &f) {
     m_suppressCheckboxSignal = true;
-    QCheckBox *boxes[] = {m_filterDone.data(), m_filterPlanned.data(),
-                          m_filterInProgress.data(), m_filterConsidered.data(),
-                          m_filterDropped.data(), m_filterCurrent.data()};
-    for (size_t i = 0; i < std::size(kStatusBits); ++i)
+    const auto boxes = statusBoxes();
+    for (size_t i = 0; i < boxes.size(); ++i)
         if (boxes[i]) boxes[i]->setChecked((f.mask & kStatusBits[i].bit) != 0);
     m_suppressCheckboxSignal = false;
     m_kindFilter = f.kinds;
@@ -3581,13 +3561,7 @@ void RoadmapDialog::rebuild() {
     }
     const QString &markdown = m_source.markdown;
 
-    unsigned filter = 0;
-    if (m_filterDone && m_filterDone->isChecked()) filter |= ShowDone;
-    if (m_filterPlanned && m_filterPlanned->isChecked()) filter |= ShowPlanned;
-    if (m_filterInProgress && m_filterInProgress->isChecked()) filter |= ShowInProgress;
-    if (m_filterConsidered && m_filterConsidered->isChecked()) filter |= ShowConsidered;
-    if (m_filterDropped && m_filterDropped->isChecked()) filter |= ShowDropped;
-    if (m_filterCurrent && m_filterCurrent->isChecked()) filter |= ShowCurrent;
+    const unsigned filter = statusMaskFromBoxes();
 
     const QStringList signals_ = collectCurrentBullets();
     const QString predicate = m_searchBox ? m_searchBox->text() : QString();

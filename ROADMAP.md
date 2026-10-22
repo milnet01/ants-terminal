@@ -94857,6 +94857,13 @@ worked after these.
   2026-10-22: HIGH 1 (rxLeadId and rxInProgress copying the id regex)
   done by the ANTS-6120 commit e2715157; both build from
   idTokenPattern(). HIGH 2 (status checkbox lists) in progress.
+  2026-10-22: HIGH 2 done. statusBoxes() returns the six status
+  checkboxes in kStatusBits order, with a static_assert on the count;
+  the menu, both connect loops, the tab chain, updateFilterSummaries,
+  statusMaskFromBoxes, showTabFilters and rebuild (now
+  statusMaskFromBoxes()) use it. The wantX flags in the card render read
+  the mask, not the boxes, and stay. Both HIGH done; medium and low
+  still open.
   **Layman:** Tidy the roadmap window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
