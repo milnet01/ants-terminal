@@ -87581,6 +87581,10 @@ measured Ants adding about 5,250 tokens to every request.
 
 - ✅ [ANTS-5733] **After a relaunch that restores tabs, the focused tab's Claude session drives the context gauge without a tab switch.**
   Found 2026-10-16 recording trailer clip 3: in a restored single tab the
+  2026-10-22: the spec amendment
+  (docs/specs/ANTS-5502-quotation-check.md) passed review-contract,
+  loops 3 and 4, cap reached; ready to build. Pre-existing INV-10 test
+  gap filed as ANTS-6168.
   gauge never appeared. restoreSessions (mainwindow_sessions.cpp) makes the
   tab current before startShell, so the tab-switch handler calls
   setShellPid(0) and ClaudeIntegration's poll stops; after startShell only

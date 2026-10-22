@@ -1,6 +1,6 @@
 # ANTS-5502 — Check many quotations in one call: `quotation_check`
 
-**Status:** spec, review-contract loops 1 + 2 folded, cap reached (2026-09-29). Signed off by the maintainer 2026-09-29 (message 277). Implemented 2026-09-29 on helper/ANTS-5502. Amended 2026-10-22 by ANTS-5732: an item's cited `line`, a `tolerance`, and the `hit_displaced` result (INV-11, INV-12).
+**Status:** spec, review-contract loops 1 + 2 folded, cap reached (2026-09-29). Signed off by the maintainer 2026-09-29 (message 277). Implemented 2026-09-29 on helper/ANTS-5502. Amended 2026-10-22 by ANTS-5732: an item's cited `line`, a `tolerance`, and the `hit_displaced` result (INV-11, INV-12); review-contract loops 3 + 4 folded, cap reached (2026-10-22).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5502 (claude-config joint review 2026-09-27, A1). Design answers from the maintainer session, 2026-09-28.
 **Composes with:** ANTS-4547 (`src/wrapmatch.h`, the wrapped-quotation rule this verb does NOT use, § 2.6), ANTS-5506 (`ants-mcpd --call --exit-code`, which gates on this verb's top-level `findings`), ANTS-1295 (path validation), ANTS-4374 (a zero says what it looked at).
@@ -41,7 +41,7 @@ The verb reproduces `quotation-check.sh` as of `~/.claude` commit `60fd0be`. The
 
 The script's own patterns are the definition; the vectors in INV-1 check this verb against them.
 
-The quotation is then trimmed of leading and trailing spaces. It is a hit when it occurs as a byte substring of the normalised subject, as `grep -F` finds it. Matching is case-sensitive and honours no pattern syntax.
+The quotation is then trimmed of leading and trailing spaces. It is found when it occurs as a byte substring of the normalised subject, as `grep -F` finds it. Matching is case-sensitive and honours no pattern syntax.
 
 ### 2.3 Results
 
@@ -98,7 +98,7 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 ### 2.5 Where it lives
 
 - `src/quotationcheckverb.{h,cpp}` in `ants_core_lib`: everything below the resolved root — path validation, reading files and blobs (`GitWrap::run`), the per-`(ref, path)` cache, the normaliser, the glob matcher and the item loop — as free functions taking the root as a parameter, so a test drives every invariant against a temporary directory. Its own translation unit, for the reason `docs/standards/mcp-tools.md` § Tests gives.
-- `RemoteControl::cmdQuotationCheck` in `src/remotecontrol_quotation_check.cpp`, a thin handler appended last in `ANTS_RC_SOURCES_REL`: resolves the root, forwards `items`, `allowed`, `max_bytes` and `tolerance` when present, and calls the seam.
+- `RemoteControl::cmdQuotationCheck` in `src/remotecontrol_quotation_check.cpp`, a thin handler in `ANTS_RC_SOURCES_REL`: resolves the root, forwards `items`, `allowed`, `max_bytes` and `tolerance` when present, and calls the seam.
 - The schema in the `tools/list` table, with a short description (`mcp-tools.md` step 11). No ETag: the reply depends on many files.
 
 ### 2.6 Alternatives
