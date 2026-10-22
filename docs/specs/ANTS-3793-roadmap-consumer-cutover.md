@@ -764,9 +764,10 @@ nothing reads.
 guard, not a working limit. **The pre-read proxy is item count**, since INV-3
 must decide before materialising: 8 MiB / 1,839 items ≈ 4.5 KiB per item.
 **Re-derived 2026-10-22 (ANTS-6048)** from this project's 3,680 store items.
-The 4.5 KiB bound still holds: their `headline` and `body` columns summed
-6,419,450 bytes of UTF-8, ~1.7 KiB each, ~3.5 KiB as UTF-16. Refute by re-running `SELECT count(*), sum(length(body) +
-length(headline)) FROM item WHERE project_id = <id>` on the store.
+The 4.5 KiB bound still holds: their `headline` and `body` text averaged
+~1.7 KiB of UTF-8, ~3.5 KiB as UTF-16. Refute by re-running `SELECT count(*),
+sum(length(body) + length(headline)) FROM item WHERE project_id = <id>` on
+the store.
 2 × 3,680 × 4.5 KiB ≈ 32 MiB is ~7,280 items, **rounded down to a ceiling of
 7,000**, statted from
 `listItems()`' size — cheap, because `ItemRef` carries a headline and four
@@ -804,10 +805,9 @@ the fix is a batched `readItems(projectId)` on `RoadmapStore`, not a cache and
 not a relaxed budget.** § 7 records it as conditionally owed.
 
 **Re-measured 2026-10-22 (ANTS-6048), with the batched reader in place.**
-`Inv3Latency` sized to 3,700 items, the corpus's largest rounded up,
-passed all three runs on a Release build. At 7,000 items its p95 was
-89.4 to 92.4 ms over three runs. The cost is close to linear, ~13 µs per
-item, which puts the budget's edge near 3,900 items. So `Inv3Latency`
+On a Release build, `Inv3Latency` passed at the corpus's largest size and
+measured a p95 near 90 ms at 7,000 items. The cost is close to linear, so
+the budget's edge sits only a few hundred items above the corpus's largest. So `Inv3Latency`
 sizes its project to the corpus's largest, not to the ceiling, and the
 next growth breaks the budget before the ceiling. The remedy stays as
 above: read-path work, not a relaxed budget. ANTS-6049 owns it. Refute
