@@ -277,34 +277,38 @@ TEST(list_downshift, BytesCapClampedPreserved) {
 TEST(list_downshift, Inv5And6And11RoadmapWiring) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // INV-5 — gated projector at BOTH bullet sites (section + full-file).
-    expect(countOccurrences(cpp, "RowProjector(&rcProjectHeadlineOnly)") == 2,
-           "INV-5: rcProjectHeadlineOnly wired as the projector at exactly the "
-           "two bullet-emitting pageBullets sites");
+    // INV-5 — gated projector at the bullet site. ANTS-6129 — the section
+    // and full-file arms share one bullet tail, so there is one site.
+    expect(countOccurrences(cpp, "RowProjector(&rcProjectHeadlineOnly)") == 1,
+           "INV-5: rcProjectHeadlineOnly wired as the projector at the one "
+           "bullet-emitting pageBullets site");
     expect(countOccurrences(
                cpp, "(mode != QLatin1String(\"headline_only\")) && !includeBody")
-               == 2,
+               == 1,
            "INV-5: the downshift gate (not-lean AND not-include_body) guards "
-           "both bullet sites");
-    // INV-6 / INV-11 — truthy-only downshifted emit at both bullet sites.
+           "the bullet site");
+    // INV-6 / INV-11 — truthy-only downshifted emit at the bullet site.
     expect(countOccurrences(cpp, "if (page.downshifted) out[\"downshifted\"] = true;")
-               == 2,
-           "INV-6/INV-11: downshifted emitted only when true, at both sites");
-    // INV-11 — the ANTS-1436 exactly-5-pageBullets-calls count survives the
-    // new 4th arg (no call site added or removed).
-    expect(countOccurrences(cpp, "PaginationEngine::pageBullets(") == 5,
-           "INV-11: pageBullets still called exactly 5 times (2 bullet + 1 "
+               == 1,
+           "INV-6/INV-11: downshifted emitted only when true");
+    // ANTS-6129 — one shared bullet tail, called from both arms.
+    expect(contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/true);") &&
+           contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/false);"),
+           "the section and full-file arms both call emitBulletPage");
+    // INV-11 — the 4th arg added no pageBullets call site.
+    expect(countOccurrences(cpp, "PaginationEngine::pageBullets(") == 4,
+           "INV-11: pageBullets called exactly 4 times (1 bullet + 1 "
            "section_index + 2 changelog); the 4th arg added no call site");
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-7 — the verb forwards an explicit limit verbatim (both bullet sites pass
+// INV-7 — the verb forwards an explicit limit verbatim (the bullet site passes
 // limitArg through unchanged; the engine, not the verb, gates the downshift).
 TEST(list_downshift, Inv7ForwardsExplicitLimit) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    expect(countOccurrences(cpp, "filtered, offsetArg, limitArg,") == 2,
-           "INV-7: both bullet sites pass offsetArg/limitArg verbatim into "
+    expect(countOccurrences(cpp, "filtered, offsetArg, limitArg,") == 1,
+           "INV-7: the bullet site passes offsetArg/limitArg verbatim into "
            "pageBullets (explicit limit respected; downshift is the 4th arg)");
     EXPECT_EQ(0, expect_failures());
 }

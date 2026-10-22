@@ -44,9 +44,10 @@ tripping a full bullet payload.
   is shared across `roadmap_query` modes, EVERY cache-fill loop must
   emit `section_slug` — otherwise a section_index call following a
   bullet-mode call walks objects keyed to "" and rolls up zero for
-  every section. Three loops in `cmdRoadmapQuery` (bullet-mode pre-
-  fill, section_index lazy-fill, full-file lazy-fill); test asserts
-  loop-count == section_slug-emission-count. Anchor: `ANTS-1442`.
+  every section. Every fill in `cmdRoadmapQuery` calls
+  `rcBuildBulletCacheArray`, which emits it (ANTS-6129); the test
+  asserts that, and that the one hand-built row loop left (section-mode
+  emission) emits it too. Anchor: `ANTS-1442`.
 - **INV-10 / parent sections roll up descendant counts
   (ANTS-1442 root cause).** ROADMAP.md nests bullets under level-3
   headings beneath level-2 version anchors. The tally must walk a

@@ -197,12 +197,11 @@ TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
 // has already populated the cache. ANTS-1442 — fixed-up after live
 // test showed every section reporting 0/0/0 even when populated.
 //
-// The pattern: each cache-fill site is a
-// `for (const auto &b : bullets)` loop that builds a QJsonObject.
-// Section_slug must be set inside every such loop. A future engineer
-// adding a 4th cache-fill site needs to add section_slug too, or
-// callers downstream of section_index will silently read "" for
-// every bullet.
+// ANTS-6129 — every cache fill now goes through rcBuildBulletCacheArray,
+// which sets section_slug. The one hand-built row loop left is
+// section-mode emission, which sets its own. A future fill that assigns
+// the cache any other way, or a row loop without section_slug, leaves
+// section_index reading "" for every bullet.
 TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
@@ -214,27 +213,38 @@ TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
         cpp, "QJsonDocument RemoteControl::cmdRoadmapQuery(");
     expect(!fn.empty(),
            "INV-7: cmdRoadmapQuery body must be locatable");
-    // Count the cache-fill loops (the canonical bullet-iteration
-    // shape used by all four sites: bullet-mode pre-fill,
-    // section_index lazy-fill, section-mode emission, and full-file
-    // lazy-fill).
+    // The shared builder sets section_slug on every row.
+    const auto h = cpp.find("static QJsonArray rcBuildBulletCacheArray(");
+    expect(h != std::string::npos,
+           "INV-7: rcBuildBulletCacheArray must be locatable");
+    const std::string helper =
+        h == std::string::npos ? std::string{}
+                               : cpp.substr(h, cpp.find("\n}\n", h) - h);
+    expect(contains(helper, "o[\"section_slug\"] = b.sectionSlug"),
+           "INV-7: rcBuildBulletCacheArray must emit section_slug "
+           "(ANTS-1442)");
+
+    // Every cache fill goes through it; the only other assignments
+    // clear the cache.
+    const int fills = countOccurrences(fn, "m_roadmapCacheBullets =");
+    const int viaHelper = countOccurrences(
+        fn, "m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);");
+    const int clears =
+        countOccurrences(fn, "m_roadmapCacheBullets = QJsonArray();");
+    expect(viaHelper > 0 && fills == viaHelper + clears,
+           "INV-7: every m_roadmapCacheBullets fill in cmdRoadmapQuery "
+           "must call rcBuildBulletCacheArray, so no fill can drop "
+           "section_slug.");
+
+    // The one row loop left in the function — section-mode emission —
+    // sets section_slug itself (ANTS-1287-INV-7).
     const int loopCount =
         countOccurrences(fn, "for (const auto &b : bullets)");
-    expect(loopCount == 4,
-           "INV-7: cmdRoadmapQuery has exactly 4 cache-fill loops "
-           "(bullet-mode pre-fill, section_index lazy-fill, section-"
-           "mode emission, full-file lazy-fill). If this changes, "
-           "audit each new loop for section_slug emission.");
-
-    // Count any `section_slug` emission. Every loop must set it —
-    // either `b.sectionSlug` (full-file paths) or `sec->slug` (the
-    // section-mode emission, ANTS-1287-INV-7). The exact RHS doesn't
-    // matter; what matters is the field is populated.
     const int slugCount = countOccurrences(fn, "o[\"section_slug\"] =");
-    expect(slugCount == loopCount,
-           "INV-7: every cache-fill loop must emit section_slug "
-           "(ANTS-1442). Missing it on any path makes the "
-           "section_index tally roll up zero for every section.");
+    expect(loopCount == 1 && slugCount == loopCount,
+           "INV-7: cmdRoadmapQuery has one hand-built row loop "
+           "(section-mode emission) and it must emit section_slug. "
+           "A new loop belongs in rcBuildBulletCacheArray.");
 
     // The fix anchor must be present.
     expect(contains(cpp, "ANTS-1442"),

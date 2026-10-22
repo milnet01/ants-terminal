@@ -228,10 +228,15 @@ TEST(roadmap_query_headline_only, Inv6PaginationOnProjectedSet) {
     // projected page.slice AFTER the fat measure, dropping more rows than the
     // lean shape needs; that regression is now pinned out. (This restores the
     // behaviour ANTS-1881 INV-6 always specified; the weak "is pageBullets
-    // called at all" check above let the drift slip through.)
-    expect(countOccurrences(cpp, "rcProjectHeadlineOnly(filtered)") == 2,
-           "INV-6: headline_only projects `filtered` before pagination at "
-           "both bullet branches (measure counts lean bytes)");
+    // called at all" check above let the drift slip through.) ANTS-6129 —
+    // both branches share one tail, so there is one projection site.
+    expect(countOccurrences(cpp, "rcProjectHeadlineOnly(filtered)") == 1,
+           "INV-6: headline_only projects `filtered` before pagination in "
+           "the shared bullet tail (measure counts lean bytes)");
+    // ANTS-6129 — one shared bullet tail, called from both arms.
+    expect(contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/true);") &&
+           contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/false);"),
+           "the section and full-file arms both call emitBulletPage");
     expect(!contains(cpp, "rcProjectHeadlineOnly(page.slice)"),
            "INV-6: no post-pagination projection of page.slice remains "
            "(it would measure the fat row and over-drop)");

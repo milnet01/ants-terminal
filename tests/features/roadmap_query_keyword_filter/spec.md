@@ -34,13 +34,14 @@ It is a list-path filter, not a targeted selector.
   query-specific (`no bullet matched query "<q>"`, naming the count of
   id-bearing bullets searched and hinting at `ids:[...]` for a
   space/comma-separated multi-id query), NOT the ANTS-1538 "every entry
-  has no [PROJ-NNNN] id" text. The gate distinguishes the two by capturing
-  `postIdPruneCountFull` (the id-bearing count) after the ID-prune but
-  before `applyQueryFilter`. Reported by Rolodex (2026-07-16): a
+  has no [PROJ-NNNN] id" text. The gate distinguishes the two by the
+  id-bearing count, taken after the ID-prune and before
+  `applyQueryFilter`. Reported by Rolodex (2026-07-16): a
   space-separated multi-id `query` hit the misleading ANTS-1538 warning.
 - **INV-9** (ANTS-4423) — INV-8 holds on the `section=` path as well, with
-  its own `postIdPruneCountSec` count and its own message (`no bullet in
-  this section matched query "<q>"`). ANTS-3560 shipped the query-aware
+  its own message (`no bullet in this section matched query "<q>"`).
+  Since ANTS-6129 both paths share one tail, so one gate serves both.
+  ANTS-3560 shipped the query-aware
   branch on the full-file path only, so a section query that matched
   nothing kept the ANTS-1538 text and kept prescribing
   `include_narrator_bullets` / `include_section_headers` — two flags that
@@ -51,6 +52,9 @@ It is a list-path filter, not a targeted selector.
   filter as the cause. **A wrong reason is worse than no reason** — it sends
   the reader to re-issue with flags that change nothing and invites the
   conclusion that the section is full of narrator prose.
+  *Test (INV-8 and INV-9):*
+  `roadmap_query_prose_no_id_warning.Ants4423QueryMissIsNamedInBothArms`,
+  which drives the verb in both arms; that bundle links `RemoteControl`.
 - **INV-10** (ANTS-5257) — the match also covers `id` when `id` contains
   whitespace. On a github-task-list roadmap the bold title is parsed into
   `id`, so without this a bullet cannot be found by its own title. A real

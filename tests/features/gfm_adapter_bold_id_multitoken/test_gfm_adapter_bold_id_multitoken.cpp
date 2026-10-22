@@ -115,20 +115,25 @@ TEST(gfm_adapter_bold_id_multitoken, Inv5NoSeparatorFallsBack) {
 TEST(gfm_adapter_bold_id_multitoken, Inv6EnvelopeEmitsBoldId) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // All three envelope emission sites carry the bold_id field
-    // when set. Count occurrences as a proxy — should be ≥ 3
-    // (full-file, section-mode, section_index lazy-fill, plus the
-    // existing roadmap_log flip path adds a 4th).
-    size_t hits = 0;
-    size_t pos = 0;
+    // Two sites build the envelope rows (ANTS-6129): the shared cache
+    // builder rcBuildBulletCacheArray, which every cache fill calls
+    // (full-file and section_index lazy-fill among them), and the
+    // section-mode loop inside cmdRoadmapQuery. Both must emit bold_id.
     const std::string needle = "o[\"bold_id\"] = b.boldId";
-    while ((pos = cpp.find(needle, pos)) != std::string::npos) {
-        ++hits; pos += needle.size();
-    }
-    expect(hits >= 3,
-           "INV-6: bold_id emission landed on all three "
-           "cmdRoadmapQuery envelope sites (full-file + "
-           "section-mode + section_index lazy-fill)");
+    const auto slice = [&](const std::string &start, const std::string &end) {
+        const auto s = cpp.find(start);
+        if (s == std::string::npos) return std::string{};
+        const auto e = cpp.find(end, s + start.size());
+        return cpp.substr(s, e == std::string::npos ? std::string::npos : e - s);
+    };
+    expect(slice("static QJsonArray rcBuildBulletCacheArray(", "\n}\n")
+               .find(needle) != std::string::npos,
+           "INV-6: the shared cache builder emits bold_id (full-file and "
+           "section_index lazy-fill rows)");
+    expect(slice("QJsonDocument RemoteControl::cmdRoadmapQuery(",
+                 "\nQJsonDocument RemoteControl::")
+               .find(needle) != std::string::npos,
+           "INV-6: the section-mode row loop emits bold_id");
     EXPECT_EQ(0, expect_failures());
 }
 

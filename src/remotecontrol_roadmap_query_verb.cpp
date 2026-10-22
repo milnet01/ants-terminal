@@ -33,15 +33,11 @@
 
 using namespace rcdetail;  // ANTS-3833
 
-// ANTS-1922 — canonical bullet-cache array builder. Mirrors the
-// bullet-mode pre-fill loop exactly (same fields, incl. section_slug)
-// so a bundles-mode lazy-fill keeps the SHARED m_roadmapCacheBullets
-// consistent for a later section_index call within the TTL. Used only
-// by the bundles branch's lazy-fill; the three legacy fill sites inside
-// cmdRoadmapQuery are deliberately NOT migrated to it — that would move
-// their `for (const auto &b : bullets)` loops out of the function body
-// and perturb the count-based roadmap_query_section_index INV-7 guard
-// (a follow-on can migrate them + update that test).
+// ANTS-1922 — the one builder of the SHARED m_roadmapCacheBullets: every
+// cache fill in cmdRoadmapQuery calls it, so every mode sees the same
+// fields. ANTS-1442 — section_slug must be on every row, or a later
+// section_index call tallies zero for every section. Only section-mode
+// emission builds its rows by hand (its own body cap and slug).
 //
 // ANTS-3793 — takes RECORDS rather than markdown now: the backend choice is the
 // caller's (RemoteControl::roadmapBullets), and this builder has no
@@ -2366,8 +2362,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 
         if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
             // ANTS-3793 — the store when this project is migrated, `markdown`
-            // when it is not. One call swapped; the emission loop below is
-            // untouched (roadmap_query_section_index INV-7 scrapes its shape).
+            // when it is not.
             RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
             QString srcErr;
             const auto bullets = roadmapBullets(callerCanonical, text,
@@ -2375,50 +2370,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                                 &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
                 return refuseRoadmapSource(srcWhy, srcErr);
-            QJsonArray arr;
-            for (const auto &b : bullets) {
-                QJsonObject o;
-                o["id"] = b.id;
-                o["status"] = b.status;
-                o["headline"] = b.headline;
-                // ANTS-1521 — single-line headline companion.
-                o["headline_oneline"] = rcHeadlineOneline(b.headline);
-                rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
-                // ANTS-1517 — body (truncated). Always cached; the
-                // strip pass at emission removes when include_body
-                // is false. ANTS-3425 — store at the larger cap so an
-                // id/ids max_body_bytes fetch can emit past 2000
-                // (list/section emission still re-caps to 2000).
-                rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
-                rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
-                o["kind"] = b.kind;
-                // ANTS-4985 — beside `kind`, at every emitter.
-                o["source"] = b.source;
-                QJsonArray lanes;
-                for (const QString &l : b.lanes) lanes.append(l);
-                o["lanes"] = lanes;
-                rcMaybeEmitEvidence(o, b);  // ANTS-3382
-                // ANTS-1442 — section_slug must be on every cache
-                // population path. Without it the section_index
-                // tally walks objects keyed to "" and rolls up zero.
-                o["section_slug"] = b.sectionSlug;
-                // ANTS-1428 — adapter-mode metadata. Native parses
-                // leave these at default (empty/false), so callers
-                // that ignore them see no change.
-                if (b.format == QLatin1String("github-task-list")) {
-                    o["format"] = b.format;
-                }
-                if (b.synthetic) o["synthetic"] = true;
-                if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
-                // ANTS-1438 — bold_id field, emitted only when set
-                // (additive; absent on native ants-v1 bullets and on
-                // GFM bullets with no bold prefix).
-                if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
-                // ANTS-4575 — gated: absent when the id was declared.
-                if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
-                arr.append(o);
-            }
-            m_roadmapCacheBullets = arr;
+            m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
             // ANTS-1646 — recompute duplicate-ID descriptors against
             // the freshly-populated cache. Stays empty on a clean
             // roadmap; emission gate suppresses the field then.
@@ -2459,39 +2411,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                                     &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None)
                     return refuseRoadmapSource(srcWhy, srcErr);
-                QJsonArray arr;
-                for (const auto &b : bullets) {
-                    QJsonObject o;
-                    o["id"] = b.id;
-                    o["status"] = b.status;
-                    o["headline"] = b.headline;
-                    // ANTS-1521 — single-line headline companion.
-                    o["headline_oneline"] = rcHeadlineOneline(b.headline);
-                    rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
-                    // ANTS-1517 — body (truncated). ANTS-3425 — store at
-                    // the larger cap so an id/ids max_body_bytes fetch sees
-                    // it (list/section emission still re-caps to 2000).
-                    rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
-                    rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
-                    o["kind"] = b.kind;
-                    // ANTS-4985 — beside `kind`, at every emitter.
-                    o["source"] = b.source;
-                    o["section_slug"] = b.sectionSlug;
-                    QJsonArray lanes;
-                    for (const QString &l : b.lanes) lanes.append(l);
-                    o["lanes"] = lanes;
-                    rcMaybeEmitEvidence(o, b);  // ANTS-3382
-                    if (b.format == QLatin1String("github-task-list")) {
-                        o["format"] = b.format;
-                    }
-                    if (b.synthetic) o["synthetic"] = true;
-                    if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
-                    if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
-                    // ANTS-4575 — gated: absent when the id was declared.
-                    if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
-                    arr.append(o);
-                }
-                m_roadmapCacheBullets = arr;
+                m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
                 // ANTS-1646 — recompute on the section_index lazy-fill
                 // path so callers entering through section_index mode
                 // still see duplicate_ids when collisions exist.
@@ -2911,6 +2831,197 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap));
     }
 
+    // ANTS-6129 — the bullet-list tail the section= and full-file paths
+    // share. Each path used to carry its own copy, and fixes such as
+    // ANTS-3560 and ANTS-4423 reached one copy before the other.
+    //
+    // pruneAndFilter — ANTS-1398 + ANTS-1425: drop rollup and narrator
+    // bullets unless the caller opts each class back in, then apply the
+    // keyword, kind and source filters. The two counts let an empty result
+    // say which step emptied it (ANTS-1538, ANTS-3560): idBearing is taken
+    // after the ID-prune and before the keyword filter.
+    struct ListCounts { int beforeIdPrune = 0; int idBearing = 0; };
+    const auto pruneAndFilter = [&](QJsonArray &filtered) {
+        ListCounts n;
+        n.beforeIdPrune = filtered.size();
+        QJsonArray pruned;
+        for (const auto &v : std::as_const(filtered)) {
+            if (!shouldDropUnnumbered(v)) pruned.append(v);
+        }
+        filtered = pruned;
+        n.idBearing = filtered.size();
+        // ANTS-3391 — before pagination, so count / next_offset reflect the
+        // narrowed set.
+        applyQueryFilter(filtered);
+        applyKindFilter(filtered);   // ANTS-4836
+        applySourceFilter(filtered); // ANTS-4985
+        return n;
+    };
+    // emitBulletPage — projection, body cap, bullet_fields, paging, the
+    // envelope echoes and the empty-result warning. inSection words the
+    // warning for one section and skips the whole-file format check.
+    const auto emitBulletPage = [&](QJsonArray &filtered, const ListCounts &n,
+                                    bool inSection) {
+        // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
+        // headline-only projection, so a scanning caller keeps every id and
+        // headline rather than losing the tail. Off when the caller asked for
+        // lean rows (headline_only) or for bodies (include_body). ANTS-4837 —
+        // and under a caller-chosen row shape, which the fixed four-key shape
+        // would silently discard.
+        const bool wantDownshift =
+            (mode != QLatin1String("headline_only")) && !includeBody
+            && bulletFields.isEmpty();
+        // ANTS-3577 — project the FULL filtered set before pagination, so the
+        // soft-cap measure counts the bytes that will be emitted and more rows
+        // fit per page (ANTS-1881 INV-6). ANTS-5703 — a plain list (no
+        // include_body, no bullet_fields) takes the same lean shape: kind,
+        // lanes, source and the duplicate headline are on request only.
+        if (mode == QLatin1String("headline_only"))
+            rcProjectHeadlineOnly(filtered);
+        else if (!includeBody && bulletFields.isEmpty())
+            rcProjectListDefault(filtered);
+        // ANTS-4630 — cap bodies before pagination too, on the same principle:
+        // a body measured larger than it will be emitted drops rows that fit.
+        // ANTS-5467 — at the list cap, which max_body_bytes may lower.
+        if (includeBody) {
+            applyBodyMatch(filtered);  // ANTS-5468 — before the cap
+            rcCapBodyFields(filtered, listBodyCap);
+            announceListCap(out);
+        }
+        // ANTS-4837 — bullet_fields before pagination as well, after the body
+        // cap so a kept `body` is still capped.
+        applyBulletFields(filtered);
+        // ANTS-1436-INV-11 — pagination via PaginationEngine.
+        auto page = PaginationEngine::pageBullets(
+            filtered, offsetArg, limitArg,
+            wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
+                          : PaginationEngine::RowProjector{});
+        // ANTS-1517 — strip bodies when include_body is false (a no-op when
+        // the headline_only projection already dropped them).
+        if (!includeBody) rcStripBodyFields(page.slice);
+        out["ok"] = true;
+        out["bullets"] = page.slice;
+        // ANTS-4362 — say when the bodies were withheld. A status- or
+        // section-filtered list strips them unless include_body is passed,
+        // since it can match the whole roadmap; an id/ids fetch returns them.
+        // Silent, the reply read as though those bullets had no bodies.
+        if (!includeBody && mode != QLatin1String("headline_only")
+            && !page.slice.isEmpty()) {
+            out["bodies_omitted"] = true;
+            out["bodies_omitted_reason"] = QStringLiteral(
+                "a filtered bullets query withholds bodies by default because the "
+                "filter can match the whole roadmap; pass include_body:true to get "
+                "them (an id/ids fetch returns them without asking). Rows carry "
+                "id, status, headline_oneline and section_slug unless "
+                "bullet_fields names others (kind, lanes, source)");
+        }
+        out["path"] = path;
+        // ANTS-1247-INV-10: count is post-filter post-pagination size.
+        out["count"] = page.slice.size();
+        // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
+        out["filter"] = filterEcho;
+        if (!queryArg.isEmpty()) {  // ANTS-3391
+            out["query"] = queryArg;
+            // ANTS-5257 — what the search covered, so a zero-hit reply says
+            // where it looked rather than reading as "no such item".
+            out["query_fields"] =
+                QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
+        }
+        if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
+        if (!sourceArgs.isEmpty()) {   // ANTS-4985
+            out["source"] = QJsonArray::fromStringList(sourceArgs);
+            out["source_filtered_out"] = sourceFilteredOut;
+        }
+        if (PaginationEngine::shouldEmitPaginationFields(
+                callerPassedOffset, callerPassedLimit, page.truncated)) {
+            out["offset"]    = page.offset;
+            out["limit"]     = page.limit;
+            out["total"]     = page.total;
+            out["truncated"] = page.truncated;
+            if (page.truncated) out["next_offset"] = page.nextOffset;
+        }
+        // ANTS-3543 — emit only when a downshift fired (truthy-only, like
+        // truncated). Rows are then headline-shaped and the tail is complete.
+        if (page.downshifted) out["downshifted"] = true;
+        // Why an empty result is empty: at most one warning, first match wins.
+        // Without one, {ok:true, bullets:[], count:0} reads as "no work".
+        if (filtered.isEmpty()) {
+            const QString where =
+                inSection ? QStringLiteral(" in this section") : QString();
+            // ANTS-3583 — on the whole-file path, does the FILE have any
+            // [PROJ-NNNN]-tagged bullet? That is a property of the file, not
+            // of the status filter, which can zero the counts on a prose or
+            // milestone roadmap and leave a bare count:0 (perch feedback
+            // 2026-07-18). The scan stops at the first id-bearing bullet.
+            bool fileHasIdBearingBullet = true;
+            if (!inSection) {
+                fileHasIdBearingBullet = false;
+                for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+                    if (!shouldDropUnnumbered(v)) { fileHasIdBearingBullet = true; break; }
+                }
+            }
+            // ANTS-4861 — not on a store-served read: every stored item carries
+            // an id, so an empty set there means no items, never an unparsed
+            // format.
+            if (!fileHasIdBearingBullet &&
+                m_roadmapCacheSource != QLatin1String("store") &&
+                !includeNarratorBullets && !includeSectionHeaders) {
+                out["parseable_bullets"] = 0;
+                out["warning"] = QStringLiteral(
+                    "this roadmap has no [PROJ-NNNN]-tagged bullets that "
+                    "roadmap_query can parse (it is prose/milestone-style). "
+                    "count:0 means \"format not recognised\", NOT \"no outstanding "
+                    "work\" — identical on every status filter. Re-issue with "
+                    "include_narrator_bullets:true to see the raw bullets.");
+            } else if (!queryArg.isEmpty() && n.idBearing > 0) {
+                // ANTS-3560 / ANTS-4423 — the keyword query, not the ID filter,
+                // emptied a set of id-bearing bullets. A space- or
+                // comma-separated multi-id query is the common cause (Rolodex).
+                out["warning"] = QStringLiteral(
+                    "no bullet%1 matched query \"%2\" (%3 id-bearing bullet(s) "
+                    "searched). If you passed multiple space/comma-separated "
+                    "ids, use ids:[...] or query one id at a time.")
+                        .arg(where, queryArg, QString::number(n.idBearing));
+            } else if (n.idBearing > 0 &&
+                       (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
+                // ANTS-4971 — the kind or source filter emptied it; the result
+                // is correct, not a malformed roadmap.
+                out["warning"] = QStringLiteral(
+                    "no id-bearing bullet%1 matched the kind/source filter (%2 "
+                    "id-bearing bullet(s) considered). The result is complete: "
+                    "no item%3 carries that value.")
+                        .arg(where, QString::number(n.idBearing),
+                             inSection ? QStringLiteral(" here") : QString());
+            } else if (n.beforeIdPrune > 0 && n.idBearing == 0 &&
+                       !includeNarratorBullets && !includeSectionHeaders) {
+                // ANTS-1538 — the default ID filter dropped every bullet:
+                // common on GFM task-list or older roadmaps with no
+                // [PROJ-NNNN] tokens. Name the opt-ins.
+                out["warning"] = QStringLiteral(
+                    "default ID-filter dropped all %1 bullet(s)%2 (every entry "
+                    "was either a rollup-summary or narrator-prose line with "
+                    "no [PROJ-NNNN] id). Re-issue with "
+                    "include_narrator_bullets:true and/or "
+                    "include_section_headers:true to see them.")
+                        .arg(QString::number(n.beforeIdPrune), where);
+            }
+        }
+        // ANTS-1398-INV-5, ANTS-1425, ANTS-1517 — echo each opt-in only when
+        // the caller set it, so the default envelope stays trim on the wire.
+        if (hasIncludeHeadersArg) {
+            out["include_section_headers"] = includeSectionHeaders;
+        }
+        if (hasIncludeNarratorsArg) {
+            out["include_narrator_bullets"] = includeNarratorBullets;
+        }
+        if (hasIncludeBodyArg) {
+            out["include_body"] = includeBody;
+        }
+        // ANTS-1437 — mode echo only when caller set the arg
+        // (default-back-compat envelope shape per INV-1).
+        if (hasModeArg) out["mode"] = mode;
+    };
+
     // ANTS-1287 — section branch. ANTS-5315 — `version` arrives here too.
     if (!section.isEmpty() || !versionArg.isEmpty()) {
         // INV-9: ensure we have an index even on a cache HIT taken
@@ -3210,134 +3321,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 if (keep) filtered.append(v);
             }
         }
-        // ANTS-1398-INV-3b + ANTS-1425 — section-mode emission drops
-        // both rollup and narrator bullets post-status filter unless
-        // the caller opts each class back in via the matching flag.
-        // ANTS-1538 — capture pre-prune count so we can surface a
-        // `warning` when the default ID-filter silently dropped every
-        // actionable bullet (legacy GFM-task-list / older-spec roadmaps
-        // whose authors used narrator prose instead of `[PROJ-NNNN]`
-        // tokens).
-        const int preIdPruneCountSec = filtered.size();
-        {
-            QJsonArray pruned;
-            for (const auto &v : std::as_const(filtered)) {
-                if (!shouldDropUnnumbered(v)) pruned.append(v);
-            }
-            filtered = pruned;
-        }
-        // ANTS-4423 — the id-bearing count, captured after the ID-prune and
-        // BEFORE the keyword filter, so an empty result can say which of the
-        // two emptied it. The full-file path has carried this since ANTS-3560
-        // (`postIdPruneCountFull`); the section= path did not, so that fix
-        // reached only half its own surface.
-        const int postIdPruneCountSec = filtered.size();
-        // ANTS-3391 — keyword filter composes after status + section, before
-        // pagination (so count / next_offset reflect the narrowed set).
-        applyQueryFilter(filtered);
-        applyKindFilter(filtered);   // ANTS-4836
-        applySourceFilter(filtered); // ANTS-4985
-        // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
-        // One call site per emission branch (section + full-file).
-        // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
-        // headline-only projection so a scanning caller keeps every id/
-        // headline rather than losing the tail. Gated off when the caller
-        // already asked for lean rows (headline_only) or explicitly wants
-        // bodies (include_body); the section_index sections[] branch is
-        // excluded (section descriptors have no lean form — § 5).
-        // ANTS-4837 — and never under a caller-chosen row shape. The downshift
-        // replaces rows with the fixed four-key shape, which would silently
-        // discard the projection the caller asked for.
-        const bool wantDownshift =
-            (mode != QLatin1String("headline_only")) && !includeBody
-            && bulletFields.isEmpty();
-        // ANTS-3577 — restore ANTS-1881 INV-6: in already-lean
-        // (headline_only) mode project the FULL filtered set to its 4-key
-        // shape BEFORE pagination, so the soft-cap measure counts lean bytes
-        // and more rows fit per page. The prior code projected page.slice
-        // AFTER the fat measure, dropping more rows than the lean shape needs.
-        // filtered's only post-pageBullets use is .isEmpty() (below), which an
-        // in-place projection leaves unchanged.
-        // ANTS-5703 — a plain list (no include_body, no bullet_fields) takes
-        // the same lean shape: kind, lanes, source and the duplicate headline
-        // are on request only.
-        if (mode == QLatin1String("headline_only"))
-            rcProjectHeadlineOnly(filtered);
-        else if (!includeBody && bulletFields.isEmpty())
-            rcProjectListDefault(filtered);
-        // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
-        // this ceiling on the way in; now that bodies are read whole (ANTS-5094:
-        // the cache holds none, so a body-wanting call builds afresh), the
-        // soft-cap measure would weigh a body far larger than anything this path
-        // emits, and drop rows it used to fit — a single oversized bullet came
-        // back as count:0 / total:1. Same principle as the ANTS-3577 projection
-        // above: shrink to what will be emitted, then measure.
-        // ANTS-5467 — at the list cap, which max_body_bytes may lower. The
-        // bodies were built at 2000 above, so the store cap here trimmed
-        // nothing and a smaller cap asked for was never applied.
-        if (includeBody) {
-            applyBodyMatch(filtered);  // ANTS-5468 — before the cap
-            rcCapBodyFields(filtered, listBodyCap);
-            announceListCap(out);
-        }
-        // ANTS-4837 — project BEFORE pagination, on ANTS-3577's reasoning: the
-        // soft-cap measure then weighs the rows that will actually be emitted,
-        // so a narrow projection fits more rows per page instead of paying for
-        // bytes it is about to drop. After the body cap, so a kept `body` is
-        // still capped rather than emitted whole.
-        applyBulletFields(filtered);
-        auto page = PaginationEngine::pageBullets(
-            filtered, offsetArg, limitArg,
-            wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
-                          : PaginationEngine::RowProjector{});
-        const bool emitPagination =
-            PaginationEngine::shouldEmitPaginationFields(
-                callerPassedOffset, callerPassedLimit, page.truncated);
-        // ANTS-1517 — strip body fields when include_body is false (a no-op
-        // when the headline_only projection above already dropped bodies).
-        // ANTS-4630 — and cap them when it is true. This path never capped:
-        // it inherited its ceiling from the cache, which elided at the store
-        // cap on the way in. The cache now keeps bodies whole, so the ceiling
-        // has to be stated here. kRoadmapQueryBodyStoreCap is exactly what
-        // the cache used to enforce, so the emitted bytes are unchanged.
-        if (!includeBody) rcStripBodyFields(page.slice);
-        out["ok"] = true;
-        out["bullets"] = page.slice;
-        // ANTS-4362 — say when the bodies were withheld. `mode:"bullets"` is
-        // NAMED for returning bodies, and on an `id`/`ids` fetch it does so by
-        // default; on a status- or section-filtered query it strips them
-        // unless `include_body` is passed. That asymmetry is deliberate — a
-        // targeted fetch is a handful of bullets, a status filter can match
-        // the whole roadmap — but it was SILENT, so the reply read as though
-        // those bullets simply had no bodies and a session picked between
-        // candidates on headlines alone. Orienting on a queue is exactly the
-        // status-filtered shape, which is the one that drops them.
-        if (!includeBody && mode != QLatin1String("headline_only")
-            && !page.slice.isEmpty()) {
-            out["bodies_omitted"] = true;
-            out["bodies_omitted_reason"] = QStringLiteral(
-                "a filtered bullets query withholds bodies by default because "
-                "the filter can match the whole roadmap; pass "
-                "include_body:true to get them (an id/ids fetch returns them "
-                "without asking). Rows carry id, status, headline_oneline and "
-                "section_slug unless bullet_fields names others (kind, lanes, "
-                "source)");
-        }
-        out["path"] = path;
-        out["count"] = page.slice.size();
-        out["filter"] = filterEcho;
-        if (!queryArg.isEmpty()) {  // ANTS-3391
-            out["query"] = queryArg;
-            // ANTS-5257 — what the search covered, so a zero-hit reply says
-            // where it looked rather than reading as "no such item".
-            out["query_fields"] =
-                QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
-        }
-        if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
-        if (!sourceArgs.isEmpty()) {   // ANTS-4985
-            out["source"] = QJsonArray::fromStringList(sourceArgs);
-            out["source_filtered_out"] = sourceFilteredOut;
-        }
+        // ANTS-1398-INV-3b — section-mode emission prunes, filters and pages
+        // through the shared tail (ANTS-6129).
+        const ListCounts counts = pruneAndFilter(filtered);
+        emitBulletPage(filtered, counts, /*inSection=*/true);
         out["section"] = sec->slug;
         // ANTS-4758 — name the nested sections this reply also covers
         // (ANTS-4819), so a caller can descend or tell a direct bullet from a
@@ -3375,74 +3362,6 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                         .toInt();
             }
         }
-        // ANTS-4423 — the keyword query, not the ID-mandate, emptied the
-        // set. Mirrors the full-file branch (ANTS-3560, 2026-07-17), which
-        // fixed this text on its own path and left the section= path
-        // unchanged; a section query that matched nothing therefore still
-        // claimed every bullet lacked a [PROJ-NNNN] id and prescribed two
-        // flags that cannot help. Reproduced in-session on THIS roadmap:
-        // 40 bullets, every one id-bearing, count 0, and the warning blamed
-        // the ID filter. A wrong reason is worse than none — it sends the
-        // reader to re-issue with flags that change nothing and invites the
-        // conclusion that the section is full of narrator prose.
-        //
-        // Ordered before the ANTS-1538 gate for the same reason it is there:
-        // whichever branch fires, exactly one warning is emitted.
-        if (!queryArg.isEmpty() && postIdPruneCountSec > 0 &&
-            filtered.isEmpty()) {
-            out["warning"] = QStringLiteral(
-                "no bullet in this section matched query \"%1\" (%2 "
-                "id-bearing bullet(s) searched). If you passed multiple "
-                "space/comma-separated ids, use ids:[...] or query one id "
-                "at a time.")
-                    .arg(queryArg, QString::number(postIdPruneCountSec));
-        } else if (postIdPruneCountSec > 0 && filtered.isEmpty() &&
-            (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
-            // ANTS-4971 — the ID filter kept id-bearing bullets and the kind or
-            // source filter emptied the set. The ANTS-1538 text below blamed
-            // the ID filter and called a well-formed roadmap malformed, on a
-            // result that was correct.
-            out["warning"] = QStringLiteral(
-                "no id-bearing bullet in this section matched the kind/source "
-                "filter (%1 id-bearing bullet(s) considered). The result is "
-                "complete: no item here carries that value.")
-                    .arg(postIdPruneCountSec);
-        } else if (preIdPruneCountSec > 0 && postIdPruneCountSec == 0 &&
-            filtered.isEmpty() &&
-            !includeNarratorBullets && !includeSectionHeaders) {
-            out["warning"] = QStringLiteral(
-                "default ID-filter dropped all %1 bullet(s) in this "
-                "section (every entry was either a rollup-summary or "
-                "narrator-prose line with no [PROJ-NNNN] id). "
-                "Re-issue with include_narrator_bullets:true and/or "
-                "include_section_headers:true to see them.")
-                    .arg(preIdPruneCountSec);
-        }
-        if (emitPagination) {
-            out["offset"]    = page.offset;
-            out["limit"]     = page.limit;
-            out["total"]     = page.total;
-            out["truncated"] = page.truncated;
-            if (page.truncated) out["next_offset"] = page.nextOffset;
-        }
-        // ANTS-3543 — emit only when a downshift fired (truthy-only, like
-        // truncated). Rows are then headline-shaped and the tail is complete.
-        if (page.downshifted) out["downshifted"] = true;
-        // ANTS-1398-INV-5: echo the opt-in only when the caller set it.
-        if (hasIncludeHeadersArg) {
-            out["include_section_headers"] = includeSectionHeaders;
-        }
-        // ANTS-1425 — same echo-only-when-set discipline.
-        if (hasIncludeNarratorsArg) {
-            out["include_narrator_bullets"] = includeNarratorBullets;
-        }
-        // ANTS-1517 — same echo-only-when-set discipline.
-        if (hasIncludeBodyArg) {
-            out["include_body"] = includeBody;
-        }
-        // ANTS-1437 — mode echo only when caller set the arg
-        // (default-back-compat envelope shape per INV-1).
-        if (hasModeArg) out["mode"] = mode;
         // ANTS-1646 — section-mode emission picks up the cached
         // duplicate descriptors only when m_roadmapCacheBullets has
         // been populated by a prior full-file / section_index call.
@@ -3477,44 +3396,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                                 &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
                 return refuseRoadmapSource(srcWhy, srcErr);
-            QJsonArray arr;
-            for (const auto &b : bullets) {
-                QJsonObject o;
-                o["id"] = b.id;
-                o["status"] = b.status;
-                o["headline"] = b.headline;
-                // ANTS-1521 — single-line headline companion.
-                o["headline_oneline"] = rcHeadlineOneline(b.headline);
-                rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
-                // ANTS-1517 — body (truncated). ANTS-3425 — store at the
-                // larger cap so an id/ids max_body_bytes fetch sees it
-                // (list/section emission still re-caps to 2000).
-                rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
-                rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
-                o["kind"] = b.kind;
-                // ANTS-4985 — beside `kind`, at every emitter.
-                o["source"] = b.source;
-                QJsonArray lanes;
-                for (const QString &l : b.lanes) lanes.append(l);
-                o["lanes"] = lanes;
-                // ANTS-1442 — section_slug must be on every cache
-                // population path.
-                o["section_slug"] = b.sectionSlug;
-                // ANTS-1428 — adapter-mode metadata (lazy-fill path).
-                if (b.format == QLatin1String("github-task-list")) {
-                    o["format"] = b.format;
-                }
-                if (b.synthetic) o["synthetic"] = true;
-                if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
-                // ANTS-1438 — bold_id field, emitted only when set
-                // (additive; absent on native ants-v1 bullets and on
-                // GFM bullets with no bold prefix).
-                if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
-                // ANTS-4575 — gated: absent when the id was declared.
-                if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
-                arr.append(o);
-            }
-            m_roadmapCacheBullets = arr;
+            m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
             // ANTS-1646 — recompute on the full-file lazy-fill path
             // taken after a section-mode cache HIT.
             m_roadmapCacheDuplicateIds =
@@ -3947,30 +3829,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
     }
 
-    // ANTS-1398-INV-3a + ANTS-1425 — full-file emission drops both
-    // rollup and narrator bullets post-status filter unless the caller
-    // opts each class back in via the matching flag.
-    // ANTS-1538 — capture pre-prune count for the warning gate below.
-    const int preIdPruneCountFull = filtered.size();
-    {
-        QJsonArray pruned;
-        for (const auto &v : std::as_const(filtered)) {
-            if (!shouldDropUnnumbered(v)) pruned.append(v);
-        }
-        filtered = pruned;
-    }
-    // ANTS-3560 — count AFTER the ID-prune but BEFORE the keyword filter,
-    // so the warning gate below can tell "the ID-mandate dropped every
-    // bullet" (id-bearing count 0) from "the query matched nothing"
-    // (id-bearing count > 0). Without this split a query that matched no
-    // bullet fell through the ANTS-1538 gate and wrongly claimed every
-    // entry lacked a [PROJ-NNNN] id (Rolodex feedback 2026-07-16).
-    const int postIdPruneCountFull = filtered.size();
-    // ANTS-3391 — keyword filter composes after status, before pagination
-    // (so count / next_offset reflect the narrowed set).
-    applyQueryFilter(filtered);
-    applyKindFilter(filtered);   // ANTS-4836
-    applySourceFilter(filtered); // ANTS-4985
+    // ANTS-1398-INV-3a — full-file emission prunes, filters and pages
+    // through the shared tail (ANTS-6129).
+    const ListCounts counts = pruneAndFilter(filtered);
 
     // ANTS-4119 / ANTS-4993 — the provenance vocabulary with counts, over the
     // same filtered list a bullets query would page through.
@@ -3987,173 +3848,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         return QJsonDocument(out);
     }
 
-    // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
-    // Second of two call sites (the other is in the section-mode
-    // branch above). Stateless; auto-truncate fires when caller
-    // omitted limit AND filtered exceeds the soft cap.
-    // ANTS-3543 — same auto-downshift gate as the section branch.
-    // ANTS-4837 — and never under a caller-chosen row shape; see the section
-    // branch's copy of this gate.
-    const bool wantDownshift =
-        (mode != QLatin1String("headline_only")) && !includeBody
-        && bulletFields.isEmpty();
-    // ANTS-3577 — restore ANTS-1881 INV-6: project the FULL filtered set to
-    // its lean 4-key shape BEFORE pagination in headline_only mode, so the
-    // soft-cap measure counts lean bytes (more rows per page). The prior code
-    // measured the fat row then projected page.slice, dropping more than
-    // needed. filtered's only later use is .isEmpty() (below), unaffected by an
-    // in-place projection.
-    // ANTS-5703 — and a plain list too; see the section branch.
-    if (mode == QLatin1String("headline_only"))
-        rcProjectHeadlineOnly(filtered);
-    else if (!includeBody && bulletFields.isEmpty())
-        rcProjectListDefault(filtered);
-    // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
-    // this ceiling on the way in; now that it keeps bodies whole, the
-    // soft-cap measure would weigh a body far larger than anything this path
-    // emits, and drop rows it used to fit — a single oversized bullet came
-    // back as count:0 / total:1. Same principle as the ANTS-3577 projection
-    // above: shrink to what will be emitted, then measure.
-    // ANTS-5467 — at the list cap this path emits, which max_body_bytes may
-    // lower. Measuring at the store cap weighed each body up to 16 KiB and
-    // then emitted 2000, so a page held fewer rows than fit.
-    if (includeBody) {
-        applyBodyMatch(filtered);  // ANTS-5468 — before the cap
-        rcCapBodyFields(filtered, listBodyCap);
-        announceListCap(out);
-    }
-    // ANTS-4837 — before pagination; see the section branch for why.
-    applyBulletFields(filtered);
-    auto page = PaginationEngine::pageBullets(
-        filtered, offsetArg, limitArg,
-        wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
-                      : PaginationEngine::RowProjector{});
-    const bool emitPagination =
-        PaginationEngine::shouldEmitPaginationFields(
-            callerPassedOffset, callerPassedLimit, page.truncated);
-
-    // ANTS-1517 — strip body fields when include_body is false (a no-op when
-    // the headline_only projection above already dropped bodies).
-    // ANTS-3402 — else re-truncate to the 2000 list cap: this path emits
-    // from m_roadmapCacheBullets, whose bodies are now stored up to
-    // kRoadmapQueryBodyStoreCap; the larger body is reserved for the
-    // opt-in id/ids fetch, so a list stays at the 2000 cap. ANTS-5467 — the
-    // cap was applied before pagination above, so only the strip remains.
-    if (!includeBody) rcStripBodyFields(page.slice);
-
-    out["ok"] = true;
-    out["bullets"] = page.slice;
-    // ANTS-4362 — see the section-path note: the withholding is deliberate,
-    // the silence was not. This is the STATUS-filtered path, which is the one
-    // a session orienting on its queue actually uses.
-    if (!includeBody && mode != QLatin1String("headline_only")
-        && !page.slice.isEmpty()) {
-        out["bodies_omitted"] = true;
-        out["bodies_omitted_reason"] = QStringLiteral(
-            "a filtered bullets query withholds bodies by default because the "
-            "filter can match the whole roadmap; pass include_body:true to get "
-            "them (an id/ids fetch returns them without asking). Rows carry "
-            "id, status, headline_oneline and section_slug unless "
-            "bullet_fields names others (kind, lanes, source)");
-    }
-    out["path"] = path;
-    // ANTS-1247-INV-10: count is post-filter post-pagination size.
-    out["count"] = page.slice.size();
-    // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
-    out["filter"] = filterEcho;
-    if (!queryArg.isEmpty()) {  // ANTS-3391
-        out["query"] = queryArg;
-        // ANTS-5257 — what the search covered, so a zero-hit reply says
-        // where it looked rather than reading as "no such item".
-        out["query_fields"] =
-            QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
-    }
-    if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
-    if (!sourceArgs.isEmpty()) {   // ANTS-4985
-        out["source"] = QJsonArray::fromStringList(sourceArgs);
-        out["source_filtered_out"] = sourceFilteredOut;
-    }
-    if (emitPagination) {
-        out["offset"]    = page.offset;
-        out["limit"]     = page.limit;
-        out["total"]     = page.total;
-        out["truncated"] = page.truncated;
-        if (page.truncated) out["next_offset"] = page.nextOffset;
-    }
-    // ANTS-3543 — emit only when a downshift fired (truthy-only, like
-    // truncated). Rows are then headline-shaped and the tail is complete.
-    if (page.downshifted) out["downshifted"] = true;
-    // ANTS-1538 — when the default ID-filter silently dropped every
-    // actionable bullet, surface a warning naming the opt-ins. Common
-    // on legacy GFM-task-list or older-spec roadmaps whose authors
-    // didn't tag bullets with [PROJ-NNNN] tokens; without this hint
-    // the caller reads {ok:true, bullets:[], count:0} as "no work"
-    // when in reality every bullet was pruned by the ID-mandate.
-    if (filtered.isEmpty()) {
-        // ANTS-3583 — does the WHOLE file have any [PROJ-NNNN]-tagged bullet?
-        // preIdPruneCountFull is captured AFTER the status filter, so a
-        // status filter that drops the status-less narrator bullets of a
-        // prose/milestone roadmap zeroes the ANTS-1538 gate below: the caller
-        // then gets a bare count:0 that reads as "no work left" when the truth
-        // is "this tool can't parse this roadmap format" (perch feedback
-        // 2026-07-18 — status:'planned' had no warning while status:'all' did).
-        // Whether the roadmap has ZERO id-bearing bullets is a property of the
-        // file, not of the filter, so surface it on EVERY filter with a
-        // machine-detectable parseable_bullets:0. Early-exit keeps it O(1) on
-        // a normal roadmap (first id-bearing bullet ends the scan), and it only
-        // runs on the already-empty path.
-        bool fileHasIdBearingBullet = false;
-        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
-            if (!shouldDropUnnumbered(v)) { fileHasIdBearingBullet = true; break; }
-        }
-        // ANTS-4861 — not on a store-served read: every stored item carries an
-        // id, so an empty set there means no items, never an unparsed format.
-        if (!fileHasIdBearingBullet &&
-            m_roadmapCacheSource != QLatin1String("store") &&
-            !includeNarratorBullets && !includeSectionHeaders) {
-            out["parseable_bullets"] = 0;
-            out["warning"] = QStringLiteral(
-                "this roadmap has no [PROJ-NNNN]-tagged bullets that "
-                "roadmap_query can parse (it is prose/milestone-style). "
-                "count:0 means \"format not recognised\", NOT \"no outstanding "
-                "work\" — identical on every status filter. Re-issue with "
-                "include_narrator_bullets:true to see the raw bullets.");
-        } else if (!queryArg.isEmpty() && postIdPruneCountFull > 0) {
-            // ANTS-3560 — the keyword query, not the ID-mandate, emptied
-            // the set: N id-bearing bullets were searched and none matched.
-            // The old ANTS-1538 text misdirected toward
-            // include_narrator_bullets when the real fix is to fix the
-            // query; a space/comma-separated multi-id query is the common
-            // trigger (Rolodex), so hint at ids:[...] / one-id-at-a-time.
-            out["warning"] = QStringLiteral(
-                "no bullet matched query \"%1\" (%2 id-bearing bullet(s) "
-                "searched). If you passed multiple space/comma-separated "
-                "ids, use ids:[...] or query one id at a time.")
-                    .arg(queryArg, QString::number(postIdPruneCountFull));
-        } else if (postIdPruneCountFull > 0 &&
-                   (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
-            // ANTS-4971 — as in the section arm: the kind or source filter,
-            // not the ID filter, emptied a set of id-bearing bullets.
-            out["warning"] = QStringLiteral(
-                "no id-bearing bullet matched the kind/source filter (%1 "
-                "id-bearing bullet(s) considered). The result is complete: no "
-                "item carries that value.")
-                    .arg(postIdPruneCountFull);
-        } else if (preIdPruneCountFull > 0 &&
-                   postIdPruneCountFull == 0 &&
-                   !includeNarratorBullets && !includeSectionHeaders) {
-            // ANTS-1538 — the default ID-filter genuinely dropped every
-            // actionable bullet (no query narrowed it, or the file has no
-            // id-bearing bullets at all). Surface the opt-ins.
-            out["warning"] = QStringLiteral(
-                "default ID-filter dropped all %1 bullet(s) (every entry "
-                "was either a rollup-summary or narrator-prose line with "
-                "no [PROJ-NNNN] id). Re-issue with "
-                "include_narrator_bullets:true and/or "
-                "include_section_headers:true to see them.")
-                    .arg(preIdPruneCountFull);
-        }
-    }
+    emitBulletPage(filtered, counts, /*inSection=*/false);
     // ANTS-1428 — envelope-level format echo. The adapter parses
     // the whole file in one shape; if any bullet was tagged GFM,
     // surface the format so callers know they're in adapter mode
@@ -4189,22 +3884,6 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["non_gfm_bullets"] = others;
         }
     }
-    // ANTS-1398-INV-5: echo the opt-in only when the caller set it
-    // so the default-false case stays trim on the wire.
-    if (hasIncludeHeadersArg) {
-        out["include_section_headers"] = includeSectionHeaders;
-    }
-    // ANTS-1425 — same echo-only-when-set discipline.
-    if (hasIncludeNarratorsArg) {
-        out["include_narrator_bullets"] = includeNarratorBullets;
-    }
-    // ANTS-1517 — same echo-only-when-set discipline.
-    if (hasIncludeBodyArg) {
-        out["include_body"] = includeBody;
-    }
-    // ANTS-1437 — mode echo only when caller set the arg
-    // (default-back-compat envelope shape per INV-1).
-    if (hasModeArg) out["mode"] = mode;
     // ANTS-1646 — full-file emission always sees the just-computed
     // duplicate descriptors (cache fill happened above). Emit when
     // non-empty so a clean roadmap envelope stays back-compat.

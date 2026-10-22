@@ -32,9 +32,9 @@ Engine (`PaginationEngine::pageBullets`, pure):
 
 Wiring (source-scrape over `remotecontrol.cpp` / `remotecontrol.h`):
 
-- **INV-5/6/11** — gated projector at both bullet sites; truthy-only
-  `downshifted` emit; the ANTS-1436 exactly-5-`pageBullets`-calls count survives
-  the new 4th arg.
+- **INV-5/6/11** — gated projector at the one bullet site, which the
+  section and full-file arms share (ANTS-6129); truthy-only `downshifted`
+  emit; the 4th arg added no `pageBullets` call site.
 - **INV-7** — the verb forwards an explicit `limit` verbatim.
 - Routing + **projector identity** — `cmdWorkspaceSearch` caps via
   `downshiftMatches` passing `rcApplyHeadlineOnly` (not an empty/wrong callback);

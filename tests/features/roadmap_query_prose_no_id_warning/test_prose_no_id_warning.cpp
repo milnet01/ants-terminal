@@ -61,9 +61,9 @@ TEST(roadmap_query_prose_no_id_warning, Inv2ParseableBulletsSignalAndWarning) {
 }
 
 // INV-3 — filter-independence: the new branch is gated on the file-level
-// scan + the two opt-in flags, NOT on the post-status preIdPruneCountFull
-// (the value the status filter was able to zero). It must precede the
-// ANTS-1538 preIdPruneCountFull branch.
+// scan + the two opt-in flags, NOT on the post-status pre-prune count
+// (n.beforeIdPrune, the value the status filter was able to zero). It must
+// precede the ANTS-1538 branch that reads that count.
 TEST(roadmap_query_prose_no_id_warning, Inv3GatedOnFileScanNotPostStatusCount) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
@@ -71,16 +71,16 @@ TEST(roadmap_query_prose_no_id_warning, Inv3GatedOnFileScanNotPostStatusCount) {
            "INV-3: branch gated on the file-level scan (not the post-status "
            "count)");
     // Ordering: the ANTS-3583 parseable_bullets branch must appear before the
-    // ANTS-1538 preIdPruneCountFull branch so it supersedes it for the
+    // ANTS-1538 n.beforeIdPrune branch so it supersedes it for the
     // prose-roadmap case on status:'all' too.
     const std::string::size_type parseablePos =
         cpp.find("out[\"parseable_bullets\"] = 0");
     const std::string::size_type preIdPrunePos =
-        cpp.find("} else if (preIdPruneCountFull > 0 &&");
+        cpp.find("} else if (n.beforeIdPrune > 0 &&");
     expect(parseablePos != std::string::npos &&
            preIdPrunePos != std::string::npos &&
            parseablePos < preIdPrunePos,
-           "INV-3: parseable_bullets branch precedes the preIdPruneCountFull "
+           "INV-3: parseable_bullets branch precedes the n.beforeIdPrune "
            "branch");
     EXPECT_EQ(0, expect_failures());
 }
@@ -121,5 +121,43 @@ TEST(roadmap_query_prose_no_id_warning, Ants4971KindFilterIsNamedNotTheIdFilter)
         EXPECT_TRUE(w.contains(QStringLiteral("kind/source filter")))
             << arm << " arm did not name the filter that emptied the set: "
             << w.toStdString();
+    }
+}
+
+// ANTS-3560 / ANTS-4423 — a query that matches nothing on id-bearing bullets is
+// named as the cause, with the count searched, in both arms; the section arm
+// says so. The ID-filter warning, which prescribed flags that cannot help a
+// keyword miss, does not fire. Live, through the real verb.
+TEST(roadmap_query_prose_no_id_warning, Ants4423QueryMissIsNamedInBothArms) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    {
+        QFile f(tmp.path() + QStringLiteral("/ROADMAP.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# Roadmap\n\n## Work\n\n"
+                "- \xF0\x9F\x93\x8B [ANTS-7001] **First fix.**\n"
+                "- \xF0\x9F\x93\x8B [ANTS-7002] **Second fix.**\n");
+    }
+    for (const bool withSection : {false, true}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("query")]      = QStringLiteral("zzqq-absent");
+        if (withSection) req[QStringLiteral("section")] = QStringLiteral("work");
+        RemoteControl rc(nullptr);
+        const QJsonObject o = rc.cmdRoadmapQuery(req).object();
+        const char *arm = withSection ? "section" : "full-file";
+        ASSERT_TRUE(o.value(QStringLiteral("ok")).toBool())
+            << arm << ": " << QJsonDocument(o).toJson().constData();
+        EXPECT_EQ(o.value(QStringLiteral("count")).toInt(), 0) << arm;
+        const QString w = o.value(QStringLiteral("warning")).toString();
+        const QString expected = withSection
+            ? QStringLiteral("no bullet in this section matched query \"zzqq-absent\" "
+                             "(2 id-bearing bullet(s) searched)")
+            : QStringLiteral("no bullet matched query \"zzqq-absent\" "
+                             "(2 id-bearing bullet(s) searched)");
+        EXPECT_TRUE(w.startsWith(expected))
+            << arm << " arm did not name the query miss: " << w.toStdString();
+        EXPECT_FALSE(w.contains(QStringLiteral("default ID-filter dropped")))
+            << arm << " arm blamed the ID filter: " << w.toStdString();
     }
 }

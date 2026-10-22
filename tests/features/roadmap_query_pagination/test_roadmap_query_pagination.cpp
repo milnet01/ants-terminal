@@ -239,10 +239,11 @@ TEST(roadmap_query_pagination, Inv6SectionIndexPaginates) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-11 — PaginationEngine::pageBullets called from exactly five
-// sites in remotecontrol.cpp: three in cmdRoadmapQuery (section +
-// full-file bullet emission + section_index sections[], ANTS-1729)
-// and two in cmdChangelogQuery (entries + version_index, ANTS-3533).
+// INV-11 — PaginationEngine::pageBullets called from exactly four
+// sites in remotecontrol.cpp: two in cmdRoadmapQuery (the bullet tail
+// the section and full-file arms share, ANTS-6129, + section_index
+// sections[], ANTS-1729) and two in cmdChangelogQuery (entries +
+// version_index, ANTS-3533).
 TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
@@ -253,11 +254,15 @@ TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
         ++count;
         pos += needle.size();
     }
-    expect(count == 5,
+    expect(count == 4,
            "INV-11: PaginationEngine::pageBullets must be called "
-           "exactly 5 times in remotecontrol.cpp (3 in cmdRoadmapQuery + "
+           "exactly 4 times in remotecontrol.cpp (2 in cmdRoadmapQuery + "
            "2 in cmdChangelogQuery). If you added another emission "
            "branch, wire it through the helper too.");
+    // ANTS-6129 — one shared bullet tail, called from both arms.
+    expect(contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/true);") &&
+           contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/false);"),
+           "the section and full-file arms both call emitBulletPage");
     EXPECT_EQ(0, expect_failures());
 }
 

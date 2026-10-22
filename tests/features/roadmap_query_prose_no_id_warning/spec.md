@@ -12,7 +12,7 @@ inconsistently:
 - `roadmap_query{status:'planned'|'in-progress'|'considered'}` →
   `{count:0}` with **no** `warning`.
 
-Root cause: `preIdPruneCountFull` (the ANTS-1538 warning gate) is
+Root cause: the pre-prune count (`n.beforeIdPrune`, the ANTS-1538 warning gate) is
 captured **after** the status filter. The status-less narrator bullets
 of a prose roadmap don't match a granular status, so the status filter
 drops them and zeroes the gate — suppressing the warning. A
@@ -50,7 +50,8 @@ path in the remotecontrol TUs.
 - **INV-3 — filter-independence.** The `parseable_bullets:0` branch is
   gated only on the file-level scan + the two opt-in flags
   (`!includeNarratorBullets && !includeSectionHeaders`); it does **not**
-  reference the post-status `preIdPruneCountFull`, which is exactly the
+  reference the post-status pre-prune count (`n.beforeIdPrune`), which is
+  exactly the
   value the status filter was able to zero. A roadmap that *does* have
   id-bearing bullets but whose status filter legitimately matched
   nothing (e.g. `status:'considered'` with zero considered items) skips
@@ -72,3 +73,12 @@ the number of id-bearing bullets considered, in the full-file and the section
 arm. The ANTS-1538 "default ID-filter dropped" warning fires only when the ID
 prune itself left nothing. *Test:*
 `roadmap_query_prose_no_id_warning.Ants4971KindFilterIsNamedNotTheIdFilter`.
+
+## ANTS-3560 / ANTS-4423 — name a keyword miss
+
+When a `query` matches nothing on id-bearing bullets, the `warning` names the
+query and the number of id-bearing bullets searched, in the full-file and the
+section arm; the section arm says "in this section". It never blames the ID
+filter. *Test:*
+`roadmap_query_prose_no_id_warning.Ants4423QueryMissIsNamedInBothArms`
+(`roadmap_query_keyword_filter` INV-8 and INV-9).

@@ -35,7 +35,9 @@ the human-readable label.
 - **INV-6 / `bold_id` envelope field present when boldId set.**
   Full-file, section, and section_index lazy-fill paths in
   `cmdRoadmapQuery` all emit `bold_id` on bullets with non-empty
-  `BulletRecord::boldId`. Source anchor: `ANTS-1438 — bold_id`.
+  `BulletRecord::boldId`: the shared builder `rcBuildBulletCacheArray`
+  for the cache fills, and the section-mode loop (ANTS-6129). Source
+  anchor: `ANTS-1438 — bold_id`.
 - **INV-7 / synthetic suppression.** When boldId is non-empty,
   `rec.synthetic` stays false. The synthetic content-hash branch
   fires only when both `[ANTS-NNNN]` and boldId are absent.

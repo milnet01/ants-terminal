@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6163 -->
+<!-- ants-roadmap-id-high-water: ANTS=6165 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94972,7 +94972,13 @@ worked after these.
   (ids L20-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
-  2026-10-22: HIGH F3 done. F1, F2, F4 open.
+  2026-10-22: HIGH F1, F2, F3 done; F4 queued as its own item (the
+  verb split is a rewrite, not a finding-sized fix). F1: every cache
+  fill calls rcBuildBulletCacheArray. F2: one shared bullet tail
+  (pruneAndFilter, emitBulletPage) for the section= and full-file
+  paths; roadmap_query replies byte-identical before and after on this
+  roadmap and a prose fixture. MEDIUM F5 (stale cap comment) went with
+  F2. Other medium and low open.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95344,6 +95350,22 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: packaging-recipes.
+
+- 📋 [ANTS-6164] **Split cmdRoadmapQuery into an argument-parse step and one function per mode (L20-F4).**
+  L20-F4 (HIGH), queued from ANTS-6129 on 2026-10-22. cmdRoadmapQuery
+  parses arguments, defines lambdas that write into `out`, and runs
+  them hundreds to thousands of lines later; a reader changing one
+  mode cannot tell what `out` already holds. ANTS-6129 removed the two
+  copies of the list tail (F1, F2), but the function is still the
+  whole verb. Fix per the finding: parse into a struct, then one
+  function per mode or path. Queued, not fixed in 6129: it is a
+  rewrite of the verb rather than a finding-sized change, and needs
+  its own plan (write-spec decides whether a spec is owed).
+  Hot reload: refactor; reaches clients on an ants-mcpd rebuild.
+  **Layman:** The roadmap search code is one very long function; break it into smaller named pieces a newcomer can follow.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -99014,6 +99036,21 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-6165] **Three SplitSources tests hung for their full 60 s timeout in one full-suite run, then passed.**
+  Suite run 2026-10-22 16:56 (ctest --preset=default -LE 'perf|e2e',
+  -j4): SplitSources.ListMatchesTheGlob, NoListedFileExceedsTheCap and
+  InternalHeaderStaysInternal each hit ***Timeout at 60 s; alone they
+  take under 1 s, and the next full run passed all four. They walk
+  src/ and tests/ with QDirIterator (QDir::Files | NoSymLinks) and
+  read each file. Not the cause: the only mkfifo in the tree
+  (project_query Ants5107ReadRefusesFifo) makes its FIFO in a
+  QTemporaryDir. Next step: find what another test writes under src/
+  or tests/ during a run, or what a read there can block on.
+  **Layman:** Three code-layout checks froze once during a full test run and passed when rerun; find out what made them wait.
+  Kind: investigate.
+  Source: full-suite-run-2026-10-22.
+  Lanes: tests.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

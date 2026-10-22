@@ -51,9 +51,9 @@ responses come back in chunks the caller can parse directly.
   explicit-`limit` page is cut to the same cap (INV-9).
 - **INV-11 / one helper call site per emission branch.** The
   PaginationEngine::pageBullets call appears once per emission
-  branch: three in cmdRoadmapQuery (section, full-file,
-  section_index) and two in cmdChangelogQuery. Source-scrape
-  regression asserts the count.
+  branch: two in cmdRoadmapQuery (the bullet tail the section and
+  full-file arms share, ANTS-6129, and section_index) and two in
+  cmdChangelogQuery. Source-scrape regression asserts the count.
 
 ## Test scope
 

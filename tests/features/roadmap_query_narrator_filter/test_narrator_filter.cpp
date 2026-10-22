@@ -90,17 +90,21 @@ TEST(roadmap_query_narrator_filter, Inv5DispatchForwards) {
 TEST(roadmap_query_narrator_filter, Inv6EchoOnlyWhenSet) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // Two echo sites (section-mode + full-file) must both guard on
-    // hasIncludeNarratorsArg. ANTS-2067 — normalise whitespace so one
-    // needle matches both indent depths; assert the count is >= 2 rather
-    // than pinning each site's exact indentation.
+    // The echo site must guard on hasIncludeNarratorsArg. ANTS-6129 — the
+    // section-mode and full-file arms share one tail, so one site serves
+    // both. ANTS-2067 — normalise whitespace so the needle does not pin the
+    // site's indentation.
     const std::string squashed = ants_test::squashWhitespace(cpp);
     const std::size_t guarded = ants_test::countOccurrences(
         squashed,
         "if (hasIncludeNarratorsArg) { "
         "out[\"include_narrator_bullets\"]");
-    expect(guarded >= 2,
-           "INV-6: both narrator-echo sites must guard on "
+    expect(guarded == 1,
+           "INV-6: the shared narrator-echo site must guard on "
            "hasIncludeNarratorsArg");
+    // ANTS-6129 — one shared bullet tail, called from both arms.
+    expect(contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/true);") &&
+           contains(cpp, "emitBulletPage(filtered, counts, /*inSection=*/false);"),
+           "the section and full-file arms both call emitBulletPage");
     EXPECT_EQ(0, expect_failures());
 }
