@@ -410,7 +410,11 @@ Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines) 
 
     Locators out;
     for (const QString &name : std::as_const(order)) {
-        const Symbol &s = *first.value(name);
+        // Never null: every name in `order` was inserted into `first` above.
+        // The check is for GCC's -Wnull-dereference, which cannot see that.
+        const Symbol *sp = first.value(name);
+        if (!sp) continue;
+        const Symbol &s = *sp;
         if (s.resolution == Resolution::NotChecked) { out.notChecked << name; continue; }
         if (s.resolution == Resolution::Unresolved) { out.unresolved << name; continue; }
 

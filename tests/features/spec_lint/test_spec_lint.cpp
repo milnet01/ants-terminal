@@ -485,9 +485,11 @@ TEST(SpecLint, Ants4115HeadingNeedNotBeginWithInvariants) {
     // different documents.
     const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("o.md"), {});
     EXPECT_EQ(countKind(r, "invariant_no_test"), 1);
-    for (const auto &f : r.findings)
-        if (f.kind == QLatin1String("invariant_no_test"))
+    for (const auto &f : r.findings) {
+        if (f.kind == QLatin1String("invariant_no_test")) {
             EXPECT_TRUE(f.message.contains(QStringLiteral("INV-2")));
+        }
+    }
 
     // Strict-first is what keeps a document with BOTH shapes on its real
     // section: the prose heading comes first here and must lose.
@@ -539,9 +541,12 @@ TEST(SpecLint, Ants4107SubLetteredInvariantIds) {
 
     const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("s.md"), {});
     EXPECT_EQ(countKind(r, "invariant_no_test"), 1);
-    for (const auto &f : r.findings)
-        if (f.kind == QLatin1String("invariant_no_test"))
-            EXPECT_TRUE(f.message.contains(QStringLiteral("INV-3b"))) << f.message.toStdString();
+    for (const auto &f : r.findings) {
+        if (f.kind == QLatin1String("invariant_no_test")) {
+            EXPECT_TRUE(f.message.contains(QStringLiteral("INV-3b")))
+                << f.message.toStdString();
+        }
+    }
     // A sub-letter occupies its parent's slot, so it can never open a gap.
     EXPECT_EQ(countKind(r, "invariant_id_gap"), 0);
 }
