@@ -95191,6 +95191,10 @@ worked after these.
   (ids L28-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22, the HIGH fixed: the citation regexes no longer keep
+  their own extension list; they defer to
+  CodebaseIndex::isIndexableSuffix, plus the cited-not-indexed
+  yaml, yml, json and md. Closes ANTS-5973. Mediums and lows remain.
   **Layman:** Tidy the review helpers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97416,13 +97420,20 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: review-engines.
 
-- 📋 [ANTS-5973] **src/indiereviewengine.cpp:1013: the extension gap above means findings in .rs/.go/.js/.ts (and other admitted) files never corroborate.**
+- ✅ [ANTS-5973] **src/indiereviewengine.cpp:1013: the extension gap above means findings in .rs/.go/.js/.ts (and other admitted) files never corroborate.**
   Lead L28-C3 from the readability review of 2026-10-22, lane review-engines.
   Location: src/indiereviewengine.cpp:1013
   the extension gap above means findings in `.rs`/`.go`/`.js`/`.ts` (and other admitted) files never corroborate. Searched: `isIndexableSuffix`.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  Resolved (2026-10-22, with ANTS-6137 L28 HIGH): confirmed and fixed.
+  extractFileLineCitations matches any path.ext token and keeps it
+  when CodebaseIndex::isIndexableSuffix admits the suffix (plus yaml,
+  yml, json, md), so every file a lane can hold is citable. Test
+  IndieReviewEngine.ExtractCitationsCoverEveryLaneSuffix: red before
+  (only the .sh citation came back), green after; removing the
+  suffix check turns it red again.
   **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

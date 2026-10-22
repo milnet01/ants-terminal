@@ -254,6 +254,29 @@ TEST(IndieReviewEngine, Inv4ExtractCitationsLineLevel) {
     EXPECT_FALSE(sawFabricated);  // dropped on resolve
 }
 
+// ANTS-6137 — a citation resolves for every suffix a lane can hold, so a
+// Rust, TypeScript or shell lane's findings corroborate. A suffix no lane
+// holds (.txt) is still not a citation.
+TEST(IndieReviewEngine, ExtractCitationsCoverEveryLaneSuffix) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    for (const char *rel : {"src/lib.rs", "web/app.ts", "tools/run.sh",
+                            "docs/notes.txt"})
+        writeFile(tmp.path(), rel, "x\n");
+
+    const QString report =
+        "See src/lib.rs:12, web/app.ts:3 and tools/run.sh:7. "
+        "Not docs/notes.txt:1.\n";
+    QStringList got;
+    for (const auto &c :
+         IndieReviewEngine::extractFileLineCitations(tmp.path(), report))
+        got << c.file + QLatin1Char(':') + QString::number(c.line);
+    got.sort();
+    EXPECT_EQ(got, (QStringList{"src/lib.rs:12", "tools/run.sh:7",
+                                "web/app.ts:3"}))
+        << got.join(", ").toStdString();
+}
+
 TEST(IndieReviewEngine, ExtractCitationsEmptyReport) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

@@ -1005,14 +1005,24 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
     QString scope = report;
     if (scope.size() > kMaxScanBytes) scope = scope.left(kMaxScanBytes);
 
-    // Longest-first extension alternation (cpp before c, hpp before h).
-    // ANTS-4096 admitted GLSL to the partition walk, so a shader lane is now
-    // reviewable; without the same extensions here every finding it cites
-    // would be dropped at corroboration — the very failure ANTS-4095 is.
+    // Any `path.ext` token; isCitableSuffix() then decides whether `ext`
+    // makes it a citation. ANTS-6137 — the suffix rule is the partition
+    // walk's own (CodebaseIndex::isIndexableSuffix), so every file a lane can
+    // hold is citable and a language added there is citable here too. Before,
+    // this kept its own list, and a Rust or TypeScript lane's findings were
+    // all dropped at corroboration — the failure ANTS-4095 is.
     static const QRegularExpression reLine(
-        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.(?:cpp|hpp|cc|yaml|json|yml|md|py|sh|glsl|comp|frag|vert|geom|tesc|tese|rgen|rchit|rmiss|h|c)):(\d+))"));
+        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.([A-Za-z0-9]+)):(\d+))"));
     static const QRegularExpression reFile(
-        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.(?:cpp|hpp|cc|yaml|json|yml|md|py|sh|glsl|comp|frag|vert|geom|tesc|tese|rgen|rchit|rmiss|h|c))\b)"));
+        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.([A-Za-z0-9]+))\b)"));
+    // Config and docs files are cited in findings but are never lane source.
+    const auto isCitableSuffix = [](const QString &ext) {
+        static const QSet<QString> kCitedNotIndexed{
+            QStringLiteral("yaml"), QStringLiteral("yml"),
+            QStringLiteral("json"), QStringLiteral("md")};
+        return CodebaseIndex::isIndexableSuffix(ext) ||
+               kCitedNotIndexed.contains(ext);
+    };
 
     QFileInfo rootInfo(projectPath);
     const QString rootCanon = rootInfo.canonicalFilePath();
@@ -1060,9 +1070,10 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
     auto it = reLine.globalMatch(scope);
     while (it.hasNext()) {
         const auto m = it.next();
+        if (!isCitableSuffix(m.captured(2))) continue;
         const QString rel = resolveOk(m.captured(1));
         if (rel.isEmpty()) continue;
-        const int line = m.captured(2).toInt();
+        const int line = m.captured(3).toInt();
         const QString k = rel + QChar(':') + QString::number(line);
         if (lineKeys.contains(k)) continue;
         lineKeys.insert(k);
@@ -1077,6 +1088,7 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
     auto fit = reFile.globalMatch(scope);
     while (fit.hasNext()) {
         const auto m = fit.next();
+        if (!isCitableSuffix(m.captured(2))) continue;
         const QString rel = resolveOk(m.captured(1));
         if (rel.isEmpty()) continue;
         // Skip if a line-level citation for the same file already
