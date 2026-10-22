@@ -346,6 +346,16 @@ int TerminalGrid::promptRegionIndexById(quint64 id) const {
     return -1;
 }
 
+std::pair<int, int> TerminalGrid::promptRegionOutputLines(int index) const {
+    const auto &regions = promptRegions();
+    const PromptRegion &pr = regions[index];
+    const int first = (pr.outputStartLine > 0) ? pr.outputStartLine : pr.endLine + 1;
+    const int end = (index + 1 < static_cast<int>(regions.size()))
+                        ? regions[index + 1].startLine
+                        : scrollbackSize() + rows();
+    return {first, end};
+}
+
 void TerminalGrid::setDefaultFg(const QColor &c) {
     QColor oldFg = m_defaultFg;
     m_defaultFg = c;

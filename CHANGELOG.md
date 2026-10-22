@@ -157,6 +157,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Selecting a command's output (Alt+Shift+click) now selects only the output, not the command line; the fold summary and sticky header use the same output range.** (ANTS-6112)
+
 - **Reading a whole project's roadmap from the store takes about a third less work** (ANTS-6049)
   The pattern matching that re-reads each item now skips trailer keys an item does not contain, item counts come from a single COUNT query, and each item's trailer lines are worked out once.
 

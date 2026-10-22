@@ -1497,9 +1497,9 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                     p.setBrush(Qt::NoBrush);
 
                     // Draw fold summary bar
-                    int outputStart = pr.endLine + 1;
-                    int nextStart = (std::next(it) != regions.end()) ? std::next(it)->startLine : outputStart;
-                    int foldedLines = nextStart - outputStart;
+                    const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(
+                        static_cast<int>(it - regions.begin()));
+                    int foldedLines = outEnd - outFirst;
                     if (foldedLines > 0) {
                         int barY = py + m_cellHeight;
                         QColor barBg = m_grid->defaultBg().lighter(130);
@@ -1730,13 +1730,10 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         for (auto it = stickyUp; it != regions.begin(); ) {
             --it;   // the single candidate; the break below guarantees one pass
             const auto &pr = *it;
-            // The command output starts after pr.endLine; the next region starts at std::next(it)->startLine
-            int outputStart = pr.endLine + 1;
-            int outputEnd = (std::next(it) != regions.end())
-                            ? std::next(it)->startLine - 1
-                            : scrollbackSize + rows - 1;
+            const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(
+                static_cast<int>(it - regions.begin()));
             // Viewport top line
-            if (outputStart <= viewStart && outputEnd >= viewStart && pr.hasOutput) {
+            if (outFirst <= viewStart && viewStart < outEnd && pr.hasOutput) {
                 // ANTS-5027 — the command text, cut to the header's width.
                 const int maxChars = (width() - m_padding * 2 - 80) / m_cellWidth;
                 const QString truncated = stickyCommandText(
@@ -6281,27 +6278,16 @@ void TerminalWidget::setBackgroundImage(const QString &path) {
 // --- Semantic Output Selection ---
 
 void TerminalWidget::selectCommandOutput(int globalLine) {
-    const auto &regions = m_grid->promptRegions();
-    if (regions.empty()) return;
+    const int index = promptRegionIndexAtLine(globalLine);
+    if (index < 0) return;
+    const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(index);
+    if (outFirst >= outEnd) return;
 
-    // Find the prompt region that contains this line
-    for (size_t i = 0; i < regions.size(); ++i) {
-        int outputStart = regions[i].endLine; // output starts after prompt ends
-        int outputEnd = (i + 1 < regions.size()) ? regions[i + 1].startLine
-                                                  : m_grid->scrollbackSize() + m_grid->rows();
-
-        if (globalLine >= outputStart && globalLine < outputEnd) {
-            // Select this entire output region
-            m_hasSelection = true;
-            m_selStart = QPoint(outputStart, 0);
-            m_selEnd = QPoint(outputEnd - 1, m_grid->cols() - 1);
-            update();
-
-            // Auto-copy to clipboard
-            copySelection();
-            return;
-        }
-    }
+    m_hasSelection = true;
+    m_selStart = QPoint(outFirst, 0);
+    m_selEnd = QPoint(outEnd - 1, m_grid->cols() - 1);
+    update();
+    copySelection();   // auto-copy to clipboard
 }
 
 // --- Command-block helpers (0.7.0) ---
@@ -6311,7 +6297,7 @@ void TerminalWidget::selectCommandOutput(int globalLine) {
 //   prompt line   : region.startLine ... region.endLine
 //   command text  : line[endLine], columns [commandStartCol..cols)
 //                   plus any soft-wrapped continuation lines up to outputStartLine
-//   output text   : outputStartLine ... nextRegion.startLine - 1 (or grid end)
+//   output text   : TerminalGrid::promptRegionOutputLines
 
 int TerminalWidget::promptRegionIndexAtLine(int globalLine) const {
     const auto &regions = m_grid->promptRegions();
@@ -6363,10 +6349,7 @@ QString TerminalWidget::outputTextAt(int index) const {
     const PromptRegion &pr = regions[index];
     if (!pr.hasOutput) return {};
 
-    int outStart = (pr.outputStartLine > 0) ? pr.outputStartLine : pr.endLine + 1;
-    int outEnd = (index + 1 < static_cast<int>(regions.size()))
-                     ? regions[index + 1].startLine
-                     : m_grid->scrollbackSize() + m_grid->rows();
+    const auto [outStart, outEnd] = m_grid->promptRegionOutputLines(index);
     if (outStart >= outEnd) return {};
 
     QString text;

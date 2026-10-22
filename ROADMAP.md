@@ -94703,6 +94703,12 @@ worked after these.
   (ids L03-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH done. L03-F1: one
+  TerminalGrid::promptRegionOutputLines(index) now gives a block's
+  output lines; the fold summary, sticky header, selectCommandOutput,
+  outputTextAt and the .cast exporter (a sixth copy) use it.
+  commandTextAt keeps its own range (it reads the command, not the
+  output). Still open: 15 medium, 9 low.
   **Layman:** Tidy the code that draws the terminal and handles typing and the mouse so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95476,6 +95482,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-22: the ANTS-6112 L03-F1 fix routes selectCommandOutput
+  through promptRegionOutputLines, so the selection now starts at the
+  output (OSC 133 C line, else the line after the prompt) and the click
+  finds its block via promptRegionIndexAtLine. Still owed: a regression
+  test, then the flip.
   **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

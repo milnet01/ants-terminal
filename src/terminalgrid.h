@@ -416,6 +416,10 @@ public:
     // list). A stored index can name a different region after regions
     // shift; an id cannot.
     int promptRegionIndexById(quint64 id) const;
+    // The output lines of region `index`, as global lines [first, end):
+    // from the OSC 133 C line (or the line after the prompt when C never
+    // fired) up to the next region's start, or the grid's end.
+    std::pair<int, int> promptRegionOutputLines(int index) const;
 
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {

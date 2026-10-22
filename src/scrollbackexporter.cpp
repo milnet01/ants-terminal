@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QStringList>
 
+#include <tuple>
 #include <utility>
 
 namespace {
@@ -106,13 +107,7 @@ bool ScrollbackExporter::open() {
             return false;
         }
         const PromptRegion &pr = regions[idx];
-        // The range outputTextAt reads.
-        if (pr.hasOutput) {
-            m_next = (pr.outputStartLine > 0) ? pr.outputStartLine : pr.endLine + 1;
-            m_end = (idx + 1 < static_cast<int>(regions.size()))
-                        ? regions[idx + 1].startLine
-                        : total;
-        }
+        if (pr.hasOutput) std::tie(m_next, m_end) = m_grid.promptRegionOutputLines(idx);
         if (m_next > m_end) m_end = m_next;
         m_castOutputEvent = m_next < m_end;
         castTimestamp = pr.commandStartMs > 0 ? pr.commandStartMs / 1000
