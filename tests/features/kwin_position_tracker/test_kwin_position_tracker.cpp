@@ -137,11 +137,9 @@ TEST(KwinPositionTracker, Main) {
     // INV-4: KWin-presence guard. ANTS-1142 (0.7.69) lifted the
     // KDE_FULL_SESSION / XDG_CURRENT_DESKTOP env-var checks out
     // of setPosition() and into the `kwinPresent()` free function
-    // in kwinpositiontracker.h, so MainWindow::moveViaKWin /
-    // centerWindow could share the same guard. The test now
-    // verifies (a) the env-var literals live in the header, and
-    // (b) setPosition() calls kwinPresent() before any
-    // QTemporaryFile is constructed.
+    // in kwinpositiontracker.h. The test verifies (a) the env-var
+    // literals live in the header, and (b) runKWinScript() calls
+    // kwinPresent() before any QTemporaryFile is constructed.
     if (!contains(header, "KDE_FULL_SESSION"))
         fail("INV-4",
             "KDE_FULL_SESSION env-var check missing in kwinpositiontracker.h");
@@ -152,10 +150,11 @@ TEST(KwinPositionTracker, Main) {
         fail("INV-4",
             "kwinPresent() helper missing in kwinpositiontracker.h "
             "(ANTS-1142 lift)");
-    // Scope ordering checks to setPosition's body.
-    const size_t fnStart = source.find("setPosition(int x, int y)");
+    // Scope ordering checks to runKWinScript's body, the one chain
+    // setPosition() and MainWindow both use.
+    const size_t fnStart = source.find("void runKWinScript(");
     if (fnStart == std::string::npos)
-        fail("INV-4", "setPosition() definition not found");
+        fail("INV-4", "runKWinScript() definition not found");
     const std::string fnBody = source.substr(fnStart);
     {
         const size_t firstGuard = fnBody.find("kwinPresent(");
@@ -163,10 +162,10 @@ TEST(KwinPositionTracker, Main) {
         std::smatch tempMatch;
         if (firstGuard == std::string::npos)
             fail("INV-4",
-                "kwinPresent() not invoked in setPosition() — guard missing");
+                "kwinPresent() not invoked in runKWinScript() — guard missing");
         if (!std::regex_search(fnBody, tempMatch, tempCtor))
             fail("INV-4",
-                "no QTemporaryFile constructor call in setPosition()");
+                "no QTemporaryFile constructor call in runKWinScript()");
         const size_t firstTempCtor = static_cast<size_t>(tempMatch.position(0));
         if (firstGuard >= firstTempCtor)
             fail("INV-4",
@@ -205,10 +204,10 @@ TEST(KwinPositionTracker, Main) {
         const std::regex tempCtor(R"(QTemporaryFile\s+\w+\()");
         std::smatch g, t;
         if (!std::regex_search(fnBody, g, guardCall))
-            fail("INV-5b", "qScopeGuard call not found in setPosition()");
+            fail("INV-5b", "qScopeGuard call not found in runKWinScript()");
         if (!std::regex_search(fnBody, t, tempCtor))
             fail("INV-5b",
-                "QTemporaryFile constructor not found in setPosition()");
+                "QTemporaryFile constructor not found in runKWinScript()");
         if (static_cast<size_t>(g.position(0)) >=
             static_cast<size_t>(t.position(0)))
             fail("INV-5b",

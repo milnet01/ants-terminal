@@ -12,9 +12,9 @@ calls `TerminalWidget::startExport`, which reports a failure through
 `captureFailed` (ANTS-5078). It shows its success message only on
 `exportFinished` with `ok` true.
 
-**INV-3 — a KWin script that cannot start is cleaned up.** `runKWinScript`
-connects `QProcess::errorOccurred` for both `dbus-send` processes and removes
-the temp script on `FailedToStart`.
+**INV-3 — a KWin script that cannot start is cleaned up.** MainWindow runs
+its KWin scripts through the shared `runKWinScript` in
+`src/kwinpositiontracker.cpp`. `status_process_start_failure` tests it.
 
 **INV-4 — the SSH connect timer is guarded.** `onSshConnect` captures the
 terminal as a `QPointer` and checks it before writing.

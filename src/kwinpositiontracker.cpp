@@ -16,20 +16,7 @@ KWinPositionTracker::KWinPositionTracker(QWidget *trackedWindow)
     : m_window(trackedWindow) {
 }
 
-void KWinPositionTracker::setPosition(int x, int y) {
-    m_pos = QPoint(x, y);
-
-    // ANTS-1045 INV-4: bail before any temp-file write when KWin
-    // isn't the active compositor. The KWin-script + dbus-send chain
-    // only works under KDE Plasma; on GNOME/Mutter, Sway, Hyprland,
-    // etc. the dbus call goes nowhere and the temp file used to leak.
-    // Detection lifted into the kwinPresent() free function in
-    // kwinpositiontracker.h (ANTS-1142 0.7.69) so MainWindow's
-    // sister moveViaKWin / centerWindow paths can share the same
-    // guard.
-    if (!kwinPresent()) return;
-
-    qint64 pid = QApplication::applicationPid();
+QString kwinMoveScript(qint64 pid, int x, int y) {
     // ANTS-1768 — this script is built by interpolating values straight
     // into KWin JS with no escaping, so EVERY interpolated value MUST be
     // integral. A string field added here would be a compositor-script
@@ -39,7 +26,7 @@ void KWinPositionTracker::setPosition(int x, int y) {
                   std::is_integral_v<decltype(x)> &&
                   std::is_integral_v<decltype(y)>,
                   "KWin JS interpolation must stay integral-only (ANTS-1768)");
-    QString kwinJs = QString(
+    return QString(
         "var clients = workspace.windowList();\n"
         "for (var i = 0; i < clients.length; i++) {\n"
         "    var c = clients[i];\n"
@@ -54,6 +41,14 @@ void KWinPositionTracker::setPosition(int x, int y) {
         "    }\n"
         "}\n"
     ).arg(pid).arg(x).arg(y);
+}
+
+void runKWinScript(QObject *owner, const QString &kwinJs, const QString &tag) {
+    // ANTS-1045 INV-4: bail before any temp-file write when KWin
+    // isn't the active compositor. The KWin-script + dbus-send chain
+    // only works under KDE Plasma; on GNOME/Mutter, Sway, Hyprland,
+    // etc. the dbus call goes nowhere and the temp file used to leak.
+    if (!kwinPresent()) return;
 
     // ANTS-1045 INV-5 / INV-5b: scope-guarded temp-file cleanup,
     // declared BEFORE the QTemporaryFile open so a buried-guard
@@ -74,7 +69,8 @@ void KWinPositionTracker::setPosition(int x, int y) {
     // above handles the remove on synchronous-failure paths instead.
     // 0.7.12 /indie-review TOCTOU fix preserved (INV-6).
     {
-        QTemporaryFile f(QDir::tempPath() + "/kwin_pos_ants_XXXXXX.js");
+        QTemporaryFile f(QDir::tempPath() +
+                         QStringLiteral("/kwin_%1_ants_XXXXXX.js").arg(tag));
         f.setAutoRemove(false);
         if (!f.open()) return;
         f.write(kwinJs.toUtf8());
@@ -83,20 +79,29 @@ void KWinPositionTracker::setPosition(int x, int y) {
 
     // RC-52 (audit 2026-09-26) — the KWin script name is per process, as the
     // temp file is: under one fixed name, a second instance's unloadScript
-    // could drop the first's position restore mid-flight.
-    const QString scriptNameArg = QStringLiteral("string:ants_terminal_pos_%1")
+    // could drop the first's script mid-flight.
+    const QString scriptNameArg = QStringLiteral("string:ants_terminal_%1_%2")
+                                      .arg(tag)
                                       .arg(QCoreApplication::applicationPid());
+    const auto unload = [scriptPath, scriptNameArg]() {
+        QProcess::startDetached("dbus-send", {
+            "--session", "--dest=org.kde.KWin", "--print-reply",
+            "/Scripting", "org.kde.kwin.Scripting.unloadScript",
+            scriptNameArg
+        });
+        QFile::remove(scriptPath);
+    };
 
-    auto *proc = new QProcess(m_window);
+    auto *proc = new QProcess(owner);
     proc->start("dbus-send", {
         "--session", "--dest=org.kde.KWin", "--print-reply",
         "/Scripting", "org.kde.kwin.Scripting.loadScript",
         QString("string:%1").arg(scriptPath),
         scriptNameArg
     });
-    QObject::connect(proc, &QProcess::finished, m_window,
-                     [proc, scriptPath, scriptNameArg](int exitCode,
-                                         QProcess::ExitStatus status) {
+    QObject::connect(proc, &QProcess::finished, owner,
+                     [proc, scriptPath, unload](int exitCode,
+                                                QProcess::ExitStatus status) {
         proc->deleteLater();
         if (status != QProcess::NormalExit || exitCode != 0) {
             // First dbus-send failed (KWin service not responding,
@@ -109,32 +114,21 @@ void KWinPositionTracker::setPosition(int x, int y) {
         // ANTS-5081 — a second stage that fails to start never emits
         // finished: unload the script and remove the file here instead.
         QObject::connect(proc2, &QProcess::errorOccurred, proc2,
-                         [proc2, scriptPath, scriptNameArg](QProcess::ProcessError error) {
+                         [proc2, unload](QProcess::ProcessError error) {
             if (error != QProcess::FailedToStart) return;
             proc2->deleteLater();
-            QProcess::startDetached("dbus-send", {
-                "--session", "--dest=org.kde.KWin", "--print-reply",
-                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                scriptNameArg
-            });
-            QFile::remove(scriptPath);
+            unload();
         });
         proc2->start("dbus-send", {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"
         });
-        QObject::connect(proc2, &QProcess::finished, proc2,
-                         [proc2, scriptPath, scriptNameArg]() {
+        QObject::connect(proc2, &QProcess::finished, proc2, [proc2, unload]() {
             proc2->deleteLater();
-            QProcess::startDetached("dbus-send", {
-                "--session", "--dest=org.kde.KWin", "--print-reply",
-                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                scriptNameArg
-            });
-            QFile::remove(scriptPath);
+            unload();
         });
     });
-    QObject::connect(proc, &QProcess::errorOccurred, m_window,
+    QObject::connect(proc, &QProcess::errorOccurred, owner,
                      [proc, scriptPath](QProcess::ProcessError error) {
         // dbus-send failed to even start (PATH empty, binary
         // missing, etc.) — the `finished` signal won't fire, so
@@ -148,4 +142,11 @@ void KWinPositionTracker::setPosition(int x, int y) {
     // the synchronous fallthrough doesn't double-remove a file the
     // dbus-send chain might still legitimately be reading.
     cleanup.dismiss();
+}
+
+void KWinPositionTracker::setPosition(int x, int y) {
+    m_pos = QPoint(x, y);
+    runKWinScript(m_window,
+                  kwinMoveScript(QApplication::applicationPid(), x, y),
+                  QStringLiteral("pos"));
 }

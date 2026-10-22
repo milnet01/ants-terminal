@@ -1523,32 +1523,9 @@ void MainWindow::applyTheme(const QString &name) {
 }
 
 void MainWindow::moveViaKWin(int targetX, int targetY) {
-    // ANTS-1142 — bail on non-KDE compositors before writing
-    // any temp script. Pre-fix code unconditionally fired the
-    // kwin-script + dbus-send chain on GNOME/Sway/Hyprland/etc.,
-    // orphaning /tmp/kwin_move_ants_*.js files and triggering a
-    // dbus-send that hits a non-existent service. Same guard as
-    // KWinPositionTracker::setPosition (lifted to
-    // kwinpositiontracker.h::kwinPresent for sharing).
-    if (!kwinPresent()) return;
-    qint64 pid = QApplication::applicationPid();
-    QString kwinJs = QStringLiteral(
-        "var clients = workspace.windowList();\n"
-        "for (var i = 0; i < clients.length; i++) {\n"
-        "    var c = clients[i];\n"
-        "    if (c.pid === %1) {\n"
-        "        c.frameGeometry = {\n"
-        "            x: %2,\n"
-        "            y: %3,\n"
-        "            width: c.frameGeometry.width,\n"
-        "            height: c.frameGeometry.height\n"
-        "        };\n"
-        "        break;\n"
-        "    }\n"
-        "}\n"
-    ).arg(pid).arg(targetX).arg(targetY);
-
-    runKWinScript(kwinJs, QStringLiteral("move"));
+    runKWinScript(this, kwinMoveScript(QApplication::applicationPid(),
+                                       targetX, targetY),
+                  QStringLiteral("move"));
 }
 
 void MainWindow::centerWindow() {
@@ -1561,13 +1538,9 @@ void MainWindow::centerWindow() {
         m_config.setWindowGeometry(cx, cy, width(), height());
     }
 
-    // ANTS-1142 — bail on non-KDE compositors before writing any
-    // temp script (same guard as moveViaKWin). The geometry
-    // update above already moved the window via the
-    // KWinPositionTracker abstraction; the kwin-script chain
-    // below is the KDE-specific frameGeometry refresh.
-    if (!kwinPresent()) return;
-
+    // The geometry update above already moved the window via the
+    // KWinPositionTracker abstraction; the kwin-script chain below is the
+    // KDE-specific frameGeometry refresh.
     qint64 pid = QApplication::applicationPid();
     QString kwinJs = QStringLiteral(
         "var clients = workspace.windowList();\n"
@@ -1586,67 +1559,7 @@ void MainWindow::centerWindow() {
         "}\n"
     ).arg(pid);
 
-    runKWinScript(kwinJs, QStringLiteral("center"));
-}
-
-// ANTS-2205 (7b) — shared KWin scripting chain extracted from moveViaKWin /
-// centerWindow (was ~35 duplicated lines each). Writes the script body to an
-// unpredictable tempfile (0.7.12 TOCTOU fix; see kwinpositiontracker.cpp), then
-// runs the async loadScript → start → unloadScript chain and removes the temp
-// file. The `tag` distinguishes the two callers in both the tempfile prefix
-// (kwin_<tag>_ants_*) and the registered script name (ants_terminal_<tag>).
-// Callers guard on kwinPresent() before invoking.
-void MainWindow::runKWinScript(const QString &kwinJs, const QString &tag) {
-    const QString scriptName = QStringLiteral("ants_terminal_%1").arg(tag);
-    QString scriptPath;
-    {
-        QTemporaryFile f(QDir::tempPath() +
-                         QStringLiteral("/kwin_%1_ants_XXXXXX.js").arg(tag));
-        f.setAutoRemove(false);
-        if (!f.open()) return;
-        f.write(kwinJs.toUtf8());
-        scriptPath = f.fileName();
-    }
-
-    // Run KWin script asynchronously to avoid blocking the event loop.
-    auto *proc = new QProcess(this);
-    // ANTS-5079 — a dbus-send that fails to start never emits finished, so
-    // without this the process object and the temp script leaked.
-    connect(proc, &QProcess::errorOccurred, this,
-            [proc, scriptPath](QProcess::ProcessError error) {
-        if (error != QProcess::FailedToStart) return;
-        proc->deleteLater();
-        QFile::remove(scriptPath);
-    });
-    proc->start("dbus-send", {
-        "--session", "--dest=org.kde.KWin", "--print-reply",
-        "/Scripting", "org.kde.kwin.Scripting.loadScript",
-        QStringLiteral("string:%1").arg(scriptPath),
-        QStringLiteral("string:%1").arg(scriptName)
-    });
-    connect(proc, &QProcess::finished, this, [this, proc, scriptPath, scriptName]() {
-        proc->deleteLater();
-        auto *proc2 = new QProcess(this);
-        connect(proc2, &QProcess::errorOccurred, this,
-                [proc2, scriptPath](QProcess::ProcessError error) {
-            if (error != QProcess::FailedToStart) return;  // ANTS-5079
-            proc2->deleteLater();
-            QFile::remove(scriptPath);
-        });
-        proc2->start("dbus-send", {
-            "--session", "--dest=org.kde.KWin", "--print-reply",
-            "/Scripting", "org.kde.kwin.Scripting.start"
-        });
-        connect(proc2, &QProcess::finished, this, [proc2, scriptPath, scriptName]() {
-            proc2->deleteLater();
-            QProcess::startDetached("dbus-send", {
-                "--session", "--dest=org.kde.KWin", "--print-reply",
-                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                QStringLiteral("string:%1").arg(scriptName)
-            });
-            QFile::remove(scriptPath);
-        });
-    });
+    runKWinScript(this, kwinJs, QStringLiteral("center"));
 }
 
 void MainWindow::toggleMaximize() {

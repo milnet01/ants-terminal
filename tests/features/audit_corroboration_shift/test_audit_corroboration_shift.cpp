@@ -251,9 +251,15 @@ TEST(AuditCorroborationShift, Inv6bRunCompletionShiftsBeforeFirstRender) {
         }
     };
 
+    // Both run-completion paths end in finishRun(), which holds the shift.
+    const std::string finishBody = ants_test::slurpFunctionBody(
+        stripped, "void AuditDialog::finishRun(");
+    checkShiftBeforeRender(finishBody, "AuditDialog::finishRun");
+
     const std::string cancelBody = ants_test::slurpFunctionBody(
         stripped, "void AuditDialog::cancelAudit(");
-    checkShiftBeforeRender(cancelBody, "AuditDialog::cancelAudit");
+    EXPECT_NE(cancelBody.find("finishRun()"), std::string::npos)
+        << "INV-6b: cancelAudit no longer ends in finishRun()";
 
     const std::string runNextBody = ants_test::slurpFunctionBody(
         stripped, "void AuditDialog::runNextCheck(");
@@ -271,5 +277,7 @@ TEST(AuditCorroborationShift, Inv6bRunCompletionShiftsBeforeFirstRender) {
     ASSERT_FALSE(finishBranch.empty())
         << "precondition: runNextCheck's run-completion branch anchors "
            "not found — update this scrape's anchors if the code moved.";
-    checkShiftBeforeRender(finishBranch, "runNextCheck's run-completion branch");
+    EXPECT_NE(finishBranch.find("finishRun()"), std::string::npos)
+        << "INV-6b: runNextCheck's run-completion branch no longer ends in "
+           "finishRun()";
 }

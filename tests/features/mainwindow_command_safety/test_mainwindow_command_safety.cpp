@@ -58,16 +58,6 @@ TEST(MainwindowCommandSafety, ScrollbackExportReportsFailure) {
         << "success is announced before the export has been written";
 }
 
-// INV-3
-TEST(MainwindowCommandSafety, KWinScriptCleansUpWhenStartFails) {
-    const QString body = functionBody(source(),
-        QStringLiteral("void MainWindow::runKWinScript("));
-    ASSERT_FALSE(body.isEmpty()) << "runKWinScript not found";
-    EXPECT_EQ(body.count(QStringLiteral("&QProcess::errorOccurred")), 2)
-        << "both dbus-send processes need a FailedToStart handler";
-    EXPECT_TRUE(body.contains(QStringLiteral("QProcess::FailedToStart")));
-}
-
 // INV-4
 TEST(MainwindowCommandSafety, SshTimerIsGuarded) {
     const QString body = functionBody(source(),

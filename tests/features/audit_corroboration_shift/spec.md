@@ -30,10 +30,10 @@
     shift has no repeat guard, so calling it there drifts severity down
     further on every render.
   - INV-6b: `AuditDialog::cancelAudit` and the run-completion branch of
-    `AuditDialog::runNextCheck` each call
-    `AuditEngine::applyCorroborationShiftAcross` before their first call
-    to `renderResults()` — the shift runs once, over every check's
-    combined findings, at the moment the run finishes.
+    `AuditDialog::runNextCheck` each end in `AuditDialog::finishRun`,
+    which calls `AuditEngine::applyCorroborationShiftAcross` before its
+    first call to `renderResults()` — the shift runs once, over every
+    check's combined findings, at the moment the run finishes.
 
 ## Approach
 

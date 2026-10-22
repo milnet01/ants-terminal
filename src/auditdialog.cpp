@@ -2742,36 +2742,38 @@ void AuditDialog::cancelAudit() {
     // 3 of 28 checks, producing a noise drop on the next
     // run's trend line — opposite of what trends are for.
     m_snapshotPersisted = true;
-    // ANTS-1136 (revalidation fold-in): also flush rule-quality
-    // fires here so a cancel-then-kill doesn't lose the records
-    // accumulated by checks that completed before cancel. The
-    // runNextCheck cycle-completion flush only covers clean
-    // completion.
+    finishRun();
+    m_statusLabel->setFullText(
+        QString("Audit cancelled after %1/%2 check(s).")
+            .arg(m_checksRun).arg(m_totalSelected));
+}
+
+// The end of every run, finished or cancelled: persist, score, render, and
+// put the buttons back to idle.
+void AuditDialog::finishRun() {
+    // ANTS-1136 — flush rule-quality fires to disk at the end of every run,
+    // cancelled ones included, so a SIGSEGV / SIGKILL / power loss before
+    // clean shutdown doesn't lose the fire records. One save() per run keeps
+    // disk traffic bounded while making the data durable.
     if (m_qualityTracker) m_qualityTracker->save();
     // ANTS-5041 — the corroboration shift, once per run, over every check's
     // findings, before the first render. Never per render: it is not
     // idempotent.
-    {
-        QSet<QString> noisy;
-        if (m_qualityTracker)
-            for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
-        AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
-    }
-    // Render whatever completed + restore the UI to the idle state.
+    QSet<QString> noisy;
+    if (m_qualityTracker)
+        for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
+    AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
     renderResults();
     m_runBtn->setEnabled(true);
-    if (m_cancelBtn) m_cancelBtn->setVisible(false);
+    if (m_cancelBtn)  m_cancelBtn->setVisible(false);
     m_reviewBtn->setVisible(true);
     if (m_autofixBtn) m_autofixBtn->setVisible(true);
     m_baselineBtn->setVisible(true);
-    if (m_sarifBtn)  m_sarifBtn->setVisible(true);
-    if (m_htmlBtn)   m_htmlBtn->setVisible(true);
-    if (m_filterBar) m_filterBar->setVisible(true);
+    if (m_sarifBtn)   m_sarifBtn->setVisible(true);
+    if (m_htmlBtn)    m_htmlBtn->setVisible(true);
+    if (m_filterBar)  m_filterBar->setVisible(true);
     for (auto &c : m_checks)
         if (c.toggle) c.toggle->setEnabled(c.available);
-    m_statusLabel->setFullText(
-        QString("Audit cancelled after %1/%2 check(s).")
-            .arg(m_checksRun).arg(m_totalSelected));
 }
 
 void AuditDialog::runNextCheck() {
@@ -2788,32 +2790,7 @@ void AuditDialog::runNextCheck() {
 
     if (m_currentCheck >= m_checks.size()) {
         m_progress->setValue(m_totalSelected);
-        // ANTS-1136 — flush rule-quality fires to disk at end of
-        // every audit run so a SIGSEGV / SIGKILL / power loss
-        // before clean shutdown doesn't lose 30 minutes of fire
-        // records. recordSuppression already saves immediately
-        // (user-initiated, rare); recordFire was deferred to
-        // RAII-on-destruction, which only fires on clean
-        // shutdown. One save() per run keeps disk traffic bounded
-        // while making the data durable.
-        if (m_qualityTracker) m_qualityTracker->save();
-        // ANTS-5041 — once per run, before the first render (see cancelAudit).
-        {
-            QSet<QString> noisy;
-            if (m_qualityTracker)
-                for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
-            AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
-        }
-        renderResults();
-        m_runBtn->setEnabled(true);
-        if (m_cancelBtn)   m_cancelBtn->setVisible(false);
-        m_reviewBtn->setVisible(true);
-        m_baselineBtn->setVisible(true);
-        if (m_sarifBtn)    m_sarifBtn->setVisible(true);
-        if (m_htmlBtn)     m_htmlBtn->setVisible(true);
-        if (m_filterBar)   m_filterBar->setVisible(true);
-        for (auto &c : m_checks)
-            if (c.toggle) c.toggle->setEnabled(c.available);
+        finishRun();
         return;
     }
 

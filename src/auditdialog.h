@@ -325,6 +325,7 @@ private:
 
     // Present accumulated results sorted by severity with a summary banner.
     void renderResults();
+    void finishRun();   // shared end of a finished or cancelled run
 
     // Baseline support — store last-run findings as JSON at
     //   <projectPath>/.audit_cache/baseline.json

@@ -21,6 +21,17 @@ inline bool kwinPresent() {
     return fullSession == "true" || currentDesktop.contains("KDE");
 }
 
+// The KWin script that moves this process's window to (x, y). ANTS-1768 —
+// the values are interpolated into JS unescaped, so every one is integral.
+QString kwinMoveScript(qint64 pid, int x, int y);
+
+// The one KWin scripting chain: write `kwinJs` to an unpredictable temp file,
+// then loadScript → start → unloadScript over dbus-send, removing the file on
+// every path. `tag` names the temp file (kwin_<tag>_ants_*) and, with the pid,
+// the registered script. A no-op when KWin is not the compositor. The async
+// processes are parented to `owner`.
+void runKWinScript(QObject *owner, const QString &kwinJs, const QString &tag);
+
 // Tracks window position ourselves since Qt's pos()/moveEvent() are broken
 // for frameless windows on KWin compositor.
 // - Position is tracked by intercepting move() calls via updatePos()
@@ -37,9 +48,7 @@ public:
     void updatePos(const QPoint &pos) { m_pos = pos; }
 
     // Set position via KWin scripting (only reliable method for frameless
-    // windows). Bails early when KWin isn't the compositor (ANTS-1045
-    // INV-4); on the failure path, a QScopeGuard ensures the temp script
-    // doesn't leak (ANTS-1045 INV-5).
+    // windows), through runKWinScript().
     void setPosition(int x, int y);
 
 private:

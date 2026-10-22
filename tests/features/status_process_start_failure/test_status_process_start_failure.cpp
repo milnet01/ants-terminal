@@ -57,8 +57,8 @@ TEST(StatusProcessStartFailure, RepoVisibilityProbeRecovers) {
 // INV-3 and INV-4
 TEST(StatusProcessStartFailure, KWinTrackerCleansUpBothStages) {
     const QString body = functionBody(trackerSource(),
-        QStringLiteral("void KWinPositionTracker::setPosition("));
-    ASSERT_FALSE(body.isEmpty()) << "setPosition not found";
+        QStringLiteral("void runKWinScript("));
+    ASSERT_FALSE(body.isEmpty()) << "runKWinScript not found";
     EXPECT_EQ(body.count(QStringLiteral("&QProcess::errorOccurred")), 2)
         << "both dbus-send stages need a failed-start handler";
     EXPECT_TRUE(body.contains(QStringLiteral("if (error == QProcess::FailedToStart) proc->deleteLater();")))

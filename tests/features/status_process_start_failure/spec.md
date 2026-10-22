@@ -11,7 +11,8 @@
 kills a `gh` still running after a fixed delay.
 
 **INV-3 — the KWin position tracker frees a first stage that fails to start.**
-In `KWinPositionTracker::setPosition`, the first `dbus-send`'s
+In `runKWinScript` (`src/kwinpositiontracker.cpp`), the chain the tracker and
+`MainWindow` share, the first `dbus-send`'s
 `errorOccurred` handler calls `proc->deleteLater()` on `FailedToStart`.
 
 **INV-4 — the KWin position tracker handles a second stage that fails to
