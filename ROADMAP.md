@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6045 -->
+<!-- ants-roadmap-id-high-water: ANTS=6047 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88081,6 +88081,30 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A tool that checks code comments quietly ignores some shell script files, so it looks like they were checked when they were not.
   Kind: fix.
   Source: cc-feedback-2026-10-21 demoreel.
+
+- 📋 [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (- **INV-N — title.**).**
+  Reported by finbreak (2026-10-22). docs/specs/FIBR-0097-transactions-table-model.md
+  holds INV-1 to INV-7 as bullets opening `- **INV-N — <title>.**`.
+  spec_lint on that file returns invariants_found: 0 and skips both
+  test-coverage checks, so every invariant check reads as clean.
+  Repro: spec_lint {caller_cwd: /mnt/Games/Scripts/Linux/finbreak,
+  path: docs/specs/FIBR-0097-transactions-table-model.md}.
+  Suggested fix: recognise a bold `**INV-N —` bullet as an invariant
+  opener.
+  **Layman:** A spec-checking tool missed every rule in another project's design document because the rules were written in a slightly different style.
+  Kind: fix.
+  Source: finbreak-feedback-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6047] **spec_log append_loop reports row_order "ambiguous" on a loop log whose rows are 1, 2, 3, impl.**
+  Reported by finbreak in a session message (2026-10-22), not filed
+  in its feedback file. The row still landed last, which was correct;
+  the "ambiguous" report is the question. Likely the non-numeric
+  "impl" row label.
+  **Layman:** A spec tool gave a confusing warning about the order of rows in a review log, even though it put the new row in the right place.
+  Kind: investigate.
+  Source: finbreak-feedback-2026-10-22.
+  Lanes: spec-engines.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
