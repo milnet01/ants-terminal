@@ -98075,6 +98075,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   before designing the fix. A performance review of the terminal waits
   until after the weekly limit resets, no earlier than Thursday
   2026-10-29.
+  finbreak's advice (msg 801, 2026-10-22): its biggest measured win was
+  not SQL but per-row work outside the query (a regex rebuilt per call:
+  603 ms -> 145 ms). Profile first; match indexes to the real WHERE
+  shape (prove with EXPLAIN QUERY PLAN); check for per-row prepared
+  statements and per-row QVariant/QString conversion before blaming
+  SQLite. WAL kept readers from blocking the writer.
   **Layman:** Reading this project's roadmap is getting slow as it grows, and it will soon miss its speed target.
   Kind: perf.
   Source: ANTS-6048-measurement-2026-10-22.
@@ -99447,9 +99453,11 @@ contributors don't duplicate research.
   the folder pane, not a separate dialog. Heart icon and bold title
   ("Support Thunderbird"), a short mission paragraph, a mascot picture,
   one "Donate" button, and a close (x) in the top corner. It does not
-  block or cover the main work area. This differs from the 2026-09-19
-  decision (pop-up dialog, not in-window); which presentation to build
-  is open, for the user to decide before building.
+  block or cover the main work area. Decided (2026-10-22, user): build the Thunderbird-style corner card,
+  replacing the 2026-09-19 pop-up dialog. The approved wording, buttons,
+  "Don't show this again", "I already donate" (150 days) and the
+  no-reminder-in-RC-builds rules carry over unchanged; the card's close
+  (x) acts as "Not now".
   **Layman:** Every so often, Ants Terminal politely mentions that you can support it, and it is easy to wave away or turn off.
   Kind: feature.
   Source: user-request-2026-09-19.
