@@ -143,15 +143,18 @@ bool detectCorrection(const QString &firstUserTurnText);
 QString aliasFromModelId(const QString &modelId);
 
 // One assistant or user turn projected from the transcript, with just the
-// fields the outcome fill-in helper needs. Caller (controller) parses the
-// transcript and supplies these in chronological order.
+// fields the outcome fill-in helper needs, in chronological order.
 struct TranscriptTurn {
     qint64  tsMs        = 0;     // assistant.timestamp parsed to ms
     bool    isAssistant = false;
-    bool    isUser      = false;
+    bool    isUser      = false; // the person typed it; never a tool_result
     QString modelId;             // assistant: message.model
     QString userText;            // user: joined text content
 };
+
+// The turns of a JSONL transcript's last 512 KiB, oldest first (the tail
+// read ModelRecommender::score uses).
+QList<TranscriptTurn> readTranscriptTurns(const QString &path);
 
 struct OutcomeFillResult {
     Outcome outcome;

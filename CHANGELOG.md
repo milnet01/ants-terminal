@@ -287,6 +287,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Automatic model switching judges a switch by what you type next, not by a tool's reply, so its regret and override counts reflect your own corrections** (ANTS-6011)
+
 - **file_outline lists C++ functions whose wrapped argument list holds brackets, such as a QString() default or a std::function<void()>, and no longer lists a statement such as `do foo();` as a function** (ANTS-5994)
 
 - **indie_review_corroborate matches findings in every language a review lane can hold, including Rust, Go, JavaScript and TypeScript** (ANTS-5973)

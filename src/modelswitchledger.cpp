@@ -5,6 +5,10 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -665,6 +669,69 @@ QString nowIso8601() {
 qint64 parseIso8601Ms(const QString &ts) {
     const QDateTime dt = QDateTime::fromString(ts, Qt::ISODate);
     return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
+}
+
+// ANTS-1735 § 2.5 — moved here from claudestatuswidgets.cpp (ANTS-6142) so
+// the projection lives beside the struct it fills, and tests can reach it.
+QList<TranscriptTurn> readTranscriptTurns(const QString &path)
+{
+    QList<TranscriptTurn> out;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    constexpr qint64 kMaxTailBytes = 512LL * 1024LL;
+    const bool didTailSeek = (f.size() > kMaxTailBytes);
+    if (didTailSeek) f.seek(f.size() - kMaxTailBytes);
+
+    QStringList lines;
+    while (!f.atEnd()) {
+        const QString ln = QString::fromUtf8(f.readLine()).trimmed();
+        if (!ln.isEmpty()) lines.append(ln);
+    }
+    f.close();
+    if (didTailSeek && !lines.isEmpty()) lines.removeFirst();   // truncated head
+
+    out.reserve(lines.size());
+    for (const QString &ln : lines) {
+        const QJsonObject obj = QJsonDocument::fromJson(ln.toUtf8()).object();
+        const QString type = obj.value(QStringLiteral("type")).toString();
+        if (type != QStringLiteral("assistant") && type != QStringLiteral("user"))
+            continue;
+
+        TranscriptTurn t;
+        const QString ts = obj.value(QStringLiteral("timestamp")).toString();
+        t.tsMs = parseIso8601Ms(ts);
+
+        const QJsonObject msg = obj.value(QStringLiteral("message")).toObject();
+        if (type == QStringLiteral("assistant")) {
+            t.isAssistant = true;
+            t.modelId     = msg.value(QStringLiteral("model")).toString();
+        } else {
+            t.isUser = true;
+            // user.message.content can be a string OR an array of content
+            // blocks (text/image/tool_result). Join all text into userText.
+            const QJsonValue cv = msg.value(QStringLiteral("content"));
+            if (cv.isString()) {
+                t.userText = cv.toString();
+            } else if (cv.isArray()) {
+                QStringList parts;
+                for (const QJsonValue &blk : cv.toArray()) {
+                    const QJsonObject b = blk.toObject();
+                    if (b.value(QStringLiteral("type")).toString()
+                            == QStringLiteral("text")) {
+                        parts.append(b.value(QStringLiteral("text")).toString());
+                    }
+                }
+                t.userText = parts.join(QLatin1Char(' '));
+            }
+            // ANTS-6142 — a line with no text (a tool_result envelope) is the
+            // tool replying, not the person, so it is no user turn. The
+            // recommender's own transcript scans skip it the same way
+            // (ANTS-1892).
+            if (t.userText.isEmpty()) continue;
+        }
+        out.append(t);
+    }
+    return out;
 }
 
 }  // namespace ModelSwitchLedger

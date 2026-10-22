@@ -95263,6 +95263,11 @@ worked after these.
   (ids L33-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22, the HIGH fixed: the transcript reader moved from
+  claudestatuswidgets.cpp into modelswitchledger.cpp beside
+  TranscriptTurn, and skips text-less (tool_result) user lines, so
+  isUser means the person. Closes ANTS-6011. Mediums and lows remain,
+  including the shared tail-read helper.
   **Layman:** Tidy the automatic model switching so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97895,13 +97900,20 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6011] **src/modelswitchledger.cpp:310-318: the correction signal reads the first isUser turn, which is usually a tool-result line with empty text, so it may rarely fire.**
+- ✅ [ANTS-6011] **src/modelswitchledger.cpp:310-318: the correction signal reads the first isUser turn, which is usually a tool-result line with empty text, so it may rarely fire.**
   Lead L33-C1 from the readability review of 2026-10-22, lane model-switching.
   Location: src/modelswitchledger.cpp:310-318
   the correction signal reads the first `isUser` turn, which is usually a tool-result line with empty text, so it may rarely fire. Searched: the TranscriptTurn producer in claudestatuswidgets.cpp:2884-2906.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  Resolved (2026-10-22, with ANTS-6142 L33 HIGH): confirmed and fixed.
+  The transcript reader (now ModelSwitchLedger::readTranscriptTurns)
+  drops a user line with no text, so the correction signal and the
+  five-turn override window read what the person typed, as
+  ANTS-1735 § 2.5 states. Test
+  ModelSwitchLedger.ReadTranscriptTurnsSkipsToolResultOnlyLines: red
+  before (an empty turn came first), green after.
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

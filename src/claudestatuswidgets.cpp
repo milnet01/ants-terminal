@@ -2815,71 +2815,6 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     focused->setFocus();   // ANTS-1849 — keep typing focus in the terminal
 }
 
-namespace {
-
-// Parse a JSONL transcript tail into the projection the §2.5 outcome
-// fill-in needs (assistant turns + user turns with their content). Matches
-// the 512 KB tail-read pattern in ModelRecommender::score so behaviour is
-// consistent. Returns turns in chronological order, oldest first.
-QList<ModelSwitchLedger::TranscriptTurn>
-parseTranscriptTurnsForLedger(const QString &path)
-{
-    QList<ModelSwitchLedger::TranscriptTurn> out;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return out;
-    constexpr qint64 kMaxTailBytes = 512LL * 1024LL;
-    const bool didTailSeek = (f.size() > kMaxTailBytes);
-    if (didTailSeek) f.seek(f.size() - kMaxTailBytes);
-
-    QStringList lines;
-    while (!f.atEnd()) {
-        const QString ln = QString::fromUtf8(f.readLine()).trimmed();
-        if (!ln.isEmpty()) lines.append(ln);
-    }
-    f.close();
-    if (didTailSeek && !lines.isEmpty()) lines.removeFirst();   // truncated head
-
-    out.reserve(lines.size());
-    for (const QString &ln : lines) {
-        const QJsonObject obj = QJsonDocument::fromJson(ln.toUtf8()).object();
-        const QString type = obj.value(QStringLiteral("type")).toString();
-        if (type != QStringLiteral("assistant") && type != QStringLiteral("user"))
-            continue;
-
-        ModelSwitchLedger::TranscriptTurn t;
-        const QString ts = obj.value(QStringLiteral("timestamp")).toString();
-        t.tsMs = ModelSwitchLedger::parseIso8601Ms(ts);
-
-        const QJsonObject msg = obj.value(QStringLiteral("message")).toObject();
-        if (type == QStringLiteral("assistant")) {
-            t.isAssistant = true;
-            t.modelId     = msg.value(QStringLiteral("model")).toString();
-        } else {
-            t.isUser = true;
-            // user.message.content can be a string OR an array of content
-            // blocks (text/image/tool_result). Join all text into userText.
-            const QJsonValue cv = msg.value(QStringLiteral("content"));
-            if (cv.isString()) {
-                t.userText = cv.toString();
-            } else if (cv.isArray()) {
-                QStringList parts;
-                for (const QJsonValue &blk : cv.toArray()) {
-                    const QJsonObject b = blk.toObject();
-                    if (b.value(QStringLiteral("type")).toString()
-                            == QStringLiteral("text")) {
-                        parts.append(b.value(QStringLiteral("text")).toString());
-                    }
-                }
-                t.userText = parts.join(QLatin1Char(' '));
-            }
-        }
-        out.append(t);
-    }
-    return out;
-}
-
-}  // namespace
-
 // ANTS-1735 §2.5 — outcome fill-in tick. Runs on the 2 s status timer,
 // internally throttled to once per kPendingFillIntervalMs (30 s). Reads
 // the ledger, fills any pending records whose post-switch transcript has
@@ -2949,7 +2884,7 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
         }
 
         const QList<ModelSwitchLedger::TranscriptTurn> turns =
-            parseTranscriptTurnsForLedger(transcriptPath);
+            ModelSwitchLedger::readTranscriptTurns(transcriptPath);
         const qint64 switchMs = ModelSwitchLedger::parseIso8601Ms(r.ts);
 
         // Subsequent auto-switches for the same project — used by

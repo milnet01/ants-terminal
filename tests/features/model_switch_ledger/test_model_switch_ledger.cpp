@@ -634,3 +634,29 @@ TEST(ModelSwitchLedger, Ants1941AllPreEpochYieldsNeutralStats) {
     EXPECT_EQ(env.value("measured_downgrades").toInt(), 0);
     EXPECT_DOUBLE_EQ(env.value("regret_rate").toDouble(), 0.0);
 }
+
+// ANTS-6142 — a `user` line holding only a tool_result is the tool replying,
+// not the person, so it is no user turn: the correction signal reads the
+// first thing the person typed after the switch, as ANTS-1735 § 2.5 says.
+TEST(ModelSwitchLedger, ReadTranscriptTurnsSkipsToolResultOnlyLines) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath("t.jsonl");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(
+        R"({"type":"assistant","timestamp":"2026-10-22T10:00:00Z","message":{"model":"claude-haiku-4-5"}})" "\n"
+        R"({"type":"user","timestamp":"2026-10-22T10:00:01Z","message":{"content":[{"type":"tool_result","content":"ok"}]}})" "\n"
+        R"({"type":"user","timestamp":"2026-10-22T10:00:02Z","message":{"content":"no, wrong file"}})" "\n");
+    f.close();
+
+    QStringList userTexts;
+    int assistants = 0;
+    for (const L::TranscriptTurn &t : L::readTranscriptTurns(path)) {
+        if (t.isUser) userTexts << t.userText;
+        if (t.isAssistant) ++assistants;
+    }
+    EXPECT_EQ(assistants, 1);
+    EXPECT_EQ(userTexts, QStringList{QStringLiteral("no, wrong file")})
+        << userTexts.join(" | ").toStdString();
+}
