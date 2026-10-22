@@ -2,6 +2,7 @@
 
 #include "docfacts.h"
 #include "markdownscan.h"
+#include "specparse.h"
 
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -299,7 +300,7 @@ Result check(const QString &text, const QString &relPath, const Options &opts) {
     // ---- invariant_duplicate ----
     {
         static const QRegularExpression def(
-            QStringLiteral(R"(^ {0,3}-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
+            QStringLiteral("^ {0,3}") + SpecParse::invBulletAnchorPattern());
         QVector<bool> inInvariants(lines.size(), false);
         for (const MarkdownScan::Heading &h : MarkdownScan::headings(lines)) {
             if (!h.text.contains(QStringLiteral("Invariants"))) continue;

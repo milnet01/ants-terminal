@@ -287,6 +287,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_log finds a spec's sections past a code block nested in a list item, so append_inv and append_loop write inside the right section** (ANTS-5965)
+
 - **doc_lint's fix:true now repairs a Contents list that holds a code fence inside an entry, or whose first entry is deeply indented, writing the new entry in document order** (ANTS-6135)
 
 - **Every spec-reading verb now finds the specs folder by one rule** (ANTS-6131)

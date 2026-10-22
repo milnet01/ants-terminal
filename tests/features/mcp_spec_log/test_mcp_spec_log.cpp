@@ -296,6 +296,24 @@ TEST(McpSpecLog, FencedHeadingSafety) {
     EXPECT_LT(inv3, log);
 }
 
+// T8b — a fence nested in a list item. Its opener is indented past the
+// top-level limit and its closer is not, so a top-level-only walk reads the
+// closer as an opener and hides every heading after it.
+TEST(McpSpecLog, ListNestedFenceDoesNotHideNextSection) {
+    const QString spec = QStringLiteral(
+        "# T\n\n**Status:** d.\n\n## 3. Invariants\n\n"
+        "- **INV-1** — x. *Test:* T1.\n"
+        "- an item with a sample:\n\n"
+        "     ```\n     sample\n  ```\n\n"
+        "## 4. Next\n\nbody.\n");
+    const SpecLog::EditResult r =
+        SpecLog::appendInv(spec, QStringLiteral("INV-2"),
+                           QStringLiteral("y"), QStringLiteral("T2"));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_LT(r.content.indexOf("**INV-2**"), r.content.indexOf("## 4. Next"))
+        << "INV-2 must land inside Invariants, not after the next section";
+}
+
 // T1/T10 (handler) — set_status via cmdSpecLog routes by id + envelope.
 TEST(McpSpecLog, HandlerSetStatus) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

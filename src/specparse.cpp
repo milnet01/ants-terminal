@@ -189,7 +189,8 @@ QJsonObject parseSpecBody(const QString &body) {
         // Found by ANTS-3662's `invariant_no_test` check, which is exactly the
         // defect it exists to report.
         static const QRegularExpression tableRe(
-            QStringLiteral(R"(^\|[ \t]*(INV-[0-9]+[a-z]?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
+            QStringLiteral(R"(^\|[ \t]*()") + SpecParse::invIdPattern() +
+                QStringLiteral(R"()[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
             QRegularExpression::MultilineOption);
         // ANTS-3799 — both forms are parsed and merged by document position,
         // rather than the bullet branch being skipped whenever the table branch
@@ -225,7 +226,8 @@ QJsonObject parseSpecBody(const QString &body) {
             // INV-N marker, then accumulate body lines until the
             // next anchor.
             static const QRegularExpression bulletStartRe(
-                QStringLiteral(R"(^-\s+\*\*(INV-[0-9]+[a-z]?)[\.]?\*\*\s*[—\-:]?\s*)"),
+                QLatin1Char('^') + SpecParse::invBulletAnchorPattern() +
+                    QStringLiteral(R"(\s*[—\-:]?\s*)"),
                 QRegularExpression::MultilineOption);
             auto bit = bulletStartRe.globalMatch(section);
             QList<QPair<QString, int>> starts;  // id, position-after-marker
@@ -374,7 +376,7 @@ QJsonObject parseSpecBody(const QString &body) {
     // rather than absorbed into the body of the invariant before it. The trailing
     // lookahead keeps `INV-3` inside a longer word from reading as `INV-3b`.
     static const QRegularExpression invTokenRe(
-        QStringLiteral(R"(INV-[0-9]+[a-z]?(?![A-Za-z0-9]))"));
+        SpecParse::invIdPattern() + QStringLiteral("(?![A-Za-z0-9])"));
     QSet<QString> untabledInvIds;
     auto invTokIt = invTokenRe.globalMatch(body);
     while (invTokIt.hasNext()) {

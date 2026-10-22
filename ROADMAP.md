@@ -95170,6 +95170,15 @@ worked after these.
   (ids L27-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22, both HIGH fixed.
+  F1: speclog's four fence-aware section walks are one,
+  level2Headings() on MarkdownScan::fenceMask; this also closes the
+  MEDIUM at speclog.cpp:330 (the local `sectionEnd` is gone) and
+  ANTS-5965. F2: the invariant id and its bullet and row anchor
+  shapes live once in specparse.h; speclint, speclog, specparse and
+  docfacts (a sixth copy) build on them, each keeping its own indent
+  rule. invariantNumbers keeps its looser shape, as speclint.h says.
+  Mediums and lows remain.
   **Layman:** Tidy the spec checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97305,13 +97314,19 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: spec-engines.
 
-- 📋 [ANTS-5965] **src/speclog.cpp:330: / :494 — the bullet path bounds the section with fenceMask (which tracks list containers) but inserts using the hand-walked sectionEnd() (which does not).**
+- ✅ [ANTS-5965] **src/speclog.cpp:330: / :494 — the bullet path bounds the section with fenceMask (which tracks list containers) but inserts using the hand-walked sectionEnd() (which does not).**
   Lead L27-C3 from the readability review of 2026-10-22, lane spec-engines.
   Location: src/speclog.cpp:330
   / `:494` — the bullet path bounds the section with `fenceMask` (which tracks list containers) but inserts using the hand-walked `sectionEnd()` (which does not). The two can disagree on a fence nested in a list item. — Searched: markdownscan.h.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  Resolved (2026-10-22, with ANTS-6136 L27-F1): confirmed and fixed.
+  speclog's section finders now share one heading walk built on
+  fenceMask, and appendLoop's own bound calls sectionEnd(), so the
+  two bounds can no longer disagree. Test
+  McpSpecLog.ListNestedFenceDoesNotHideNextSection: red before (INV-2
+  landed after the next section), green after.
   **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99145,6 +99160,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
      budget. Fold into the performance review planned for no earlier
      than 2026-10-29 (ANTS-6049 note), unless CI starts failing on
      most pushes, as it did before ANTS-6049.
+  2026-10-22, second failure: CI run 39835563679 (769bf09a),
+  Release job, p95 54.0 ms over 20 warm reads of 3700 items. The
+  other 5867 tests passed, and both later pushes (d11743f4,
+  284b4c30) were green on the same read path.
+  Two of the day's pushes now: still not "most pushes", so the
+  fold into the 2026-10-29 performance review stands.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.

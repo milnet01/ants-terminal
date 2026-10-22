@@ -26,11 +26,6 @@ EditResult fail(const QString &code, const QString &error) {
     return r;
 }
 
-// ANTS-3603 — the fence primitives now live in MarkdownScan (markdownscan.h).
-// Bring fenceOpenerChar into this namespace so findSectionHeading below calls
-// it unqualified, exactly as it did before the hoist.
-using MarkdownScan::fenceOpenerChar;
-
 // A `## ` section boundary: exactly two hashes + space (`### `+ never
 // ends a `## ` section).
 bool isLevel2Heading(const QString &line) {
@@ -38,97 +33,45 @@ bool isLevel2Heading(const QString &line) {
            !line.startsWith(QStringLiteral("### "));
 }
 
-// Find the 0-based line index of the FIRST `## ` heading whose text
-// contains `keyword` (case-insensitive substring), skipping fenced
-// regions. Returns -1 when none.
-int findSectionHeading(const QStringList &lines, const QString &keyword) {
-    QChar openFence;
-    int   openFenceRun = 0;  // ANTS-4820
+// The 0-based index of every `## ` heading outside a fenced block, in order.
+// The one fence-aware walk behind every section finder in this file, so a
+// fence-rule fix reaches all of them. fenceMask follows list items
+// (ANTS-3638) and closes a fence by CommonMark § 4.5 (ANTS-4820).
+QVector<int> level2Headings(const QStringList &lines) {
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    QVector<int> out;
     for (int i = 0; i < lines.size(); ++i) {
-        const QString &line = lines.at(i);
-        if (!openFence.isNull()) {
-            // ANTS-4820 — CommonMark § 4.5: the closer must be at
-            // least as long as the opener, not merely the same char.
-            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
-                openFence    = QChar();
-                openFenceRun = 0;
-            }
-            continue;
-        }
-        int openerRun = 0;
-        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
-        if (!opener.isNull()) {
-            openFence    = opener;
-            openFenceRun = openerRun;
-            continue;
-        }
-        if (isLevel2Heading(line) &&
-            line.contains(keyword, Qt::CaseInsensitive)) {
-            return i;
-        }
+        if (!fence.at(i) && isLevel2Heading(lines.at(i))) out.append(i);
+    }
+    return out;
+}
+
+// The FIRST `## ` heading whose text contains `keyword` (case-insensitive
+// substring), or -1 when none.
+int findSectionHeading(const QStringList &lines, const QString &keyword) {
+    for (int i : level2Headings(lines)) {
+        if (lines.at(i).contains(keyword, Qt::CaseInsensitive)) return i;
     }
     return -1;
 }
 
-// ANTS-3651 — how MANY level-2 headings carry the keyword. Same fence-aware
-// walk as findSectionHeading, which returns only the first: a file that
+// ANTS-3651 — how MANY level-2 headings carry the keyword. A file that
 // already holds two is ambiguous, and appending to the first silently deepens
 // a structural defect its author has not noticed. Counting is the cheapest way
 // for the caller to tell "found it" from "found several".
 int countSectionHeadings(const QStringList &lines, const QString &keyword) {
-    QChar openFence;
-    int   openFenceRun = 0;  // ANTS-4820
     int n = 0;
-    for (const QString &line : lines) {
-        if (!openFence.isNull()) {
-            // ANTS-4820 — CommonMark § 4.5: the closer must be at
-            // least as long as the opener, not merely the same char.
-            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
-                openFence    = QChar();
-                openFenceRun = 0;
-            }
-            continue;
-        }
-        int openerRun = 0;
-        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
-        if (!opener.isNull()) {
-            openFence    = opener;
-            openFenceRun = openerRun;
-            continue;
-        }
-        if (isLevel2Heading(line) &&
-            line.contains(keyword, Qt::CaseInsensitive)) {
-            ++n;
-        }
+    for (int i : level2Headings(lines)) {
+        if (lines.at(i).contains(keyword, Qt::CaseInsensitive)) ++n;
     }
     return n;
 }
 
-// Given the heading index `hdrIdx`, find the end of that section: the
-// first `## ` boundary after it (fence-skipped, `###`+ inert) or EOF.
-// Returns the 0-based index of the boundary line (== lines.size() at EOF).
+// The end of the section headed at `hdrIdx`: the index of the next `## `
+// heading, or lines.size() at EOF.
 int sectionEnd(const QStringList &lines, int hdrIdx) {
-    QChar openFence;
-    int   openFenceRun = 0;  // ANTS-4820
-    for (int i = hdrIdx + 1; i < lines.size(); ++i) {
-        const QString &line = lines.at(i);
-        if (!openFence.isNull()) {
-            // ANTS-4820 — CommonMark § 4.5: the closer must be at
-            // least as long as the opener, not merely the same char.
-            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
-                openFence    = QChar();
-                openFenceRun = 0;
-            }
-            continue;
-        }
-        int openerRun = 0;
-        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
-        if (!opener.isNull()) {
-            openFence    = opener;
-            openFenceRun = openerRun;
-            continue;
-        }
-        if (isLevel2Heading(line)) return i;
+    for (int i : level2Headings(lines)) {
+        if (i > hdrIdx) return i;
     }
     return lines.size();
 }
@@ -327,16 +270,9 @@ EditResult appendLoop(const QString &content, const QString &label,
         const auto fenced = [&fence](int i) {
             return i < fence.size() && fence.at(i);
         };
-        int sectionEnd = lines.size();
-        for (int i = hdr + 1; i < lines.size(); ++i) {
-            if (fenced(i)) continue;
-            if (lines.at(i).startsWith(QStringLiteral("## "))) {
-                sectionEnd = i;
-                break;
-            }
-        }
+        const int loopEnd = sectionEnd(lines, hdr);
         int headerLine = -1, sepLine = -1;
-        for (int i = hdr + 1; i + 1 < sectionEnd && i + 1 < lines.size(); ++i) {
+        for (int i = hdr + 1; i + 1 < loopEnd && i + 1 < lines.size(); ++i) {
             if (fenced(i)) continue;
             if (lines.at(i).trimmed().startsWith(QLatin1Char('|')) &&
                 slIsTableSeparator(lines.at(i + 1))) {
@@ -380,7 +316,7 @@ EditResult appendLoop(const QString &content, const QString &label,
             const auto isRow = [&](int i) {
                 return lines.at(i).trimmed().startsWith(QLatin1Char('|'));
             };
-            for (int i = sepLine + 1; i < sectionEnd && i < lines.size(); ++i) {
+            for (int i = sepLine + 1; i < loopEnd && i < lines.size(); ++i) {
                 if (isRow(i)) {
                     if (firstData < 0) firstData = i;
                     lastData = i;
@@ -388,11 +324,11 @@ EditResult appendLoop(const QString &content, const QString &label,
                 }
                 if (!lines.at(i).trimmed().isEmpty()) break;   // prose ends it
                 int next = i;
-                while (next < sectionEnd && next < lines.size() &&
+                while (next < loopEnd && next < lines.size() &&
                        lines.at(next).trimmed().isEmpty())
                     ++next;
                 const bool continues =
-                    next < sectionEnd && next < lines.size() && isRow(next) &&
+                    next < loopEnd && next < lines.size() && isRow(next) &&
                     slRowCells(lines.at(next)).size() == header.size() &&
                     !(next + 1 < lines.size() && slIsTableSeparator(lines.at(next + 1)));
                 if (!continues) break;   // the table ended
@@ -466,7 +402,7 @@ EditResult appendLoop(const QString &content, const QString &label,
         // as the table arm does. The first and last rows decide: by loop
         // number where both labels lead with one, else by date.
         int firstRow = -1, lastRow = -1;
-        for (int i = hdr + 1; i < sectionEnd; ++i) {
+        for (int i = hdr + 1; i < loopEnd; ++i) {
             if (fenced(i) || !lines.at(i).startsWith(QStringLiteral("- **")))
                 continue;
             if (firstRow < 0) firstRow = i;
@@ -588,7 +524,7 @@ EditResult appendInv(const QString &content, const QString &invId,
         SpecParse::invariantsSection(content);
     if (invSec.start >= 0) {
         static const QRegularExpression rowRe(
-            QStringLiteral(R"(^\|\s*(INV-[0-9]+[a-z]?)\s*\|)"),
+            QLatin1Char('^') + SpecParse::invRowAnchorPattern(),
             QRegularExpression::MultilineOption);
         auto it = rowRe.globalMatch(
             content.mid(invSec.start, invSec.end - invSec.start));

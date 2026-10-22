@@ -273,12 +273,11 @@ QString normalisedHeading(const QString &line) {
 }
 
 // The id an invariant anchor line declares, in either form, or empty.
-// ANTS-4107 — `[a-z]?` so a sub-lettered id anchors like any other.
 QString anchorId(const QString &line) {
     static const QRegularExpression bulletAnchorRe(
-        QStringLiteral(R"(^ {0,3}-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
+        QStringLiteral("^ {0,3}") + SpecParse::invBulletAnchorPattern());
     static const QRegularExpression rowAnchorRe(
-        QStringLiteral(R"(^ {0,3}\|\s*(INV-\d+[a-z]?)\s*\|)"));
+        QStringLiteral("^ {0,3}") + SpecParse::invRowAnchorPattern());
     auto m = bulletAnchorRe.match(line);
     if (!m.hasMatch()) m = rowAnchorRe.match(line);
     return m.hasMatch() ? m.captured(1) : QString();
@@ -435,11 +434,12 @@ bool inDiffFull(const DocFinding::Finding &f, const Layout &L,
 
 QSet<int> invariantNumbers(const QString &text) {
     static const QRegularExpression anchorRe(
-        QStringLiteral(R"(^ {0,3}(?:-\s+\*\*|\|\s*)INV-([0-9]+)[a-z]?)"),
+        QStringLiteral(R"(^ {0,3}(?:-\s+\*\*|\|\s*)()") +
+            SpecParse::invIdPattern() + QLatin1Char(')'),
         QRegularExpression::MultilineOption);
     QSet<int> out;
     auto it = anchorRe.globalMatch(text);
-    while (it.hasNext()) out.insert(it.next().captured(1).toInt());
+    while (it.hasNext()) out.insert(invNumber(it.next().captured(1)));
     return out;
 }
 
@@ -590,9 +590,9 @@ Result check(const QString &text, const QString &relPath,
     // are not skipped, since the parser reads neither way. The row anchor stays
     // looser than the parser's three-cell row on purpose (see the next block).
     static const QRegularExpression sectionBulletRe(
-        QStringLiteral(R"(^-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
+        QLatin1Char('^') + SpecParse::invBulletAnchorPattern());
     static const QRegularExpression sectionRowRe(
-        QStringLiteral(R"(^\|\s*(INV-\d+[a-z]?)\s*\|)"));
+        QLatin1Char('^') + SpecParse::invRowAnchorPattern());
     QHash<QString, int> anchorLine;   // id -> 1-based line, first occurrence
     for (int i = qMax(invStart, 0); invStart >= 0 && i < invEnd; ++i) {
         auto am = sectionBulletRe.match(lines[i]);

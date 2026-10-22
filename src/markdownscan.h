@@ -82,7 +82,7 @@ bool fenceCloses(const QString &line, QChar openChar, int openRun,
 // fence nested in a list item opens correctly (a 4-space-indented ``` under
 // a `- ` bullet used to be invisible, and its whole body was scanned as
 // prose — docs/specs/ANTS-1238.md:319 harvested a bogus broken_link). The
-// stateless `fenceOpenerChar` callers (feedbackfile, speclog, docsindex)
+// stateless `fenceOpenerChar` callers (feedbackfile, docsindex)
 // keep the top-level rule: container tracking needs state they do not carry,
 // and the files they scan fence at top level.
 [[nodiscard]] QVector<bool> fenceMask(const QStringList &lines);

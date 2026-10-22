@@ -14,6 +14,21 @@
 
 namespace SpecParse {
 
+// ANTS-6136 — the invariant id and its two anchor shapes, the one copy.
+// Regex fragments with no `^`, so each caller adds its own indent rule.
+// An id may carry a sub-letter (INV-3b, ANTS-4107). In both anchors,
+// capture group 1 is the id: a bullet `- **INV-N**` (a `.` allowed before
+// the closing `**`) and a table row `| INV-N |`.
+inline QString invIdPattern() { return QStringLiteral(R"(INV-\d+[a-z]?)"); }
+inline QString invBulletAnchorPattern() {
+    return QStringLiteral(R"(-\s+\*\*()") + invIdPattern() +
+           QStringLiteral(R"()\.?\*\*)");
+}
+inline QString invRowAnchorPattern() {
+    return QStringLiteral(R"(\|\s*()") + invIdPattern() +
+           QStringLiteral(R"()\s*\|)");
+}
+
 // ANTS-3785 — the lines one `**Field:**` header entry occupies.
 //
 // A header field's value MAY wrap: docs/standards/specs.md § 3.2 tells authors
