@@ -157,6 +157,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Reading a whole project's roadmap from the store takes about a third less work** (ANTS-6049)
+  The pattern matching that re-reads each item now skips trailer keys an item does not contain, item counts come from a single COUNT query, and each item's trailer lines are worked out once.
+
 - **`project_settings` detect suggests an existing empty `src/` as the first source folder** (ANTS-5668)
   On a brand-new project whose `src/` holds no code yet, the suggestion now starts with `src` instead of naming only a helper-scripts folder, so the first code written there is indexed.
 
@@ -270,6 +273,16 @@ for security-relevant changes.
   `claude mcp add` command in the README again.
 
 ### Fixed
+
+- **The audit dialog's Auto-fix button now appears after a run that finishes, not only after one you cancel**
+
+- **The Roadmap dialog's kind filters for perf, security, optimize and the other newer kinds are remembered between sessions**
+
+- **The bash veto hook keeps routing a ROADMAP.md grep to roadmap_query when a path in the command contains "-v"**
+
+- **Window moves and centring on KDE use the same KWin script chain as position restore, so a failed step unloads its script and two instances no longer share a script name**
+
+- **roadmap_query's mode description now includes the explanation of mode "report"**
 
 - **The roadmap reader handles projects with up to 7,000 items.** (ANTS-6048)
   The whole-project read limit was 3,500 items, below this project's own roadmap, so `roadmap_query` and the Roadmap window's store read refused it. The limit now follows the same memory budget rule at today's size. Reaches running sessions on their next `/mcp` reconnect; the Roadmap window needs a terminal restart.

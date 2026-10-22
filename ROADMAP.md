@@ -94690,6 +94690,7 @@ worked after these.
   (ids L02-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: all three HIGH done (ec83160b). Medium/low still open.
   **Layman:** Tidy the screen text and scrollback so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94714,6 +94715,7 @@ worked after these.
   (ids L04-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1, F2 (comments) done (1d833dce). F3, F4 open.
   **Layman:** Tidy the main window, its tabs and menus so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94726,6 +94728,7 @@ worked after these.
   (ids L05-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 KWin chain done (1d833dce).
   **Layman:** Tidy the tab bar, side panels and window parts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94738,6 +94741,7 @@ worked after these.
   (ids L06-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 done.
   **Layman:** Tidy the dialog windows and colour themes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94750,6 +94754,7 @@ worked after these.
   (ids L07-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1, F9, F10, F11 done. F2 (triage paths) open.
   **Layman:** Tidy the code-audit window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94762,6 +94767,7 @@ worked after these.
   (ids L08-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 done. F2 (git-with-timeout copies) open.
   **Layman:** Tidy the code-audit checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94774,6 +94780,7 @@ worked after these.
   (ids L09-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 done.
   **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94846,6 +94853,8 @@ worked after these.
   (ids L15-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F2 (report gloss) done. F1 (descriptor builders)
+  open.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94894,6 +94903,7 @@ worked after these.
   (ids L19-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1, F2 done (08223997).
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94906,6 +94916,7 @@ worked after these.
   (ids L20-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F3 done. F1, F2, F4 open.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94918,6 +94929,7 @@ worked after these.
   (ids L21-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1, F2, F3 done. F4 (split append_batch) open.
   **Layman:** Tidy the bulk roadmap tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94942,6 +94954,7 @@ worked after these.
   (ids L23-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 done. F2 open.
   **Layman:** Tidy the review tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94966,6 +94979,7 @@ worked after these.
   (ids L25-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F3 done. F1, F2 open.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95038,6 +95052,7 @@ worked after these.
   (ids L31-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F2, F3, F6 done. F1, F5 open.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95074,6 +95089,7 @@ worked after these.
   (ids L34-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: all HIGH (F1-F6) done.
   **Layman:** Tidy settings, saved sessions and project settings so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95086,6 +95102,7 @@ worked after these.
   (ids L35-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 done.
   **Layman:** Tidy the plugin system so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95098,6 +95115,7 @@ worked after these.
   (ids L36-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F3 done. F1, F2 open.
   **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98073,7 +98091,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: user-request-2026-10-22.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6049] **Whole-project roadmap reads near INV-3's 50 ms p95 budget: ~47 ms at 3,700 items, ~90 ms at 7,000.**
+- ✅ [ANTS-6049] **Whole-project roadmap reads near INV-3's 50 ms p95 budget: ~47 ms at 3,700 items, ~90 ms at 7,000.**
   Measured 2026-10-22 with RoadmapReadSeam.Inv3Latency (Release build,
   20 warm reads), the corpus size and the ceiling raised locally for the
   run only: 7,000 items p95 89.4-92.4 ms over three runs; 3,700 items
@@ -98093,6 +98111,14 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   shape (prove with EXPLAIN QUERY PLAN); check for per-row prepared
   statements and per-row QVariant/QString conversion before blaming
   SQLite. WAL kept readers from blocking the writer.
+  Shipped 2026-10-22 in 60e5f99c (user brought it forward because CI's
+  Release job failed Inv3Latency at 72 ms on every push). Profiled with
+  callgrind: two thirds of the read was re-parsing rendered bullets.
+  Fixes: trailer-key text prefilter before each regex, colon-walk key
+  search, one trailerLines() per item, COUNT(*) ceiling gate, empty-JSON
+  skip, forward-only reads. bulletsFromStore 12.41 G -> 8.35 G
+  instructions; CI run 39765565917 (08223997) passed Inv3Latency. The
+  test now prints p95 on a pass (visible locally; ctest hides it on CI).
   **Layman:** Reading this project's roadmap is getting slow as it grows, and it will soon miss its speed target.
   Kind: perf.
   Source: ANTS-6048-measurement-2026-10-22.
