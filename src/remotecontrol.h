@@ -1647,6 +1647,14 @@ private:
     // is conservative: a structured stub (intro paragraph +
     // headings) lands ~600 B; real roadmaps clear by ≥ 100×.
     static constexpr qint64 kRoadmapMinParseableSize = 1024;
+    // INV-9 / ANTS-1429 / ANTS-1463 — the unrecognised_format refusal of a write
+    // that would splice into `markdown` although it parsed to no bullets. Runs
+    // before any index is built, so a foreign dialect gets this typed error
+    // instead of a misleading bad_section. Empty when the file parsed or is too
+    // small to judge.
+    static std::optional<QJsonDocument> rlUnrecognisedFormat(const QString &roadmapPath,
+                                                              const QString &markdown,
+                                                              bool parsedNothing);
 
     // ANTS-1319 — mtime-cached partition result (INV-12). Single-entry
     // cache keyed on (path, scope, stamp). TTL = 5 s, picked to cover

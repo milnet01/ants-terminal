@@ -107,15 +107,21 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
 
     expect(contains(body, "ANTS-1429"),
            "INV-3: ANTS-1429 anchor present in cmdRoadmapLog");
-    expect(contains(body, "\"unrecognised_format\""),
-           "INV-3: unrecognised_format literal in cmdRoadmapLog");
-    // Envelope shape parity — read and write paths both carry path
-    // + bytes fields. Inline construction (not via rlErr) is the
-    // signal that the parity is intentional.
-    expect(contains(body, "env[\"path\"]"),
-           "INV-3: env[\"path\"] assigned in cmdRoadmapLog gate");
-    expect(contains(body, "env[\"bytes\"]"),
-           "INV-3: env[\"bytes\"] assigned in cmdRoadmapLog gate");
+    expect(contains(body, "rlUnrecognisedFormat("),
+           "INV-3: cmdRoadmapLogAppend runs the shared write gate");
+    // The write paths share one gate (ANTS-6130). Envelope shape parity —
+    // read and write paths both carry path + bytes fields. Inline
+    // construction (not via rlErr) is the signal that the parity is
+    // intentional.
+    const std::string gate = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::rlUnrecognisedFormat(");
+    ASSERT_FALSE(gate.empty()) << "INV-3: rlUnrecognisedFormat not found";
+    expect(contains(gate, "\"unrecognised_format\""),
+           "INV-3: unrecognised_format literal in the write gate");
+    expect(contains(gate, "env[\"path\"]"),
+           "INV-3: env[\"path\"] assigned in the write gate");
+    expect(contains(gate, "env[\"bytes\"]"),
+           "INV-3: env[\"bytes\"] assigned in the write gate");
     EXPECT_EQ(0, expect_failures());
 }
 

@@ -1306,24 +1306,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     const QString markdown = QString::fromUtf8(rf.readAll());
     rf.close();
 
-    // INV-9 — unrecognised_format gate (parity with append path).
+    // INV-9 — unrecognised_format gate.
     const auto preflightBullets = rlParse(markdown, callerCanonical);
-    const qint64 markdownBytes = markdown.toUtf8().size();
-    if (preflightBullets.isEmpty() &&
-        markdownBytes > kRoadmapMinParseableSize) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = QStringLiteral("unrecognised_format");
-        env["error"] = QStringLiteral(
-            "roadmap_log: \"%1\" parsed zero bullets from %2 "
-            "bytes — format not recognised; cannot safely splice")
-                .arg(roadmapPath).arg(markdownBytes);
-        env["path"]            = roadmapPath;
-        env["bytes"]           = markdownBytes;
-        env["hint"]            = kUnrecognisedFormatHint();
-        env["expected_format"] = kUnrecognisedFormatExpected();
-        return QJsonDocument(env);
-    }
+    if (auto refusal = rlUnrecognisedFormat(roadmapPath, markdown,
+                                            preflightBullets.isEmpty()))
+        return *refusal;
     // ANTS-2031 — heading-format roadmaps have no create_section writer.
     if (rcBulletsArePassHeadings(preflightBullets)) {
         return rcPassHeadingsWriteRefusal(
@@ -2229,27 +2216,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
-// ANTS-4572 / ANTS-4938 — append_batch's scrub warning, batch-wide. Fires when
-// the scrub removed ANYTHING, named or not, and says what went. One helper for
-// both paths: the markdown path once reported named parameters only
-// (ANTS-5095).
-static void rlAddBatchScrubWarning(QJsonObject &env, const QStringList &names,
-                                   int unnamed, const QStringList &fragments) {
-    if (names.isEmpty() && unnamed <= 0) return;
-    QJsonObject warn;
-    warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
-    warn["message"] = QStringLiteral(
-        "Stripped leaked tool-call XML from bullet bodies; resend "
-        "any named siblings as proper JSON fields if intended. "
-        "`removed_fragments` carries what was taken across the "
-        "batch — check it here rather than re-reading the bodies.");
-    if (!names.isEmpty()) warn["lost_parameters"] = QJsonArray::fromStringList(names);
-    if (unnamed > 0) warn["unnamed_fragments_removed"] = unnamed;
-    if (!fragments.isEmpty())
-        warn["removed_fragments"] = QJsonArray::fromStringList(fragments);
-    rlAddWarning(env, warn);
-}
-
 // ANTS-1879 — roadmap_log op:"append_batch". Append N bullets to one
 // section in a single read + single atomic commit. See
 // docs/specs/ANTS-1879.md. An all-skipped batch returns ok:true, as that
@@ -2535,22 +2501,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // ANTS-5371 — a file-only gate: the store serves a project with no items
     // yet, and the file it renders then has no bullets to parse.
     const auto preflightBullets = rlParse(markdown, callerCanonical);
-    const qint64 markdownBytes = markdown.toUtf8().size();
-    if (!writeTarget && preflightBullets.isEmpty() &&
-        markdownBytes > kRoadmapMinParseableSize) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = QStringLiteral("unrecognised_format");
-        env["error"] = QStringLiteral(
-            "roadmap_log: \"%1\" parsed zero bullets from %2 "
-            "bytes — format not recognised; cannot safely splice")
-                .arg(roadmapPath).arg(markdownBytes);
-        env["path"]            = roadmapPath;
-        env["bytes"]           = markdownBytes;
-        env["hint"]            = kUnrecognisedFormatHint();
-        env["expected_format"] = kUnrecognisedFormatExpected();
-        return QJsonDocument(env);
-    }
+    if (auto refusal = rlUnrecognisedFormat(roadmapPath, markdown,
+                                            !writeTarget && preflightBullets.isEmpty()))
+        return *refusal;
     // ANTS-2126 — a pass-headings roadmap was already routed to
     // cmdRoadmapLogPassAppendBatch by the early gate above (before the
     // counter read), so by here the roadmap is GFM / ants-v1.
@@ -2620,28 +2573,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         storePosition  = maxPos + 1;
     }
 
-    // 6. Per-bullet validation. Kinds + statuses enum-checked.
-    static const QSet<QString> kValidKinds = {
-        QStringLiteral("implement"),    QStringLiteral("fix"),
-        QStringLiteral("audit-fix"),    QStringLiteral("review-fix"),
-        QStringLiteral("doc"),          QStringLiteral("doc-fix"),
-        QStringLiteral("refactor"),     QStringLiteral("test"),
-        QStringLiteral("chore"),        QStringLiteral("release"),
-        QStringLiteral("perf"),         QStringLiteral("security"),
-        QStringLiteral("feature"),      QStringLiteral("enhancement"),
-        QStringLiteral("investigate"),  QStringLiteral("research"),
-        QStringLiteral("accessibility"),QStringLiteral("optimize"),
-        QStringLiteral("package"),      QStringLiteral("marketing"),
-        QStringLiteral("ux"),
-    };
-    auto statusToEmoji = [](const QString &s) -> QString {
-        if (s == QLatin1String("planned"))     return QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-        if (s == QLatin1String("in-progress")) return QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-        if (s == QLatin1String("shipped"))     return QString::fromUtf8("\xE2\x9C\x85");     // ✅
-        if (s == QLatin1String("considered"))  return QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
-        if (s == QLatin1String("dropped"))     return QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫 ANTS-4977
-        return QString();
-    };
+    // 6. Per-bullet validation: kinds against RoadmapParse::canonicalKinds(),
+    // statuses through rlResolveBatchStatus(), words only.
 
     struct Accepted {
         int bulletIndex = 0;
@@ -2779,15 +2712,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                  QStringLiteral("headline must not be empty"));
             continue;
         }
-        const QString emoji = statusToEmoji(status);
-        if (emoji.isEmpty()) {
+        QString emoji, statusWord;
+        if (!rlResolveBatchStatus(status, &emoji, &statusWord) || statusWord != status) {
             skip(QStringLiteral("bad_status"),
                  QStringLiteral("unknown status \"%1\" — expected "
                                 "planned/in-progress/shipped/considered/dropped")
                      .arg(status));
             continue;
         }
-        if (!kValidKinds.contains(kind)) {
+        if (!RoadmapParse::canonicalKinds().contains(kind)) {
             skip(QStringLiteral("bad_kind"),
                  QStringLiteral("unknown kind \"%1\"").arg(kind));
             continue;
@@ -3150,8 +3083,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         // ANTS-4572 — fire when the scrub removed ANYTHING, not only a named
         // parameter pair. A batch is where a silent partial scrub hides best:
         // one bullet of many, and nobody re-reads the rendered file.
-        rlAddBatchScrubWarning(env, scrubbedRollup, scrubbedUnnamedRollup,
-                               scrubbedFragRollup);
+        rlAddScrubWarning(env, scrubbedRollup, scrubbedUnnamedRollup,
+                          scrubbedFragRollup, /*batch=*/true);
         // ANTS-4527 — rolled up across the batch, as the scrub warning is.
         if (const QJsonObject ev = rlEvidenceAdvisory(evNotPathRollup);
             !ev.isEmpty()) {
@@ -3296,8 +3229,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     }
     // ANTS-5095 — the store path's warning: this path reported only a NAMED
     // parameter, so an unnamed fragment was stripped in silence (ANTS-4572).
-    rlAddBatchScrubWarning(out, scrubbedRollup, scrubbedUnnamedRollup,
-                           scrubbedFragRollup);
+    rlAddScrubWarning(out, scrubbedRollup, scrubbedUnnamedRollup,
+                      scrubbedFragRollup, /*batch=*/true);
     // ANTS-4527 — rolled up over the batch's bullets, like the scrub warning.
     {
         QStringList bad;

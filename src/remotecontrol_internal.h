@@ -485,6 +485,12 @@ bool rlEvidenceLooksLikePath(const QString &element);
 // are two. Adding a second advisory is what made this a bug, so it is fixed
 // here rather than worked around.
 void rlAddWarning(QJsonObject &env, const QJsonObject &warn);
+// ANTS-4572 / ANTS-4938 — the `body_scrubbed_tool_xml` advisory, shared by
+// append and append_batch. Fires when the scrub removed ANYTHING, named or
+// not, and carries what went, so the caller never has to re-read the body.
+// `batch` words it for many bodies.
+void rlAddScrubWarning(QJsonObject &env, const QStringList &names, int unnamed,
+                       const QStringList &fragments, bool batch);
 // ANTS-4527 — the `evidence_not_path_shaped` advisory for a filled list, or a
 // null object when the list is empty. Built once so all four write paths say
 // the same thing.

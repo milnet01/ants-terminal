@@ -31,6 +31,49 @@ using namespace rcdetail;  // ANTS-3833
 
 // The local calendar date, formatted to satisfy the item table's GLOB CHECK.
 // Local and not UTC: a user asking "what did I close today?" means their day.
+void rcdetail::rlAddScrubWarning(QJsonObject &env, const QStringList &names,
+                                 int unnamed, const QStringList &fragments,
+                                 bool batch) {
+    if (names.isEmpty() && unnamed <= 0) return;
+    QJsonObject warn;
+    warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
+    warn["message"] = batch
+        ? QStringLiteral(
+              "Stripped leaked tool-call XML from bullet bodies; resend "
+              "any named siblings as proper JSON fields if intended. "
+              "`removed_fragments` carries what was taken across the "
+              "batch — check it here rather than re-reading the bodies.")
+        : QStringLiteral(
+              "Stripped leaked tool-call XML from body; resend any named "
+              "siblings as proper JSON fields if you intended them. "
+              "`removed_fragments` carries what was taken — check it here "
+              "rather than re-reading the stored body.");
+    if (!names.isEmpty()) warn["lost_parameters"] = QJsonArray::fromStringList(names);
+    if (unnamed > 0) warn["unnamed_fragments_removed"] = unnamed;
+    if (!fragments.isEmpty())
+        warn["removed_fragments"] = QJsonArray::fromStringList(fragments);
+    rlAddWarning(env, warn);
+}
+
+std::optional<QJsonDocument> RemoteControl::rlUnrecognisedFormat(
+    const QString &roadmapPath, const QString &markdown, bool parsedNothing) {
+    const qint64 markdownBytes = markdown.toUtf8().size();
+    if (!parsedNothing || markdownBytes <= kRoadmapMinParseableSize)
+        return std::nullopt;
+    QJsonObject env;
+    env["ok"]    = false;
+    env["code"]  = QStringLiteral("unrecognised_format");
+    env["error"] = QStringLiteral(
+        "roadmap_log: \"%1\" parsed zero bullets from %2 "
+        "bytes — format not recognised; cannot safely splice")
+            .arg(roadmapPath).arg(markdownBytes);
+    env["path"]            = roadmapPath;
+    env["bytes"]           = markdownBytes;
+    env["hint"]            = kUnrecognisedFormatHint();
+    env["expected_format"] = kUnrecognisedFormatExpected();
+    return QJsonDocument(env);
+}
+
 QString rcdetail::rlStampToday() {
     return RoadmapClock::today().toString(QStringLiteral("yyyy-MM-dd"));
 }
@@ -694,36 +737,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                     env[QStringLiteral("possible_duplicates")] =
                         possibleDuplicates;
             }
-            // ANTS-4572 — fire when the scrub removed ANYTHING. It fired only
-            // on a matched <parameter name="X"> pair before, so a stray
-            // </invoke> or an ANTS-4609 `<tag>scalar` line was removed in
-            // silence — and a caller who has read that bodies are scrubbed
-            // takes ok:true for "the body is clean" and never re-reads it.
-            if (!scrubbedNames.isEmpty() || scrubbedUnnamed > 0) {
-                QJsonArray names;
-                for (const QString &n : scrubbedNames) names.append(n);
-                QJsonObject warn;
-                warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
-                // ANTS-4938 — the message used to end "re-read the stored body
-                // if the count is unexpected", which is a remedy the caller
-                // cannot discharge from the envelope. Measured twice in one
-                // session: both re-reads answered "nothing missing", because
-                // what went was inert. So the warning now CARRIES what it took.
-                warn["message"] = QStringLiteral(
-                    "Stripped leaked tool-call XML from body; resend any "
-                    "named siblings as proper JSON fields if you intended "
-                    "them. `removed_fragments` carries what was taken — check "
-                    "it here rather than re-reading the stored body.");
-                if (!names.isEmpty()) warn["lost_parameters"] = names;
-                if (scrubbedUnnamed > 0)
-                    warn["unnamed_fragments_removed"] = scrubbedUnnamed;
-                if (!scrubbedFragments.isEmpty()) {
-                    QJsonArray frags;
-                    for (const QString &f : scrubbedFragments) frags.append(f);
-                    warn["removed_fragments"] = frags;
-                }
-                rlAddWarning(env, warn);
-            }
+            rlAddScrubWarning(env, scrubbedNames, scrubbedUnnamed,
+                              scrubbedFragments, /*batch=*/false);
             // ANTS-4527
             if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
                 rlAddWarning(env, ev);
@@ -918,31 +933,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     const QString markdown = QString::fromUtf8(rf.readAll());
     rf.close();
 
-    // ANTS-1429 — unrecognised_format gate (write path). Refuse
-    // to splice an Ants-emoji bullet into a file we can't parse.
-    // Runs before RoadmapIndex::buildIndex so a foreign-dialect
-    // roadmap (e.g. Vestige's GFM task-list) returns the typed
-    // error instead of misleading bad_section / silent corruption.
-    // Envelope shape parity with the cmdRoadmapQuery gate above:
-    // path + bytes + hint inline-constructed (not via rlErr).
+    // ANTS-1429 — refuse to splice into a file we can't parse.
     const auto preflightBullets = rlParse(markdown, callerCanonical);
-    const qint64 markdownBytes = markdown.toUtf8().size();
-    if (preflightBullets.isEmpty() &&
-        markdownBytes > kRoadmapMinParseableSize) {
-        // ANTS-1463 — shared hint + expected_format envelope fields.
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = QStringLiteral("unrecognised_format");
-        env["error"] = QStringLiteral(
-            "roadmap_log: \"%1\" parsed zero bullets from %2 "
-            "bytes — format not recognised; cannot safely splice")
-                .arg(roadmapPath).arg(markdownBytes);
-        env["path"]            = roadmapPath;
-        env["bytes"]           = markdownBytes;
-        env["hint"]            = kUnrecognisedFormatHint();
-        env["expected_format"] = kUnrecognisedFormatExpected();
-        return QJsonDocument(env);
-    }
+    if (auto refusal = rlUnrecognisedFormat(roadmapPath, markdown,
+                                            preflightBullets.isEmpty()))
+        return *refusal;
     // ANTS-2126 — a pass-headings roadmap was already routed to
     // cmdRoadmapLogPassAppend by the early gate above (before counter
     // allocation), so by here the roadmap is GFM / ants-v1.
@@ -1224,30 +1219,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     if (!possibleDuplicates.isEmpty()) {
         out["possible_duplicates"] = possibleDuplicates;
     }
-    // ANTS-1551 — if the defensive scrub stripped leaked tool-call
-    // XML, surface the recognised sibling-parameter names so the
-    // caller knows which typed arguments were lost in transit.
-    if (!scrubbedNames.isEmpty() || scrubbedUnnamed > 0) {   // ANTS-4572
-        QJsonArray names;
-        for (const QString &n : scrubbedNames) names.append(n);
-        QJsonObject warn;
-        warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
-        // ANTS-4938 — carry what was taken, so the warning discharges itself.
-        warn["message"] = QStringLiteral(
-            "Stripped leaked tool-call XML from body; resend any named "
-            "siblings as proper JSON fields if you intended them. "
-            "`removed_fragments` carries what was taken — check it here "
-            "rather than re-reading the stored body.");
-        if (!names.isEmpty()) warn["lost_parameters"] = names;
-        if (scrubbedUnnamed > 0)
-            warn["unnamed_fragments_removed"] = scrubbedUnnamed;
-        if (!scrubbedFragments.isEmpty()) {
-            QJsonArray frags;
-            for (const QString &f : scrubbedFragments) frags.append(f);
-            warn["removed_fragments"] = frags;
-        }
-        rlAddWarning(out, warn);
-    }
+    // ANTS-1551 — name the sibling parameters the scrub stripped.
+    rlAddScrubWarning(out, scrubbedNames, scrubbedUnnamed, scrubbedFragments,
+                      /*batch=*/false);
     if (const QJsonObject ev = rlEvidenceAdvisoryForReq(req); !ev.isEmpty())
         rlAddWarning(out, ev);                                  // ANTS-4527
     if (const QJsonObject rk = rlReviewKindAdvisory(kind, source); !rk.isEmpty())

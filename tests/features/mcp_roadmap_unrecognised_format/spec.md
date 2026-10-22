@@ -17,10 +17,12 @@ rather than the legitimate-but-misleading silent-empty shape.
   `cmdRoadmapQuery` and `cmdRoadmapLog` signatures.
 - **INV-2.** `kRoadmapMinParseableSize = 1024` declared in
   `remotecontrol.h` next to `kRoadmapCacheTtlMs`.
-- **INV-3.** `cmdRoadmapLog` body contains the same anchor +
-  `"unrecognised_format"` literal AND assigns both `env["path"]`
-  and `env["bytes"]` alongside the literal — envelope shape parity
-  with the read-side gate.
+- **INV-3.** `cmdRoadmapLog`'s append path carries the same anchor and
+  calls `RemoteControl::rlUnrecognisedFormat`, the write gate the append,
+  append_batch and create_section paths share. That gate holds the
+  `"unrecognised_format"` literal AND assigns both `env["path"]` and
+  `env["bytes"]` alongside it — envelope shape parity with the read-side
+  gate.
 
 ## Sibling test
 
