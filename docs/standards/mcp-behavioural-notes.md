@@ -232,6 +232,10 @@ verbs that most directly replace the always-loaded grep / Read:
 `workspace_search`, `find_definition`, `file_outline`, `read_region`,
 and `trace` where it is listed: `ants-mcpd` registers it and the
 terminal's in-process server does not (ANTS-5734 § 2.8).
+On the wire, three of those verbs also leave out the arguments used in
+under 5% of their calls (ANTS-5725). `tool_info {name}` lists them, and
+the server still accepts them: Claude Code passes an argument the wire
+schema does not list.
 `roadmap_log` and `changelog_log` are deferred like every other verb:
 most sessions call them rarely, and one `ToolSearch` loads them. There
 is **no** server-wide "eager-load the whole

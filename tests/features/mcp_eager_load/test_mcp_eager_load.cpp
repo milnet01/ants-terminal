@@ -243,3 +243,65 @@ TEST(McpEagerLoad, Ants5714SharedArgumentsAreShortOnEveryVerb) {
     EXPECT_TRUE(text.contains(QStringLiteral("fields_available")))
         << "tool_info no longer carries fields' full description";
 }
+
+// ANTS-5725 — an always-loaded verb's wire schema leaves out the arguments
+// used in under 5% of its calls (user decision, 2026-10-16). Each is still
+// accepted: tool_info {name} lists it, and passing it raises no ignored_args.
+// Measured with tools/mcp-arg-usage-survey.py on 2026-10-22.
+TEST(McpEagerLoad, Ants5725RareArgumentsLeaveTheWire) {
+    ClaudeIntegration ci;
+    const QJsonArray tools =
+        mcpCall(ci, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})")
+            .value(QStringLiteral("tools")).toArray();
+    const auto wireProps = [&](const QString &verb) {
+        for (const auto &v : tools)
+            if (v.toObject().value(QStringLiteral("name")).toString() == verb)
+                return v.toObject().value(QStringLiteral("inputSchema")).toObject()
+                    .value(QStringLiteral("properties")).toObject();
+        return QJsonObject{};
+    };
+    const struct { const char *verb; QStringList hidden, kept; } rows[] = {
+        {"workspace_search",
+         {"case", "count_only", "dedup", "encoding", "fields", "include_hidden",
+          "match_wrapped", "matches_only", "max_bytes", "offset", "query", "raw",
+          "respect_gitignore", "timeout_sec"},
+         {"pattern", "caller_cwd", "regex", "glob", "headline_only", "lane",
+          "max_results", "max_match_bytes", "context", "exclude_glob",
+          "enclosing_symbol", "files_only"}},
+        {"file_outline", {"mode", "etag_match", "etags", "max_bytes", "raw"},
+         {"path", "paths", "include_doc_comment", "compact", "sizes",
+          "max_heading_level", "fields", "max_symbols", "encoding", "filter"}},
+        {"read_region",
+         {"call_sequence", "compact", "etag_match", "fields", "max_bytes", "raw"},
+         {"path", "start_line", "end_line", "section", "max_line_bytes", "symbol"}},
+    };
+    for (const auto &row : rows) {
+        const QString verb = QString::fromLatin1(row.verb);
+        const QJsonObject props = wireProps(verb);
+        ASSERT_FALSE(props.isEmpty()) << row.verb;
+        for (const QString &a : row.hidden)
+            EXPECT_FALSE(props.contains(a)) << row.verb << "/" << a.toStdString()
+                                            << " is still on the wire";
+        for (const QString &a : row.kept)
+            EXPECT_TRUE(props.contains(a)) << row.verb << "/" << a.toStdString()
+                                           << " was hidden but is used in 5% or more of calls";
+
+        const QJsonObject info = mcpCall(ci, QStringLiteral(
+            R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"%1"}}})")
+            .arg(verb).toStdString().c_str());
+        const QString text = info.value(QStringLiteral("content")).toArray()
+            .at(0).toObject().value(QStringLiteral("text")).toString();
+        for (const QString &a : row.hidden)
+            EXPECT_TRUE(text.contains(QLatin1Char('"') + a + QLatin1Char('"')))
+                << "tool_info " << row.verb << " no longer lists " << a.toStdString();
+    }
+
+    // Hidden is not ignored. The ignored_args advisory and doc_facts read the
+    // accepted-argument set, which tools/list builds from the full schema,
+    // so every hidden argument must still be in it.
+    const QHash<QString, QSet<QString>> accepted = ci.verbArgsSnapshot();
+    for (const auto &row : rows)
+        for (const QString &a : row.hidden)
+            EXPECT_TRUE(accepted.value(QString::fromLatin1(row.verb)).contains(a))
+                << row.verb << "/" << a.toStdString() << " would raise ignored_args";
+}

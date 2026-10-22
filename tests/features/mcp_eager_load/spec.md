@@ -53,6 +53,15 @@ deferred: most sessions call them rarely.
   carries long argument prose on the wire, or if the shortening reaches
   `tool_info`. *Test:* `Ants5271LeanVerbArgumentsAreShort`.
 
+- **ANTS-5725** — on the wire, `workspace_search`, `file_outline` and
+  `read_region` leave out each argument used in under 5% of their calls
+  (user decision, 2026-10-16; measured with `tools/mcp-arg-usage-survey.py`
+  on 2026-10-22). Every argument at 5% or more stays. A hidden argument is
+  still listed by `tool_info {name}` and still in the accepted set that
+  `ignored_args` reads, so passing it raises no advisory. Breaks if the
+  hiding reaches the saved list, or if a kept argument is dropped.
+  *Test:* `Ants5725RareArgumentsLeaveTheWire`.
+
 ## Pre-fix check
 
 Against pre-fix code the `anthropic/alwaysLoad` field and `kEagerVerbs`

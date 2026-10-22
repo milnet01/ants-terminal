@@ -160,6 +160,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The always-loaded workspace_search, file_outline and read_region schemas list only the arguments used in 5% or more of calls; the rest still work and tool_info lists them** (ANTS-5725)
+  The four always-loaded schemas fall from 9,458 to 6,589 bytes on every request. find_definition is unchanged: every one of its arguments is used in at least 11% of calls.
+
 - **A tab's hover text for Claude's state now matches the status bar's wording, and shows "prompting" while Claude waits on a question or a plan approval.** (ANTS-6126)
 
 - **Selecting a command's output (Alt+Shift+click) now selects only the output, not the command line; the fold summary and sticky header use the same output range.** (ANTS-6112)

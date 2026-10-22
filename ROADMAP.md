@@ -87437,7 +87437,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config request 2026-10-15 (CFG-0794).
   Lanes: hooks.
 
-- 📋 [ANTS-5725] **Show the four always-loaded verbs' rarely used arguments only through tool_info, so each schema is about 600 bytes on the wire.**
+- ✅ [ANTS-5725] **Show the four always-loaded verbs' rarely used arguments only through tool_info, so each schema is about 600 bytes on the wire.**
   claude-config measured 8.4 KB on every request for workspace_search
   (3,240 B), file_outline (2,237), read_region (1,888) and find_definition
   (1,089), with session_cost startup.largest_tools. That is after ANTS-5628
@@ -87460,6 +87460,18 @@ measured Ants adding about 5,250 tokens to every request.
   ignored_args:["zz_probe_ants5725"], so the server received it. No
   client-side schema check. Next: measure argument use per verb from the
   transcripts for the 5% rule.
+  2026-10-22: shipped. Both conditions held: unlisted arguments reach
+  the server (probe above), and every argument used in 5% or more of
+  calls stays visible. tools/mcp-arg-usage-survey.py over this machine's
+  transcripts (8105 workspace_search, 1124 file_outline, 3730
+  read_region, 674 find_definition calls) set the lists in kWireHidden:
+  14 of workspace_search's 26 arguments, 5 of file_outline's, 6 of
+  read_region's, none of find_definition's. Wire size of the four,
+  measured from ants-mcpd tools/list with and without the hiding: 9458
+  to 6589 bytes (workspace_search 3461 to 1894, file_outline 2459 to
+  1883, read_region 2211 to 1485). Short of the ~600 B each the headline
+  hoped for; the 5% rule keeps more. Reload: an ants-mcpd rebuild and
+  /mcp.
   **Layman:** Four Ants tools are loaded into every Claude request; listing only their common options would make every request lighter.
   Kind: perf.
   Source: claude-config request 2026-10-16.

@@ -16755,6 +16755,32 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("changelog_log/summary"), QStringLiteral("Bold one-line summary; on add_from_roadmap it replaces the cited headline.")},
                         {QStringLiteral("changelog_log/version"), QStringLiteral("release: the version, without brackets.")},
                     };
+                    // ANTS-5725 — an always-loaded verb's arguments used in
+                    // under 5% of its calls stay off the wire (user decision,
+                    // 2026-10-16). They are still accepted: m_toolParamKeys
+                    // and tool_info read the saved full list, and Claude Code
+                    // passes an argument the wire schema leaves out (checked
+                    // 2026-10-22). Measured 2026-10-22 with
+                    // tools/mcp-arg-usage-survey.py; re-run it before adding
+                    // to or taking from a list. find_definition hides none.
+                    static const QHash<QString, QStringList> kWireHidden = {
+                        {QStringLiteral("workspace_search"),
+                         {QStringLiteral("case"), QStringLiteral("count_only"),
+                          QStringLiteral("dedup"), QStringLiteral("encoding"),
+                          QStringLiteral("fields"), QStringLiteral("include_hidden"),
+                          QStringLiteral("match_wrapped"), QStringLiteral("matches_only"),
+                          QStringLiteral("max_bytes"), QStringLiteral("offset"),
+                          QStringLiteral("query"), QStringLiteral("raw"),
+                          QStringLiteral("respect_gitignore"), QStringLiteral("timeout_sec")}},
+                        {QStringLiteral("file_outline"),
+                         {QStringLiteral("mode"), QStringLiteral("etag_match"),
+                          QStringLiteral("etags"), QStringLiteral("max_bytes"),
+                          QStringLiteral("raw")}},
+                        {QStringLiteral("read_region"),
+                         {QStringLiteral("call_sequence"), QStringLiteral("compact"),
+                          QStringLiteral("etag_match"), QStringLiteral("fields"),
+                          QStringLiteral("max_bytes"), QStringLiteral("raw")}},
+                    };
                     // The first key with an entry wins: "verb/parent.child"
                     // (nested only), "verb/arg", then the shared "arg".
                     const auto summaryFor = [](const QStringList &keys) {
@@ -16807,6 +16833,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                  .toBool()
                             || kLeanVerbs.contains(name)) {
                             shorten(props, name);
+                            for (const QString &arg : kWireHidden.value(name))
+                                props.remove(arg);
                         } else {
                             // ANTS-5714 — every other verb: only the
                             // arguments that mean the same on every verb.
@@ -16830,9 +16858,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         const QString desc = kEagerDescription.value(name);
                         if (!desc.isEmpty())
                             t[QStringLiteral("description")] =
-                                QStringLiteral("[%1] %2 Full per-op detail via "
-                                               "tool_info {name:\"%3\"}.")
-                                    .arg(kindForName(name), desc, name);
+                                QStringLiteral("[%1] %2 %3 via tool_info {name:\"%4\"}.")
+                                    .arg(kindForName(name), desc,
+                                         kWireHidden.contains(name)
+                                             ? QStringLiteral("Rarer arguments and full per-op detail")
+                                             : QStringLiteral("Full per-op detail"),
+                                         name);
                         tools.replace(i, t);
                     }
                 }
