@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6159 -->
+<!-- ants-roadmap-id-high-water: ANTS=6160 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84151,6 +84151,18 @@ rather than refiled.
   Kind: doc-fix.
   Source: in-session-2026-10-21, found while shipping ANTS-4890.
   Lanes: mcp, specs.
+
+- 📋 [ANTS-6160] **spec_lint should expand an "INV-a to INV-b" coverage range in a Tests section against the declared invariant ids.**
+  Pressless verified ANTS-4890 (d11fb18): test_coverage_gap 40 -> 0 over
+  511 invariants. Three test_coverage_unverifiable remain, each a Tests
+  section stating coverage as a range: "INV-1 to INV-13" (PRESS-0006),
+  "INV-19 to INV-21" (PRESS-0019), "INV-1 to INV-5" (PRESS-0022). Expand
+  the range against the spec's declared ids; an id in the range that is
+  not declared stays unverifiable.
+  **Layman:** When a spec says its tests cover "INV-1 to INV-5", the checker should count every invariant in that range as covered.
+  Kind: enhancement.
+  Source: pressless-msg-803-2026-10-22.
+  Lanes: spec-engines.
 
 ### Ants MCP feedback from CC sessions — 2026-09-07 triage
 
