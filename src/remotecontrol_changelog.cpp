@@ -226,6 +226,50 @@ QString rcInheritedLayman(const RoadmapParse::BulletRecord &match) {
     return bold.isEmpty() ? match.layman : bold;
 }
 
+// ANTS-6133 — one cited roadmap bullet → the summary, category and body an
+// add_from_roadmap entry renders. One copy for the single op and add_batch.
+// `summaryOverride` replaces the headline (ANTS-4360) and `body` the Layman
+// line; a non-empty `code` is a refusal.
+struct RoadmapCitation {
+    QString code, error;
+    QString summary, category, body, laymanOmitted;
+};
+RoadmapCitation citeRoadmapBullet(const RoadmapParse::BulletRecord &match,
+                                  const QString &id,
+                                  const QString &summaryOverride,
+                                  const QString &reqCategory,
+                                  const QString &body) {
+    RoadmapCitation c;
+    // ANTS-5098 — the override is caller prose, so it takes op:"add"'s
+    // ANTS-4629 guard.
+    if (!summaryOverride.isEmpty()) {
+        c.error = ChangelogLog::preRenderedSummaryReason(summaryOverride, id);
+        if (!c.error.isEmpty()) {
+            c.code = QStringLiteral("bad_summary");
+            return c;
+        }
+    }
+    // ANTS-1868 / ANTS-2127 — the untruncated headline, folded to one line.
+    c.summary = summaryOverride.isEmpty()
+        ? rcHeadlineOneline(match.headlineFull.isEmpty() ? match.headline
+                                                         : match.headlineFull)
+        : summaryOverride;
+    c.category = !reqCategory.isEmpty()
+        ? reqCategory
+        : ChangelogLog::kindToCategory(match.kind);
+    c.body = body;
+    if (c.body.isEmpty()) {
+        c.body = rcInheritedLayman(match);
+        // ANTS-5673 — under Fixed, a fix item's Layman line describes the
+        // defect; hand it back rather than publish the bug as live.
+        if (!ChangelogLog::inheritsLaymanBody(c.category, match.kind)) {
+            c.laymanOmitted = c.body;
+            c.body.clear();
+        }
+    }
+    return c;
+}
+
 }  // namespace
 
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
@@ -1178,7 +1222,8 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             }
             category = ChangelogLog::kindToCategory(kind);
         }
-    } else {  // add_from_roadmap — reuse the ROADMAP bullet's prose.
+    } else if (op == QStringLiteral("add_from_roadmap")) {
+        // Reuse the ROADMAP bullet's prose.
         if (id.isEmpty()) {
             return clErr(QStringLiteral("missing_field"),
                 QStringLiteral("changelog_log: op:\"add_from_roadmap\" "
@@ -1224,15 +1269,6 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 QStringLiteral("changelog_log: id \"%1\" not found in "
                                "%2 (case-sensitive)").arg(id, rmPath));
         }
-        // ANTS-1868 — collapse multi-line headlines to a single line
-        // (same fold roadmap_query applies to `headline_oneline`,
-        // ANTS-1521). A wrapped ROADMAP headline cannot otherwise
-        // leak a hard newline into the rendered CHANGELOG bullet's
-        // bold summary.
-        // ANTS-2127 — use the UNTRUNCATED headline (headlineFull, ANTS-2075):
-        // match->headline is capped at 120 chars with a `…` ellipsis for the
-        // Roadmap dialog (ANTS-1811), which would otherwise leak mid-word
-        // into the rendered CHANGELOG bold summary.
         // ANTS-4360 — an explicit `summary` OVERRIDES the roadmap headline,
         // mirroring `body`'s long-standing behaviour. A 📋 bullet names the
         // DEFECT, because that is what a planned bullet is for; copied
@@ -1247,38 +1283,22 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // Reporter's preference (b): keep inheriting category and id from the
         // roadmap — the parts a caller has no reason to restate — and let the
         // prose be rewritten in changelog voice.
-        const QString summaryOverride =
-            req.value(QStringLiteral("summary")).toString().trimmed();
-        // ANTS-5098 — the override is caller prose, so it takes op:"add"'s
-        // ANTS-4629 guard; without it a pre-rendered override was wrapped a
-        // second time and reported ok:true.
-        if (!summaryOverride.isEmpty()) {
-            const QString why =
-                ChangelogLog::preRenderedSummaryReason(summaryOverride, id);
-            if (!why.isEmpty()) {
-                return clErr(QStringLiteral("bad_summary"),
-                    QStringLiteral("changelog_log: %1").arg(why));
-            }
+        const RoadmapCitation cite = citeRoadmapBullet(
+            *match, id,
+            req.value(QStringLiteral("summary")).toString().trimmed(),
+            reqCategory, body);
+        if (!cite.code.isEmpty()) {
+            return clErr(cite.code,
+                QStringLiteral("changelog_log: %1").arg(cite.error));
         }
-        summary = summaryOverride.isEmpty()
-            ? rcHeadlineOneline(
-                  match->headlineFull.isEmpty() ? match->headline
-                                                : match->headlineFull)
-            : summaryOverride;
-        // The Layman line is the body unless `body` is given
-        // (rcInheritedLayman).
-        category = !reqCategory.isEmpty()
-            ? reqCategory
-            : ChangelogLog::kindToCategory(match->kind);
-        if (body.isEmpty()) {
-            body = rcInheritedLayman(*match);
-            // ANTS-5673 — under Fixed, a fix item's Layman line describes the
-            // defect; hand it back rather than publish the bug as live.
-            if (!ChangelogLog::inheritsLaymanBody(category, match->kind)) {
-                laymanOmitted = body;
-                body.clear();
-            }
-        }
+        summary       = cite.summary;
+        category      = cite.category;
+        body          = cite.body;
+        laymanOmitted = cite.laymanOmitted;
+    } else {
+        // An op admitted by the guard above with no handler of its own.
+        return clErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("changelog_log: op \"%1\" has no handler").arg(op));
     }
 
     // Scrub leaked tool-call XML from both fields (parity with
@@ -1400,12 +1420,10 @@ namespace rcdetail {
 // bullet, id). Mode is auto-detected: a `summary` makes it an `add`
 // (needs `category` or `kind`); an `id` with no `summary` makes it an
 // `add_from_roadmap` (pulls the cited bullet's headline + Layman from
-// `roadmapBullets`). This mirrors the single-op resolution in
-// cmdChangelogLog rather than refactoring it, so the established single
-// path stays byte-for-byte unchanged (the single path keys on the
-// explicit top-level `op`, a deliberately different contract from this
-// per-entry auto-detect). Rule-of-Three: two sites, so the small
-// duplication is left in place with this note rather than extracted.
+// `roadmapBullets` through citeRoadmapBullet, as the single op does). The
+// single path keys on the explicit top-level `op`; this auto-detect is a
+// deliberately different contract, so a `summary` here never overrides a
+// cited headline.
 struct ClBatchEntryResult {
     bool    ok = false;
     QString code, error;       // per-entry refusal iff !ok
@@ -1469,22 +1487,13 @@ ClBatchEntryResult resolveClBatchEntry(
                 "id \"%1\" not found in ROADMAP (case-sensitive)").arg(id0);
             return r;
         }
-        // Headline → one-line bold summary; Layman → body (parity with
-        // the single op:add_from_roadmap path, ANTS-1868 / ANTS-1933).
-        // ANTS-2127 — untruncated headline (see cmdChangelogLog).
-        summary = rcHeadlineOneline(
-            match->headlineFull.isEmpty() ? match->headline
-                                          : match->headlineFull);
-        category = !reqCategory.isEmpty()
-            ? reqCategory
-            : ChangelogLog::kindToCategory(match->kind);
-        if (body.isEmpty()) {
-            body = rcInheritedLayman(*match);
-            if (!ChangelogLog::inheritsLaymanBody(category, match->kind)) {
-                r.laymanOmitted = body;   // ANTS-5673, as the single op
-                body.clear();
-            }
-        }
+        // No override: an entry carrying `summary` is an `add` (above).
+        const RoadmapCitation cite =
+            citeRoadmapBullet(*match, id0, QString(), reqCategory, body);
+        summary         = cite.summary;
+        category        = cite.category;
+        body            = cite.body;
+        r.laymanOmitted = cite.laymanOmitted;
     } else {
         r.code  = QStringLiteral("missing_field");
         r.error = QStringLiteral(

@@ -95039,6 +95039,15 @@ worked after these.
   (ids L24-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: both HIGH findings fixed. F1: feedback_log's last branch
+  now tests op == "append_tracking" and changelog_log's tests
+  "add_from_roadmap"; an op with no handler is refused instead of
+  falling into their write. F2: one citeRoadmapBullet() turns a cited
+  bullet into summary, category and body for both the single op and
+  add_batch. Batch auto-detect kept: an entry with a summary is still a
+  plain add. Left open: for an unreadable roadmap the batch still says
+  "no ROADMAP.md is present" per entry, where the single op refuses
+  roadmap_read_failed. Medium and low findings still open.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

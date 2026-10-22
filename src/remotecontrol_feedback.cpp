@@ -1786,7 +1786,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         // Defer the on-disk content read to the append step below.
         rendered += FeedbackFile::renderFindingBlock(
             date, sessionLabel, h1, note, findings);
-    } else {  // append_tracking
+    } else if (op == QStringLiteral("append_tracking")) {
         if (!exists) {
             return QJsonDocument(fbNotFound(
                 QStringLiteral("feedback_log: append_tracking on an "
@@ -1870,6 +1870,11 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             req.value(QStringLiteral("sentinel")).toBool(true);
         rendered = FeedbackFile::renderTrackingBlock(
             date, note, rows, sentinel);
+    } else {
+        // An op admitted by the guard above with no handler of its own.
+        return QJsonDocument(fbErr(
+            QStringLiteral("bad_mode"),
+            QStringLiteral("feedback_log: op \"%1\" has no handler").arg(op)));
     }
 
     // Read existing content (when the file exists) and append-at-end,
