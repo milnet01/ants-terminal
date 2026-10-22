@@ -287,6 +287,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **file_outline lists C++ functions whose wrapped argument list holds brackets, such as a QString() default or a std::function<void()>, and no longer lists a statement such as `do foo();` as a function** (ANTS-5994)
+
 - **indie_review_corroborate matches findings in every language a review lane can hold, including Rust, Go, JavaScript and TypeScript** (ANTS-5973)
 
 - **spec_log finds a spec's sections past a code block nested in a list item, so append_inv and append_loop write inside the right section** (ANTS-5965)

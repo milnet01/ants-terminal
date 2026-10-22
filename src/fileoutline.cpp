@@ -93,6 +93,50 @@ constexpr int kHeaderDocMaxLines = 30;
 // scope `static const` initialises on first use and survives the
 // process.
 
+// ANTS-6139 — the pieces the C++ function patterns below share, named once so
+// a fix to one reaches every pattern built from it. The history of each piece
+// is on rxCppFunc.
+namespace cppre {
+// ANTS-3351 — an optional `extern "C"` / `extern "C++"` linkage prefix.
+QString externPrefix() { return QStringLiteral(R"((?:extern\s*"[^"]*"\s*)?)"); }
+// Group 1: an optional leading modifier.
+QString leadModifier() {
+    return QStringLiteral(R"((static|inline|template[^>]*>)?\s*)");
+}
+// ANTS-2147 — a reserved keyword is never a return type, so a line opening
+// with one is a statement, never a definition. `extra` adds words a pattern
+// with no return type must also reject.
+QString notKeyword(const QString &extra = QString()) {
+    return QStringLiteral("(?!(?:return|co_return|co_await|co_yield|throw|"
+                          "else|if|for|while|switch|do|catch") +
+           extra + QStringLiteral(R"()\b))");
+}
+// ANTS-2028 / ANTS-3433 — one or more return-type tokens, each followed by a
+// real separator.
+QString returnType() {
+    return QStringLiteral(R"((?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++)");
+}
+// ANTS-3412 — the inside of an argument list, balancing one level of inner
+// parens. args() is the closed list.
+QString argsInner() { return QStringLiteral(R"((?:[^()]++|\([^()]*+\))*+)"); }
+QString args() { return QStringLiteral(R"(\()") + argsInner() + QStringLiteral(R"(\))"); }
+// ANTS-3412 — the cv / ref / noexcept / spec qualifier run after `)`.
+QString qualifiers() {
+    return QStringLiteral(R"((?:\s*(?:const|volatile|noexcept\s*)") + args() +
+           QStringLiteral(R"(|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+)");
+}
+// `ReturnType name` up to the `(`, as rxCppFunc and its two siblings open.
+QString funcHead() {
+    return QLatin1Char('^') + externPrefix() + leadModifier() + notKeyword() +
+           returnType() + QStringLiteral(R"((\w+)\s*)");
+}
+QRegularExpression optimized(const QString &pattern) {
+    QRegularExpression r(pattern);
+    r.optimize();
+    return r;
+}
+}  // namespace cppre
+
 // ANTS-5021 — an out-of-line constructor or destructor carries no return
 // type, so rxCppMember (which requires one) and rxCppFunc both skipped it:
 // `Foo::Foo(QObject *parent) : QObject(parent) {}` and `Foo::~Foo() {` never
@@ -136,9 +180,9 @@ const QRegularExpression &rxCppMember() {
         // The leading keyword lookahead rejects a col-0 `return Foo::bar(`
         // statement (mirrors rxCppFunc's ANTS-2147 guard); the qualified
         // name still starts at the run after the last return-type token.
-        QRegularExpression r(QStringLiteral(R"(^(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++[\w:]+::[\w~]+\s*\()"));
-        r.optimize();
-        return r;
+        return cppre::optimized(QLatin1Char('^') + cppre::notKeyword() +
+                                cppre::returnType() +
+                                QStringLiteral(R"([\w:]+::[\w~]+\s*\()"));
     }();
     return rx;
 }
@@ -203,7 +247,7 @@ const QRegularExpression &rxCppFunc() {
     // and (worse) its body's most-vexing-parse locals leaked as file-scope
     // funcs because the enclosing function never opened a scope. DOOM's
     // r_vulkan.cpp (RB_VulkanProbe + the RB_Vulkan_* entry points). The
-    // prefix is shared by rxCppFuncOpen / rxCppFuncHeaderOpen.
+    // prefix is shared by rxCppFuncOpen / rxCppFuncHeaderOpen (cppre).
     //
     // ANTS-3412: two coupled arg-list / tail defects (Vestige job_system.h).
     //  (a) the old `\([^)]*\)` arg matcher closed on the FIRST ')', so a
@@ -218,11 +262,11 @@ const QRegularExpression &rxCppFunc() {
     //      the body, so an inline `T f() const { … }` accessor never
     //      matched. An optional cv/ref/noexcept/spec qualifier run is now
     //      allowed before the `[{;]` terminator. The qualifier group is
-    //      shared verbatim with rxCppFuncOpen.
+    //      shared with rxCppFuncOpen (cppre::qualifiers).
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*[{;])"));
-        r.optimize();
-        return r;
+        return cppre::optimized(cppre::funcHead() + cppre::args() +
+                                cppre::qualifiers() +
+                                QStringLiteral(R"(\s*[{;])"));
     }();
     return rx;
 }
@@ -244,9 +288,8 @@ const QRegularExpression &rxCppFuncOpen() {
         // rxCppFunc, with the terminator relaxed to end-of-line (body `{` on
         // the next line). So a `ReturnType name(std::function<void()> cb) const`
         // whose brace sits below is still detected.
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*$)"));
-        r.optimize();
-        return r;
+        return cppre::optimized(cppre::funcHead() + cppre::args() +
+                                cppre::qualifiers() + QStringLiteral(R"(\s*$)"));
     }();
     return rx;
 }
@@ -255,23 +298,26 @@ const QRegularExpression &rxCppFuncOpen() {
 // PREVIOUS line (paired with a pending-return-type line by the scanner).
 const QRegularExpression &rxCppNameArgs() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch|sizeof|new|delete)\b)([A-Za-z_]\w*(?:::[\w~]+)?)\s*\([^)]*\)\s*$)"));
-        r.optimize();
-        return r;
+        return cppre::optimized(
+            QStringLiteral(R"(^\s*)") +
+            cppre::notKeyword(QStringLiteral("|sizeof|new|delete")) +
+            QStringLiteral(R"(([A-Za-z_]\w*(?:::[\w~]+)?)\s*)") + cppre::args() +
+            QStringLiteral(R"(\s*$)"));
     }();
     return rx;
 }
 // ANTS-2148 follow-up — the OPENING line of a function whose parameter list
 // wraps across source lines: `ReturnType name(` with args that do NOT close on
-// this line (the trailing `[^)]*$` forbids a ')' to end-of-line). rxCppFuncOpen
+// this line (no ')' closes the list before end-of-line; an inner pair such as
+// `std::function<void()>` may close, ANTS-6139). rxCppFuncOpen
 // only matched a closed `(args)`; this catches id-Software / K&R prototypes
 // like `static void emit_wall(builder_t* bld, seg_t* seg, ...,` whose ')' sits
 // 2-3 lines down. Control keywords are rejected up front as in the siblings.
 const QRegularExpression &rxCppFuncHeaderOpen() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*$)"));
-        r.optimize();
-        return r;
+        return cppre::optimized(cppre::funcHead() + QStringLiteral(R"(\()") +
+                                cppre::argsInner() +
+                                QStringLiteral(R"((?:\([^)]*)?$)"));
     }();
     return rx;
 }

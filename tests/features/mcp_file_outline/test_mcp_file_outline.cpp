@@ -1284,3 +1284,40 @@ TEST(McpFileOutline, Ants4722FencedCommentIsNotAHeading) {
         << "Beta must have an extent of its own, not be absorbed as a "
            "phantom's child";
 }
+
+// ANTS-6139 — the C++ function patterns share one argument matcher and one
+// keyword list. A wrapped or split header whose first parameter holds an
+// inner paren pair (std::function<void()>) is a function like any other, and
+// a statement opening with a keyword (`do foo();`) is never one.
+TEST(McpFileOutline, CppPatternsShareArgsAndKeywords) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath("shared.cpp");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("static void wrapped(std::function<void()> cb,\n"
+                "                    int n)\n"
+                "{\n"
+                "}\n"
+                "\n"
+                "static int\n"
+                "split(std::function<void()> cb)\n"
+                "{\n"
+                "    return 0;\n"
+                "}\n"
+                "\n"
+                "do foo();\n");
+        f.close();
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    QStringList names;
+    for (const auto &v : out.value("symbols").toArray())
+        names << v.toObject().value("name").toString();
+    EXPECT_TRUE(names.contains("wrapped")) << names.join(", ").toStdString();
+    EXPECT_TRUE(names.contains("split")) << names.join(", ").toStdString();
+    EXPECT_FALSE(names.contains("foo")) << names.join(", ").toStdString();
+}

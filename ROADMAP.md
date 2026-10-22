@@ -95219,6 +95219,13 @@ worked after these.
   (ids L30-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22, the HIGH fixed: rxCppFunc, rxCppFuncOpen,
+  rxCppFuncHeaderOpen, rxCppMember and rxCppNameArgs are built from
+  named pieces in fileoutline.cpp's cppre namespace. One keyword list
+  (12 words; rxCppNameArgs adds sizeof, new, delete), one nested-paren
+  argument matcher. Outlining all of src/ with the old and new
+  ants-mcpd: 5 symbols gained, none lost, each a real wrapped
+  declaration. Closes ANTS-5994. Mediums and lows remain.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97679,13 +97686,18 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: code-index-search-a.
 
-- 📋 [ANTS-5994] **src/fileoutline.cpp:258: rxCppNameArgs \([^)]*\) lacks the ANTS-3412 nested-parenthesis fix, so an old-style definition taking std::function<void()> is missed.**
+- ✅ [ANTS-5994] **src/fileoutline.cpp:258: rxCppNameArgs \([^)]*\) lacks the ANTS-3412 nested-parenthesis fix, so an old-style definition taking std::function<void()> is missed.**
   Lead L30-C9 from the readability review of 2026-10-22, lane code-index-search-a.
   Location: src/fileoutline.cpp:258
   rxCppNameArgs `\([^)]*\)` lacks the ANTS-3412 nested-parenthesis fix, so an old-style definition taking `std::function<void()>` is missed. — Searched: none.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  Resolved (2026-10-22, with ANTS-6139 L30 HIGH): confirmed and fixed.
+  rxCppNameArgs now uses the shared cppre::args() matcher, so a split
+  definition whose arguments hold an inner pair outlines. Test
+  McpFileOutline.CppPatternsShareArgsAndKeywords (`split`): red
+  before, green after.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
