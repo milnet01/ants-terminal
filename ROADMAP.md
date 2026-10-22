@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6109 -->
+<!-- ants-roadmap-id-high-water: ANTS=6159 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94638,6 +94638,626 @@ asked for them to ship in 0.8.0.
   Kind: refactor.
   Source: in-session-2026-10-20 (first duplicate_blocks run over src/).
   Lanes: mcp.
+
+## Readability fixes 2026-10-22 (user request)
+
+One item per review lane from the 2026-10-22 readability reviews of
+
+src/ and of tools/, hooks/, cmake/ and packaging/. The user's goal:
+
+fewer lines and refactoring where it makes code clearer, so a human
+
+could take the code over; readability wins where the two conflict.
+
+Fix all findings, high first (user, 2026-10-22). Each item names its
+
+lane's report under .indie-review/reports-2026-10-22-readability/
+
+(local, untracked). Possible bugs the reviews raised are in the
+
+section "Readability review 2026-10-22 — possible bugs to investigate",
+
+worked after these.
+
+- 📋 [ANTS-6110] **Readability fixes, vt-parser-pty lane: src/vtstream.cpp, src/vtstream.h.**
+  Findings of the 2026-10-22 readability review (src run), lane vt-parser-pty:
+  0 high, 1 medium, 3 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/01-vt-parser-pty.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L01-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code that reads what programs send to the terminal so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-6111] **Readability fixes, terminal-grid lane: src/osc133signmain.cpp, src/terminalgrid.cpp, src/terminalgrid.h.**
+  Findings of the 2026-10-22 readability review (src run), lane terminal-grid:
+  3 high, 10 medium, 7 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/02-terminal-grid.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L02-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the screen text and scrollback so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6112] **Readability fixes, terminal-widget lane: terminalaccessible.cpp, terminalwidget.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane terminal-widget:
+  1 high, 15 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/03-terminal-widget.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L03-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code that draws the terminal and handles typing and the mouse so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6113] **Readability fixes, mainwindow lane: src/mainwindow.cpp, src/mainwindow.h, src/mainwindow_internal.h, src/mainwindow_mcp.cpp, src/mainwindow_menus.cpp, src/mainwindow_sessions.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane mainwindow:
+  4 high, 15 medium, 10 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/04-mainwindow.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L04-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the main window, its tabs and menus so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6114] **Readability fixes, chrome-widgets lane: src/coloredtabbar.cpp, src/coloredtabbar.h, src/elidedlabel.h, src/globalshortcutsportal.cpp, src/globalshortcutsportal.h, src/kwinpositiontracker.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane chrome-widgets:
+  1 high, 5 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/05-chrome-widgets.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L05-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the tab bar, side panels and window parts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-6115] **Readability fixes, dialog-chrome-theme lane: src/aboutdialogs.cpp, src/dialogchrome.h, src/dialogshowtracer.cpp, src/reviewdialogbase.h, src/selfupdate.h, src/themedstylesheet.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane dialog-chrome-theme:
+  1 high, 7 medium, 13 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/06-dialog-chrome-theme.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L06-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the dialog windows and colour themes so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6116] **Readability fixes, audit-dialog lane: src/auditdialog.cpp, src/auditdialog.h, src/auditdialog_catalogue.cpp, src/auditdialog_debtsweep.cpp, src/auditdialog_export.cpp, src/auditdialog_triage.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane audit-dialog:
+  5 high, 11 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/07-audit-dialog.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L07-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code-audit window so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6117] **Readability fixes, audit-engine lane: src/auditcache.cpp, src/auditcache.h, src/auditdelta.h, src/auditengine.cpp, src/auditengine.h, src/auditfpledger.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane audit-engine:
+  2 high, 15 medium, 14 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/08-audit-engine.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L08-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code-audit checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6118] **Readability fixes, roadmap-store-a lane: src/roadmapmigrate.cpp, src/roadmapmigrateload.cpp, src/roadmapmigrateverb.cpp, src/roadmapmigrateverb.h.**
+  Findings of the 2026-10-22 readability review (src run), lane roadmap-store-a:
+  1 high, 6 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/09-roadmap-store-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L09-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6119] **Readability fixes, roadmap-store-b lane: src/roadmapstore.cpp, src/roadmapstore.h.**
+  Findings of the 2026-10-22 readability review (src run), lane roadmap-store-b:
+  0 high, 6 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/10-roadmap-store-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L10-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6120] **Readability fixes, roadmap-parse-render-a lane: src/roadmapindex.cpp, src/roadmapindex.h, src/roadmapledger.h, src/roadmaplinks.cpp, src/roadmapparse.cpp, src/roadmapparse.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane roadmap-parse-render-a:
+  3 high, 10 medium, 11 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/11-roadmap-parse-render-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L11-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6121] **Readability fixes, roadmap-parse-render-b lane: src/passheadingwrite.cpp, src/passheadingwrite.h, src/roadmapexport.cpp, src/roadmapfoldin.cpp, src/roadmapfoldin.h, src/roadmaprender.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane roadmap-parse-render-b:
+  2 high, 10 medium, 10 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/12-roadmap-parse-render-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L12-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6122] **Readability fixes, roadmap-dialog lane: src/roadmapdialog.cpp, src/roadmapdialog.h.**
+  Findings of the 2026-10-22 readability review (src run), lane roadmap-dialog:
+  2 high, 14 medium, 10 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/13-roadmap-dialog.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L13-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the roadmap window so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6123] **Readability fixes, claude-integration-a lane: claudeintegration.h, src/claudeintegration.cpp, src/claudeintegration.h, src/mcptoolregistry.cpp, src/mcptoolsink.h.**
+  Findings of the 2026-10-22 readability review (src run), lane claude-integration-a:
+  0 high, 12 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/14-claude-integration-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L14-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6124] **Readability fixes, claude-integration-b lane: src/claudeintegration.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane claude-integration-b:
+  2 high, 4 medium, 13 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/15-claude-integration-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L15-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6125] **Readability fixes, claude-integration-c lane: src/claudeintegration.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane claude-integration-c:
+  1 high, 4 medium, 15 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/16-claude-integration-c.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L16-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6126] **Readability fixes, claude-session-widgets lane: mainwindow.cpp, src/claudeallowlist.cpp, src/claudebgtasks.cpp, src/claudebgtasks.h, src/claudebgtasksdialog.h, src/claudeprojects.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane claude-session-widgets:
+  2 high, 17 medium, 6 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/17-claude-session-widgets.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L17-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the Claude status bar and task list so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6127] **Readability fixes, mcp-transport lane: src/mcpdmain.cpp, src/mcpdsocket.cpp, src/mcpdversion.h, src/remotecontrol.cpp, src/remotecontrol.h, src/remotecontrol_internal.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-transport:
+  1 high, 8 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/18-mcp-transport.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L18-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the connection Claude Code sessions use so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6128] **Readability fixes, mcp-roadmap-query-log-a lane: src/remotecontrol_roadmap_log.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-roadmap-query-log-a:
+  2 high, 14 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/19-mcp-roadmap-query-log-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L19-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6129] **Readability fixes, mcp-roadmap-query-log-b lane: remotecontrol_roadmap_query.cpp, remotecontrol_roadmap_query_verb.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-roadmap-query-log-b:
+  4 high, 10 medium, 12 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/20-mcp-roadmap-query-log-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L20-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6130] **Readability fixes, mcp-roadmap-batch lane: src/remotecontrol_roadmap_backfill.cpp, src/remotecontrol_roadmap_log_batch.cpp, src/remotecontrol_roadmap_migrate.cpp, src/remotecontrol_roadmap_publish.cp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-roadmap-batch:
+  4 high, 14 medium, 10 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/21-mcp-roadmap-batch.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L21-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the bulk roadmap tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6131] **Readability fixes, mcp-state-workspace lane: remotecontrol_state.cpp, remotecontrol_workspace.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-state-workspace:
+  1 high, 14 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/22-mcp-state-workspace.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L22-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the project and search tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6132] **Readability fixes, mcp-review-verbs lane: src/remotecontrol_coldeyes.cpp, src/remotecontrol_review.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-review-verbs:
+  2 high, 5 medium, 6 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/23-mcp-review-verbs.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L23-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the review tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6133] **Readability fixes, mcp-content-verbs-a lane: githooksreport.cpp, remotecontrol_changelog.cpp, remotecontrol_feedback.cpp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-content-verbs-a:
+  2 high, 10 medium, 4 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/24-mcp-content-verbs-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L24-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6134] **Readability fixes, mcp-content-verbs-b lane: src/quotationcheckverb.cpp, src/quotationcheckverb.h, src/remotecontrol_docs.cpp, src/remotecontrol_session_cost.cpp, src/remotecontrol_session_message.cp.**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-content-verbs-b:
+  3 high, 18 medium, 14 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/25-mcp-content-verbs-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L25-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6135] **Readability fixes, doc-engines lane: src/doccitations.cpp, src/doccitations.h, src/docfacts.cpp, src/docintegrity.cpp, src/doclint.cpp, src/docsindex.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane doc-engines:
+  2 high, 8 medium, 10 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/26-doc-engines.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L26-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the document checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6136] **Readability fixes, spec-engines lane: src/featurecoverage.cpp, src/featurecoverage.h, src/specconformance.cpp, src/specconformance.h, src/speclint.cpp, src/speclint.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane spec-engines:
+  2 high, 15 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/27-spec-engines.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L27-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the spec checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6137] **Readability fixes, review-engines lane: src/briefdispatch.cpp, src/coldeyesdialog.cpp, src/coldeyesengine.cpp, src/coldeyesengine.h, src/debtsweepengine.cpp, src/debtsweepengine.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane review-engines:
+  1 high, 13 medium, 18 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/28-review-engines.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L28-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the review helpers so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-6138] **Readability fixes, test-audit-verify lane: src/buildtargets.h, src/focusedtest.cpp, src/mutationprobe.cpp, src/mutationprobe.h, src/testauditdialog.h, src/testauditengine.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane test-audit-verify:
+  0 high, 9 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/29-test-audit-verify.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L29-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the test-audit and verification tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6139] **Readability fixes, code-index-search-a lane: src/applyedits.cpp, src/codebaseindex.cpp, src/codebaseindex.h, src/fileoutline.cpp, src/findsources.cpp, src/findsources.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane code-index-search-a:
+  1 high, 15 medium, 7 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/30-code-index-search-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L30-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6140] **Readability fixes, code-index-search-b lane: src/commentclaims.cpp, src/readregion.cpp, src/readregion.h, src/similarcode.cpp, src/sourcescrapes.cpp, src/symbolquery.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane code-index-search-b:
+  5 high, 9 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/31-code-index-search-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L31-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6141] **Readability fixes, mcp-infra lane: src/jsoncanonical.h, src/mcpdeprecation.cpp, src/mcporientation.cpp, src/mcporientation.h, src/mcpprojection.cpp, src/mcpprojection.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane mcp-infra:
+  0 high, 8 medium, 12 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/32-mcp-infra.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L32-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the shared tool plumbing so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6142] **Readability fixes, model-switching lane: src/aidialog.cpp, src/aidialog.h, src/llmclient.cpp, src/llmclient.h, src/llmdispatcher.cpp, src/modelautoswitch.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane model-switching:
+  1 high, 6 medium, 13 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/33-model-switching.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L33-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the automatic model switching so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6143] **Readability fixes, config-session-project lane: src/config.cpp, src/config.h, src/configpaths.h, src/projectlayoutengine.cpp, src/projectlayoutengine.h, src/projectsettings.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane config-session-project:
+  6 high, 7 medium, 13 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/34-config-session-project.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L34-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy settings, saved sessions and project settings so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6144] **Readability fixes, plugins-lua lane: src/luaengine.cpp, src/luaengine.h, src/pluginmanager.cpp, src/pluginmanager.h.**
+  Findings of the 2026-10-22 readability review (src run), lane plugins-lua:
+  1 high, 7 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/35-plugins-lua.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L35-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the plugin system so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6145] **Readability fixes, changelog-feedback lane: src/changeloglog.cpp, src/changeloglog.h, src/changelogquery.cpp, src/feedbackfile.cpp, src/feedbackfile.h.**
+  Findings of the 2026-10-22 readability review (src run), lane changelog-feedback:
+  3 high, 9 medium, 6 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/36-changelog-feedback.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L36-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6146] **Readability fixes, app-entry-dialogs lane: src/antshelper.cpp, src/antshelpermain.cpp, src/claudesetup.cpp, src/diffviewer.cpp, src/diffviewer.h, src/main.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane app-entry-dialogs:
+  1 high, 10 medium, 7 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/37-app-entry-dialogs.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L37-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy app start-up and the settings window so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6147] **Readability fixes, diagnostics-logging lane: src/buildcache.cpp, src/buildcache.h, src/debuglog.h, src/readlog.cpp, src/readlog.h, src/rgdiagnosis.cpp ….**
+  Findings of the 2026-10-22 readability review (src run), lane diagnostics-logging:
+  0 high, 4 medium, 11 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/38-diagnostics-logging.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L38-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the logs and error reports so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6148] **Readability fixes, shared-utilities lane: src/build_info.h, src/clipboardguard.h, src/gitwrap.cpp, src/gitwrap.h, src/guithread.h, src/hostexec.h ….**
+  Findings of the 2026-10-22 readability review (src run), lane shared-utilities:
+  0 high, 7 medium, 15 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/src/lanes/39-shared-utilities.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
+  (ids L39-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy shared helper code so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6149] **Readability fixes, tools-ci lane: tools/build-and-stage.sh, tools/ci-parity.sh, tools/ci-prune-caches.sh, tools/ci_workflow.py, tools/local-ci.sh, tools/qt62-guard.sh.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-ci:
+  1 high, 7 medium, 5 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/01-tools-ci.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L01-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the local CI scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-ci.
+
+- 📋 [ANTS-6150] **Readability fixes, tools-checks lane: tools/check-readme-claims.sh, tools/check-roadmap.sh, tools/check-shipped-coverage.sh, tools/check-standard-mirrors.sh, tools/grep-vs-index.sh, tools/perf-report.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-checks:
+  0 high, 5 medium, 7 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/02-tools-checks.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L02-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the check scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-checks.
+
+- 📋 [ANTS-6151] **Readability fixes, tools-roadmap lane: tools/roadmap-archive-survey.py, tools/roadmap-backup-lib.sh, tools/roadmap-conformance.py, tools/roadmap-corpus-survey.py, tools/roadmap-import-verify.py, tool.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-roadmap:
+  1 high, 8 medium, 8 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/03-tools-roadmap.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L03-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the roadmap helper scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6152] **Readability fixes, tools-migration-surveys lane: tools/migrate_expect_helper.py, tools/rc-namespace-scan.py, tools/spec-header-survey.py.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-migration-surveys:
+  1 high, 7 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/04-tools-migration-surveys.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L04-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the migration and survey scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-migration-surveys.
+
+- 📋 [ANTS-6153] **Readability fixes, tools-split-motion lane: tools/split-motion-check.py.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-split-motion:
+  1 high, 4 medium, 7 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/05-tools-split-motion.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L05-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the split-motion checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-split-motion.
+
+- 📋 [ANTS-6154] **Readability fixes, tools-token-bench lane: tools/token-bench/bench.py.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-token-bench:
+  0 high, 1 medium, 3 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/06-tools-token-bench.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L06-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the token benchmark so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-token-bench.
+
+- 📋 [ANTS-6155] **Readability fixes, tools-e2e-measure lane: tools/e2e/cases.sh, tools/e2e/run.sh, tools/e2e/smoke.sh, tools/measure/doc_symbols_locator_harness.cpp, tools/measure/doc_symbols_locator_sample.py, tools/.**
+  Findings of the 2026-10-22 readability review (tools run), lane tools-e2e-measure:
+  1 high, 5 medium, 9 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/07-tools-e2e-measure.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L07-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the end-to-end and measuring scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6156] **Readability fixes, hooks lane: hooks/_common.sh, hooks/ants-bash-veto.sh, hooks/ants-drift-check.sh, hooks/ants-inbox-notice.sh, hooks/ants-precompact-snapshot.sh, tools/install-hooks.sh.**
+  Findings of the 2026-10-22 readability review (tools run), lane hooks:
+  0 high, 6 medium, 10 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/08-hooks.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L08-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the git and Claude hook scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: hooks.
+
+- 📋 [ANTS-6157] **Readability fixes, cmake lane: cmake/GenerateBuildInfoValues.cmake, cmake/QtVersionGuard.cmake, cmake/build_info_values.cpp.in.**
+  Findings of the 2026-10-22 readability review (tools run), lane cmake:
+  0 high, 1 medium, 4 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/09-cmake.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L09-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the build configuration so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: cmake.
+
+- 📋 [ANTS-6158] **Readability fixes, packaging-release lane: packaging/check-version-drift.sh, packaging/obs/obs-setup.sh, packaging/obs/obs-status.sh, packaging/obs/obs-submit.sh, packaging/release.sh.**
+  Findings of the 2026-10-22 readability review (tools run), lane packaging-release:
+  0 high, 6 medium, 7 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/10-packaging-release.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L10-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the release scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: packaging-release.
+
+- 📋 [ANTS-6159] **Readability fixes, packaging-recipes lane: packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml, packaging/opensuse/ants-terminal.spec, packaging/shell-integration/ants-osc133.bash, packaging/she.**
+  Findings of the 2026-10-22 readability review (tools run), lane packaging-recipes:
+  1 high, 6 medium, 6 low (as reported 2026-10-22).
+  Report: .indie-review/reports-2026-10-22-readability/tools/lanes/11-packaging-recipes.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
+  (ids L11-F*). Fix high first. Prefer the fix that removes lines;
+  readability wins where the two conflict. A finding marked "feeds
+  ANTS-5796" also closes part of that item.
+  **Layman:** Tidy the package recipes so a newcomer can follow it: merge copies, and fix misleading names and comments.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: packaging-recipes.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
