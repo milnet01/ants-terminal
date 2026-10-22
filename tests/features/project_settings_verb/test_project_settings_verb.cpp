@@ -743,3 +743,24 @@ TEST(ProjectSettingsVerb, Ants4890SetWritesSpecTestClauseCoverage) {
     EXPECT_EQ(ProjectSettings::load(root).specTestClauseCoverage,
               std::optional<bool>(true));
 }
+
+// ANTS-5728 — op:set writes `claude_chrome` and refuses a non-bool, so
+// claude-config can turn a project on without hand-editing its file.
+TEST(ProjectSettingsVerb, Ants5728SetWritesClaudeChrome) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    RemoteControl rc(nullptr);
+    const auto set = [&](const QJsonValue &value) {
+        QJsonObject s;
+        s[QStringLiteral("caller_cwd")] = root;
+        s[QStringLiteral("op")]         = QStringLiteral("set");
+        s[QStringLiteral("claude_chrome")] = value;
+        return rc.cmdProjectSettings(s).object();
+    };
+    EXPECT_EQ(set(1).value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+
+    const QJsonObject ok = set(true);
+    ASSERT_TRUE(ok.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ok).toJson().toStdString();
+    EXPECT_TRUE(ProjectSettings::claudeChromeFor(root));
+}

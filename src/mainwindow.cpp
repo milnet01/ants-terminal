@@ -62,6 +62,7 @@
 #include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
 #include "indiereviewdialog.h"  // ANTS-1258 — native independent code review.
 #include "shellutils.h"
+#include "projectsettings.h"    // ANTS-5728 — claude_chrome at launch
 #include "elidedlabel.h"
 #include "statusinfowindow.h"   // ANTS-5759 — a pill's tooltip in a window
 #include "globalshortcutsportal.h"
@@ -1886,6 +1887,13 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
     m_claudeDialog->activateWindow();
 }
 
+QString MainWindow::claudeLaunch(const QString &dir, const QString &args) {
+    QString cmd = QStringLiteral("claude");
+    if (ProjectSettings::claudeChromeFor(dir)) cmd += QStringLiteral(" --chrome");
+    if (!args.isEmpty()) cmd += QLatin1Char(' ') + args;
+    return cmd;
+}
+
 void MainWindow::openClaudeProjectsDialog() {
     if (!m_claudeProjects) {
         m_claudeProjects = new ClaudeProjectsDialog(m_claudeIntegration, &m_config, this);
@@ -1896,8 +1904,10 @@ void MainWindow::openClaudeProjectsDialog() {
             auto *t = focusedTerminal();
             if (!t) return;
             // ANTS-5080 — the session id is quoted like the path.
-            QString cmd = QString("cd %1 && claude --resume %2")
-                          .arg(shellQuote(projectPath), shellQuote(sessionId));
+            QString cmd = QString("cd %1 && %2")
+                          .arg(shellQuote(projectPath),
+                               claudeLaunch(projectPath,
+                                            "--resume " + shellQuote(sessionId)));
             if (fork) cmd += " --fork-session";
             t->writeCommand(cmd);
         });
@@ -1907,7 +1917,9 @@ void MainWindow::openClaudeProjectsDialog() {
                 this, [this](const QString &projectPath) {
             auto *t = focusedTerminal();
             if (!t) return;
-            t->writeCommand(QString("cd %1 && claude --continue").arg(shellQuote(projectPath)));
+            t->writeCommand(QString("cd %1 && %2")
+                                .arg(shellQuote(projectPath),
+                                     claudeLaunch(projectPath, "--continue")));
         });
 
         // Start a new session in a project
@@ -1915,7 +1927,8 @@ void MainWindow::openClaudeProjectsDialog() {
                 this, [this](const QString &projectPath) {
             auto *t = focusedTerminal();
             if (!t) return;
-            t->writeCommand(QString("cd %1 && claude").arg(shellQuote(projectPath)));
+            t->writeCommand(QString("cd %1 && %2")
+                                .arg(shellQuote(projectPath), claudeLaunch(projectPath)));
         });
 
         connect(m_claudeProjects, &QDialog::finished, this, [this]() {

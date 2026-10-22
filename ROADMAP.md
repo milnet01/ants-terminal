@@ -87453,6 +87453,13 @@ measured Ants adding about 5,250 tokens to every request.
   Decision (user, via claude-config, 2026-10-16): yes. Keep every argument
   used in at least 5% of calls visible. First confirm Claude Code passes an
   argument the wire schema does not list; if it does not, drop the idea.
+  2026-10-22, condition 1 checked: Claude Code passes an argument the
+  wire schema does not list. workspace_search (no additionalProperties
+  in its schema) and mcp_trace (additionalProperties:false) were each
+  called with zz_probe_ants5725; both replies carried
+  ignored_args:["zz_probe_ants5725"], so the server received it. No
+  client-side schema check. Next: measure argument use per verb from the
+  transcripts for the 5% rule.
   **Layman:** Four Ants tools are loaded into every Claude request; listing only their common options would make every request lighter.
   Kind: perf.
   Source: claude-config request 2026-10-16.
@@ -87482,7 +87489,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-16 trailer recording.
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-5728] **A project can opt in to Claude in Chrome, so Ants starts its Claude sessions with --chrome and the global default can be off.**
+- ✅ [ANTS-5728] **A project can opt in to Claude in Chrome, so Ants starts its Claude sessions with --chrome and the global default can be off.**
   claude-config request, the user's choice (2026-10-16): Claude in Chrome
   costs about 6 KB per message and is on in every session
   (claudeInChromeDefaultEnabled). The user wants it off by default and on
@@ -87495,6 +87502,17 @@ measured Ants adding about 5,250 tokens to every request.
   command. Tell claude-config when it ships; they walk the user through
   /chrome. Reload: the key is read from project.json at each launch, so a
   running terminal picks it up with no relaunch.
+  2026-10-22: shipped. .ants/project.json "claude_chrome": true (bool;
+  project_settings op:set writes it) makes MainWindow::claudeLaunch add
+  --chrome. Launch sites found and routed: the Projects & Sessions
+  dialog's new, continue and resume (fork included), and the audit
+  dialog's review launch; no other Ants path types a claude session
+  command (claudesetup.cpp runs setup subcommands only). The key is read
+  at each launch, from the nearest .ants/project.json at or above the
+  launch folder (ProjectSettings::claudeChromeFor). Reload: a change to
+  the key needs no relaunch; the launch code itself is in the terminal,
+  so it arrives at the next terminal start; the project_settings half
+  arrives with an ants-mcpd rebuild.
   **Layman:** Claude's browser tools cost tokens in every session; only the projects that use them will turn them on.
   Kind: feature.
   Source: claude-config request 2026-10-16 (user decision).
@@ -87574,6 +87592,10 @@ measured Ants adding about 5,250 tokens to every request.
   INV-12); no spec at this id. Default tolerance 3, measured with
   tools/quote-displacement-survey.py (98.5% of 477 lane quotations
   within 3 lines of their cited line).
+  2026-10-22: the spec amendment
+  (docs/specs/ANTS-5502-quotation-check.md) passed review-contract,
+  loops 3 and 4, cap reached; ready to build. Pre-existing INV-10 test
+  gap filed as ANTS-6168.
   **Layman:** Checking a reviewer's quotes can also say when a quote is in the file but not where the reviewer said it was.
   Kind: enhancement.
   Source: claude-config-request-2026-10-16.
@@ -87581,10 +87603,6 @@ measured Ants adding about 5,250 tokens to every request.
 
 - ✅ [ANTS-5733] **After a relaunch that restores tabs, the focused tab's Claude session drives the context gauge without a tab switch.**
   Found 2026-10-16 recording trailer clip 3: in a restored single tab the
-  2026-10-22: the spec amendment
-  (docs/specs/ANTS-5502-quotation-check.md) passed review-contract,
-  loops 3 and 4, cap reached; ready to build. Pre-existing INV-10 test
-  gap filed as ANTS-6168.
   gauge never appeared. restoreSessions (mainwindow_sessions.cpp) makes the
   tab current before startShell, so the tab-switch handler calls
   setShellPid(0) and ClaudeIntegration's poll stops; after startShell only
@@ -88045,13 +88063,6 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-22 (ANTS-5732 design measurement).
   Lanes: mcp.
 
-### Ants MCP feedback from CC sessions — 2026-10-21 triage
-
-- 📋 [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
-  Repro on demoreel: obs-submit.sh and .githooks/pre-push are mostly
-  top-level statements. function_sizes ranked only their small functions
-  (largest 4 lines) and reported unmeasured:0, which a caller reads as
-  full coverage. review-readability hands these rows to its size lane.
 - 📋 [ANTS-6168] **quotation_check INV-10 names an empty caller_cwd refusal that no test drives.**
   Found by both cold lanes of the ANTS-5732 amendment gate, on text the
   amendment did not change. INV-10 in docs/specs/ANTS-5502-quotation-check.md
@@ -88070,6 +88081,13 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: review-fix.
   Source: review-contract ANTS-5502 loop 3, 2026-10-22 (out of blast radius).
 
+### Ants MCP feedback from CC sessions — 2026-10-21 triage
+
+- 📋 [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
+  Repro on demoreel: obs-submit.sh and .githooks/pre-push are mostly
+  top-level statements. function_sizes ranked only their small functions
+  (largest 4 lines) and reported unmeasured:0, which a caller reads as
+  full coverage. review-readability hands these rows to its size lane.
 
   Fix direction (reporter's): a `<top-level>` pseudo-row carrying the
   line count of code outside any function, or at least a

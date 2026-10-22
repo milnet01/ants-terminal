@@ -39,6 +39,9 @@ struct Settings {
     // ANTS-4890 — an invariant's *Test:* clause counts as coverage for
     // spec_lint's test_coverage_gap. A bool, not a path; a non-bool is dropped.
     std::optional<bool>        specTestClauseCoverage;  // spec_lint
+    // ANTS-5728 — Ants starts this project's Claude Code sessions with
+    // --chrome. A bool, not a path; a non-bool is dropped.
+    std::optional<bool>        claudeChrome;            // claudeChromeFor
 };
 
 // Reads + parses <rootCanonical>/.ants/project.json on every call (no
@@ -76,6 +79,12 @@ RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical);
 // each caller keeps its own rule for reaching the folder it passes.
 // docs/specs/ANTS-5667-outer-folder-repo-root.md § 2.2.
 QString repoRootOf(const QString &dirCanonical);
+
+// ANTS-5728 — whether a Claude Code session started in `dir` gets --chrome:
+// the `claude_chrome` of the nearest .ants/project.json at `dir` or above it.
+// The nearest file decides, even when it leaves the key out. False when no
+// file is found.
+bool claudeChromeFor(const QString &dir);
 
 // ANTS-2160 — the specs folder every consumer reads, relative to the root: the
 // declared `specs_dir` when it names a directory, else `docs/specs`. One rule

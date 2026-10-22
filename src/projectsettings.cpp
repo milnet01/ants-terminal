@@ -121,7 +121,18 @@ Settings load(const QString &rootCanonical) {
     s.repoRoot    = validEntry(rootCanonical, o.value(QStringLiteral("repo_root")));  // ANTS-5667
     const QJsonValue tcc = o.value(QStringLiteral("spec_test_clause_coverage"));
     if (tcc.isBool()) s.specTestClauseCoverage = tcc.toBool();         // ANTS-4890
+    const QJsonValue chrome = o.value(QStringLiteral("claude_chrome"));
+    if (chrome.isBool()) s.claudeChrome = chrome.toBool();             // ANTS-5728
     return s;
+}
+
+bool claudeChromeFor(const QString &dir) {
+    QDir d(dir);
+    do {
+        if (QFileInfo(d.filePath(QStringLiteral(".ants/project.json"))).isFile())
+            return load(d.canonicalPath()).claudeChrome.value_or(false);
+    } while (d.cdUp());
+    return false;
 }
 
 RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical) {
@@ -543,7 +554,8 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
             if (o.isEmpty())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(empty object)"));
             out[key] = o;
-        } else if (key == QLatin1String("spec_test_clause_coverage")) {  // ANTS-4890
+        } else if (key == QLatin1String("spec_test_clause_coverage")      // ANTS-4890
+                   || key == QLatin1String("claude_chrome")) {           // ANTS-5728
             if (!v.isBool())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not a boolean)"));
             out[key] = v;

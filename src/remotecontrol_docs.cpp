@@ -2012,6 +2012,10 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     if (req.contains(QStringLiteral("spec_test_clause_coverage")))
         changes[QStringLiteral("spec_test_clause_coverage")] =
             req.value(QStringLiteral("spec_test_clause_coverage"));
+    // ANTS-5728 — set-only too: whether the project uses Claude in Chrome is
+    // the user's choice, not a layout fact. applyWrite() wants a bool.
+    if (req.contains(QStringLiteral("claude_chrome")))
+        changes[QStringLiteral("claude_chrome")] = req.value(QStringLiteral("claude_chrome"));
 
     // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
     // ANTS-2227 — under dry_run, return the would-be settings + landing path
@@ -2141,7 +2145,7 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         return err(QStringLiteral("bad_args"), QStringLiteral(
             "project_settings set: supply at least one of "
             "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"
-            "/id_format/repo_root/spec_test_clause_coverage"));
+            "/id_format/repo_root/spec_test_clause_coverage/claude_chrome"));
     QString ec, ek, ev;
     const auto merged = ProjectSettings::applyWrite(
         existing, changes, rootCanonical, &ec, &ek, &ev);

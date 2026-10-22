@@ -495,3 +495,62 @@ TEST(ProjectSettings, Ants4890SpecTestClauseCoverageIsABool) {
     ASSERT_TRUE(good.has_value());
     EXPECT_TRUE(good->value(QStringLiteral("spec_test_clause_coverage")).toBool());
 }
+
+// ANTS-5728 — `claude_chrome` is a bool, kept by load() and refused by
+// applyWrite() when it is anything else, exactly like ANTS-4890's key.
+TEST(ProjectSettings, Ants5728ClaudeChromeIsABool) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const auto loadWith = [&](const QString &json) {
+        writeFile(root + "/.ants/project.json", json);
+        return ProjectSettings::load(root).claudeChrome;
+    };
+    EXPECT_EQ(loadWith(QStringLiteral("{\"claude_chrome\":true}")), std::optional<bool>(true));
+    EXPECT_EQ(loadWith(QStringLiteral("{\"claude_chrome\":false}")), std::optional<bool>(false));
+    EXPECT_FALSE(loadWith(QStringLiteral("{\"claude_chrome\":1}")).has_value())
+        << "a number is not a declaration";
+
+    QString ec, ek, ev;
+    EXPECT_FALSE(ProjectSettings::applyWrite(
+                     QJsonObject{}, QJsonObject{{QStringLiteral("claude_chrome"), 1}},
+                     root, &ec, &ek, &ev)
+                     .has_value());
+    EXPECT_EQ(ec, QStringLiteral("bad_args"));
+}
+
+// ANTS-5728 — a launch asks the NEAREST .ants/project.json at or above the
+// folder it starts in, so a terminal sitting in a subfolder still gets the
+// project's choice. A nearer file decides, even when it says false.
+TEST(ProjectSettings, Ants5728ClaudeChromeForWalksUp) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    QDir().mkpath(root + "/a/b");
+    EXPECT_FALSE(ProjectSettings::claudeChromeFor(root + "/a/b")) << "no file anywhere";
+
+    writeFile(root + "/.ants/project.json", QStringLiteral("{\"claude_chrome\":true}"));
+    EXPECT_TRUE(ProjectSettings::claudeChromeFor(root));
+    EXPECT_TRUE(ProjectSettings::claudeChromeFor(root + "/a/b"));
+
+    writeFile(root + "/a/.ants/project.json", QStringLiteral("{\"claude_chrome\":false}"));
+    EXPECT_FALSE(ProjectSettings::claudeChromeFor(root + "/a/b"));
+}
+
+// ANTS-5728 — every place Ants types a Claude Code launch builds it through
+// MainWindow::claudeLaunch, so --chrome reaches all four. A literal
+// "&& claude" or "\"claude \"" left behind is a launch that skips the key.
+TEST(ProjectSettings, Ants5728EveryLaunchUsesTheHelper) {
+    const std::string mw = ants_test::slurpFile(srcPath("src/mainwindow.cpp"));
+    const std::string menus = ants_test::slurpFile(srcPath("src/mainwindow_menus.cpp"));
+    ASSERT_FALSE(mw.empty());
+    ASSERT_FALSE(menus.empty());
+    EXPECT_FALSE(has(mw, "&& claude")) << "a Projects-dialog launch bypasses claudeLaunch";
+    EXPECT_FALSE(has(menus, "QStringLiteral(\"claude \")")) << "the audit launch bypasses claudeLaunch";
+    size_t n = 0;
+    for (const std::string &s : {mw, menus})
+        for (size_t at = s.find("claudeLaunch("); at != std::string::npos;
+             at = s.find("claudeLaunch(", at + 1))
+            ++n;
+    EXPECT_GE(n, 5u) << "the definition plus the four launches";
+}

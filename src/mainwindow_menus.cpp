@@ -485,7 +485,7 @@ void MainWindow::setupToolsMenu() {
                                   " Focus on bugs, security vulnerabilities, and code quality problems."
                                   " Ignore informational items like line counts and file sizes."
                                   " For each fix, explain what you changed and why.").arg(resultsFile);
-            QString cmd = QStringLiteral("claude ") + shellQuote(prompt) + QLatin1Char('\n');
+            QString cmd = claudeLaunch(t->shellCwd(), shellQuote(prompt)) + QLatin1Char('\n');
             t->writeCommand(cmd);
         });
         dlg->show();

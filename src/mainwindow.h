@@ -574,6 +574,10 @@ private:
     void refreshStatusBarForActiveTab();
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();
+    // ANTS-5728 — the `claude` command Ants types for a session started in
+    // `dir`, with --chrome when that project opts in (claude_chrome in its
+    // .ants/project.json, read at each launch). `args` follows, unquoted.
+    static QString claudeLaunch(const QString &dir, const QString &args = {});
     // ANTS-1146 — formerly setupClaudeIntegration. Constructs
     // ClaudeIntegration, the controller, the MCP-provider helper,
     // and the three orphan chrome items (Roadmap button,

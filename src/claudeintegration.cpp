@@ -7941,6 +7941,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "counts as coverage, so spec_lint's test_coverage_gap "
                             "skips it.");
                     props["spec_test_clause_coverage"] = tccProp;
+                    // ANTS-5728 — set-only, the project's own choice.
+                    QJsonObject ccProp; ccProp["type"] = "boolean";
+                        ccProp["description"] = QStringLiteral(
+                            "op:set only. true: Ants starts this project's Claude "
+                            "Code sessions with --chrome. Read at each launch.");
+                    props["claude_chrome"] = ccProp;
                     props["dry_run"]      = makeDryRunProp();    // ANTS-2227
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     schema["properties"]  = props;

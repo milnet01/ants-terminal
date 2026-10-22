@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **A project can opt in to Claude in Chrome: with "claude_chrome": true in its .ants/project.json (set by project_settings), Ants starts that project's Claude Code sessions with --chrome** (ANTS-5728)
+  Covers the Projects & Sessions dialog's new, continue and resume, and the audit dialog's review launch. The key is read at each launch, so a running terminal picks up a change with no relaunch.
+
 - **git_state can show only the lines a change added, search commit messages, list each commit's files, and find a renamed name's leftovers** (ANTS-5508)
   op:"diff" takes paths[] and, with added_lines, returns just the added lines with their line numbers; added_match keeps the ones containing a given text. op:"log" takes grep, to keep commits whose message holds a text, and stat, to list each commit's changed files with their line counts. The new op:"rename_sweep" lists every line in the tracked files that still uses an old name, in the working tree or at the end of a range.
 
