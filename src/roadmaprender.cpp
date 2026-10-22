@@ -160,6 +160,12 @@ QString laymanRendered(const QString &stored) {
 // the output exactly once. `offset >= 0` is what keeps that true — an ABSENT
 // key must never suppress, or the required line would vanish.
 QString bulletText(const RoadmapStore::ItemWrite &it) {
+    // ANTS-5087 — the five decisions, made once, in the one place that owns
+    // them. The reasoning for each rider is in trailerLines() below.
+    return bulletText(it, trailerLines(it));
+}
+
+QString bulletText(const RoadmapStore::ItemWrite &it, const TrailerLines &emitted) {
     QStringList lines;
     QString head = QStringLiteral("- ") + emojiFor(it.status);
     if (!it.id.isEmpty())
@@ -174,10 +180,6 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // instead of corrupting the file again.
     head += QStringLiteral(" **") + it.headline.simplified() + QStringLiteral("**");
     lines.append(head);
-
-    // ANTS-5087 — the five decisions, made once, in the one place that owns
-    // them. The reasoning for each rider is in trailerLines() below.
-    const TrailerLines emitted = trailerLines(it);
 
     if (!it.body.isEmpty())
         appendIndented(&lines, it.body);

@@ -708,6 +708,10 @@ public:
     std::optional<qint64> projectBodyBytes(qint64 projectId,
                                            QString *error = nullptr) const;
 
+    // ANTS-6049 — how many items a project holds, without reading a row of
+    // them: the read ceiling's gate. nullopt only on a query failure.
+    std::optional<qint64> countItems(qint64 projectId, QString *error = nullptr) const;
+
     // ---------------------------------------------------------------- ANTS-4501
     // The report's aggregate reader. Spec: docs/specs/ANTS-4501-roadmap-report.md
     // § 2.5 — one store method rather than raw SQL in the envelope builder,

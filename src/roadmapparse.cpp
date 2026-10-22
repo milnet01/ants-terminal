@@ -671,16 +671,55 @@ int sentenceStop(QStringView v) {
     return -1;
 }
 
-TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body,
+// The first `key` at or after `from`, compared with `cs`. Every trailer key
+// ends in ':', so this walks colons with Qt's fast single-character search and
+// compares the few characters before each; QString::indexOf with
+// Qt::CaseInsensitive folds every character it passes (ANTS-6049).
+qsizetype findTrailerKey(const QString &text, QStringView key, qsizetype from,
+                         Qt::CaseSensitivity cs) {
+    const qsizetype n = key.size();
+    for (qsizetype colon = text.indexOf(QLatin1Char(':'), from + n - 1); colon >= 0;
+         colon = text.indexOf(QLatin1Char(':'), colon + 1)) {
+        const qsizetype start = colon - n + 1;
+        if (QStringView(text).mid(start, n).compare(key, cs) == 0)
+            return start;
+    }
+    return -1;
+}
+
+// `rx.match(text)` for a pattern that only matches across a ':' — the
+// trailer-key stop scans below. A value with no colon, the common case, skips
+// the regex call (ANTS-6049).
+QRegularExpressionMatch matchKeyStop(const QRegularExpression &rx, const QString &text) {
+    return text.contains(QLatin1Char(':')) ? rx.match(text) : QRegularExpressionMatch();
+}
+
+// `key` is the literal every match of `rx` contains, matched with `cs`. It
+// must end in ':' (findTrailerKey).
+TrailerMatch matchLastIn(const QRegularExpression &rx, QStringView key,
+                         Qt::CaseSensitivity cs, const QString &body,
                          const QString &masked,
                          CandidatePred isCandidate = nullptr) {
     TrailerMatch best;      // last candidate, anchored preferred
     TrailerMatch lastSeen;  // last match of any kind
     bool haveAnchored = false;
 
-    auto i = rx.globalMatch(masked);
-    while (i.hasNext()) {
-        const QRegularExpressionMatch m = i.next();
+    // ANTS-6049 — find the key as plain text before asking the regex. Most
+    // bodies lack most keys, and a regex call costs far more than a text
+    // search even when it finds nothing; this also skips the failing extra
+    // call a globalMatch() iterator makes after its last match. No match can
+    // start before the key's own line, so the regex starts there, never
+    // before the end of the previous match.
+    qsizetype from = 0;
+    for (;;) {
+        const qsizetype keyAt = findTrailerKey(masked, key, from, cs);
+        if (keyAt < 0)
+            break;
+        const qsizetype lineStart = masked.lastIndexOf(QLatin1Char('\n'), keyAt) + 1;
+        const QRegularExpressionMatch m = rx.match(masked, std::max(lineStart, from));
+        if (!m.hasMatch())
+            break;
+        from = m.capturedEnd(0);
         const int at = m.capturedStart(0);
         TrailerMatch cur;
         cur.value       = body.mid(m.capturedStart(1), m.capturedLength(1));
@@ -1931,7 +1970,8 @@ TrailerValues trailerValuesIn(const QString &body) {
 
     // ANTS-4065 INV-11 — LAST match, not first. ANTS-4086 — and only among
     // captures the kind vocabulary recognises. See matchLastIn().
-    out.kind   = matchLastIn(rxKind(), body, masked, &isRecognisedKind);
+    out.kind   = matchLastIn(rxKind(), u"Kind:", Qt::CaseSensitive,
+                             body, masked, &isRecognisedKind);
     out.kind.value = out.kind.value.trimmed();
 
     // ANTS-4065 INV-11 — "this holds for all five keys — `kind`, `source`,
@@ -1949,10 +1989,11 @@ TrailerValues trailerValuesIn(const QString &body) {
     // ANTS-4596 — mirrors the `Source:` extraction below: stop at a following
     // trailer key (scanned on the match's own masked twin, per ANTS-4504 and
     // ANTS-4542), trim, drop ONE trailing period for INV-4, trim again.
-    out.layman = matchLastIn(rxLayman(), body, masked);
+    out.layman = matchLastIn(rxLayman(), u"Layman:",
+                             Qt::CaseInsensitive, body, masked);
     if (out.layman.offset >= 0) {
         QString lmRaw = out.layman.value;
-        const auto keyAt = rxTrailerKeyAfterLayman().match(out.layman.maskedValue);
+        const auto keyAt = matchKeyStop(rxTrailerKeyAfterLayman(), out.layman.maskedValue);
         if (keyAt.hasMatch()) lmRaw = lmRaw.left(keyAt.capturedStart());
         lmRaw = lmRaw.trimmed();
         if (lmRaw.endsWith(QLatin1Char('.'))) lmRaw.chop(1);
@@ -1992,11 +2033,12 @@ TrailerValues trailerValuesIn(const QString &body) {
     // (ANTS-3808 § 2.2.1, whose table row is updated with this change). The two
     // list keys are now symmetric; the asymmetry that row recorded was a
     // consequence of the old first-period stop, not a contract.
-    out.lanes = matchLastIn(rxLanes(), body, masked);
+    out.lanes = matchLastIn(rxLanes(), u"Lanes:", Qt::CaseSensitive,
+                            body, masked);
     if (out.lanes.offset >= 0) {
         QString lnRaw    = out.lanes.value;
         QString lnMasked = out.lanes.maskedValue;
-        const auto keyAt = rxTrailerKeyAfterLanes().match(lnMasked);
+        const auto keyAt = matchKeyStop(rxTrailerKeyAfterLanes(), lnMasked);
         if (keyAt.hasMatch()) {
             lnRaw    = lnRaw.left(keyAt.capturedStart());
             lnMasked = lnMasked.left(keyAt.capturedStart());
@@ -2011,7 +2053,8 @@ TrailerValues trailerValuesIn(const QString &body) {
     // ANTS-3382 — `evidence.value` is the text the split is applied TO, which
     // for this key is trimmed and period-chopped first. Dots inside paths are
     // kept, so only ONE trailing period goes, and not when the value ends `..`.
-    out.evidence = matchLastIn(rxEvidence(), body, masked);
+    out.evidence = matchLastIn(rxEvidence(), u"Evidence:",
+                               Qt::CaseInsensitive, body, masked);
     if (out.evidence.offset >= 0) {
         QString evRaw = out.evidence.value.trimmed();
         if (evRaw.endsWith(QLatin1Char('.')) && !evRaw.endsWith(QStringLiteral("..")))
@@ -2023,7 +2066,8 @@ TrailerValues trailerValuesIn(const QString &body) {
     // ANTS-3764 — Source: stops at a following trailer key (10 corpus lines
     // write two keys on one line), then trims, drops one trailing period, and
     // trims again.
-    out.source = matchLastIn(rxSource(), body, masked);
+    out.source = matchLastIn(rxSource(), u"Source:", Qt::CaseSensitive,
+                             body, masked);
     if (out.source.offset >= 0) {
         QString srcRaw = out.source.value;
         // ANTS-4504 — the stop-marker scan runs on the MASKED slice for the
@@ -2033,7 +2077,7 @@ TrailerValues trailerValuesIn(const QString &body) {
         // ANTS-4542 — scan the match's own masked twin rather than re-slicing
         // `masked` at offset+size, which is no longer the same text once a
         // wrapped value has been joined across its line break.
-        const auto keyAt = rxTrailerKey().match(out.source.maskedValue);
+        const auto keyAt = matchKeyStop(rxTrailerKey(), out.source.maskedValue);
         if (keyAt.hasMatch()) srcRaw = srcRaw.left(keyAt.capturedStart());
         srcRaw = srcRaw.trimmed();
         if (srcRaw.endsWith(QLatin1Char('.'))) srcRaw.chop(1);

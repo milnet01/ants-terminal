@@ -235,6 +235,9 @@ struct TrailerLines {
     QStringList keys() const;
 };
 TrailerLines trailerLines(const RoadmapStore::ItemWrite &it);
+// bulletText() with `emitted` already computed by trailerLines(it), for a
+// caller that needs both (ANTS-6049: the store read paid for it twice).
+QString bulletText(const RoadmapStore::ItemWrite &it, const TrailerLines &emitted);
 
 // ANTS-4955 — roadmap-format.md § 3.5: a Layman value is STORED without its
 // closing full stop and RENDERED with one. laymanForStore() drops one trailing

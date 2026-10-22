@@ -1343,6 +1343,7 @@ QString displayFoldedId(QSqlDatabase &db, const QString &slug, const QString &fo
 bool attachAuthoredLinks(QSqlDatabase &db, const QString &where, qint64 key,
                          QHash<qint64, RoadmapStore::ItemWrite *> &byPk, QString *error) {
     QSqlQuery q(db);
+    q.setForwardOnly(true);   // ANTS-6049, see RoadmapStore::readItems()
     q.prepare(QStringLiteral(
         "SELECT r.src_pk, r.type, d.id, r.dst_project, r.dst_id_fold "
         "FROM relationship r JOIN item s ON s.item_pk = r.src_pk "
@@ -2987,11 +2988,23 @@ constexpr const char *kItemColumns =
     "  ON e.item_pk = i.item_pk AND e.kind = 'item' ";
 
 RoadmapStore::ItemWrite itemFromRow(const QSqlQuery &q) {
-    const auto strList = [](const QString &json) {
+    // ANTS-6049 — most rows hold an empty list or object in these columns;
+    // skipping the JSON parse for those is a measurable share of a
+    // whole-project read.
+    const auto isEmptyJson = [](const QString &json) {
+        return json.size() <= 2;   // "", "[]" or "{}"
+    };
+    const auto strList = [&](const QString &json) {
         QStringList out;
+        if (isEmptyJson(json))
+            return out;
         for (const auto &v : QJsonDocument::fromJson(json.toUtf8()).array())
             out << v.toString();
         return out;
+    };
+    const auto object = [&](const QString &json) {
+        return isEmptyJson(json) ? QJsonObject()
+                                 : QJsonDocument::fromJson(json.toUtf8()).object();
     };
 
     RoadmapStore::ItemWrite w;
@@ -3014,8 +3027,8 @@ RoadmapStore::ItemWrite itemFromRow(const QSqlQuery &q) {
     w.shipped = q.value(15).toString();
     w.lanes = strList(q.value(16).toString());
     w.evidence = strList(q.value(17).toString());
-    w.extras = QJsonDocument::fromJson(q.value(18).toString().toUtf8()).object();
-    w.provenance = QJsonDocument::fromJson(q.value(19).toString().toUtf8()).object();
+    w.extras = object(q.value(18).toString());
+    w.provenance = object(q.value(19).toString());
     w.sectionId = q.value(20).toLongLong();   // 0 when unfiled
     w.position = q.value(21).toInt();
     return w;
@@ -3109,6 +3122,9 @@ std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
 std::optional<QHash<qint64, RoadmapStore::ItemWrite>>
 RoadmapStore::readItems(qint64 projectId, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    // ANTS-6049 — every read below walks its rows once, so none keeps Qt's
+    // per-row cache: it copied every column of every row a second time.
+    q.setForwardOnly(true);
     q.prepare(QLatin1String(kItemColumns) + QStringLiteral("WHERE i.project_id = ?"));
     q.addBindValue(projectId);
     if (!q.exec()) {
@@ -3126,6 +3142,19 @@ RoadmapStore::readItems(qint64 projectId, QString *error) const {
                              QStringLiteral("s.project_id = ?"), projectId, byPk, error))
         return std::nullopt;
     return out;
+}
+
+std::optional<qint64>
+RoadmapStore::countItems(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral("SELECT COUNT(*) FROM item WHERE project_id = ?"));
+    q.addBindValue(projectId);
+    if (!q.exec() || !q.next()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    return q.value(0).toLongLong();
 }
 
 std::optional<qint64>
@@ -3410,6 +3439,7 @@ RoadmapStore::itemsForDateBackfill(qint64 projectId, QString *error) const {
 std::optional<QVector<RoadmapStore::ItemRef>>
 RoadmapStore::listItems(qint64 projectId, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.setForwardOnly(true);   // ANTS-6049, see readItems()
     q.prepare(QStringLiteral(
         "SELECT i.item_pk, i.id_fold, i.headline, e.section_id, i.provenance "
         "FROM item i LEFT JOIN element e "
@@ -3506,6 +3536,7 @@ std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 section
 std::optional<QVector<RoadmapStore::SectionRow>>
 RoadmapStore::listSections(qint64 projectId, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.setForwardOnly(true);   // ANTS-6049, see readItems()
     // ORDER BY section_id, not by position: the ordering this enumeration feeds
     // is sectionOrderLess()'s, applied in C++ for the collation reason its
     // comment gives. A rowid order here is only for determinism between two

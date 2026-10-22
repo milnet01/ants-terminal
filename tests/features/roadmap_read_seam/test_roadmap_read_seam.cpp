@@ -939,6 +939,9 @@ TEST(RoadmapReadSeam, Inv3Latency) {
 
     std::sort(elapsedUs.begin(), elapsedUs.end());
     const qint64 p95 = elapsedUs.at(size_t(double(kRuns) * 0.95) - 1);
+    // Printed on a pass too, so the margin to the budget is visible (ANTS-6049).
+    std::printf("[ INV-3    ] p95 %.1f ms over %d warm reads of %d items\n",
+                double(p95) / 1000.0, kRuns, kCorpusItems);
     EXPECT_LT(p95, 50 * 1000)
         << "p95 " << (double(p95) / 1000.0) << " ms over " << kRuns
         << " warm reads of a " << kCorpusItems << "-item project. § 4's remedy "

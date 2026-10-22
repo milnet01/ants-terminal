@@ -113,8 +113,12 @@ QStringList detectionPrefixOf(const QString &markdown) {
 void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
                   const QString &heading, int level, const QString &slug,
                   const RoadmapParse::IdFormat &fmt, const QString &dialect) {
+    const bool passHeadings = dialect == QLatin1String("pass-headings");
+    // Asked once: the render and composedTrailers below both need it.
+    const RoadmapRender::TrailerLines emitted =
+        passHeadings ? RoadmapRender::TrailerLines{} : RoadmapRender::trailerLines(it);
     std::optional<BulletRecord> rec;
-    if (dialect == QLatin1String("pass-headings")) {
+    if (passHeadings) {
         // An `internal` item stays a record here on purpose — INV-2 decides
         // that: BulletRecord has no visibility field, so filtering on one
         // would give roadmap_query a concept it has never had. The FILE
@@ -126,7 +130,7 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
         rec = RoadmapParse::parsePassHeadingBlock(
             RoadmapRender::passBlockText(it).split(QLatin1Char('\n')));
     } else {
-        rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it), fmt);
+        rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it, emitted), fmt);
     }
     if (!rec)
         return;
@@ -152,8 +156,7 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
     // Empty on pass-headings, and that emptiness is the true answer rather than
     // a missing one: that emission writes no trailer line at all, so there is
     // nothing for the render to have composed.
-    if (dialect != QLatin1String("pass-headings"))
-        rec->composedTrailers = RoadmapRender::trailerLines(it).keys();
+    rec->composedTrailers = emitted.keys();
     // firstLine / lastLine stay 0: a store has no lines to number, and no walk
     // can invent them. INV-2's one declared field difference.
     out.append(*rec);
@@ -476,21 +479,20 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
     if (const auto project = store.readProject(projectId, nullptr))
         dialect = project->sourceFormat;
 
-    // Step 0 — the item keys, for the ceiling gate and for the unfiled tail.
-    // ItemRef carries a headline and four scalars rather than a body, which is
-    // what makes the pre-read count cheap.
-    const auto refs = store.listItems(projectId, error);
-    if (!refs)
+    // Step 0 — the item count, for the ceiling gate. A COUNT(*) reads no row
+    // (ANTS-6049; this was a listItems() of every item's keys and headline).
+    const auto count = store.countItems(projectId, error);
+    if (!count)
         return fail(ReadError::StoreFailed,
-                    QStringLiteral("could not list items for project %1").arg(projectId));
+                    QStringLiteral("could not count items for project %1").arg(projectId));
 
     // INV-3 — tested BEFORE any readItem() runs, so a project over the ceiling
     // never materialises the bodies the ceiling exists to bound. `>` and not
     // `>=`: exactly kItemCeiling is accepted.
-    if (refs->size() > kItemCeiling)
+    if (*count > kItemCeiling)
         return fail(ReadError::TooLarge,
                     QStringLiteral("project %1 holds %2 items, over the %3-item read ceiling")
-                        .arg(projectId).arg(refs->size()).arg(kItemCeiling));
+                        .arg(projectId).arg(*count).arg(kItemCeiling));
 
     // Then every item body in ONE query. This was a readItem() per item until
     // INV-3's p95 case measured it: 83.4 ms of a 101.5 ms read on a
@@ -503,10 +505,11 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
         return fail(ReadError::StoreFailed,
                     QStringLiteral("could not read items for project %1").arg(projectId));
 
-    QVector<RoadmapStore::ItemRef> unfiled;
-    for (const RoadmapStore::ItemRef &ref : *refs) {
-        if (ref.sectionId == 0)
-            unfiled.append(ref);
+    // An item with no element row reads back with sectionId 0: the unfiled tail.
+    QVector<std::pair<QString, qint64>> unfiled;   // (id_fold, item_pk)
+    for (auto it = itemOf->cbegin(); it != itemOf->cend(); ++it) {
+        if (it->sectionId == 0)
+            unfiled.append({RoadmapParse::foldId(it->id), it.key()});
     }
 
     // Step 1 — sections, scoped by the caller's archive flag. SectionRow::
@@ -577,13 +580,10 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
     // an unfiled item has no section, therefore no sourcePath for the flag to
     // test, and hiding it from the live read would hide it from the only read
     // likely to surface the fault ANTS-3758's INV-4 refuses the render over.
-    std::sort(unfiled.begin(), unfiled.end(),
-              [](const RoadmapStore::ItemRef &a, const RoadmapStore::ItemRef &b) {
-                  return a.idFold.compare(b.idFold) < 0;
-              });
-    for (const RoadmapStore::ItemRef &ref : unfiled)
-        appendRecord(out, itemOf->value(ref.itemPk), QString(), 0, QString(), fmt,
-                     dialect);
+    // By the store's id_fold (foldId() reproduces it), then item_pk.
+    std::sort(unfiled.begin(), unfiled.end());
+    for (const auto &[fold, pk] : std::as_const(unfiled))
+        appendRecord(out, itemOf->value(pk), QString(), 0, QString(), fmt, dialect);
 
     return out;
 }
