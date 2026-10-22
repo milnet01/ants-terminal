@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=5814 -->
+<!-- ants-roadmap-id-high-water: ANTS=6045 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94611,6 +94611,2790 @@ asked for them to ship in 0.8.0.
   Kind: refactor.
   Source: in-session-2026-10-20 (first duplicate_blocks run over src/).
   Lanes: mcp.
+
+## Readability review 2026-10-22 — possible bugs to investigate
+
+Correctness leads the full-codebase readability review raised in
+
+passing (user request, 2026-10-22). Each is a possible bug, not a
+
+confirmed one. Investigate them after the readability fixes land
+
+(user, 2026-10-22). Three leads the review's own premise check
+
+refuted are not filed (L17-C3, L21-C6, L36-C6).
+
+- 📋 [ANTS-5815] **src/vtstream.cpp:37-44: On a write overflow, m_pasteBacklog.clear() drops both the rest of the paste and any keystrokes write() queued behind it (vtstream.cpp:98-100).**
+  Lead L01-C1 from the readability review of 2026-10-22, lane vt-parser-pty.
+  Location: src/vtstream.cpp:37-44
+  On a write overflow, `m_pasteBacklog.clear()` drops both the rest of the paste and any keystrokes `write()` queued behind it (`vtstream.cpp:98-100`). The user loses typing with only a log warning. — Searched: none beyond these files (the `writeLost` emit site, `ptyhandler.cpp` around line 547).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads what programs send to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5816] **src/vtstream.cpp:214-222: onPtyFinished sends a batch without ++m_inFlightBatches.**
+  Lead L01-C2 from the readability review of 2026-10-22, lane vt-parser-pty.
+  Location: src/vtstream.cpp:214-222
+  `onPtyFinished` sends a batch without `++m_inFlightBatches`. The GUI still calls `drainAck` for it (`terminalwidget.cpp`, end of the batch handler). The counter is guarded at 0, so this looks harmless after EOF, but the count no longer matches the batches. — Searched: `drainAck` in src.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads what programs send to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-5817] **src/terminalgrid.cpp:1089-1133: the reset (ESC c) keeps the notify, OSC 52 and user-var quotas, but not m_queryRespCount/m_queryRespWindowStartMs, or m_osc133LastForgeryNotifyMs.**
+  Lead L02-C1 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/terminalgrid.cpp:1089-1133
+  the reset (`ESC c`) keeps the notify, OSC 52 and user-var quotas, but not `m_queryRespCount`/`m_queryRespWindowStartMs`, or `m_osc133LastForgeryNotifyMs`. A stream that resets before each query refills the reply cap, by the same reasoning ANTS-5033 gives. It can also re-trigger the forgery alert past its cooldown. Searched: the RIS block only.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5818] **src/terminalgrid.cpp:1115 src/terminalgrid.h:803: the reset rebuilds the grid, so m_nextPromptRegionId goes back to 1.**
+  Lead L02-C2 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/terminalgrid.cpp:1115 src/terminalgrid.h:803
+  the reset rebuilds the grid, so `m_nextPromptRegionId` goes back to 1. The header says ids are "never reused". A `ScrollbackExporter` Cast request holding a pre-reset id could open a different block. Searched: `nextPromptRegionId`, which is only used at 1498.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5819] **src/terminalgrid.cpp:1115: the reset also sets m_scrollbackPushed back to 0.**
+  Lead L02-C3 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/terminalgrid.cpp:1115
+  the reset also sets `m_scrollbackPushed` back to 0. It is documented as monotonic, and is diffed by `mainwindow_mcp.cpp:179` and `ScrollbackExporter::evictedLines`. Searched: `scrollbackPushed()`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5820] **src/terminalgrid.cpp:2264: scrollUp pushes to m_scrollback but adds a link entry only when hlInRange.**
+  Lead L02-C4 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/terminalgrid.cpp:2264
+  `scrollUp` pushes to `m_scrollback` but adds a link entry only when `hlInRange`. If that is ever false, the two lists fall out of step for good, and the independent trim loops at 2274-2280 cannot realign them. Searched: none beyond this file. `hlInRange` looks normally true.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5821] **src/terminalgrid.cpp:865-905 inlineimagedecode.h:73-74: alt-screen *exit* does not drop staged Kitty chunks; entry does (799-802).**
+  Lead L02-C5 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/terminalgrid.cpp:865-905 inlineimagedecode.h:73-74
+  alt-screen *exit* does not drop staged Kitty chunks; entry does (799-802). The predecoder comment says the grid drops them "on … a screen switch". Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5822] **src/scrollbackexporter.cpp:229: the HTML export opens a new <span> only when a colour changes.**
+  Lead L02-C6 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/scrollbackexporter.cpp:229
+  the HTML export opens a new `<span>` only when a colour changes. A bold, italic, underline or strikethrough change with the same colours carries the previous span's classes. The HTML path also drops combining characters, which the Text and Cast paths keep. Searched: `fg != lastFg`; this is the only copy.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5823] **src/inlineimagedecode.cpp:61: keys->find("inline=1") is a substring match.**
+  Lead L02-C7 from the readability review of 2026-10-22, lane terminal-grid.
+  Location: src/inlineimagedecode.cpp:61
+  `keys->find("inline=1")` is a substring match. It also accepts, for example, `notinline=1`. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-5824] **terminalwidget.cpp:5004-5010: toggleFoldAtCursor folds the first (oldest) finished region whose start is at or above the cursor, not the region containing it.**
+  Lead L03-C1 from the readability review of 2026-10-22, lane terminal-widget.
+  Location: terminalwidget.cpp:5004-5010
+  `toggleFoldAtCursor` folds the first (oldest) finished region whose start is at or above the cursor, not the region containing it. — Searched: none (read).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5825] **terminalwidget.cpp:1915-1935: quick-select keeps adding typed letters, but every label is one letter.**
+  Lead L03-C2 from the readability review of 2026-10-22, lane terminal-widget.
+  Location: terminalwidget.cpp:1915-1935
+  quick-select keeps adding typed letters, but every label is one letter. One wrong key means nothing can match until Esc. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5826] **terminalwidget.cpp:1922-1930: opening a quick-select label:.**
+  Lead L03-C3 from the readability review of 2026-10-22, lane terminal-widget.
+  Location: terminalwidget.cpp:1922-1930
+  opening a quick-select label:
+  Premise check: UNCHECKED — `sed -n 1915,1935p terminalwidget.cpp`: item states no checkable claim about the code
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5827] **Calls QDesktopServices::openUrl directly, skipping openHyperlink's OSC 8 phishing check.**
+  Lead L03-C4 from the readability review of 2026-10-22, lane terminal-widget.
+  Location:
+  calls `QDesktopServices::openUrl` directly, skipping `openHyperlink`'s OSC 8 phishing check
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5828] **Sends ftp:// and file:// links (which urlRe at :4329 matches) to the "copy SHA/IP/email" branch.**
+  Lead L03-C5 from the readability review of 2026-10-22, lane terminal-widget.
+  Location:
+  sends `ftp://` and `file://` links (which `urlRe` at `:4329` matches) to the "copy SHA/IP/email" branch — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5829] **terminalwidget.cpp:6289: "select command output" includes the command line, unlike outputTextAt.**
+  Lead L03-C6 from the readability review of 2026-10-22, lane terminal-widget.
+  Location: terminalwidget.cpp:6289
+  "select command output" includes the command line, unlike `outputTextAt`. — Searched: `PromptRegion` (`terminalgrid.h:108`); `endLine` has no comment there.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5830] **terminalwidget.cpp:6451-6453: rerunLastCommand returns success even when the confirm dialog is then cancelled.**
+  Lead L03-C7 from the readability review of 2026-10-22, lane terminal-widget.
+  Location: terminalwidget.cpp:6451-6453
+  `rerunLastCommand` returns success even when the confirm dialog is then cancelled. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5831] **terminalaccessible.cpp:18-19: screen-reader "line" requests get wrap-opportunity fragments, not rows.**
+  Lead L03-C8 from the readability review of 2026-10-22, lane terminal-widget.
+  Location: terminalaccessible.cpp:18-19
+  screen-reader "line" requests get wrap-opportunity fragments, not rows. — Searched: none. This is from my knowledge of the Qt API, not from docs on disk.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-5832] **src/mainwindow_tabs.cpp:1213-1266: newTabForRemote never calls saveTabOrderOnly(), so a remote-opened or welcome-install tab is missing from tab_order.txt until the 30 s save.**
+  Lead L04-C1 from the readability review of 2026-10-22, lane mainwindow.
+  Location: src/mainwindow_tabs.cpp:1213-1266
+  `newTabForRemote` never calls `saveTabOrderOnly()`, so a remote-opened or welcome-install tab is missing from tab_order.txt until the 30 s save. Searched: read both bodies.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the main window, its tabs and menus, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5833] **src/mainwindow.cpp:3032-3105: An external config edit does not apply claude.mcp_enabled live, does not set up quake mode, and does not fire the plugin WindowConfigReloaded event.**
+  Lead L04-C2 from the readability review of 2026-10-22, lane mainwindow.
+  Location: src/mainwindow.cpp:3032-3105
+  An external config edit does not apply `claude.mcp_enabled` live, does not set up quake mode, and does not fire the plugin `WindowConfigReloaded` event. The Settings path does all three. Searched: read both paths.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the main window, its tabs and menus, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5834] **src/mainwindow_menus.cpp:955-1007: Settings-Apply does not repaint the tab bar or clear tab tooltips when claudeTabStatusIndicator is turned off; the external path does.**
+  Lead L04-C3 from the readability review of 2026-10-22, lane mainwindow.
+  Location: src/mainwindow_menus.cpp:955-1007
+  Settings-Apply does not repaint the tab bar or clear tab tooltips when `claudeTabStatusIndicator` is turned off; the external path does. Unverified whether SettingsDialog does it itself. Searched: none in settingsdialog.cpp for this.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the main window, its tabs and menus, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5835] **src/mainwindow.cpp:2574-2586: The branch chip misses git worktrees, where .git is a file, and never checks /.**
+  Lead L04-C4 from the readability review of 2026-10-22, lane mainwindow.
+  Location: src/mainwindow.cpp:2574-2586
+  The branch chip misses git worktrees, where `.git` is a file, and never checks `/`. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the main window, its tabs and menus, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5836] **src/mainwindow_tabs.cpp:359-409: The permission-button retractions call clearStatusMessage(), which clears whatever message is current, possibly an unrelated one.**
+  Lead L04-C5 from the readability review of 2026-10-22, lane mainwindow.
+  Location: src/mainwindow_tabs.cpp:359-409
+  The permission-button retractions call `clearStatusMessage()`, which clears whatever message is current, possibly an unrelated one. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the main window, its tabs and menus, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5837] **src/mainwindow.cpp:1600: runKWinScript still uses a fixed per-tag script name, so the RC-52 race between two instances is live there.**
+  Lead L05-C1 from the readability review of 2026-10-22, lane chrome-widgets.
+  Location: src/mainwindow.cpp:1600
+  `runKWinScript` still uses a fixed per-tag script name, so the RC-52 race between two instances is live there. Searched: read `mainwindow.cpp` 1525-1660.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-5838] **src/mainwindow.cpp:1625: the first stage's finished handler ignores the exit status, so "start" runs even when loading the script failed.**
+  Lead L05-C2 from the readability review of 2026-10-22, lane chrome-widgets.
+  Location: src/mainwindow.cpp:1625
+  the first stage's `finished` handler ignores the exit status, so "start" runs even when loading the script failed. When the second stage fails to start, the loaded script is never unloaded. Searched: same read.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-5839] **src/tablistpanel.cpp:343: Glyph::Background gets an empty label, so tooltips and screen-reader text omit the state.**
+  Lead L05-C3 from the readability review of 2026-10-22, lane chrome-widgets.
+  Location: src/tablistpanel.cpp:343
+  `Glyph::Background` gets an empty label, so tooltips and screen-reader text omit the state. Searched: `Glyph::Background`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-5840] **src/titlebar.h:44: the comment promises the full title is readable in the tooltip.**
+  Lead L05-C4 from the readability review of 2026-10-22, lane chrome-widgets.
+  Location: src/titlebar.h:44
+  the comment promises the full title is readable in the tooltip. But `m_titleLabel` has `WA_TransparentForMouseEvents` (`titlebar.cpp:38`), so tooltip events probably never reach it. Searched: none; not run.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-5841] **src/toggleswitch.cpp:71: QAccessibleStateChangeEvent is built with an empty State{}, so no changed-state bit (such as checked) is set, and assistive tools may ignore the event.**
+  Lead L05-C5 from the readability review of 2026-10-22, lane chrome-widgets.
+  Location: src/toggleswitch.cpp:71
+  `QAccessibleStateChangeEvent` is built with an empty `State{}`, so no changed-state bit (such as checked) is set, and assistive tools may ignore the event. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-5842] **src/globalshortcutsportal.cpp:83: after a timeout, a late onCreateSessionResponse is disconnected; a late error reply is guarded by m_sessionPending.**
+  Lead L05-C6 from the readability review of 2026-10-22, lane chrome-widgets.
+  Location: src/globalshortcutsportal.cpp:83
+  after a timeout, a late `onCreateSessionResponse` is disconnected; a late error reply is guarded by `m_sessionPending`. I saw no defect; noted only because the order is subtle. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-5843] **src/updatedialog.cpp:225: When isAllowedUrl(url) fails, the message uses m_session->error(), which is still empty, so the user sees "The download could not start: " with no reason.**
+  Lead L06-C1 from the readability review of 2026-10-22, lane dialog-chrome-theme.
+  Location: src/updatedialog.cpp:225
+  When `isAllowedUrl(url)` fails, the message uses `m_session->error()`, which is still empty, so the user sees "The download could not start: " with no reason. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-5844] **src/selfupdate.cpp:87-96: namesDir checks the boundary after the match but not before it.**
+  Lead L06-C2 from the readability review of 2026-10-22, lane dialog-chrome-theme.
+  Location: src/selfupdate.cpp:87-96
+  `namesDir` checks the boundary after the match but not before it. A value holding `/x/tmp/.mount_A` matches APPDIR `/tmp/.mount_A`, so `relaunchCommand` could remove an unrelated variable. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-5845] **src/selfupdate.cpp:100-118: compareSemver compares a part like "0-rc1" as text, so "1.0.0-rc1" counts as newer than "1.0.0".**
+  Lead L06-C3 from the readability review of 2026-10-22, lane dialog-chrome-theme.
+  Location: src/selfupdate.cpp:100-118
+  `compareSemver` compares a part like "0-rc1" as text, so "1.0.0-rc1" counts as newer than "1.0.0". The header's comment does not mention pre-release tags. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-5846] **src/verifytrust.cpp:196-199: A trust file that exists but cannot be read loads as empty, and the next saveToDisk replaces it by rename, losing its entries.**
+  Lead L06-C4 from the readability review of 2026-10-22, lane dialog-chrome-theme.
+  Location: src/verifytrust.cpp:196-199
+  A trust file that exists but cannot be read loads as empty, and the next `saveToDisk` replaces it by rename, losing its entries. The comment says "Absent or unreadable — start with an empty trust set". — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-5847] **src/auditdialog.cpp:2807: The Auto-fix button never appears after a completed run, only after Cancel.**
+  Lead L07-C1 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:2807
+  The Auto-fix button never appears after a completed run, only after Cancel. — Searched: `m_autofixBtn`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5848] **src/auditdialog.cpp:394: todo_scan and the other grep checks pick up the noise list.**
+  Lead L07-C2 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:394
+  `todo_scan` and the other grep checks pick up the noise list. Every `TODO:` and `FIXME:` line, and any hit whose path contains "test", "example" or "sample", is dropped. That includes `conflict_markers` (Blocker) hits under `tests/`. — Searched: `dropIfContains` in auditengine.cpp.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5849] **src/auditdialog.cpp:3073: todo_scan is in kSourceScannedChecks, so a TODO written in a comment may be dropped as "not code".**
+  Lead L07-C3 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:3073
+  `todo_scan` is in `kSourceScannedChecks`, so a TODO written in a comment may be dropped as "not code". — Searched: none. I did not read `AuditHygiene::lineHasCode`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5850] **src/auditdialog.cpp:93: Self-exclusion names only auditdialog.cpp and auditdialog.h.**
+  Lead L07-C4 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:93
+  Self-exclusion names only `auditdialog.cpp` and `auditdialog.h`. The patterns now live in `auditdialog_catalogue.cpp`, and `cmd_injection_dyn` and `unsafe_deser` skip the file excludes entirely. — Searched: none beyond reading the catalogue.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5851] **src/auditdialog.cpp:3322: The "actionable %" denominator adds m_suppressedKeys.size() (every key in the file, including keys for findings not in this run) to this run's finding count.**
+  Lead L07-C5 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:3322
+  The "actionable %" denominator adds `m_suppressedKeys.size()` (every key in the file, including keys for findings not in this run) to this run's finding count.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5852] **src/auditdialog.cpp:3257 3639: The omitted-count tail is gated on !m_showNewOnly but not on m_sinceBaseline.**
+  Lead L07-C6 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:3257 3639
+  The omitted-count tail is gated on `!m_showNewOnly` but not on `m_sinceBaseline`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5853] **src/auditdialog.cpp:2867: A "Failed to start process" warning keeps the check's own severity, so it sorts as a Critical or Blocker.**
+  Lead L07-C7 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:2867
+  A "Failed to start process" warning keeps the check's own severity, so it sorts as a Critical or Blocker.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5854] **src/auditdialog_catalogue.cpp:1017: The clazy command cd <builddir> && … ../src/*.cpp assumes the build directory sits directly under the project root and the sources are in src/.**
+  Lead L07-C8 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog_catalogue.cpp:1017
+  The clazy command `cd <builddir> && … ../src/*.cpp` assumes the build directory sits directly under the project root and the sources are in `src/`. — Searched: none. I did not read `resolveBuildDir`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5855] **src/auditdialog.cpp:3510 export.cpp:640: f.line >= 0 prints file:0, where every other site uses > 0.**
+  Lead L07-C9 from the readability review of 2026-10-22, lane audit-dialog.
+  Location: src/auditdialog.cpp:3510 export.cpp:640
+  `f.line >= 0` prints `file:0`, where every other site uses `> 0`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-5856] **src/auditrunner.cpp:2473-2486: When a tool crashes, Qt raises errorOccurred(Crashed) before finished.**
+  Lead L08-C1 from the readability review of 2026-10-22, lane audit-engine.
+  Location: src/auditrunner.cpp:2473-2486
+  When a tool crashes, Qt raises `errorOccurred(Crashed)` before `finished`. This handler then finishes the tool with stderr only, so findings the tool wrote to stdout are dropped and the duplicate check discards the later `finished`. — Searched: none (based on Qt's documented signal order, not tested here).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5857] **src/auditrunner.cpp:919-970: The JSON field names read are filename/path/File, message/Description, check_id, line_number/start.line and severity.**
+  Lead L08-C2 from the readability review of 2026-10-22, lane audit-engine.
+  Location: src/auditrunner.cpp:919-970
+  The JSON field names read are `filename`/`path`/`File`, `message`/`Description`, `check_id`, `line_number`/`start.line` and `severity`. As I recall, shellcheck writes `file`, ruff writes `code` and `location.row`, bandit writes `issue_text`/`test_id`/`issue_severity`, and gitleaks writes `RuleID`/`StartLine`. If so, those tools' findings lose their file, rule, line or message, and their fingerprints are keyed on an empty rule. — Searched: none (from memory of the tools' output; not checked against fixtures).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5858] **src/auditrunner.cpp:555: shellcheck is given the directory scripts. shellcheck does not walk directories, so the comment "lets it discover *.sh" is likely false.**
+  Lead L08-C3 from the readability review of 2026-10-22, lane audit-engine.
+  Location: src/auditrunner.cpp:555
+  shellcheck is given the directory `scripts`. shellcheck does not walk directories, so the comment "lets it discover *.sh" is likely false. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5859] **src/auditrunner.cpp:2710,2720: writeSarif is passed req.projectRoot (the raw path) for its rootCanonical parameter, not canonProject.**
+  Lead L08-C4 from the readability review of 2026-10-22, lane audit-engine.
+  Location: src/auditrunner.cpp:2710,2720
+  `writeSarif` is passed `req.projectRoot` (the raw path) for its `rootCanonical` parameter, not `canonProject`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5860] **src/auditcache.cpp:209: A run with zero findings writes no sidecar, so the next since-last-run reports no_prior_findings after a clean run.**
+  Lead L08-C5 from the readability review of 2026-10-22, lane audit-engine.
+  Location: src/auditcache.cpp:209
+  A run with zero findings writes no sidecar, so the next `since-last-run` reports `no_prior_findings` after a clean run. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5861] **src/auditengine.cpp:1003: htmlCandidate.chop(6) assumes the path ends in .sarif.**
+  Lead L08-C6 from the readability review of 2026-10-22, lane audit-engine.
+  Location: src/auditengine.cpp:1003
+  `htmlCandidate.chop(6)` assumes the path ends in `.sarif`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-5862] **src/roadmapmigrateload.cpp:1319-1328: The first resolveLinkTarget call ignores SQL errors silently.**
+  Lead L09-C1 from the readability review of 2026-10-22, lane roadmap-store-a.
+  Location: src/roadmapmigrateload.cpp:1319-1328
+  The first `resolveLinkTarget` call ignores SQL errors silently. Because the error parameter is `nullptr`, a failed query reads as "does not resolve" and the id goes into `unresolved_links`. The sibling call collects and drops its error the same way, so the two behave alike, but neither surfaces a failure. — Searched: `resolveLinkTarget(` in `roadmapstore.h`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-a.
+
+- 📋 [ANTS-5863] **src/roadmapmigrateload.cpp:83-87 src/roadmapmigrate.cpp:467-471: Two hand-kept copies of the archive-name regex, with a comment saying they must match.**
+  Lead L09-C2 from the readability review of 2026-10-22, lane roadmap-store-a.
+  Location: src/roadmapmigrateload.cpp:83-87 src/roadmapmigrate.cpp:467-471
+  Two hand-kept copies of the archive-name regex, with a comment saying they must match. They match today. I am not filing it as Q1 because no fix that patched both is shown. — Searched: none beyond reading both.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-a.
+
+- 📋 [ANTS-5864] **src/roadmapstore.cpp:2334: In sendMessage(), when projectIdForSlug() returns nullopt because of an SQL error, the send is reported as unknown_project and the SQL error text is overwritten.**
+  Lead L10-C1 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:2334
+  In `sendMessage()`, when `projectIdForSlug()` returns nullopt because of an SQL error, the send is reported as `unknown_project` and the SQL error text is overwritten. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5865] **src/roadmapstore.cpp:1133 2922: In setItemField()/clearItemField(), !cur.exec() || !cur.next() reports an SQL failure as "no such item".**
+  Lead L10-C2 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:1133 2922
+  In `setItemField()`/`clearItemField()`, `!cur.exec() || !cur.next()` reports an SQL failure as "no such item". Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5866] **src/roadmapstore.cpp:1143: Provenance that fails to parse becomes {}.**
+  Lead L10-C3 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:1143
+  Provenance that fails to parse becomes `{}`. The merge then silently drops every other field's provenance (same at 2869 and 2927). Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5867] **src/roadmapstore.cpp:1511: The ignored error in syncConvertedLinks() swallows SQL failures from resolveLinkTarget(), not only ambiguity; the comment says ambiguity only.**
+  Lead L10-C4 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:1511
+  The `ignored` error in `syncConvertedLinks()` swallows SQL failures from `resolveLinkTarget()`, not only ambiguity; the comment says ambiguity only. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5868] **src/roadmapstore.cpp:3028: allocationFloor() keeps going after an SQL error and can return a floor of 0, which risks reissuing ids.**
+  Lead L10-C5 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:3028
+  `allocationFloor()` keeps going after an SQL error and can return a floor of 0, which risks reissuing ids. `idHighWaterMark()` checks `err` afterwards; I did not check other callers. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5869] **src/roadmapstore.cpp:1711: appendHistory()'s refusal message calls historyBytes() again.**
+  Lead L10-C6 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:1711
+  `appendHistory()`'s refusal message calls `historyBytes()` again. Outside a transaction this re-sums the table and bumps `historyMeasureCount()`, which is a test observable. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5870] **src/roadmapstore.cpp:2771: setLegend(), setSectionSource()/Slug()/Intro() and updateSection() succeed on a missing row.**
+  Lead L10-C7 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:2771
+  `setLegend()`, `setSectionSource()`/`Slug()`/`Intro()` and `updateSection()` succeed on a missing row. The comment at 2791–2795 calls exactly this "a writer that always claims to have written". Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5871] **src/roadmapstore.cpp:93-98: ImmediateTx's rule ("a read-then-write method takes the write lock BEFORE its read") is followed only by the mail methods.**
+  Lead L10-C8 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:93-98
+  `ImmediateTx`'s rule ("a read-then-write method takes the write lock BEFORE its read") is followed only by the mail methods. `setItemField()`, `clearItemField()`, `markIdParsed()`, `setElementPayload()`, `deleteElement()`, `fileItem()` and `deleteSection()` read and then write without it when no transaction is open. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5872] **src/roadmapstore.cpp:2056 2626 2680 2639: fileItem(), unfileItem(), deleteItem() and shiftElements() change an item's filing but do not record it in m_writtenItems.**
+  Lead L10-C9 from the readability review of 2026-10-22, lane roadmap-store-b.
+  Location: src/roadmapstore.cpp:2056 2626 2680 2639
+  `fileItem()`, `unfileItem()`, `deleteItem()` and `shiftElements()` change an item's filing but do not record it in `m_writtenItems`. The header (h:156–161) says recording lives inside every writer. Whether moves should count is for the owner to say. Searched: `m_writtenItems.insert` within the file only.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-store-b.
+
+- 📋 [ANTS-5873] **src/roadmapparse.cpp:2070: linkIdsIn requires a letter-led prefix, so Blocked-by: 3D_E-0042. is read as prose and the link is lost, although idTokenPattern() accepts that id.**
+  Lead L11-C1 from the readability review of 2026-10-22, lane roadmap-parse-render-a.
+  Location: src/roadmapparse.cpp:2070
+  `linkIdsIn` requires a letter-led prefix, so `Blocked-by: 3D_E-0042.` is read as prose and the link is lost, although `idTokenPattern()` accepts that id. — Searched: `-S?` over `src/`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-a.
+
+- 📋 [ANTS-5874] **src/roadmapledger.cpp:31: \b<prefix>-\d+\b does not match synthesis ids (DEMO-S0001), so a commit naming one is reported as naming no id.**
+  Lead L11-C2 from the readability review of 2026-10-22, lane roadmap-parse-render-a.
+  Location: src/roadmapledger.cpp:31
+  `\b<prefix>-\d+\b` does not match synthesis ids (`DEMO-S0001`), so a commit naming one is reported as naming no id. — Searched: none beyond the file.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-a.
+
+- 📋 [ANTS-5875] **src/roadmapparse.cpp:862 :913: the block stop startsWith("#") && !startsWith("#####") also ends a pass block at a non-heading line starting # (for example #hashtag), unlike headingLevel(), ….**
+  Lead L11-C3 from the readability review of 2026-10-22, lane roadmap-parse-render-a.
+  Location: src/roadmapparse.cpp:862 :913
+  the block stop `startsWith("#") && !startsWith("#####")` also ends a pass block at a non-heading line starting `#` (for example `#hashtag`), unlike `headingLevel()`, which needs `# `. — Searched: same test in `passheadingwrite.cpp:61`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-a.
+
+- 📋 [ANTS-5876] **src/roadmapparse.cpp:651: lineBeginsTrailerDecl is case-sensitive while rxLayman/rxEvidence are case-insensitive.**
+  Lead L11-C4 from the readability review of 2026-10-22, lane roadmap-parse-render-a.
+  Location: src/roadmapparse.cpp:651
+  `lineBeginsTrailerDecl` is case-sensitive while `rxLayman`/`rxEvidence` are case-insensitive. A wrapped value can absorb a following hand-typed `layman:` line that the parser still reads as a declaration. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-a.
+
+- 📋 [ANTS-5877] **src/passheadingwrite.cpp:208: rewriteStatusWord scans to the end of the file, not to the end of the pass block.**
+  Lead L12-C1 from the readability review of 2026-10-22, lane roadmap-parse-render-b.
+  Location: src/passheadingwrite.cpp:208
+  `rewriteStatusWord` scans to the end of the file, not to the end of the pass block. If the located pass's Status line has no word and no glyph, `flipPassStatus` rewrites the next pass's Status line instead. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-b.
+
+- 📋 [ANTS-5878] **src/roadmapfoldin.cpp:672: the dry-run id preview leaves out the store floor, so on a migrated project it can show a lower first id than the real allocation hands out (see the HIGH Q1 finding).**
+  Lead L12-C2 from the readability review of 2026-10-22, lane roadmap-parse-render-b.
+  Location: src/roadmapfoldin.cpp:672
+  the dry-run id preview leaves out the store floor, so on a migrated project it can show a lower first id than the real allocation hands out (see the HIGH Q1 finding). — Searched: `storeAllocationFloor`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-b.
+
+- 📋 [ANTS-5879] **src/roadmaprender.cpp:884: contentOf is keyed by the resolved absolute path, but the check uses the raw opts.liveRoadmapPath.**
+  Lead L12-C3 from the readability review of 2026-10-22, lane roadmap-parse-render-b.
+  Location: src/roadmaprender.cpp:884
+  `contentOf` is keyed by the resolved absolute path, but the check uses the raw `opts.liveRoadmapPath`. With a relative path, the publish stamp is never written. `measureDrift` (roadmapwrite.cpp:521) also opens the raw path relative to the current working directory. Tests pass `"ROADMAP.md"`, and `remotecontrol_roadmap_backfill.cpp:88` builds a relative path. Whether the production write callers pass relative paths I did not confirm. — Searched: `liveRoadmapPath = `, plus the regex search for live-path helpers in remotecontrol*.cpp.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-b.
+
+- 📋 [ANTS-5880] **src/roadmapwrite.cpp:85: contentKey's status-word list has todo, done and others, but not in/progress or shipped.**
+  Lead L12-C4 from the readability review of 2026-10-22, lane roadmap-parse-render-b.
+  Location: src/roadmapwrite.cpp:85
+  `contentKey`'s status-word list has `todo`, `done` and others, but not `in`/`progress` or `shipped`. A line differing only by an `in-progress` keyword may be counted as text rather than restyle. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-parse-render-b.
+
+- 📋 [ANTS-5881] **src/roadmapdialog.cpp:2623-2639: scanRenderedCards collects rm- names from character-fragment anchorNames().**
+  Lead L13-C1 from the readability review of 2026-10-22, lane roadmap-dialog.
+  Location: src/roadmapdialog.cpp:2623-2639
+  `scanRenderedCards` collects `rm-` names from character-fragment `anchorNames()`. Cards are now `<tr id="rm-…">` (ANTS-3392 and ANTS-5604), and Qt may not attach a `<tr>`'s id to a character fragment. If it doesn't, scroll-anchor capture and restore find no cards and silently do nothing. — Searched: tests for `scanRenderedCards|anchorNames|captureScrollAnchor`. The only hit is a source-grep for `captureScrollAnchor()`; I found no behaviour test.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5882] **src/roadmapdialog.cpp:1551-1556: the h1 is emitted on every preset, despite "emit only on Full".**
+  Lead L13-C2 from the readability review of 2026-10-22, lane roadmap-dialog.
+  Location: src/roadmapdialog.cpp:1551-1556
+  the h1 is emitted on every preset, despite "emit only on Full". — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5883] **src/roadmapdialog.cpp:3027-3034: on any errorOccurred, including a timeout or read error while the process is running, the blame process is deleteLater()'d and nulled, which kills a live ….**
+  Lead L13-C3 from the readability review of 2026-10-22, lane roadmap-dialog.
+  Location: src/roadmapdialog.cpp:3027-3034
+  on any `errorOccurred`, including a timeout or read error while the process is running, the blame process is `deleteLater()`'d and nulled, which kills a live process and marks the run answered. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5884] **src/roadmapdialog.cpp:3337: compares markdown.size() (characters) against a byte cap, and checks only *before* adding each archive.**
+  Lead L13-C4 from the readability review of 2026-10-22, lane roadmap-dialog.
+  Location: src/roadmapdialog.cpp:3337
+  compares `markdown.size()` (characters) against a byte cap, and checks only *before* adding each archive. Each archive read can add up to 8 MiB, so the buffer can pass 64 MiB before the check fires. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5885] **src/roadmapdialog.cpp:1484, 1544, 3293: the user-visible strings "⚠ Duplicate roadmap IDs", "Could not read this roadmap." and the live-file error are not passed through tr().**
+  Lead L13-C5 from the readability review of 2026-10-22, lane roadmap-dialog.
+  Location: src/roadmapdialog.cpp:1484, 1544, 3293
+  the user-visible strings "⚠ Duplicate roadmap IDs", "Could not read this roadmap." and the live-file error are not passed through `tr()`. `[tool?: untranslated user-visible string]` — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5886] **src/claudeintegration.cpp:17762-17784: an async audit_run poll leaves out the ANTS-4371 no-files evidence (tools_with_no_files, paths_given_total).**
+  Lead L14-C1 from the readability review of 2026-10-22, lane claude-integration-a.
+  Location: src/claudeintegration.cpp:17762-17784
+  an async `audit_run` poll leaves out the ANTS-4371 no-files evidence (`tools_with_no_files`, `paths_given_total`). An async zero-finding audit therefore looks the same as an audit that scanned nothing, which is the case ANTS-4371 calls the most consequential result. — Searched: none beyond the two builders.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-a.
+
+- 📋 [ANTS-5887] **src/claudeintegration.cpp:18604-18617: discoverProjects loads firstMessage for five sessions but never sets summaryLoaded.**
+  Lead L14-C2 from the readability review of 2026-10-22, lane claude-integration-a.
+  Location: src/claudeintegration.cpp:18604-18617
+  `discoverProjects` loads `firstMessage` for five sessions but never sets `summaryLoaded`. `claudeprojects.cpp:243` then reads the transcript again when that summary is empty, which is what the ANTS-5092 flag at `h:46-48` exists to prevent. — Searched: `summaryLoaded` in `src`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-a.
+
+- 📋 [ANTS-5888] **src/mcptoolregistry.cpp:1015,1061: indie_review_dispatch calls rc() without checking that the getter is set; rcDelegate checks with rc ? rc() : nullptr.**
+  Lead L14-C3 from the readability review of 2026-10-22, lane claude-integration-a.
+  Location: src/mcptoolregistry.cpp:1015,1061
+  `indie_review_dispatch` calls `rc()` without checking that the getter is set; `rcDelegate` checks with `rc ? rc() : nullptr`. It then calls the getter again from the worker thread. — Searched: none.
+  Premise check: PARTLY — `sed mcptoolregistry.cpp 1010-1066`: line 1015 does check if (!rc()) return kRcUnavailable; the worker lambda at :1061 calls rc() again unchecked, from another thread
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-a.
+
+- 📋 [ANTS-5889] **src/claudeintegration.cpp:941: snap.contextPercent is computed against kDefaultContextWindowTokens, ignoring the user's window setting, and nothing in src reads it. [tool?: unused field].**
+  Lead L14-C4 from the readability review of 2026-10-22, lane claude-integration-a.
+  Location: src/claudeintegration.cpp:941
+  `snap.contextPercent` is computed against `kDefaultContextWindowTokens`, ignoring the user's window setting, and nothing in `src` reads it. [tool?: unused field] — Searched: `\.contextPercent\b` in `src` only, not tests.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-a.
+
+- 📋 [ANTS-5890] **src/claudeintegration.cpp:3790: / :3879 — roadmap_query's mode description loses the "report" explanation; sources and ledger are never described.**
+  Lead L15-C1 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:3790
+  / `:3879` — `roadmap_query`'s `mode` description loses the `"report"` explanation; `sources` and `ledger` are never described. Searched: read both assignments and the `props["mode"]` at line 3935.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5891] **src/claudeintegration.cpp:9566-9567: The line "Any continuation lines the previous value " appears twice, so spec_log's status description repeats a phrase.**
+  Lead L15-C2 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:9566-9567
+  The line `"Any continuation lines the previous value "` appears twice, so `spec_log`'s `status` description repeats a phrase. Searched: the anchors file (no pin).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5892] **src/claudeintegration.cpp:4850 :5044: The workspace_search detail says max_match_bytes defaults to off; the code default is 512.**
+  Lead L15-C3 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:4850 :5044
+  The `workspace_search` detail says `max_match_bytes` defaults to off; the code default is 512. Searched: none beyond these lines.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5893] **src/claudeintegration.cpp:5008: timeout_sec says "Clamped to [1, 30] (out-of-range falls back to default)", which contradicts itself.**
+  Lead L15-C4 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:5008
+  `timeout_sec` says "Clamped to [1, 30] (out-of-range falls back to default)", which contradicts itself. Searched: none (handler not read).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5894] **src/claudeintegration.cpp:5027: The max_bytes description says "unless you passed mode=headline_only", but workspace_search has no mode argument (it's headline_only:true).**
+  Lead L15-C5 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:5027
+  The `max_bytes` description says "unless you passed mode=headline_only", but `workspace_search` has no `mode` argument (it's `headline_only:true`). Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5895] **src/claudeintegration.cpp:6262-6281 :6328-6338: The read_spill detail and the row_count text are garbled by mid-literal inserts.**
+  Lead L15-C6 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:6262-6281 :6328-6338
+  The `read_spill` detail and the `row_count` text are garbled by mid-literal inserts.
+  Premise check: PARTLY — `sed -n 6262,6338p claudeintegration.cpp`: read_spill text at 6262-6281 reads fine; the row-paging text at 6328-6338 has an ANTS-4375 clause inserted mid-sentence after "Row mode returns"
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5896] **src/claudeintegration.cpp:8812: untracked[] was promised removed in 0.7.93 and is still sent in 0.7.114.**
+  Lead L15-C7 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:8812
+  `untracked[]` was promised removed in 0.7.93 and is still sent in 0.7.114. Searched: `remotecontrol_feedback.cpp:2477`, `CMakeLists.txt`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5897] **src/claudeintegration.cpp:17103-17114: (outside my slice) — The refusal message itself says "Without either, this per-tab tool falls back to whichever tab Ants has focused", inside the very ….**
+  Lead L15-C8 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:17103-17114
+  (outside my slice) — The refusal message itself says "Without either, this per-tab tool falls back to whichever tab Ants has focused", inside the very branch that refuses instead of falling back. Searched: read lines 17085–17130.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5898] **src/claudeintegration.cpp:3135: The roadmap_query detail still has its old opener, "Query the active tab's ROADMAP.md", mid-text, while the tool requires caller_cwd.**
+  Lead L15-C9 from the readability review of 2026-10-22, lane claude-integration-b.
+  Location: src/claudeintegration.cpp:3135
+  The `roadmap_query` detail still has its old opener, "Query the active tab's ROADMAP.md", mid-text, while the tool requires `caller_cwd`. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-5899] **src/claudeintegration.cpp:11081: The verify_changes description lists a setting called lines, but the real setting, which the handler reads, is max_log_lines (11192).**
+  Lead L16-C1 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:11081
+  The `verify_changes` description lists a setting called `lines`, but the real setting, which the handler reads, is `max_log_lines` (11192). Strict clients refuse unknown settings, so a caller who follows the description gets refused. — Searched: `max_log_lines` (`remotecontrol_review.cpp:1016`, `1184`).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5900] **src/claudeintegration.cpp:15931: session_memory's caller_cwd text says every op refuses when it doesn't match the focused tab's folder.**
+  Lead L16-C2 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:15931
+  `session_memory`'s `caller_cwd` text says every op refuses when it doesn't match the focused tab's folder. The tool's own description (15892–15897) says get and list read across tabs directly. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5901] **src/claudeintegration.cpp:10996: The indie_review_dispatch description says it "Replaces the per-Agent fan-out in the /indie-review skill".**
+  Lead L16-C3 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:10996
+  The `indie_review_dispatch` description says it "Replaces the per-Agent fan-out in the /indie-review skill". The sentence appended at 16354–16362 says "/indie-review keeps its own fan-out". — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5902] **src/claudeintegration.cpp:11210 11221: The audit_run description and detail leave clang-tidy out, though auto-detect runs it.**
+  Lead L16-C4 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:11210 11221
+  The `audit_run` description and detail leave clang-tidy out, though auto-detect runs it. — Searched: `kAutoDetectTools`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5903] **src/claudeintegration.cpp:11169 11469: against 2676 — The hand-written settings text says the focused-tab check refuses a mismatch; the shared helper says there is no focused-tab fallback.**
+  Lead L16-C5 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:11169 11469
+  against `2676` — The hand-written settings text says the focused-tab check refuses a mismatch; the shared helper says there is no focused-tab fallback. One of them is stale, and I cannot tell which. — Searched: `makeCallerCwdReadProp`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5904] **src/claudeintegration.cpp:10388 10495: The find_definition and find_caller descriptions leave out the generic and GLSL languages, which the language setting accepts.**
+  Lead L16-C6 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:10388 10495
+  The `find_definition` and `find_caller` descriptions leave out the generic and GLSL languages, which the language setting accepts. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5905] **src/claudeintegration.cpp:15767–15768: The tool_info selection_hint reads "tools/list snapshot snapshot" (repeated word).**
+  Lead L16-C7 from the readability review of 2026-10-22, lane claude-integration-c.
+  Location: src/claudeintegration.cpp:15767–15768
+  The `tool_info` selection_hint reads "tools/list snapshot snapshot" (repeated word). — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-integration-c.
+
+- 📋 [ANTS-5906] **src/claudestatuswidgets.cpp:724-733: The Allow and Deny buttons send nothing to Claude Code; they only dismiss the bar.**
+  Lead L17-C1 from the readability review of 2026-10-22, lane claude-session-widgets.
+  Location: src/claudestatuswidgets.cpp:724-733
+  The Allow and Deny buttons send nothing to Claude Code; they only dismiss the bar. If they are meant to answer the prompt, they don't. — Searched: no other connections to `allowBtn`/`denyBtn` in the function.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the Claude status bar and task list, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-5907] **src/claudestatuswidgets.cpp:2589-2592: A cached multiplier computed while the session was mechanical stays at 1.5 after the session stops being mechanical (the real rule gives 2.0).**
+  Lead L17-C2 from the readability review of 2026-10-22, lane claude-session-widgets.
+  Location: src/claudestatuswidgets.cpp:2589-2592
+  A cached multiplier computed while the session was mechanical stays at 1.5 after the session stops being mechanical (the real rule gives 2.0). — Searched: modelautoswitch.cpp:227-246.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the Claude status bar and task list, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-5908] **src/claudebgtasksdialog.cpp:67-77: with claudebgtasks.cpp:428 — An agent's outputPath comes from toolUseResult.outputFile.**
+  Lead L17-C4 from the readability review of 2026-10-22, lane claude-session-widgets.
+  Location: src/claudebgtasksdialog.cpp:67-77
+  with `claudebgtasks.cpp:428` — An agent's `outputPath` comes from `toolUseResult.outputFile`. If that is not under `/tmp/claude-$UID/`, `tailPathSafe` refuses it and the dialog always shows "(no output yet)" for agents. Monitors have no outputPath at all. — Searched: none beyond these two files.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the Claude status bar and task list, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-5909] **src/claudestatuswidgets.cpp:2243, 2447, 2456, 2690: A fresh Config() (full file parse) on each call, which the ANTS-2116/4457 comments say was removed from this timer path.**
+  Lead L17-C5 from the readability review of 2026-10-22, lane claude-session-widgets.
+  Location: src/claudestatuswidgets.cpp:2243, 2447, 2456, 2690
+  A fresh `Config()` (full file parse) on each call, which the ANTS-2116/4457 comments say was removed from this timer path. — Searched: anchor TSV (switch_confirm_config_reuse pins `cachedConfig(`).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the Claude status bar and task list, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-5910] **src/claudeprojects.cpp:276-279: m_projects[projIdx] with no bounds check, unlike the sibling slots.**
+  Lead L17-C6 from the readability review of 2026-10-22, lane claude-session-widgets.
+  Location: src/claudeprojects.cpp:276-279
+  `m_projects[projIdx]` with no bounds check, unlike the sibling slots. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the Claude status bar and task list, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-5911] **src/remotecontrol.cpp:2403-2407: On the markdown path, flipping an ants-v1 bullet whose current status is 🚫 matches no old emoji, so applyAntsV1Flip returns without changing anything.**
+  Lead L18-C1 from the readability review of 2026-10-22, lane mcp-transport.
+  Location: src/remotecontrol.cpp:2403-2407
+  On the markdown path, flipping an ants-v1 bullet whose current status is 🚫 matches no old emoji, so `applyAntsV1Flip` returns without changing anything. The caller then carries on with `fromStatus` = 🚫. — Searched: callers (`remotecontrol_roadmap_log.cpp:2118`, `_batch.cpp:1022`). I read 2060-2120 and saw no from-dropped refusal there; I didn't read further.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-5912] **src/mcpdforwarder.cpp:107, 124: "reply exceeded 10 MiB" and "closed mid-reply" both come back as no_terminal ("no Ants Terminal is running", hint "start Ants Terminal"), even after st->sent.**
+  Lead L18-C2 from the readability review of 2026-10-22, lane mcp-transport.
+  Location: src/mcpdforwarder.cpp:107, 124
+  "reply exceeded 10 MiB" and "closed mid-reply" both come back as `no_terminal` ("no Ants Terminal is running", hint "start Ants Terminal"), even after `st->sent`. That goes against the ANTS-4845 reasoning at 81-82, and a caller may retry a write that already happened. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-5913] **src/remotecontrol.cpp:259-288: findChangelogUnder ignores the ANTS-5667 repo_root redirect, so a folder that declares repo_root resolves its changelog somewhere different from its roadmap.**
+  Lead L18-C3 from the readability review of 2026-10-22, lane mcp-transport.
+  Location: src/remotecontrol.cpp:259-288
+  `findChangelogUnder` ignores the ANTS-5667 `repo_root` redirect, so a folder that declares `repo_root` resolves its changelog somewhere different from its roadmap. — Searched: `repoRootOf` usage in this file (one site, line 163).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-5914] **src/remotecontrol.cpp:534-549: rcStripBodyFields removes body, body_truncated and composed_trailers, but leaves body_bytes (ANTS-4904).**
+  Lead L18-C4 from the readability review of 2026-10-22, lane mcp-transport.
+  Location: src/remotecontrol.cpp:534-549
+  `rcStripBodyFields` removes `body`, `body_truncated` and `composed_trailers`, but leaves `body_bytes` (ANTS-4904). By ANTS-4813's own reasoning, that field describes a body the reply no longer carries. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-5915] **src/remotecontrol.cpp:1094: C1 controls pass through rcSanitizeBulletField into ROADMAP.md, unlike filterControlChars and cwdHasBadByte in remotecontrol.h.**
+  Lead L18-C5 from the readability review of 2026-10-22, lane mcp-transport.
+  Location: src/remotecontrol.cpp:1094
+  C1 controls pass through `rcSanitizeBulletField` into ROADMAP.md, unlike `filterControlChars` and `cwdHasBadByte` in remotecontrol.h. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-5916] **src/remotecontrol_roadmap_log.cpp:1456: Pass-note dates and the re-dated Status line use the real clock, not RoadmapClock, so a test that overrides "today" won't move them.**
+  Lead L19-C1 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:1456
+  Pass-note dates and the re-dated Status line use the real clock, not `RoadmapClock`, so a test that overrides "today" won't move them. Searched — `QDate::currentDate` in `src/`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5917] **src/remotecontrol_roadmap_log.cpp:1160-1179: The markdown append dry run omits the guessed-prefix, scrub, evidence and kind advisories, and post_bullets, which the real write returns (lines ….**
+  Lead L19-C2 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:1160-1179
+  The markdown append dry run omits the guessed-prefix, scrub, evidence and kind advisories, and `post_bullets`, which the real write returns (lines 1251–1260). The comment at line 1132 says the dry run exists so a caller can "verify prefix". The store path does attach these on a dry run. Searched — none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5918] **src/remotecontrol_roadmap_log.cpp:2130-2155 :2655-2682: Flip's file-path dry runs omit note_scrubbed_params and post_bullets; the store path (lines 1657, 1680) emits both on a dry run.**
+  Lead L19-C3 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:2130-2155 :2655-2682
+  Flip's file-path dry runs omit `note_scrubbed_params` and `post_bullets`; the store path (lines 1657, 1680) emits both on a dry run. Searched — none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5919] **src/remotecontrol_roadmap_log.cpp:3254-3264: amend_body's mixed-file ants-v1 fallback sets matchedId but not matchedHeadline.**
+  Lead L19-C4 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:3254-3264
+  amend_body's mixed-file ants-v1 fallback sets `matchedId` but not `matchedHeadline`. The pure ants-v1 branch (line 3312) sets both, and the comment at line 3109 says the store locate keys on the headline. Searched — none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5920] **src/remotecontrol_roadmap_log.cpp:2024 :3169: matched is reported as 2 for any ambiguous store-path match.**
+  Lead L19-C5 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:2024 :3169
+  `matched` is reported as 2 for any ambiguous store-path match. Searched — none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5921] **src/remotecontrol_roadmap_log.cpp:2580-2583: The default anchor prefix from a digit-leading folder name ("3D_E") would fail flip's own prefix_hint rule, and it is never checked.**
+  Lead L19-C6 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:2580-2583
+  The default anchor prefix from a digit-leading folder name ("3D_E") would fail flip's own `prefix_hint` rule, and it is never checked. Searched — none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5922] **src/remotecontrol_roadmap_log.cpp:1102-1105 :490-493: The > 9999 branch is redundant: QString::arg with width 4 only pads, it never cuts.**
+  Lead L19-C7 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-a.
+  Location: src/remotecontrol_roadmap_log.cpp:1102-1105 :490-493
+  The `> 9999` branch is redundant: `QString::arg` with width 4 only pads, it never cuts. It is harmless, and both copies agree. Searched — none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-5923] **remotecontrol_roadmap_query.cpp:976: The markdown fallback parses with idFormatFor(projectRoot) (the caller's folder, unresolved) while the store seam uses idFormatFor(root).**
+  Lead L20-C1 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query.cpp:976
+  The markdown fallback parses with `idFormatFor(projectRoot)` (the caller's folder, unresolved) while the store seam uses `idFormatFor(root)`. So a subdirectory caller on an unmigrated project gets no declared ID format. `verb:3069` and `:3094` pass `callerCanonical` the same way. Searched: `projectsettings.cpp:127-144`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5924] **remotecontrol_roadmap_query_verb.cpp:1777: query, kind, source and status are all silently ignored under mode:"report": no refusal fires, and the report branch (:2030-2143) reads none of them.**
+  Lead L20-C2 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query_verb.cpp:1777
+  `query`, `kind`, `source` and `status` are all silently ignored under `mode:"report"`: no refusal fires, and the report branch (:2030-2143) reads none of them. This is the "ignored filter reads as applied" failure the file refuses everywhere else. Searched: none beyond this file.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5925] **remotecontrol_roadmap_query_verb.cpp:3124: On the section path query matches a body capped at 2000 characters; on the full-file path it matches the whole cached body.**
+  Lead L20-C3 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query_verb.cpp:3124
+  On the section path `query` matches a body capped at 2000 characters; on the full-file path it matches the whole cached body. So the same keyword can hit in list mode and miss with `section=`. Searched: `kRoadmapQueryBodyCacheCap` in `remotecontrol.cpp:416`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5926] **remotecontrol_roadmap_query_verb.cpp:1889: The shipped_until default uses QDate::currentDate().**
+  Lead L20-C4 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query_verb.cpp:1889
+  The `shipped_until` default uses `QDate::currentDate()`. The report path uses `RoadmapClock::today()`, and its comment (:2091-2094) says the clock seam is needed so period boundaries don't make tests flake. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5927] **remotecontrol_roadmap_query_verb.cpp:2739: With include_narrator_bullets:true on a roadmap with no IDs, the warning says "parsed but carries no section headings" when the truth is "not ….**
+  Lead L20-C5 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query_verb.cpp:2739
+  With `include_narrator_bullets:true` on a roadmap with no IDs, the warning says "parsed but carries no section headings" when the truth is "not recognised". Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5928] **remotecontrol_roadmap_query.cpp:695: A dry-run pass-headings flip omits to_status; the real write (:731) includes it.**
+  Lead L20-C6 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query.cpp:695
+  A dry-run pass-headings flip omits `to_status`; the real write (:731) includes it. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5929] **remotecontrol_roadmap_query_verb.cpp:1162: The read-side kind filter refuses aliases that amend_field accepts through isRecognisedKind/mappedKind, so the read and write vocabularies differ.**
+  Lead L20-C7 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
+  Location: remotecontrol_roadmap_query_verb.cpp:1162
+  The read-side `kind` filter refuses aliases that `amend_field` accepts through `isRecognisedKind`/`mappedKind`, so the read and write vocabularies differ. Searched: `remotecontrol_roadmap_log.cpp:3975-3995`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-query-log-b.
+
+- 📋 [ANTS-5930] **log_batch.cpp:1312: create_section refuses unrecognised_format on a store-served project whose rendered file has no bullets.**
+  Lead L21-C1 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: log_batch.cpp:1312
+  create_section refuses `unrecognised_format` on a store-served project whose rendered file has no bullets. ANTS-5371 exempted only append_batch. Searched: "cannot safely splice", "ANTS-5371".
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5931] **backfill.cpp:385 publish.cpp:110 release.cpp:302 repair.cpp:154: the storeErr from roadmapStoreOrNull is dropped.**
+  Lead L21-C2 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: backfill.cpp:385 publish.cpp:110 release.cpp:302 repair.cpp:154
+  the `storeErr` from `roadmapStoreOrNull` is dropped. If the store fails to open, `rlNotStoreServedRefusal` gets `nullptr` and answers `project_not_registered` with "Run roadmap_migrate first", which is the "failed lookup is not an absent row" case ANTS-5095 fixed elsewhere. Searched: read `rlNotStoreServedRefusal` (`publish.cpp:51–88`).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5932] **log_batch.cpp:3029–3171: append_batch's store path never emits the ANTS-4989 review-provenance advisory that the file path emits (:3317).**
+  Lead L21-C3 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: log_batch.cpp:3029–3171
+  append_batch's store path never emits the ANTS-4989 review-provenance advisory that the file path emits (`:3317`). Searched: none beyond this file.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5933] **log_batch.cpp:3303: the file path's evidence advisory loops over every request bullet, skipped ones included.**
+  Lead L21-C4 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: log_batch.cpp:3303
+  the file path's evidence advisory loops over every request bullet, skipped ones included. The store path counts only bullets it processed. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5934] **log_batch.cpp:1720 :2221: create_section's and bundle_row's file-path success envelopes have no op key, while their dry-run and store envelopes do.**
+  Lead L21-C5 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: log_batch.cpp:1720 :2221
+  create_section's and bundle_row's file-path success envelopes have no `op` key, while their dry-run and store envelopes do. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5935] **repair.cpp:371–395 rlAttachHistoryNote: runs only under strip_runs or clear_placeholder_source.**
+  Lead L21-C7 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: repair.cpp:371–395 rlAttachHistoryNote
+  runs only under `strip_runs` or `clear_placeholder_source`. Plain layman/source/lanes repairs record history (`:323`) but get no note. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5936] **log_batch.cpp:943: the default anchor prefix, fileName().left(4).toUpper(), is never checked against the ^[A-Z][A-Z0-9_-]{0,15}$ rule that prefix_hint must pass (:946).**
+  Lead L21-C8 from the readability review of 2026-10-22, lane mcp-roadmap-batch.
+  Location: log_batch.cpp:943
+  the default anchor prefix, `fileName().left(4).toUpper()`, is never checked against the `^[A-Z][A-Z0-9_-]{0,15}$` rule that `prefix_hint` must pass (`:946`). Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-5937] **remotecontrol_workspace.cpp:690/702/873: With both files_only and matches_only set, the parse loop never fills the distinct-strings set, yet the matches_only reply wins.**
+  Lead L22-C1 from the readability review of 2026-10-22, lane mcp-state-workspace.
+  Location: remotecontrol_workspace.cpp:690/702/873
+  With both `files_only` and `matches_only` set, the parse loop never fills the distinct-strings set, yet the `matches_only` reply wins. Result: an empty answer with `distinct_count: 0` and `truncated: false`, which looks complete. — Searched: `matches_only` across `src/` for a guard against sending both. None found.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-5938] **remotecontrol_state.cpp:2620/3078: With a specs_dir that is configured but missing, invariant_check and task_priors scan nothing, while spec_query falls back to docs/specs.**
+  Lead L22-C2 from the readability review of 2026-10-22, lane mcp-state-workspace.
+  Location: remotecontrol_state.cpp:2620/3078
+  With a `specs_dir` that is configured but missing, invariant_check and task_priors scan nothing, while spec_query falls back to `docs/specs`. — Searched: the `specsDir` regex above.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-5939] **remotecontrol_state.cpp:2948: Task ids other than ANTS- are never extracted, so the id-in-filename and id-in-card boosts never fire on other projects.**
+  Lead L22-C3 from the readability review of 2026-10-22, lane mcp-state-workspace.
+  Location: remotecontrol_state.cpp:2948
+  Task ids other than `ANTS-` are never extracted, so the id-in-filename and id-in-card boosts never fire on other projects. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-5940] **remotecontrol_state.cpp:1948: next_step says "to index these source_roots" even when only roadmap, changelog or specs keys were suggested (the trigger was widened by ANTS-3353).**
+  Lead L22-C4 from the readability review of 2026-10-22, lane mcp-state-workspace.
+  Location: remotecontrol_state.cpp:1948
+  `next_step` says "to index these source_roots" even when only roadmap, changelog or specs keys were suggested (the trigger was widened by ANTS-3353). — Searched: none.
+  Premise check: UNCHECKED — `none`: did not read remotecontrol_state.cpp:1948
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-5941] **remotecontrol_state.cpp:806–809: The exact-cap cache key re-parses after any call with a different cap.**
+  Lead L22-C5 from the readability review of 2026-10-22, lane mcp-state-workspace.
+  Location: remotecontrol_state.cpp:806–809
+  The exact-cap cache key re-parses after any call with a different cap. Cost only. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-5942] **remotecontrol_workspace.cpp:3553–3567: The configured-root redirect skips the normalised-name sibling match and never sets derivedReasonOut.**
+  Lead L22-C6 from the readability review of 2026-10-22, lane mcp-state-workspace.
+  Location: remotecontrol_workspace.cpp:3553–3567
+  The configured-root redirect skips the normalised-name sibling match and never sets `derivedReasonOut`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-5943] **src/remotecontrol_review.cpp:755 indie_review_dispatch: resolves lanes with derivePartition only.**
+  Lead L23-C1 from the readability review of 2026-10-22, lane mcp-review-verbs.
+  Location: src/remotecontrol_review.cpp:755 indie_review_dispatch
+  resolves lanes with `derivePartition` only. `indie_review_partition` (line 49) falls back to `deriveComputedPartition`. A project with no module map is offered lanes by the partition verb, but dispatch then refuses them as `no_lanes` or `unknown lane`. Searched: `IndieReviewEngine::derivePartition\(` and `deriveComputedPartition\(` in `src`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-5944] **src/remotecontrol_review.cpp:145 path: names .indie-review/partition.json whenever that file exists and was not rejected.**
+  Lead L23-C2 from the readability review of 2026-10-22, lane mcp-review-verbs.
+  Location: src/remotecontrol_review.cpp:145 path
+  names `.indie-review/partition.json` whenever that file exists and was not rejected. If the override parsed but gave one lane or none, the computed fallback (line 49) replaces those lanes, while `path` still names the override. That is the mismatch ANTS-4846 was meant to stop. Searched: none beyond this file.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-5945] **src/remotecontrol_review.cpp:151 src.startsWith(root): has no separator check, so a root of /a/proj would strip the start of /a/proj2/....**
+  Lead L23-C3 from the readability review of 2026-10-22, lane mcp-review-verbs.
+  Location: src/remotecontrol_review.cpp:151 src.startsWith(root)
+  has no separator check, so a root of `/a/proj` would strip the start of `/a/proj2/...`. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-5946] **src/remotecontrol_review.cpp:1199: a force_refresh run never updates the cache, so the stale entry keeps being served to later calls that don't force.**
+  Lead L23-C4 from the readability review of 2026-10-22, lane mcp-review-verbs.
+  Location: src/remotecontrol_review.cpp:1199
+  a `force_refresh` run never updates the cache, so the stale entry keeps being served to later calls that don't force. This may be intended by the spec; not checked. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-5947] **remotecontrol_feedback.cpp:2651: git_state op:log cuts the commit body mid-character, which can show a garbled last character (U+FFFD) before the "…".**
+  Lead L24-C1 from the readability review of 2026-10-22, lane mcp-content-verbs-a.
+  Location: remotecontrol_feedback.cpp:2651
+  `git_state op:log` cuts the commit body mid-character, which can show a garbled last character (U+FFFD) before the "…". Searched: `0xC0\) *== *0x80` across `src`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-a.
+
+- 📋 [ANTS-5948] **remotecontrol_changelog.cpp:1617: / :1455 — in add_batch, a ROADMAP.md that exists but cannot be opened is reported per entry as "no ROADMAP.md is present".**
+  Lead L24-C2 from the readability review of 2026-10-22, lane mcp-content-verbs-a.
+  Location: remotecontrol_changelog.cpp:1617
+  / `:1455` — in `add_batch`, a ROADMAP.md that exists but cannot be opened is reported per entry as "no ROADMAP.md is present". The single op refuses `roadmap_read_failed` instead. Searched: none beyond reading both paths.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-a.
+
+- 📋 [ANTS-5949] **remotecontrol_changelog.cpp:1431: an add_batch entry cannot use the ANTS-4360 "override the summary, inherit the category" form.**
+  Lead L24-C3 from the readability review of 2026-10-22, lane mcp-content-verbs-a.
+  Location: remotecontrol_changelog.cpp:1431
+  an `add_batch` entry cannot use the ANTS-4360 "override the summary, inherit the category" form. `summary` + `id` is treated as `add` and refused without `category`/`kind`. This may be intended; the comment at 1404–1407 only names the auto-detect contract. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-a.
+
+- 📋 [ANTS-5950] **remotecontrol_changelog.cpp:1017: the release write reply has no file_bytes, unlike every other changelog write.**
+  Lead L24-C4 from the readability review of 2026-10-22, lane mcp-content-verbs-a.
+  Location: remotecontrol_changelog.cpp:1017
+  the `release` write reply has no `file_bytes`, unlike every other changelog write. Searched: `find_definition rcSetWriteBytes`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-a.
+
+- 📋 [ANTS-5951] **remotecontrol_changelog.cpp:975: the release truncation can drop one whole character before the cut.**
+  Lead L24-C5 from the readability review of 2026-10-22, lane mcp-content-verbs-a.
+  Location: remotecontrol_changelog.cpp:975
+  the `release` truncation can drop one whole character before the cut. This is harmless, because the reply announces the truncation. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-a.
+
+- 📋 [ANTS-5952] **src/runtraceverb.cpp:623: a cwd containing non-ASCII letters maps to a different transcript folder than Claude Code and session_cost use, so session_id lookup fails for it.**
+  Lead L25-C1 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
+  Location: src/runtraceverb.cpp:623
+  a cwd containing non-ASCII letters maps to a different transcript folder than Claude Code and `session_cost` use, so `session_id` lookup fails for it. Searched: the folder-name copies in src/.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-b.
+
+- 📋 [ANTS-5953] **src/remotecontrol_run_trace.cpp:107: session_id resolves only under ~/.claude/projects (constLast()), even when CLAUDE_CONFIG_DIR is set and its folder is allowed.**
+  Lead L25-C2 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
+  Location: src/remotecontrol_run_trace.cpp:107
+  `session_id` resolves only under `~/.claude/projects` (`constLast()`), even when `CLAUDE_CONFIG_DIR` is set and its folder is allowed. Searched: `projectsDirs`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-b.
+
+- 📋 [ANTS-5954] **src/runtraceverb.cpp:243-268: sumUsage counts isSidechain lines and every id-less line, while session_cost skips both, so run cost may include subagent usage or count it twice.**
+  Lead L25-C3 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
+  Location: src/runtraceverb.cpp:243-268
+  `sumUsage` counts `isSidechain` lines and every id-less line, while `session_cost` skips both, so run cost may include subagent usage or count it twice. Searched: none beyond the two files.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-b.
+
+- 📋 [ANTS-5955] **src/remotecontrol_session_message.cpp:72: an empty rr.cwd from a non-Unresolvable source passes the check and reaches repoRootOf("").**
+  Lead L25-C4 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
+  Location: src/remotecontrol_session_message.cpp:72
+  an empty `rr.cwd` from a non-Unresolvable source passes the check and reaches `repoRootOf("")`. Searched: the `ResolvedRoot` docs in resolvedroot.h (`cwd` can be empty on EmptyFallback).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-b.
+
+- 📋 [ANTS-5956] **src/runtraceverb.cpp:211: a detail file with Genre: on lines 21-25 gets a second header prepended (DocLint reads 25 lines).**
+  Lead L25-C5 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
+  Location: src/runtraceverb.cpp:211
+  a detail file with `Genre:` on lines 21-25 gets a second header prepended (DocLint reads 25 lines). Searched: doclint.cpp:43.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-b.
+
+- 📋 [ANTS-5957] **src/remotecontrol_terminal.cpp:1190-1193: a PNG save failure is refused as bad_args, though nothing about the caller's arguments was wrong.**
+  Lead L25-C6 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
+  Location: src/remotecontrol_terminal.cpp:1190-1193
+  a PNG save failure is refused as `bad_args`, though nothing about the caller's arguments was wrong. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs-b.
+
+- 📋 [ANTS-5958] **src/docfacts.cpp:293: + src/docintegrity.cpp:830 — The same over-counted lead-in produces two findings in one doc_lint run (doc_facts/count_mismatch and doc_integrity/list_count).**
+  Lead L26-C1 from the readability review of 2026-10-22, lane doc-engines.
+  Location: src/docfacts.cpp:293
+  + `src/docintegrity.cpp:830` — The same over-counted lead-in produces two findings in one `doc_lint` run (`doc_facts/count_mismatch` and `doc_integrity/list_count`). An under-counted one produces only `count_mismatch`, a case docintegrity's calibration found to be mostly false positives. — Searched: `"count_mismatch"|"list_count"` in src.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-5959] **src/doclint.cpp:162: headingsOf sees indented headings that extractHeadings skips.**
+  Lead L26-C2 from the readability review of 2026-10-22, lane doc-engines.
+  Location: src/doclint.cpp:162
+  `headingsOf` sees indented headings that `extractHeadings` skips. Its single `seen` map can then give a later repeated heading a different `-N` slug from docintegrity's. `bySlug` could then pick the wrong anchor entry and insert the new TOC row in the wrong place, which the comment at `:200` says cannot happen. — Searched: none beyond reading both.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-5960] **src/doclint.cpp:330: A heading with closing hashes (## Foo ##) never matches docintegrity's message text, so its TOC gap always refuses as stale.**
+  Lead L26-C3 from the readability review of 2026-10-22, lane doc-engines.
+  Location: src/doclint.cpp:330
+  A heading with closing hashes (`## Foo ##`) never matches docintegrity's message text, so its TOC gap always refuses as `stale`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-5961] **src/docfacts.cpp:287: ++r.countClaimsChecked runs before the check that a list follows, so lead-ins over prose or tables count as "checked" though nothing was compared.**
+  Lead L26-C4 from the readability review of 2026-10-22, lane doc-engines.
+  Location: src/docfacts.cpp:287
+  `++r.countClaimsChecked` runs before the check that a list follows, so lead-ins over prose or tables count as "checked" though nothing was compared. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-5962] **src/docsymbols.cpp:185: so.maxResults = 50 caps definitions per needle, so Locators::ambiguous's "candidate count" can be understated with no flag.**
+  Lead L26-C5 from the readability review of 2026-10-22, lane doc-engines.
+  Location: src/docsymbols.cpp:185
+  `so.maxResults = 50` caps definitions per needle, so `Locators::ambiguous`'s "candidate count" can be understated with no flag. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-5963] **src/speclog.cpp:510: appendLoop refuses on any spec with no loop-log heading that holds any |-prefixed line anywhere.**
+  Lead L27-C1 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclog.cpp:510
+  `appendLoop` refuses on any spec with no loop-log heading that holds any `|`-prefixed line anywhere. That check is not fence-aware and does not look for a `Loop` header, so most specs with any table cannot get a new log created. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5964] **src/speclog.cpp:396: slRowCells splits on escaped \|, so a row this function wrote with an escaped pipe (427) miscounts as a "continues the table" row.**
+  Lead L27-C2 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclog.cpp:396
+  `slRowCells` splits on escaped `\|`, so a row this function wrote with an escaped pipe (427) miscounts as a "continues the table" row. — Searched: cell-splitter copies.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5965] **src/speclog.cpp:330: / :494 — the bullet path bounds the section with fenceMask (which tracks list containers) but inserts using the hand-walked sectionEnd() (which does not).**
+  Lead L27-C3 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclog.cpp:330
+  / `:494` — the bullet path bounds the section with `fenceMask` (which tracks list containers) but inserts using the hand-walked `sectionEnd()` (which does not). The two can disagree on a fence nested in a list item. — Searched: markdownscan.h.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5966] **src/speclog.cpp:560,569: appendInv refuses ("more than one Invariants section") on a doc holding ## Why these invariants matter plus ## Invariants. specparse.cpp:169–172 handles exactly that case.**
+  Lead L27-C4 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclog.cpp:560,569
+  `appendInv` refuses ("more than one Invariants section") on a doc holding `## Why these invariants matter` plus `## Invariants`. specparse.cpp:169–172 handles exactly that case. — Searched: specparse.cpp `invariantsSection`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5967] **src/speclog.cpp:569: a ### Invariants section is parsed by SpecParse, but appendInv refuses it as "no Invariants section found".**
+  Lead L27-C5 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclog.cpp:569
+  a `### Invariants` section is parsed by SpecParse, but `appendInv` refuses it as "no Invariants section found". — Searched: as above.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5968] **src/specparse.cpp:241: a next anchor written - INV- (two spaces, or a tab) is matched by bulletStartRe (-\s+) but not by the literal "\n- INV-" search.**
+  Lead L27-C6 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/specparse.cpp:241
+  a next anchor written `- INV-` (two spaces, or a tab) is matched by `bulletStartRe` (`-\s+`) but not by the literal `"\n- INV-"` search. The previous body then runs to the next heading or the section end. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5969] **src/speclint.cpp:892: a long gap made of sibling-owned numbers is reported as a range finding rather than suppressed.**
+  Lead L27-C7 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclint.cpp:892
+  a long gap made of sibling-owned numbers is reported as a range finding rather than suppressed. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5970] **src/speclog.cpp:547: the create-section path leaves rowOrder empty, outside the three values speclog.h:38–42 documents.**
+  Lead L27-C8 from the readability review of 2026-10-22, lane spec-engines.
+  Location: src/speclog.cpp:547
+  the create-section path leaves `rowOrder` empty, outside the three values speclog.h:38–42 documents. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-5971] **src/indiereviewdispatcher.cpp:397-402: on write_failed, the error text is the model's reply, not f.errorString(), so the real write error is lost.**
+  Lead L28-C1 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/indiereviewdispatcher.cpp:397-402
+  on `write_failed`, the error text is the model's reply, not `f.errorString()`, so the real write error is lost. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5972] **src/indiereviewengine.cpp:1239-1240: when a nearby group is promoted to a finding, only the first cited line per lane is marked as used.**
+  Lead L28-C2 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/indiereviewengine.cpp:1239-1240
+  when a nearby group is promoted to a finding, only the first cited line per lane is marked as used. Other lines in the span stay unmarked and can show up again in `nearMisses`, which the comment at 1237 says cannot happen. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5973] **src/indiereviewengine.cpp:1013: the extension gap above means findings in .rs/.go/.js/.ts (and other admitted) files never corroborate.**
+  Lead L28-C3 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/indiereviewengine.cpp:1013
+  the extension gap above means findings in `.rs`/`.go`/`.js`/`.ts` (and other admitted) files never corroborate. Searched: `isIndexableSuffix`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5974] **src/debtsweepengine.cpp:1497-1500: the duplicate-include fix ignores #if nesting, so it can delete an unconditional include whose only other copy is conditional.**
+  Lead L28-C4 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/debtsweepengine.cpp:1497-1500
+  the duplicate-include fix ignores `#if` nesting, so it can delete an unconditional include whose only other copy is conditional. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5975] **src/coldeyesengine.cpp:966-970, 987: kCrossRefs matches only the exact names ROADMAP.md/CHANGELOG.md.**
+  Lead L28-C5 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/coldeyesengine.cpp:966-970, 987
+  `kCrossRefs` matches only the exact names `ROADMAP.md`/`CHANGELOG.md`. The contracts lane finds `Roadmap.md`, `CHANGELOG.yaml` and `data/roadmap.yaml` case-insensitively, so a large non-`.md` log escapes the size rule and is passed to `DocIntegrity::check`, and the de-dup against lane docs misses it. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5976] **src/indiereviewengine.cpp:527-561: lanes produced by the single-directory split never get kind set (the normal path sets it at 507), so test lanes lose their "tests" label.**
+  Lead L28-C6 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/indiereviewengine.cpp:527-561
+  lanes produced by the single-directory split never get `kind` set (the normal path sets it at 507), so test lanes lose their "tests" label. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5977] **src/indiereviewengine.cpp:657 :447: the two 4000-file caps count different sets, so the coverage report can stop before the partition walk does.**
+  Lead L28-C7 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/indiereviewengine.cpp:657 :447
+  the two 4000-file caps count different sets, so the coverage report can stop before the partition walk does. Searched: none.
+  Premise check: PARTLY — `grep kMaxFilesTotal indiereviewengine.cpp`: both caps are 4000 (447 and 657); whether they count different sets not fully traced
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5978] **src/indiereviewengine.cpp:1348: synthesisPrompt hard-codes "an Ants Terminal codebase", but the engine partitions any project.**
+  Lead L28-C8 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/indiereviewengine.cpp:1348
+  `synthesisPrompt` hard-codes "an Ants Terminal codebase", but the engine partitions any project. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5979] **src/debtsweepengine.cpp:437: the finding message says Q_UNUSED(x) even when the marker was (void)x;.**
+  Lead L28-C9 from the readability review of 2026-10-22, lane review-engines.
+  Location: src/debtsweepengine.cpp:437
+  the finding message says `Q_UNUSED(x)` even when the marker was `(void)x;`. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-5980] **src/testauditengine.cpp:1947: in full mode, an offset beyond md.size() gives end < offset, so chunksReturned = end - offset goes negative (and limit:-1 hits the same path).**
+  Lead L29-C1 from the readability review of 2026-10-22, lane test-audit-verify.
+  Location: src/testauditengine.cpp:1947
+  in full mode, an `offset` beyond `md.size()` gives `end < offset`, so `chunksReturned = end - offset` goes negative (and `limit:-1` hits the same path). Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-5981] **src/verifyengine.cpp:354-362: a ctest run that executes zero tests and exits 0 stays passed:true.**
+  Lead L29-C2 from the readability review of 2026-10-22, lane test-audit-verify.
+  Location: src/verifyengine.cpp:354-362
+  a ctest run that executes zero tests and exits 0 stays `passed:true`. See the Q4 finding above. Searched: read `parseCtest` and `TestResCache::parseCtestSummary` (testrescache.cpp:55–61, 108–114).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-5982] **src/verifyengine.cpp:513-516: a gate excluded by opts.only is reported as skippedReason:"no command configured", the same as a truly unconfigured gate, because configured was already filtered.**
+  Lead L29-C3 from the readability review of 2026-10-22, lane test-audit-verify.
+  Location: src/verifyengine.cpp:513-516
+  a gate excluded by `opts.only` is reported as `skippedReason:"no command configured"`, the same as a truly unconfigured gate, because `configured` was already filtered. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-5983] **src/mutationprobe.cpp:86-101: pytest N error(s) is not counted as failed, so 1 passed, 2 errors gives failed=0.**
+  Lead L29-C4 from the readability review of 2026-10-22, lane test-audit-verify.
+  Location: src/mutationprobe.cpp:86-101
+  pytest `N error(s)` is not counted as failed, so `1 passed, 2 errors` gives `failed=0`. Searched: TestRunners `addCount` (testrunners.cpp:70–77) does count it.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-5984] **src/testauditengine.cpp:2191-2198: the "Ok/Empty" hint says both locks gave up after *"the 5 s budget"*, but interactive callers wait about 1 s (ANTS-5102).**
+  Lead L29-C5 from the readability review of 2026-10-22, lane test-audit-verify.
+  Location: src/testauditengine.cpp:2191-2198
+  the "Ok/Empty" hint says both locks gave up after *"the 5 s budget"*, but `interactive` callers wait about 1 s (ANTS-5102). That case also says *"inspect saw a valid counter"*, which `EmptyOrAbsent` is not. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-5985] **src/testauditengine.cpp:942-946: applies[i] assumes rxs[i] matches g_kPrePatterns()[i] by position.**
+  Lead L29-C6 from the readability review of 2026-10-22, lane test-audit-verify.
+  Location: src/testauditengine.cpp:942-946
+  `applies[i]` assumes `rxs[i]` matches `g_kPrePatterns()[i]` by position. That holds only because the one caller builds `rxs` from that table, and no comment says so. Searched: `prePassFile` is called only at line 1269.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-5986] **src/findsources.cpp:121: relPath.contains("ui_") / "moc_" / "qrc_" look for the text anywhere in the path.**
+  Lead L30-C1 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/findsources.cpp:121
+  `relPath.contains("ui_")` / `"moc_"` / `"qrc_"` look for the text anywhere in the path. So `src/gui_main.cpp` would be dropped as a generated file. — Searched: none (pure logic).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5987] **src/findsources.cpp:349: A token found only in the body of a file whose name matched a different token is reported in unmatchedTerms.**
+  Lead L30-C2 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/findsources.cpp:349
+  A token found only in the body of a file whose name matched a different token is reported in `unmatchedTerms`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5988] **src/findsources.cpp:46: The CamelCase-to-snake conversion yields mcpserver for MCPServer, so the snake_case variant never matches mcp_server.**
+  Lead L30-C3 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/findsources.cpp:46
+  The CamelCase-to-snake conversion yields `mcpserver` for `MCPServer`, so the snake_case variant never matches `mcp_server`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5989] **src/findsources.cpp:403: prewarm reads every candidate file, but findSources scans at most maxFiles (20000).**
+  Lead L30-C4 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/findsources.cpp:403
+  prewarm reads every candidate file, but `findSources` scans at most `maxFiles` (20000). Past that, files are warmed that will never be read. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5990] **src/functionsizes.cpp:72: Declarations are skipped by "signature ends with ;".**
+  Lead L30-C5 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/functionsizes.cpp:72
+  Declarations are skipped by "signature ends with `;`". But the signature carries any trailing comment (fileoutline.cpp:907–911), so `int f(void); // note` is measured as a function. This is the ANTS-3735 trap. — Searched: read fileoutline.cpp:907–911.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5991] **src/readregion.cpp:182: braceBalancedEndLine has no raw-string handling.**
+  Lead L30-C6 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/readregion.cpp:182
+  `braceBalancedEndLine` has no raw-string handling. A raw-string `{` mis-ends bodies for function_sizes and read_region. — Searched: `find_definition`, body read.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5992] **src/fileoutline.cpp:1180: Inside an HTML <script>, a class is emitted as kind "func", and the typed function T name( form is not tried.**
+  Lead L30-C7 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/fileoutline.cpp:1180
+  Inside an HTML `<script>`, a class is emitted as kind "func", and the typed `function T name(` form is not tried. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5993] **src/fileoutline.cpp:797: The Markdown header_doc stops on a leading blank line and collects at most one prose line.**
+  Lead L30-C8 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/fileoutline.cpp:797
+  The Markdown header_doc stops on a leading blank line and collects at most one prose line. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5994] **src/fileoutline.cpp:258: rxCppNameArgs \([^)]*\) lacks the ANTS-3412 nested-parenthesis fix, so an old-style definition taking std::function<void()> is missed.**
+  Lead L30-C9 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/fileoutline.cpp:258
+  rxCppNameArgs `\([^)]*\)` lacks the ANTS-3412 nested-parenthesis fix, so an old-style definition taking `std::function<void()>` is missed. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5995] **src/fileoutline.cpp:338: A raw string that spans lines is not carried to the next line, so braces on its continuation lines move the depth.**
+  Lead L30-C10 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/fileoutline.cpp:338
+  A raw string that spans lines is not carried to the next line, so braces on its continuation lines move the depth. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5996] **src/codebaseindex.cpp:91: roleFor classes .hxx as "impl" although .hxx is indexed as C++.**
+  Lead L30-C11 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/codebaseindex.cpp:91
+  `roleFor` classes `.hxx` as "impl" although `.hxx` is indexed as C++. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5997] **src/codewalk.cpp:122: A declared source_root that does not exist refuses with "\"paths\" entry … does not exist", even when the caller passed no paths.**
+  Lead L30-C12 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/codewalk.cpp:122
+  A declared `source_root` that does not exist refuses with "\"paths\" entry … does not exist", even when the caller passed no paths. The sibling walkers fall back to `src` instead. — Searched: `sourceRoots` in src/*.cpp.
+  Premise check: PARTLY — `sed codewalk.cpp 112-145`: empty paths uses sourceRoots (else src/.); a nonexistent entry refuses at :140 "does not exist"; sibling walkers' behaviour not checked
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5998] **src/functionsizes.cpp:140: in.readLine() with no limit holds a whole multi-megabyte line.**
+  Lead L30-C13 from the readability review of 2026-10-22, lane code-index-search-a.
+  Location: src/functionsizes.cpp:140
+  `in.readLine()` with no limit holds a whole multi-megabyte line. `BoundedReadLine` exists for exactly this (ANTS-5103). [tool?: unbounded read] — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-a.
+
+- 📋 [ANTS-5999] **src/wrapmatch.cpp:59-66: with :49 — a quotation containing a lone / can never match text that holds it verbatim.**
+  Lead L31-C1 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/wrapmatch.cpp:59-66
+  with `:49` — a quotation containing a lone ` / ` can never match text that holds it verbatim. The needle side drops `/`; the file side only skips `//`. — Searched: none (read both definitions).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6000] **src/wrapmatch.cpp:49: bold markers are skipped as continuation markers, against the comment's stated intent.**
+  Lead L31-C2 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/wrapmatch.cpp:49
+  `` bold markers are skipped as continuation markers, against the comment's stated intent. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6001] **src/symbolquery.cpp:1013-1017: findDefinitions never fills walkStoppedIn/walkUnreached on a capped walk.**
+  Lead L31-C3 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/symbolquery.cpp:1013-1017
+  `findDefinitions` never fills `walkStoppedIn`/`walkUnreached` on a capped walk. — Searched: `walkStoppedIn|walkUnreached`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6002] **src/trace/trace.cpp:208-209: fence detection: a 4-backtick inline span opens a "fence", and every later doc line is hidden from docs[].**
+  Lead L31-C4 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/trace/trace.cpp:208-209
+  fence detection: a 4-backtick inline span opens a "fence", and every later doc line is hidden from `docs[]`. This is the ANTS-3674 failure. — Searched: `fenceMask|startsWith("```")`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6003] **src/sourcescrapes.cpp:119,122: an unterminated raw string breaks out of lex, silently dropping the rest of the file.**
+  Lead L31-C5 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/sourcescrapes.cpp:119,122
+  an unterminated raw string `break`s out of `lex`, silently dropping the rest of the file. That breaks the file header's promise that what it cannot follow is "counted or named in not_covered, never guessed". — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6004] **src/commentclaims.cpp:405: ~ 3-line (with a space) is reported twice, as approx and as nLine.**
+  Lead L31-C6 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/commentclaims.cpp:405
+  `~ 3-line` (with a space) is reported twice, as `approx` and as `nLine`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6005] **src/sourcescrapes.cpp:629 src/trace/trace.cpp:407-410: the default test roots differ when configured roots all fail to exist. sourcescrapes walks nothing; trace falls back to tests.**
+  Lead L31-C7 from the readability review of 2026-10-22, lane code-index-search-b.
+  Location: src/sourcescrapes.cpp:629 src/trace/trace.cpp:407-410
+  the default test roots differ when configured roots all fail to exist. sourcescrapes walks nothing; trace falls back to `tests`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: code-index-search-b.
+
+- 📋 [ANTS-6006] **src/mcporientation.cpp:283-339: uninstalling against a settings.json that has no hooks key inserts "hooks":{"SessionStart":[]}.**
+  Lead L32-C1 from the readability review of 2026-10-22, lane mcp-infra.
+  Location: src/mcporientation.cpp:283-339
+  uninstalling against a `settings.json` that has no `hooks` key inserts `"hooks":{"SessionStart":[]}`. `root != original`, so the file is rewritten, yet the function returns `Kept`. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6007] **src/mcporientation.cpp:466-483: on a fresh install where the script write fails, the settings hook is still written and points at a missing script.**
+  Lead L32-C2 from the readability review of 2026-10-22, lane mcp-infra.
+  Location: src/mcporientation.cpp:466-483
+  on a fresh install where the script write fails, the settings hook is still written and points at a missing script. That is the dangling-hook case ANTS-3562 guards against for another reason. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6008] **src/tokenusageengine.cpp:425: tc.nCalls = int(v) narrows an untrusted qint64 after the v < 0 check, so an n_calls above INT_MAX wraps to a negative number.**
+  Lead L32-C3 from the readability review of 2026-10-22, lane mcp-infra.
+  Location: src/tokenusageengine.cpp:425
+  `tc.nCalls = int(v)` narrows an untrusted `qint64` after the `v < 0` check, so an `n_calls` above INT_MAX wraps to a negative number. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6009] **src/tokenusageengine.cpp:543-565: foldPeerUsage never sets the global "since" date.**
+  Lead L32-C4 from the readability review of 2026-10-22, lane mcp-infra.
+  Location: src/tokenusageengine.cpp:543-565
+  `foldPeerUsage` never sets the global "since" date. The MainWindow session fold does (`mainwindow.cpp:2280-2282`). I did not check whether `foldPeerUsage`'s caller sets it. — Searched: `foldMonthlyBucket\(` in `src`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6010] **src/mcporientation.cpp:342-371 173: the parent directory is created with QDir::mkpath at default permissions, and permissions are tightened only after commit().**
+  Lead L32-C5 from the readability review of 2026-10-22, lane mcp-infra.
+  Location: src/mcporientation.cpp:342-371 173
+  the parent directory is created with `QDir::mkpath` at default permissions, and permissions are tightened only after `commit()`. `jsonlfile.cpp:25,39` uses a private directory and tightens the temp file before the rename. Whether QSaveFile leaves a readable window depends on Qt behaviour I did not verify. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6011] **src/modelswitchledger.cpp:310-318: the correction signal reads the first isUser turn, which is usually a tool-result line with empty text, so it may rarely fire.**
+  Lead L33-C1 from the readability review of 2026-10-22, lane model-switching.
+  Location: src/modelswitchledger.cpp:310-318
+  the correction signal reads the first `isUser` turn, which is usually a tool-result line with empty text, so it may rarely fire. Searched: the TranscriptTurn producer in claudestatuswidgets.cpp:2884-2906.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6012] **src/modelswitchledger.cpp:235-241: parseUserModelCommand looks for "/model X" in user-message text.**
+  Lead L33-C2 from the readability review of 2026-10-22, lane model-switching.
+  Location: src/modelswitchledger.cpp:235-241
+  `parseUserModelCommand` looks for "/model X" in user-message text. `modelrecommender.cpp:57-62` says Claude Code records `/model` as `type:"system"` local_command events, and the producer drops every type except assistant and user (`claudestatuswidgets.cpp:2876`). If no user line carries the text, the user-override detection never fires. Uncertain: I did not verify the transcript format. Searched: `local_command|parseUserModelCommand`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6013] **src/modelnearmissledger.cpp:248: / remotecontrol_state.cpp:1337 — statsFull's 24 h total includes idle-only records and statsSlim's does not, so the comment's "agree at the same moment" claim ….**
+  Lead L33-C3 from the readability review of 2026-10-22, lane model-switching.
+  Location: src/modelnearmissledger.cpp:248
+  / `remotecontrol_state.cpp:1337` — `statsFull`'s 24 h total includes idle-only records and `statsSlim`'s does not, so the comment's "agree at the same moment" claim is false. Searched: `ANTS-1960`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6014] **src/aidialog.cpp:114 :120: the user-facing text says "byte(s)", but the counts are UTF-16 characters (aidialog.h:55-57).**
+  Lead L33-C4 from the readability review of 2026-10-22, lane model-switching.
+  Location: src/aidialog.cpp:114 :120
+  the user-facing text says "byte(s)", but the counts are UTF-16 characters (`aidialog.h:55-57`). Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6015] **src/aidialog.cpp:371: a 10-character fence language tag ("powershell", "typescript") is left as the first line of the inserted command.**
+  Lead L33-C5 from the readability review of 2026-10-22, lane model-switching.
+  Location: src/aidialog.cpp:371
+  a 10-character fence language tag ("powershell", "typescript") is left as the first line of the inserted command. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6016] **src/modelnearmissledger.cpp:141 src/modelswitchledger.cpp:618: the near-miss 24 h filter drops records whose timestamp will not parse; the firing-ledger window filter keeps them.**
+  Lead L33-C6 from the readability review of 2026-10-22, lane model-switching.
+  Location: src/modelnearmissledger.cpp:141 src/modelswitchledger.cpp:618
+  the near-miss 24 h filter drops records whose timestamp will not parse; the firing-ledger window filter keeps them. Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6017] **src/config.cpp:425: /:451 — kind filters on perf, optimize, security and feature are dropped when saved and when loaded.**
+  Lead L34-C1 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/config.cpp:425
+  /`:451` — kind filters on `perf`, `optimize`, `security` and `feature` are dropped when saved and when loaded. Searched: `roadmapdialog.cpp:135-160`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6018] **src/sessionmanager.h:14: /:111 — two constants guard one limit.**
+  Lead L34-C2 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/sessionmanager.h:14
+  /`:111` — two constants guard one limit. Only one is enforced by restore. Searched: their uses repo-wide.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6019] **src/sessionmemoryengine.cpp:128: saveStore ignores whether setting permissions failed.**
+  Lead L34-C3 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/sessionmemoryengine.cpp:128
+  `saveStore` ignores whether setting permissions failed. That is against the `secureio.h` ANTS-5151 policy, which says files holding Claude's answers are not written when it fails. Also, `QSaveFile`'s temp file is created at the default umask before the chmod, so there is a window where it may be readable. Searched: read secureio.h.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6020] **src/sessionmemoryengine.cpp:170: mutateLocked treats a broken notebook file as empty and writes over it.**
+  Lead L34-C4 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/sessionmemoryengine.cpp:170
+  `mutateLocked` treats a broken notebook file as empty and writes over it. That is the silent data loss `configbackup.h:20-25` exists to prevent. Searched: none beyond these files.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6021] **src/projectlayoutengine.cpp:220-223 :289-297: a roadmap or changelog declared in .ants/project.json (and the settings file itself) is never added to the probed list.**
+  Lead L34-C5 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/projectlayoutengine.cpp:220-223 :289-297
+  a roadmap or changelog declared in `.ants/project.json` (and the settings file itself) is never added to the probed list. So `isStale` never re-checks them, and edits don't refresh the cached layout until it expires after its 7-day lifetime. Searched: read `isStale`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6022] **src/configpaths.h:50 src/config.cpp:64: the two folder derivations split apart when XDG_CONFIG_HOME is set.**
+  Lead L34-C6 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/configpaths.h:50 src/config.cpp:64
+  the two folder derivations split apart when `XDG_CONFIG_HOME` is set. Searched: `antsConfigHome|configPath()`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6023] **src/config.cpp:752: setClaudeMcpFeedbackRoot skips the length and null-character check.**
+  Lead L34-C7 from the readability review of 2026-10-22, lane config-session-project.
+  Location: src/config.cpp:752
+  `setClaudeMcpFeedbackRoot` skips the length and null-character check. Searched: `setClaudeMcpFeedbackRoot(` in src.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6024] **src/pluginmanager.cpp:157: settingsGetRequested is disconnected before Unload, so an Unload handler (documented as "save state") always gets nil from ants.settings.get, even though ….**
+  Lead L35-C1 from the readability review of 2026-10-22, lane plugins-lua.
+  Location: src/pluginmanager.cpp:157
+  `settingsGetRequested` is disconnected before Unload, so an Unload handler (documented as "save state") always gets `nil` from `ants.settings.get`, even though `waitServicingCalls` would now service the call. Meanwhile `settings.set` stays connected. The disconnect may now be unnecessary and lossy. — Searched: read `waitServicingCalls` and `finishTeardown` in this file only.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the plugin system, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6025] **src/luaengine.cpp:1232: / 1277 — paths refused for control or backslash characters are reported as "escapes project root".**
+  Lead L35-C2 from the readability review of 2026-10-22, lane plugins-lua.
+  Location: src/luaengine.cpp:1232
+  / `1277` — paths refused for control or backslash characters are reported as "escapes project root". — Searched: `pathvalidation.cpp:201-204` via search hit.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the plugin system, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6026] **src/luaengine.cpp:251-252: instructionHook with no engine raises "Script execution timeout exceeded", a misleading message for a state that should be impossible.**
+  Lead L35-C3 from the readability review of 2026-10-22, lane plugins-lua.
+  Location: src/luaengine.cpp:251-252
+  `instructionHook` with no engine raises "Script execution timeout exceeded", a misleading message for a state that should be impossible. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the plugin system, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6027] **src/pluginmanager.cpp:710: / 720 — the comments saying "no caller wires this yet" are still true.**
+  Lead L35-C4 from the readability review of 2026-10-22, lane plugins-lua.
+  Location: src/pluginmanager.cpp:710
+  / `720` — the comments saying "no caller wires this yet" are still true. — Searched: `m_pluginManager->set(Cwd|RecentOutput)` and `plugin\w*->set...`, no hits.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the plugin system, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6028] **src/changeloglog.cpp:1032: normalizeUnreleased does not refuse a mixed section where dated topics come first.**
+  Lead L36-C1 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/changeloglog.cpp:1032
+  `normalizeUnreleased` does not refuse a mixed section where dated topics come first. In the sort (1093–1094) dated topics get the maximum key, so the legacy flat tail is moved ABOVE the newest dated entries. — Searched: the file; `insertUnreleasedEntry`'s `mixed_section` guard has no counterpart here.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6029] **src/changelogquery.cpp:106: parseVersionHeading accepts only ## [.**
+  Lead L36-C2 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/changelogquery.cpp:106
+  `parseVersionHeading` accepts only `## [`. Entries under a versionless `## <date>` section, which `closeUnreleasedDated` writes, are credited to the section before it, typically `Unreleased`, in `parse`, `citationsByVersion` and `releaseLint`. — Searched: the whole file.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6030] **src/changeloglog.cpp:638: closeUnreleased never checks date: a newline or ] breaks the heading.**
+  Lead L36-C3 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/changeloglog.cpp:638
+  `closeUnreleased` never checks `date`: a newline or `]` breaks the heading. `version` is checked (573), and `closeUnreleasedDated` checks the date (676). — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6031] **src/changeloglog.cpp:960: Body prose is written flush-left and unchanged, so a body line starting ## or ### becomes a heading.**
+  Lead L36-C4 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/changeloglog.cpp:960
+  Body prose is written flush-left and unchanged, so a body line starting `## ` or `### ` becomes a heading. That is the injection `oneLine` was added to stop for the headline. The routed `op:add` sends its `body` down this path (`remotecontrol_changelog.cpp:195-197`). — Searched: that caller.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6032] **src/changeloglog.cpp:743: A same-day merge refuses a lower-case ### fixed, and refuses an HTML-comment placeholder that sits before the first ### (753).**
+  Lead L36-C5 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/changeloglog.cpp:743
+  A same-day merge refuses a lower-case `### fixed`, and refuses an HTML-comment placeholder that sits before the first `###` (753). The single-close path accepts both. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6033] **src/changelogquery.cpp:370: lint's fenceMask keeps an unclosed fence open to the end of the file, while parse closes it at ## [.**
+  Lead L36-C7 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/changelogquery.cpp:370
+  `lint`'s `fenceMask` keeps an unclosed fence open to the end of the file, while `parse` closes it at `## [`. On the same file, the two can disagree about which lines are code. — Searched: the `markdownscan.h` header passage on `fenceMask`.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6034] **src/feedbackfile.cpp:39: scanBoundaries lacks the ANTS-3695 H1 hardening.**
+  Lead L36-C8 from the readability review of 2026-10-22, lane changelog-feedback.
+  Location: src/feedbackfile.cpp:39
+  `scanBoundaries` lacks the ANTS-3695 H1 hardening. In `compactShipped` and `pruneTracking`, a `# comment` pasted from a shell transcript can become a boundary, which can cut a block short. Low confidence. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6035] **src/antshelpermain.cpp:156: The "stdin not readable" error checks args[2] == "-".**
+  Lead L37-C1 from the readability review of 2026-10-22, lane app-entry-dialogs.
+  Location: src/antshelpermain.cpp:156
+  The "stdin not readable" error checks `args[2] == "-"`. `drift-check --repo-root /x -` puts `-` later, so an unreadable stdin is silently treated as an empty request. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in app start-up and the settings window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6036] **src/antshelpermain.cpp:123: A trailing --repo-root with no value falls through to jsonArg, and the user sees "invalid JSON: …".**
+  Lead L37-C2 from the readability review of 2026-10-22, lane app-entry-dialogs.
+  Location: src/antshelpermain.cpp:123
+  A trailing `--repo-root` with no value falls through to `jsonArg`, and the user sees "invalid JSON: …". — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in app start-up and the settings window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6037] **src/sshdialog.cpp:415: A bare IPv6 address with no brackets (2001:db8::1) splits at its first colon: host 2001, port quietly reset to 22.**
+  Lead L37-C3 from the readability review of 2026-10-22, lane app-entry-dialogs.
+  Location: src/sshdialog.cpp:415
+  A bare IPv6 address with no brackets (`2001:db8::1`) splits at its first colon: host `2001`, port quietly reset to 22. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in app start-up and the settings window, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6038] **src/readlog.cpp:191-202: Oversized lines skip pemOf, and maxBytes has no lower limit.**
+  Lead L38-C1 from the readability review of 2026-10-22, lane diagnostics-logging.
+  Location: src/readlog.cpp:191-202
+  Oversized lines skip `pemOf`, and `maxBytes` has no lower limit. With a small `max_bytes`, a key's BEGIN line or its body lines can be skipped. Then a short tail line of the key body comes back marked as outside the key block, and only the general `scrub` is applied to it. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the logs and error reports, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6039] **src/buildcache.cpp:120-124: Real gcc/clang output prints source and caret lines after each diagnostic.**
+  Lead L38-C2 from the readability review of 2026-10-22, lane diagnostics-logging.
+  Location: src/buildcache.cpp:120-124
+  Real gcc/clang output prints source and caret lines after each diagnostic. That makes the gap more than one, so a `note:` almost never folds into its error and is counted in `warningsCount` instead. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the logs and error reports, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6040] **src/scrollbackerrors.cpp:72-74: ctest's *Not Run progress line matches neither hasTestMarker nor rxTestBlock.**
+  Lead L38-C3 from the readability review of 2026-10-22, lane diagnostics-logging.
+  Location: src/scrollbackerrors.cpp:72-74
+  ctest's `*Not Run` progress line matches neither `hasTestMarker` nor `rxTestBlock`. Not verified against a ctest run. — Searched: none.
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the logs and error reports, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6041] **src/rgdiagnosis.h:3-5: The header says the function is shared by three verbs, but there is one call site.**
+  Lead L38-C4 from the readability review of 2026-10-22, lane diagnostics-logging.
+  Location: src/rgdiagnosis.h:3-5
+  The header says the function is shared by three verbs, but there is one call site. It may sit in a shared spawn helper. I did not check. — Searched: `RgDiagnosis::explain` (only `remotecontrol_workspace.cpp:104`).
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the logs and error reports, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6042] **src/subsystemmap.cpp:132: A bullet whose summary starts on the next indented line (first line ends name — ) is dropped.**
+  Lead L39-C1 from the readability review of 2026-10-22, lane shared-utilities.
+  Location: src/subsystemmap.cpp:132
+  A bullet whose summary starts on the next indented line (first line ends `` `name` — ``) is dropped. That conflicts with the comment at cpp:42–43 saying the summary may wrap. — Searched: none
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in shared helper code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6043] **src/hostexec.h:41: Only variables the caller added or changed reach flatpak-spawn.**
+  Lead L39-C2 from the readability review of 2026-10-22, lane shared-utilities.
+  Location: src/hostexec.h:41
+  Only variables the caller added or changed reach `flatpak-spawn`. A variable the caller *removed* from `env` is still inherited on the host. — Searched: none
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in shared helper code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6044] **src/reviewbuttonstate.h:33: ", ahead " looks unreachable, because git prints [ahead N, behind M] with "ahead" first.**
+  Lead L39-C3 from the readability review of 2026-10-22, lane shared-utilities.
+  Location: src/reviewbuttonstate.h:33
+  `", ahead "` looks unreachable, because git prints `[ahead N, behind M]` with "ahead" first. It's harmless, but suggests a format assumption nobody checked. — Searched: none
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in shared helper code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6045] **src/pathvalidation.cpp:279: The lexical-fallback rejection calls makeErr without callerWroteAbsolute, unlike line 247.**
+  Lead L39-C4 from the readability review of 2026-10-22, lane shared-utilities.
+  Location: src/pathvalidation.cpp:279
+  The lexical-fallback rejection calls `makeErr` without `callerWroteAbsolute`, unlike line 247. The read-verb hint can't fire anyway, because it requires the file to exist. But nothing in the code says the omission is deliberate. — Searched: none
+  Premise check: ✓
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in shared helper code, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: shared-utilities.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
