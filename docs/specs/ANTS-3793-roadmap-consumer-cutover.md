@@ -681,17 +681,17 @@ the ROADMAP bullet resolves: umbrella INV-3 → **INV-1**, umbrella INV-2 →
   ANTS-3810's round-trip oracle rather than silently weakening this one.
   **`Inv2Membership` carries the membership half** — this invariant's equality
   is scoped to the renderable filed subset and cannot reach § 2.1.2's rules.
-- **INV-3** — **A whole-project store read is refused above a 3,500-item
+- **INV-3** — **A whole-project store read is refused above a 7,000-item
   ceiling, and stays under p95 < 50 ms below it, on the corpus's largest
   project.** Both numbers are derived in § 4; a budget nothing measures is a
   comment. Over the ceiling the read **refuses** with `ReadError::TooLarge`,
   which § 2.1's wrapper maps to `too_large` at an MCP boundary, rather than
   degrading or truncating — a partial record set is indistinguishable to every
   consumer from a project with fewer bullets. **The refusal fires when
-  `listItems().size() > 3500`, tested before any `readItem()` runs**, so
-  exactly 3,500 is accepted.
+  `listItems().size() > 7000`, tested before any `readItem()` runs**, so
+  exactly 7,000 is accepted.
 
-  **The item count is a deliberately over-inclusive proxy for a 16 MiB record
+  **The item count is a deliberately over-inclusive proxy for a 32 MiB record
   budget, and the invariant asserts the count, not the bytes.** Resident size is
   knowable only after materialising, which is the thing being guarded, and
   `too_large`'s taxonomy entry describes a resource sized *before* it is read
@@ -701,7 +701,7 @@ the ROADMAP bullet resolves: umbrella INV-3 → **INV-1**, umbrella INV-2 →
   ones § 2.1.2 does not return, and every archived one `includeArchive` may
   exclude — so the gate is deliberately over-inclusive and can refuse a project
   whose materialised set is under budget; and that **no case measures resident
-  bytes**, so 16 MiB is a sizing input rather than something this invariant
+  bytes**, so 32 MiB is a sizing input rather than something this invariant
   asserts. *Breaks when:* `bulletsFromStore()` materialises the whole store
   rather than one project; the connection is reopened per call (§ 2.2);
   **`RoadmapSource` itself re-reads the roadmap file from disk** (the caller's
@@ -709,9 +709,10 @@ the ROADMAP bullet resolves: umbrella INV-3 → **INV-1**, umbrella INV-2 →
   after the item bodies are already resident, which no input can then trip.
   *Test:* **two cases, for the reason § 6 gives** — `Inv3Ceiling` over
   generated projects sized **from the ceiling** —
-  3,501 items asserting the refusal and **3,500 asserting it does not fire**,
+  7,001 items asserting the refusal and **7,000 asserting it does not fire**,
   which is what pins `>` rather than `>=`; and `Inv3Latency`, a warm p95 over
-  repeated reads of a corpus-sized project. `Inv3Latency` is a benchmark and is
+  repeated reads of a project sized to the corpus's largest, re-measured in
+  § 4. `Inv3Latency` is a benchmark and is
   **excluded from the default presets** for the reason `perf` already is: a
   timing assertion on a loaded host is a flake generator. § 6 says why the two
   cannot be one case, and what runs the second.
@@ -759,15 +760,19 @@ most 300 non-blank lines and returns at the format marker before that, so the
 above. An implementer who splits the whole file pays a third one for lines
 nothing reads.
 
-**Budget: 16 MiB for the records**, ~2× the largest real project: a runaway
+**Budget: 32 MiB for the records**, ~2× the largest real project: a runaway
 guard, not a working limit. **The pre-read proxy is item count**, since INV-3
-must decide before materialising: 8 MiB / 1,839 items ≈ 4.5 KiB per item, so
-16 MiB is ~3,678 items (i.e. 2 × 1,839), **rounded down to a ceiling of
-3,500**, statted from
+must decide before materialising: 8 MiB / 1,839 items ≈ 4.5 KiB per item.
+**Re-derived 2026-10-22 (ANTS-6048)** from this project's 3,680 store items.
+The 4.5 KiB bound still holds: their `headline` and `body` columns summed
+6,419,450 bytes of UTF-8, ~1.7 KiB each, ~3.5 KiB as UTF-16. Refute by re-running `SELECT count(*), sum(length(body) +
+length(headline)) FROM item WHERE project_id = <id>` on the store.
+2 × 3,680 × 4.5 KiB ≈ 32 MiB is ~7,280 items, **rounded down to a ceiling of
+7,000**, statted from
 `listItems()`' size — cheap, because `ItemRef` carries a headline and four
 scalars, not a body. It is deliberately a *count* and not a
 byte total: a project with atypically large bodies could pass the count gate and
-still exceed 16 MiB, and closing that would need a new `SUM(LENGTH(body))`
+still exceed 32 MiB, and closing that would need a new `SUM(LENGTH(body))`
 reader for a guard that exists to catch runaways rather than to be exact.
 **Every figure in this section is `includeArchive == false`, and the archive
 path is deliberately NOT budgeted here.** `loadMarkdown()` caps its assembled
@@ -775,7 +780,7 @@ archive buffer at **64 MiB** and emits a truncation sentinel past it, so the
 history path's retained markdown alone can be ~21× the live figure, and the
 1,839-bullet input above counts live-roadmap bullets while `listItems()` counts
 archived ones too. A single ceiling derived from the live scope and enforced
-over both would be a number that is wrong in one of them. So: **INV-3's 3,500
+over both would be a number that is wrong in one of them. So: **INV-3's 7,000
 governs the live read**, the archive read inherits `loadMarkdown()`'s own 64 MiB
 cap on its markdown half, and **budgeting the store's archive half is
 ANTS-3810's**, which owns the only fixture that holds two whole stores at once.
@@ -797,6 +802,16 @@ nonetheless the term most likely to break the budget, so the remedy is named
 here rather than invented under pressure: **if `Inv3Latency` reds,
 the fix is a batched `readItems(projectId)` on `RoadmapStore`, not a cache and
 not a relaxed budget.** § 7 records it as conditionally owed.
+
+**Re-measured 2026-10-22 (ANTS-6048), with the batched reader in place.**
+`Inv3Latency` sized to 3,700 items, the corpus's largest rounded up,
+passed all three runs on a Release build. At 7,000 items its p95 was
+89.4 to 92.4 ms over three runs. The cost is close to linear, ~13 µs per
+item, which puts the budget's edge near 3,900 items. So `Inv3Latency`
+sizes its project to the corpus's largest, not to the ceiling, and the
+next growth breaks the budget before the ceiling. The remedy stays as
+above: read-path work, not a relaxed budget. ANTS-6049 owns it. Refute
+by running `Inv3Latency` at both sizes.
 
 **Build — and it consumes a stated design property, which is why it is argued
 rather than asserted.** `roadmapsource.cpp` lands in `ants_roadmapstore_lib`,
@@ -989,6 +1004,7 @@ defaulting it, per § 2.2's sixth rule.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| ANTS-6048-amend | 2026-10-22 | 0 (no reviewer dispatched — an amendment; review-contract runs next) | — | **Amendment for ANTS-6048, not a review loop.** On 2026-10-22 this project reached 3,680 store items, over INV-3's 3,500 ceiling, so every whole-project read refused `too_large`. The user chose to raise the limit. INV-3 and § 4 now set 7,000 items and a 32 MiB budget, re-derived from that count by § 4's own rule (~2× the largest real project). § 4 records the latency re-measure; `Inv3Latency` sizes to the corpus's largest. Copies to follow in the implementation commit: `kItemCeiling` and its comment (`src/roadmapsource.h`), the 16 MiB proxy comment in `src/roadmapstore.h`, `tests/features/roadmap_read_seam/spec.md`, `docs/subsystems.md`. |
 | 3 (cap) | 2026-08-04 | 2 (single doc, cold; packet extended with `loadMarkdown()`'s archive contract) | 0 / 5 / 6 / 8 / 1 | **Converged by cap. 19 verified, 19 fixed, 1 dismissed — no deferred tail.** **Zero CRITICALs, completing a clean trend of 3 → 1 → 0**, and both lanes opened with "Critical (0)". **The loop is dominated by collateral from loops 1–2, which is the honest reading and the reason to stop:** loop 2 split `Inv3Budgets` into `Inv3Ceiling`/`Inv3Latency` in § 6 and left the old name in INV-3, § 4 and § 7, so INV-3's own test clause instructed the implementer to build the single case § 6 spends a paragraph forbidding (both lanes led on it); loop 2's rewritten § 2.1.2 headline excluded unfiled items 45 lines above the bullet that includes them; loop 2's `storeFor()`, introduced inside INV-1's test clause, contradicted two bolded "not `RoadmapSource`" sentences loop 1 had written — now declared in § 2.1 proper, with the wrapper owning the decision and the free function existing so INV-1 can drive it. Also fixed: `ReadError` reported an absent or mangled `ROADMAP.md` as `StoreFailed`, sending the user to fix the wrong file (a third enumerator, `SourceUnrecognised`); § 4's whole RAM derivation was computed at `includeArchive == false` and enforced over both scopes, while `loadMarkdown()` caps its assembled archive buffer at **64 MiB** — § 4 is now explicitly scoped and the archive half handed to ANTS-3810; INV-2 is now explicitly claimed at `includeArchive == false` only, because `loadMarkdown()` concatenates archives newest-first by `(major, minor)` while § 2.1.3 sorts globally, and stateful `uniqueSlug()` makes that an anchor-key difference; and § 2.3's legend decision had no invariant and no case (`Inv2Legend` added, its third row the regression guard). **One HIGH dismissed on verification, and it is the run's only unverified finding:** a lane argued that `renderBullet()` appends a period to `Kind:`/`Source:`/`Lanes:` so the "from the item columns, verbatim" row must be wrong — but `rxKind` is `^\s*Kind:\s*([^\.\n]+?)\s*[\.\n]`, which consumes the terminator **outside** the capture, as do `rxLanes` and `rxLayman`. The lane had itself routed the decisive question to Open questions rather than asserting it, which is the behaviour that made the dismissal cheap. **The document is 954 lines — the size the umbrella was when it was split** — and § 2.1 has grown a wrapper, a free function and an enum since loop 1. The trend says it is converging; the size says a further split (§ 2.3's dialog half is the natural seam) is worth the user's consideration before implementation, not another loop. Lane spend ~154k and ~153k cumulative. |
 | 2 | 2026-08-04 | 2 (single doc, cold; same packet, extended with the windows loop 1's lanes asked for) | 1 / 5 / 7 / 8 / 1 | **21 verified, 21 fixed, 0 dismissed.** Both lanes independently led on the same CRITICAL, and it is a **structural draft defect neither loop 1 nor the umbrella's three loops reached: the store path had no source scope.** `RoadmapDialog::loadMarkdown(roadmapPath, includeArchive)` takes an archive flag and the dialog's anchor consumers pass `wantsHistoryLoad()`, while `SectionRow::sourcePath` distinguishes the live roadmap from an archive and ANTS-3758's render writes one file per distinct value. So the seam as written returned archive items unconditionally — the dialog's history toggle would have stopped mattering the moment a project migrated, and INV-2 could never hold, because any one rendered file parses back to only its own sections. `includeArchive` is now carried by all three functions and both wrappers, and INV-2 names the **live** rendered file as what it parses. Four more HIGHs, all draft: `assignHeadline()`/`truncateEllipsis()` are **`static`** in `roadmapparse.cpp` and unreachable from the new TU — the same class ANTS-3808 § 2.4 fixed for `renderBullet()`, so § 7 now owes the export; the field table told the implementer to take `id` from the column, which the table's own last row proves fails INV-2 (`rxId` matches the first bracket id **anywhere in the body**, and an empty `id` column renders no bracket at all); a `level == 0` synthetic root emits no heading, so its bullets must get an *empty* `sectionHeading`, and `uniqueSlug()` is **stateful**, so `seenSlugs` accumulates across the whole walk; and `detectRoadmapFormat()` takes a `QStringList` while the seam holds a `QString`, so a naive split is a third ~6 MiB copy — the gate is now specified to split only the bounded prefix it reads. **Six findings were loop-1 collateral** and are recorded as such: the wrapper introduced in loop 1 put two of INV-1's five test cases outside the seam (resolved by extracting a free `storeFor()` helper the case can drive), and loop 1's INV-3 proxy paragraph duplicated § 4's derivation nearly verbatim. Draft defects still outnumber collateral 8 to 6, so neither stop-and-consolidate trigger fired. Lane spend ~151k and ~149k cumulative. |
 | 1 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, 89 KB) | 3 / 5 / 8 / 13 / 1 | **29 verified, 29 fixed, 0 dismissed** — an unusually clean verification rate, and the packet is why: both lanes were handed bounded code windows, so their code claims were checkable rather than recalled. Both lanes independently led on the same defect, which is the signal that makes it credible: **§ 2.2's "the resolver owns the lazy open, and stats the path before it constructs" is unimplementable** — all three § 2.1 functions take an already-constructed `RoadmapStore &`, and § 2.2's own last rule says `RoadmapSource` owns no lifetime, so nobody owned the absent-vs-unopenable distinction INV-1 rests on. Fixed by naming the **owner wrapper** as the only thing that may construct a store, which also resolved two more findings at once: § 1's "no site grows a dispatch branch or a store reference" was false against `bulletsFor(RoadmapStore &, …)` and its three-outcome return, and INV-3's `too_large` had no channel — all three functions exposed only `QString *error`, and `RoadmapDialog` emits no MCP envelope at all, so the enum `ReadError` now carries it and the wrapper maps it. Third CRITICAL: **INV-1's headline sentence contradicted § 2.2's fourth rule** — it refused every store-row project "whose roadmap fails the ants-v1 gate", which would have broken every migrated GFM and pass-headings project that § 2.2 deliberately serves markdown; the gate now turns on `sawSignal`, not on the returned dialect, and § 2.2 carries the four-row table. Also fixed: the § 2.1.1 rule made INV-2's own `firstLine`/`lastLine` difference a defect (the carve-out moved into the rule sentence, which the table cannot override); the `body` row said "trimmed of its two-space indent" beside `cont.trimmed()`, two incompatible instructions, and an implementer writing `mid(2)` would have failed INV-2; § 4 applied the UTF-16 doubling to the records but not to the retained markdown, pricing this spec's own headline cost at half (~6 MiB, not 3.0, and a ~14 MiB peak); § 2.3's legend parenthetical was inverted (`migratedProject()` returns an id, not a `ProjectRow`) **and** its flat "no stored legend shows none" rule would have deleted the legend from every unmigrated project, since `roadmapdialog.cpp` holds the four emoji and labels as compile-time constants — a user-visible regression arriving as a side effect of a read-path change. `Inv2Membership` was added because INV-2 scopes itself to the renderable filed subset and so could not reach § 2.1.2's three membership rules at all. **One fix was caught wrong by its own verification before it landed:** § 6's `Access` example put the profile second when it is the constructor's **third** parameter, after `historyCapBytes`. Lane spend ~140k and ~145k tokens cumulative across three turns each, against a 60k per-turn budget — over, and reported rather than asserted; the packet itself was ~38k. |
