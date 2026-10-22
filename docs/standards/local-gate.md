@@ -254,7 +254,9 @@ reads it for one and not the other is already half right.
 cache=${XDG_CACHE_HOME:-$HOME/.cache}/pre-push
 mkdir -p "$cache"
 tree=$(mktemp -d "$cache/tmp.XXXXXX")
-cleanup() { git worktree remove --force "$tree" 2>/dev/null; return 0; }
+git worktree prune 2>/dev/null || true   # drops records of folders gone
+# `remove` refuses a folder `worktree add` never registered; rm catches it.
+cleanup() { git worktree remove --force "$tree" 2>/dev/null || rm -rf -- "$tree"; return 0; }
 trap cleanup EXIT
 git worktree add --detach --quiet "$tree" "$local_sha"
 ( cd "$tree" && ./scripts/local-ci.sh )   # a RELATIVE path, so it stays here

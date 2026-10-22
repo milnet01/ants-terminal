@@ -85808,7 +85808,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (A2).
   Lanes: mcp.
 
-- 📋 [ANTS-5504] **A review packet builder writes captioned windows, a line-count-preserving scrubbed copy and a hashed shared brief to a file.**
+- 🚫 [ANTS-5504] **A review packet builder writes captioned windows, a line-count-preserving scrubbed copy and a hashed shared brief to a file.**
   Extend cold_eyes_brief (live), not cold_eyes_single_doc or
   indie_review_brief (retiring under ANTS-5485). Never render
   prior_loop_fixes. Needs claude-config's answer on the scrub shape:
@@ -85822,6 +85822,9 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   2026-10-01) and packet-build.sh now do the scrub, the shared brief
   and the captioned windows; only the hash is missing. Asked
   claude-config (message 792) whether to close as superseded.
+  2026-10-22: closed as superseded, per claude-config's reply (session
+  message 810, answering 792). ~/.claude's brief-build.sh and
+  packet-build.sh already build the packet. No hash needed for now.
   **Layman:** Building a review's reading pack by hand is slow and has leaked review history to reviewers twice.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A3; CFG-0426, CFG-0616).
