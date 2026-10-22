@@ -71,18 +71,6 @@ if ants_is_source_read "$cmd"; then
     exit 0
 fi
 
-# ANTS-2169 — the ROADMAP block below matches the literal filename anywhere in
-# the command, so it wrongly fires when ROADMAP.md is a grep EXCLUSION
-# (grep -v ROADMAP.md, --exclude=ROADMAP.md) rather than a file grep READS.
-# roadmap_query is the cheaper path for `grep <pat> ROADMAP.md` (a read);
-# filtering the file out of a pipe / file-list is a legitimate use the veto
-# must not block. Detect the exclusion shape (grep … -v … ROADMAP.md, in that
-# order) and mark it a non-read so the block below skips it.
-roadmap_read=1
-case "$cmd" in
-    *"grep"*"-v"*"ROADMAP.md"*|*"--exclude"*"ROADMAP.md"*) roadmap_read=0 ;;
-esac
-
 # CFG-0656 — roadmap_query answers for ONE project, this one. A grep over
 # other projects' roadmaps (`grep X */ROADMAP.md`, or a case-folding glob
 # like `*/[Rr][Oo][Aa][Dd][Mm][Aa][Pp].md`) has no verb to go to, so
@@ -92,12 +80,21 @@ esac
 # seen as the text it is; separators become spaces first so
 # `cat ROADMAP.md|grep x` still yields the bare word, and `-d ''` reads
 # past the first line of a multi-line command.
+#
+# ANTS-2169 — nor is ROADMAP.md read when grep EXCLUDES it (`grep -v
+# ROADMAP.md`, `--exclude=ROADMAP.md`): filtering the file out of a list is a
+# legitimate use. The invert flag counts only as an option word of its own,
+# alone or in a cluster (`-nv`); a `-v` inside a path (`my-vault/`) is not it.
+roadmap_read=1
 roadmap_own=0
 read -r -d '' -a _words <<<"$(printf '%s' "$cmd" | tr '|;&()<>' '       ')" || :
 for _w in "${_words[@]}"; do
     _w=${_w#[\"\']}; _w=${_w%[\"\']}
     case "$_w" in
         ROADMAP.md|./ROADMAP.md|"$ANTS_PROJECT_ROOT/ROADMAP.md") roadmap_own=1 ;;
+        --invert-match|--exclude*) roadmap_read=0 ;;
+        --*) ;;
+        -*v*) roadmap_read=0 ;;
     esac
 done
 [ "$roadmap_own" -eq 1 ] || roadmap_read=0

@@ -258,6 +258,9 @@ if [ "$have_jq" -eq 1 ]; then
     rt_check V10 pass 'grep -l foo /mnt/Games/Scripts/Linux/*/ROADMAP.md'
     # V11: ANTS-2169's exclusion still stands.
     rt_check V11 pass 'git ls-files | grep -v ROADMAP.md'
+    # V11b: `-v` inside a word is not the flag; a fixture path holding one
+    # (mktemp's ants-tests-v…) once let V3 through.
+    rt_check V11b block 'grep foo my-vault/notes.md ROADMAP.md'
     # V12-V17 (CFG-0706): naming the file is not reading it, and a path-scoped
     # diff shows changed lines. V1 and V18 are the blocks these pair with.
     rt_check V12 pass 'stat ROADMAP.md'
