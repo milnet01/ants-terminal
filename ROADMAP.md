@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6047 -->
+<!-- ants-roadmap-id-high-water: ANTS=6049 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97419,6 +97419,35 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: investigate.
   Source: review-readability-2026-10-22.
   Lanes: shared-utilities.
+
+- 🚧 [ANTS-6048] **Raise the 3,500-item whole-project roadmap read ceiling (ANTS-3793 INV-3), now below the largest real project.**
+  Filing 231 review items on 2026-10-22 took Ants Terminal to 3,680
+  live store items (all public; headline+body text 6.1 MiB), over
+  kItemCeiling = 3,500 (src/roadmapsource.h). Every whole-project read
+  (roadmap_query, the roadmap dialog's live read) now refuses
+  too_large. The project held 3,449 items before, so it was 51 from
+  the wall. INV-3's budget calls the ceiling ~2x the largest real
+  project; it no longer is. User chose 2026-10-22: raise the limit.
+  Needs an INV-3 / § 4 amendment, gated, then the constant, its
+  Inv3Ceiling tests and the p95 case re-measured.
+  **Layman:** The roadmap reader stopped working because this project's roadmap grew past a safety limit set too low; the limit needs raising.
+  Kind: fix.
+  Source: user-request-2026-10-22.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6049] **Whole-project roadmap reads near INV-3's 50 ms p95 budget: ~47 ms at 3,700 items, ~90 ms at 7,000.**
+  Measured 2026-10-22 with RoadmapReadSeam.Inv3Latency (Release build,
+  20 warm reads), the corpus size and the ceiling raised locally for the
+  run only: 7,000 items p95 89.4-92.4 ms over three runs; 3,700 items
+  passes the 50 ms budget, about 47 ms by the per-item rate (not
+  printed on a pass). The cost is close to linear, ~13 us per item, so
+  the budget breaks near 3,900 items. ANTS-3793 § 4 says the remedy is
+  read-path work, not a relaxed budget; the batched readItems() already
+  landed, so the next cost is in what remains of the read.
+  **Layman:** Reading this project's roadmap is getting slow as it grows, and it will soon miss its speed target.
+  Kind: perf.
+  Source: ANTS-6048-measurement-2026-10-22.
+  Lanes: roadmap-store.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
