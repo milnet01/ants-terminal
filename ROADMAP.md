@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6167 -->
+<!-- ants-roadmap-id-high-water: ANTS=6168 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88048,6 +88048,24 @@ measured Ants adding about 5,250 tokens to every request.
   top-level statements. function_sizes ranked only their small functions
   (largest 4 lines) and reported unmeasured:0, which a caller reads as
   full coverage. review-readability hands these rows to its size lane.
+- 📋 [ANTS-6168] **quotation_check INV-10 names an empty caller_cwd refusal that no test drives.**
+  Found by both cold lanes of the ANTS-5732 amendment gate, on text the
+  amendment did not change. INV-10 in docs/specs/ANTS-5502-quotation-check.md
+  says an empty `caller_cwd` refuses `caller_cwd_required`, and its test is
+  "those three standard asserts". QuotationCheck.Inv10Registration in
+  tests/features/mcp_quotation_check/test_mcp_quotation_check.cpp checks the
+  registration call, the callerCwdContractFor entry and the schema shape only;
+  no case drives an empty caller_cwd. § 5 says the tests drive the seam in
+  src/quotationcheckverb.cpp, whose run(root, args) never sees caller_cwd, so
+  that harness cannot reach the refusal. Fix one side: restate INV-10's third
+  assert as the source-text check that is run, or drive the dispatcher with an
+  empty caller_cwd and name that harness in § 5. Lane open question, unsettled:
+  does an empty-string caller_cwd reach cmdQuotationCheck (which returns
+  no_project) or refuse in the dispatcher?
+  **Layman:** The quote-checking tool's design promises one safety check that its tests never actually try.
+  Kind: review-fix.
+  Source: review-contract ANTS-5502 loop 3, 2026-10-22 (out of blast radius).
+
 
   Fix direction (reporter's): a `<top-level>` pseudo-row carrying the
   line count of code outside any function, or at least a

@@ -22,7 +22,7 @@ Arguments:
 | Argument | Shape | Meaning |
 |---|---|---|
 | `caller_cwd` | string, required | Resolves the project root. |
-| `items` | array of 1 to 500 objects, required | Each `{path, text, ref?, line?, tolerance?}`. `path` is relative to the project root, or absolute. `text` is the quotation as the lane wrote it. `ref` is an optional git revision. `line` is the 1-based line the finding cites. `tolerance` overrides the call-level one for this item. |
+| `items` | array of 1 to 500 objects, required | Each `{path, text, ref?, line?, tolerance?}`. `path` is relative to the project root, or absolute. `text` is the quotation as the lane wrote it. `ref` is an optional git revision. `line` is the 1-based line the finding cites, the first line where it cites a range, as § 2.3's measurement read it. `tolerance` overrides the call-level one for this item. |
 | `tolerance` | integer, optional | How many lines an occurrence may start from an item's `line` and still be a `hit`. Default 3 (§ 2.3). |
 | `allowed` | array of non-empty strings, optional | Globs over the project-relative path. An item whose path matches none is `outside_allowed`. |
 | `max_bytes` | integer, optional | The standard response cap (default 512 KiB), applied through `RemoteControl::capJsonArrayToBytes` to `results` only (§ 2.4). |
@@ -98,7 +98,7 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 ### 2.5 Where it lives
 
 - `src/quotationcheckverb.{h,cpp}` in `ants_core_lib`: everything below the resolved root — path validation, reading files and blobs (`GitWrap::run`), the per-`(ref, path)` cache, the normaliser, the glob matcher and the item loop — as free functions taking the root as a parameter, so a test drives every invariant against a temporary directory. Its own translation unit, for the reason `docs/standards/mcp-tools.md` § Tests gives.
-- `RemoteControl::cmdQuotationCheck` in `src/remotecontrol_quotation_check.cpp`, a thin handler appended last in `ANTS_RC_SOURCES_REL`: resolves the root, calls the seam.
+- `RemoteControl::cmdQuotationCheck` in `src/remotecontrol_quotation_check.cpp`, a thin handler appended last in `ANTS_RC_SOURCES_REL`: resolves the root, forwards `items`, `allowed`, `max_bytes` and `tolerance` when present, and calls the seam.
 - The schema in the `tools/list` table, with a short description (`mcp-tools.md` step 11). No ETag: the reply depends on many files.
 
 ### 2.6 Alternatives
@@ -120,7 +120,7 @@ A subject is read once per call for each distinct `(ref, path)` pair, and its no
 - **INV-9** — Caps: 501 items refuses `bad_args`; a `text` of 8 KiB plus one byte gives `not_run` / `text_too_long`. Broken by an unbounded loop. *Test:* both cases.
 - **INV-10** — Registered per `mcp-tools.md` § Tests: the registration call is in `mcptoolregistry.cpp`, the schema is `type:"object"` with `additionalProperties:false`, and an empty `caller_cwd` refuses `caller_cwd_required`. Broken by registering outside `registerProjectScopedVerbs` or with another contract. *Test:* those three standard asserts; the standard's `bad_path` assert is INV-5's (§ 2.3).
 - **INV-11** — A quotation found far from its cited line is `hit_displaced`, and the nearest occurrence decides. Broken by testing only the first occurrence, by measuring from where an occurrence ends, or by letting the call-level `tolerance` win over an item's. *Test:* a subject holding the quotation on lines 4 and 40. `line` 41 gives `hit`. `line` 10 gives `hit_displaced` with `line` 4. `line` 10 with item `tolerance` 6 gives `hit`. `line` 10 with call `tolerance` 6 and item `tolerance` 0 gives `hit_displaced`. A quotation wrapped from line 4 onto line 5, cited at line 4 with item `tolerance` 0, gives `hit`.
-- **INV-12** — `line` and `tolerance` change nothing for an item that does not cite a line, and a wrong shape refuses. Broken by defaulting a missing `line` to 1, which turns every hit that starts past line 4 into `hit_displaced`. *Test:* an item without `line` whose quotation is on line 40 gives `hit`, and `counts.hit_displaced` is 0. Each of `line` 0, `line` 1.5, `line` "3" and item `tolerance` -1 refuses `bad_args` naming its index; a call `tolerance` of -1 refuses `bad_args`.
+- **INV-12** — `line` and `tolerance` change nothing for an item that does not cite a line, and a wrong shape refuses. Broken by defaulting a missing `line` to 1, which turns every hit that starts past line 4 into `hit_displaced`, or by a handler that drops the call-level `tolerance`. *Test:* an item without `line` whose quotation is on line 40 gives `hit`, and `counts.hit_displaced` is 0. Each of `line` 0, `line` 1.5, `line` "3" and item `tolerance` -1 refuses `bad_args` naming its index; a call `tolerance` of -1 refuses `bad_args`. A source-text assert finds `tolerance` forwarded in `cmdQuotationCheck` and declared in the schema's properties.
 
 ## 4. Out of scope
 
