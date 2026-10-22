@@ -122,6 +122,22 @@ std::vector<Cell> TerminalGrid::takeBlankedCellsRow() {
     return makeRow(m_cols, m_defaultFg, bg);
 }
 
+// Only http/https/mailto links are honoured; every hyperlink path calls
+// this. A hostile program could otherwise emit `javascript:` / `data:` /
+// `vnc:` and get Ctrl+click activation via QDesktopServices. 0.7.52
+// (2026-04-27 indie-review HIGH) removed `file:` (`xdg-open
+// file:///foo.desktop` autoexecutes via the desktop's .desktop handler)
+// and `ftp:` (plaintext-credential exfil).
+static bool isAllowedHyperlinkScheme(const std::string &uri) {
+    const auto colonPos = uri.find(':');
+    if (colonPos == std::string::npos || colonPos == 0) return false;
+    std::string scheme(uri.begin(), uri.begin() + colonPos);
+    for (auto &c : scheme) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return scheme == "http" || scheme == "https" || scheme == "mailto";
+}
+
 void TerminalGrid::returnCellsRow(std::vector<Cell> &&cells) {
     if (static_cast<int>(cells.size()) == m_cols &&
         static_cast<int>(m_freeCellBuffers.size()) < kFreePoolCap) {
@@ -276,10 +292,15 @@ void TerminalGrid::setMaxScrollback(int lines) {
     // memory bound the rest of the grid relies on (per-image/per-chunk
     // budgeting is undone if scrollback is unbounded). indie-review-2026-05-21.
     m_maxScrollback = std::clamp(lines, 1000, 1'000'000);
-    // ANTS-1999 — pop both deques in lockstep so OSC 8 spans never misalign
-    // with their lines. The previous independent loops trimmed each to the
-    // same cap but could not re-align them once they had diverged.
+    trimScrollbackToCap();
+}
+
+// The one place scrollback is evicted down to m_maxScrollback.
+// ANTS-1999 — pop both deques in lockstep so OSC 8 spans never misalign
+// with their lines. Evicted cells go back to the reuse pool.
+void TerminalGrid::trimScrollbackToCap() {
     while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
+        returnCellsRow(std::move(m_scrollback.front().cells));
         m_scrollback.pop_front();
         ++m_promptRegionShift;  // ANTS-5029
         if (!m_scrollbackHyperlinks.empty())
@@ -1241,28 +1262,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                 m_hyperlinkUri.clear();
                 m_hyperlinkId.clear();
             } else {
-                // Validate URI scheme. Only http/https/mailto are honoured.
-                // A hostile program could otherwise emit `javascript:` /
-                // `data:` / `vnc:` and get Ctrl+click activation via
-                // QDesktopServices.
-                //
-                // 0.7.52 (2026-04-27 indie-review HIGH) — `file:` and
-                // `ftp:` removed from the allowlist. `xdg-open
-                // file:///foo.desktop` autoexecutes via the desktop's
-                // .desktop handler (RCE-adjacent on most modern desktops);
-                // `ftp:` is plaintext-credential exfil. STANDARDS.md and
-                // RULES.md updated to match.
-                auto colonPos = uri.find(':');
-                bool validScheme = false;
-                if (colonPos != std::string::npos && colonPos > 0) {
-                    std::string scheme(uri.begin(), uri.begin() + colonPos);
-                    for (auto &c : scheme) {
-                        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-                    }
-                    validScheme = (scheme == "http"   || scheme == "https" ||
-                                   scheme == "mailto");
-                }
-                if (!validScheme) {
+                if (!isAllowedHyperlinkScheme(uri)) {
                     // Drop the OSC 8 entirely; the following text remains
                     // un-hyperlinked but still prints normally.
                     m_hyperlinkActive = false;
@@ -2269,15 +2269,8 @@ void TerminalGrid::scrollUp(int count) {
             returnCellsRow(std::move(m_screenLines[srcRow].cells));
         }
     }
-    // Cap scrollback once after the batch (instead of N separate
-    // pop_front loops) — same final size, fewer deque rebalances.
-    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-        returnCellsRow(std::move(m_scrollback.front().cells));
-        m_scrollback.pop_front();
-        ++m_promptRegionShift;  // ANTS-5029
-    }
-    while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
-        m_scrollbackHyperlinks.pop_front();
+    // Cap scrollback once after the batch, not once per pushed row.
+    trimScrollbackToCap();
 
     // O(regionSize) rotate: shifts rows [top+count..bottom] up to
     // [top..bottom-count]; the moved-from TermLines (cells already
@@ -2393,19 +2386,8 @@ void TerminalGrid::pushHyperlinkSpansForActive() {
     // SHOULD never carry an unvalidated scheme — but session
     // restore / future paths that mutate m_hyperlinkUri without
     // validation would leak otherwise.
-    if (!m_hyperlinkActive) return;
-    {
-        const auto colonPos = m_hyperlinkUri.find(':');
-        if (colonPos == std::string::npos || colonPos == 0) return;
-        std::string scheme(m_hyperlinkUri.begin(),
-                           m_hyperlinkUri.begin() + colonPos);
-        for (auto &c : scheme) {
-            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-        }
-        if (scheme != "http" && scheme != "https" && scheme != "mailto") {
-            return;
-        }
-    }
+    if (!m_hyperlinkActive || !isAllowedHyperlinkScheme(m_hyperlinkUri))
+        return;
     const int startRow = m_hyperlinkStartRow;
     const int endRow = m_cursorRow;
     const int cols = m_cols;
@@ -2514,8 +2496,8 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
     constexpr int kMaxHyperlinkUriLen = 4096;
     if (uri.size() > kMaxHyperlinkUriLen) return;
 
-    // 0.6.14 security — enforce the same URI scheme allowlist OSC 8 uses
-    // (see handleOsc 8 branch ~line 605). make_hyperlink trigger rules
+    // 0.6.14 security — enforce the same URI scheme allowlist OSC 8 uses.
+    // make_hyperlink trigger rules
     // expand $1..$9 backrefs from the PTY output into the URL template,
     // and the output is attacker-controllable (SSH, remote shell, any
     // inner-tty process). Without this check, an innocent template like
@@ -2523,17 +2505,7 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
     // an attacker-supplied string containing `javascript:` or `data:`.
     // Drop the hyperlink silently on unknown scheme — matches OSC 8
     // behavior (text still prints, just isn't clickable).
-    {
-        int colonPos = uri.indexOf(':');
-        if (colonPos <= 0) return;
-        QString scheme = uri.left(colonPos).toLower();
-        // 0.7.52 — file:/ftp: removed (see OSC 8 handler — same rationale).
-        static const QSet<QString> kAllowed = {
-            QStringLiteral("http"),  QStringLiteral("https"),
-            QStringLiteral("mailto")
-        };
-        if (!kAllowed.contains(scheme)) return;
-    }
+    if (!isAllowedHyperlinkScheme(uri.toStdString())) return;
 
     // m_screenHyperlinks is grown on demand by the OSC 8 path; mirror that
     // semantics here so a trigger-created hyperlink on an otherwise empty
@@ -2904,13 +2876,7 @@ void TerminalGrid::resize(int rows, int cols) {
         m_scrollback = std::move(newScrollback);
         m_scrollbackHyperlinks = std::move(newScrollbackHyperlinks);
 
-        // Trim to limit — INV-5 pops both deques in lockstep.
-        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-            m_scrollback.pop_front();
-            ++m_promptRegionShift;  // ANTS-5029
-            if (!m_scrollbackHyperlinks.empty())
-                m_scrollbackHyperlinks.pop_front();
-        }
+        trimScrollbackToCap();  // ANTS-1333 INV-5
     }
 
     // Reflow screen lines when width changes
@@ -3066,12 +3032,7 @@ void TerminalGrid::resize(int rows, int cols) {
 
     // The reflow overflow above pushes up to a screen of lines after the
     // scrollback was trimmed, so trim again: the cap is a hard bound.
-    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-        m_scrollback.pop_front();
-        ++m_promptRegionShift;  // ANTS-5029
-        if (!m_scrollbackHyperlinks.empty())
-            m_scrollbackHyperlinks.pop_front();
-    }
+    trimScrollbackToCap();
 
     m_rows = rows;
     m_cols = cols;

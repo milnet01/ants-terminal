@@ -429,12 +429,7 @@ public:
         // no serialized OSC 8 span data, so push an empty entry; without it the
         // two deques desync permanently and later spans map to the wrong rows.
         m_scrollbackHyperlinks.emplace_back();
-        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-            m_scrollback.pop_front();
-            ++m_promptRegionShift;  // ANTS-5029
-            if (!m_scrollbackHyperlinks.empty())
-                m_scrollbackHyperlinks.pop_front();
-        }
+        trimScrollbackToCap();
     }
     TermLine &screenLine(int row) { ++m_contentRevision; return m_screenLines[row]; }  // ANTS-5030
     void setCursorPosition(int row, int col) { ++m_contentRevision; m_cursorRow = row; m_cursorCol = col; }  // ANTS-5030
@@ -589,6 +584,7 @@ private:
     // Returns a cells buffer to the pool if it's the right size and the pool
     // isn't full. Otherwise discards (letting the vector destruct naturally).
     void returnCellsRow(std::vector<Cell> &&cells);
+    void trimScrollbackToCap();
     // Background-Color Erase (BCE): the colour newly-exposed/cleared cells
     // pick up. xterm-compatible — current SGR bg if set, default otherwise.
     // Used by clearRow / insertLines / deleteLines / scrollUp / scrollDown /
@@ -603,7 +599,7 @@ private:
 
     // Scroll region (1-based inclusive in VT, stored as 0-based)
     int m_scrollTop = 0;
-    int m_scrollBottom = 0; // 0 means "use m_rows - 1"
+    int m_scrollBottom = 0; // inclusive last row; the constructor sets m_rows - 1
 
     // Saved cursor (DECSC / CSI s). Per VT420 spec, DECSC saves not just
     // the cursor position + SGR but also origin mode (DECOM) and auto-wrap
