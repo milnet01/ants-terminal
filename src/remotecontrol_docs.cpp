@@ -963,9 +963,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
     }
-    const QString specsDir =
-        ProjectSettings::load(rootCanonical).specsDir.value_or(
-            QStringLiteral("docs/specs"));
+    const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     bool walkCut = false;
     QStringList relDocs =
         docIntegrityEnumerate(rootCanonical, rawPath, specsDir, &walkCut);
@@ -2340,7 +2338,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
 
     const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
     const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
-    const QString specsDir = layout.specsDir.value_or(QStringLiteral("docs/specs"));
+    const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     DocLint::Options opts;
     bool walkCut = false;
     QStringList relDocs;

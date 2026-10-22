@@ -278,6 +278,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Every spec-reading verb now finds the specs folder by one rule** (ANTS-6131)
+  invariant_check, task_priors, spec_lint and doc_lint now read `docs/specs` when `.ants/project.json`'s `specs_dir` names a file rather than a folder, as spec_query, spec_log, session_orient and trace already did.
+
 - **The audit dialog's Auto-fix button now appears after a run that finishes, not only after one you cancel**
 
 - **The Roadmap dialog's kind filters for perf, security, optimize and the other newer kinds are remembered between sessions**

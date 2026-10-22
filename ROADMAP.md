@@ -95004,6 +95004,13 @@ worked after these.
   (ids L22-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH F1 fixed. One helper, ProjectSettings::specsDirOf(),
+  replaces nine copies (remotecontrol_state x5, _feedback, _docs x2,
+  trace/trace.cpp). The report's example was wrong: load() already drops
+  a missing specs_dir. The copies differed only when specs_dir names a
+  file, which ANTS-2160 INV-5 says is unset. Test
+  McpInvariantCheck.Ants6131SpecsDirNamingAFileFallsBack, red before the
+  fix. Medium and low findings still open.
   **Layman:** Tidy the project and search tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

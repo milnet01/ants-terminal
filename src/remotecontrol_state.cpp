@@ -1273,10 +1273,7 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
                               .toString();
         if (!id.isEmpty()) {
             // ANTS-2160 — specs_dir override for the spec_path probe.
-            QString specsDir = QStringLiteral("docs/specs");
-            if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
-                sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
-                specsDir = *sd;
+            const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
             const QString specRel =
                 specsDir + QLatin1Char('/') + id +
                 QStringLiteral(".md");
@@ -2110,10 +2107,7 @@ QString resolveSpecRelForId(const QString &rootCanonical,
 // kSpecListCap entries (filename order) so a pathological tree can't
 // blow the response.
 QJsonObject specListEnvelope(const QString &rootCanonical) {
-    QString specsDir = QStringLiteral("docs/specs");
-    if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
-        sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
-        specsDir = *sd;
+    const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     QJsonObject out;
     out["ok"]        = true;
     out["mode"]      = QStringLiteral("list");
@@ -2428,10 +2422,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     } else {
         isPhase = id.startsWith(QStringLiteral("phase_"));
         // ANTS-2160 — specs_dir override (phase routing unchanged).
-        QString specsDir = QStringLiteral("docs/specs");
-        if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
-            sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
-            specsDir = *sd;
+        const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
         const QString dirRel = isPhase
             ? QStringLiteral("docs/phases/")
             : (specsDir + QLatin1Char('/'));
@@ -2614,12 +2605,8 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // these files". So a session edits under a contract it was never shown.
     // Three sessions re-confirmed it before it was diagnosed.
     //
-    // Scan every `*.md`, matching what spec_query's list mode already does,
-    // and honour `.ants/project.json`'s `specs_dir` (ANTS-2160) the way
-    // doc_integrity and spec_query do rather than hard-coding docs/specs.
-    const QString specsDir =
-        ProjectSettings::load(rootCanonical).specsDir.value_or(
-            QStringLiteral("docs/specs"));
+    // Scan every `*.md` in the project's specs folder, as spec_query does.
+    const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     // Every pass reads the same files, so the counters are reset and retaken
     // rather than accumulated — a fallback pass must not double the scan count.
     auto runScan = [&]() {
@@ -3063,20 +3050,11 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
     }
 
     // (1) specs — every `*.md` under the specs dir, scored by distinct needles
-    // (+5 id-in-filename boost).
-    //
-    // ANTS-4376 fixed exactly this in invariant_check and did not reach here.
-    // The glob was hard-coded `ANTS-*.md` and the directory hard-coded
-    // `docs/specs`, so this verb saw NOTHING on any project whose id prefix is
-    // not ANTS — `specs_count: 0` with `ok:true`, indistinguishable from "no
-    // spec mentions this task". This project's prefix simply happens to be
-    // ANTS. Scan every `*.md`, as spec_query's list mode already does, and
-    // honour `.ants/project.json`'s `specs_dir` (ANTS-2160).
+    // (+5 id-in-filename boost). Every `*.md`, not `ANTS-*.md`: another
+    // project's ids carry another prefix (ANTS-4376).
     {
         QVector<TpScored> hits;
-        const QString specsDir =
-            ProjectSettings::load(rootCanonical).specsDir.value_or(
-                QStringLiteral("docs/specs"));
+        const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
         QDir dir(rootCanonical + QLatin1Char('/') + specsDir);
         if (dir.exists()) {
             const QStringList files = dir.entryList(

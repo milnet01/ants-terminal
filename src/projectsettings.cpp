@@ -143,6 +143,15 @@ QString repoRootOf(const QString &dirCanonical) {
     return canonical;
 }
 
+QString specsDirOf(const QString &rootCanonical) {
+    // load() has already dropped a value that escapes the root or does not
+    // exist; what is left to refuse is a file (INV-5).
+    if (const auto sd = load(rootCanonical).specsDir;
+        sd && QFileInfo(rootCanonical + QLatin1Char('/') + *sd).isDir())
+        return *sd;
+    return QStringLiteral("docs/specs");
+}
+
 // ----- ANTS-2161 — detector + writer ------------------------------------
 
 namespace {

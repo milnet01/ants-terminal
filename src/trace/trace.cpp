@@ -556,9 +556,7 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     // ---- spec invariants (§ 2.7) ----
     QVector<Row> specRows;
     if (include.contains(QStringLiteral("spec_invariants"))) {
-        QString specsRel = QStringLiteral("docs/specs");
-        if (settings.specsDir && QFileInfo(root + QLatin1Char('/') + *settings.specsDir).isDir())
-            specsRel = *settings.specsDir;
+        const QString specsRel = ProjectSettings::specsDirOf(root);
         const QDir specsDir(root + QLatin1Char('/') + specsRel);
         const QStringList specFiles =
             specsDir.exists() ? specsDir.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Name)

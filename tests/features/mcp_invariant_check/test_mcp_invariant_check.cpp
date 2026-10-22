@@ -267,6 +267,29 @@ TEST(McpInvariantCheck, Ants3699UnknownModeRefuses) {
     EXPECT_EQ(env.value("code").toString(), "bad_mode");
 }
 
+// ANTS-6131 — a `specs_dir` naming a FILE is treated as unset (ANTS-2160
+// INV-5), so the scan reads docs/specs, as spec_query's list does. This verb
+// used the file path as a folder and read nothing.
+TEST(McpInvariantCheck, Ants6131SpecsDirNamingAFileFallsBack) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("ANTS-9004"),
+             QStringLiteral("src/widget.cpp"));
+    QDir(dir.path()).mkpath(QStringLiteral(".ants"));
+    QFile notes(dir.path() + QStringLiteral("/notes.md"));
+    ASSERT_TRUE(notes.open(QIODevice::WriteOnly));
+    notes.close();
+    QFile cfg(dir.path() + QStringLiteral("/.ants/project.json"));
+    ASSERT_TRUE(cfg.open(QIODevice::WriteOnly));
+    cfg.write(R"({"specs_dir":"notes.md"})");
+    cfg.close();
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/widget.cpp"), QString());
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_FALSE(env.value("scanned_nothing").toBool());
+}
+
 // ANTS-4376 — behavioural: a project whose specs are NOT `ANTS-*` is seen.
 // The guard above only proves the bad glob is gone; this proves the verb
 // actually reads such a project's specs.

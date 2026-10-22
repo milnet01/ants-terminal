@@ -25,7 +25,7 @@ struct Settings {
     std::optional<QString>     docsDir;       // dir;  docs_index / project_layout
     std::optional<QString>     roadmap;       // file; roadmap_query / _log / project_layout
     std::optional<QString>     changelog;     // file; changelog_log / project_layout
-    std::optional<QString>     specsDir;      // dir;  spec_query / _log / current_state / project_layout
+    std::optional<QString>     specsDir;      // dir;  read through specsDirOf
     // ANTS-3771 — the project's DECLARED id format. The first non-path member
     // here, and the reason this header now includes roadmapparse.h: parsing and
     // validating the declaration in ONE place is what makes idFormatFor() a
@@ -76,6 +76,11 @@ RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical);
 // each caller keeps its own rule for reaching the folder it passes.
 // docs/specs/ANTS-5667-outer-folder-repo-root.md § 2.2.
 QString repoRootOf(const QString &dirCanonical);
+
+// ANTS-2160 — the specs folder every consumer reads, relative to the root: the
+// declared `specs_dir` when it names a directory, else `docs/specs`. One rule
+// for every verb, so two verbs never read different folders (ANTS-6131).
+QString specsDirOf(const QString &rootCanonical);
 
 // ANTS-2161 / ANTS-3393 — true for a top-level directory name the source
 // walk should neither descend nor index: any dot-dir (.git/.ants/.venv),

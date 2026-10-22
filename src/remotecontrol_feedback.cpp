@@ -2012,10 +2012,7 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     } else {
         const bool isPhase = id.startsWith(QStringLiteral("phase_"));
         // ANTS-2160 — specs_dir override (phase routing unchanged).
-        QString specsDir = QStringLiteral("docs/specs");
-        if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
-            sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
-            specsDir = *sd;
+        const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
         const QString dirRel = isPhase ? QStringLiteral("docs/phases/")
                                         : specsDir + QLatin1Char('/');
         // ANTS-3356 — exact `<id>.md`, then a `<id>-*.md` glob so a
