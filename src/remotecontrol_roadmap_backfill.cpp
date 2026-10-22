@@ -117,10 +117,7 @@ QString rlPassIdOf(const QString &line) {
 // ANTS-5405 — true when `line` is a `- **Status**:` line the reader reads as
 // shipped (done / shipped / completed, or ✅).
 bool rlPassStatusIsDone(const QString &line) {
-    static const QRegularExpression rx(
-        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
-        QRegularExpression::CaseInsensitiveOption);
-    if (!rx.match(line).hasMatch()) return false;
+    if (!RoadmapParse::passStatusLinePattern().match(line).hasMatch()) return false;
     const auto rec = RoadmapParse::parsePassHeadingBlock(
         {QStringLiteral("#### Pass 0.0"), line});
     return rec && rec->status == QString::fromUtf8(RoadmapParse::kEmojiDone);
@@ -351,9 +348,7 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
                 if (rlPassIdOf(lines.at(i)) != l->id) continue;
                 QStringList block{lines.at(i)};
                 for (int j = i + 1; j < lines.size(); ++j) {
-                    if (lines.at(j).startsWith(QLatin1Char('#')) &&
-                        !lines.at(j).startsWith(QLatin1String("#####")))
-                        break;
+                    if (RoadmapParse::isPassBlockEnd(lines.at(j))) break;
                     block << lines.at(j);
                 }
                 const auto rec = RoadmapParse::parsePassHeadingBlock(block);

@@ -75,7 +75,7 @@ inline constexpr int kItemCeiling = 7000;
 // INV-2 — the two return the same QStringList — would be false by construction
 // on an all-blank file. They are here rather than in the .cpp because the tests
 // assert against them, which is why kItemCeiling above is here too.
-inline constexpr int    kDetectorLineCap = 300;
+inline constexpr int    kDetectorLineCap = RoadmapParse::kDetectorLineBudget;
 inline constexpr qint64 kDetectorByteCap = 1 << 20;   // 1 MiB
 
 // ANTS-3863 § 2.1 — the roadmap text, read as late as the caller's path needs.

@@ -28,6 +28,8 @@ QVector<StaleItem> staleInProgress(const QVector<InProgressItem> &items,
 }
 
 QVector<Commit> commitsWithoutId(const QByteArray &gitLog, const QString &idPrefix) {
+    // Not idTokenPattern(): it matches THIS project's prefix only, and no
+    // synthesised (`-S`) id.
     const QRegularExpression rx(QStringLiteral("\\b") + QRegularExpression::escape(idPrefix) +
                                 QStringLiteral("-\\d+\\b"));
     QVector<Commit> out;

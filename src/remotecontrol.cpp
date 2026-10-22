@@ -2274,23 +2274,13 @@ void applyGfmFlip(QStringList &lines,
 // Match the bracket-ID token that immediately follows the status
 // emoji + space. Anchored loosely; the walker checks the prefix
 // explicitly before invoking this.
-// ANTS-2051 — accept a lowercase / mixed-case leading letter so the
-// write parser recognises the same bracket ids the READ path does.
-// The read path's shared idTokenPattern() (roadmapdialog.cpp) is
-// `[A-Za-z][A-Za-z0-9_-]*-\d+`; the old `[A-Z]…` here rejected
-// lowercase project prefixes like `[mame-curator-1065]`, so flip /
-// flip_batch / append refused a markerless ants-v1 roadmap that
-// roadmap_query reads fine (MAME Curator HIGH, cross-session 2026-06-10).
-// Keep the {1,8} digit bound as a sanity ceiling.
+// ANTS-2051 — the write parser must accept the bracket ids the READ path
+// does (RoadmapParse::idTokenPattern()). Keep the two in step: the lowercase
+// prefix (ANTS-2051), the digit-led prefix (ANTS-3492) and `S?` (ANTS-4500)
+// each reached the read path first, and roadmap_log then matched zero
+// bullets. The one deliberate difference is the {1,8} digit bound, a sanity
+// ceiling.
 static const QRegularExpression rxAntsV1IdBracket(
-    // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
-// ANTS-4500 § 4.4 — `S?` for the synthesis namespace (`[DEMO-S0001]`). The
-// THIRD time this write-path bracket has had to be taught a shape the read
-// path already accepted: ANTS-2051 was the lowercase prefix, ANTS-4109 the
-// bold-ID form, and both presented identically — roadmap_query resolves the id
-// and roadmap_log's `id` locator matches zero bullets. The spec's own § 4.4
-// table missed this symbol for the same reason, naming idTokenPattern() as
-// "the addressability gate" when it gates only the READ half.
     QStringLiteral("\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\\d{1,8})\\]"));
 
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {

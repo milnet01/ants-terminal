@@ -28,6 +28,8 @@
 #include <QVector>
 #include <optional>
 
+class QRegularExpression;
+
 namespace RoadmapParse {
 
 // The five status markers roadmap-format.md § 3.3 defines. They are the
@@ -256,6 +258,11 @@ inline QString foldId(const QString &id) {
 // Out-parameter rather than a wider return type: RoadmapDialog and
 // parseBullets() ask only for the format, and nullptr is the whole cost of
 // leaving them untouched.
+//
+// It examines at most kDetectorLineBudget NON-BLANK lines.
+// RoadmapSource::kDetectorLineCap is defined from it, so the store path and
+// the markdown path cut the head at the same place.
+inline constexpr int kDetectorLineBudget = 300;
 QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr);
 
 // ANTS-5638 — roadmap-format.md § 3.5.1's header id high-water mark. Here, in
@@ -449,6 +456,21 @@ bool releaseParseMemo();
 // which renders one item and parses it back. Engaged only when the block yields
 // exactly one record. The .cpp says why parseBullets() cannot do this job.
 std::optional<BulletRecord> parsePassHeadingBlock(const QStringList &lines);
+
+// The pass-headings grammar, shared by this reader and PassHeadingWrite so a
+// change lands in both.
+// `#### Pass <major>.<minor>[.<sub>] (meta) <tail>`: groups 1-5 in that order.
+const QRegularExpression &passHeadingPattern();
+// A `- **Status**:` line: group 1 the marker through `:` and its spaces,
+// group 2 the value.
+const QRegularExpression &passStatusLinePattern();
+// A Status value: group 1 a leading glyph run (✅, `**`), group 2 the keyword.
+// ANTS-5761 — `in progress` is one keyword.
+const QRegularExpression &passStatusValuePattern();
+// A heading of level 1-4 closes a pass block; `#####` does not.
+bool isPassBlockEnd(const QString &line);
+// `PASS-<major>-<minor>[-<sub>]`, the id a pass heading synthesises.
+QString passId(int major, int minor, const QString &sub);
 
 std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
                                               const IdFormat &fmt = {});

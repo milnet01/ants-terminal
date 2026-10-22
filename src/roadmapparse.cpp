@@ -186,6 +186,12 @@ static int headLineEnd(const QString &body) {
     return nl < 0 ? int(body.size()) : nl;
 }
 
+// ANTS-1438 — split `head` on the first em-dash separator (` — `,
+// preferred; ` -- ` / ` - ` accepted as lenient fallbacks for
+// projects that haven't typographic-em-dashed). Returns the trimmed
+// post-separator text on match, empty QString otherwise. Whitespace
+// brackets the separator so mid-word hits (e.g. `re-render`) don't
+// match.
 QString splitOnEmDash(const QString &head) {
     static const QString sep1 = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
     int idx = head.indexOf(sep1);
@@ -825,37 +831,12 @@ QStringList splitTrailerList(const QString &raw) {
 // ANTS-1530 — parse a doc in `pass-headings` format. Each `####
 // Pass N.M (SEVERITY, SIZE) …` heading becomes one bullet; the
 // status emoji is derived from the first `- **Status**: <word>`
-// line that follows the heading (bounded by the next heading or 50
-// lines, whichever first). ID synthesised as `PASS-<major>-<minor>`
+// line in its block. ID synthesised as `PASS-<major>-<minor>`
 // so the bullet survives the default `[PROJ-NNNN]` filter and the
 // numbering reverses cleanly back to the source heading.
 QVector<BulletRecord>
 parsePassHeadingBullets(const QStringList &lines) {
     QVector<BulletRecord> out;
-    // ANTS-2035 — capture an optional letter-led `.<SUB>` sub-pass
-    // suffix (`41.5.B`) so a parent and its sub-passes synthesise
-    // DISTINCT ids. Before this the `.B` fell into the headline tail
-    // and `Pass 41.5` / `Pass 41.5.B` both became `PASS-41-5`, which
-    // the duplicate-ID detector flagged as a false collision. The
-    // suffix is letter-led, so a purely numeric third level
-    // (`Pass 3.1.2`) is left in the tail as before (surgical scope).
-    static const QRegularExpression rxHead(
-        QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)"
-                       "(?:\\.([A-Za-z][A-Za-z0-9]*))?\\s*"
-                       "(?:\\(([^)]*)\\))?\\s*(.*?)\\s*$"));
-    // ANTS-2039 — group 1 captures an optional leading status-emoji run
-    // (any non-word, non-space glyph: ✅/📋/🚧/💭). Before this, a
-    // leading emoji — not a word char and not whitespace — fell between
-    // `:\s*` and the keyword class and blocked the capture entirely, so
-    // `- **Status**: ✅ Done` left statusWord empty and defaulted to
-    // planned (📋). Group 2 is the keyword, now optional so a bare emoji
-    // (`- **Status**: ✅`) still matches and is mapped below.
-    // ANTS-5761 — `in progress` is one keyword, not `in`.
-    static const QRegularExpression rxStatusLine(
-        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*"
-                       "([^\\sA-Za-z0-9_-]+)?\\s*"
-                       "(in\\s+progress(?![A-Za-z0-9_-])|[A-Za-z0-9_-]*)"),
-        QRegularExpression::CaseInsensitiveOption);
     QString currentSectionHeading;
     QString currentSectionSlug;
     int     currentSectionLevel = 0;
@@ -871,7 +852,7 @@ parsePassHeadingBullets(const QStringList &lines) {
             continue;
         }
         if (level != 4) continue;
-        const QRegularExpressionMatch m = rxHead.match(raw);
+        const QRegularExpressionMatch m = passHeadingPattern().match(raw);
         if (!m.hasMatch()) continue;
         const int major = m.captured(1).toInt();
         const int minor = m.captured(2).toInt();
@@ -897,13 +878,11 @@ parsePassHeadingBullets(const QStringList &lines) {
         QString statusValue;
         for (int j = i + 1; j < lines.size(); ++j) {
             const QString &peek = lines[j];
-            // Stop at any heading level ≤ 4 (next sibling/parent).
-            if (peek.startsWith(QStringLiteral("#")) &&
-                !peek.startsWith(QStringLiteral("#####"))) {
-                break;
-            }
-            const QRegularExpressionMatch sm = rxStatusLine.match(peek);
-            if (sm.hasMatch()) {
+            if (isPassBlockEnd(peek)) break;
+            const QRegularExpressionMatch pm = passStatusLinePattern().match(peek);
+            if (pm.hasMatch()) {
+                const QString value = pm.captured(2);
+                const QRegularExpressionMatch sm = passStatusValuePattern().match(value);
                 const QString emoji = sm.captured(1);
                 statusWord = sm.captured(2).simplified().toLower();
                 // ANTS-2039 — a bare status emoji with no trailing
@@ -922,14 +901,7 @@ parsePassHeadingBullets(const QStringList &lines) {
                 // empty) is not a classification — keep scanning for a
                 // real status marker within the window.
                 if (!statusWord.isEmpty()) {
-                    // ANTS-3764 — the value starts at the first capture
-                    // that participated: group 1 when a leading emoji or
-                    // `*` run is present, group 2 otherwise. Both sit
-                    // after the regex's `:\s*`, so this is the first
-                    // non-space character of the value.
-                    int valueStart = sm.capturedStart(1);
-                    if (valueStart < 0) valueStart = sm.capturedStart(2);
-                    statusValue = peek.mid(valueStart).trimmed();
+                    statusValue = value.trimmed();   // ANTS-3764 — verbatim
                     break;
                 }
             }
@@ -949,10 +921,7 @@ parsePassHeadingBullets(const QStringList &lines) {
         int lastIdx = i;
         for (int j = i + 1; j < lines.size(); ++j) {
             const QString &peek = lines[j];
-            if (peek.startsWith(QStringLiteral("#")) &&
-                !peek.startsWith(QStringLiteral("#####"))) {
-                break;
-            }
+            if (isPassBlockEnd(peek)) break;
             bodyLines.append(peek);
             if (!peek.trimmed().isEmpty()) lastIdx = j;
         }
@@ -964,15 +933,13 @@ parsePassHeadingBullets(const QStringList &lines) {
             bodyLines.removeLast();
         const QString passBody = bodyLines.join(QChar('\n'));
         BulletRecord rec;
-        rec.id     = sub.isEmpty()
-            ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
-            : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
+        rec.id     = passId(major, minor, sub);
         rec.format = QStringLiteral("pass-headings");
         // ANTS-3764 — the designator the heading regex just consumed. `id`
         // is synthesised from it and the heading is gone by the time a
         // record exists, so recovering it afterwards would mean re-matching
-        // rxHead. major/minor go through toInt() here exactly as they do
-        // for the id, so passIdFromDesignator(passDesignator) == id — the
+        // passHeadingPattern(). major/minor go through toInt() here exactly
+        // as they do for the id, so passIdFromDesignator(passDesignator) == id — the
         // agreement ANTS-3757 INV-10 asserts.
         rec.passDesignator = sub.isEmpty()
             ? QStringLiteral("%1.%2").arg(major).arg(minor)
@@ -1280,8 +1247,8 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         //
         // The guard is a TRAILING COLON and nothing more, and the
         // narrowness is the point. It is not a heuristic:
-        // idTokenPattern() is `[A-Za-z0-9][A-Za-z0-9_-]*-\d+`, so a colon
-        // cannot occur in an id at all, and `**Phase 9E-2:**` is a label
+        // idTokenPattern() admits only letters, digits, `_` and `-`, so a
+        // colon cannot occur in an id at all, and `**Phase 9E-2:**` is a label
         // introducing prose rather than a name for the item.
         //
         // Two wider rules were tried against the corpus and both are
@@ -1627,6 +1594,45 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
 }
 }  // namespace
 
+// ANTS-2035 — the optional letter-led `.<SUB>` sub-pass suffix (`41.5.B`)
+// gives a parent and its sub-passes DISTINCT ids; without it `Pass 41.5` and
+// `Pass 41.5.B` both became `PASS-41-5`. A purely numeric third level
+// (`Pass 3.1.2`) stays in the tail.
+const QRegularExpression &passHeadingPattern() {
+    static const QRegularExpression re(
+        QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)"
+                       "(?:\\.([A-Za-z][A-Za-z0-9]*))?\\s*"
+                       "(?:\\(([^)]*)\\))?\\s*(.*?)\\s*$"));
+    return re;
+}
+
+const QRegularExpression &passStatusLinePattern() {
+    static const QRegularExpression re(
+        QStringLiteral("^(\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*)(.*)$"),
+        QRegularExpression::CaseInsensitiveOption);
+    return re;
+}
+
+// ANTS-2039 — the glyph run (any non-word, non-space run: ✅, 📋, `**`) is its
+// own optional group, so `✅ Done` still yields the keyword and a bare `✅`
+// still matches.
+const QRegularExpression &passStatusValuePattern() {
+    static const QRegularExpression re(
+        QStringLiteral("^([^\\sA-Za-z0-9_-]+)?\\s*"
+                       "((?i:in\\s+progress)(?![A-Za-z0-9_-])|[A-Za-z0-9_-]*)"));
+    return re;
+}
+
+bool isPassBlockEnd(const QString &line) {
+    return line.startsWith(QChar('#')) && !line.startsWith(QStringLiteral("#####"));
+}
+
+QString passId(int major, int minor, const QString &sub) {
+    return sub.isEmpty()
+        ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
+        : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
+}
+
 // ANTS-5087 — ONE `#### Pass` block, for the store-built read seam.
 //
 // It cannot go through parseBullets(): detectRoadmapFormat() calls a document
@@ -1703,18 +1709,6 @@ ReviewKindMismatch reviewKindMismatch(const QString &kind,
 }
 
 
-// ANTS-1438 — split `head` on the first em-dash separator (` — `,
-// preferred; ` -- ` / ` - ` accepted as lenient fallbacks for
-// projects that haven't typographic-em-dashed). Returns the trimmed
-// post-separator text on match, empty QString otherwise. Whitespace
-// brackets the separator so mid-word hits (e.g. `re-render`) don't
-// match.
-// ANTS-1784 — single source of truth for the project-ID token shape
-// (`PROJ-NNNN`: a letter-led prefix + `-` + digits, per
-// docs/standards/roadmap-format.md § 3.5.1). parseBullets anchors it in
-// `[...]`; parseShippedDates anchors it on word boundaries (CHANGELOG
-// prose). Both derive from this so the accepted ID shape can't drift
-// between the two parsers.
 // ANTS-4575 — see the header for why this is `id == boldId` and not a test
 // on `idToken`. Both conjuncts are load-bearing: boldId alone is non-empty
 // on a bullet whose body cites a [PROJ-NNNN] that then WINS the id (the
@@ -1724,11 +1718,14 @@ bool idWasInferred(const BulletRecord &rec) {
     return !rec.boldId.isEmpty() && rec.id == rec.boldId;
 }
 
+// ANTS-1784 — the project-ID token shape (`PROJ-NNNN`, roadmap-format.md
+// § 3.5.1): a prefix holding at least one letter (ANTS-3492), `-`, an
+// optional `S` for a synthesised id (ANTS-4500), digits. Build an id pattern
+// from this rather than copying it; a copy that differs on purpose says why
+// where it is defined.
 QString idTokenPattern() {
-    // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter
-    // (3D_E-0042). Bare, unanchored fragment shared by parseBullets
-    // (bracket-anchored) and parseShippedDates (\b-anchored); the leading
-    // lookahead splices safely into both.
+    // A bare, unanchored fragment: each caller adds its own anchors, and the
+    // leading lookahead splices safely into any of them.
     //
     // ANTS-4500 § 4.4 — the optional `S` admits the SYNTHESIS namespace
     // (`DEMO-S0001`). This pattern is the addressability gate, not a
@@ -1744,7 +1741,7 @@ QString idTokenPattern() {
 // three shapes. ants-v1 marker wins; otherwise look for GFM
 // task-list bullets, then the ANTS-1530 `#### Pass N.M (SEVERITY,
 // SIZE) … - **Status**: <word>` shape used by RetroDB's roadmap.
-// We scan a larger budget (300 lines) so Pass-style docs with a
+// We scan a larger budget (kDetectorLineBudget lines) so Pass-style docs with a
 // long preamble still trigger the right adapter.
 QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
     // ANTS-3766 § 2.1.1 — start at "no evidence" and raise it at each signal's
@@ -1793,7 +1790,7 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
             ++statusMarkers;
             signalled();
         }
-        if (++seen >= 300) break;
+        if (++seen >= kDetectorLineBudget) break;
     }
     // ANTS-1530 — pass-headings adapter. Triggered only when no ants-v1
     // emoji bullets are present (so we never override a native-format doc)
@@ -1817,8 +1814,8 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
 }
 
 bool isIdPrefix(const QString &prefix) {
-    // ANTS-3498 / ANTS-3492 — digit-led is fine iff a letter is present
-    // (3D_E ✓, 2026 ✗); 1-16 chars total.
+    // ANTS-3498 — the prefix half of idTokenPattern(), capped at 16 chars:
+    // digit-led is fine iff a letter is present (3D_E ✓, 2026 ✗).
     static const QRegularExpression kShape(QStringLiteral(
         "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
     return kShape.match(prefix).hasMatch();
@@ -2109,6 +2106,8 @@ const QRegularExpression &rxLinkLine() {
 }
 
 // The ids of a link line, or empty when the value is not a clean id list.
+// Not idTokenPattern(): it takes a letter-led prefix and any number of `-`
+// parts, so `PASS-41-5-B` passes and `3D_E-0042` does not.
 QStringList linkIdsIn(QString value) {
     static const QRegularExpression rxId(
         QStringLiteral("^[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+$"));

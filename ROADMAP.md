@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6160 -->
+<!-- ants-roadmap-id-high-water: ANTS=6161 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94811,6 +94811,18 @@ worked after these.
   (ids L11-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: all 3 HIGH done. (1) id token: isCanonicalId and the
+  roadmap dialog's two copies now build from idTokenPattern();
+  isIdPrefix, linkIdsIn, commitsWithoutId and rxAntsV1IdBracket say why
+  they differ; the idTokenPattern and splitOnEmDash comments moved back
+  to their functions. Copies outside this lane remain hand-written
+  (remotecontrol.cpp, findsources.cpp, roadmapfoldin.cpp,
+  roadmapstore.cpp, claudeintegration.cpp), left to their lanes. (2)
+  pass-headings grammar: heading, Status line, Status value, block end
+  and PASS id are one copy each in RoadmapParse; the writer and the
+  backfill use them. (3) the detector's 300-line budget is
+  RoadmapParse::kDetectorLineBudget, and RoadmapSource::kDetectorLineCap
+  is defined from it. Medium and low still open.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98914,6 +98926,17 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
   Lanes: packaging.
+
+- 📋 [ANTS-6161] **VtstreamClearHint.Main failed once in the full -j4 suite and passed alone.**
+  Seen 2026-10-22 during the ANTS-6120 suite run (5864/5865, only this
+  one failed); a solo re-run passed. The test drives a real PTY with
+  `sleep 0.4` steps inside a 4000 ms wait
+  (tests/features/vtstream_clear_hint/test_vtstream_clear_hint.cpp).
+  The failure output was not kept. Next: reproduce under load and see
+  whether the 4 s budget or a missed event is the cause.
+  **Layman:** A test that runs a real shell with short pauses sometimes runs out of time when the machine is busy.
+  Kind: test.
+  Source: ctest-run-2026-10-22.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

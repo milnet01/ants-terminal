@@ -1363,9 +1363,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (summary.isEmpty()) {
             summary = rec.headline;
             static const QRegularExpression rxLeadId(
-                // ANTS-3492 — digit-led-but-letter-containing prefix.
-                QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9]"
-                               "[A-Za-z0-9_-]*-S?\\d+\\s*[—-]\\s*"));
+                QStringLiteral("^") + RoadmapParse::idTokenPattern() +
+                QStringLiteral("\\s*[—-]\\s*"));
             summary.remove(rxLeadId);
         }
         html += QStringLiteral("<td class=\"rm-col-summary%1\">"
@@ -1806,9 +1805,8 @@ RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut) {
     // or EOF). See spec § 3.b.2.
     // ANTS-1660 — match any project-ID prefix, not just ANTS-.
     static const QRegularExpression rxInProgress(
-        // ANTS-3492 — digit-led-but-letter-containing prefix.
-        QStringLiteral("^- 🚧 \\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9]"
-                       "[A-Za-z0-9_-]*-S?\\d+)\\]"));
+        QStringLiteral("^- 🚧 \\[(") + RoadmapParse::idTokenPattern() +
+        QStringLiteral(")\\]"));
     for (int i = 0; i < mdLines.size(); ++i) {
         const QString line = QString::fromUtf8(mdLines.at(i));
         const auto m = rxInProgress.match(line);

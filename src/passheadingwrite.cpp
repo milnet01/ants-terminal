@@ -16,51 +16,13 @@ namespace PassHeadingWrite {
 
 namespace {
 
-// ANTS-3768 — the four status glyphs come from RoadmapParse, the reader's own
-// header, rather than being spelled again here. This file used to define them
-// as UTF-8 byte escapes under a comment promising they matched the reader, and
-// that comment was the tell: a hand-maintained "kept in step with" note is
-// exactly what a shared constant makes unnecessary. One definition of the
-// format's vocabulary, so the writer cannot drift from the reader silently.
-// `#### Pass <major>.<minor>[.<sub>] (meta) <tail>` — MUST stay in sync
-// with the reader's rxHead (roadmapdialog.cpp parsePassHeadingBullets,
-// ANTS-1530/2035/2039). The write-side INV-12 round-trip test is the
-// guard against drift: a write rendered here is re-parsed by the real
-// reader, so any divergence in this pattern fails that test.
-const QRegularExpression &rxHead() {
-    static const QRegularExpression re(
-        QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)"
-                       "(?:\\.([A-Za-z][A-Za-z0-9]*))?\\s*"
-                       "(?:\\(([^)]*)\\))?\\s*(.*?)\\s*$"));
-    return re;
-}
-
-// Split a `- **Status**:` line into (prefix, value). Prefix is the
-// indentation + list marker + `**Status**:` + trailing spaces; value is
-// everything after. Mirrors the reader's rxStatusLine anchor.
-const QRegularExpression &rxStatusPrefix() {
-    static const QRegularExpression re(
-        QStringLiteral("^(\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*)(.*)$"),
-        QRegularExpression::CaseInsensitiveOption);
-    return re;
-}
-
-// Classify a Status value into (emoji, keyword) — same split the reader
-// uses: a leading non-word, non-space glyph run then a keyword token.
-// ANTS-5761 — `in progress` is one token, so a flip replaces both words.
-const QRegularExpression &rxStatusValue() {
-    static const QRegularExpression re(
-        QStringLiteral("^([^\\sA-Za-z0-9_-]+)?\\s*"
-                       "((?i:in\\s+progress)(?![A-Za-z0-9_-])|[A-Za-z0-9_-]*)"));
-    return re;
-}
-
-bool isHeadingLeQ4(const QString &line) {
-    // A heading of level 1-4 (the reader's block boundary — a level-5+
-    // `#####` does NOT close a pass block).
-    return line.startsWith(QChar('#')) &&
-           !line.startsWith(QStringLiteral("#####"));
-}
+// ANTS-3768 — the format's status glyphs, and its heading, Status-line and
+// block-boundary grammar, come from RoadmapParse, the reader, so the writer
+// cannot drift from it.
+using RoadmapParse::isPassBlockEnd;
+using RoadmapParse::passHeadingPattern;
+using RoadmapParse::passStatusLinePattern;
+using RoadmapParse::passStatusValuePattern;
 
 // ANTS-5395 — a thematic break (`---`, `***`, `___`, three or more of one
 // character, spaces allowed). A pass block commonly ends in one to separate
@@ -102,12 +64,8 @@ bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
 
 // Synthesise the reader's id for a `#### Pass` heading match.
 QString idForHead(const QRegularExpressionMatch &m) {
-    const int major   = m.captured(1).toInt();
-    const int minor   = m.captured(2).toInt();
-    const QString sub = m.captured(3).trimmed();
-    return sub.isEmpty()
-        ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
-        : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
+    return RoadmapParse::passId(m.captured(1).toInt(), m.captured(2).toInt(),
+                                m.captured(3).trimmed());
 }
 
 QString normaliseHeadline(const QString &s) {
@@ -122,7 +80,7 @@ int locatePass(const QStringList &lines, const QString &locatorId,
                QString *outTail) {
     const QString wantHeadline = normaliseHeadline(locatorHeadline);
     for (int i = 0; i < lines.size(); ++i) {
-        const QRegularExpressionMatch m = rxHead().match(lines.at(i));
+        const QRegularExpressionMatch m = passHeadingPattern().match(lines.at(i));
         if (!m.hasMatch()) continue;
         const QString id   = idForHead(m);
         const QString tail = m.captured(5).trimmed();
@@ -178,12 +136,8 @@ QString passIdFromDesignator(const QString &pass) {
         QStringLiteral("^(\\d+)\\.(\\d+)(?:\\.([A-Za-z][A-Za-z0-9]*))?$"));
     const QRegularExpressionMatch m = re.match(pass);
     if (!m.hasMatch()) return QString();
-    const int major   = m.captured(1).toInt();
-    const int minor   = m.captured(2).toInt();
-    const QString sub = m.captured(3);
-    return sub.isEmpty()
-        ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
-        : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
+    return RoadmapParse::passId(m.captured(1).toInt(), m.captured(2).toInt(),
+                                m.captured(3));
 }
 
 QString designatorFromPassId(const QString &id) {
@@ -206,10 +160,10 @@ namespace {
 bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
                        const QString &emoji) {
     for (int j = from; j < lines.size(); ++j) {
-        const QRegularExpressionMatch pm = rxStatusPrefix().match(lines.at(j));
+        const QRegularExpressionMatch pm = passStatusLinePattern().match(lines.at(j));
         if (!pm.hasMatch()) continue;
         const QString value = pm.captured(2);
-        const QRegularExpressionMatch vm = rxStatusValue().match(value);
+        const QRegularExpressionMatch vm = passStatusValuePattern().match(value);
         const QString lead = vm.captured(1), word = vm.captured(2);
         // A leading run that is not a status glyph (`**`) is the author's
         // decoration: kept, never replaced by an emoji.
@@ -282,8 +236,8 @@ WriteResult flipPassStatus(const QString &markdown,
     // second one here.
     int statusLine = -1;
     for (int j = head + 1; j < lines.size(); ++j) {
-        if (isHeadingLeQ4(lines.at(j))) break;
-        if (rxStatusPrefix().match(lines.at(j)).hasMatch()) {
+        if (isPassBlockEnd(lines.at(j))) break;
+        if (passStatusLinePattern().match(lines.at(j)).hasMatch()) {
             statusLine = j;
             break;
         }
@@ -312,10 +266,10 @@ WriteResult flipPassStatus(const QString &markdown,
     } else {
         // INV-5 — rewrite the value preserving the line's style.
         const QRegularExpressionMatch pm =
-            rxStatusPrefix().match(lines.at(statusLine));
+            passStatusLinePattern().match(lines.at(statusLine));
         const QString prefix = pm.captured(1);
         const QRegularExpressionMatch vm =
-            rxStatusValue().match(pm.captured(2).trimmed());
+            passStatusValuePattern().match(pm.captured(2).trimmed());
         const bool hasEmoji   = !vm.captured(1).isEmpty();
         const bool hasKeyword = !vm.captured(2).isEmpty();
         QString newValue;
@@ -355,7 +309,7 @@ WriteResult annotatePass(const QString &markdown,
     // Block end = the next heading (level ≤ 4) or EOF.
     int blockEnd = lines.size();
     for (int j = head + 1; j < lines.size(); ++j) {
-        if (isHeadingLeQ4(lines.at(j))) { blockEnd = j; break; }
+        if (isPassBlockEnd(lines.at(j))) { blockEnd = j; break; }
     }
     // Append after the block's last non-blank content line, so the note
     // lands inside the block rather than after its trailing blank lines.
@@ -398,7 +352,7 @@ QString redatePassStatus(const QString &body, const QString &isoDate) {
                        "\\d{4}-\\d{2}-\\d{2}"));
     QStringList lines = body.split(QChar('\n'));
     for (QString &line : lines) {
-        const QRegularExpressionMatch pm = rxStatusPrefix().match(line);
+        const QRegularExpressionMatch pm = passStatusLinePattern().match(line);
         if (!pm.hasMatch()) continue;
         const QString value = pm.captured(2);
         const QRegularExpressionMatch dm = rxDate.match(value);
@@ -430,7 +384,7 @@ QString formatPassNote(const QString &note, PassNoteKind kind,
 QString insertPassNoteAboveStatus(const QString &body, const QString &bullet) {
     QStringList lines = body.split(QChar('\n'));
     for (int j = 0; j < lines.size(); ++j) {
-        if (!rxStatusPrefix().match(lines.at(j)).hasMatch()) continue;
+        if (!passStatusLinePattern().match(lines.at(j)).hasMatch()) continue;
         const QStringList add = bullet.split(QChar('\n'));
         for (int k = int(add.size()) - 1; k >= 0; --k)
             lines.insert(j, add.at(k));
@@ -447,7 +401,7 @@ QString passStatusWordFor(const QString &canonicalKeyword,
     for (const QString &body : bodies) {
         QString value;
         for (const QString &line : body.split(QChar('\n'))) {
-            const QRegularExpressionMatch pm = rxStatusPrefix().match(line);
+            const QRegularExpressionMatch pm = passStatusLinePattern().match(line);
             if (pm.hasMatch()) { value = pm.captured(2); break; }
         }
         if (value.isEmpty()) continue;
@@ -456,7 +410,7 @@ QString passStatusWordFor(const QString &canonicalKeyword,
         const auto rec = RoadmapParse::parsePassHeadingBlock(
             {QStringLiteral("#### Pass 0.0"), QStringLiteral("- **Status**: ") + value});
         if (!rec || rec->status != want) continue;
-        const QString word = rxStatusValue().match(value.trimmed()).captured(2);
+        const QString word = passStatusValuePattern().match(value.trimmed()).captured(2);
         if (word.isEmpty()) continue;
         if (!count.contains(word)) order.append(word);
         ++count[word];

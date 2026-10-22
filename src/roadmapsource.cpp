@@ -41,11 +41,12 @@ qint64 utf8Len(QStringView s) {
 // § 4 — detectRoadmapFormat() takes a QStringList while this seam holds a
 // QString, so a naive markdown.split('\n') of a 3 MiB roadmap materialises
 // another ~6 MiB plus ~34k QString headers for lines nothing reads. The
-// detector stops at 300 NON-BLANK lines (and returns at the format marker long
-// before that on a rendered file), so it is handed exactly that many.
+// detector stops at kDetectorLineCap NON-BLANK lines (and returns at the
+// format marker long before that on a rendered file), so it is handed exactly
+// that many.
 //
 // Blank lines are kept but not counted, which is the detector's own rule
-// (`if (ln.trimmed().isEmpty()) continue;` sits above `if (++seen >= 300)`), so
+// (`if (ln.trimmed().isEmpty()) continue;` sits above the budget check), so
 // the prefix and the whole file classify identically.
 //
 // ANTS-3863 § 2.1 — the byte cap joins it, because the line cap bounds neither
@@ -55,9 +56,9 @@ qint64 utf8Len(QStringView s) {
 // back through here — so the two cannot cut at different places (INV-2).
 //
 // Capping here changes no classification: detectRoadmapFormat() skips blank
-// lines and breaks at its own `++seen >= 300` (roadmapparse.cpp), so it never
-// examines a line these caps would drop. The helper has been returning list
-// elements no consumer reads.
+// lines and stops at kDetectorLineBudget, which kDetectorLineCap equals, so it
+// never examines a line these caps would drop. The helper has been returning
+// list elements no consumer reads.
 QStringList detectionPrefixOf(const QString &markdown) {
     QStringList lines;
     int nonBlank = 0;
@@ -225,7 +226,7 @@ void RoadmapText::readHead() {
     int nonBlank = 0;
     while (nonBlank < kDetectorLineCap && m_head.size() <= kDetectorByteCap) {
         // A line at a time rather than a fixed chunk: a chunk overshoots the
-        // 300th non-blank line by up to its own size, and INV-1's bound is
+        // last counted non-blank line by up to its own size, and INV-1's bound is
         // stated against that line's end plus one line. The per-call ceiling
         // bounds the OTHER pathological input — a file with no '\n' at all — so
         // the overshoot past the cap is one capped line and not the file.
