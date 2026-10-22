@@ -75,7 +75,7 @@ protected:
     Config *config() const { return m_config; }
     void    setResultsWidget(QWidget *w);
     void    runPartition();                                    // derivePartition() → setLanes()
-    void    setLanes(const QList<ReviewLane> &lanes);          // (re)partition; clears reports()
+    void    setLanes(const QList<ReviewLane> &lanes);          // (re)partition; keeps reports of surviving lanes, drops the rest
     const QHash<QString, QString> &reports() const { return m_reports; }
     void    startDispatch();                                   // enqueue every lane
     void    redispatch(const QStringList &laneIds);            // re-run a subset; merges into reports()

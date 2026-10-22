@@ -275,7 +275,8 @@ private:
     //   skip=true          — drop the finding entirely
     //   severity_shift=-N  — shift severity down N levels (+N shifts up)
     //   skip_rules=[...]   — drop finding if its checkId is in the list
-    // Evaluated in declaration order; first matching rule wins per axis.
+    // Every matching rule is evaluated: severity shifts add up, and the
+    // first matching skip or skip_rules hit drops the finding.
     struct PathRule {
         QString glob;                 // e.g. "tests/**", "**/moc_*.cpp"
         QRegularExpression compiled;  // pre-compiled from glob

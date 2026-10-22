@@ -53,8 +53,8 @@ struct DefMatch {
     QString file;       // project-relative (root prefix stripped)
     int     line = 0;
     QString signature;  // trimmed matched line
-    QString lang;       // "cpp" / "py" / "lua" / "sh"
-    QString kind;       // "definition" | "declaration"
+    QString lang;       // "cpp" / "py" / "lua" / "sh" / "glsl" / "generic"
+    QString kind;       // "definition" | "declaration" | "namespace" | "local"
 };
 
 struct CallMatch {

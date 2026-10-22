@@ -853,10 +853,10 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
     // direction. `op:"add"` and `op:"normalize"` both refuse against a
     // feature-grouped section; nothing refused a DATED TOPIC written into a
     // flat one. The result is a MIXED section — a dated topic above a flat
-    // `### Added` block under one `## [Unreleased]` — from which
-    // firstFeatureGroupedTopicLine() matches, so `add` and `normalize` BOTH
-    // start refusing. One call therefore disabled a flat project's write path
-    // permanently, with ok:true and no warning.
+    // `### Added` block under one `## [Unreleased]`, led by the dated topic.
+    // From then on op:"add" routes every entry to the dated form (ANTS-5098),
+    // so one call ended a flat project's layout for good, with ok:true and no
+    // warning.
     //
     // An EMPTY [Unreleased] is deliberately allowed: that is how a project
     // converting layouts does it, and refusing there would make conversion
@@ -931,9 +931,9 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                           "carries %1 Keep-a-Changelog category heading(s) "
                           "(first `### %2` at line %3) and no dated topic. "
                           "Writing a dated topic here produces a MIXED "
-                          "section, after which op:\"add\" and op:\"normalize\" "
-                          "both refuse `feature_grouped_section` and the flat "
-                          "write path is gone for good. Use op:\"add\" for this "
+                          "section, after which op:\"add\" writes dated topics "
+                          "too and the flat layout is gone for good. Use "
+                          "op:\"add\" for this "
                           "layout. To convert the project to dated topics, "
                           "empty `[Unreleased]` first — which is what "
                           "converting means.")

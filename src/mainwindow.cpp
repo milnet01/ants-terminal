@@ -2389,8 +2389,8 @@ bool MainWindow::showDesktopNotification(const QString &title, const QString &bo
 }
 
 void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
-    // Label is created in the constructor before anything that can emit a status
-    // message, so a null check here would just mask bugs.
+    // Load-bearing: applyTheme() and newTab() run in the constructor before
+    // the label exists, and both can post a status message.
     if (!m_statusMessage) return;
     m_statusMessage->setFullText(msg);
     if (m_statusMessageTimer) m_statusMessageTimer->stop();

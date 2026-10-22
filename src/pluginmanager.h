@@ -51,8 +51,9 @@ public:
     const QList<PluginInfo> &plugins() const { return m_plugins; }
     int pluginCount() const { return m_plugins.size(); }
 
-    // Forward events to every loaded plugin VM. Events cancel (return false)
-    // if ANY plugin's handler returns false (for keypress interception).
+    // Post the event asynchronously to every healthy plugin that handles it
+    // and holds the permission it needs. Always returns true: nothing can
+    // veto yet (that is ANTS-1736).
     bool fireEvent(PluginEvent event, const QString &data = QString());
 
     // ANTS-4272 — the permission an event needs, or empty.

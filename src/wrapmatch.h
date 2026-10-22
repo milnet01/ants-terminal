@@ -4,8 +4,9 @@
 // rule, shared by the two verbs that need it.
 //
 // The rule, stated once: **a run of whitespace in the pattern matches a
-// run of whitespace and markdown blockquote markers in the text.**
-// Everything else matches literally.
+// run of whitespace and continuation markers in the text** — blockquote
+// `>`, comment leaders `//` and `#`, and a javadoc `*`. Everything else
+// matches literally.
 //
 // Why it exists. Prose in this corpus is hard-wrapped at ~70 columns, so
 // a quotation of ordinary sentence length spans a line break. Every
@@ -45,9 +46,9 @@ struct Span {
 // needle finds nothing — it would otherwise match everywhere.
 //
 // The needle is matched LITERALLY apart from its whitespace runs: no
-// regex metacharacter in it is honoured. A needle line that is nothing
-// but blockquote markers (`>`, `>>`) is dropped, so a multi-line
-// quotation copied out of a blockquote can be pasted in unedited.
+// regex metacharacter in it is honoured. A needle token made only of
+// continuation markers is dropped, so a multi-line quotation copied out of
+// a blockquote or a comment can be pasted in unedited.
 QVector<Span> find(const QString &haystack, const QString &needle,
                    int maxHits = 0);
 

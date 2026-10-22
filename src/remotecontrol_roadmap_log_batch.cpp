@@ -2229,10 +2229,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
-// ANTS-1879 — roadmap_log op:"append_batch". Append N bullets to one
-// section in a single read + single atomic commit. Semantic parity
-// with cmdRoadmapLogFlipBatch (ok:true even when all-skipped). See
-// docs/specs/ANTS-1879.md.
 // ANTS-4572 / ANTS-4938 — append_batch's scrub warning, batch-wide. Fires when
 // the scrub removed ANYTHING, named or not, and says what went. One helper for
 // both paths: the markdown path once reported named parameters only
@@ -2254,6 +2250,11 @@ static void rlAddBatchScrubWarning(QJsonObject &env, const QStringList &names,
     rlAddWarning(env, warn);
 }
 
+// ANTS-1879 — roadmap_log op:"append_batch". Append N bullets to one
+// section in a single read + single atomic commit. See
+// docs/specs/ANTS-1879.md. An all-skipped batch returns ok:true, as that
+// spec says. flip_batch, which the spec mirrored, has returned ok:false in
+// that case since ANTS-4109; append_batch was not changed with it.
 QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;

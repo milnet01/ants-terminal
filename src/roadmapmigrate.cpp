@@ -458,12 +458,9 @@ struct Build {
     int  lastItemIndex = -1; // into MigrationPlan::items
 };
 
-// ANTS-3766 § 2.2's archive name regex, expressed ONCE. Deliberately tighter
-// than roadmap-format.md § 3.9's stated `^[0-9]+\.[0-9]+\.md$`, which accepts
-// the zero-padded `00.07.md` that its own prose forbids and that parses to the
-// same (0, 7) tuple as `0.7.md`. Forbidding leading zeros makes the
-// name→tuple map injective, so there is no duplicate-minor condition left to
-// detect — the case is removed by construction rather than checked for.
+// ANTS-3766 § 2.2's archive name regex, expressed ONCE, and roadmap-format.md
+// § 3.9's. No leading zeros, so `00.07.md` cannot collide with `0.7.md` and
+// no two archive names map to the same (major, minor).
 const QRegularExpression &archiveNameRx() {
     static const QRegularExpression rx(
         QStringLiteral("\\A(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.md\\z"));
@@ -1019,14 +1016,6 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     // 2. Archives under <root>/docs/roadmap/ — ANTS-3766 § 2.2. The directory,
     // the descending sort AND the name regex are roadmap-format.md § 3.9's,
     // adopted as they stand.
-    //
-    // ANTS-4074 — this read "the name regex is deliberately tighter", which
-    // was true only while § 3.9 published `^[0-9]+\.[0-9]+\.md$` (accepting
-    // `00.07.md` while the prose beside it forbade zero-padding). The ANTS-4069
-    // gate corrected the standard to `archiveNameRx()`'s own shape, so the two
-    // agree exactly and the divergence the comment described is gone. It had
-    // already misled one cold reviewer into concluding roadmap-data-model.md
-    // § 8 was false; the comment was.
     const QFileInfo archiveDir(dir.filePath(QStringLiteral("docs/roadmap")));
     if (archiveDir.exists()) {
         if (!archiveDir.isDir() || !archiveDir.isReadable()) {

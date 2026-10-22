@@ -14,7 +14,6 @@ namespace auditdialogdetail {
 // find(1) and grep(1) exclude expressions, defined in auditdialog.cpp.
 extern const QString kFindExcl;
 extern const QString kGrepExcl;
-extern const QString kGrepExclSec;
 
 // Display labels, defined in auditdialog.cpp.
 QString severityLabel(Severity s);

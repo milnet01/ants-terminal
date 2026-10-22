@@ -37,9 +37,9 @@ QByteArray normaliseQuotation(const QByteArray &raw);
 // The `allowed` glob grammar of § 2.3: `**`, `*`, `?`, all else literal.
 bool globMatch(const QString &glob, const QString &path);
 
-// Runs the whole call below the root. Returns either the § 2.4 envelope
-// with `results` untrimmed, or a refusal {ok:false, code:"bad_args", error}.
-// The handler applies max_bytes to `results`.
+// Runs the whole call below the root. Returns either the § 2.4 envelope,
+// with `results` trimmed to max_bytes, or a refusal
+// {ok:false, code:"bad_args", error}.
 QJsonObject run(const QString &root, const QJsonObject &args);
 
 } // namespace QuotationCheck

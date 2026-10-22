@@ -42,27 +42,21 @@ QString escapeLiteral(const QString &s) {
 // roadmapparse.cpp carries such a sentence verbatim over three lines, and it
 // returned zero matches while the same sentence was found in two .md copies.
 //
-// `//` and `#` are the line-comment leaders; a lone `*` is the javadoc/doxygen
-// continuation. `\\*` is deliberately NOT `\\*+`: one asterisk is the
-// continuation marker, while `**` opens markdown bold, and folding that away
-// would let a needle skip emphasis that is really there.
-const char *kSeparator = "[ \\t\\r\\n]+(?:(?:>+|/{2,}|#+|\\*)[ \\t]*)*";
+// The one marker set both sides use: blockquote `>`, the line-comment
+// leaders `//` and `#`, and the javadoc/doxygen `*` continuation. The group
+// repeats, so `**` is skipped as two markers.
+const QLatin1String kMarker("(?:>+|/{2,}|#+|\\*)");
+const QString kSeparator =
+    QLatin1String("[ \\t\\r\\n]+(?:") + kMarker + QLatin1String("[ \\t]*)*");
 
 // Split the needle into the literal runs the separator joins. A token that is
 // nothing but continuation markers is dropped rather than matched: it is the
-// marker of a wrapped line in the PASTED quotation, not text.
-//
-// ANTS-4607 — this is the second side of the separator above, and the two must
-// carry the same marker set or the normalisation stops being two-sided: paste
-// a comment block complete with its `//` leaders and they tokenise away here,
-// exactly as `>` already did.
+// marker of a wrapped line in the PASTED quotation, not text. ANTS-4607 —
+// built from kMarker, so the normalisation stays two-sided.
 bool isMarkerOnly(const QString &tok) {
-    for (const QChar c : tok) {
-        if (c != QLatin1Char('>') && c != QLatin1Char('/')
-            && c != QLatin1Char('#') && c != QLatin1Char('*'))
-            return false;
-    }
-    return true;
+    static const QRegularExpression rx(
+        QLatin1String("\\A(?:") + kMarker + QLatin1String(")+\\z"));
+    return rx.match(tok).hasMatch();
 }
 
 QStringList tokenise(const QString &needle) {
@@ -83,7 +77,7 @@ QString toRegex(const QString &needle) {
     QStringList escaped;
     escaped.reserve(tokens.size());
     for (const QString &t : tokens) escaped.append(escapeLiteral(t));
-    return escaped.join(QString::fromLatin1(kSeparator));
+    return escaped.join(kSeparator);
 }
 
 QVector<Span> find(const QString &haystack, const QString &needle,

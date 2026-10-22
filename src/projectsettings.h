@@ -118,8 +118,9 @@ struct Suggestion {
     std::optional<QStringList> wouldUseRoots;     // ANTS-3369: roots already in effect — declared source_roots when present:true, else whichever of src/ or tests/ actually hold source on the no-override path. Echoed so a caller can confirm the layout even when nothing is suggested.
     QStringList                excluded;          // ANTS-3369: every isNoiseDir match present on disk and skipped, minus dot-dirs (build* + vendored names listed; .git/.ants not). Names only, no descent.
     // ANTS-3588 (INV-19): conventional auxiliary layout keys that EXIST on disk,
-    // proposed ONLY alongside a sourceRoots suggestion (a misplaced/flat layout)
-    // so a single op:init writes the whole block. Each is nullopt when its
+    // so a single op:init writes the whole block. detect() proposes them on
+    // every path except an already-configured project, an empty repo, and a
+    // miss with no subdir to suggest (ANTS-4093). Each is nullopt when its
     // conventional path is absent — NEVER a present-but-empty value.
     std::optional<QStringList> testRoots;         // subset of {tests, test} present as dirs, tests-then-test
     std::optional<QString>     docsDir;           // "docs" if docs/ is a dir
@@ -139,8 +140,8 @@ struct Suggestion {
 // first-party source subdirs (every counted dir except the tests default,
 // sorted count desc / name asc) — not a dominant-cover subset, so a
 // low-count entry-point dir and a spread layout are both covered
-// (ANTS-3369). Suggests subdirs only, never the repo root; source at the
-// repo root is noted in `reason` as an un-suggestable remainder. `reason`
+// (ANTS-3369). Where source sits loose at the repo root, suggests the
+// whole-root walk ["."] instead (ANTS-3390). `reason`
 // is ALWAYS non-empty; `excluded`/`wouldUseRoots` echo what was skipped /
 // already in effect.
 // ANTS-3353 — the aux paths another engine has already RESOLVED, injected.

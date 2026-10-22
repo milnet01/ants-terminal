@@ -3783,27 +3783,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     modeEnum.append("ledger");
                     modeProp["enum"] = modeEnum;
                     modeProp["default"] = "bullets";
-                    // ANTS-4501 — the report's gloss lives HERE and not in the
-                    // wire description, which is byte-capped at 800
-                    // (mcp_tool_detail_field INV-5) and had 52 B less headroom
-                    // than this needs. This property carries no cap.
-                    modeProp["description"] = modeProp["description"].toString()
-                        + QStringLiteral(
-                        " ANTS-4501 — \"report\" returns ONE aggregate over the "
-                        "store and no bullets[]: totals (items / open / "
-                        "in_progress / shipped), by_status, by_kind (chosen "
-                        "kinds; import-defaulted ones count as "
-                        "kind_not_recorded), throughput "
-                        "per day / week / month / year, age_open and "
-                        "time_to_close. `open` is planned + in-progress + "
-                        "considered — an enumeration, NOT status != shipped, "
-                        "because a `dropped` item is not outstanding work. "
-                        "Every bucketed figure ships beside a `coverage` block "
-                        "counting the rows that could not be bucketed, so a "
-                        "figure computed over dated rows can never read as a "
-                        "total — on an unbackfilled store that is most of them. "
-                        "Refuses section / id / ids with bad_mode_combo, and "
-                        "writes nothing.");
                     // ANTS-4501 § 2.4 — the report's own arguments. `scope`
                     // opts into the cross-project view; `since`/`until` replace
                     // the four standard buckets with one half-open window.
@@ -3932,6 +3911,27 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`possibly_resolved_by` flags an item a shipped ✅ "
                         "sibling may already cover; `gate_note`/`blocked` "
                         "surface a body gate/blocker marker.");
+                    // ANTS-4501 — appended after the base text above. The
+                    // report's gloss lives HERE and not in the wire
+                    // description, which is byte-capped at 800
+                    // (mcp_tool_detail_field INV-5). This property has no cap.
+                    modeProp["description"] = modeProp["description"].toString()
+                        + QStringLiteral(
+                        " ANTS-4501 — \"report\" returns ONE aggregate over the "
+                        "store and no bullets[]: totals (items / open / "
+                        "in_progress / shipped), by_status, by_kind (chosen "
+                        "kinds; import-defaulted ones count as "
+                        "kind_not_recorded), throughput "
+                        "per day / week / month / year, age_open and "
+                        "time_to_close. `open` is planned + in-progress + "
+                        "considered — an enumeration, NOT status != shipped, "
+                        "because a `dropped` item is not outstanding work. "
+                        "Every bucketed figure ships beside a `coverage` block "
+                        "counting the rows that could not be bucketed, so a "
+                        "figure computed over dated rows can never read as a "
+                        "total — on an unbackfilled store that is most of them. "
+                        "Refuses section / id / ids with bad_mode_combo, and "
+                        "writes nothing.");
                     props["mode"] = modeProp;
                     // ANTS-1436 — offset/limit pagination args.
                     QJsonObject offsetProp;

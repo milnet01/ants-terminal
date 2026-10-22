@@ -183,12 +183,11 @@ bool validFileUnder(const QString &root, const QString &rel) {
 }
 
 // ANTS-3588 (INV-19) — attach the conventional auxiliary layout keys that EXIST
-// on disk to a suggestion that already recommends a source_roots override, so a
-// single op:init writes the whole layout block. Each field stays nullopt when
-// its conventional path is absent (never a present-but-empty value), so the
-// verb's `if (sug.field)` emission and the op:init applyWrite re-check are safe.
-// Called only where s.sourceRoots is set — the aux keys ride ONLY on a
-// suggestion (a standard layout proposes nothing; INV-1/INV-6 unchanged).
+// on disk, so a single op:init writes the whole layout block. Each field stays
+// nullopt when its conventional path is absent (never a present-but-empty
+// value), so the verb's `if (sug.field)` emission and the op:init applyWrite
+// re-check are safe. Called with a source_roots suggestion and, since ANTS-4093,
+// on the no-override path too.
 void proposeAuxLayout(Suggestion &s, const QString &root,
                       const ResolvedAux &aux) {
     QStringList testDirs;

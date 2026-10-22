@@ -961,11 +961,7 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
         {QStringLiteral("status"), QStringLiteral("--porcelain=v1"),
          QStringLiteral("-z")}, GitWrap::readOnlyEnvironment(), &statusOk);
     if (!statusOk) return s;
-    // Empty status output is valid (a clean tree). Detect "git failed"
-    // separately via the rev-parse already succeeded — if status fails
-    // here, the second QProcess returned empty even on success which is
-    // indistinguishable from "clean tree" — accept that as the snapshot
-    // (the hash of an empty array is deterministic).
+    // Empty output from a successful status is a clean tree.
     s.head      = head;
     s.statusSha = QString::fromUtf8(
         QCryptographicHash::hash(statusRaw, QCryptographicHash::Sha256)

@@ -620,9 +620,9 @@ void AuditDialog::populateChecks() {
     m_checks.append({
         "cmd_injection_dyn", "Dynamic Process Spawn",
         "subprocess shell=True, child_process.exec, os.system", "Security",
-        "grep -rnI" + kGrepExclSec + " --include='*.py' -E "
+        "grep -rnI" + kGrepExcl + " --include='*.py' -E "
         "'(subprocess\\.(call|run|Popen).*shell\\s*=\\s*True|os\\.system)' . 2>/dev/null | head -20;"
-        " grep -rnI" + kGrepExclSec + " --include='*.js' --include='*.ts'"
+        " grep -rnI" + kGrepExcl + " --include='*.js' --include='*.ts'"
         " -E 'child_process\\.exec[^F]' . 2>/dev/null | head -20",
         CheckType::Vulnerability, Severity::Critical,
         { {}, "", {}, 40 },
@@ -680,12 +680,12 @@ void AuditDialog::populateChecks() {
     m_checks.append({
         "unsafe_deser", "Unsafe Deserialization",
         "eval(), pickle.loads, yaml.load without SafeLoader", "Security",
-        "grep -rnI" + kGrepExclSec + " --include='*.py' -E "
+        "grep -rnI" + kGrepExcl + " --include='*.py' -E "
         "'\\b(pickle\\.loads?|yaml\\.load|marshal\\.loads?|eval)\\s*\\(' . 2>/dev/null"
         " | grep -viE '(SafeLoader|safe_load|ast\\.literal_eval)' | head -20;"
-        " grep -rnI" + kGrepExclSec + " --include='*.js' --include='*.ts'"
+        " grep -rnI" + kGrepExcl + " --include='*.js' --include='*.ts'"
         " -E '\\beval\\s*\\(' . 2>/dev/null | head -20;"
-        " grep -rnI" + kGrepExclSec + " --include='*.php' -E '\\b(unserialize|eval)\\s*\\(' . 2>/dev/null | head -20",
+        " grep -rnI" + kGrepExcl + " --include='*.php' -E '\\b(unserialize|eval)\\s*\\(' . 2>/dev/null | head -20",
         CheckType::Vulnerability, Severity::Critical,
         { {}, "", {}, 40 },
         true, true, nullptr

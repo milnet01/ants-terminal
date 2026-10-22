@@ -19,10 +19,10 @@
 namespace AuditDelta {
 
 struct DeltaResult {
-    QJsonArray added;            // current findings whose fp ∉ priorOnChanged
-    QJsonArray removed;          // priorOnChanged findings whose fp ∉ current
-    QJsonArray carriedForward;   // (current ∩ priorOnChanged) ∪ priorOnUntouched
-    QJsonArray merged;           // current ∪ priorOnUntouched — whole-tree
+    QJsonArray added;            // current ∖ prior
+    QJsonArray removed;          // priorOnChanged ∖ current
+    QJsonArray carriedForward;   // (current ∩ prior) ∪ (priorOnUntouched ∖ current)
+    QJsonArray merged;           // current ∪ (priorOnUntouched ∖ current) — whole-tree
     int addedCount = 0;
     int removedCount = 0;
     int carriedForwardCount = 0;

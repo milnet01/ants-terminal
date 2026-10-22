@@ -2638,9 +2638,9 @@ RunResult runAudit(const RunRequest &req) {
             const AuditDelta::DeltaResult d = AuditDelta::computeDelta(
                 currentFindings, prior.findings, sinceLastRunChangedFiles);
             mergedForRecord = d.merged;
-            // carriedForward ∖ current = the priorOnUntouched subset (the
-            // current∩priorOnChanged half is already emitted by the per-tool
-            // SARIF runs, so only the untouched-file findings need tagging).
+            // carriedForward ∖ current = priorOnUntouched ∖ current (the
+            // current ∩ prior half is already emitted by the per-tool SARIF
+            // runs, so only the untouched-file findings need tagging).
             QSet<QString> curFps;
             for (const QJsonValue &v : currentFindings)
                 curFps.insert(v.toObject().value(QStringLiteral("fp")).toString());

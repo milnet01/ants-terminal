@@ -78,20 +78,19 @@ const QString kFindExcl = AuditEngine::findExcludeExpr();
 // grep(1) exclude-dir list (bare, no file-include filter).
 const QString kGrepExcl = AuditEngine::grepExcludeExpr();
 
-// Security scans also skip auditdialog.cpp/.h — its check descriptions
-// contain the very patterns being searched for (unsafe function names,
-// URL schemes, …), which would otherwise produce self-referential hits.
+// Every addGrepCheck() check skips the audit dialog's own sources: the
+// catalogue holds the very patterns being searched for (unsafe function
+// names, URL schemes, …), which would otherwise produce self-referential
+// hits. Raw-command checks that build their own grep line do not get it.
 //
 // GNU grep 3.12 caveat: specifying `--exclude=<file>` BEFORE any
 // `--include=<glob>` flags silently disables the --include filter (grep
 // falls back to scanning every file). `--exclude-dir` doesn't trigger
-// this — only the file-level `--exclude`. To work around it we keep
-// `kGrepExclSec` as exclude-dir-only (safe in any position) and emit the
-// auditdialog.cpp/.h file-excludes via `kGrepFileExclSec`, which callers
-// MUST append *after* any --include flags. See addGrepCheck().
-const QString kGrepExclSec = kGrepExcl;
+// this — only the file-level `--exclude`. So these file-excludes MUST
+// come *after* any --include flags. See addGrepCheck().
 const QString kGrepFileExclSec =
-    " --exclude=auditdialog.cpp --exclude=auditdialog.h";
+    " --exclude=auditdialog.cpp --exclude=auditdialog.h"
+    " --exclude=auditdialog_catalogue.cpp";
 
 // Default set of source file globs
 const QString kGrepIncludeSource =
@@ -100,8 +99,10 @@ const QString kGrepIncludeSource =
     " --include='*.go' --include='*.rs' --include='*.sh'"
     " --include='*.lua' --include='*.java'";
 
-// Noise substrings that almost always indicate a false positive. Applied as a
-// baseline OutputFilter.dropIfContains on security-category checks.
+// Noise substrings that almost always indicate a false positive. addGrepCheck()
+// adds them to every grep check's OutputFilter.dropIfContains, whatever its
+// category (todo_scan included — ANTS-5848). Matching is case-insensitive
+// against the whole grep line, path included.
 const QStringList kCommonNoiseExcludes = {
     "test", "tests", "Test.", "_test.",
     "mock", "Mock",
@@ -385,9 +386,9 @@ void AuditDialog::addGrepCheck(const QString &id, const QString &name,
     // caller-supplied extras, which for e.g. `insecure_http` add *.json /
     // *.xml / *.toml) must precede the --exclude=<file> flags. GNU grep 3.12
     // silently disables --include when a file-level --exclude appears first.
-    // See the kGrepExclSec comment for the regression history.
+    // See the kGrepFileExclSec comment for the regression history.
     const QString cmd =
-        "grep -rnI" + kGrepExclSec + kGrepIncludeSource + extra +
+        "grep -rnI" + kGrepExcl + kGrepIncludeSource + extra +
         kGrepFileExclSec + " -E " + pattern + " . 2>/dev/null";
     AuditCheck c{id, name, desc, category, cmd, type, sev, filter, autoSelect, true, nullptr};
     // Apply the common-noise filter on top of the caller's excludes.
