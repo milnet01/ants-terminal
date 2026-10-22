@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6166 -->
+<!-- ants-roadmap-id-high-water: ANTS=6167 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87569,6 +87569,11 @@ measured Ants adding about 5,250 tokens to every request.
   lane finding in one call. Absent `line` keeps today's reply unchanged.
   Reload: none beyond rebuilding ants-mcpd; clients pick it up on their
   next reconnect.
+  2026-10-22: contract is an amendment to
+  docs/specs/ANTS-5502-quotation-check.md (§ 2.3 hit_displaced, INV-11,
+  INV-12); no spec at this id. Default tolerance 3, measured with
+  tools/quote-displacement-survey.py (98.5% of 477 lane quotations
+  within 3 lines of their cited line).
   **Layman:** Checking a reviewer's quotes can also say when a quote is in the file but not where the reviewer said it was.
   Kind: enhancement.
   Source: claude-config-request-2026-10-16.
@@ -88023,6 +88028,18 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: doc-fix.
   Source: review-contract-2026-10-21 ANTS-4622 blast-radius exit.
   Lanes: mcp-tools.
+
+- 📋 [ANTS-6167] **git_state op:log with grep refuses git_failed past its 5 s budget on this repository, so a search of commit messages falls back to raw git.**
+  Hit 2026-10-22: git_state {op:"log", grep:"Readability fix", n:40}
+  on Ants Terminal refused "git log exceeded 5 s wall budget". The same
+  search through git log --grep returned at once when bounded by
+  --since. A grep over the whole history walks every commit before it
+  can fill n. Fix: bound the walk (a since default, or stop once n match),
+  or say in the refusal which argument narrows it.
+  **Layman:** Searching the project's history for a phrase timed out, so the session had to use a slower, raw tool.
+  Kind: fix.
+  Source: in-session-2026-10-22 (ANTS-5732 design measurement).
+  Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 
