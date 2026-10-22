@@ -186,13 +186,17 @@ TEST(ClaudeStateDotPalette, Main) {
         { fail("INV-8", "ClaudeStatusBarController::apply does not route auditing to Glyph::Auditing"); FAIL(); }
     // ANTS-1146 — both the status applier AND the provider closure
     // moved to claudestatuswidgets.cpp; mainwindow.cpp's
-    // Auditing-glyph references should be zero. The total across the
-    // two source files must still be ≥ 2 (provider lambda + applier
-    // body).
+    // Auditing-glyph references should be zero. ANTS-6126 — the two
+    // share one table, stateFace(), so the mapping is written once and
+    // each surface must read its glyph from it.
     if (count(mwSource, "ClaudeTabIndicator::Glyph::Auditing") != 0)
         { fail("INV-8", "mainwindow.cpp still contains Glyph::Auditing references — should be zero post-extraction"); FAIL(); }
-    if (count(cswSource, "ClaudeTabIndicator::Glyph::Auditing") < 2)
-        { fail("INV-8", "Auditing glyph used fewer than 2x in claudestatuswidgets.cpp (expect provider + status applier)"); FAIL(); }
+    if (count(cswSource, "ClaudeTabIndicator::Glyph::Auditing") != 1)
+        { fail("INV-8", "Glyph::Auditing must be mapped exactly once in claudestatuswidgets.cpp (stateFace)"); FAIL(); }
+    if (!contains(cswSource, "ind.glyph = stateFace(r).glyph"))
+        { fail("INV-8", "the tab-dot provider does not read its glyph from stateFace()"); FAIL(); }
+    if (!contains(cswSource, "const StateFace face = stateFace(r);"))
+        { fail("INV-8", "apply() does not read its glyph from stateFace()"); FAIL(); }
 
     std::puts("OK claude_state_dot_palette: 8/8 invariants");
 }

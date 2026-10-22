@@ -486,6 +486,8 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
     //
     // Order matters within the alternation: `||` and `&&` must come
     // before the bare `|` (otherwise `|` captures half of `||`).
+    // ruleSubsumes() splits on the same operators without the trailing
+    // `\s+`, so the two disagree on a quoted `|`.
     static QRegularExpression opRe(R"(\s*(&&|\|\||;|\|)\s+)");
 
     QStringList segments;
@@ -579,8 +581,8 @@ bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &na
     // user from adding the compound rule Claude Code actually needs and
     // keep re-prompting on every invocation.
     //
-    // generalizeRule() already splits on the same splitter set when
-    // producing compound rules; subsumption must use matching semantics.
+    // generalizeRule() splits on the same operators, but only where
+    // whitespace follows one; the splitter below splits on any (see there).
     static const QRegularExpression bashGlob(R"(^Bash\((.+?)(\s+\*)\)$)");
     auto bm = bashGlob.match(broad);
 
@@ -593,7 +595,9 @@ bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &na
 
         const QString narrowInner = ni.captured(1);
 
-        // Same splitter set as generalizeRule(): &&, ||, ;, |.
+        // generalizeRule()'s operators (&&, ||, ;, |), but unlike its opRe
+        // no whitespace is required after one, so `grep 'a|b'` splits here
+        // and not there.
         static const QRegularExpression splitter(R"(\s*(?:&&|\|\||;|\|)\s*)");
 
         // A compound broadPrefix would need segment-wise matching against

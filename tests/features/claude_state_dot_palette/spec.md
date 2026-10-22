@@ -193,10 +193,11 @@ source-grep cannot verify.
 - INV-8 Status-bar applier handles the auditing branch by routing to
   `Claude::stateColor(Glyph::Auditing)` — source-grep confirms the call
   site sits in the `m_auditing` branch (controller-internal flag,
-  post-ANTS-1146; pre-1146 was `m_claudeAuditing` on MainWindow). Both
-  the applier (in `apply()`) and the provider lambda (in `attach()`)
-  contain `Glyph::Auditing` references — split across the two source
-  files post-extraction.
+  post-ANTS-1146; pre-1146 was `m_claudeAuditing` on MainWindow).
+  ANTS-6126 — the applier (in `apply()`) and the provider lambda (in
+  `attach()`) both read their glyph from one table, `stateFace()`, so
+  `Glyph::Auditing` appears exactly once in `claudestatuswidgets.cpp` and
+  both call sites name `stateFace`.
 - INV-9 (behavioural, ANTS-1847) Contrast guarantee + hue preservation +
   dark-theme passthrough. For every non-None glyph and each light
   `bgSecondary` (`#F5F5F5` Light, `#E6E9EF` Catppuccin-Latte),

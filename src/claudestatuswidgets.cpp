@@ -139,6 +139,88 @@ ModelRecommender::Tier homeTierFromConfig() {
     if (home == QLatin1String("haiku")) return ModelRecommender::Tier::Haiku;
     return ModelRecommender::Tier::Sonnet;
 }
+
+// ANTS-1873 — the one Display → text, tooltip and glyph table. The status
+// bar, the tab dot and the tab tooltip all read it, so they cannot diverge.
+struct StateFace {
+    QString text;
+    QString tip;   // ANTS-5773 — a state's own tooltip, if it has one
+    ClaudeTabIndicator::Glyph glyph = ClaudeTabIndicator::Glyph::None;
+};
+
+StateFace stateFace(const claudestate::Resolved &r) {
+    StateFace f;
+    // Status text vocabulary (user spec 2026-04-18):
+    //   idle / thinking / prompting / bash / reading a file / planning /
+    //   auditing / compacting / etc.
+    switch (claudestate::display(r)) {
+        case claudestate::Display::Hidden:
+            break;
+        case claudestate::Display::AwaitingInput:
+            f.text = QStringLiteral("Claude: prompting");
+            f.glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
+            break;
+        case claudestate::Display::Planning:
+            f.text = QStringLiteral("Claude: planning");
+            f.glyph = ClaudeTabIndicator::Glyph::Planning;
+            break;
+        case claudestate::Display::Auditing:
+            f.text = QStringLiteral("Claude: auditing");
+            f.glyph = ClaudeTabIndicator::Glyph::Auditing;
+            break;
+        case claudestate::Display::Idle:
+            f.text = QStringLiteral("Claude: idle");
+            f.glyph = ClaudeTabIndicator::Glyph::Idle;
+            break;
+        case claudestate::Display::Thinking:
+            f.text = QStringLiteral("Claude: thinking");
+            f.glyph = ClaudeTabIndicator::Glyph::Thinking;
+            break;
+        case claudestate::Display::ToolUseBash:
+            f.text = QStringLiteral("Claude: bash");
+            f.glyph = ClaudeTabIndicator::Glyph::Bash;
+            break;
+        case claudestate::Display::ToolUseGeneric: {
+            // Map tool name → friendly vocabulary per user spec. Unknown
+            // tools fall through to the raw name so MCP / custom tools
+            // remain legible.
+            const QString lower = r.tool.trimmed().toLower();
+            if (lower == QLatin1String("read")) {
+                f.text = QStringLiteral("Claude: reading a file");
+            } else if (lower == QLatin1String("edit") ||
+                       lower == QLatin1String("write") ||
+                       lower == QLatin1String("notebookedit")) {
+                f.text = QStringLiteral("Claude: editing");
+            } else if (lower == QLatin1String("grep") ||
+                       lower == QLatin1String("glob")) {
+                f.text = QStringLiteral("Claude: searching");
+            } else if (lower == QLatin1String("webfetch") ||
+                       lower == QLatin1String("websearch")) {
+                f.text = QStringLiteral("Claude: browsing");
+            } else if (lower == QLatin1String("task") ||
+                       lower == QLatin1String("agent")) {
+                f.text = QStringLiteral("Claude: delegating");
+            } else if (lower.isEmpty()) {
+                f.text = QStringLiteral("Claude: thinking");
+            } else {
+                f.text = QStringLiteral("Claude: %1").arg(r.tool.trimmed());
+            }
+            f.glyph = ClaudeTabIndicator::Glyph::ToolUse;
+            break;
+        }
+        case claudestate::Display::Compacting:
+            f.text = QStringLiteral("Claude: compacting");
+            f.glyph = ClaudeTabIndicator::Glyph::Compacting;
+            break;
+        case claudestate::Display::Background:
+            f.text = claudestate::backgroundLabel(r);
+            f.tip = claudestate::backgroundTooltip(r);
+            f.glyph = ClaudeTabIndicator::Glyph::Background;
+            break;
+    }
+    return f;
+}
+
 }  // namespace
 
 ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
@@ -412,28 +494,7 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
             // toLower() lookup at apply().
             const claudestate::Resolved r =
                 claudestate::fromShell(m_tracker->shellState(pid));
-            switch (claudestate::display(r)) {
-                case claudestate::Display::Hidden:
-                    ind.glyph = ClaudeTabIndicator::Glyph::None; break;
-                case claudestate::Display::AwaitingInput:
-                    ind.glyph = ClaudeTabIndicator::Glyph::AwaitingInput; break;
-                case claudestate::Display::Planning:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Planning; break;
-                case claudestate::Display::Auditing:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Auditing; break;
-                case claudestate::Display::Idle:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Idle; break;
-                case claudestate::Display::Thinking:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Thinking; break;
-                case claudestate::Display::ToolUseBash:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Bash; break;
-                case claudestate::Display::ToolUseGeneric:
-                    ind.glyph = ClaudeTabIndicator::Glyph::ToolUse; break;
-                case claudestate::Display::Compacting:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Compacting; break;
-                case claudestate::Display::Background:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Background; break;
-            }
+            ind.glyph = stateFace(r).glyph;
             return ind;
         });
     }
@@ -453,32 +514,9 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
                 auto *term = m_terminalAtTabProvider
                     ? m_terminalAtTabProvider(i) : nullptr;
                 if (!term || term->shellPid() != shellPid) continue;
-                const auto st = m_tracker->shellState(shellPid);
-                QString tip;
-                if (st.awaitingInput) {
-                    tip = tr("Claude: awaiting input");
-                } else if (st.planMode && st.state != ClaudeState::NotRunning) {
-                    tip = tr("Claude: planning");
-                } else if (st.auditing && st.state != ClaudeState::NotRunning) {
-                    tip = tr("Claude: auditing");
-                } else switch (st.state) {
-                    case ClaudeState::NotRunning: tip.clear(); break;
-                    case ClaudeState::Idle: {
-                        // ANTS-5773 — the dot is pink while work is pending.
-                        const claudestate::Resolved r = claudestate::fromShell(st);
-                        tip = r.backgroundPending > 0
-                            ? claudestate::backgroundTooltip(r)
-                            : tr("Claude: idle");
-                        break;
-                    }
-                    case ClaudeState::Thinking:   tip = tr("Claude: thinking…"); break;
-                    case ClaudeState::Compacting: tip = tr("Claude: compacting…"); break;
-                    case ClaudeState::ToolUse:
-                        tip = st.tool.isEmpty()
-                            ? tr("Claude: tool use")
-                            : tr("Claude: %1").arg(st.tool);
-                        break;
-                }
+                const StateFace face =
+                    stateFace(claudestate::fromShell(m_tracker->shellState(shellPid)));
+                const QString tip = face.tip.isEmpty() ? face.text : face.tip;
                 m_tabWidget->setTabToolTip(i, tip);
                 break;
             }
@@ -1380,78 +1418,10 @@ void ClaudeStatusBarController::apply() {
         return;
     }
 
-    QString text;
-    QString tip;   // ANTS-5773 — a state's own tooltip, if it has one
-    ClaudeTabIndicator::Glyph glyph = ClaudeTabIndicator::Glyph::Idle;
-
-    // Status text vocabulary (user spec 2026-04-18):
-    //   idle / thinking / prompting / bash / reading a file / planning /
-    //   auditing / compacting / etc.
-    switch (d) {
-        case claudestate::Display::Hidden:
-            return;  // handled above
-        case claudestate::Display::AwaitingInput:
-            text = QStringLiteral("Claude: prompting");
-            glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
-            break;
-        case claudestate::Display::Planning:
-            text = QStringLiteral("Claude: planning");
-            glyph = ClaudeTabIndicator::Glyph::Planning;
-            break;
-        case claudestate::Display::Auditing:
-            text = QStringLiteral("Claude: auditing");
-            glyph = ClaudeTabIndicator::Glyph::Auditing;
-            break;
-        case claudestate::Display::Idle:
-            text = QStringLiteral("Claude: idle");
-            glyph = ClaudeTabIndicator::Glyph::Idle;
-            break;
-        case claudestate::Display::Thinking:
-            text = QStringLiteral("Claude: thinking");
-            glyph = ClaudeTabIndicator::Glyph::Thinking;
-            break;
-        case claudestate::Display::ToolUseBash:
-            text = QStringLiteral("Claude: bash");
-            glyph = ClaudeTabIndicator::Glyph::Bash;
-            break;
-        case claudestate::Display::ToolUseGeneric: {
-            // Map tool name → friendly vocabulary per user spec. Unknown
-            // tools fall through to the raw name so MCP / custom tools
-            // remain legible.
-            const QString lower = r.tool.trimmed().toLower();
-            if (lower == QLatin1String("read")) {
-                text = QStringLiteral("Claude: reading a file");
-            } else if (lower == QLatin1String("edit") ||
-                       lower == QLatin1String("write") ||
-                       lower == QLatin1String("notebookedit")) {
-                text = QStringLiteral("Claude: editing");
-            } else if (lower == QLatin1String("grep") ||
-                       lower == QLatin1String("glob")) {
-                text = QStringLiteral("Claude: searching");
-            } else if (lower == QLatin1String("webfetch") ||
-                       lower == QLatin1String("websearch")) {
-                text = QStringLiteral("Claude: browsing");
-            } else if (lower == QLatin1String("task") ||
-                       lower == QLatin1String("agent")) {
-                text = QStringLiteral("Claude: delegating");
-            } else if (lower.isEmpty()) {
-                text = QStringLiteral("Claude: thinking");
-            } else {
-                text = QStringLiteral("Claude: %1").arg(r.tool.trimmed());
-            }
-            glyph = ClaudeTabIndicator::Glyph::ToolUse;
-            break;
-        }
-        case claudestate::Display::Compacting:
-            text = QStringLiteral("Claude: compacting");
-            glyph = ClaudeTabIndicator::Glyph::Compacting;
-            break;
-        case claudestate::Display::Background:
-            text = claudestate::backgroundLabel(r);
-            tip = claudestate::backgroundTooltip(r);
-            glyph = ClaudeTabIndicator::Glyph::Background;
-            break;
-    }
+    const StateFace face = stateFace(r);
+    const QString &text = face.text;
+    QString tip = face.tip;
+    const ClaudeTabIndicator::Glyph glyph = face.glyph;
 
     // ANTS-1847 — same contrast adaptation as the tab dot, against the
     // status bar's own background (theme.bgSecondary — the surface the

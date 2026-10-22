@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6161 -->
+<!-- ants-roadmap-id-high-water: ANTS=6162 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94920,6 +94920,15 @@ worked after these.
   (ids L17-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: both HIGH done. (1) stateFace() in claudestatuswidgets.cpp
+  is the one Display → text, tooltip and glyph table; the status bar,
+  the tab dot and the tab tooltip all read it. The tooltip now follows
+  ANTS-5718 (AskUserQuestion/ExitPlanMode read as prompting) and the
+  status bar's wording. ClaudeStateDotPalette INV-8 retargeted to it
+  (spec.md updated). (2) the allowlist splitters: both comments now
+  state the real difference (ruleSubsumes needs no space after an
+  operator, generalizeRule's opRe does). Possible bug filed as
+  ANTS-6162. Medium and low still open.
   **Layman:** Tidy the Claude status bar and task list so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98964,6 +98973,17 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   **Layman:** A test that runs a real shell with short pauses sometimes runs out of time when the machine is busy.
   Kind: test.
   Source: ctest-run-2026-10-22.
+
+- 📋 [ANTS-6162] **ruleSubsumes may call `Bash(P|P x)` covered by `Bash(P *)` because its splitter needs no space after `|`.**
+  Found 2026-10-22 while fixing L17-F2 (ANTS-6126). ruleSubsumes()
+  (src/claudeallowlist.cpp) splits the narrow rule on `\s*(?:&&|\|\||;|\|)\s*`
+  and requires every piece to equal the prefix or start with it plus a space.
+  Unsplit, `P|P x` fails that test; split, both pieces pass. Not run yet:
+  check whether Claude Code itself treats `P|P x` as allowed by `Bash(P *)`,
+  then decide whether the splitter should match generalizeRule()'s opRe.
+  **Layman:** The allow-list dialog may tell you a rule is already covered when it is not, for commands joined by a bare pipe.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
