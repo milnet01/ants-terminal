@@ -34,6 +34,11 @@
 
 namespace AuditRunner {
 
+// Every tool audit_run can run, and the subset it runs when `tools` is empty
+// (all but mypy, ANTS-3418). The audit_run schema text is built from these.
+const QStringList &kKnownTools();
+const QStringList &kAutoDetectTools();
+
 // ── ANTS-1351-INV-1 / ANTS-3585 — aggregate wall-clock ceiling for one
 // runAudit() call. Raised from 240'000 so a per-tool cap up to
 // kCapPerToolMax (300 s) is not immediately re-clamped by the aggregate

@@ -285,6 +285,8 @@ const QStringList &kEnvBlocklist() {
     return v;
 }
 
+}  // namespace
+
 const QStringList &kKnownTools() {
     static const QStringList v = {
         QStringLiteral("cppcheck"),
@@ -317,6 +319,8 @@ const QStringList &kAutoDetectTools() {
     }();
     return v;
 }
+
+namespace {
 
 // ANTS-1512 — tools that honour the `checks` filter. Other tools that
 // receive `checks` refuse with `bad_args` rather than silently ignore

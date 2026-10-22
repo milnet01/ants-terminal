@@ -2,6 +2,7 @@
 #include "guithread.h"
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 
+#include "auditrunner.h"   // audit_run schema: the tool lists
 #include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "configpaths.h"
 #include "debuglog.h"
@@ -11206,9 +11207,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 {
                     QJsonObject t;
                     t["name"] = "audit_run";
+                    // The tool names come from AuditRunner's own lists, so
+                    // this text cannot drift from what the runner runs.
+                    const QStringList &known = AuditRunner::kKnownTools();
                     t["description"] = QStringLiteral(
-                        "Run the project's external audit tools (cppcheck, clazy, ruff, "
-                        "bandit, semgrep, gitleaks, trivy, shellcheck, mypy) "
+                        "Run the project's external audit tools (")
+                        + known.join(QStringLiteral(", ")) + QStringLiteral(") "
                         "server-side and return a structured envelope + SARIF path. "
                         "Args: tools (auto-detect when empty), scope (auto / files / "
                         "since-tag:X / branch-diff / full), cap_per_tool_seconds "
@@ -11218,9 +11222,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "audit_poll; a long sync run can outlive the transport, then "
                         "read last_audit_summary. caller_cwd Required.");
                     t["detail"] = QStringLiteral(
-                        "Run the project's external audit tools "
-                        "(cppcheck/clazy/ruff/bandit/semgrep/gitleaks/"
-                        "trivy/shellcheck/mypy) server-side and return "
+                        "Run the project's external audit tools (")
+                        + known.join(QLatin1Char('/')) + QStringLiteral(") "
+                        "server-side and return "
                         "a structured envelope + SARIF path instead of "
                         "shipping each tool's raw output through parent "
                         "context. v1 ships infrastructure: tools run "
@@ -11297,30 +11301,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     schema["type"] = "object";
                     QJsonObject toolsProp;
                     toolsProp["type"] = "array";
-                    // ANTS-3622 — this string used to claim auto-detect
-                    // excluded clang-tidy as well as mypy. It never did:
-                    // kAutoDetectTools() removes only mypy, so a default
-                    // sweep is 9 tools including clang-tidy. Fixed here
-                    // rather than in the code because spec (ANTS-1351
-                    // §2.1) and code already agreed at 9 — this string was
-                    // the lone outlier, and dropping clang-tidy to match
-                    // it would have silently changed what every default
-                    // sweep covers. The stale clang-tidy rationale is gone
-                    // too: ANTS-2182 gave it automatic compile-DB
-                    // resolution, so it no longer needs a hand-passed
-                    // `-p build/`.
-                    toolsProp["description"] = QStringLiteral(
-                        "Subset of {cppcheck, clazy, clang-tidy, ruff, "
-                        "bandit, semgrep, gitleaks, trivy, shellcheck, "
-                        "mypy} (10 known). Empty / omitted = auto-detect "
-                        "every runnable tool EXCEPT mypy — 9 tools, "
+                    // ANTS-3622 — auto-detect drops only mypy, so a
+                    // default sweep includes clang-tidy.
+                    toolsProp["description"] = QStringLiteral("Subset of {")
+                        + known.join(QStringLiteral(", "))
+                        + QStringLiteral("} (%1 known). Empty / omitted = auto-detect "
+                        "every runnable tool EXCEPT mypy — %2 tools, "
                         "clang-tidy included. mypy runs deps-less here so "
                         "a full-sweep mypy is import-not-found noise — CI "
                         "/ pre-commit run the real deps-installed mypy "
                         "(ANTS-3418); request it explicitly to run it. "
                         "clang-tidy resolves its compile DB automatically "
                         "(ANTS-2182); pair it with `paths` + `checks` for "
-                        "a scoped sweep (ANTS-1512).");
+                        "a scoped sweep (ANTS-1512).")
+                        .arg(known.size()).arg(AuditRunner::kAutoDetectTools().size());
                     QJsonObject scopeProp;
                     scopeProp["type"] = "string";
                     scopeProp["description"] = QStringLiteral(

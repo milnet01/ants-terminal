@@ -94902,6 +94902,12 @@ worked after these.
   (ids L16-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-22: HIGH done. audit_run's description, detail and `tools`
+  description now build the tool names (and the 10/9 counts) from
+  AuditRunner::kKnownTools() and kAutoDetectTools(), which moved out of
+  auditrunner.cpp's anonymous namespace into auditrunner.h. The
+  description and detail now name clang-tidy. Reaches clients after an
+  ants-mcpd rebuild and /mcp. Medium and low still open.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
