@@ -95194,6 +95194,14 @@ contributors don't duplicate research.
   only supporters receive them. Self-reported, offline, and covering both
   GitHub Sponsors and Patreon. The verified check (sign in and ask the
   sites) is ANTS-5240, filed as its own later item.
+  Design reference (user, 2026-10-22): Thunderbird's donation prompt. A
+  small card docked in the bottom-left corner of the main window, over
+  the folder pane, not a separate dialog. Heart icon and bold title
+  ("Support Thunderbird"), a short mission paragraph, a mascot picture,
+  one "Donate" button, and a close (x) in the top corner. It does not
+  block or cover the main work area. This differs from the 2026-09-19
+  decision (pop-up dialog, not in-window); which presentation to build
+  is open, for the user to decide before building.
   **Layman:** Every so often, Ants Terminal politely mentions that you can support it, and it is easy to wave away or turn off.
   Kind: feature.
   Source: user-request-2026-09-19.
