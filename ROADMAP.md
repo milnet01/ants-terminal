@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6049 -->
+<!-- ants-roadmap-id-high-water: ANTS=6109 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94617,6 +94617,9 @@ asked for them to ship in 0.8.0.
   tests/features/roadmap_backfill_dates/spec.md (absent);
   src/terminalgrid.{h,cpp} cite ink/build/ink.js (another project's
   file: say so in the comment). Re-run comment_claims to list them.
+  Widened 2026-10-22: the tools/ readability review found the same class
+  outside src/ (tools/safe-build.sh's header cites ANTS-1217). Sweep
+  tools/, hooks/, cmake/ and packaging/ comments as well.
   **Layman:** Some code comments point at work items or files that do not exist, so a reader following them hits a dead end.
   Kind: doc-fix.
   Source: in-session-2026-10-20 (first comment_claims run over src/).
@@ -97447,10 +97450,795 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   the budget breaks near 3,900 items. ANTS-3793 § 4 says the remedy is
   read-path work, not a relaxed budget; the batched readItems() already
   landed, so the next cost is in what remains of the read.
+  User, 2026-10-22: finbreak (a Python project) has made performance
+  improvements to its own database; check whether any carry over here
+  before designing the fix. A performance review of the terminal waits
+  until after the weekly limit resets, no earlier than Thursday
+  2026-10-29.
   **Layman:** Reading this project's roadmap is getting slow as it grows, and it will soon miss its speed target.
   Kind: perf.
   Source: ANTS-6048-measurement-2026-10-22.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-6050] **tools/local-ci.sh:369: ASan job runs in the foreground under a TERM/INT trap; the marker waits for python, and HUP is not trapped.**
+  Lead 1 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/local-ci.sh:369
+  ASan job runs in the foreground under a TERM/INT trap; the marker waits for python, and HUP is not trapped.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6051] **tools/local-ci.sh:434-441: unreachable "push blocked" branch (L01-F2).**
+  Lead 2 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/local-ci.sh:434-441
+  unreachable "push blocked" branch (L01-F2).
+  Premise check: ✓ see L01-F2
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6052] **tools/ci-parity.sh:72: --qt62-clean with --asan/--lints but no --qt62/--ubuntu24 exits 0 after cleaning; requested jobs never run.**
+  Lead 3 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/ci-parity.sh:72
+  `--qt62-clean` with `--asan`/`--lints` but no `--qt62`/`--ubuntu24` exits 0 after cleaning; requested jobs never run.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6053] **tools/ci-prune-caches.sh:44: the first failed delete exits the script (warn does exit 0), so later stale caches stay.**
+  Lead 4 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/ci-prune-caches.sh:44
+  the first failed delete exits the script (`warn` does `exit 0`), so later stale caches stay.
+  Premise check: ✓ ci-prune-caches.sh:22-27, :44
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6054] **tools/asan-nightly.sh:23: ANTS_ASAN_DIR other than build-asan desyncs the lock from local-ci.sh's hard-coded path.**
+  Lead 5 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/asan-nightly.sh:23
+  `ANTS_ASAN_DIR` other than `build-asan` desyncs the lock from local-ci.sh's hard-coded path.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6055] **tools/check-shipped-coverage.sh:47: trailing --since with no value loops forever (no set -e; failed shift 2).**
+  Lead 6 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/check-shipped-coverage.sh:47
+  trailing `--since` with no value loops forever (no `set -e`; failed `shift 2`).
+  Premise check: ✓ `set -uo pipefail` at :36; `shift 2` at :47
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6056] **tools/perf-report.sh:48-52: trailing value-taking flag dies on unbound $2 under set -u, likely exit 1 ("regression") instead of 2 ("setup").**
+  Lead 7 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/perf-report.sh:48-52
+  trailing value-taking flag dies on unbound `$2` under `set -u`, likely exit 1 ("regression") instead of 2 ("setup").
+  Premise check: ✓ `set -uo pipefail` at :31
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6057] **tools/perf-report.sh:209-220: --json runs no comparison, so a regression exits 0 despite the header's exit-1 promise; skipped benchmarks absent from JSON.**
+  Lead 8 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/perf-report.sh:209-220
+  `--json` runs no comparison, so a regression exits 0 despite the header's exit-1 promise; skipped benchmarks absent from JSON.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6058] **tools/check-dependency-pins.py:189: an unparseable ledger "Latest tested" makes newer() return None and the pin passes silently.**
+  Lead 9 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/check-dependency-pins.py:189
+  an unparseable ledger "Latest tested" makes `newer()` return None and the pin passes silently.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6059] **tools/check-shipped-coverage.sh:113-114: for (ANTS-1, ANTS-2) only the first id's headline is compared.**
+  Lead 10 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/check-shipped-coverage.sh:113-114
+  for `(ANTS-1, ANTS-2)` only the first id's headline is compared.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6060] **tools/check-standards-index.sh:34: match on bare file name lets one index entry satisfy languages/python.md and a top-level python.md.**
+  Lead 11 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/check-standards-index.sh:34
+  match on bare file name lets one index entry satisfy `languages/python.md` and a top-level `python.md`; `README.md` skipped at every depth.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6061] **tools/sign-update-manifest.sh:24-31: early die exits leave a previous run's .manifest/.sig behind.**
+  Lead 12 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/sign-update-manifest.sh:24-31
+  early `die` exits leave a previous run's `.manifest`/`.sig` behind.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6062] **tools/check-standard-mirrors.sh:98-101: --write counts a file as checked even if the write or mv failed.**
+  Lead 13 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/check-standard-mirrors.sh:98-101
+  `--write` counts a file as checked even if the write or `mv` failed.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6063] **tools/roadmap-slug-oracle.py:28: unicodedata.category() raises TypeError when ch.lower() yields two characters (e.g.**
+  Lead 14 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-slug-oracle.py:28
+  `unicodedata.category()` raises TypeError when `ch.lower()` yields two characters (e.g. `İ`).
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6064] **tools/roadmap-import-verify.py:39: Kind: capture runs to end of line, so Kind: fix.**
+  Lead 15 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-import-verify.py:39
+  `Kind:` capture runs to end of line, so `Kind: fix. Source: x` never matches; C++ `rxKind` stops at the period.
+  Premise check: ✓ src/roadmapparse.cpp:323-326
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6065] **tools/roadmap-import-verify.py:38: bullets whose id starts with a digit are never checked: a silent pass.**
+  Lead 16 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-import-verify.py:38
+  bullets whose id starts with a digit are never checked: a silent pass.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6066] **tools/roadmap-archive-survey.py:65: headings inside fenced code count as sections and collisions.**
+  Lead 17 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-archive-survey.py:65
+  headings inside fenced code count as sections and collisions.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6067] **tools/roadmap-store-backup.sh:46: no command -v flock check, so a missing flock reads as "another backup is still running".**
+  Lead 18 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-store-backup.sh:46
+  no `command -v flock` check, so a missing flock reads as "another backup is still running".
+  Premise check: ✓ store-backup.sh:37-46 has no flock check
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6068] **tools/roadmap-conformance.py:98 and tools/roadmap-import-verify.py:61: every docs/roadmap/*.md is treated as an archive (e.g. a README).**
+  Lead 19 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-conformance.py:98 and tools/roadmap-import-verify.py:61
+  every `docs/roadmap/*.md` is treated as an archive (e.g. a README).
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6069] **tools/roadmap-roundtrip-diff.py:32 (and import-verify:88, trailer-truncation-survey:36): Python store defaults ignore XDG_DATA_HOME, so with it set they read a different store.**
+  Lead 20 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-roundtrip-diff.py:32 (and import-verify:88, trailer-truncation-survey:36)
+  Python store defaults ignore `XDG_DATA_HOME`, so with it set they read a different store.
+  Premise check: ✓ see L03-F5
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6070] **tools/roadmap-backup-lib.sh:44: snapshot runs into different DEST folders share one $file.tmp under different locks; pre-lock failures are unserialised.**
+  Lead 21 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/roadmap-backup-lib.sh:44
+  snapshot runs into different DEST folders share one `$file.tmp` under different locks; pre-lock failures are unserialised.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-roadmap.
+
+- 📋 [ANTS-6071] **tools/migrate_expect_helper.py:219-226: Pattern A tail variant deletes whatever (?P<tail>.*?) captured.**
+  Lead 22 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/migrate_expect_helper.py:219-226
+  Pattern A tail variant deletes whatever `(?P<tail>.*?)` captured.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6072] **tools/migrate_expect_helper.py:198-199: multi-TEST Pattern B files get a reset only in the first TEST.**
+  Lead 23 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/migrate_expect_helper.py:198-199
+  multi-TEST Pattern B files get a reset only in the first TEST.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6073] **tools/migrate_expect_helper.py:96-111: brace walk ignores string/char literals and comments.**
+  Lead 24 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/migrate_expect_helper.py:96-111
+  brace walk ignores string/char literals and comments.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6074] **tools/rc-namespace-scan.py:107-114: a C++14 digit separator (1'000) opens a char literal and can hide braces.**
+  Lead 25 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/rc-namespace-scan.py:107-114
+  a C++14 digit separator (`1'000`) opens a char literal and can hide braces.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6075] **tools/spec-header-survey.py:207: block_bytes counts characters, printed as bytes.**
+  Lead 26 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/spec-header-survey.py:207
+  `block_bytes` counts characters, printed as bytes.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6076] **tools/spec-header-survey.py:36,51,166: a fence closes on any fence of the same character regardless of length; parity with docsindex.cpp unchecked.**
+  Lead 27 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/spec-header-survey.py:36,51,166
+  a fence closes on any fence of the same character regardless of length; parity with `docsindex.cpp` unchecked.
+  Premise check: unchecked
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6077] **tools/split-motion-check.py:925-928: mainwindow class text omits the registry tail; windows anchored there evaluate MISSING at both revisions and count as unchanged.**
+  Lead 28 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/split-motion-check.py:925-928
+  `mainwindow` class text omits the registry tail; windows anchored there evaluate MISSING at both revisions and count as unchanged.
+  Premise check: ✓ see L05-F1
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6078] **tools/split-motion-check.py:1018: only before.used is consulted; a ?: taking another branch after the commit hides an edit.**
+  Lead 29 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/split-motion-check.py:1018
+  only `before.used` is consulted; a `?:` taking another branch after the commit hides an edit.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6079] **tools/split-motion-check.py:1017: an edit that only inserts lines inside a multi-line call does not count as editing it.**
+  Lead 30 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/split-motion-check.py:1017
+  an edit that only inserts lines inside a multi-line call does not count as editing it.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6080] **tools/split-motion-check.py:1032-1033: matching() returning -1 prints an empty site.**
+  Lead 31 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/split-motion-check.py:1032-1033
+  `matching()` returning -1 prints an empty site.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6081] **tools/split-motion-check.py:613: int(x)-style functional casts fall to the call branch and come back Unknown.**
+  Lead 32 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/split-motion-check.py:613
+  `int(x)`-style functional casts fall to the call branch and come back Unknown.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6082] **tools/token-bench/project/tally/money.py:19: "12.3" parses as 12.03; most likely the planted bug, do not fix.**
+  Lead 33 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/token-bench/project/tally/money.py:19
+  `"12.3"` parses as 12.03; most likely the planted bug, do not fix.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-token-bench.
+
+- 📋 [ANTS-6083] **tools/token-bench/project/tally/csvio.py:30-33: a duplicate participant in a weighted row silently overwrites its weight.**
+  Lead 34 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/token-bench/project/tally/csvio.py:30-33
+  a duplicate participant in a weighted row silently overwrites its weight.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-token-bench.
+
+- 📋 [ANTS-6084] **tools/token-bench/project/tally/report.py:12: default=4 applies only with no people; short names misalign the header.**
+  Lead 35 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/token-bench/project/tally/report.py:12
+  `default=4` applies only with no people; short names misalign the header.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-token-bench.
+
+- 📋 [ANTS-6085] **tools/token-bench/bench.py:222: exit column holds int or the string "timeout".**
+  Lead 36 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/token-bench/bench.py:222
+  `exit` column holds int or the string `"timeout"`.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-token-bench.
+
+- 📋 [ANTS-6086] **tools/token-bench/bench.py:254: a run with no price prints $None.**
+  Lead 37 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/token-bench/bench.py:254
+  a run with no price prints `$None`.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-token-bench.
+
+- 📋 [ANTS-6087] **tools/e2e/cases.sh:162: theme lane rewrites the profile config without ui.welcome_shown; whether reload re-checks it is unchecked.**
+  Lead 38 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/e2e/cases.sh:162
+  theme lane rewrites the profile config without `ui.welcome_shown`; whether reload re-checks it is unchecked.
+  Premise check: ✓ config text (run.sh:50 vs cases.sh:162); reload behaviour unchecked
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the end-to-end test scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6088] **tools/e2e/smoke.sh:20-22: case 1's needle appears in the typed command, so it passes without the command running (ANTS-5013 class).**
+  Lead 39 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/e2e/smoke.sh:20-22
+  case 1's needle appears in the typed command, so it passes without the command running (ANTS-5013 class).
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the end-to-end test scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6089] **tools/e2e/smoke.sh:85: launch_e2e noart has no failure handling.**
+  Lead 40 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/e2e/smoke.sh:85
+  `launch_e2e noart` has no failure handling.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the end-to-end test scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6090] **tools/e2e/run.sh:53-67: launching one tag twice loses the first PID, so teardown never kills it.**
+  Lead 41 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/e2e/run.sh:53-67
+  launching one tag twice loses the first PID, so teardown never kills it.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the end-to-end test scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6091] **tools/measure/doc_symbols_locator_harness.cpp:26,34: argv read without checking argc.**
+  Lead 42 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/measure/doc_symbols_locator_harness.cpp:26,34
+  `argv` read without checking `argc`; `open()` results ignored.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the measuring scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6092] **tools/measure/doc_symbols_locator_sample.py:29: IndexError when a locator points past end of file.**
+  Lead 43 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/measure/doc_symbols_locator_sample.py:29
+  IndexError when a locator points past end of file.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the measuring scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools-e2e-measure.
+
+- 📋 [ANTS-6093] **hooks/_common.sh:286-288: drift reporting fires in any .ants-project folder with a hooks/ directory.**
+  Lead 44 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: hooks/_common.sh:286-288
+  drift reporting fires in any `.ants-project` folder with a `hooks/` directory.
+  Premise check: ✓ see L08-F3
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: hooks.
+
+- 📋 [ANTS-6094] **tools/install-hooks.sh:146-159,117: a change only to hook_entries is never installed.**
+  Lead 45 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/install-hooks.sh:146-159,117
+  a change only to `hook_entries` is never installed.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6095] **tools/grep-vs-index.sh:29-36: counts cat/head/tail read nudges as source searches.**
+  Lead 46 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/grep-vs-index.sh:29-36
+  counts cat/head/tail read nudges as source searches.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6096] **hooks/ants-bash-veto.sh:83: *"grep"*"-v"*"ROADMAP.md"* treats grep -v TODO ROADMAP.md (a real read) and -rv-style flags as exclusions.**
+  Lead 47 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: hooks/ants-bash-veto.sh:83
+  `*"grep"*"-v"*"ROADMAP.md"*` treats `grep -v TODO ROADMAP.md` (a real read) and `-rv`-style flags as exclusions.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: hooks.
+
+- 📋 [ANTS-6097] **hooks/ants-session-preamble.sh:32 vs hooks/ants-precompact-snapshot.sh:27-28: preamble strips a bad session id while precompact rejects it, so one id can name different snapshot files.**
+  Lead 48 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: hooks/ants-session-preamble.sh:32 vs hooks/ants-precompact-snapshot.sh:27-28
+  preamble strips a bad session id while precompact rejects it, so one id can name different snapshot files.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: hooks.
+
+- 📋 [ANTS-6098] **tools/install-hooks.sh:187: uninstall overwrites settings even when the backup failed.**
+  Lead 49 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: tools/install-hooks.sh:187
+  uninstall overwrites settings even when the backup failed.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: tools.
+
+- 📋 [ANTS-6099] **cmake/QtVersionGuard.cmake:67 with CMakeLists.txt:178: expected version is ${Qt6_VERSION} from each configure, so a reconfigure after a Qt upgrade may reset it and pass stale objects.**
+  Lead 50 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: cmake/QtVersionGuard.cmake:67 with CMakeLists.txt:178
+  expected version is `${Qt6_VERSION}` from each configure, so a reconfigure after a Qt upgrade may reset it and pass stale objects.
+  Premise check: ✓ in part: CMakeLists.txt:178 passes `-DEXPECTED_QT_VERSION=${Qt6_VERSION}`; whether it is cached is unchecked
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the build configuration, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: cmake.
+
+- 📋 [ANTS-6100] **packaging/obs/obs-submit.sh:140-142: echo prints %% literally, so the advice says to quadruple %.**
+  Lead 51 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/obs/obs-submit.sh:140-142
+  `echo` prints `%%` literally, so the advice says to quadruple `%`.
+  Premise check: ✓ obs-submit.sh:142
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6101] **packaging/release.sh:162-170 vs :256: a prose-only [Unreleased] is merged though unreleased_has_content ignores prose; a re-run can leave two Theme lines.**
+  Lead 52 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/release.sh:162-170 vs :256
+  a prose-only `[Unreleased]` is merged though `unreleased_has_content` ignores prose; a re-run can leave two Theme lines.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6102] **packaging/release.sh:45 vs :669: a failed tag push on resume exits 1, which the header defines as "aborted before the tag".**
+  Lead 53 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/release.sh:45 vs :669
+  a failed tag push on resume exits 1, which the header defines as "aborted before the tag".
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6103] **packaging/obs/obs-submit.sh:213-216: the "no <revision>" refusal also fires on --staging.**
+  Lead 54 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/obs/obs-submit.sh:213-216
+  the "no `<revision>`" refusal also fires on `--staging`.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6104] **packaging/debian/rules:21 and packaging/archlinux/PKGBUILD:65: the full suite runs without offscreen display, UTF-8 locale or -LE perf.**
+  Lead 55 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/debian/rules:21 and packaging/archlinux/PKGBUILD:65
+  the full suite runs without offscreen display, UTF-8 locale or `-LE perf`.
+  Premise check: ✓ see L11-F1
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6105] **packaging/debian/control:5 and packaging/archlinux/PKGBUILD:40: no GTest or git build-dependency (spec says GTest then downloads, and 13 tests fail without git).**
+  Lead 56 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/debian/control:5 and packaging/archlinux/PKGBUILD:40
+  no GTest or git build-dependency (spec says GTest then downloads, and 13 tests fail without git).
+  Premise check: n/a; spec claims unchecked
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6106] **packaging/debian/control:33: no runtime dependency on the Qt SQLite driver; whether qt6-base pulls it in is unverified.**
+  Lead 57 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/debian/control:33
+  no runtime dependency on the Qt SQLite driver; whether `qt6-base` pulls it in is unverified.
+  Premise check: unchecked
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6107] **packaging/shell-integration/ants-osc133.zsh:96: zsh sends B after Enter, bash at prompt end, so the terminal may record the command differently.**
+  Lead 58 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/shell-integration/ants-osc133.zsh:96
+  zsh sends B after Enter, bash at prompt end, so the terminal may record the command differently.
+  Premise check: unchecked against terminalgrid.cpp
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6108] **packaging/cc-job/cc-job:124: tail marks a log read after showing only the last N lines.**
+  Lead 59 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/cc-job/cc-job:124
+  `tail` marks a log read after showing only the last N lines; `clean` then deletes unseen output.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
+
+- 📋 [ANTS-6109] **packaging/flatpak/make-flathub-manifest.sh:94: replacement block indentation fixed at 6 spaces while the match accepts any.**
+  Lead 60 from the readability review of tools/, hooks/, cmake/ and
+  packaging/ (2026-10-22).
+  Location: packaging/flatpak/make-flathub-manifest.sh:94
+  replacement block indentation fixed at 6 spaces while the match accepts any.
+  Premise check: n/a
+  A possible bug, not a confirmed one. Investigate after the
+  readability fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
+  Kind: investigate.
+  Source: review-readability-2026-10-22-tools.
+  Lanes: packaging.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
