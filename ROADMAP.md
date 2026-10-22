@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6162 -->
+<!-- ants-roadmap-id-high-water: ANTS=6163 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98994,6 +98994,26 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   **Layman:** The allow-list dialog may tell you a rule is already covered when it is not, for commands joined by a bare pipe.
   Kind: investigate.
   Source: review-readability-2026-10-22.
+
+- 📋 [ANTS-6163] **CI's Release job failed Inv3Latency once after ANTS-6049, at 51.2 ms against the 50 ms p95 budget.**
+  CI run 39792102405 (dac5f13c), "Run perf tests (serial)" step:
+  p95 51.2 ms over 20 warm reads of 3700 items. The next push
+  (9e1494cb, same read path) passed. dac5f13c touched id-floor and
+  generated-notice code, not bulletsFromStore. So this is runner
+  noise at the edge of the budget: ANTS-6049 brought CI from 72 ms
+  to under 50 ms, but by an unknown margin.
+  Two parts:
+  1. Make the CI perf step show the printed p95 on a pass (ctest
+     hides test output unless a test fails), so the margin is
+     visible per run.
+  2. Per ANTS-3793 § 4, the remedy is read-path work, not a relaxed
+     budget. Fold into the performance review planned for no earlier
+     than 2026-10-29 (ANTS-6049 note), unless CI starts failing on
+     most pushes, as it did before ANTS-6049.
+  **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
+  Kind: perf.
+  Source: ci-run-39792102405-2026-10-22.
+  Lanes: roadmap-store.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
