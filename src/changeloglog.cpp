@@ -59,6 +59,47 @@ bool isValidCategory(const QString &category) {
 }
 
 namespace {
+
+// ANTS-6145 — the steps every op opens with, written once. `heading` is the
+// `## [Unreleased]` line (-1 when absent); `end` is the first `## ` line after
+// it, or EOF, so the section is [heading+1, end).
+struct UnreleasedBounds { int heading = -1; int end = -1; };
+UnreleasedBounds findUnreleased(const QStringList &lines) {
+    UnreleasedBounds b;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().compare(QStringLiteral("## [Unreleased]"),
+                                          Qt::CaseInsensitive) == 0) {
+            b.heading = i;
+            break;
+        }
+    }
+    if (b.heading < 0) return b;
+    b.end = static_cast<int>(lines.size());
+    for (int i = b.heading + 1; i < lines.size(); ++i) {
+        if (lines.at(i).startsWith(QStringLiteral("## "))) { b.end = i; break; }
+    }
+    return b;
+}
+
+// The two refusals more than one op returns; every result type carries
+// `code` and `error`.
+template <typename Result> Result refuseNotUnreleased(Result r) {
+    r.code  = QStringLiteral("not_unreleased");
+    r.error = QStringLiteral(
+        "changelog_log: no `## [Unreleased]` heading found — the "
+        "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
+        "section at the top");
+    return r;
+}
+template <typename Result>
+Result refuseBadCategory(Result r, const QString &category) {
+    r.code  = QStringLiteral("bad_category");
+    r.error = QStringLiteral(
+        "changelog_log: \"%1\" is not a Keep-a-Changelog category "
+        "(Added/Changed/Deprecated/Removed/Fixed/Security)")
+            .arg(category);
+    return r;
+}
 // ANTS-5108 — a `### ` heading as ChangelogQuery::parse reads one: at column
 // 0, on a line fencedLines() does not mark. The writer used to match a
 // trimmed line and ignore fences, so an indented or fenced `### Added`
@@ -293,25 +334,11 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
 
 UnreleasedShape classifyUnreleased(const QString &markdown) {
     const QStringList lines = markdown.split(QLatin1Char('\n'));
-    int unrel = -1;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).trimmed().compare(QStringLiteral("## [Unreleased]"),
-                                          Qt::CaseInsensitive) == 0) {
-            unrel = i;
-            break;
-        }
-    }
+    const UnreleasedBounds ub = findUnreleased(lines);
     // No section is its OWN answer, not a flat one — a caller branching on
     // datedLeads must not read "absent" as "flat".
-    if (unrel < 0) return {};
-    int sectionEnd = lines.size();
-    for (int i = unrel + 1; i < lines.size(); ++i) {
-        if (lines.at(i).startsWith(QStringLiteral("## "))) {
-            sectionEnd = i;
-            break;
-        }
-    }
-    return classifyUnreleased(lines, unrel + 1, sectionEnd);
+    if (ub.heading < 0) return {};
+    return classifyUnreleased(lines, ub.heading + 1, ub.end);
 }
 
 QString preRenderedSummaryReason(const QString &summary, const QString &id) {
@@ -370,44 +397,15 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
                                    const QString &bulletBlock) {
     InsertResult r;
-    if (!isValidCategory(category)) {
-        r.code = QStringLiteral("bad_category");
-        r.error = QStringLiteral(
-            "changelog_log: \"%1\" is not a Keep-a-Changelog category "
-            "(Added/Changed/Deprecated/Removed/Fixed/Security)")
-                .arg(category);
-        return r;
-    }
+    if (!isValidCategory(category)) return refuseBadCategory(r, category);
 
     QStringList lines = markdown.split(QLatin1Char('\n'));
 
-    // 1. Locate `## [Unreleased]`.
-    int unrel = -1;
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString t = lines.at(i).trimmed();
-        if (t.compare(QStringLiteral("## [Unreleased]"),
-                      Qt::CaseInsensitive) == 0) {
-            unrel = i;
-            break;
-        }
-    }
-    if (unrel < 0) {
-        r.code = QStringLiteral("not_unreleased");
-        r.error = QStringLiteral(
-            "changelog_log: no `## [Unreleased]` heading found — the "
-            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
-            "section at the top");
-        return r;
-    }
-
-    // 2. Bound the Unreleased section [unrel+1, sectionEnd).
-    int sectionEnd = lines.size();
-    for (int i = unrel + 1; i < lines.size(); ++i) {
-        if (lines.at(i).startsWith(QStringLiteral("## "))) {
-            sectionEnd = i;
-            break;
-        }
-    }
+    // Locate `## [Unreleased]` and bound its section [unrel+1, sectionEnd).
+    const UnreleasedBounds ub = findUnreleased(lines);
+    if (ub.heading < 0) return refuseNotUnreleased(r);
+    const int unrel = ub.heading;
+    int sectionEnd = ub.end;
 
     // ANTS-3416 — refuse a FEATURE-GROUPED section (dated `### ` topics +
     // `**Bold**` category runs, not flat Keep-a-Changelog categories). A
@@ -581,30 +579,12 @@ ReleaseResult closeUnreleased(const QString &markdown,
 
     QStringList lines = markdown.split(QLatin1Char('\n'));
 
-    int unrel = -1;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).trimmed().compare(
-                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
-            unrel = i;
-            break;
-        }
-    }
-    if (unrel < 0) {
-        r.code  = QStringLiteral("not_unreleased");
-        r.error = QStringLiteral(
-            "changelog_log: no `## [Unreleased]` heading found — the "
-            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
-            "section at the top");
-        return r;
-    }
+    const UnreleasedBounds ub = findUnreleased(lines);
+    if (ub.heading < 0) return refuseNotUnreleased(r);
+    const int unrel = ub.heading;
+    int sectionEnd = ub.end;
 
-    // Bound the section, and refuse a version that already has a heading.
-    int sectionEnd = lines.size();
-    for (int i = unrel + 1; i < lines.size(); ++i) {
-        if (lines.at(i).startsWith(QStringLiteral("## "))) {
-            if (sectionEnd == lines.size()) sectionEnd = i;
-        }
-    }
+    // Refuse a version that already has a heading.
     for (int i = 0; i < lines.size(); ++i) {
         const QString t = lines.at(i).trimmed();
         if (!t.startsWith(QStringLiteral("## ["))) continue;
@@ -682,26 +662,10 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
     }
 
     QStringList lines = markdown.split(QLatin1Char('\n'));
-    int unrel = -1;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).trimmed().compare(
-                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
-            unrel = i;
-            break;
-        }
-    }
-    if (unrel < 0) {
-        r.code  = QStringLiteral("not_unreleased");
-        r.error = QStringLiteral(
-            "changelog_log: no `## [Unreleased]` heading found — the "
-            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
-            "section at the top");
-        return r;
-    }
-    int sectionEnd = lines.size();
-    for (int i = unrel + 1; i < lines.size(); ++i) {
-        if (lines.at(i).startsWith(QStringLiteral("## "))) { sectionEnd = i; break; }
-    }
+    const UnreleasedBounds ub = findUnreleased(lines);
+    if (ub.heading < 0) return refuseNotUnreleased(r);
+    const int unrel = ub.heading;
+    int sectionEnd = ub.end;
 
     QStringList body = lines.mid(unrel + 1, sectionEnd - unrel - 1);
     while (!body.isEmpty() && body.first().trimmed().isEmpty()) body.removeFirst();
@@ -820,34 +784,14 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                                             const QString &body,
                                             const QStringList &bulletBlocks) {
     SubsectionResult r;
-    if (!isValidCategory(category)) {
-        r.code = QStringLiteral("bad_category");
-        r.error = QStringLiteral(
-            "changelog_log: \"%1\" is not a Keep-a-Changelog category "
-            "(Added/Changed/Deprecated/Removed/Fixed/Security)")
-                .arg(category);
-        return r;
-    }
+    if (!isValidCategory(category)) return refuseBadCategory(r, category);
 
     QStringList lines = markdown.split(QLatin1Char('\n'));
 
     // Locate `## [Unreleased]`.
-    int unrel = -1;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).trimmed().compare(
-                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
-            unrel = i;
-            break;
-        }
-    }
-    if (unrel < 0) {
-        r.code = QStringLiteral("not_unreleased");
-        r.error = QStringLiteral(
-            "changelog_log: no `## [Unreleased]` heading found — the "
-            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
-            "section at the top");
-        return r;
-    }
+    const UnreleasedBounds ub = findUnreleased(lines);
+    if (ub.heading < 0) return refuseNotUnreleased(r);
+    const int unrel = ub.heading;
 
     // ANTS-4356 — the reverse of ANTS-3416's guard, and the more damaging
     // direction. `op:"add"` and `op:"normalize"` both refuse against a
@@ -863,13 +807,7 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
     // impossible rather than merely guarded. Emptying the section first is
     // what converting already means.
     {
-        int sectionEnd = lines.size();
-        for (int i = unrel + 1; i < lines.size(); ++i) {
-            if (lines.at(i).startsWith(QStringLiteral("## "))) {
-                sectionEnd = i;
-                break;
-            }
-        }
+        const int sectionEnd = ub.end;
         // ANTS-4489 (reported by Vestige) — classify by POSITION, not by
         // first match. This scan used to refuse on any canonical `### `
         // heading anywhere in the section. Vestige's `[Unreleased]` spans
@@ -999,32 +937,11 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
     NormalizeResult r;
     QStringList lines = markdown.split(QLatin1Char('\n'));
 
-    // 1. Locate `## [Unreleased]`.
-    int unrel = -1;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).trimmed().compare(
-                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
-            unrel = i;
-            break;
-        }
-    }
-    if (unrel < 0) {
-        r.code = QStringLiteral("not_unreleased");
-        r.error = QStringLiteral(
-            "changelog_log: no `## [Unreleased]` heading found — the "
-            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
-            "section at the top");
-        return r;
-    }
-
-    // 2. Bound the Unreleased section [unrel+1, sectionEnd).
-    int sectionEnd = lines.size();
-    for (int i = unrel + 1; i < lines.size(); ++i) {
-        if (lines.at(i).startsWith(QStringLiteral("## "))) {
-            sectionEnd = i;
-            break;
-        }
-    }
+    // 1-2. Locate `## [Unreleased]` and bound its section.
+    const UnreleasedBounds ub = findUnreleased(lines);
+    if (ub.heading < 0) return refuseNotUnreleased(r);
+    const int unrel = ub.heading;
+    int sectionEnd = ub.end;
 
     // 3. Refuse a FEATURE-GROUPED section (dated `### ` topics, not flat
     //    categories) — reordering dated topics by category is meaningless

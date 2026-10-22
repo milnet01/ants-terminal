@@ -49,6 +49,35 @@ bool isMaintainerHeading(const QString &line) {
     return maintainerAnchorRe().match(line).hasMatch();
 }
 
+// ANTS-6145 — true for each line inside a fenced block, opener and closer
+// included. The one fence walk every scanner in this file reads, so a fence
+// fix lands once. The rule is mcp-feedback-files.md's: a fence opens at up to
+// 3 spaces of indent and closes on the same character, in a run at least as
+// long (ANTS-4820). Not MarkdownScan::fenceMask, which also follows list
+// items, a rule this format does not state.
+QVector<bool> fencedLines(const QStringList &lines) {
+    QVector<bool> fenced(lines.size(), false);
+    QChar openFence;  // null when not inside a fence
+    int   openFenceRun = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &line = lines.at(i);
+        if (!openFence.isNull()) {
+            fenced[i] = true;
+            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun))
+                openFence = QChar();
+            continue;
+        }
+        int openerRun = 0;
+        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
+        if (!opener.isNull()) {
+            fenced[i]    = true;
+            openFence    = opener;
+            openFenceRun = openerRun;
+        }
+    }
+    return fenced;
+}
+
 // ANTS-3421 — single-source fence-aware boundary scan. One `#`/`## `
 // heading outside a fenced region is a boundary; `###`+ are inert body
 // lines. Both parse() (below) and compactShipped() call this so the
@@ -62,28 +91,10 @@ struct Boundary {
 
 QVector<Boundary> scanBoundaries(const QStringList &lines) {
     QVector<Boundary> out;
-    QChar openFence;  // null when not inside a fence
-    int   openFenceRun = 0;  // ANTS-4820 — that fence's run length
+    const QVector<bool> fenced = fencedLines(lines);
     for (int i = 0; i < lines.size(); ++i) {
         const QString &line = lines.at(i);
-        if (!openFence.isNull()) {
-            // Inside a fence — only the matching closer ends it.
-            // ANTS-4820 — CommonMark § 4.5: the closer must be at
-            // least as long as the opener, not merely the same char.
-            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
-                openFence    = QChar();
-                openFenceRun = 0;
-            }
-            continue;
-        }
-        int openerRun = 0;
-        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
-        if (!opener.isNull()) {
-            openFence    = opener;
-            openFenceRun = openerRun;
-            continue;
-        }
-        if (!isBoundaryHeading(line)) continue;
+        if (fenced.at(i) || !isBoundaryHeading(line)) continue;
         out.append({i, line, isMaintainerHeading(line)});
     }
     return out;
@@ -338,28 +349,12 @@ ParseResult parse(const QString &fileContent) {
 
         // Fence-aware body scan: does this line-less block carry a finding
         // bullet (`- **What/Repro/Impact:**`)? → suspected_untagged (§2.2/5).
+        const QVector<bool> fenced = fencedLines(lines);
         auto bodyHasFindingBullet = [&](const FindingBlock &fb) -> bool {
-            QChar bodyFence;
-            int   bodyFenceRun = 0;  // ANTS-4820
             for (int li = fb.headingLine0 + 1;
                  li < fb.extentEnd0 && li < lines.size(); ++li) {
-                const QString &bl = lines.at(li);
-                if (!bodyFence.isNull()) {
-                    // ANTS-4820 — CommonMark § 4.5: run length, not just char.
-                    if (MarkdownScan::fenceCloses(bl, bodyFence, bodyFenceRun)) {
-                        bodyFence    = QChar();
-                        bodyFenceRun = 0;
-                    }
-                    continue;
-                }
-                int openerRun = 0;
-                const QChar opener = fenceOpenerChar(bl, 3, &openerRun);
-                if (!opener.isNull()) {
-                    bodyFence    = opener;
-                    bodyFenceRun = openerRun;
-                    continue;
-                }
-                if (bulletArmRe().match(bl).hasMatch()) return true;
+                if (!fenced.at(li) && bulletArmRe().match(lines.at(li)).hasMatch())
+                    return true;
             }
             return false;
         };
@@ -630,29 +625,12 @@ CompactResult compactShipped(const QString &content,
                                             : lines.size();
     };
     // Fence-aware count of `### ` finding sub-headings in [start,end) (gate 6).
+    const QVector<bool> fenced = fencedLines(lines);
     auto findingHeadingCount = [&](int start, int end) -> int {
         int n = 0;
-        QChar openFence;
-        int   openFenceRun = 0;  // ANTS-4820
         for (int li = start; li < end && li < lines.size(); ++li) {
-            const QString &l = lines.at(li);
-            if (!openFence.isNull()) {
-                // ANTS-4820 — CommonMark § 4.5: the closer must be at
-                // least as long as the opener, not merely the same char.
-                if (MarkdownScan::fenceCloses(l, openFence, openFenceRun)) {
-                    openFence    = QChar();
-                    openFenceRun = 0;
-                }
-                continue;
-            }
-            int openerRun = 0;
-            const QChar opener = fenceOpenerChar(l, 3, &openerRun);
-            if (!opener.isNull()) {
-                openFence    = opener;
-                openFenceRun = openerRun;
-                continue;
-            }
-            if (l.startsWith(QStringLiteral("### "))) ++n;
+            if (!fenced.at(li) && lines.at(li).startsWith(QStringLiteral("### ")))
+                ++n;
         }
         return n;
     };
@@ -960,35 +938,17 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
     // Pass 1 — every boundary heading outside a fence, in document order.
     struct B { int line0; bool isSub; };   // isSub ⟹ a `### ` heading
     QVector<B> bounds;
-    QChar openFence;
-    int   openFenceRun = 0;  // ANTS-4820
+    const QVector<bool> fenced = fencedLines(lines);
     for (int i = 0; i < lines.size(); ++i) {
         const QString &l = lines.at(i);
-        if (!openFence.isNull()) {
-            // ANTS-4820 — CommonMark § 4.5: the closer must be at
-            // least as long as the opener, not merely the same char.
-            if (MarkdownScan::fenceCloses(l, openFence, openFenceRun)) {
-                openFence    = QChar();
-                openFenceRun = 0;
-            }
-            continue;
-        }
-        int openerRun = 0;
-        const QChar opener = fenceOpenerChar(l, 3, &openerRun);
-        if (!opener.isNull()) {
-            openFence    = opener;
-            openFenceRun = openerRun;
-            continue;
-        }
-        if (!boundaryRe.match(l).hasMatch()) continue;
+        if (fenced.at(i) || !boundaryRe.match(l).hasMatch()) continue;
         const bool isH1 = l.startsWith(QStringLiteral("# "));
         if (isH1 && !h1BoundaryRe.match(l).hasMatch()) continue;  // ANTS-3695
         bounds.append({ i, l.startsWith(QStringLiteral("### ")) });
     }
 
     // Pass 2 — for each `### ` boundary emit a block; extent = next boundary
-    // of any level (or EOF). Every `### ` boundary is guaranteed outside a
-    // fence (Pass 1), so the body scan restarts fence tracking cleanly.
+    // of any level (or EOF).
     QVector<FindingBlock> out;
     for (int bi = 0; bi < bounds.size(); ++bi) {
         if (!bounds.at(bi).isSub) continue;
@@ -997,26 +957,9 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
         fb.heading      = lines.at(fb.headingLine0);
         fb.extentEnd0   = (bi + 1 < bounds.size()) ? bounds.at(bi + 1).line0
                                                    : lines.size();
-        QChar bodyFence;
-        int   bodyFenceRun = 0;  // ANTS-4820
         for (int li = fb.headingLine0 + 1; li < fb.extentEnd0; ++li) {
-            const QString &bl = lines.at(li);
-            if (!bodyFence.isNull()) {
-                // ANTS-4820 — CommonMark § 4.5: run length, not just char.
-                if (MarkdownScan::fenceCloses(bl, bodyFence, bodyFenceRun)) {
-                    bodyFence    = QChar();
-                    bodyFenceRun = 0;
-                }
-                continue;
-            }
-            int openerRun = 0;
-            const QChar opener = fenceOpenerChar(bl, 3, &openerRun);
-            if (!opener.isNull()) {
-                bodyFence    = opener;
-                bodyFenceRun = openerRun;
-                continue;
-            }
-            const auto m = idLineRe.match(bl);
+            if (fenced.at(li)) continue;
+            const auto m = idLineRe.match(lines.at(li));
             if (m.hasMatch()) {
                 fb.idLine0 = li;
                 QString v = m.captured(1).trimmed();
@@ -1078,28 +1021,11 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
     // gate 2 — any body line (fences skipped) begins "→ shipped" ⟹ already a
     // stub. NB it is "any" body line, not the first: the v2 stub keeps the
     // `**Proposed ID:**` line above the breadcrumb.
+    const QVector<bool> fenced = fencedLines(lines);
     auto hasStub = [&](int start0, int end0) -> bool {
-        QChar openFence;
-        int   openFenceRun = 0;  // ANTS-4820
         for (int li = start0; li < end0 && li < lines.size(); ++li) {
-            const QString &l = lines.at(li);
-            if (!openFence.isNull()) {
-                // ANTS-4820 — CommonMark § 4.5: the closer must be at
-                // least as long as the opener, not merely the same char.
-                if (MarkdownScan::fenceCloses(l, openFence, openFenceRun)) {
-                    openFence    = QChar();
-                    openFenceRun = 0;
-                }
-                continue;
-            }
-            int openerRun = 0;
-            const QChar opener = fenceOpenerChar(l, 3, &openerRun);
-            if (!opener.isNull()) {
-                openFence    = opener;
-                openFenceRun = openerRun;
-                continue;
-            }
-            if (l.trimmed().startsWith(kShippedProbe)) return true;
+            if (!fenced.at(li) && lines.at(li).trimmed().startsWith(kShippedProbe))
+                return true;
         }
         return false;
     };
@@ -1489,29 +1415,13 @@ MigrateResult migrateV2(const QString &content, bool backfillFromTracking) {
 
     // A `### ` block is finding-shaped iff its heading names issue/observation,
     // or its body (fences skipped) carries a `- **What/Repro/Impact:**` bullet.
+    const QVector<bool> fenced = fencedLines(lines);
     auto isFindingShaped = [&](const FindingBlock &fb) -> bool {
         if (headingArmRe.match(fb.heading).hasMatch()) return true;
-        QChar bodyFence;
-        int   bodyFenceRun = 0;  // ANTS-4820
         for (int li = fb.headingLine0 + 1;
              li < fb.extentEnd0 && li < lines.size(); ++li) {
-            const QString &bl = lines.at(li);
-            if (!bodyFence.isNull()) {
-                // ANTS-4820 — CommonMark § 4.5: run length, not just char.
-                if (MarkdownScan::fenceCloses(bl, bodyFence, bodyFenceRun)) {
-                    bodyFence    = QChar();
-                    bodyFenceRun = 0;
-                }
-                continue;
-            }
-            int openerRun = 0;
-            const QChar opener = fenceOpenerChar(bl, 3, &openerRun);
-            if (!opener.isNull()) {
-                bodyFence    = opener;
-                bodyFenceRun = openerRun;
-                continue;
-            }
-            if (bulletArmRe().match(bl).hasMatch()) return true;
+            if (!fenced.at(li) && bulletArmRe().match(lines.at(li)).hasMatch())
+                return true;
         }
         return false;
     };

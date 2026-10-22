@@ -95307,6 +95307,12 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F3 done. F1, F2 open.
+  2026-10-22, HIGH F1 and F2 done, so every HIGH is closed.
+  F1: feedbackfile.cpp's seven fence walks read one mask,
+  fencedLines(), keeping the format's top-level fence rule. F2:
+  changeloglog.cpp's six "find [Unreleased] and its end" copies call
+  findUnreleased(); the not_unreleased and bad_category refusals are
+  written once. No behaviour change. Mediums and lows remain.
   **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
