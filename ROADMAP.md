@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6205 -->
+<!-- ants-roadmap-id-high-water: ANTS=6207 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88384,6 +88384,24 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A changelog tool may write long entries as one line, so people rewrap them by hand.
   Kind: investigate.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6206] **roadmap_log op:flip given ids[] names flip_batch with locators[] in its refusal, instead of only 'missing locator'.**
+  UT_Ants: a caller passed an ids array to op:flip and was told only
+  'missing locator'. Fix: name op:"flip_batch" with locators[] in the
+  refusal, or accept ids[] on flip.
+  **Layman:** Changing several roadmap items at once the wrong way gives an error that does not say the right way.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6207] **workspace_search runs a regex with lookaround through ripgrep --pcre2, or its refusal says how.**
+  UT_Ants: regex:true with a lookahead returned rg_failed with no hint.
+  Fix: retry with --pcre2 when the pattern needs it, or say in the
+  refusal that lookaround needs PCRE2 and how to ask for it.
+  **Layman:** A search pattern using an advanced feature fails with a bare error instead of working or explaining.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
