@@ -143,6 +143,24 @@ void releaseProcess(QProcess *p) {
 
 } // namespace auditdialogdetail
 
+// The tool-health warning row: a tool problem, not a finding, so it is
+// Info severity and type (it must not sort among real findings) and
+// carries the warning flag. Used by the timeout, cancel, output-cap,
+// crash and non-zero-exit paths. "Failed to start" in runNextCheck still
+// builds its own row with the check's severity (ANTS-6192).
+static CheckResult makeToolHealthWarning(const AuditCheck &check,
+                                         const QString &message) {
+    CheckResult r;
+    r.checkId   = check.id;
+    r.checkName = check.name;
+    r.category  = check.category;
+    r.type      = CheckType::Info;
+    r.severity  = Severity::Info;
+    r.output    = message;
+    r.warning   = true;
+    return r;
+}
+
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
@@ -169,40 +187,12 @@ AuditDialog::AuditDialog(const QString &projectPath,
     m_timeout->setSingleShot(true);
     connect(m_timeout, &QTimer::timeout, this, [this]() {
         if (m_process->state() != QProcess::NotRunning) {
-            // Disconnect all m_process→this signals to prevent double-
-            // advance after kill, then re-establish the full set
-            // (finished + drain slots) before the next check.
-            disconnect(m_process, nullptr, this, nullptr);
-            // ANTS-5038 — stop the check's whole process group: TERM with a
-            // short grace (this is the GUI thread), then KILL the rest.
-            const qint64 pgid = m_process->processId();
-            ProcessGroup::signalGroup(pgid, SIGTERM);
-            m_process->waitForFinished(500);
-            ProcessGroup::signalGroup(pgid, SIGKILL);
-            m_process->kill();
-            m_process->waitForFinished(1000);
-            connectProcessSignals();
+            stopCurrentProcessGroup();
             if (m_currentCheck >= 0 && m_currentCheck < m_checks.size()) {
-                const int capMs = m_checks[m_currentCheck].timeoutMs;
-                CheckResult r;
-                r.checkId = m_checks[m_currentCheck].id;
-                r.checkName = m_checks[m_currentCheck].name;
-                r.category = m_checks[m_currentCheck].category;
-                // Tool health, NOT a finding — downgrade severity to Info
-                // and retype to Info, per 2026-04-16 triage. Previously
-                // the timeout inherited the check's own severity (Major
-                // or Critical), which polluted the severity-sorted list
-                // with "(warning) Timed out" entries indistinguishable
-                // from real findings. The `warning` flag already marks
-                // the entry; severity demotion keeps it from sorting to
-                // the top.
-                r.type = CheckType::Info;
-                r.severity = Severity::Info;
-                r.output = QString("Timed out (%1s) — tool-health issue, "
-                                   "not a finding")
-                               .arg(capMs / 1000);
-                r.warning = true;
-                m_completedResults.append(r);
+                const AuditCheck &check = m_checks[m_currentCheck];
+                m_completedResults.append(makeToolHealthWarning(check,
+                    QString("Timed out (%1s) — tool-health issue, not a finding")
+                        .arg(check.timeoutMs / 1000)));
             }
             ++m_checksRun;
             runNextCheck();
@@ -2690,6 +2680,19 @@ void AuditDialog::connectProcessSignals() {
             this, &AuditDialog::onCheckErrorReady);
 }
 
+void AuditDialog::stopCurrentProcessGroup() {
+    disconnect(m_process, nullptr, this, nullptr);
+    // ANTS-5038 — TERM with a short grace (this is the GUI thread), then
+    // KILL the rest of the group.
+    const qint64 pgid = m_process->processId();
+    ProcessGroup::signalGroup(pgid, SIGTERM);
+    m_process->waitForFinished(500);
+    ProcessGroup::signalGroup(pgid, SIGKILL);
+    m_process->kill();
+    m_process->waitForFinished(1000);
+    connectProcessSignals();
+}
+
 void AuditDialog::cancelAudit() {
     // Idempotent — double-click on Cancel (or a race between the button
     // click and the check finishing) is harmless.
@@ -2700,38 +2703,17 @@ void AuditDialog::cancelAudit() {
     // Watchdog timer and QProcess both have to be quieted BEFORE we
     // render, otherwise their queued signals would re-enter the pipeline.
     m_timeout->stop();
-    if (m_process && m_process->state() != QProcess::NotRunning) {
-        // Same disconnect-then-kill dance the timeout path uses: prevent
-        // finished() from firing with the partial output we're about to
-        // discard.
-        disconnect(m_process, nullptr, this, nullptr);
-        // ANTS-5038 — the whole process group, TERM first (see the timeout).
-        const qint64 pgid = m_process->processId();
-        ProcessGroup::signalGroup(pgid, SIGTERM);
-        m_process->waitForFinished(500);
-        ProcessGroup::signalGroup(pgid, SIGKILL);
-        m_process->kill();
-        m_process->waitForFinished(1000);
-        // Reconnect so a follow-up Run Audit works normally — full set
-        // (finished + drain slots), not just finished.
-        connectProcessSignals();
-    }
+    if (m_process && m_process->state() != QProcess::NotRunning)
+        stopCurrentProcessGroup();   // its partial output is discarded
 
     // Record a sentinel row so the report makes the truncation obvious —
     // without this, cancelling between checks produces an empty report
     // indistinguishable from "all checks passed", which is the opposite
     // of what happened.
     if (m_currentCheck >= 0 && m_currentCheck < m_checks.size()) {
-        const auto &check = m_checks[m_currentCheck];
-        CheckResult r;
-        r.checkId   = check.id;
-        r.checkName = check.name;
-        r.category  = check.category;
-        r.type      = CheckType::Info;
-        r.severity  = Severity::Info;
-        r.source    = "audit";
-        r.output    = "Cancelled by user — partial results only";
-        r.warning   = true;
+        CheckResult r = makeToolHealthWarning(m_checks[m_currentCheck],
+                                              "Cancelled by user — partial results only");
+        r.source = "audit";
         m_completedResults.append(r);
     }
 
@@ -2874,23 +2856,6 @@ void AuditDialog::onCheckErrorReady() {
             m_process->kill();
         }
     }
-}
-
-// Helper: build the standard tool-health warning shape (Info severity,
-// warning flag, distinct prefix). Centralizes the four exit modes
-// (timeout, overflow, crash, non-zero-with-stderr-only) so the
-// renderer styles them identically.
-static CheckResult makeToolHealthWarning(const AuditCheck &check,
-                                         const QString &message) {
-    CheckResult r;
-    r.checkId   = check.id;
-    r.checkName = check.name;
-    r.category  = check.category;
-    r.type      = CheckType::Info;
-    r.severity  = Severity::Info;
-    r.output    = message;
-    r.warning   = true;
-    return r;
 }
 
 void AuditDialog::onCheckFinished(int exitCode, QProcess::ExitStatus exitStatus) {
@@ -3045,6 +3010,9 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     // static analyzers (cppcheck, clang-tidy, pylint, …) already understand
     // comments, so skip them — applying the filter could remove real
     // findings that point to comment-adjacent declarations.
+    // A new grep check belongs here when its matches inside a comment or a
+    // string literal are noise. The grep checks not listed have no recorded
+    // reason for their absence (ANTS-6196).
     static const QSet<QString> kSourceScannedChecks = {
         "secrets_scan", "unsafe_c_funcs", "cmd_injection", "cmd_injection_dyn",
         "format_string", "insecure_http", "unsafe_deser", "hardcoded_ips",
@@ -3156,12 +3124,9 @@ void AuditDialog::renderResults() {
     }
 
     // Enrichment pass: snippet + blame + confidence score, in place. Expensive
-    // operations are bounded per run (blame shells out once per unique file:
-    // line; snippet reads are cached in m_fileLineCache). Skip when a finding
+    // operations are bounded per run (blame runs once per file, ANTS-5040;
+    // snippet reads are cached in m_fileLineCache). Skip when a finding
     // has no file:line — free-form findings don't benefit from enrichment.
-    //
-    // We also seed Finding::aiVerdict from the existing key→finding cache so
-    // confidence reflects any prior AI triage from this session.
     m_fileLineCache.clear();   // reset on every render — files may have changed
     int enriched = 0;
     const int kSnippetBudget = 300;        // per-render cap (cheap but bounded)

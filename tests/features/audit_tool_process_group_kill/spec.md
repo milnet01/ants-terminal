@@ -44,8 +44,9 @@ tool's helpers behind stacks their memory onto the next check.
 - **INV-3 — `AuditDialog` starts every check's process in its own group,
   and every site that stops one signals the group first.**
   `runNextCheck()` calls `ProcessGroup::startsOwnGroup(*m_process)` before
-  `m_process->start(...)`. Every `m_process->kill();` call site (the
-  per-check timeout, `cancelAudit()`, and the two output-overflow guards)
+  `m_process->start(...)`. Every `m_process->kill();` call site
+  (`stopCurrentProcessGroup()`, which the per-check timeout and
+  `cancelAudit()` share, and the two output-overflow guards)
   is preceded, in the same statement block, by a
   `ProcessGroup::signalGroup(*m_process, ...)` call. Test surface:
   `test_auditdialog_group_kill_scrape.cpp` (source-anchored — the dialog is

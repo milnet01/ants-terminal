@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6190 -->
+<!-- ants-roadmap-id-high-water: ANTS=6197 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95018,6 +95018,13 @@ worked after these.
   triageRequestBody, triageReplyObject and parseTriageVerdict (the
   ANTS-1809 whitelist now lives once). The request half is pinned per
   path by specs and queued as ANTS-6174. No other HIGH open here.
+  2026-10-23: MEDIUMs. Done: F4 (timeout and cancel rows use
+  makeToolHealthWarning, comment made true), F5 (one
+  stopCurrentProcessGroup), F12, F13, F14 (comments), F23 and F24
+  (inclusion rule and pointer comments). Queued, each pinned by a test
+  or spec or a behaviour change: F3 ANTS-6191, F4 failed-to-start
+  ANTS-6192, F6 ANTS-6193, F20 ANTS-6194, F22 ANTS-6195, F23 flag
+  ANTS-6196, F24 fold ANTS-6197. LOWs remain.
   **Layman:** Tidy the code-audit window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95942,6 +95949,97 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L05-F3).
   Lanes: chrome-widgets.
+
+- 📋 [ANTS-6191] **One isFindingVisible(f) for the audit results pane, the Fold actionable list and Triage visible.**
+  From ANTS-6116 (L07 MEDIUM F3). actionableFindings, visibleUntriagedKeys
+  (auditdialog_triage.cpp) and renderResults' row loop each copy the
+  suppressed / since-baseline / new-only / severity-pill / text filter.
+  The summary counts in renderResults copy only the first three and skip
+  the pills and text filter; say why there, or make them agree.
+  Not done in the lane pass: audit_learned_fp_filtering INV-3 requires
+  at least seven `if (isSuppressed(f))` sites across the audit sources,
+  so the fold moves its test contract.
+  Hot reload: none needed; no new running state.
+  **Layman:** Three places in the audit window decide which findings are on screen, each with its own copy of the rule; a new filter would make their counts disagree.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L07-F3).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6192] **The audit's 'Failed to start process' row uses makeToolHealthWarning, so it sorts as Info like every other tool-health row.**
+  From ANTS-6116 (L07 MEDIUM F4). runNextCheck's waitForStarted failure
+  builds its own CheckResult with check.type and check.severity, against
+  the rule that tool-health rows are Info (makeToolHealthWarning). The
+  timeout and cancel rows were routed through the helper in the lane
+  pass; this one was not, because it changes what the user sees: a
+  behaviour fix with its own test.
+  Hot reload: none needed; no new running state.
+  **Layman:** When an audit tool cannot start, its warning row keeps the tool's own severity and can sort above real findings.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L07-F4).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6193] **One saveReportPrivately helper for the audit dialog's SARIF and HTML exports.**
+  From ANTS-6116 (L07 MEDIUM F6). The Export SARIF and Export HTML
+  lambdas in AuditDialog's constructor are one behaviour (ANTS-5084,
+  5085, 5151 each touched both). Not done in the lane pass:
+  audit_dialog_lows INV-5 counts exactly two `"SARIF save failed: "`
+  and two `"HTML save failed: "` literals, so the fold moves its test
+  contract.
+  Hot reload: none needed; no new running state.
+  **Layman:** The two report-export buttons repeat the same private-file save code, so a privacy fix could reach one and miss the other.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L07-F6).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6194] **Rename AuditDialog::sinceBaselineVisible so it reads as the git-error-aware filter, not a twin of visibleSinceBaseline.**
+  From ANTS-6116 (L07 MEDIUM F20). Suggested name:
+  passesSinceBaselineFilter. Not done in the lane pass:
+  tests/features/audit_scope_and_triage/spec.md names
+  sinceBaselineVisible, and its test's INV-3 message does too.
+  Hot reload: none needed; no new running state.
+  **Layman:** Two audit functions have near-identical names but behave differently while git is still running; a clearer name stops the wrong one being used.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L07-F20).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6195] **Split AuditDialog::renderResults into enrich, count, summarise and render, and write trend.json from the run-completion paths.**
+  From ANTS-6116 (L07 MEDIUM F22). The noise-floor block computes
+  noiseCount and discards it, and adds totalSuppressed (keys in the
+  suppression file) to this run's finding count. Not done in the lane
+  pass: moving the trend.json write out of render changes when it
+  happens, and audit_blame_bulk_async, audit_corroboration_shift,
+  audit_dialog_lows and audit_scope_and_triage read renderResults'
+  body, so their contracts move with the split.
+  Hot reload: none needed; no new running state.
+  **Layman:** One long audit-window routine does six jobs, including saving a file on every filter keystroke; splitting it makes each job findable.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L07-F22).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6196] **Mark comment/string filtering on each audit check at registration, and review the grep checks left out of kSourceScannedChecks.**
+  From ANTS-6116 (L07 MEDIUM F23). The lane pass stated the inclusion
+  rule beside the list. Still open: a flag on AuditCheck set where each
+  check registers, and a decision for each grep check not on the list
+  (silent_catch, conflict_markers, bash_c_non_literal,
+  ssh_argv_dash_host and others), none of which has a recorded reason.
+  Hot reload: none needed; no new running state.
+  **Layman:** A hidden list decides which audit checks ignore matches inside comments; a new check is easy to leave off it by mistake.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L07-F23).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6197] **Set each audit tool's timeoutMs at its registration and drop populateChecks' id-matching override loop.**
+  From ANTS-6116 (L07 MEDIUM F24). compiler_warnings passes its cap at
+  registration; six tools get theirs from a loop at the end of
+  populateChecks. The lane pass added a pointer between the two. Not
+  folded: audit_per_tool_timeout INV-4 looks for `timeoutMs = N` within
+  200 characters of a slow tool's id literal, so its test contract
+  moves with the fold.
+  Hot reload: none needed; no new running state.
+  **Layman:** Slow audit tools get their longer time limit in two different ways, so a new slow tool may get neither.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L07-F24).
+  Lanes: audit-dialog.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

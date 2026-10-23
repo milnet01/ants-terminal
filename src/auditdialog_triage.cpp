@@ -29,8 +29,8 @@ using namespace auditdialogdetail;
 // JSON object {verdict, confidence, reasoning}. The response updates the
 // Finding in place and re-renders so the verdict badge appears.
 //
-// Deliberately simple: one QNetworkAccessManager per call (cheap, short-
-// lived), no streaming, 30s timeout matching STANDARDS.md. Failures surface
+// Deliberately simple: both triage paths share m_triageNam (ANTS-5084), no
+// streaming, 30s timeout matching STANDARDS.md. Failures surface
 // in the status bar; Finding stays untouched so the user can retry.
 
 // ANTS-5084 — both triage requests are raw network calls that bypass

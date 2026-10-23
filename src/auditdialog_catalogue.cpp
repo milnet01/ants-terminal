@@ -1501,7 +1501,8 @@ void AuditDialog::populateChecks() {
     //   - trufflehog: full git-history scan with regex eval per blob
     // Without these, the slow tools false-positive on the 30 second
     // default and pollute the report with tool-health warnings instead
-    // of findings.
+    // of findings. compiler_warnings sets its own cap at its registration
+    // instead (ANTS-6197).
     for (auto &c : m_checks) {
         if (c.id == "cppcheck" || c.id == "cppcheck_unused" ||
             c.id == "clang_tidy" || c.id == "clazy") {

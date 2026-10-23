@@ -86,6 +86,10 @@ private:
     // kill / reconnect cycle so a subsequent check still receives all
     // three signals.
     void connectProcessSignals();
+    // Stops the running check: disconnects m_process so its finished()
+    // cannot advance the run, TERMs then KILLs its whole process group
+    // (ANTS-5038), and reconnects. Shared by the timeout and cancelAudit.
+    void stopCurrentProcessGroup();
     // Downstream half of onCheckFinished — parses `output` through the
     // filter → findings → suppress → cap pipeline, advances to the next
     // check. Shared between the QProcess path (onCheckFinished) and the
@@ -358,7 +362,7 @@ private:
     int m_checksRun = 0;
     int m_totalSelected = 0;
 
-    // Baseline: set of "checkId:first-output-line" fingerprints from last run.
+    // Baseline: the per-finding dedupKeys saved by the last saveBaseline (v2).
     QSet<QString> m_baselineFingerprints;
     bool m_hasBaseline = false;
     bool m_showNewOnly = false;  // UI toggle
