@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6208 -->
+<!-- ants-roadmap-id-high-water: ANTS=6211 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88417,6 +88417,35 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
+- 📋 [ANTS-6209] **trace counts a call inside a macro argument as a reference, not a caller.**
+  UT_Ants: trace symbol:"lampNameOf" gave 0 callers and 2 references;
+  both are calls wrapped in UTA_TRY(...). Fix: classify a call
+  expression inside a macro argument as a call, or mark the reference
+  row 'possible call inside macro'.
+  **Layman:** The code tracer can report that nothing calls a function when the calls sit inside a macro, so a live function looks dead.
+  Kind: fix.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6210] **mutation_probe refuses baseline_unreadable when the test filter matched no tests, without naming the filter.**
+  UT_Ants: ctest `-R urecipe` matched nothing and the refusal read as
+  an unreadable baseline. Fix: detect an empty selection and refuse with
+  its own reason naming the filter. Neighbour of ANTS-4768 (a fully
+  skipped baseline), a different route to the same false conclusion.
+  **Layman:** The mutation checker gives a misleading error when its test filter selects no tests at all.
+  Kind: fix.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6211] **roadmap_log refuses a unique section-slug prefix with no candidate naming the full slug.**
+  UT_Ants: section:"0-1-0" refused; the slug is 0-1-0-bake-and-render.
+  Fix: accept a unique slug prefix, or put the prefix match first in
+  candidates[].
+  **Layman:** Naming a roadmap section by the start of its name fails without suggesting the full name.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -95166,6 +95195,10 @@ worked after these.
   (ids L10-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23: MEDIUMs F1, F3-F7 all done, none queued. F1 unackedCount
+  helper used by inbox and summary, F3 shared mailArgsError (preview now
+  checks from_session; new test), F4 one ImmediateTx pattern, F5
+  provenance merge helpers, F6 and F7 comments. LOWs remain.
   **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
