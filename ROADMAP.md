@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6171 -->
+<!-- ants-roadmap-id-high-water: ANTS=6173 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94849,6 +94849,8 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1, F2 (comments) done (1d833dce). F3, F4 open.
+  2026-10-23: HIGH F3 queued as ANTS-6172, F4 as ANTS-6173 (both pinned
+  by feature-spec scrapes). No HIGH left here.
   **Layman:** Tidy the main window, its tabs and menus so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -94901,6 +94903,11 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1 done. F2 (git-with-timeout copies) open.
+  2026-10-23: HIGH F2 done. AuditScope::runGit is now the audit code's
+  one git runner; the AuditCache copy and the provenance lambda call it,
+  so both gain GIT_OPTIONAL_LOCKS=0. auditscope.cpp's
+  runGitRaw/runGitSucceeds stay: git_optional_locks INV-3 names all
+  three runners.
   **Layman:** Tidy the code-audit checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95591,6 +95598,39 @@ worked after these.
   **Layman:** A design document shows an older version of a test helper; bring it up to date.
   Kind: doc-fix.
   Source: close-findings sweep 2026-10-23 (ANTS-6153 L05-F1).
+
+- 📋 [ANTS-6172] **Fold newTab, newTabForRemote and the restoreSessions tab setup into one tab-creation helper (L04-F3).**
+  L04-F3 (HIGH), queued from ANTS-6113 on 2026-10-23. Three copies
+  of "make a tab" have drifted: newTabForRemote (rc new-tab, the
+  welcome install tab) never calls saveTabOrderOnly (ANTS-1159 crash
+  safety), and restoreSessions registers the shell inline instead of
+  trackTerminalShell. Not fixed in place: five feature specs pin text
+  inside these bodies and would need amending first:
+  crash_safe_session_persist INV-4 (saveTabOrderOnly in newTab),
+  claude_dot_restored_tabs WI-1 (literal trackShell( in
+  restoreSessions), plugin_tab_title_events, shell_command_wiring,
+  tab_rename_pin. Hazard: moving the calls into a helper fails those
+  scrapes unless each spec is amended and gated first.
+  **Layman:** Opening a tab is written out three times and the copies have drifted; make it one piece of code.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L04.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6173] **Fold the external-edit and Settings-Apply config reloads into one reapplyConfig (L04-F4).**
+  L04-F4 (HIGH), queued from ANTS-6113 on 2026-10-23.
+  onConfigFileChanged (hand edit of config.json) and the Settings
+  dialog's settingsChanged lambda keep separate re-apply lists. Only
+  the external path clears tab tooltips and republishes the hint
+  latch; only Apply runs setMcpEnabled, orientation uninstall, Quake
+  setup and the plugin WindowConfigReloaded event. Not fixed in
+  place: folding changes what a hand edit does (MCP master toggle,
+  Quake, plugins), and tab_list_panel pins applyTabListPanelConfig()
+  inside both bodies. Needs a decision on which differences are
+  intended, then the tab_list_panel spec amended.
+  **Layman:** The two ways settings get reloaded are separate lists that disagree; make them one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L04.
+  Lanes: mainwindow.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

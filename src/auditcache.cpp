@@ -4,7 +4,7 @@
 
 #include "secureio.h"
 #include "configbackup.h"  // ConfigWriteLock — ANTS-2189
-#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
+#include "auditscope.h"   // AuditScope::runGit
 
 #include <QDateTime>
 #include <QDebug>
@@ -14,7 +14,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess>
 #include <QSaveFile>
 #include <QSet>
 #include <QStringList>
@@ -24,7 +23,6 @@ namespace AuditCache {
 namespace {
 
 constexpr int  kHistoryMax = 10;
-constexpr int  kGitTimeoutMs = 1'500;
 const char    *kManifestName = "index.json";
 
 QString cacheDirImpl(const QString &canonProject) {
@@ -39,21 +37,6 @@ bool ensureCacheDir(const QString &canonProject) {
     // world-readable window AND tightens a pre-existing 0755 dir (the old
     // QFileInfo::isDir early-return left stale-permissive perms in place).
     return ensurePrivateDir(d);
-}
-
-QString runGit(const QString &canonProject, const QStringList &args) {
-    QProcess p;
-    p.setWorkingDirectory(canonProject);
-    p.setProcessChannelMode(QProcess::SeparateChannels);
-    HostExec::start(p, QStringLiteral("git"), args);
-    if (!p.waitForStarted(kGitTimeoutMs)) return {};
-    if (!p.waitForFinished(kGitTimeoutMs)) {
-        p.kill();
-        p.waitForFinished(500);
-        return {};
-    }
-    if (p.exitCode() != 0) return {};
-    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
 }
 
 }  // namespace
@@ -96,11 +79,11 @@ IsoNow isoNow() {
 
 GitInfo gitInfo(const QString &canonProject) {
     GitInfo g;
-    g.shortSha = runGit(canonProject,
+    g.shortSha = AuditScope::runGit(canonProject,
         {QStringLiteral("rev-parse"), QStringLiteral("--short"),
          QStringLiteral("HEAD")});
     if (g.shortSha.isEmpty()) g.shortSha = QStringLiteral("nogit");
-    g.branch = runGit(canonProject,
+    g.branch = AuditScope::runGit(canonProject,
         {QStringLiteral("rev-parse"), QStringLiteral("--abbrev-ref"),
          QStringLiteral("HEAD")});
     return g;

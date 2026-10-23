@@ -465,7 +465,7 @@ std::optional<AuditSummary> summariseSemgrepJson(
 // `git rev-parse HEAD` returns empty (non-git tree, missing binary,
 // canonical path empty) — callers omit the block in that case.
 // Forks at most three git subprocesses (rev-parse, symbolic-ref,
-// remote.origin.url), each with a 2 s wall-clock cap.
+// remote.origin.url), each through AuditScope::runGit (1.5 s cap).
 QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical);
 
 // ANTS-5084 — the SARIF artifactLocation (§ 3.4) for a finding's file. A

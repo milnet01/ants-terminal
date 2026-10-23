@@ -82,7 +82,8 @@ TEST(FlatpakHostTools, McpSitesUseTheHelper) {
         "src/gitwrap.cpp", "src/remotecontrol_workspace.cpp",
         "src/remotecontrol_state.cpp", "src/remotecontrol_review.cpp",
         "src/remotecontrol_roadmap_backfill.cpp", "src/debtsweepengine.cpp",
-        "src/auditscope.cpp", "src/auditcache.cpp", "src/auditengine.cpp",
+        // auditcache.cpp and auditengine.cpp run git through AuditScope::runGit.
+        "src/auditscope.cpp",
         "src/projectsettings.cpp",
     };
     static const QRegularExpression bare(

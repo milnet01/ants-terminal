@@ -13,30 +13,7 @@ namespace AuditScope {
 
 namespace {
 
-constexpr int kGitTimeoutMs = 1'500;  // matches AuditCache::runGit
-
-// Run git, return trimmed stdout ({} on non-zero exit / timeout). Mirrors
-// the AuditCache::runGit pattern in auditcache.cpp; duplicated rather than
-// coupling auditscope to auditcache internals. ANTS-5043 — `ok`, when given,
-// tells a failure apart from an empty but successful output.
-QString runGit(const QString &root, const QStringList &args,
-               bool *ok = nullptr) {
-    if (ok) *ok = false;
-    QProcess p;
-    p.setWorkingDirectory(root);
-    p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
-    HostExec::start(p, QStringLiteral("git"), args);
-    if (!p.waitForStarted(kGitTimeoutMs)) return {};
-    if (!p.waitForFinished(kGitTimeoutMs)) {
-        p.kill();
-        p.waitForFinished(500);
-        return {};
-    }
-    if (p.exitCode() != 0) return {};
-    if (ok) *ok = true;
-    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
-}
+constexpr int kGitTimeoutMs = 1'500;
 
 // Like runGit but WITHOUT trimming — `git status --porcelain` leads each
 // line with a significant 2-column XY status, and a whole-output trim would
@@ -102,6 +79,24 @@ bool hasExt(const QString &path, const QStringList &exts) {
 }
 
 }  // namespace
+
+QString runGit(const QString &root, const QStringList &args, bool *ok) {
+    if (ok) *ok = false;
+    QProcess p;
+    p.setWorkingDirectory(root);
+    p.setProcessChannelMode(QProcess::SeparateChannels);
+    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
+    HostExec::start(p, QStringLiteral("git"), args);
+    if (!p.waitForStarted(kGitTimeoutMs)) return {};
+    if (!p.waitForFinished(kGitTimeoutMs)) {
+        p.kill();
+        p.waitForFinished(500);
+        return {};
+    }
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) return {};
+    if (ok) *ok = true;
+    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+}
 
 bool isFileScopedTool(const QString &tool) {
     return tool != QLatin1String("gitleaks") && tool != QLatin1String("trivy");

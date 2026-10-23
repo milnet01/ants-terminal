@@ -3,7 +3,7 @@
 #include "auditfpledger.h"
 #include "regexharden.h"  // ANTS-1665 — isCatastrophicRegex / hardenUserRegex
 #include "secretredact.h"  // ANTS-4448 — strip credentials from the remote URL
-#include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
+#include "auditscope.h"  // AuditScope::runGit
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -19,7 +19,6 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QJsonValue>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
@@ -1550,23 +1549,8 @@ QString sarifLocationPath(const QJsonObject &artifactLocation) {
 QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical) {
     if (rootCanonical.isEmpty()) return {};
 
-    auto runShort = [&](const QStringList &argv) -> QString {
-        QProcess p;
-        p.setProcessChannelMode(QProcess::SeparateChannels);
-        QStringList full;
-        full << QStringLiteral("-C") << rootCanonical;
-        full.append(argv);
-        HostExec::start(p, QStringLiteral("git"), full);
-        if (!p.waitForStarted(1000)) return {};
-        if (!p.waitForFinished(2000)) {
-            p.kill();
-            p.waitForFinished(500);
-            return {};
-        }
-        if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
-            return {};
-        }
-        return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    auto runShort = [&](const QStringList &argv) {
+        return AuditScope::runGit(rootCanonical, argv);
     };
 
     const QString head = runShort({QStringLiteral("rev-parse"),

@@ -44,6 +44,14 @@ struct Resolution {
     bool        noChanges = false;  // narrowed, but zero changed files
 };
 
+// Impure: the audit code's one git runner (cache, scope and SARIF provenance).
+// Runs `git <args>` in `root` with GIT_OPTIONAL_LOCKS=0 (ANTS-4999) and a
+// 1.5 s start and finish budget, and returns trimmed stdout. Returns {} on a
+// timeout, a crash or a non-zero exit. ANTS-5043 — `ok`, when given, tells a
+// failure apart from an empty but successful output.
+QString runGit(const QString &root, const QStringList &args,
+               bool *ok = nullptr);
+
 // ANTS-2015 — impure: the tracked source tree for a deterministic full-tree
 // sweep (`scope:"full"`). `git ls-files src/` respects .gitignore (build/ and
 // .audit_cache/ never appear) and is independent of diff state — so it works
