@@ -142,8 +142,14 @@ TEST(AuditProvenanceRedaction, Inv5AiTriageScrubsPrompt) {
            "INV-5: the raw-QNAM triage path scrubs, as LlmClient does");
 
     // The scrubbed text, not the raw userMsg, is what reaches the body.
-    expect(contains(cpp, "{\"content\", scrubbedUser.text}"),
+    // ANTS-6116 — both paths build it through triageRequestBody.
+    const std::string single = ants_test::slurpFunctionBody(
+        cpp, "void AuditDialog::requestAiTriage(const QString");
+    expect(contains(single, "triageRequestBody(model, sys, scrubbedUser.text)"),
            "INV-5: the request body carries the scrubbed user message");
+    expect(contains(ants_test::slurpFunctionBody(cpp, "static QJsonObject triageRequestBody("),
+                    "{\"content\", user}"),
+           "INV-5: triageRequestBody puts its user argument in the body");
     EXPECT_EQ(0, expect_failures());
 }
 
@@ -157,7 +163,9 @@ TEST(AuditProvenanceRedaction, Inv6BatchTriageScrubsPrompt) {
 
     expect(contains(body, "SecretRedact::scrub(userMsg)"),
            "INV-6: batch triage scrubs its user message");
-    expect(!contains(body, "{\"content\", userMsg}"),
+    expect(contains(body, "triageRequestBody(model, sys, scrubbedUser.text)"),
+           "INV-6: the scrubbed user message is what reaches the request body");
+    expect(!contains(body, "triageRequestBody(model, sys, userMsg)"),
            "INV-6: the raw user message never reaches the request body");
     EXPECT_EQ(0, expect_failures());
 }

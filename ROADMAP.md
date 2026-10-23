@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6173 -->
+<!-- ants-roadmap-id-high-water: ANTS=6174 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94890,6 +94890,10 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1, F9, F10, F11 done. F2 (triage paths) open.
+  2026-10-23: HIGH F2 half done: both triage paths share
+  triageRequestBody, triageReplyObject and parseTriageVerdict (the
+  ANTS-1809 whitelist now lives once). The request half is pinned per
+  path by specs and queued as ANTS-6174. No other HIGH open here.
   **Layman:** Tidy the code-audit window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95640,6 +95644,23 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 L04.
   Lanes: mainwindow.
+
+- 📋 [ANTS-6174] **Fold the AI-triage request setup (endpoint fixup, egress check, headers, redirect policy) into one builder (L07-F2 rest).**
+  L07-F2 (HIGH), the request half, queued from ANTS-6116 on
+  2026-10-23. The reply half (body build, reply parse, verdict
+  whitelist) is shared since then. Still copied in requestAiTriage and
+  requestAiTriageBatch: the /v1/chat/completions path fixup,
+  LlmClient::endpointEgressError, the headers, the transfer timeout
+  (30 s / 60 s) and ManualRedirectPolicy. Not folded: specs require it
+  per path. audit_dialog_render_hardening INV-3 counts at least two
+  endpointEgressError( calls in the file; tests/features/llm_client
+  spec says both functions call it and set ManualRedirectPolicy. Amend
+  and gate those specs first, so they say "every triage request goes
+  through one builder that does X".
+  **Layman:** The two AI-triage paths still each set up their network request by hand; make that one piece of code once the tests allow it.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L07.
+  Lanes: audit-dialog.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

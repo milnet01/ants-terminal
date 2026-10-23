@@ -52,6 +52,62 @@ static QString triageErrorText(const QNetworkReply *reply) {
         : reply->errorString();
 }
 
+// Both triage paths' POST body. `user` must already be scrubbed.
+static QJsonObject triageRequestBody(const QString &model, const QString &sys,
+                                     const QString &user) {
+    return {{"model", model},
+            {"messages", QJsonArray{QJsonObject{{"role", "system"}, {"content", sys}},
+                                    QJsonObject{{"role", "user"},   {"content", user}}}},
+            {"temperature", 0.2},
+            {"stream", false},
+            // Response-format JSON for providers that honor it; harmless otherwise.
+            {"response_format", QJsonObject{{"type", "json_object"}}}};
+}
+
+// The model's answer as a JSON object: OpenAI's choices[0].message.content,
+// with the ```...``` wrapper some providers add stripped. On failure returns
+// {} and sets *why to the status text's tail.
+static QJsonObject triageReplyObject(const QByteArray &data, QString *why) {
+    const QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (!doc.isObject()) { *why = QStringLiteral("invalid response"); return {}; }
+    const QJsonArray choices = doc.object().value("choices").toArray();
+    if (choices.isEmpty()) { *why = QStringLiteral("empty response"); return {}; }
+    QString content = choices.first().toObject()
+                          .value("message").toObject()
+                          .value("content").toString().trimmed();
+    if (content.startsWith("```")) {
+        const int nl = content.indexOf('\n');
+        if (nl > 0) content = content.mid(nl + 1);
+        if (content.endsWith("```")) content.chop(3);
+        content = content.trimmed();
+    }
+    const QJsonDocument inner = QJsonDocument::fromJson(content.toUtf8());
+    if (!inner.isObject()) { *why = QStringLiteral("non-JSON verdict"); return {}; }
+    return inner.object();
+}
+
+struct TriageVerdict {
+    QString verdict;
+    int     confidence;
+    QString reasoning;
+};
+
+// One verdict object from the model, made safe to render.
+static TriageVerdict parseTriageVerdict(const QJsonObject &o) {
+    QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
+    // ANTS-1809 — constrain to the known enum. verdict is interpolated into
+    // the in-app QTextBrowser render and the shareable HTML export (which
+    // opens in a real browser and executes JS); an out-of-enum value from a
+    // compromised/MitM'd AI endpoint — reachable via prompt-injection from
+    // the audited project's own source — is a stored-XSS vector. Whitelist
+    // at the parse boundary so no render path ever sees attacker bytes.
+    if (verdict != QStringLiteral("TRUE_POSITIVE") &&
+        verdict != QStringLiteral("FALSE_POSITIVE"))
+        verdict = QStringLiteral("NEEDS_REVIEW");
+    return {verdict, std::clamp(o.value("confidence").toInt(50), 0, 100),
+            o.value("reasoning").toString().left(600)};
+}
+
 void AuditDialog::requestAiTriage(const QString &dedupKey) {
     if (dedupKey.isEmpty()) return;
     Finding f = m_findingsByKey.value(dedupKey);
@@ -118,17 +174,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     // `sys` is a compile-time literal, so only the user message is scrubbed.
     const auto scrubbedUser = SecretRedact::scrub(userMsg);
 
-    QJsonArray messages;
-    messages.append(QJsonObject{{"role", "system"},  {"content", sys}});
-    messages.append(QJsonObject{{"role", "user"},    {"content", scrubbedUser.text}});
-
-    QJsonObject body;
-    body["model"]       = model;
-    body["messages"]    = messages;
-    body["temperature"] = 0.2;
-    body["stream"]      = false;
-    // Response-format JSON for providers that honor it; harmless otherwise.
-    body["response_format"] = QJsonObject{{"type", "json_object"}};
+    const QJsonObject body = triageRequestBody(model, sys, scrubbedUser.text);
 
     QUrl endpointUrl(endpoint);
     // Append /v1/chat/completions if the user gave a bare host.
@@ -188,48 +234,13 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
                 m_statusLabel->setFullText("AI triage failed: " + triageErrorText(reply));
             return;
         }
-        const QByteArray data = reply->readAll();
-        const QJsonDocument doc = QJsonDocument::fromJson(data);
-        if (!doc.isObject()) {
-            if (m_statusLabel) m_statusLabel->setFullText("AI triage: invalid response");
+        QString why;
+        const QJsonObject o = triageReplyObject(reply->readAll(), &why);
+        if (o.isEmpty()) {
+            if (m_statusLabel) m_statusLabel->setFullText("AI triage: " + why);
             return;
         }
-        // OpenAI shape: choices[0].message.content holds the assistant reply.
-        const QJsonArray choices = doc.object().value("choices").toArray();
-        if (choices.isEmpty()) {
-            if (m_statusLabel) m_statusLabel->setFullText("AI triage: empty response");
-            return;
-        }
-        QString content = choices.first().toObject()
-                              .value("message").toObject()
-                              .value("content").toString();
-        // Some providers wrap the JSON in ```...```. Strip.
-        content = content.trimmed();
-        if (content.startsWith("```")) {
-            const int nl = content.indexOf('\n');
-            if (nl > 0) content = content.mid(nl + 1);
-            if (content.endsWith("```"))
-                content.chop(3);
-            content = content.trimmed();
-        }
-        const QJsonDocument inner = QJsonDocument::fromJson(content.toUtf8());
-        if (!inner.isObject()) {
-            if (m_statusLabel) m_statusLabel->setFullText("AI triage: non-JSON verdict");
-            return;
-        }
-        const QJsonObject o = inner.object();
-        QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
-        // ANTS-1809 — constrain to the known enum. verdict is interpolated into
-        // the in-app QTextBrowser render and the shareable HTML export (which
-        // opens in a real browser and executes JS); an out-of-enum value from a
-        // compromised/MitM'd AI endpoint — reachable via prompt-injection from
-        // the audited project's own source — is a stored-XSS vector. Whitelist
-        // at the parse boundary so no render path ever sees attacker bytes.
-        if (verdict != QStringLiteral("TRUE_POSITIVE") &&
-            verdict != QStringLiteral("FALSE_POSITIVE"))
-            verdict = QStringLiteral("NEEDS_REVIEW");
-        const int conf = std::clamp(o.value("confidence").toInt(50), 0, 100);
-        const QString reasoning = o.value("reasoning").toString().left(600);
+        const auto [verdict, conf, reasoning] = parseTriageVerdict(o);
 
         // Write back into every CheckResult that carries this key. Renamed
         // from `f` to `fi` so -Wshadow=local stays clean — an outer `f` at
@@ -445,16 +456,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     // credential. `sys` is a compile-time literal.
     const auto scrubbedUser = SecretRedact::scrub(userMsg);
 
-    QJsonArray messages;
-    messages.append(QJsonObject{{"role", "system"}, {"content", sys}});
-    messages.append(QJsonObject{{"role", "user"},   {"content", scrubbedUser.text}});
-
-    QJsonObject body;
-    body["model"]           = model;
-    body["messages"]        = messages;
-    body["temperature"]     = 0.2;
-    body["stream"]          = false;
-    body["response_format"] = QJsonObject{{"type", "json_object"}};
+    const QJsonObject body = triageRequestBody(model, sys, scrubbedUser.text);
 
     QUrl endpointUrl(endpoint);
     if (!endpointUrl.path().contains("chat/completions")) {
@@ -508,32 +510,13 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
                 m_statusLabel->setFullText("AI batch triage failed: " + triageErrorText(reply));
             return;
         }
-        const QByteArray data = reply->readAll();
-        const QJsonDocument doc = QJsonDocument::fromJson(data);
-        if (!doc.isObject()) {
-            if (m_statusLabel) m_statusLabel->setFullText("AI batch triage: invalid response");
+        QString why;
+        const QJsonObject answer = triageReplyObject(reply->readAll(), &why);
+        if (answer.isEmpty()) {
+            if (m_statusLabel) m_statusLabel->setFullText("AI batch triage: " + why);
             return;
         }
-        const QJsonArray choices = doc.object().value("choices").toArray();
-        if (choices.isEmpty()) {
-            if (m_statusLabel) m_statusLabel->setFullText("AI batch triage: empty response");
-            return;
-        }
-        QString content = choices.first().toObject()
-                              .value("message").toObject()
-                              .value("content").toString().trimmed();
-        if (content.startsWith("```")) {
-            const int nl = content.indexOf('\n');
-            if (nl > 0) content = content.mid(nl + 1);
-            if (content.endsWith("```")) content.chop(3);
-            content = content.trimmed();
-        }
-        const QJsonDocument inner = QJsonDocument::fromJson(content.toUtf8());
-        if (!inner.isObject()) {
-            if (m_statusLabel) m_statusLabel->setFullText("AI batch triage: non-JSON body");
-            return;
-        }
-        const QJsonArray verdicts = inner.object().value("verdicts").toArray();
+        const QJsonArray verdicts = answer.value("verdicts").toArray();
         if (verdicts.isEmpty()) {
             if (m_statusLabel) m_statusLabel->setFullText("AI batch triage: no verdicts in response");
             return;
@@ -544,15 +527,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
             const QJsonObject o = v.toObject();
             const QString key = o.value("key").toString();
             if (key.isEmpty()) continue;
-            QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
-            // ANTS-1809 — constrain to the known enum (stored-XSS guard; see
-            // the single-verdict path). Whitelist at the parse boundary.
-            if (verdict != QStringLiteral("TRUE_POSITIVE") &&
-                verdict != QStringLiteral("FALSE_POSITIVE")) {
-                verdict = QStringLiteral("NEEDS_REVIEW");
-            }
-            const int conf = std::clamp(o.value("confidence").toInt(50), 0, 100);
-            const QString reasoning = o.value("reasoning").toString().left(600);
+            const auto [verdict, conf, reasoning] = parseTriageVerdict(o);
 
             for (auto &r : m_completedResults) {
                 for (Finding &fi : r.findings) {
