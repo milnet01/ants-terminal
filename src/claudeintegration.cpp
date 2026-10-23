@@ -2711,6 +2711,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     return p;
                 };
 
+                // find_definition's and find_caller's `lang`: the language
+                // families their scan supports (ANTS-2150 / ANTS-3558).
+                auto makeSymbolLangProp = []{
+                    QJsonObject p;
+                    p["type"]    = "string";
+                    p["enum"]    = QJsonArray{
+                        QStringLiteral("auto"), QStringLiteral("cpp"),
+                        QStringLiteral("py"), QStringLiteral("lua"),
+                        QStringLiteral("sh"), QStringLiteral("generic"),
+                        QStringLiteral("glsl")};
+                    p["default"] = "auto";
+                    p["description"] = QStringLiteral(
+                        "Restrict the scan to one language family. "
+                        "\"auto\" (default) scans every supported family "
+                        "(cpp, py, lua, sh, generic, glsl).");
+                    return p;
+                };
+
                 // ANTS-1720 — `fields` projection input prop: the response
                 // carries only the named top-level fields. ANTS-4524 — the
                 // property is now injected into EVERY verb's schema in the
@@ -10366,7 +10384,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["name"] = "find_definition";
                     t["description"] = QStringLiteral(
                         "Find where a symbol is defined across the project, without a "
-                        "full LSP: a regex-anchored scan over C++/Python/Lua/Shell "
+                        "full LSP: a regex-anchored scan over C++/Python/Lua/Shell/GLSL "
                         "source. Use instead of grep + Read cycles for \"where is Foo "
                         "defined?\". Returns {ok, symbol, lang, definitions:[{file, "
                         "line, signature, lang, kind}], definitions_count, "
@@ -10377,7 +10395,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["detail"] = QStringLiteral(
                         "Find where a symbol is defined across the "
                         "project, without a full LSP. Regex-anchored "
-                        "scan over C++/Python/Lua/Shell source. Returns "
+                        "scan over C++/Python/Lua/Shell/GLSL source. Returns "
                         "{ok, symbol, lang, definitions:[{file, line, "
                         "signature, lang, kind}], definitions_count, "
                         "files_scanned, truncated, walk_capped}. `kind` "
@@ -10413,21 +10431,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "(^[A-Za-z_][A-Za-z0-9_]{0,127}$).");
                         props["symbol"] = p;
                     }
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        QJsonArray e;
-                        e.append("auto"); e.append("cpp"); e.append("py");
-                        e.append("lua");  e.append("sh");
-                        e.append("generic"); e.append("glsl");  // ANTS-2150 / ANTS-3558
-                        p["enum"]        = e;
-                        p["default"]     = "auto";
-                        p["description"] = QStringLiteral(
-                            "Restrict the scan to one language family. "
-                            "\"auto\" (default) scans every supported family "
-                            "(cpp, py, lua, sh, generic, glsl).");
-                        props["lang"] = p;
-                    }
+                    props["lang"] = makeSymbolLangProp();
                     {
                         QJsonObject p;
                         p["type"]        = "integer";
@@ -10473,7 +10477,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["name"] = "find_caller";
                     t["description"] = QStringLiteral(
                         "Find what calls a symbol across the project, without a full "
-                        "LSP: a regex-anchored scan over C++/Python/Lua/Shell source. "
+                        "LSP: a regex-anchored scan over C++/Python/Lua/Shell/GLSL source. "
                         "Returns {ok, symbol, lang, callers:[{file, line, context, "
                         "lang}], callers_count, definition?, files_scanned, truncated, "
                         "walk_capped}; the definition line is excluded from callers. "
@@ -10484,7 +10488,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["detail"] = QStringLiteral(
                         "Find what calls a symbol across the project, "
                         "without a full LSP. Regex-anchored scan over "
-                        "C++/Python/Lua/Shell source. Returns {ok, "
+                        "C++/Python/Lua/Shell/GLSL source. Returns {ok, "
                         "symbol, lang, callers:[{file, line, context, "
                         "lang}], callers_count, definition?, "
                         "files_scanned, truncated, walk_capped}. The "
@@ -10516,21 +10520,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "(^[A-Za-z_][A-Za-z0-9_]{0,127}$).");
                         props["symbol"] = p;
                     }
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        QJsonArray e;
-                        e.append("auto"); e.append("cpp"); e.append("py");
-                        e.append("lua");  e.append("sh");
-                        e.append("generic"); e.append("glsl");  // ANTS-2150 / ANTS-3558
-                        p["enum"]        = e;
-                        p["default"]     = "auto";
-                        p["description"] = QStringLiteral(
-                            "Restrict the scan to one language family. "
-                            "\"auto\" (default) scans every supported family "
-                            "(cpp, py, lua, sh, generic, glsl).");
-                        props["lang"] = p;
-                    }
+                    props["lang"] = makeSymbolLangProp();
                     {
                         QJsonObject p;
                         p["type"]        = "integer";
@@ -12354,13 +12344,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
 
                     QJsonObject statusProp;
                     statusProp["type"] = "string";
-                    QJsonArray statusEnum;
-                    statusEnum.append("planned");
-                    statusEnum.append("in-progress");
-                    statusEnum.append("shipped");
-                    statusEnum.append("considered");
-                    statusEnum.append("dropped");   // ANTS-4977
-                    statusProp["enum"] = statusEnum;
+                    // The five lifecycle statuses, shared by `status`,
+                    // `to_status` and locators[].to_status.
+                    const QJsonArray lifecycleEnum{
+                        QStringLiteral("planned"), QStringLiteral("in-progress"),
+                        QStringLiteral("shipped"), QStringLiteral("considered"),
+                        QStringLiteral("dropped")};
+                    statusProp["enum"] = lifecycleEnum;
                     statusProp["description"] = QStringLiteral(
                         "Lifecycle status. Mapped to 📋/🚧/✅/💭/🚫 "
                         "emoji by the verb. `dropped` (🚫) is closed, "
@@ -12863,13 +12853,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "Nothing is written on any of them.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
-                    QJsonArray toStatusEnum;
-                    toStatusEnum.append("planned");
-                    toStatusEnum.append("in-progress");
-                    toStatusEnum.append("shipped");
-                    toStatusEnum.append("considered");
-                    toStatusEnum.append("dropped");   // ANTS-4977
-                    toStatusProp["enum"] = toStatusEnum;
+                    toStatusProp["enum"] = lifecycleEnum;
                     toStatusProp["description"] = QStringLiteral(
                         "Target lifecycle status for op:\"flip\". "
                         "Mapped to 📋/🚧/✅/💭/🚫 emoji by the verb.");
@@ -13074,11 +13058,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // ANTS-5358 — a mixed-status batch in one call.
                         QJsonObject p;
                         p["type"] = "string";
-                        p["enum"] = QJsonArray{QStringLiteral("planned"),
-                                               QStringLiteral("in-progress"),
-                                               QStringLiteral("shipped"),
-                                               QStringLiteral("considered"),
-                                               QStringLiteral("dropped")};
+                        p["enum"] = lifecycleEnum;
                         p["description"] = QStringLiteral(
                             "op:\"flip_batch\" — this locator's own target "
                             "status; the call-level `to_status` is the "
@@ -13331,23 +13311,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "(uppercase first 4 chars). Ignored under "
                         "id_strategy:\"stable_prefix\".");
 
-                    // ANTS-2077 — dry_run preview flag. ANTS-2136 extended it
-                    // to every other op and ANTS-3798 to the last one
-                    // (bundle_row); the description below said "append /
-                    // append_batch" until then, which is how bundle_row's
-                    // missing preview stayed invisible — a reader checking
-                    // whether their op supported it found a doc implying none
-                    // did except append. It now enumerates, so the next op
-                    // added is either listed here or visibly absent.
+                    // ANTS-2077 — dry_run preview flag; ANTS-2136 and
+                    // ANTS-3798 extended it to every op. A new op must
+                    // support it too, since the text below says "every op".
                     QJsonObject dryRunProp;
                     dryRunProp["type"] = "boolean";
                     dryRunProp["description"] = QStringLiteral(
-                        "Optional. Supported on EVERY op — \"append\" and "
-                        "\"append_batch\" (ANTS-2077), \"flip\", "
-                        "\"flip_batch\", \"annotate\", \"create_section\" and "
-                        "\"amend_body\" / \"amend_headline\" (ANTS-2136, "
-                        "ANTS-4372), \"bundle_row\" "
-                        "(ANTS-3798). Returns the resolved preview WITHOUT "
+                        "Optional. Supported on every op. Returns the "
+                        "resolved preview WITHOUT "
                         "writing ROADMAP.md or bumping .roadmap-counter — a "
                         "free pre-flight to verify prefix / format / section / "
                         "locator before committing. Envelope carries "
@@ -16378,11 +16349,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // entry without a matching property would
                         // produce an invalid JSON schema and Zod
                         // validators on the consuming side reject the
-                        // whole tools/list response. Today every
-                        // Required-contract tool declares the property
-                        // via `makeCallerCwdReadProp` — this guard
-                        // covers a future Required registration that
-                        // skipped the property by mistake.
+                        // whole tools/list response. Most Required-
+                        // contract tools declare the property via
+                        // `makeCallerCwdReadProp`, some by hand; this
+                        // guard covers a registration that skipped it.
                         const QJsonObject props =
                             schema.value(QStringLiteral("properties"))
                                   .toObject();

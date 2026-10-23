@@ -95356,6 +95356,14 @@ worked after these.
   auditrunner.cpp's anonymous namespace into auditrunner.h. The
   description and detail now name clang-tidy. Reaches clients after an
   ants-mcpd rebuild and /mcp. Medium and low still open.
+  2026-10-23 MEDIUMs, all fixed: F2 roadmap_log's status, to_status and
+  locators[].to_status share one lifecycleEnum (the short-table prose
+  summaries stay prose); F3 find_definition and find_caller share
+  makeSymbolLangProp, and their descriptions name GLSL; F4 the
+  tools/list comment no longer claims every Required tool uses
+  makeCallerCwdReadProp (the hand-written copies stay: their wording
+  differs per verb); F5 roadmap_log's dry_run text says "every op"
+  without a list that had fallen behind. LOWs remain.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
