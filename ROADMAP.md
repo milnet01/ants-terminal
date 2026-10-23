@@ -81960,6 +81960,10 @@ are closed inline in the feedback files rather than filed here.
   budget runs out.
   On ship: message the pressless project inbox (session_message to:
   pressless); it owes a re-test (promised 2026-10-12).
+  2026-10-23 (UT_Ants): read_regions on one ~250-line function body
+  returned a spill handle, so the caller fell back to Read. Raise the
+  inline cap for a single region, or let the caller ask for inline text
+  up to a byte limit.
   **Layman:** The tool for fetching several pieces of a file at once returns nothing usable, while fetching the same pieces one at a time works.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
@@ -88354,7 +88358,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6204] **trace reads a Python module qualifier (module.function) as a module scope, for definitions and callers alike.**
+- 📋 [ANTS-6204] **trace applies a symbol's qualifier to callers as well as definitions (C++ scope::name, Python module.function).**
   Pressless (reproduced): trace symbol:"github_setup.register" gives
   0 definitions and 111 callers, every `register` in the tree. The
   leading part narrows definitions by class scope only, and callers
@@ -88362,6 +88366,10 @@ measured Ants adding about 5,250 tokens to every request.
   definitions to that file and callers to references through that
   module (module.fn(...) or a from-import); an unmatched qualifier is
   named in not_covered, never dropped silently.
+  2026-10-23 (UT_Ants, same root cause): trace symbol:"detail::nameOf"
+  returned the right definition but the callers of every other nameOf
+  overload, tools/ included. Narrow callers and references by the same
+  scope, or mark rows that resolve to a different definition.
   **Layman:** Asking for one Python function's callers by its module name returns no definition and every caller of every function with that name.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
