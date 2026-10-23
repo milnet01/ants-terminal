@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6187 -->
+<!-- ants-roadmap-id-high-water: ANTS=6189 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72906,6 +72906,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   back to Grep, losing the exclude_glob closure the review brief relies on.
   Suggested: key the limit per agent, raise the budget, or return a short
   retry_after_ms.
+  2026-10-23, UT_Ants: two of 14 parallel review lanes were refused
+  once each and fell back to Grep. Asked: budget per caller session, or
+  say in the refusal when to retry.
   **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
   Kind: fix.
   Source: in-session-2026-09-11 (performance pass).
@@ -88255,6 +88258,11 @@ measured Ants adding about 5,250 tokens to every request.
   when test_files is 0 under a non-empty test_roots; follow those two
   Python read shapes. Zero read as "nothing pins this text" is a check
   that cannot fail.
+  2026-10-23, UT_Ants: readers [] over 160 test files, but a shell test
+  (tests/guard/quarantine-guard-test.sh) reads "$SRC/src/ubundle/Bundle.h"
+  with sed. Resolve a $VAR/<repo-path> join in shell tests. Also unseen:
+  non-test text pins such as scripts/mutations/*.py, which hold verbatim
+  source lines (a separate scrape kind).
   **Layman:** The tool that finds tests reading source code said none existed on a project full of them, without warning that it had looked at nothing.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
@@ -88266,6 +88274,9 @@ measured Ants adding about 5,250 tokens to every request.
   statuses (404 keeps), 1 shell $2, 2 true approximate figures (~60 KB,
   ~1 s). Fix: skip a number right after §, step, decision or $, and a
   3-digit HTTP status beside a status verb.
+  2026-10-23, UT_Ants (185 candidates, whole tree): also numbers after
+  "SS", numbers inside a <PREFIX>-NNNN id ("UTA-0432 headers" read as
+  "432 headers") and number+unit constants (90 degrees, 16 bytes).
   **Layman:** The checker that hunts for stale counts in comments mistook section numbers, web error codes and shell arguments for counts.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
@@ -88277,6 +88288,9 @@ measured Ants adding about 5,250 tokens to every request.
   and .githooks/ were invisible. fields:["too_coarse","source"] came back
   under fields_unmatched though the descriptor names too_coarse. Related:
   ANTS-5409 (tracked source outside every lane's roots).
+  2026-10-23, UT_Ants: suffix_filter leaves every CMakeLists.txt and
+  .yml unassigned (30 files), so build and CI code reach no lane. Partition
+  them, or suggest a build lane. `fields` also ignored too_coarse_lanes.
   **Layman:** The tool that divides a project into review lanes produced unusable, too-large lanes for a project without a module map, and silently skipped scripts outside the source folders.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
@@ -88286,9 +88300,32 @@ measured Ants adding about 5,250 tokens to every request.
   Pressless: the reply said unmeasured: 5 with no list (probably shell
   scripts). Fix: list each unmeasured path and why. Related: ANTS-5800
   (shell top-level code never measured, yet unmeasured reads 0).
+  2026-10-23, UT_Ants: 281 of 314 source files scanned; the skipped
+  shell and CMake files are not named. Group the skipped files by
+  language, or measure shell/CMake functions.
   **Layman:** The function-size tool said five files could not be measured but did not say which.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6188] **workspace_search names include_hidden when a no-match or capped reply skipped a hidden directory that exists.**
+  UT_Ants: a review lane covering CI config searched without
+  include_hidden and got nothing back from .github/, with no word that
+  hidden paths were skipped. Fix: when a hidden directory exists under the
+  searched lane and include_hidden is false, add a hint naming the flag.
+  **Layman:** The code search skips hidden folders such as .github by default; it should say so when that is why it found nothing.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6189] **session_cost accepts "self", so a subagent can measure its own transcript.**
+  UT_Ants: an orchestrator subagent had no way to name its own
+  transcript's session_id, so the review's orchestrator cost went
+  unmeasured. Fix: accept session_id "self" (the caller's current
+  transcript), or expose the subagent's id.
+  **Layman:** A helper session could not look up its own token cost because it had no way to name itself.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
