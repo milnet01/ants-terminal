@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6207 -->
+<!-- ants-roadmap-id-high-water: ANTS=6208 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88401,6 +88401,19 @@ measured Ants adding about 5,250 tokens to every request.
   refusal that lookaround needs PCRE2 and how to ask for it.
   **Layman:** A search pattern using an advanced feature fails with a bare error instead of working or explaining.
   Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6208] **trace finds the definition of a C++ constexpr variable that find_definition already finds.**
+  UT_Ants: trace symbol:"LIGHT_SIZE" returned references only; it is a
+  `constexpr std::uint64_t` inside `namespace { }`. Reproduced here
+  2026-10-23: find_definition symbol:"kEd25519SpkiPrefix" lang:cpp gives
+  src/selfupdate.cpp (constexpr array, anonymous namespace); trace
+  include:["definitions"] gives 0. Check whether trace misses every
+  variable definition or only those in an anonymous namespace, then
+  index them.
+  **Layman:** Asking where a named constant is defined returns nothing from one tool while another tool finds it.
+  Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
