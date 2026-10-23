@@ -94805,6 +94805,9 @@ worked after these.
   (ids L01-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23: MEDIUM F1 done (back-pressure comment states the
+  real bound: a batch can hold kFlushBytes − 1 plus one Pty read).
+  LOW F2 done in the same rewrite. LOW F3, F4 open.
   **Layman:** Tidy the code that reads what programs send to the terminal so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

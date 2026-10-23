@@ -179,13 +179,13 @@ private:
     qsizetype m_pasteOffset = 0;
     static constexpr qsizetype kPasteSliceBytes = qsizetype(64) * 1024;
 
-    // Back-pressure cap. Each batch is bounded by action+byte flush
-    // thresholds, so in-flight bytes is ≤ kMaxInFlight × kFlushBytes
-    // (~128 KB of raw input). Picked to cover a screen of noisy output
-    // (find /, yes) with room for one more batch in the pipe. If throughput
-    // profiling in phase 2 shows we're spending significant time paused,
-    // raise this — the invariant the tests lock is correctness, not cap
-    // value.
+    // Back-pressure cap. A batch flushes once it reaches kFlushActions or
+    // kFlushBytes, but onPtyData appends a whole Pty read before checking,
+    // so one batch can hold kFlushBytes − 1 plus one read (Pty reads up to
+    // 16 KB). In-flight raw input is therefore about kMaxInFlight ×
+    // (kFlushBytes + one read), and onPtyFinished may send one batch past
+    // the cap. Any cap is correct: the tests lock correctness, not the
+    // value, so raise it if profiling shows reads paused too often.
     static constexpr int kMaxInFlight = 8;
     static constexpr int kFlushActions = 4096;
     static constexpr int kFlushBytes = 16 * 1024;
