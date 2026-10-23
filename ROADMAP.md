@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6203 -->
+<!-- ants-roadmap-id-high-water: ANTS=6205 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88352,6 +88352,30 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A roadmap search written like a pattern is read as plain text, finds nothing, and does not say why.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6204] **trace reads a Python module qualifier (module.function) as a module scope, for definitions and callers alike.**
+  Pressless (reproduced): trace symbol:"github_setup.register" gives
+  0 definitions and 111 callers, every `register` in the tree. The
+  leading part narrows definitions by class scope only, and callers
+  ignore it. Fix: a leading part matching a .py file stem scopes
+  definitions to that file and callers to references through that
+  module (module.fn(...) or a from-import); an unmatched qualifier is
+  named in not_covered, never dropped silently.
+  **Layman:** Asking for one Python function's callers by its module name returns no definition and every caller of every function with that name.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6205] **Check whether changelog_log op:add stores a body as one unwrapped line, then wrap it or document verbatim.**
+  Pressless: a lane agent reported op:add stored its body as one long
+  line and rewrapped it by hand; not reproduced. Reproduce first. If
+  true, wrap to the file's prevailing width, or say in the schema that
+  the body is stored verbatim so callers pre-wrap (as roadmap_log's
+  body field does).
+  **Layman:** A changelog tool may write long entries as one line, so people rewrap them by hand.
+  Kind: investigate.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
