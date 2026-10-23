@@ -11,6 +11,7 @@
 #include "mcpspill.h"          // ANTS-2094 — result offload
 #include "mcpundeclaredargs.h"  // ANTS-4659 — undeclared-argument survey
 #include "secureio.h"
+#include "sessioncostverb.h"   // SessionCost::folderNameFor
 #include "verifytrustprompt.h"  // ANTS-5464 — the method name
 
 #include <QCryptographicHash>
@@ -18511,25 +18512,11 @@ QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
 }
 
 QString ClaudeIntegration::encodeProjectPath(const QString &path) {
-    // Matches Claude Code's encoding: BOTH `/` AND `_` collapse to `-`.
-    // ANTS-1192 root-cause for the chip + BG-tasks button hiding after
-    // a project-directory rename like Ants-Terminal → Ants_Terminal:
-    // Claude Code stores sessions under `~/.claude/projects/<encoded>/`
-    // where it folds underscores into hyphens, so a cwd
-    // `/mnt/Storage/Scripts/Linux/Ants_Terminal` lives at
-    // `-mnt-Storage-Scripts-Linux-Ants-Terminal` on disk. We were
-    // producing `-mnt-Storage-Scripts-Linux-Ants_Terminal` (underscore
-    // preserved) which never matched, so QDir::exists() failed and
-    // sessionPathForCwd silently returned empty.
-    //
-    // ANTS-5317 — the rule is wider than `/` and `_`: EVERY character
-    // outside [A-Za-z0-9] folds, so `~/.claude` lives at
-    // `-home-ants--claude`. Keeping the `.` hid that session's transcript
-    // and its status-bar model chip.
-    QString encoded = path;
-    for (QChar &c : encoded)
-        if (!(c.unicode() < 0x80 && c.isLetterOrNumber())) c = QLatin1Char('-');
-    return encoded;
+    // Claude Code's folder name under ~/.claude/projects/. Every character
+    // outside [A-Za-z0-9] folds to '-': `_` (ANTS-1192) and `.` (ANTS-5317)
+    // each hid a session once. One rule, shared with session_cost and
+    // run_trace.
+    return SessionCost::folderNameFor(path);
 }
 
 // ANTS-1670 M3 — an absolute path whose components contain no `..`

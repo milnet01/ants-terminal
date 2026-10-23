@@ -95192,6 +95192,9 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F3 done. F1, F2 open.
+  2026-10-23: HIGH F1 done (one transcript-folder rule,
+  SessionCost::folderNameFor; closes ANTS-5952) and F2 done (validId's
+  pattern and start's refusal built from kKinds). No HIGH left here.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97301,13 +97304,17 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: mcp-content-verbs-a.
 
-- 📋 [ANTS-5952] **src/runtraceverb.cpp:623: a cwd containing non-ASCII letters maps to a different transcript folder than Claude Code and session_cost use, so session_id lookup fails for it.**
+- ✅ [ANTS-5952] **src/runtraceverb.cpp:623: a cwd containing non-ASCII letters maps to a different transcript folder than Claude Code and session_cost use, so session_id lookup fails for it.**
   Lead L25-C1 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
   Location: src/runtraceverb.cpp:623
   a cwd containing non-ASCII letters maps to a different transcript folder than Claude Code and `session_cost` use, so `session_id` lookup fails for it. Searched: the folder-name copies in src/.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-23: fixed with ANTS-6134 F1. run_trace, session_cost and
+  ClaudeIntegration::encodeProjectPath now share
+  SessionCost::folderNameFor. RunTrace.TranscriptIsNamedNeverGuessed
+  asserts /mnt/Café maps to -mnt-Caf-; it failed before the fix.
   **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

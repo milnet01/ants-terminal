@@ -18,6 +18,7 @@
 // `coverage_required` were minted here).
 
 #include "runtraceverb.h"
+#include "sessioncostverb.h"   // SessionCost::folderNameFor
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -36,7 +37,8 @@ namespace {
 
 const char kDefaultIndex[] = "docs/reviews/gate-log.md";
 const char kCostTsv[] = "docs/reviews/run-costs.tsv";
-// The v2 workflow's design.md § Names this workflow fixes.
+// The v2 workflow's design.md § Names this workflow fixes. validId's pattern
+// and start's refusal are built from this list.
 const char kKinds[] = "GCVEFRAL";
 
 // The run-costs.tsv columns, identical to draft/v2/tools/run-cost.py's
@@ -153,7 +155,8 @@ QString pendingPath(const Paths &p, const QString &id) {
 }
 
 bool validId(const QString &id) {
-    static const QRegularExpression re(QStringLiteral("^[GCVEFRAL]-\\d{8}-[0-9a-f]{4}$"));
+    static const QRegularExpression re(QStringLiteral("^[%1]-\\d{8}-[0-9a-f]{4}$")
+                                           .arg(QLatin1String(kKinds)));
     return re.match(id).hasMatch();
 }
 
@@ -318,8 +321,8 @@ QJsonObject start(const Paths &p, const QString &kind, const QString &subject,
                   const QDateTime &now, bool dryRun,
                   const std::function<quint32()> &rng) {
     if (kind.size() != 1 || !QByteArray(kKinds).contains(kind.at(0).toLatin1()))
-        return refuse("bad_args", QStringLiteral("kind \"%1\" is not one of G C V E F R "
-                                                 "A L").arg(kind));
+        return refuse("bad_args", QStringLiteral("kind \"%1\" is not one letter of %2")
+                                      .arg(kind, QLatin1String(kKinds)));
     if (subject.trimmed().isEmpty() || hasNewline(subject))
         return refuse("bad_args", QStringLiteral("subject must be one non-empty line"));
 
@@ -619,11 +622,7 @@ QString transcriptForSession(const QString &projectsDir, const QString &cwd,
     static const QRegularExpression sid(QStringLiteral("^[0-9A-Za-z-]{8,64}$"));
     if (!sid.match(sessionId).hasMatch() || cwd.isEmpty())
         return {};
-    QString slug = cwd;
-    for (QChar &c : slug)
-        if (!c.isLetterOrNumber())
-            c = QLatin1Char('-');
-    return QDir(projectsDir).filePath(slug + QLatin1Char('/') + sessionId
+    return QDir(projectsDir).filePath(SessionCost::folderNameFor(cwd) + QLatin1Char('/') + sessionId
                                       + QStringLiteral(".jsonl"));
 }
 

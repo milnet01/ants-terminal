@@ -60,8 +60,8 @@ QJsonObject finish(const Paths &p, const FinishRequest &req);
 
 QJsonObject get(const Paths &p, const QString &id);
 
-// INV-13. The harness names a session's transcript after the session's cwd
-// with every non-alphanumeric character replaced by '-'.
+// INV-13. The harness names a session's transcript folder after the
+// session's cwd, as SessionCost::folderNameFor spells it.
 QString transcriptForSession(const QString &projectsDir, const QString &cwd,
                              const QString &sessionId);
 // True when `path` is a .jsonl file under one of `projectsDirs`.

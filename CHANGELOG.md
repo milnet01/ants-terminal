@@ -292,6 +292,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **run_trace finds a session's transcript when the project folder's name has non-ASCII letters** (ANTS-5952)
+  It now spells the transcript folder the way Claude Code, session_cost and the status bar do.
+
 - **Settings lists every configurable keyboard shortcut, and Reset to Defaults sets the bookmark jumps to Ctrl+Alt+Down/Up, the chords that work** (ANTS-6146)
 
 - **Automatic model switching judges a switch by what you type next, not by a tool's reply, so its regret and override counts reflect your own corrections** (ANTS-6011)

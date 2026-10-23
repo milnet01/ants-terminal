@@ -457,6 +457,11 @@ TEST(RunTrace, TranscriptIsNamedNeverGuessed) {
                   QStringLiteral("d6db5ea4-7c86-43a5-b5c9-77937072a3e9")),
               QStringLiteral("/h/.claude/projects/-mnt-Games-Ants-Terminal/"
                              "d6db5ea4-7c86-43a5-b5c9-77937072a3e9.jsonl"));
+    // ANTS-5952 — a non-ASCII letter folds to '-', as session_cost folds it.
+    EXPECT_EQ(RunTraceVerb::transcriptForSession(
+                  QStringLiteral("/h/.claude/projects"),
+                  QStringLiteral("/mnt/Café"), QStringLiteral("abcdef12")),
+              QStringLiteral("/h/.claude/projects/-mnt-Caf-/abcdef12.jsonl"));
     EXPECT_TRUE(RunTraceVerb::transcriptForSession(
                     QStringLiteral("/h/.claude/projects"), QStringLiteral("/x"),
                     QStringLiteral("../../etc/passwd")).isEmpty());
