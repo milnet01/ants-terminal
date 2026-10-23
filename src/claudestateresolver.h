@@ -37,6 +37,9 @@ struct Resolved {
 // Display-precedence ladder shared by every surface. Order:
 //   1. awaitingInput        (most user-actionable signal, can fire
 //                            before any transcript event lands)
+//   1b. ToolUse of AskUserQuestion or ExitPlanMode → AwaitingInput
+//                            (ANTS-5718; lights every tab, not only the
+//                            focused one)
 //   2. planMode             (only when base != NotRunning;
 //                            collapses to Hidden otherwise — INV-3)
 //   3. auditing             (only when base != NotRunning;

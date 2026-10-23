@@ -11,8 +11,9 @@ class ClaudeTaskListTracker;
 // Read-only view of the focused tab's Claude Code task list.
 //
 // Mirrors ClaudeBgTasksDialog's lifetime model:
-//   * Stores theme name + raw tracker pointer (lifetime guaranteed
-//     by ClaudeStatusBarController which outlives MainWindow).
+//   * Stores theme name + a QPointer to the tracker: the controller
+//     that owns the tracker and this dialog are both MainWindow's
+//     children, so neither is guaranteed to outlive the other.
 //   * Connects tracker->tasksChanged → rebuild() for live updates.
 //   * Non-modal, no QDialogButtonBox (Wayland QTBUG-79126
 //     mitigation; see debug_wayland_modal_dialog memory).
@@ -35,7 +36,7 @@ private slots:
     void showRowContextMenu(const QPoint &pos);
 
 private:
-    ClaudeTaskListTracker *m_tracker;
+    QPointer<ClaudeTaskListTracker> m_tracker;
     QString m_themeName;
     QPointer<QLabel> m_header;
     QPointer<QListWidget> m_list;

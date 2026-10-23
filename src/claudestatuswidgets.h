@@ -121,8 +121,8 @@ public:
     // ANTS-1158 — task-list chip refresh. Called from the same
     // status-bar tick + tab-switch sites as refreshBgTasksButton.
     // Re-targets m_tasks at the focused tab's transcript path,
-    // hides m_tasksBtn when the parsed list is empty, otherwise
-    // shows the "<unfinished>/<total>" label.
+    // hides m_tasksBtn when the parsed list is empty or all done,
+    // otherwise shows the "<done>/<total>" label.
     void refreshTasksButton();
     void refreshModelChip();   // ANTS-1226
 
@@ -145,9 +145,10 @@ public:
 
     // ANTS-1735 §2.3 — autonomous switcher tick. Reads the focused
     // tab's tracker entry, builds a ModelAutoSwitch::Gate, calls
-    // decide(), and on act: injects `/model <tier>\n` into the focused
-    // terminal + appends a ledger record. Default-off via
-    // Config::claudeAutoModel().switch_enabled (INV-14).
+    // decide(). On act it would inject `/model <tier>\r` and append a
+    // ledger record, but kAutoSwitchActuatorParked keeps it from sending
+    // anything. Default-off via Config::claudeAutoModel().switch_enabled
+    // (INV-14).
     void refreshAutoModelSwitch();
 
     // ANTS-1951 — auto-confirm a "Switch model?" dialog the user raised by
@@ -372,8 +373,9 @@ private:
     // ~early. Cancellable on re-entry.
     QTimer              *m_errorHideTimer = nullptr;
     // ANTS-1053 — one tracker per shell PID; replaces the single m_bgTasks.
-    // Each entry owns a QFileSystemWatcher on its own transcript, so
-    // background tabs stay up-to-date without re-parsing on tab switch.
+    // Each entry follows its own transcript (through the shared
+    // ClaudeTranscriptWatch), so background tabs stay up-to-date
+    // without re-parsing on tab switch.
     QHash<pid_t, ClaudeBgTaskTracker *> m_bgTrackers;
     QPushButton         *m_bgTasksBtn = nullptr;
 

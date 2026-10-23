@@ -36,38 +36,6 @@ inline qint64 parseIsoMs(const QString &ts) {
     return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
 }
 
-// Walk the Claude Code JSONL transcript at `path`, invoking
-// `handler(ev, evMs)` once per surviving event in document order. `ev` is
-// the parsed event object; `evMs` is that event's own timestamp (epoch
-// ms, 0 if absent). Returns the latest timestamp seen across all
-// non-sidechain events (0 if none parseable) — the task-list tracker uses
-// it as the deterministic reference time for its abandonment threshold;
-// the bg-task tracker ignores it.
-//
-// Gating applied before the handler fires, in this exact order (the order
-// is load-bearing — see ANTS-2115 below):
-//   • 16 MiB tail cap. On an over-cap file the head is dropped and the
-//     first (likely-truncated) line discarded; only old already-finished
-//     entries are lost, which is acceptable for both trackers.
-//   • blank lines and non-object JSON lines skipped.
-//   • isSidechain events skipped entirely — a subagent's inline turns
-//     never count toward the parent session, and (ANTS-2115) they do NOT
-//     advance the returned latest-event clock: a long-running subagent
-//     must not look like parent wall-clock progress.
-//   • the latest-event clock then advances over the event — INCLUDING an
-//     isCompactSummary event. A `/compact` pause is a genuine wall-clock
-//     gap in the parent's own stream, so a task stranded just before a
-//     compact must stay eligible for the abandonment threshold
-//     (ANTS-2115 / ANTS-1327).
-//   • isCompactSummary events are then skipped (they carry a synthetic
-//     conversation summary with no tool_use payload) — so the handler
-//     never sees them, but their timestamp has already been counted.
-//
-// `evMs` is parsed for every surviving event even when the handler does
-// not consult it (the bg tracker). The parse is a cheap fail-soft
-// QDateTime::fromString and the trackers run on debounced file changes,
-// so owning the clock here — rather than duplicating the timestamp logic
-// in each handler — keeps the ANTS-2115 ordering in one tested place.
 // ANTS-5050 — a resumable position in one transcript.
 //
 // `offset` is the byte position up to which COMPLETE lines have been
@@ -225,9 +193,41 @@ private:
     QList<Entry> m_entries;  // most recent first
 };
 
-// The full walk, unchanged in contract: walk the whole file and return the
-// latest-event clock. Expressed over `walkFrom` with a fresh cursor so the
-// gating and the tail cap have exactly one implementation — ANTS-1261 exists
+// Walk the Claude Code JSONL transcript at `path`, invoking
+// `handler(ev, evMs)` once per surviving event in document order. `ev` is
+// the parsed event object; `evMs` is that event's own timestamp (epoch
+// ms, 0 if absent). Returns the latest timestamp seen across all
+// non-sidechain events (0 if none parseable) — the task-list tracker uses
+// it as the deterministic reference time for its abandonment threshold;
+// the bg-task tracker ignores it.
+//
+// Gating applied before the handler fires, in this exact order (the order
+// is load-bearing — see ANTS-2115 below):
+//   • 16 MiB tail cap. On an over-cap file the head is dropped and the
+//     first (likely-truncated) line discarded; only old already-finished
+//     entries are lost, which is acceptable for both trackers.
+//   • blank lines and non-object JSON lines skipped.
+//   • isSidechain events skipped entirely — a subagent's inline turns
+//     never count toward the parent session, and (ANTS-2115) they do NOT
+//     advance the returned latest-event clock: a long-running subagent
+//     must not look like parent wall-clock progress.
+//   • the latest-event clock then advances over the event — INCLUDING an
+//     isCompactSummary event. A `/compact` pause is a genuine wall-clock
+//     gap in the parent's own stream, so a task stranded just before a
+//     compact must stay eligible for the abandonment threshold
+//     (ANTS-2115 / ANTS-1327).
+//   • isCompactSummary events are then skipped (they carry a synthetic
+//     conversation summary with no tool_use payload) — so the handler
+//     never sees them, but their timestamp has already been counted.
+//
+// `evMs` is parsed for every surviving event even when the handler does
+// not consult it (the bg tracker). The parse is a cheap fail-soft
+// QDateTime::fromString and the trackers run on debounced file changes,
+// so owning the clock here — rather than duplicating the timestamp logic
+// in each handler — keeps the ANTS-2115 ordering in one tested place.
+//
+// It is expressed over `walkFrom` with a fresh cursor so the gating and
+// the tail cap have exactly one implementation — ANTS-1261 exists
 // because two copies of this prologue drifted, and adding an incremental
 // variant beside it would have recreated that.
 template <typename Handler>

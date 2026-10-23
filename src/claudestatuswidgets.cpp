@@ -101,6 +101,7 @@ QString contextMeterStyle(const Theme &th, const QString &chunkColor) {
 // namespace block (it sits beside the near-miss telemetry it was written
 // for), but refreshAutoModelSwitch's debug trace needs it earlier.
 QString claudeStateName(ClaudeState s);
+QString tierTitle(ModelRecommender::Tier tier);   // ANTS-1893, defined below
 
 // ANTS-2116 — process-local cached Config, reloaded only when config.json
 // changes on disk. Each Config() ctor does open + readAll + JSON parse; the
@@ -127,6 +128,15 @@ const Config &cachedConfig() {
         cachedSize = size;
     }
     return cfg;
+}
+
+// ANTS-1959 — is this shell mid-turn (Thinking or ToolUse)? A continuation
+// prompt is sent after a model switch only then; at idle it would start
+// unrequested, billable work. One copy for every switch path.
+bool inActiveTurn(const ClaudeTabTracker *tracker, pid_t pid) {
+    if (!tracker || pid <= 0) return false;
+    const ClaudeState st = tracker->shellState(pid).state;
+    return st == ClaudeState::Thinking || st == ClaudeState::ToolUse;
 }
 
 // ANTS-1974 — the recommender's home/baseline tier, read from config and mapped
@@ -226,12 +236,9 @@ StateFace stateFace(const claudestate::Resolved &r) {
 ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
                                                      QObject *parent)
     : QObject(parent), m_statusBar(statusBar) {
-    // Status bar indicator for Claude Code state. Plain QLabel with Fixed
-    // horizontal sizePolicy — the vocabulary is a bounded set of short
-    // labels ("Claude: idle", "Claude: thinking...", "Claude: bash",
-    // "Claude: reading a file", "Claude: planning", "Claude: auditing",
-    // "Claude: prompting", "Claude: compacting..."), so the widget can
-    // grow to fit its natural width without ever needing to elide. The
+    // Status bar indicator for Claude Code state. Its width is pinned to
+    // the state vocabulary listed in pinSlots() (ANTS-5753), and longer
+    // text is elided; a new state's text goes in that list too. The
     // widget is hidden when the tab's shell has no Claude process.
     m_statusLabel = new QLabel(m_statusBar);
     m_statusLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
@@ -304,7 +311,8 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
 
     // ANTS-1158 — task-list chip. Sibling to bg-tasks; same size
     // contract. Hidden until the focused tab's transcript reports
-    // ≥ 1 plan row. Label shape "<unfinished>/<total>", e.g. 3/5.
+    // ≥ 1 plan row. Label shape "<done>/<total>", e.g. 3/5; hidden
+    // once every task is done.
     m_tasks = new ClaudeTaskListTracker(this);
     // Empty initial label — the hide() below + ANTS-1246 hide predicate
     // (total <= 0 || done >= total) mean the chip is never shown before
@@ -319,10 +327,10 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
             this, &ClaudeStatusBarController::tasksClicked);
     // ANTS-1219-INV-5: tracker → controller feedback connect. A
     // parser-driven content change (file appended on disk →
-    // QFileSystemWatcher::fileChanged → rescan → tasksChanged) re-runs
-    // refreshTasksButton on the same thread (Qt::AutoConnection,
-    // direct delivery) so the chip text follows tracker state without
-    // an event-loop gap.
+    // ClaudeTranscriptWatch::changed → rescan after the ANTS-5050
+    // debounce → tasksChanged) re-runs refreshTasksButton on the same
+    // thread (Qt::AutoConnection, direct delivery), so the chip follows
+    // the tracker as soon as the rescan runs.
     connect(m_tasks, &ClaudeTaskListTracker::tasksChanged,
             this, &ClaudeStatusBarController::refreshTasksButton);
 
@@ -381,7 +389,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         // next tick via the composer_not_empty gate (ANTS-1908).
         focused->sendToPty(
             (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
-        // ANTS-1918/1924 — ESC + ENTER handshake + continuation prompt.
+        // ANTS-1918/1924 — output-driven confirm + continuation prompt.
         performModelSwitchHandshake(focused);
         // ANTS-1840 — the user just acted on the recommendation, so hide the
         // chip immediately rather than letting it linger until the next
@@ -759,6 +767,9 @@ void ClaudeStatusBarController::showPermissionPrompt(pid_t awaitingPid,
         // is now driven by the tracker's shellStateChanged signal.
         apply();
 
+        // Allow and Deny only dismiss this bar and clear the awaiting flag:
+        // neither sends anything to Claude Code, which still shows its own
+        // prompt. Whether they should answer it is ANTS-5906.
         connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
             btnWidget->deleteLater();
             emit statusMessageCleared();
@@ -1086,7 +1097,7 @@ void ClaudeStatusBarController::pinSlots() {
 void ClaudeStatusBarController::refreshBgTasksButton() {
     if (!m_bgTasksBtn) return;
     // Resolve the focused shell's PID → look up its per-PID tracker.
-    // Per-PID trackers (ANTS-1053) own their own QFileSystemWatcher so
+    // Per-PID trackers (ANTS-1053) each follow their own transcript, so
     // background tabs stay up-to-date; we only need to update the
     // focused tab's transcript path on each tick.
     auto *focused = m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr;
@@ -1458,8 +1469,6 @@ void ClaudeStatusBarController::apply() {
         m_contextBar->show();
 }
 
-// ANTS-1226 — Passive model-tier recommender chip.
-// Reads the last 20 assistant turns from the active session's
 ClaudeStatusBarController::~ClaudeStatusBarController() = default;
 
 // ANTS-5620 — the mail chip's look. Larger and bolder than the tokens pill,
@@ -1651,6 +1660,8 @@ void ClaudeStatusBarController::refreshTokensSavedChip()
     m_tokensSavedChip->show();
 }
 
+// ANTS-1226 — Passive model-tier recommender chip.
+// Reads the last 20 assistant turns from the active session's
 // transcript, scores complexity, and shows a chip when the
 // recommendation differs from the current model in use.
 void ClaudeStatusBarController::refreshModelChip()
@@ -1725,13 +1736,7 @@ void ClaudeStatusBarController::refreshModelChip()
         }
     }();
     // Stable, locale-independent /model argument for the click handler.
-    const QString tierArg = [&]() -> QString {
-        switch (rec.tier) {
-        case ModelRecommender::Tier::Haiku: return QStringLiteral("haiku");
-        case ModelRecommender::Tier::Opus:  return QStringLiteral("opus");
-        default:                            return QStringLiteral("sonnet");
-        }
-    }();
+    const QString tierArg = ModelRecommender::tierName(rec.tier);
 
     m_modelBtn->setText(tierLabel);
     m_modelBtn->setProperty("modelTier", tierArg);
@@ -1796,13 +1801,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
     }
     const ModelRecommender::Tier tier =
         ModelRecommender::tierFromModelId(rec.currentModel);
-    const QString tierTitle = [&]() -> QString {
-        switch (tier) {
-        case ModelRecommender::Tier::Haiku: return tr("Haiku");
-        case ModelRecommender::Tier::Opus:  return tr("Opus");
-        default:                            return tr("Sonnet");
-        }
-    }();
+    const QString currentTitle = tierTitle(tier);
 
     const ModelRecommender::ThinkingLevel level =
         ModelRecommender::thinkingLevelFromLatestUserTurn(transcriptPath);
@@ -1810,7 +1809,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
 
     // Compose: "Opus · ultrathink" / "Sonnet · standard" / just "Haiku"
     // when the thinking half is empty (Unknown).
-    QString text = tierTitle;
+    QString text = currentTitle;
     if (!thinkLabel.isEmpty()) {
         text += QStringLiteral(" · ") + thinkLabel;
     }
@@ -1820,35 +1819,35 @@ void ClaudeStatusBarController::refreshModelStateChip()
     // ANTS-1956 — the "auto" prefix reads as "Ants will switch automatically"
     // rather than "Ants suggests you switch"; the bare arrow was being misread
     // as a recommendation to approve.
-    if (!m_autoSwitchPendingTier.isEmpty()) {
-        const QString pendingTitle =
-            m_autoSwitchPendingTier.left(1).toUpper() +
-            m_autoSwitchPendingTier.mid(1);
+    // m_autoSwitchPendingTier holds the lowercase tierName() form.
+    const QString pendingTitle = m_autoSwitchPendingTier.isEmpty()
+        ? QString()
+        : tierTitle(ModelRecommender::tierFromModelId(m_autoSwitchPendingTier));
+    if (!pendingTitle.isEmpty())
         text += QStringLiteral(" (auto → ") + pendingTitle + QStringLiteral(")");
-    }
     m_modelStateBtn->setText(text);
-    const QString pendingTip = m_autoSwitchPendingTier.isEmpty()
+    const QString pendingTip = pendingTitle.isEmpty()
         ? QString()
         : tr("\nAuto-switch to %1 is queued — will fire when you send "
-             "or clear the composer.")
-              .arg(m_autoSwitchPendingTier.left(1).toUpper() +
-                   m_autoSwitchPendingTier.mid(1));
+             "or clear the composer.").arg(pendingTitle);
     m_modelStateBtn->setToolTip(
         tr("Focused tab is using %1 (from the transcript's most recent "
            "assistant turn).\nThinking level: %2 (parsed from the most "
            "recent user prompt; \"standard\" when no directive is set).")
-            .arg(tierTitle)
+            .arg(currentTitle)
             .arg(thinkLabel.isEmpty() ? tr("unknown") : thinkLabel)
         + pendingTip);
     m_modelStateBtn->show();
 }
 
 // ANTS-1735 §2.3 — autonomous switcher tick. Runs on the 2 s status
-// timer, alongside refreshModelChip. Default-off: bails immediately
-// when claude.auto_model_switch is false (INV-14). When enabled,
+// timer, alongside refreshModelChip. Default-off (INV-14): when
+// claude.auto_model_switch is false it still runs the MCP gate, the
+// first-run nudge and the pending-tier clear, then returns. When enabled,
 // builds the Gate from the focused tab's tracker entry + scorer +
-// keystroke-timing composerEmpty proxy, calls decide(), and on act
-// injects `/model <tier>\n` plus appends a ledger record.
+// keystroke-timing composerEmpty proxy and calls decide(). On act it would
+// inject `/model <tier>\r` and append a ledger record, but the actuator is
+// parked (ModelAutoSwitch::kAutoSwitchActuatorParked), so nothing is sent.
 void ClaudeStatusBarController::refreshAutoModelSwitch()
 {
     const Config &cfg = cachedConfig();  // ANTS-2116 — mtime-guarded reuse
@@ -2133,7 +2132,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     focused->sendToPty(
         (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\r"))
             .toUtf8());
-    // ANTS-1918/1924 — ESC + ENTER handshake + continuation prompt.
+    // ANTS-1918/1924 — output-driven confirm + continuation prompt.
     performModelSwitchHandshake(focused);
 
     // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse
@@ -2204,13 +2203,9 @@ void ClaudeStatusBarController::performModelSwitchHandshake(TerminalWidget *focu
     // usage. So at idle we confirm the dialog but send NO continuation. This
     // covers every caller: an auto-switch fired mid-build resumes the build;
     // an auto-upgrade / deferred-chip / undo fired while idle starts nothing.
-    const pid_t pid = focused ? focused->shellPid() : 0;
-    const ClaudeState st = (m_tracker && pid > 0)
-        ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
-    const bool activeTurn =
-        (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
-    const QString cont = activeTurn
-        ? Config().claudeAutoModelContinuationPrompt() : QString();
+    const QString cont =
+        inActiveTurn(m_tracker, focused ? focused->shellPid() : 0)
+            ? cachedConfig().claudeAutoModelContinuationPrompt() : QString();
     // Delay the first poll one interval: `/model\r` was just injected, so the
     // dialog has not rendered yet — an immediate check would always miss.
     QPointer<ClaudeStatusBarController> self(this);
@@ -2378,13 +2373,8 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
                 // to sendUnarmedConfirm: a `/model` typed at idle (pre-picking a
                 // model for later) must NOT inject a continuation and start an
                 // unrequested billable turn (the ANTS-1959 invariant).
-                const pid_t pid = focused->shellPid();
-                const ClaudeState st = (m_tracker && pid > 0)
-                    ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
-                const bool activeTurn =
-                    (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
-                if (ModelAutoSwitch::shouldContinueAfterDirectSwitch(autoModeOn,
-                                                                     activeTurn)) {
+                if (ModelAutoSwitch::shouldContinueAfterDirectSwitch(
+                        autoModeOn, inActiveTurn(m_tracker, focused->shellPid()))) {
                     const QString cont =                       // ANTS-4457
                         cachedConfig().claudeAutoModelContinuationPrompt();
                     if (!cont.isEmpty()) {
@@ -2408,22 +2398,19 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
 // already finished, so injecting "please continue" would START unrequested
 // billable work (ANTS-1959); when auto mode is OFF the user typed /model as a
 // one-off and has their own next message ready (ANTS-1958). The active-turn
-// read mirrors performModelSwitchHandshake exactly.
+// read is inActiveTurn, shared with performModelSwitchHandshake.
 void ClaudeStatusBarController::sendUnarmedConfirm(TerminalWidget *term) {
     if (!term) return;
     term->sendToPty("\r");   // ENTER — confirms the dialog.
 
+    const Config &cfg = cachedConfig();
     const bool autoModeOn =
-        Config().claudeAutoModel().value("switch_enabled").toBool();
-    const pid_t pid = term->shellPid();
-    const ClaudeState st = (m_tracker && pid > 0)
-        ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
-    const bool activeTurn =
-        (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
-    if (!ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn))
+        cfg.claudeAutoModel().value("switch_enabled").toBool();
+    if (!ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(
+            autoModeOn, inActiveTurn(m_tracker, term->shellPid())))
         return;
 
-    const QString cont = Config().claudeAutoModelContinuationPrompt();
+    const QString cont = cfg.claudeAutoModelContinuationPrompt();
     if (cont.isEmpty()) return;
     QPointer<TerminalWidget> g(term);
     QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
@@ -2657,7 +2644,7 @@ void ClaudeStatusBarController::emitSwitchSurfacing(
         qint64 /*nowMs*/)
 {
     if (!focused) return;
-    Config cfg;
+    const Config &cfg = cachedConfig();
 
     // (1) Toast — reuse the existing statusMessageRequested signal
     // that MainWindow routes into m_statusMessage (mainwindow.cpp
@@ -2793,7 +2780,7 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     focused->sendToPty(
         (QStringLiteral("/model ") + priorTierName +
          QStringLiteral("\r")).toUtf8());
-    // ANTS-1918/1924 — ESC + ENTER handshake + continuation prompt.
+    // ANTS-1918/1924 — output-driven confirm + continuation prompt.
     performModelSwitchHandshake(focused);
 
     // Seed the in-memory cool-down so the gate's 10-min lock-out

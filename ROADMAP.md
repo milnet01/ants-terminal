@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6226 -->
+<!-- ants-roadmap-id-high-water: ANTS=6230 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95385,6 +95385,17 @@ worked after these.
   state the real difference (ruleSubsumes needs no space after an
   operator, generalizeRule's opRe does). Possible bug filed as
   ANTS-6162. Medium and low still open.
+  2026-10-23 MEDIUMs. Fixed: F3 inActiveTurn() is the one active-turn
+  check, and the switch paths read cachedConfig() instead of a fresh
+  Config; F7 tier names come from ModelRecommender::tierName and
+  tierTitle (lambdas and hand capitalising gone); F8-F16 and F18
+  comments (model-chip comment rejoined; auto-switch says \r and parked;
+  handshake call sites; pinned, elided status label; done/total chip;
+  shared ClaudeTranscriptWatch and debounce; ANTS-5718 rung; walk()
+  contract moved to walk(); TodoWrite id empty; Allow/Deny only dismiss,
+  see ANTS-5906); F17 the task-list dialog holds a QPointer to its
+  tracker. Queued: F4 ANTS-6227, F5 ANTS-6228, F6 ANTS-6229, F24
+  ANTS-6230. LOWs remain.
   **Layman:** Tidy the Claude status bar and task list so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96482,6 +96493,61 @@ worked after these.
   Kind: fix.
   Source: review-readability-2026-10-22 (L14 sweep, from L14-F3).
   Lanes: claude-integration.
+
+- 📋 [ANTS-6227] **Work out the focused tab's transcript path in one helper instead of five copies in claudestatuswidgets.cpp.**
+  From ANTS-6126; feeds ANTS-5796 (dup:02362e44f150). Each site runs
+  provider -> shellCwd -> activeSessionPath(cwd); the ANTS-5773 comment
+  in refreshBgTasksButton says that path can be another tab's session
+  and patches it for that tracker only. ClaudeTabTracker::transcriptPath
+  (pid) holds the right one per shell. Queued: claude_bg_tasks_button
+  pins the inline provider -> shellCwd -> activeSessionPath(cwd)
+  sequence with a regex; move that test to the helper in the same commit.
+  Hot reload: none needed.
+  **Layman:** Five places each work out which Claude conversation belongs to the focused tab, and one of them notes it can pick the wrong one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L17-F4).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6228] **Give ClaudeBgTaskTracker and ClaudeTaskListTracker one shared transcript-binding and polling base.**
+  From ANTS-6126; feeds ANTS-5796 (dup:8f1fb4e6ed21, dup:c753abf2e8ed).
+  Shared: the debounced constructor, destructor, setTranscriptPath,
+  rescan's before-read sample, cursor reset and walk-cache store, and
+  poll. ANTS-1458, ANTS-2002 and ANTS-5050 each patched both copies.
+  Keep only the per-event fold separate. Queued: a new class across two
+  subsystems' files; run source_scrapes on both first.
+  Hot reload: none needed.
+  **Layman:** The two trackers that read Claude's background tasks and its task list repeat the same file-following code, so each fix has to be made twice.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L17-F5).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6229] **The model chip's dwell estimate caches its result, so a session that stops being mechanical keeps the halved penalty.**
+  From ANTS-6126. claudestatuswidgets.cpp repeats ModelAutoSwitch::
+  conservatismDwellMultiplier's "mechanical session halves the penalty"
+  rule on a cached value: filled while mechanical (1.5) it returns 1.5
+  after the session turns non-mechanical, where the real function
+  returns 2.0. Fix: cache the inputs (measured, regret, floor) and call
+  conservatismDwellMultiplier every time. Queued: a behaviour change
+  that needs a red test first.
+  Hot reload: none needed.
+  **Layman:** A timing estimate for model switching can stay wrong after the kind of work in a session changes.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L17-F6).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6230] **Route applyBgEvent's inline task launch and finish through startTask and finishById.**
+  From ANTS-6126. claudebgtasks.cpp applyBgEvent rebuilds a task
+  inline for a flagged launch (through the aliases out and
+  idxByToolUseId) where startTask does it through acc, and repeats
+  finishById inline for the id-hint finish. The copies differ: the
+  inline launch sets the Agent kind, startTask has a fallback timestamp.
+  Queued: merging them changes one of those two behaviours; decide which
+  is right and lock it with a test first.
+  Hot reload: none needed.
+  **Layman:** The background-task reader creates and finishes tasks in two different ways, which makes it hard to follow and lets the two drift.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L17-F24).
+  Lanes: claude-session-widgets.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

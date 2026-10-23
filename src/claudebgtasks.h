@@ -66,8 +66,8 @@ struct ClaudeBgTaskAccum {
 
 // Per-session tracker for Claude Code background tasks.
 //
-// Owns a QFileSystemWatcher on the active transcript path and re-parses
-// on change. Emits `tasksChanged()` when the running-count or the task
+// Watches its transcript through the shared ClaudeTranscriptWatch and
+// re-parses on change, debounced (kRescanDebounceMs). Emits `tasksChanged()` when the running-count or the task
 // list shape changes.
 
 class ClaudeBgTaskTracker : public QObject {

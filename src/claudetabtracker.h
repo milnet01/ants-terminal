@@ -16,7 +16,8 @@
 // reflects whichever tab is focused. That's enough for the bottom
 // status bar, but a user running Claude in three tabs gets no glyph on
 // the inactive two. This class fills the gap: one entry per shell,
-// each with its own poll counter and transcript watcher, emitting
+// each with its own poll counter and transcript path (one poll timer
+// and one QFileSystemWatcher serve them all), emitting
 // shellStateChanged(shellPid) whenever a shell's Claude state
 // transitions.
 //

@@ -25,7 +25,7 @@
 //   * `Task` tool_use with `subagent_type` is a subagent dispatch, not
 //     a plan-list-add — filtered out.
 struct ClaudeTask {
-    QString id;           // taskId (TaskCreate) or generated for TodoWrite items
+    QString id;           // taskId (TaskCreate); empty for TodoWrite items
     QString subject;      // user-visible title
     QString description;  // longer text (optional)
     QString activeForm;   // present-continuous form (optional)
@@ -55,9 +55,10 @@ struct ClaudeTaskAccum {
 };
 
 // Per-session tracker mirroring ClaudeBgTaskTracker's shape:
-//   * One QFileSystemWatcher on the focused tab's transcript path.
-//   * fileChanged → rescan() → emit tasksChanged() iff the
-//     id-or-status set changed.
+//   * Watches the focused tab's transcript through the shared
+//     ClaudeTranscriptWatch.
+//   * change → debounced rescan() → emit tasksChanged() iff the
+//     id, status or subject set changed.
 //   * Pure static parser exposed for unit tests.
 class ClaudeTaskListTracker : public QObject {
     Q_OBJECT
