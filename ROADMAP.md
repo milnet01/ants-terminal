@@ -95158,6 +95158,9 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1 done. F2 open.
+  2026-10-23: HIGH F2 done. verify_changes' cache key is built from the
+  parsed VerifyOptions, so the key and the run share one list. No HIGH
+  left here.
   **Layman:** Tidy the review tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

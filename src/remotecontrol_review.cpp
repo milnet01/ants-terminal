@@ -997,27 +997,15 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
     return s;
 }
 
-QJsonObject canonicaliseVerifyOptions(const QJsonObject &req) {
-    QJsonObject canon;
-    if (req.contains(QStringLiteral("gates"))) {
-        const QJsonArray arr =
-            req.value(QStringLiteral("gates")).toArray();
-        QStringList gates;
-        for (const auto &v : arr) gates.append(v.toString());
-        gates.sort();
-        QJsonArray sorted;
-        for (const QString &g : gates) sorted.append(g);
-        canon[QStringLiteral("gates")] = sorted;
-    }
-    if (req.contains(QStringLiteral("max_log_lines"))) {
-        canon[QStringLiteral("max_log_lines")] =
-            req.value(QStringLiteral("max_log_lines")).toInt();
-    }
-    if (req.contains(QStringLiteral("timeout_sec"))) {
-        canon[QStringLiteral("timeout_sec")] =
-            req.value(QStringLiteral("timeout_sec")).toInt();
-    }
-    return canon;
+// The cache key's options, built from the options the run will use, so a
+// value the parse drops or defaults cannot split the key from the run.
+QJsonObject canonicaliseVerifyOptions(const VerifyEngine::VerifyOptions &opts) {
+    QStringList gates;
+    for (const VerifyEngine::GateName g : opts.only) gates.append(VerifyEngine::gateKey(g));
+    gates.sort();
+    return {{QStringLiteral("gates"), QJsonArray::fromStringList(gates)},
+            {QStringLiteral("max_log_lines"), opts.maxLogLines},
+            {QStringLiteral("timeout_sec"), opts.timeoutSec}};
 }
 
 QString verifyCacheKey(const QString &root,
@@ -1164,8 +1152,8 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     m_verifyInFlight = true;
     auto inFlightGuard = qScopeGuard([this]{ m_verifyInFlight = false; });
 
-    // Parse options up front so the canonical-options form is the
-    // same on lookup and insert.
+    // Parse options up front: the cache key is built from these
+    // (canonicaliseVerifyOptions), on lookup and insert alike.
     VerifyEngine::VerifyOptions opts;
     if (req.contains(QStringLiteral("gates"))) {
         const QJsonArray arr = req.value(QStringLiteral("gates")).toArray();
@@ -1211,7 +1199,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
 
     // Step 7 — compute the cache key now that the trust outcome is
     // known.
-    const QJsonObject canonOpts = canonicaliseVerifyOptions(req);
+    const QJsonObject canonOpts = canonicaliseVerifyOptions(opts);
     const QString key = cacheable
         ? verifyCacheKey(root, preSnapshot, cfgSource, probedUntrusted,
                          autoTrustEnv, canonOpts)
