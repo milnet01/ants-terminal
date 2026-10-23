@@ -1029,9 +1029,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // scrubbed, matching the bad_status / id echo hygiene. The match runs
     // pre-pagination while the `body` field is still present
     // (rcStripBodyFields runs post-slice), so it works even when
-    // include_body is false — but the body it sees is the same 2000-char-
-    // capped list text, so a keyword living only in a longer body's tail
-    // won't match (documented in the schema).
+    // include_body is false. On the full-file path it sees the cache's
+    // whole body; the section path caps the body at kRoadmapQueryBodyCap
+    // first (unless body_match is set), so there a keyword past the cap
+    // won't match.
     // ANTS-4927 — `q` is accepted as an alias for `query`. Third instance of
     // the same shape on this verb, after ANTS-3698's `filter`/`status` and
     // ANTS-4701's `max_results`/`limit`: a name a caller naturally reaches for

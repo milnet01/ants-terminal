@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6239 -->
+<!-- ants-roadmap-id-high-water: ANTS=6244 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86170,6 +86170,13 @@ parse, not that file.
   finished (files walked vs total, or complete:false); serve a worktree
   of an indexed repo from the index; or allow a longer timeout_sec with
   files_only.
+  2026-10-23: fifth report, UT_Ants. Whole-tree regex `ancestry:
+  cycle|"cycle"`, headline_only, no lane: elapsed_ms 5017,
+  truncated:true, 2 matches, no reason. `git grep -nE` on the same repo:
+  0.94 s; the verb with lane docs/specs: 587 ms. Asks again for
+  truncated_reason (timeout | max_results | bytes) and files_scanned /
+  files_total, and adds one idea: on a tracked git tree, back the regex
+  with git grep, or raise the default timeout for a whole-tree regex.
   **Layman:** A code search that runs out of time quietly returns only some results, and nothing says the rest were lost to the time limit.
   Kind: fix.
   Source: in-session-2026-09-25.
@@ -95466,6 +95473,13 @@ worked after these.
   paths; roadmap_query replies byte-identical before and after on this
   roadmap and a prose fixture. MEDIUM F5 (stale cap comment) went with
   F2. Other medium and low open.
+  2026-10-23 MEDIUMs. Fixed: F6 the query-match and gate-note comments
+  state each path's real body cap (behaviour gap stays ANTS-5925); F7
+  the rlNoteDeclaresTrailer and rlFillItemBody docs sit on their
+  functions; F8 the § 7 code-table doc sits on rcRoadmapWriteRefused; F9
+  the INV-13 comment says the fallback reads projectRoot, pointing at
+  the bug ANTS-5923. Queued: F10 ANTS-6240, F11 ANTS-6241 (with
+  ANTS-5924), F12 ANTS-6242, F13 ANTS-6243, F14 ANTS-6244. LOWs remain.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96675,6 +96689,64 @@ worked after these.
   **Layman:** A long block in the roadmap body editor is conditional but not indented, so a reader cannot see that it only sometimes runs.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F14).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6240] **Clean every echoed caller value in roadmap_query through one rcScrubEcho(text, cap) helper.**
+  From ANTS-6129. "Cut to 64, replace control bytes with ?" appears
+  seven times in remotecontrol_roadmap_query_verb.cpp, once at 200
+  chars, and once in remotecontrol_roadmap_query.cpp. Queued: the
+  anchors `verbatim.at(i).unicode() < 0x20` (mcp_cold_eyes,
+  mcp_roadmap_section_slice) and `idArg.truncate(64)` pin the inline
+  form; move them to the helper in the same commit.
+  Hot reload: none needed.
+  **Layman:** The same clean-up of text echoed back to the caller is written out nine times, so tightening it means finding every copy.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L20-F10).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6241] **Decide which roadmap_query modes emit rows in one modeEmitsRows(mode) predicate.**
+  From ANTS-6129 (folds dab54ceb2b41, f74db1a5df71). The sets at the
+  bullet_fields, body_match, version and query refusals are hand-kept;
+  query under mode:report is silently dropped, which is ANTS-5924. Fix
+  the two together.
+  Hot reload: none needed.
+  **Layman:** Four places each keep their own list of query modes that return no item rows, and they already disagree.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L20-F11).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6242] **Take roadmap_query's status names and emoji from one table instead of five hand-kept copies.**
+  From ANTS-6129. statusName, kAcceptedStatusFilters, aggregateOf,
+  keepStatus and two emoji constant sets in
+  remotecontrol_roadmap_query_verb.cpp. kRcStatuses (remotecontrol.cpp)
+  is the table append and flip now use.
+  Hot reload: none needed.
+  **Layman:** The list of roadmap statuses is written out five times in the query tool.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L20-F12).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6243] **Share one resolve-and-open guard between roadmapBullets, roadmapStoreServes and roadmapWriteTarget.**
+  From ANTS-6129 (confirms ad9aefe5e5d3). ANTS-4884 patched all three.
+  roadmapBullets resolves rcProjectRootFor before its empty check; the
+  other two check the raw path. Decide which is meant first.
+  Hot reload: none needed.
+  **Layman:** Three functions repeat the same check before opening the roadmap store, and they differ in a way nobody wrote down.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L20-F13).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6244] **Share the id and ids branches' targeted tail in roadmap_query.**
+  From ANTS-6129 (confirms 5bed3ddefa1b). links, body_match, strip or
+  cap, headline_only, bullet_fields and the cap echo. ANTS-4079, 5468,
+  4904, 4837 and 4981 patched both. Queued: roadmap_query_by_id and
+  by_ids pin `if (hasIncludeBodyArg && !includeBody)
+  rcStripBodyFields(matches)` and the order of
+  rcProjectHeadlineOnly(matches) before input_index.
+  Hot reload: none needed.
+  **Layman:** The two ways of fetching roadmap items by id finish with the same steps written out twice, and five past fixes had to patch both.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L20-F14).
   Lanes: mcp-roadmap-query-log.
 
 ## Readability review 2026-10-22 — possible bugs to investigate

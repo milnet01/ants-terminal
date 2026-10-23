@@ -876,7 +876,7 @@ bool rcdetail::rcRoadmapIdLess(const QString &a, const QString &b) {
     return a < b;       // non-conforming id → lexicographic
 }
 
-// ANTS-1922 — scan a (≤2000-char cached) bullet body for the FIRST
+// ANTS-1922 — scan a cached (whole) bullet body for the FIRST
 // line carrying a directional gate/blocker marker; return it trimmed
 // then capped to ≤160 chars (empty = no marker). A "line" is the text
 // between `\n` separators. Match is a case-folded substring test per
@@ -885,9 +885,7 @@ bool rcdetail::rcRoadmapIdLess(const QString &a, const QString &b) {
 // (an item that blocks others is itself actionable, and the bare verb
 // false-fires on prose like "blocks the cursor"). Only `blocked by` and
 // the `until`+(`lands`|`ships`) rule are INV-locked (INV-5); the rest
-// are best-effort. The 2000-char cap is a hard character cut, so a
-// marker past it — or on the line straddling it — is missed (acceptable
-// for v1: gate notes sit near the bullet head by convention).
+// are best-effort.
 QString rcdetail::rcExtractGateNote(const QString &body) {
     static const QStringList markers = {
         QStringLiteral("blocked by"), QStringLiteral("gated"),
@@ -970,8 +968,10 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
     // ANTS-3863 — the line that makes the laziness pay. It is reached only when
     // the project is NOT migrated, which is the one case where the whole file
     // was always going to be needed.
-    // ANTS-3771 — the same declaration the seam above was given, so the two
-    // outcomes of this function cannot resolve one bullet to two ids (INV-13).
+    // ANTS-3771 — meant to be the declaration the seam above was given, so
+    // the two outcomes cannot resolve one bullet to two ids (INV-13). It
+    // reads `projectRoot`, not the resolved `root`, so a subdirectory caller
+    // misses .ants/project.json here: ANTS-5923.
     return RoadmapParse::parseBullets(
         text.full(), ProjectSettings::idFormatFor(projectRoot));
 }
@@ -1261,14 +1261,6 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
 
 // ─── ANTS-3809 — the store-backed write path, shared by all eight ops ──────
 
-// § 7's code table, once for the whole verb layer. Mirrors
-// rcRoadmapSourceRefused() above and reads the same way at a call site:
-// `if (rcRoadmapWriteRefused(out, r, err, outcome)) return QJsonDocument(out);`
-//
-// Every failing value carries a genuinely different remedy — fill in the
-// missing Layman lines, import what the store is missing (ANTS-4141), fix the
-// store's contents, fix the store file, re-run the render — which is why they
-// are five codes and not one.
 void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                                     const RoadmapRender::Outcome &outcome,
                                     bool dryRun, bool semanticWrite) {
@@ -1547,6 +1539,14 @@ void rcdetail::rcSetAllRefusedSkipped(QJsonObject &out, const QJsonArray &skippe
     out[QStringLiteral("skipped_uniform")] = true;
 }
 
+// § 7's code table, once for the whole verb layer. Mirrors
+// rcRoadmapSourceRefused() above and reads the same way at a call site:
+// `if (rcRoadmapWriteRefused(out, r, err, outcome)) return QJsonDocument(out);`
+//
+// Every failing value carries a genuinely different remedy — fill in the
+// missing Layman lines, import what the store is missing (ANTS-4141), fix the
+// store's contents, fix the store file, re-run the render — which is why they
+// are five codes and not one.
 bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
                                   const QString &err,
                                   const RoadmapRender::Outcome &outcome,
@@ -2390,6 +2390,39 @@ QString rcdetail::rlDeclaredIdRefusal(const QString &writtenId,
     return QString();
 }
 
+// ANTS-4532 — see remotecontrol_internal.h for why this is single-line only
+// and why it must run after the trailer guard.
+QString rcdetail::rlWrapNote(const QString &note) {
+    if (note.contains(QLatin1Char('\n'))) return note;
+    // ~70 columns, which is what the corpus around it uses.
+    constexpr int kCols = 70;
+    const QStringList words = note.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    QStringList lines;
+    QString cur;
+    for (const QString &w : words) {
+        if (!cur.isEmpty() && cur.size() + 1 + w.size() > kCols) {
+            lines << cur;
+            cur.clear();
+        }
+        if (!cur.isEmpty()) cur += QLatin1Char(' ');
+        cur += w;   // a word longer than the column budget takes its own line
+    }
+    if (!cur.isEmpty()) lines << cur;
+    return lines.join(QLatin1Char('\n'));
+}
+
+// ANTS-4079 § 2.5 — the message for a link line in caller text. The rows are
+// the truth and the render composes the line, so a hand-written one would be
+// overwritten on the next write; op:"link" is where the fact goes.
+static QString rlLinkLineShadowMessage(const char *argName) {
+    return QStringLiteral(
+        "`%1` declares a link line (Splits-from:, Blocked-by:, Duplicate-of: or "
+        "Supersedes: followed by ids). Links are relationship rows: write them "
+        "with roadmap_log op:\"link\", and the render composes the line. Prose "
+        "that is not an id list after the key is not a declaration.")
+        .arg(QString::fromLatin1(argName));
+}
+
 // ANTS-4549 — caller prose may declare a trailer key only in the shape the
 // RENDERER writes one: the label first on its line. Anywhere else the key sits
 // in running prose, and reading it as metadata is the defect. Returns true when
@@ -2424,39 +2457,6 @@ QString rcdetail::rlDeclaredIdRefusal(const QString &writtenId,
 //
 // ANTS-4504's code-span masking is what makes the remedy cheap: a key inside
 // backticks declares nothing, so wrapping it is a one-character fix.
-// ANTS-4532 — see remotecontrol_internal.h for why this is single-line only
-// and why it must run after the trailer guard.
-QString rcdetail::rlWrapNote(const QString &note) {
-    if (note.contains(QLatin1Char('\n'))) return note;
-    // ~70 columns, which is what the corpus around it uses.
-    constexpr int kCols = 70;
-    const QStringList words = note.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-    QStringList lines;
-    QString cur;
-    for (const QString &w : words) {
-        if (!cur.isEmpty() && cur.size() + 1 + w.size() > kCols) {
-            lines << cur;
-            cur.clear();
-        }
-        if (!cur.isEmpty()) cur += QLatin1Char(' ');
-        cur += w;   // a word longer than the column budget takes its own line
-    }
-    if (!cur.isEmpty()) lines << cur;
-    return lines.join(QLatin1Char('\n'));
-}
-
-// ANTS-4079 § 2.5 — the message for a link line in caller text. The rows are
-// the truth and the render composes the line, so a hand-written one would be
-// overwritten on the next write; op:"link" is where the fact goes.
-static QString rlLinkLineShadowMessage(const char *argName) {
-    return QStringLiteral(
-        "`%1` declares a link line (Splits-from:, Blocked-by:, Duplicate-of: or "
-        "Supersedes: followed by ids). Links are relationship rows: write them "
-        "with roadmap_log op:\"link\", and the render composes the line. Prose "
-        "that is not an id list after the key is not a declaration.")
-        .arg(QString::fromLatin1(argName));
-}
-
 bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
                                      const char *argName) {
     if (note.isEmpty())
@@ -2517,21 +2517,6 @@ bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
     return false;
 }
 
-// § 2.5 and § 2.6 for the two ops that carry column arguments — `append` and
-// `append_batch` — filling one item's `body`, its five trailer columns and the
-// provenance for both. Shared because `append_batch` must run it inside its
-// per-bullet validation loop (a body_shadowed refusal is per BULLET, § 2.5, and
-// has to happen before ids are assigned or the accepted bullets' ids would not
-// be contiguous — § 2.3) while `append` runs it once.
-//
-// The order is per KEY and not per op. A key the request SUPPLIES is the
-// caller's, is written as given, and is shadow-checked against the body
-// arriving in the same request. A key the request OMITS is derived from that
-// body and is never shadow-checked — it came from the body, so the body cannot
-// contradict it. That is also what lets a caller create an item whose `Layman:`
-// line lives in the body without repeating it as an argument.
-//
-// Returns false with *error set on a body_shadowed refusal.
 void rcdetail::rlAddWarning(QJsonObject &env, const QJsonObject &warn) {
     QJsonArray arr = env.value(QStringLiteral("warnings")).toArray();
     arr.append(warn);
@@ -2600,6 +2585,21 @@ bool rcdetail::rlEvidenceLooksLikePath(const QString &element) {
     return ext.match(element).hasMatch();
 }
 
+// § 2.5 and § 2.6 for the two ops that carry column arguments — `append` and
+// `append_batch` — filling one item's `body`, its five trailer columns and the
+// provenance for both. Shared because `append_batch` must run it inside its
+// per-bullet validation loop (a body_shadowed refusal is per BULLET, § 2.5, and
+// has to happen before ids are assigned or the accepted bullets' ids would not
+// be contiguous — § 2.3) while `append` runs it once.
+//
+// The order is per KEY and not per op. A key the request SUPPLIES is the
+// caller's, is written as given, and is shadow-checked against the body
+// arriving in the same request. A key the request OMITS is derived from that
+// body and is never shadow-checked — it came from the body, so the body cannot
+// contradict it. That is also what lets a caller create an item whose `Layman:`
+// line lives in the body without repeating it as an argument.
+//
+// Returns false with *error set on a body_shadowed refusal.
 bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
                            RoadmapStore::ItemWrite &w,
                            QStringList &scrubbedNames, QString *error,
