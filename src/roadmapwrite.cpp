@@ -30,6 +30,19 @@ bool g_forcePostMutateFail = false;
 // ANTS-5286 — see setDropFromPostImageForTest(). Never set outside a test.
 QString g_dropFromPostImage;
 
+// Removes every post-image line containing g_dropFromPostImage, so a test can
+// make the render look as if it would drop the file's text. A no-op outside
+// a test.
+void dropFromPostImageForTest(QHash<QString, QString> &postImage) {
+    if (g_dropFromPostImage.isEmpty())
+        return;
+    for (QString &text : postImage) {
+        QStringList kept = text.split(u'\n');
+        kept.removeIf([](const QString &l) { return l.contains(g_dropFromPostImage); });
+        text = kept.join(u'\n');
+    }
+}
+
 
 // ANTS-4141 — the ids one file carries, from each bullet's own leading
 // `[<PREFIX>-NNNN]` slot.
@@ -130,25 +143,24 @@ QStringView bodyAfterHeader(QStringView text) {
 }
 
 // What the file holds that `want` (the store alone) does not reproduce, split
-// by whether the line's TEXT survives in some other styling.
-struct DriftBreakdown {
-    int         total    = 0;
-    int         restyled = 0;
-    // ANTS-4695 — differs from its render twin only in terminal punctuation.
-    int         repunctuated = 0;
-    // ANTS-4965 — differs from its render twin only in whitespace.
-    int         restructured = 0;
-    int         lost     = 0;
-    QStringList lostText;
-    int         gained   = 0;   // ANTS-5350 — see Drift::gained
-    // ANTS-5382 — see Drift::sample and Drift::headerOnly.
-    QList<std::pair<QString, QString>> sample;
-    bool        headerOnly = false;
+// by whether the line's TEXT survives in some other styling: Drift's fields,
+// plus the files that lost text. `cause` is set only by measureDrift().
+struct DriftBreakdown : Drift {
     // ANTS-4947 — the files that lost TEXT, so the publish can keep a copy of
     // each. Per file rather than a flag, because a project renders into several
     // and only the ones that actually lose prose are worth keeping.
     QStringList lostFiles;
 };
+
+// Adds `d`'s line counts into `into`. The one place a new drift kind is summed.
+void addDriftCounts(Drift &into, const Drift &d) {
+    into.total        += d.total;
+    into.restyled     += d.restyled;
+    into.repunctuated += d.repunctuated;
+    into.restructured += d.restructured;
+    into.lost         += d.lost;
+    into.gained       += d.gained;   // ANTS-5350
+}
 
 // ANTS-4695 — the line with trailing sentence punctuation and surrounding
 // whitespace removed. Two lines equal under this but unequal when trimmed
@@ -346,12 +358,7 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
             continue;
         const DriftBreakdown d =
             driftLines(QString::fromUtf8(f.readAll()), it.value());
-        all.total        += d.total;
-        all.restyled     += d.restyled;
-        all.repunctuated += d.repunctuated;
-        all.restructured += d.restructured;
-        all.lost         += d.lost;
-        all.gained       += d.gained;   // ANTS-5350
+        addDriftCounts(all, d);
         if (d.lost > 0)
             all.lostFiles.append(it.key());
         for (const QString &t : d.lostText)
@@ -443,6 +450,30 @@ QStringList keepDiscarded(const QStringList &paths) {
     return kept;
 }
 
+// The pre-image both drift checks measure against — measureDrift() and
+// commitAndRender()'s step 0 — so the two can never answer differently: a dry
+// render of the store as it stands, in `dialect`. Empty when the render fails
+// or produces nothing.
+//
+// ANTS-4628 — under an ENGAGED EMPTY gate scope, so this diagnostic render
+// judges nothing. An unset scope would gate it on the whole project, so on
+// exactly the projects carrying legacy debt the pre-image came back empty and
+// the drift check silently did not run.
+QHash<QString, QString> renderPreImage(RoadmapStore &store, qint64 projectId,
+                                       const QString &projectRoot,
+                                       const QString &liveRoadmapPath,
+                                       const QString &dialect) {
+    RoadmapRender::Options pre;
+    pre.liveRoadmapPath = liveRoadmapPath;
+    pre.dialect = dialect;
+    pre.dryRun = true;
+    pre.gateScope = QSet<qint64>{};
+    QHash<QString, QString> preImage;
+    if (!RoadmapRender::render(store, projectId, projectRoot, pre, nullptr, &preImage))
+        preImage.clear();
+    return preImage;
+}
+
 }  // namespace
 
 void setForcePostMutateFailForTest(bool on) { g_forcePostMutateFail = on; }
@@ -491,30 +522,11 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
     if (!dialect)
         return std::nullopt;
 
-    RoadmapRender::Options pre;
-    pre.liveRoadmapPath = liveRoadmapPath;
-    pre.dialect = *dialect;
-    pre.dryRun = true;
-    // ANTS-4628 — an ENGAGED EMPTY scope, judging nothing. A staleness check
-    // that failed the Layman gate would go dark on exactly the projects
-    // carrying legacy debt, which is where the question is worth asking.
-    pre.gateScope = QSet<qint64>{};
-    QHash<QString, QString> preImage;
-    if (!RoadmapRender::render(store, projectId, projectRoot, pre,
-                               nullptr, &preImage)
-        || preImage.isEmpty())
+    const QHash<QString, QString> preImage =
+        renderPreImage(store, projectId, projectRoot, liveRoadmapPath, *dialect);
+    if (preImage.isEmpty())
         return std::nullopt;
-    const DriftBreakdown d = externalDrift(preImage);
-    Drift out;
-    out.total        = d.total;
-    out.restyled     = d.restyled;
-    out.repunctuated = d.repunctuated;
-    out.restructured = d.restructured;
-    out.lost         = d.lost;
-    out.gained       = d.gained;   // ANTS-5350
-    out.lostText = d.lostText;
-    out.sample     = d.sample;       // ANTS-5382
-    out.headerOnly = d.headerOnly;
+    Drift out = externalDrift(preImage);   // drops lostFiles, which is the write path's
     if (out.total > 0) {
         // ANTS-5381 — compare each side with what the last publish recorded.
         const auto stamp = RoadmapRender::readPublishStamp(liveRoadmapPath);
@@ -589,20 +601,9 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         // `externalEditsChecked:false` already means "nobody looked", which is
         // the truth here; measuring against the wrong emission would report
         // every line of the file as drift.
-        RoadmapRender::Options pre;
-        pre.liveRoadmapPath = liveRoadmapPath;
-        pre.dialect = *preDialect;
-        pre.dryRun = true;
-        // ANTS-4628 — an ENGAGED EMPTY scope, so this diagnostic render judges
-        // nothing. It has to: the pre-image exists only to measure drift, and
-        // an unset scope would gate it on the whole project — so on exactly the
-        // projects carrying legacy debt the pre-image came back empty, the
-        // drift check silently did not run, and `externalEditsChecked` reported
-        // false. The measurement was unavailable precisely where it mattered.
-        pre.gateScope = QSet<qint64>{};
-        QHash<QString, QString> preImage;
-        if (RoadmapRender::render(store, projectId, projectRoot, pre, nullptr, &preImage)
-            && !preImage.isEmpty()) {
+        const QHash<QString, QString> preImage = renderPreImage(
+            store, projectId, projectRoot, liveRoadmapPath, *preDialect);
+        if (!preImage.isEmpty()) {
             drift = externalDrift(preImage);
             driftChecked = true;
         }
@@ -628,8 +629,11 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     QMap<QString, QString> touchedBullets;
 
     // Every Outcome that leaves this function carries the measurement, so the
-    // envelope sees it whichever render produced the rest of the fields.
-    const auto publish = [&](const RoadmapRender::Outcome &o) {
+    // envelope sees it whichever render produced the rest of the fields. It
+    // only fills the caller's *outcome; writing the files is steps 7-8. It
+    // reads `drift` and `keptBackups` when CALLED, so the dry render's call
+    // reports no backups and the published render's call reports them.
+    const auto reportOutcome = [&](const RoadmapRender::Outcome &o) {
         if (!outcome)
             return;
         *outcome = o;
@@ -728,30 +732,23 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         }
     }
 
-    // ANTS-5286 — AfterMutation measures against THIS render, the one that
-    // will replace the file, rather than the pre-image.
+    // Step 3a — ANTS-5286. On the AfterMutation path the drift is measured
+    // against THIS render, the one that will replace the file, and REPLACES
+    // step 0's measurement (which that path skipped).
     QHash<QString, QString> postImage;
     const auto dry = RoadmapRender::render(store, projectId, projectRoot, opts, error,
                                            measureBefore ? nullptr : &postImage);
     if (!dry)
         return abort(Result::RenderFailed);
     if (!measureBefore && !postImage.isEmpty()) {
-        if (!g_dropFromPostImage.isEmpty()) {
-            for (QString &text : postImage) {
-                QStringList kept = text.split(u'\n');
-                kept.removeIf([](const QString &l) {
-                    return l.contains(g_dropFromPostImage);
-                });
-                text = kept.join(u'\n');
-            }
-        }
+        dropFromPostImageForTest(postImage);
         drift = externalDrift(postImage);
         driftChecked = true;
     }
     // Set before the gate check: GateUnmet's envelope is built from
     // `gateFailures`, so the refusal path needs the Outcome as much as the
     // success path does.
-    publish(*dry);
+    reportOutcome(*dry);
     if (!dry->gateFailures.isEmpty()) {
         if (error && error->isEmpty()) {
             // ANTS-4628 — the gate now names only what THIS write touched, so
@@ -837,6 +834,8 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // Step 5 — the caller wanted a preview. Everything above ran, so *outcome
     // carries the whole would-be result; nothing is committed on either the
     // store or the file (INV-7).
+    // abort() here is the normal dry-run exit: it rolls the store back and
+    // reports success.
     if (dryRun)
         return abort(Result::Ok);
 
@@ -872,7 +871,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     const auto published =
         RoadmapRender::render(store, projectId, projectRoot, opts, error);
     if (published)
-        publish(*published);
+        reportOutcome(*published);
     if (!published || !published->committed) {
         if (error && error->isEmpty()) {
             *error = published

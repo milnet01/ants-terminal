@@ -41,7 +41,8 @@ struct Options {
     // item_pks. UNSET means every item, which is the whole-project rule as
     // originally written and the behaviour of every caller that does not set
     // it; an ENGAGED set judges only its members, and an engaged EMPTY set
-    // therefore judges nothing and always passes.
+    // therefore judges nothing and always passes. Ignored under
+    // laymanGateAdvisory, which reports every open item (ANTS-5330).
     //
     // Unset-means-all is the load-bearing half. The alternative default —
     // empty means all — makes a caller that builds a scope and legitimately

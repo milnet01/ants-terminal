@@ -596,34 +596,18 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         }
         // INV-5 — collect every offender rather than stopping at the first:
         // one refusal naming all of them is actionable, a first-failure is not.
+        // Who is judged, in order:
         //
-        // ANTS-4628 / § 2.5 — but only within the gate's SCOPE. Unset judges
-        // every item, which is the whole-project rule and what every caller
-        // that has not opted in still gets; an engaged scope judges only its
-        // members. Written as `!opts.gateScope ||` and not as an emptiness
-        // test on purpose: an engaged EMPTY scope must judge NOTHING, which is
-        // the `op:render` case, and an `isEmpty()` here would silently turn it
-        // back into judge-everything and re-create the deadlock.
-        // ANTS-4803 — and not at all in a dialect with no Layman slot. A
-        // `#### Pass` block carries a designator, a headline, a Status keyword
-        // and prose; there is nowhere to put a Layman line, so an open pass
-        // item can never satisfy this gate. Applied here it would refuse every
-        // publish forever — "serve it" that still refuses, which is the defect
-        // this item was filed about wearing a different code. Measured: the
-        // first round-trip run refused two of three items for exactly this.
-        //
-        // Scoped to the emission format rather than waived per item, because
-        // the reason is the FORMAT's, not any item's: no author of a
-        // pass-headings roadmap has failed to do something they could have done.
-        // ANTS-5256 — under laymanGateAdvisory the SAME offenders are
-        // collected, into laymanMissing, and the render proceeds. The test is
-        // unchanged: an advisory gate must report exactly what a blocking one
-        // would have refused, or the report is not about this gate.
-        // ANTS-5330 — the advisory arm (op:"convert") reports every open
-        // offender, not only the items this write touched: its reply says the
-        // next write to ANY of them is refused, and a convert that re-matches
-        // most items writes few of them, so the scoped count read 0 beside
-        // hundreds of flagged rows.
+        // - Not at all in a pass-headings emission (ANTS-4803): a `#### Pass`
+        //   block has no Layman slot, so the gate could never pass there.
+        // - Every open item under laymanGateAdvisory (ANTS-5256, ANTS-5330):
+        //   op:"convert" collects the same offenders into laymanMissing and
+        //   proceeds; the scope does not apply, because its reply says the next
+        //   write to ANY of them is refused.
+        // - Otherwise only the gate's scope (ANTS-4628 / § 2.5): unset judges
+        //   every item; an engaged scope judges its members. Tested as
+        //   `!opts.gateScope ||`, not as emptiness, because an engaged EMPTY
+        //   scope must judge nothing (the `op:render` case).
         if (!passHeadings && isOpen(it->status) && it->layman.isEmpty()
             && (opts.laymanGateAdvisory || !opts.gateScope
                 || opts.gateScope->contains(ref.itemPk))) {

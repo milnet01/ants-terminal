@@ -45,16 +45,18 @@ bool isValidPassDesignator(const QString &pass);
 // Empty if the designator is invalid.
 QString passIdFromDesignator(const QString &pass);
 
-// Render a pass block (no surrounding blank lines, no trailing newline):
-//   #### Pass <pass> <headline>
-//   - **Status**: <keyword>
-//   <body, verbatim>
-// `body` is written verbatim under the Status line when non-empty.
 // ANTS-4803 — inverse of passIdFromDesignator, for the store render. The
 // store keeps the synthesised id, not the designator, so publishing a pass
 // block recovers "43.5" from "PASS-43-5". Empty for an id of another shape.
 QString designatorFromPassId(const QString &id);
 
+// Render a pass block (no surrounding blank lines, no trailing newline):
+//   #### Pass <pass> <headline>
+//   - **Status**: <keyword>
+//   <body, verbatim>
+// ANTS-5231 — when `body` already carries a Status line, that line is the
+// status slot: kept byte for byte if it already means `keyword`, else its
+// word is rewritten, and no second Status line is added.
 QString formatPassBlock(const QString &pass, const QString &headline,
                         const QString &keyword, const QString &body);
 
@@ -74,17 +76,19 @@ struct WriteResult {
 // FIRST `- **Status**:` line to `keyword`, preserving the line's style
 // (keyword-only / emoji-only / emoji+keyword). If the located pass has
 // no Status line in its block (to the next heading of level <= 4), insert
-// one directly under the heading. First match wins; every other byte is
-// unchanged.
+// one directly under the heading. First match wins. ANTS-5408 — a rewritten
+// line also gets today's date; every other byte is unchanged.
 // code: bullet_not_found.
 WriteResult flipPassStatus(const QString &markdown,
                            const QString &locatorId,
                            const QString &locatorHeadline,
                            const QString &keyword);
 
-// Locate the pass (same rule as flipPassStatus) and append `note` as
-// body line(s) at the end of its block (before the next heading, or at
-// EOF for the last block). Status untouched, no anchor injected.
+// Locate the pass (same rule as flipPassStatus) and add `note` as a dated
+// `- **Progress** (date):` bullet (ANTS-5404; a note that is already a
+// bullet keeps its own first line) after the block's last content
+// line, above a trailing `---` rule (ANTS-5395). Status untouched, no anchor
+// injected.
 // code: bullet_not_found.
 WriteResult annotatePass(const QString &markdown,
                          const QString &locatorId,

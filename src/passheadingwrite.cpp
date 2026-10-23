@@ -99,29 +99,34 @@ int locatePass(const QStringList &lines, const QString &locatorId,
     return -1;
 }
 
+// The five statuses as a pass block spells them: the roadmap status, the
+// Status keyword, and its glyph. ANTS-4977 added `dropped`. A new status
+// goes here and nowhere else in this file.
+struct PassStatus {
+    const char *roadmapStatus;
+    const char *keyword;
+    const char *glyph;
+};
+constexpr PassStatus kPassStatuses[] = {
+    {"planned",     "todo",        RoadmapParse::kEmojiPlanned},
+    {"in-progress", "in-progress", RoadmapParse::kEmojiInProgress},
+    {"shipped",     "done",        RoadmapParse::kEmojiDone},
+    {"considered",  "deferred",    RoadmapParse::kEmojiConsidered},
+    {"dropped",     "dropped",     RoadmapParse::kEmojiDropped},
+};
 }  // namespace
 
 QString passStatusKeyword(const QString &roadmapStatus) {
-    if (roadmapStatus == QStringLiteral("planned"))     return QStringLiteral("todo");
-    if (roadmapStatus == QStringLiteral("in-progress")) return QStringLiteral("in-progress");
-    if (roadmapStatus == QStringLiteral("shipped"))     return QStringLiteral("done");
-    if (roadmapStatus == QStringLiteral("considered"))  return QStringLiteral("deferred");
-    if (roadmapStatus == QStringLiteral("dropped"))     return QStringLiteral("dropped");  // ANTS-4977
+    for (const PassStatus &p : kPassStatuses)
+        if (roadmapStatus == QLatin1String(p.roadmapStatus))
+            return QString::fromLatin1(p.keyword);
     return QString();
 }
 
 QString passStatusEmoji(const QString &keyword) {
-    // The constants are `const char *`; the callers here want QString.
-    if (keyword == QStringLiteral("todo"))
-        return QString::fromUtf8(RoadmapParse::kEmojiPlanned);
-    if (keyword == QStringLiteral("in-progress"))
-        return QString::fromUtf8(RoadmapParse::kEmojiInProgress);
-    if (keyword == QStringLiteral("done"))
-        return QString::fromUtf8(RoadmapParse::kEmojiDone);
-    if (keyword == QStringLiteral("deferred"))
-        return QString::fromUtf8(RoadmapParse::kEmojiConsidered);
-    if (keyword == QStringLiteral("dropped"))                               // ANTS-4977
-        return QString::fromUtf8(RoadmapParse::kEmojiDropped);
+    for (const PassStatus &p : kPassStatuses)
+        if (keyword == QLatin1String(p.keyword))
+            return QString::fromUtf8(p.glyph);
     return QString();
 }
 
@@ -168,8 +173,8 @@ bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
         // A leading run that is not a status glyph (`**`) is the author's
         // decoration: kept, never replaced by an emoji.
         bool glyph = false;
-        for (const char *k : {"todo", "in-progress", "done", "deferred", "dropped"})
-            glyph = glyph || lead == passStatusEmoji(QLatin1String(k));
+        for (const PassStatus &p : kPassStatuses)
+            glyph = glyph || lead == QString::fromUtf8(p.glyph);
         if (word.isEmpty() && !glyph) continue;   // content-free: the reader skips it too
         const qsizetype gap = vm.capturedStart(2) - lead.size();
         lines[j] = pm.captured(1)
@@ -264,7 +269,10 @@ WriteResult flipPassStatus(const QString &markdown,
             r.changedLine = statusLine;   // already this status: unchanged
         }
     } else {
-        // INV-5 — rewrite the value preserving the line's style.
+        // INV-5 — rewrite the value preserving the line's style. A fallback:
+        // it runs only when rewriteStatusWord() found no Status line with a
+        // word or glyph from here to EOF, so the line at `statusLine` is
+        // content-free.
         const QRegularExpressionMatch pm =
             passStatusLinePattern().match(lines.at(statusLine));
         const QString prefix = pm.captured(1);
