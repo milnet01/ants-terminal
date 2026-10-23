@@ -31,6 +31,9 @@ enum class InstallKind : std::uint8_t { NotAppImage, ReadOnlyDir, Updatable };
 InstallKind installKind(
     const QProcessEnvironment &env = QProcessEnvironment::systemEnvironment());
 
+// The release's AppImage asset for `version`: Ants_Terminal-<version>-x86_64.AppImage.
+QString assetName(const QString &version);
+
 // § 2.2 — the signed manifest's fields.
 struct Manifest {
     int        format = 0;

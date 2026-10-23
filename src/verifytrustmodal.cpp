@@ -4,12 +4,10 @@
 #include "verifytrustmodal.h"
 
 #include "guithread.h"
+#include "verifyengine.h"
 
 #include <QCheckBox>
 #include <QEvent>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonParseError>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QString>
@@ -52,40 +50,25 @@ QString shortSha(const QString &fullHex) {
     return fullHex.left(12) + QStringLiteral("…") + fullHex.right(4);
 }
 
-// The gates VerifyEngine::parseVerifyJson runs, in its order: each key whose
-// object carries a non-empty command.
-QStringList gateNames(const QJsonObject &root) {
+// The gates the engine would run, in its order. The prompt reads them
+// through the engine's own parser, so the user is shown exactly the
+// commands they are trusting.
+QStringList gateNames(const QList<VerifyEngine::GateConfig> &gates) {
     QStringList names;
-    for (const QString &gate : {QStringLiteral("build"),
-                                QStringLiteral("tests"),
-                                QStringLiteral("lint")}) {
-        if (!root.value(gate).toObject()
-                 .value(QStringLiteral("command")).toString().isEmpty())
-            names << gate;
-    }
+    for (const auto &g : gates) names << VerifyEngine::gateKey(g.name);
     return names;
 }
 
 QString commandPreview(const QByteArray &configBytes) {
-    // ANTS-1763 — parse with QJsonDocument rather than a naive quote
-    // scan. The previous backslash-aware scan misread a value ending in
-    // an even number of backslashes (e.g. "foo\\"): it treated the real
-    // closing quote as escaped and read on into the rest of the JSON.
-    // This preview is the ONLY human-readable summary in the trust
-    // prompt, so a misrepresentation is a trust-decision hazard. Schema
-    // (VerifyEngine::parseVerifyJson): { build|tests|lint: { command } }.
+    // ANTS-1763 — this preview is the ONLY human-readable summary in the
+    // trust prompt, so a misrepresentation is a trust-decision hazard.
     // Return the FIRST gate's command in the engine's gate order so the
     // "First command preview" matches what would actually run first.
-    QJsonParseError pe{};
-    const QJsonDocument doc = QJsonDocument::fromJson(configBytes, &pe);
-    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
-        return QStringLiteral("(preview unavailable — malformed JSON)");
-    }
-    const QJsonObject root = doc.object();
-    const QStringList gates = gateNames(root);
+    bool parseError = false;
+    const auto gates = VerifyEngine::parseGateConfig(configBytes, &parseError);
+    if (parseError) return QStringLiteral("(preview unavailable — malformed JSON)");
     if (gates.isEmpty()) return QStringLiteral("(no command field found)");
-    QString preview = root.value(gates.first()).toObject()
-                          .value(QStringLiteral("command")).toString();
+    QString preview = gates.first().command;
     if (preview.size() > kCommandPreviewChars) {
         preview = preview.left(kCommandPreviewChars)
                   + QStringLiteral("…");
@@ -124,8 +107,9 @@ PromptControls buildPromptBox(QMessageBox &box,
     const QString shortHex = shortSha(shaHex);
     const QString preview  = commandPreview(configBytes);
     // ANTS-1337 § 4.3 — "Gates: N — name1, name2".
+    bool parseError = false;
     const QStringList gates =
-        gateNames(QJsonDocument::fromJson(configBytes).object());
+        gateNames(VerifyEngine::parseGateConfig(configBytes, &parseError));
     const QString gatesLine = gates.isEmpty()
         ? QStringLiteral("0")
         : QStringLiteral("%1 — %2").arg(gates.size())

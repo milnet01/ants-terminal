@@ -182,8 +182,7 @@ void UpdateDialog::startUpdate() {
     m_nam = new QNetworkAccessManager(this);
     const QString target = qEnvironmentVariable("APPIMAGE");
     m_session = std::make_unique<SelfUpdate::Session>(SelfUpdate::embeddedPublicKeyPem(), target);
-    const QString base = QStringLiteral("Ants_Terminal-%1-x86_64.AppImage.manifest")
-                             .arg(m_release.version());
+    const QString base = SelfUpdate::assetName(m_release.version()) + QStringLiteral(".manifest");
     m_smallPending = 2;
     fetchSmall(base, &m_manifest, &m_smallPending);
     fetchSmall(base + QStringLiteral(".sig"), &m_signature, &m_smallPending);
@@ -220,7 +219,7 @@ void UpdateDialog::onSmallFetched() {
 }
 
 void UpdateDialog::fetchAppImage() {
-    const QString asset = QStringLiteral("Ants_Terminal-%1-x86_64.AppImage").arg(m_release.version());
+    const QString asset = SelfUpdate::assetName(m_release.version());
     const QUrl url = m_release.assets.value(asset);
     if (!SelfUpdate::isAllowedUrl(url) || !m_session->begin()) {
         fail(tr("The download could not start: %1").arg(m_session->error()));

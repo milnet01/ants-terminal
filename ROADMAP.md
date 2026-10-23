@@ -94994,6 +94994,13 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1 done.
+  2026-10-23: MEDIUM F2-F8 done, none queued. F2 Outcome comment
+  says Headless and denied are reported apart. F3 user-theme fallbacks
+  read from the built-in Dark theme (copy removed). F4 names the rule
+  by selector. F5 both QMenuBar copies name each other. F6 one
+  SelfUpdate::assetName for the three copies. F7 the trust prompt reads
+  gates through VerifyEngine::parseGateConfig. F8 WelcomeDialog's helper
+  lambdas are private member functions. LOWs F9-F21 remain.
   **Layman:** Tidy the dialog windows and colour themes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

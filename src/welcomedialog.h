@@ -21,6 +21,12 @@
 #include <vector>
 
 class Config;
+class QVBoxLayout;
+
+namespace ants::claude_setup {
+struct Outcome;
+struct Status;
+}
 
 class WelcomeDialog : public QDialog {
     Q_OBJECT
@@ -47,10 +53,32 @@ protected:
     bool event(QEvent *e) override;
 
 private:
+    // One setup row: a title, the current state, and an Install/Reinstall
+    // button (defined in the .cpp).
+    struct Row;
+    using RowAction = std::function<void(const Row &)>;
+
     // Shows the setup section or the install offer; when detection turns
     // true, every setup row re-reads its state.
     void applyDetection();
 
+    // Adds a row to `into` and reads its state; returns a re-read of it
+    // for when detection turns true (INV-13).
+    std::function<void()> addRow(QVBoxLayout *into, QWidget *owner,
+                                 const QString &title, const QString &buttonName,
+                                 std::function<ants::claude_setup::Status()> status,
+                                 RowAction onClick);
+    // Runs `action` at once and shows its result in the row.
+    static RowAction runNow(std::function<ants::claude_setup::Outcome()> action);
+    // Shows the exact change first; `action` runs only on accept (INV-9).
+    RowAction runAfterPreview(std::function<QString()> preview,
+                              std::function<ants::claude_setup::Outcome()> action);
+    // A non-modal preview owned by this dialog; `onAccept` runs only from
+    // its accept handler (INV-9, INV-12).
+    void openPreview(const QString &title, const QString &intro, const QString &text,
+                     const QString &acceptLabel, std::function<void()> onAccept);
+
+    QString m_themeName;
     std::function<bool()> m_detectClaude;
     QWidget *m_claudeSection = nullptr;
     QWidget *m_installOffer = nullptr;

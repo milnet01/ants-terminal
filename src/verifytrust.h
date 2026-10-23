@@ -25,13 +25,13 @@
 namespace VerifyTrust {
 
 // Outcome of asking the client whether a particular `.ants/verify.json`
-// is trusted. `Headless` covers both "no MainWindow to prompt from"
-// and "embedded fake client returned Deny" — the engine treats both
-// the same way (fall through to auto-detect).
+// is trusted. The engine falls through to auto-detect on both
+// non-Trusted outcomes, but answerPromptRequest reports them apart
+// ("denied" and "headless"), so keep them distinct.
 enum class Outcome {
     Trusted,           // SHA in trusted_shas OR (repo, sha) match
-    UntrustedFellBack, // prompt() returned Deny / Cancel
-    Headless,          // no MainWindow / fake client / no prompt path
+    UntrustedFellBack, // the user (or AlwaysDenyClient) denied
+    Headless,          // no prompt was possible, or the trust save failed
 };
 
 // Single trust decision result. `outcome` says what happened.

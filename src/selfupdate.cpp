@@ -24,9 +24,6 @@ namespace SelfUpdate {
 
 namespace {
 
-constexpr char kAssetPrefix[] = "Ants_Terminal-";
-constexpr char kAssetSuffix[] = "-x86_64.AppImage";
-
 // DER SubjectPublicKeyInfo header for an Ed25519 key; the 32-byte key follows.
 constexpr unsigned char kEd25519SpkiPrefix[] = {0x30, 0x2a, 0x30, 0x05, 0x06, 0x03,
                                                 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00};
@@ -97,6 +94,10 @@ bool namesDir(const QString &value, const QString &dir) {
 
 }  // namespace
 
+QString assetName(const QString &version) {
+    return QStringLiteral("Ants_Terminal-") + version + QStringLiteral("-x86_64.AppImage");
+}
+
 int compareSemver(const QString &a, const QString &b) {
     const QStringList ap = a.split('.');
     const QStringList bp = b.split('.');
@@ -153,7 +154,7 @@ VerifyResult verifyManifest(const QByteArray &manifestBytes, const QByteArray &s
     if (compareSemver(r.manifest.version, runningVersion) <= 0)
         return fail(VerifyError::VersionNotNewer,
                     QStringLiteral("%1 is not newer than %2").arg(r.manifest.version, runningVersion));
-    const QString expected = QLatin1String(kAssetPrefix) + r.manifest.version + QLatin1String(kAssetSuffix);
+    const QString expected = assetName(r.manifest.version);
     if (r.manifest.asset != expected)
         return fail(VerifyError::AssetName,
                     QStringLiteral("asset %1 is not %2").arg(r.manifest.asset, expected));

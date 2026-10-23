@@ -33,9 +33,10 @@ QLabel *wrapped(const QString &text, QWidget *parent) {
     return l;
 }
 
-// One setup row: a title, the current state, and an Install/Reinstall
-// button. `status` reads the state; `onClick` runs the action.
-struct Row {
+}  // namespace
+
+// `status` reads the row's state.
+struct WelcomeDialog::Row {
     QPushButton *button = nullptr;
     QLabel      *state  = nullptr;
     std::function<cs::Status()> status;
@@ -49,8 +50,6 @@ struct Row {
     }
 };
 
-}  // namespace
-
 WelcomeDialog::Options WelcomeDialog::detect() {
     Options o;
     o.detectClaude    = &cs::claudeCodeDetected;
@@ -61,7 +60,7 @@ WelcomeDialog::Options WelcomeDialog::detect() {
 
 WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
                              QWidget *parent)
-    : QDialog(parent) {
+    : QDialog(parent), m_themeName(themeName) {
     setObjectName(QStringLiteral("WelcomeDialog"));
     setWindowTitle(tr("Welcome to Ants Terminal"));
     auto chrome = DialogChrome::install(this, themeName, /*resizable=*/true,
@@ -100,107 +99,32 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
     // Each row reads its state now and again after its action. `rows` keeps
     // a re-read of each, for when detection turns true (INV-13).
     std::vector<std::function<void()>> rows;
-    auto addRow = [this, &rows](QVBoxLayout *into, QWidget *owner, const QString &title,
-                         const QString &buttonName,
-                         std::function<cs::Status()> status,
-                         std::function<void(const Row &)> onClick) {
-        auto *line = new QHBoxLayout;
-        auto *text = new QVBoxLayout;
-        text->addWidget(wrapped(QStringLiteral("<b>%1</b>").arg(title), owner));
-        auto *state = wrapped(QString(), owner);
-        state->setTextFormat(Qt::PlainText);
-        text->addWidget(state);
-        line->addLayout(text, 1);
-        auto *button = new QPushButton(owner);
-        button->setObjectName(buttonName);
-        line->addWidget(button, 0, Qt::AlignTop);
-        into->addLayout(line);
-        Row row{button, state, std::move(status)};
-        row.refresh();
-        rows.emplace_back([row] { row.refresh(); });
-        connect(button, &QPushButton::clicked, this,
-                [row, onClick = std::move(onClick)] { onClick(row); });
-    };
-    // Runs an action and shows its result in the row, then its fresh state.
-    auto runNow = [](std::function<cs::Outcome()> action) {
-        return [action = std::move(action)](const Row &row) {
-            const cs::Outcome o = action();
-            row.refresh();
-            if (!o.ok || !o.message.isEmpty())
-                row.state->setText(o.message.isEmpty() ? row.state->text() : o.message);
-        };
-    };
-    // A non-modal preview owned by this dialog; `onAccept` runs only from
-    // its accept handler (INV-9, INV-12).
-    auto openPreview = [this, themeName](const QString &title, const QString &intro,
-                                         const QString &text,
-                                         const QString &acceptLabel,
-                                         std::function<void()> onAccept) {
-        auto *dlg = new QDialog(this);
-        dlg->setObjectName(QStringLiteral("welcomePreview"));
-        dlg->setAttribute(Qt::WA_DeleteOnClose);
-        dlg->setWindowTitle(title);
-        auto c = DialogChrome::install(dlg, themeName, /*resizable=*/true,
-                                       QStringLiteral("WelcomePreview"));
-        auto *lay = new QVBoxLayout(c.contentArea);
-        lay->addWidget(wrapped(intro, dlg));
-        auto *view = new QPlainTextEdit(text, dlg);
-        view->setReadOnly(true);
-        lay->addWidget(view, 1);
-        auto *buttons = new QHBoxLayout;
-        buttons->addStretch();
-        auto *cancel = new QPushButton(tr("Cancel"), dlg);
-        auto *accept = new QPushButton(acceptLabel, dlg);
-        buttons->addWidget(cancel);
-        buttons->addWidget(accept);
-        lay->addLayout(buttons);
-        connect(cancel, &QPushButton::clicked, dlg, &QDialog::reject);
-        connect(accept, &QPushButton::clicked, dlg, &QDialog::accept);
-        connect(dlg, &QDialog::accepted, this, std::move(onAccept));
-        dlg->show();
-        dlg->raise();
-        dlg->activateWindow();
-    };
-    // Shows the exact change first; the writer runs only on accept (INV-9).
-    auto runAfterPreview = [openPreview](std::function<QString()> preview,
-                                         std::function<cs::Outcome()> action) {
-        return [openPreview, preview = std::move(preview),
-                action = std::move(action)](const Row &row) {
-            openPreview(tr("Before anything is written"),
-                        tr("This is exactly what will be written:"), preview(),
-                        tr("Write it"), [row, action] {
-                            const cs::Outcome o = action();
-                            row.refresh();
-                            if (!o.message.isEmpty()) row.state->setText(o.message);
-                        });
-        };
-    };
 
     // 3. Claude Code, only where it is installed (spec § 2.4); otherwise the
     // install offer (§ 2.8) stands in its place.
     auto *claude = new QGroupBox(tr("Set up with Claude Code"), body);
     claude->setObjectName(QStringLiteral("welcomeClaudeSection"));
     auto *cv = new QVBoxLayout(claude);
-    addRow(cv, claude, tr("Live status bar hooks"),
-           QStringLiteral("welcomeStatusHooksButton"), &cs::statusHooksStatus,
-           runNow(&cs::installStatusHooks));
-    addRow(cv, claude, tr("Connect the Ants MCP toolkit to Claude Code"),
-           QStringLiteral("welcomeMcpButton"), &cs::mcpStatus,
-           runNow(&cs::registerMcp));
-    addRow(cv, claude, tr("Git context on every prompt"),
-           QStringLiteral("welcomeGitContextButton"), &cs::gitContextStatus,
-           runNow(&cs::installGitContextHook));
+    rows.push_back(addRow(cv, claude, tr("Live status bar hooks"),
+                          QStringLiteral("welcomeStatusHooksButton"), &cs::statusHooksStatus,
+                          runNow(&cs::installStatusHooks)));
+    rows.push_back(addRow(cv, claude, tr("Connect the Ants MCP toolkit to Claude Code"),
+                          QStringLiteral("welcomeMcpButton"), &cs::mcpStatus,
+                          runNow(&cs::registerMcp)));
+    rows.push_back(addRow(cv, claude, tr("Git context on every prompt"),
+                          QStringLiteral("welcomeGitContextButton"), &cs::gitContextStatus,
+                          runNow(&cs::installGitContextHook)));
     const QString mdPath = opts.claudeMdPath;
-    addRow(cv, claude, tr("Ants notes in your CLAUDE.md (optional)"),
-           QStringLiteral("welcomeClaudeMdButton"),
-           [mdPath] { return cs::claudeMdNoteStatus(mdPath); },
-           runAfterPreview(
-               [mdPath] {
-                   return tr("File: %1\n\n<!-- ants-terminal:begin -->\n%2\n"
-                             "<!-- ants-terminal:end -->")
-                       .arg(mdPath, cs::claudeMdNoteText());
-               },
-               [mdPath] { return cs::installClaudeMdNote(mdPath); }));
+    rows.push_back(addRow(cv, claude, tr("Ants notes in your CLAUDE.md (optional)"),
+                          QStringLiteral("welcomeClaudeMdButton"),
+                          [mdPath] { return cs::claudeMdNoteStatus(mdPath); },
+                          runAfterPreview(
+                              [mdPath] {
+                                  return tr("File: %1\n\n<!-- ants-terminal:begin -->\n%2\n"
+                                            "<!-- ants-terminal:end -->")
+                                      .arg(mdPath, cs::claudeMdNoteText());
+                              },
+                              [mdPath] { return cs::installClaudeMdNote(mdPath); })));
     v->addWidget(claude);
 
     // The installer runs in a new tab the user watches, and only after they
@@ -222,7 +146,7 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
     ov->addLayout(installLine);
     v->addWidget(offer);
     connect(install, &QPushButton::clicked, this,
-            [openPreview, openTab = opts.openInstallTab] {
+            [this, openTab = opts.openInstallTab] {
                 const QString command = cs::claudeInstallCommand();
                 openPreview(tr("Before anything runs"),
                             tr("This is what will run in a new tab:"),
@@ -239,11 +163,11 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
     auto *shell = new QGroupBox(tr("Shell integration"), body);
     auto *sv = new QVBoxLayout(shell);
     const QStringList dirs = opts.shellScriptDirs;
-    addRow(sv, shell, tr("Mark where each command starts and ends"),
-           QStringLiteral("welcomeShellButton"),
-           [dirs] { return cs::shellIntegrationStatus(dirs); },
-           runAfterPreview([dirs] { return cs::shellIntegrationPreview(dirs); },
-                           [dirs] { return cs::installShellIntegration(dirs); }));
+    rows.push_back(addRow(sv, shell, tr("Mark where each command starts and ends"),
+                          QStringLiteral("welcomeShellButton"),
+                          [dirs] { return cs::shellIntegrationStatus(dirs); },
+                          runAfterPreview([dirs] { return cs::shellIntegrationPreview(dirs); },
+                                          [dirs] { return cs::installShellIntegration(dirs); })));
     v->addWidget(shell);
 
     // 5. Support.
@@ -288,6 +212,79 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
 
     setMinimumSize(560, 420);
     resize(680, 640);
+}
+
+std::function<void()> WelcomeDialog::addRow(QVBoxLayout *into, QWidget *owner,
+                                            const QString &title, const QString &buttonName,
+                                            std::function<cs::Status()> status,
+                                            RowAction onClick) {
+    auto *line = new QHBoxLayout;
+    auto *text = new QVBoxLayout;
+    text->addWidget(wrapped(QStringLiteral("<b>%1</b>").arg(title), owner));
+    auto *state = wrapped(QString(), owner);
+    state->setTextFormat(Qt::PlainText);
+    text->addWidget(state);
+    line->addLayout(text, 1);
+    auto *button = new QPushButton(owner);
+    button->setObjectName(buttonName);
+    line->addWidget(button, 0, Qt::AlignTop);
+    into->addLayout(line);
+    Row row{button, state, std::move(status)};
+    row.refresh();
+    connect(button, &QPushButton::clicked, this,
+            [row, onClick = std::move(onClick)] { onClick(row); });
+    return [row] { row.refresh(); };
+}
+
+WelcomeDialog::RowAction WelcomeDialog::runNow(std::function<cs::Outcome()> action) {
+    return [action = std::move(action)](const Row &row) {
+        const cs::Outcome o = action();
+        row.refresh();
+        if (!o.ok || !o.message.isEmpty())
+            row.state->setText(o.message.isEmpty() ? row.state->text() : o.message);
+    };
+}
+
+WelcomeDialog::RowAction WelcomeDialog::runAfterPreview(std::function<QString()> preview,
+                                                        std::function<cs::Outcome()> action) {
+    return [this, preview = std::move(preview), action = std::move(action)](const Row &row) {
+        openPreview(tr("Before anything is written"),
+                    tr("This is exactly what will be written:"), preview(),
+                    tr("Write it"), [row, action] {
+                        const cs::Outcome o = action();
+                        row.refresh();
+                        if (!o.message.isEmpty()) row.state->setText(o.message);
+                    });
+    };
+}
+
+void WelcomeDialog::openPreview(const QString &title, const QString &intro,
+                                const QString &text, const QString &acceptLabel,
+                                std::function<void()> onAccept) {
+    auto *dlg = new QDialog(this);
+    dlg->setObjectName(QStringLiteral("welcomePreview"));
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(title);
+    auto c = DialogChrome::install(dlg, m_themeName, /*resizable=*/true,
+                                   QStringLiteral("WelcomePreview"));
+    auto *lay = new QVBoxLayout(c.contentArea);
+    lay->addWidget(wrapped(intro, dlg));
+    auto *view = new QPlainTextEdit(text, dlg);
+    view->setReadOnly(true);
+    lay->addWidget(view, 1);
+    auto *buttons = new QHBoxLayout;
+    buttons->addStretch();
+    auto *cancel = new QPushButton(tr("Cancel"), dlg);
+    auto *accept = new QPushButton(acceptLabel, dlg);
+    buttons->addWidget(cancel);
+    buttons->addWidget(accept);
+    lay->addLayout(buttons);
+    connect(cancel, &QPushButton::clicked, dlg, &QDialog::reject);
+    connect(accept, &QPushButton::clicked, dlg, &QDialog::accept);
+    connect(dlg, &QDialog::accepted, this, std::move(onAccept));
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 bool WelcomeDialog::event(QEvent *e) {

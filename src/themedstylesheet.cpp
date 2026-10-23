@@ -25,6 +25,9 @@ QString buildAppStylesheet(const Theme &theme) {
     // anchor-selected here and not rely on dialog-local setStyleSheet().
     return QString(
         "QMainWindow { background-color: %1; }"
+        // The QMenuBar rules below are repeated in buildMenuBarStylesheet,
+        // which MainWindow sets on the menu bar itself, so that copy wins:
+        // edit both.
         "QMenuBar { background-color: %2; color: %3; border-bottom: 1px solid %4; }"
         // Explicit base ::item rule prevents Qt from falling back to the
         // native style for the non-selected state. Without it, Qt composites
@@ -128,7 +131,7 @@ QString buildAppStylesheet(const Theme &theme) {
         // unpolish/polish triggers this rule for 600 ms after an
         // auto-switch fires. %5 = theme.accent so the border follows
         // the active theme. Triple-selector (base + hover + pressed)
-        // so the generic :hover:enabled rule at L146 doesn't override
+        // so the generic QPushButton:hover:enabled rule doesn't override
         // the pulse during the 600 ms window. Same padding 6px 14px
         // as the generic rule = bit-identical interior box = zero
         // text twitch on engage/disengage.
@@ -210,6 +213,8 @@ QString buildAppStylesheet(const Theme &theme) {
           theme.textSecondary.name());                         // %6
 }
 
+// Repeats buildAppStylesheet's QMenuBar rules, whose comments say why each
+// exists; edit both.
 QString buildMenuBarStylesheet(const Theme &theme) {
     return QStringLiteral(
         "QMenuBar { background-color: %1; color: %2; "

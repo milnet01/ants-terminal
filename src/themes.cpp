@@ -337,6 +337,7 @@ std::vector<Theme> Themes::loadUserThemes() {
     QDir themeDir(dir);
     if (!themeDir.exists()) return result;
 
+    const Theme dark = buildThemes().front();
     QStringList files = themeDir.entryList({"*.json"}, QDir::Files);
     for (const QString &file : files) {
         const QString filePath = themeDir.filePath(file);
@@ -389,33 +390,19 @@ std::vector<Theme> Themes::loadUserThemes() {
             return fallback;
         };
 
-        th.bgPrimary   = parseColor(obj["bg_primary"], QColor(0x1E, 0x1E, 0x2E));
+        // A missing or mistyped colour falls back to the built-in Dark theme.
+        th.bgPrimary   = parseColor(obj["bg_primary"], dark.bgPrimary);
         th.bgSecondary = parseColor(obj["bg_secondary"], th.bgPrimary.darker(120));
-        th.textPrimary = parseColor(obj["text_primary"], QColor(0xCD, 0xD6, 0xF4));
+        th.textPrimary = parseColor(obj["text_primary"], dark.textPrimary);
         th.textSecondary = parseColor(obj["text_secondary"], th.textPrimary.darker(130));
-        th.accent      = parseColor(obj["accent"], QColor(0x89, 0xB4, 0xFA));
+        th.accent      = parseColor(obj["accent"], dark.accent);
         th.border      = parseColor(obj["border"], th.bgPrimary.lighter(150));
         th.cursor      = parseColor(obj["cursor"], th.accent);
 
         // ANSI palette (optional)
-        QJsonArray ansiArr = obj["ansi"].toArray();
-        // Default ANSI colors (xterm-like)
-        QColor defaultAnsi[16] = {
-            QColor(0x45,0x47,0x5A), QColor(0xF3,0x8B,0xA8),
-            QColor(0xA6,0xE3,0xA1), QColor(0xF9,0xE2,0xAF),
-            QColor(0x89,0xB4,0xFA), QColor(0xF5,0xC2,0xE7),
-            QColor(0x94,0xE2,0xD5), QColor(0xBA,0xC2,0xDE),
-            QColor(0x58,0x5B,0x70), QColor(0xF3,0x8B,0xA8),
-            QColor(0xA6,0xE3,0xA1), QColor(0xF9,0xE2,0xAF),
-            QColor(0x89,0xB4,0xFA), QColor(0xF5,0xC2,0xE7),
-            QColor(0x94,0xE2,0xD5), QColor(0xA6,0xAD,0xC8),
-        };
-        for (int i = 0; i < 16; ++i) {
-            if (i < ansiArr.size())
-                th.ansi[i] = parseColor(ansiArr[i], defaultAnsi[i]);
-            else
-                th.ansi[i] = defaultAnsi[i];
-        }
+        const QJsonArray ansiArr = obj["ansi"].toArray();
+        for (int i = 0; i < 16; ++i)
+            th.ansi[i] = parseColor(ansiArr.at(i), dark.ansi[i]);
 
         // ANTS-1767 — warn (don't reject) on a primary text/background
         // pair that's hard or impossible to read. Pre-fix a theme with
