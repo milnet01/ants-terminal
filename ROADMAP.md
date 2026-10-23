@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6197 -->
+<!-- ants-roadmap-id-high-water: ANTS=6201 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95043,6 +95043,11 @@ worked after these.
   so both gain GIT_OPTIONAL_LOCKS=0. auditscope.cpp's
   runGitRaw/runGitSucceeds stay: git_optional_locks INV-3 names all
   three runners.
+  2026-10-23: MEDIUMs. Done: F3 (rankAndClamp, tallyLevel), F6
+  (review kinds from one ordered list), F9-F18 comments (F12 also its
+  spec line and test comment), F4 and F5 pointer comments. Queued: F4
+  crash-handler merge ANTS-6198, F5 exclusion-list decision ANTS-6199,
+  F8 runAudit split ANTS-6200. LOWs remain.
   **Layman:** Tidy the code-audit checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96040,6 +96045,60 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F24).
   Lanes: audit-dialog.
+
+- 📋 [ANTS-6198] **audit_run's crash handler records stdout and stderr through mergeToolChannels, as the finished handler does.**
+  From ANTS-6117 (L08 MEDIUM F4). runAudit's errorOccurred handler
+  (auditrunner.cpp) passes errBuf alone to finish(); the finished
+  handler merges both channels (ANTS-2118). Qt emits errorOccurred
+  before finished on a crash, so a crashed tool's recorded output is
+  stderr only. Not done in the lane pass: it changes the raw output a
+  crashed tool reports, so it is a behaviour fix with its own test.
+  Hot reload: none needed; no new running state.
+  **Layman:** When an audit tool crashes, the headless audit keeps only half of what the tool printed, unlike a normal finish.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L08-F4).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6199] **Decide whether audit_run's kExclusions joins AuditEngine::excludedDirNames, the declared single source of skipped directories.**
+  From ANTS-6117 (L08 MEDIUM F5). kExclusions (auditrunner.cpp, the
+  ANTS-1351 section 8 'hardcoded in engine' set) and
+  AuditEngine::excludedDirNames (auditengine.cpp) hold different
+  directory names; trivySkipDirsCsv and the runner's trivy --skip-dirs
+  are two routes to one flag. The lane pass named the difference at
+  both lists. Building one from the other changes which directories a
+  headless run skips, so it needs a decision and a test.
+  Hot reload: none needed; no new running state.
+  **Layman:** The headless audit and the audit window skip different folders, though one list claims to be the only one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L08-F5).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6200] **Split AuditRunner::runAudit into argument validation, scope resolution and artifact writing.**
+  From ANTS-6117 (L08 MEDIUM F8). runAudit's scope block ends in an
+  unindented else and bare closing braces, and its lambdas capture many
+  locals by reference. Not done in the lane pass: audit_run_scoped_check,
+  audit_run_compile_commands_validation, audit_run_partial_envelope,
+  audit_run_since_last_run, audit_run_delta and mcp_audit_run read text
+  inside runAudit's body (e.g. `for (const QString &p : req.paths)`,
+  `auto finish = [&](const QString &tool`, writeSarif before `return
+  r;`), so their contracts move with the split.
+  Hot reload: none needed; no new running state.
+  **Layman:** The headless audit's main routine is very long, with braces that are hard to match; splitting it into named steps makes it followable.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L08-F8).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6201] **Rename the loop variable in remotecontrol_changelog.cpp's releaseLint append so it no longer shadows an outer f (-Wshadow=local).**
+  Seen in the 2026-10-23 full build: remotecontrol_changelog.cpp, the
+  `for (DocFinding::Finding f : rf)` loop that appends releaseLint
+  findings, warns `declaration of 'f' shadows a previous local`. Not
+  introduced by the lane-08 commit (that file was only rebuilt because
+  auditengine.h changed).
+  Hot reload: none needed; no new running state.
+  **Layman:** A compiler warning: one variable name in the changelog tool hides another of the same name.
+  Kind: fix.
+  Source: build-warning-2026-10-23.
+  Lanes: mcp-content-verbs-a.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

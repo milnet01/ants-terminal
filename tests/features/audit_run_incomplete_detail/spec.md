@@ -17,7 +17,8 @@ Three sub-asks (from `doom-feedback-2026-07-23`):
    offenders but not *why* — a caller couldn't tell a cut-off (timed_out) from a
    crash without scanning `by_tool[]`, which the async-poll envelope doesn't even
    carry. `incomplete_tools_detail[]` adds `{tool, status, elapsed_ms,
-   truncated}` per offender (`truncated == status=="timed_out"`).
+   truncated}` per offender (`truncated` for `timed_out` and, since ANTS-5085,
+   `output_too_large`).
 3. **Surface per-file parse failures.** cppcheck is line-based and tags every
    finding with a trailing `[id]` (default template). A parse-failure id
    (`syntaxError` / `internalError` / `internalAstError` /

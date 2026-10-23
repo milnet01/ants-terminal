@@ -527,8 +527,9 @@ FilterResult applyFilter(const QString &raw,
                 if (!fileLines) {
                     QStringList &slot = fileCache[relPath];
                     const QString abs = resolveProjectPathLocal(relPath, projectPath);
-                    // ANTS-5085 — the same cap lineIsCode uses; a context
-                    // window needs a source file, not a generated blob.
+                    // ANTS-5085 — the 4 MiB cap the dialog's readFileLines
+                    // uses (lineIsCode caps at 2 MiB); a context window
+                    // needs a source file, not a generated blob.
                     constexpr qint64 kMaxContextFileBytes = 4LL * 1024 * 1024;
                     if (!abs.isEmpty() && QFileInfo(abs).size() <= kMaxContextFileBytes) {
                         QFile src(abs);
@@ -844,6 +845,33 @@ bool isEmptyPlaceholderResult(const QJsonObject &res) {
     return true;
 }
 
+// Spec § 3.1 steps 5-6, shared by every summariser: drop progress-bar
+// artifacts (ANTS-3372), sort level desc → confidence desc → file asc →
+// line asc, then keep the first topN.
+void rankAndClamp(QList<AuditSummaryFinding> &pool, int topN) {
+    pool.removeIf(isLikelyParseArtifact);
+    std::sort(pool.begin(), pool.end(),
+              [](const AuditSummaryFinding &a,
+                 const AuditSummaryFinding &b) {
+                  const int la = levelOrdinal(a.level);
+                  const int lb = levelOrdinal(b.level);
+                  if (la != lb) return la > lb;
+                  if (a.confidence != b.confidence)
+                      return a.confidence > b.confidence;
+                  if (a.file != b.file) return a.file < b.file;
+                  return a.line < b.line;
+              });
+    if (topN < 0) topN = 0;
+    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
+}
+
+// Counts one finding of levelOrdinal `ord` into the summary's totals.
+void tallyLevel(AuditSummary &s, int ord) {
+    if (ord == 2)      ++s.countError;
+    else if (ord == 0) ++s.countNote;
+    else               ++s.countWarning;
+}
+
 }  // namespace
 
 std::optional<AuditSummary> summariseSarif(
@@ -931,9 +959,7 @@ std::optional<AuditSummary> summariseSarif(
                 QStringLiteral("warning"));
 
             const int ord = levelOrdinal(level);
-            if (ord == 2) ++s.countError;
-            else if (ord == 0) ++s.countNote;
-            else ++s.countWarning;
+            tallyLevel(s, ord);
 
             const QJsonArray suppressions = res.value(
                 QStringLiteral("suppressions")).toArray();
@@ -974,26 +1000,7 @@ std::optional<AuditSummary> summariseSarif(
         }
     }
 
-    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
-    pool.removeIf(isLikelyParseArtifact);
-
-    // Spec § 3.1 step 5 — sort: level desc → confidence desc →
-    // file asc → line asc.
-    std::sort(pool.begin(), pool.end(),
-              [](const AuditSummaryFinding &a,
-                 const AuditSummaryFinding &b) {
-                  const int la = levelOrdinal(a.level);
-                  const int lb = levelOrdinal(b.level);
-                  if (la != lb) return la > lb;
-                  if (a.confidence != b.confidence)
-                      return a.confidence > b.confidence;
-                  if (a.file != b.file) return a.file < b.file;
-                  return a.line < b.line;
-              });
-
-    // Spec § 3.1 step 6 — clamp.
-    if (topN < 0) topN = 0;
-    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
+    rankAndClamp(pool, topN);
     s.topFindings = std::move(pool);
 
     // Spec § 3.1 step 8 — derive htmlPath.
@@ -1109,9 +1116,7 @@ std::optional<AuditSummary> summariseCppcheckXml(
         }
 
         const int ord = levelOrdinal(sarifLevel);
-        if (ord == 2)      ++s.countError;
-        else if (ord == 0) ++s.countNote;
-        else               ++s.countWarning;
+        tallyLevel(s, ord);
 
         // First nested <location> only (cppcheck can emit several;
         // v1 mirrors SARIF's locations[0] convention).
@@ -1147,26 +1152,7 @@ std::optional<AuditSummary> summariseCppcheckXml(
 
     if (xml.hasError() || !sawResults) return std::nullopt;
 
-    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
-    pool.removeIf(isLikelyParseArtifact);
-
-    // Sort + clamp identically to summariseSarif (level desc →
-    // confidence desc → file asc → line asc).
-    std::sort(pool.begin(), pool.end(),
-              [](const AuditSummaryFinding &a,
-                 const AuditSummaryFinding &b) {
-                  const int la = levelOrdinal(a.level);
-                  const int lb = levelOrdinal(b.level);
-                  if (la != lb) return la > lb;
-                  if (a.confidence != b.confidence)
-                      return a.confidence > b.confidence;
-                  if (a.file != b.file) return a.file < b.file;
-                  return a.line < b.line;
-              });
-    if (topN < 0) topN = 0;
-    if (pool.size() > topN) {
-        pool.erase(pool.begin() + topN, pool.end());
-    }
+    rankAndClamp(pool, topN);
     s.topFindings = std::move(pool);
     return s;
 }
@@ -1222,9 +1208,7 @@ std::optional<AuditSummary> summariseClangTidyText(
         else                                       sevTier = QStringLiteral("INFO");
 
         const int ord = levelOrdinal(sarifLevel);
-        if (ord == 2)      ++s.countError;
-        else if (ord == 0) ++s.countNote;
-        else               ++s.countWarning;
+        tallyLevel(s, ord);
 
         if (ord < floorOrd) continue;
 
@@ -1242,20 +1226,7 @@ std::optional<AuditSummary> summariseClangTidyText(
         return std::nullopt;  // no parseable lines — likely wrong format
     }
 
-    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
-    pool.removeIf(isLikelyParseArtifact);
-
-    std::sort(pool.begin(), pool.end(),
-              [](const AuditSummaryFinding &a,
-                 const AuditSummaryFinding &b) {
-                  const int la = levelOrdinal(a.level);
-                  const int lb = levelOrdinal(b.level);
-                  if (la != lb) return la > lb;
-                  if (a.file != b.file) return a.file < b.file;
-                  return a.line < b.line;
-              });
-    if (topN < 0) topN = 0;
-    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
+    rankAndClamp(pool, topN);
     s.topFindings = std::move(pool);
     return s;
 }
@@ -1322,9 +1293,7 @@ std::optional<AuditSummary> summariseSemgrepJson(
         }
 
         const int ord = levelOrdinal(sarifLevel);
-        if (ord == 2)      ++s.countError;
-        else if (ord == 0) ++s.countNote;
-        else               ++s.countWarning;
+        tallyLevel(s, ord);
 
         // ANTS-2123 — SARIF parity. semgrep marks a `# nosemgrep`-ignored
         // finding with extra.is_ignored=true. summariseSarif tallies
@@ -1348,20 +1317,7 @@ std::optional<AuditSummary> summariseSemgrepJson(
         pool.append(std::move(asf));
     }
 
-    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
-    pool.removeIf(isLikelyParseArtifact);
-
-    std::sort(pool.begin(), pool.end(),
-              [](const AuditSummaryFinding &a,
-                 const AuditSummaryFinding &b) {
-                  const int la = levelOrdinal(a.level);
-                  const int lb = levelOrdinal(b.level);
-                  if (la != lb) return la > lb;
-                  if (a.file != b.file) return a.file < b.file;
-                  return a.line < b.line;
-              });
-    if (topN < 0) topN = 0;
-    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
+    rankAndClamp(pool, topN);
     s.topFindings = std::move(pool);
     return s;
 }

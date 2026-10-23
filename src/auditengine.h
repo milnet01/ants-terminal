@@ -297,7 +297,8 @@ QRegularExpression globToRegex(const QString &glob);
 // grep --exclude-dir, trivy --skip-dirs, cppcheck -i, FeatureCoverage's
 // walk) can no longer drift — the drift that let trivy keep scanning
 // build-fast / build-workstation after ANTS-1707 fixed the same class
-// for cppcheck.
+// for cppcheck. Exception: the headless audit_run keeps its own set,
+// kExclusions() in auditrunner.cpp (ANTS-6199).
 const QStringList &excludedDirNames();
 
 // find(1): a run of `-not -path './<dir>/*'` clauses with the build glob

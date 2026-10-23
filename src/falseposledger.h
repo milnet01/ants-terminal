@@ -23,7 +23,7 @@ namespace ants {
 namespace falsepos {
 
 struct LedgerEntry {
-    QString reviewKind;   // "" | "audit" | "cold-eyes" | "indie-review" | "test-audit"
+    QString reviewKind;   // "" or one of reviewKindsInOrder() (falseposledger.cpp)
     QString lane;         // optional; bidirectional empty-matches-all on filter
     QString claim;        // required, non-empty after parse; truncated to 280 UTF-16 code units on read
     QString rationale;    // required, non-empty after parse; truncated to 1024 UTF-16 code units on read

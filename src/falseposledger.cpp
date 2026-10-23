@@ -28,8 +28,10 @@ constexpr int kRationaleCap = 1024;
 constexpr qint64 kFileSizeWarnThreshold = 1024 * 1024;  // 1 MiB
 constexpr int kPerLineCap = 16 * 1024;                  // 16 KiB
 
-const QSet<QString> &canonicalReviewKinds() {
-    static const QSet<QString> s = {
+// The review kinds a ledger entry may carry, in the order the refusal
+// message lists them.
+const QStringList &reviewKindsInOrder() {
+    static const QStringList v = {
         QStringLiteral("audit"),
         QStringLiteral("cold-eyes"),
         QStringLiteral("indie-review"),
@@ -41,6 +43,12 @@ const QSet<QString> &canonicalReviewKinds() {
         // filtering the ledger by sweep type.
         QStringLiteral("debt-sweep"),
     };
+    return v;
+}
+
+const QSet<QString> &canonicalReviewKinds() {
+    static const QSet<QString> s(reviewKindsInOrder().cbegin(),
+                                 reviewKindsInOrder().cend());
     return s;
 }
 
@@ -340,9 +348,8 @@ AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in,
     if (e.reviewKind.isEmpty()
         || !canonicalReviewKinds().contains(e.reviewKind)) {
         r.code = QStringLiteral("bad_args");
-        r.message = QStringLiteral(
-            "review_kind must be one of audit / cold-eyes / "
-            "indie-review / test-audit / debt-sweep");
+        r.message = QStringLiteral("review_kind must be one of ")
+                    + reviewKindsInOrder().join(QStringLiteral(" / "));
         return r;
     }
     // claim/rationale non-empty + timestamp valid (one guard, both absent

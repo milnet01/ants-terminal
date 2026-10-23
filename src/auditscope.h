@@ -39,7 +39,7 @@ QStringList parseChangedFiles(const QString &diffNameOnly,
 struct Resolution {
     bool        narrowed = false;   // a narrowing scope was requested
     QStringList files;              // changed project-relative files (narrowed)
-    QString     anchorCommit;       // commit diffed against (since-last-run)
+    QString     anchorCommit;       // base diffed against (since-last-run, files, since-tag)
     QString     demotedReason;      // non-empty → demote to a full scan
     bool        noChanges = false;  // narrowed, but zero changed files
 };
@@ -56,7 +56,8 @@ QString runGit(const QString &root, const QStringList &args,
 // sweep (`scope:"full"`). `git ls-files src/` respects .gitignore (build/ and
 // .audit_cache/ never appear) and is independent of diff state — so it works
 // on a clean `main` where `auto`'s clazy positional list is empty (→ scans
-// nothing). Restricted to src/ to mirror the GUI's `../src/*.cpp` clazy glob;
+// nothing). Restricted to src/ when the project has one (mirroring the GUI's
+// `../src/*.cpp` clazy glob), else the whole tracked tree (ANTS-3741);
 // dir-default tools (ruff/bandit/semgrep/shellcheck) fall back to their own
 // full scan when this list has no file in their language.
 QStringList enumerateSourceFiles(const QString &canonProject);
@@ -73,7 +74,8 @@ QStringList enumerateSourceFiles(const QString &canonProject);
 //
 // Demotion (demotedReason set, files empty): no_prior_run / no_prior_commit
 // / prior_commit_unreachable (since-last-run), no_merge_base (files),
-// not_git (any). A demoted run reverts to a full scan (INV-6).
+// not_git, ref_unresolved, git_failed (any; ANTS-5043). A demoted run
+// reverts to a full scan (INV-6).
 Resolution resolveChangedFiles(const QString &canonProject,
                                const QString &scope,
                                const QString &priorCommit);

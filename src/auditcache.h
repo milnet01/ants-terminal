@@ -69,14 +69,15 @@ struct Manifest {
 // `raw` object empty.
 Manifest loadManifest(const QString &canonProject);
 
-// Record a completed run. Writes the SARIF + manifest atomically:
-//   1. Compute iso + git short-sha.
-//   2. Build the new `last_run` JSON object from `byTool` + scope.
-//   3. Migrate prior `last_run` into the head of `history[]`.
-//   4. Trim `history[]` to 10 entries (reaper deletes dropped
+// Record a completed run into the manifest. The caller builds `lastRunJson`
+// (AuditCache::isoNow, AuditCache::gitInfo) and writes the SARIF itself.
+// This function:
+//   1. Writes the findings sidecar (below) when there are findings.
+//   2. Migrates the prior `last_run` into the head of `history[]`.
+//   3. Trims `history[]` to 10 entries (reaper deletes dropped
 //      files matching its own naming convention — never AuditDialog
 //      GUI files; covers sarif/html AND the ANTS-1870 findings sidecar).
-//   5. QSaveFile + commit on `index.json` with 0600 perms.
+//   4. QSaveFile + commit on `index.json` with 0600 perms.
 //
 // Returns a RecordedRun with `ok==true` on success. On any failure
 // (mkdir denied, save failure), `ok` is false; the caller's RunResult

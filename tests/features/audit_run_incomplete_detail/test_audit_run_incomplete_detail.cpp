@@ -36,7 +36,8 @@ AuditRunner::ToolResult tr(const QString &tool, const QString &status,
 }  // namespace
 
 // INV-1 — incompleteToolsDetail: one {tool,status,elapsed_ms,truncated}
-// object per non-ok tool, sorted by name; truncated == timed_out.
+// object per non-ok tool, sorted by name; truncated for timed_out (INV-11
+// covers output_too_large).
 TEST(AuditRunIncompleteDetail, Inv1DetailShapeAndTruncatedFlag) {
     QHash<QString, AuditRunner::ToolResult> byTool;
     byTool["semgrep"]  = tr("semgrep", "timed_out", 60000);

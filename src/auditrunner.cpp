@@ -1,8 +1,8 @@
-// ANTS-1351 — server-side audit runner v1.
+// ANTS-1351 — server-side audit runner.
 //
-// v1 scope: ship the infrastructure end-to-end:
 //   * QProcess + QEventLoop multiplexer (§ 2.5)
-//   * Worker-thread dispatch via the caller's QThreadPool
+//   * Runs on the caller's worker thread; an aggregate concurrency cap
+//     refuses with server_busy (auditrunner.h, ANTS-3612)
 //   * PathValidation on caller_cwd (INV-2)
 //   * Env scrub allowlist/blocklist (INV-10)
 //   * Absolute-path tool resolution via QStandardPaths::findExecutable
@@ -164,6 +164,8 @@ constexpr int kSarifNotificationMaxChars = 64 * 1024;
 // tool via toolExclusionArgs(); a scope:"full" sweep no longer drowns the
 // real findings in build-output / vendored noise (a Flask app's dist/ +
 // node_modules/ flooded mypy with 130+ stub-file findings).
+// Not the same set as AuditEngine::excludedDirNames(), which the GUI
+// audit's find/grep checks use (ANTS-6199).
 const QStringList &kExclusions() {
     static const QStringList v = {
         QStringLiteral("logs"),
@@ -181,18 +183,6 @@ const QStringList &kExclusions() {
     return v;
 }
 
-// ANTS-3394 — per-tool exclusion flags for the whole-tree (non-scoped)
-// invocation of each find-everything tool, built from kExclusions() so the
-// dir set stays single-source. Scoped invocations already narrow to an
-// explicit changed-file list and get NO exclusions (those files were chosen
-// on purpose). cppcheck/clazy/clang-tidy run against src/ or the compile DB
-// (never the build-output tree), and gitleaks is filtered via its generated
-// --config (ANTS-2016), so none of them appear here.
-//
-// .gitignore: ruff and semgrep honour it by default (no flag needed); the
-// explicit set is what covers the gitignore-unaware tools (bandit, mypy,
-// trivy). A caller who really wants to audit a build tree can pass `paths`
-// (a scoped invocation), which bypasses these entirely.
 // ANTS-3710 — the tools that can be told to skip a path on a whole-tree
 // run. Anything absent here CANNOT honour `exclude_paths` and is reported in
 // `exclude_paths_ignored_by`: gitleaks filters via its generated --config
@@ -208,6 +198,17 @@ const QStringList &kExclusionCapableTools() {
     return v;
 }
 
+// ANTS-3394 — per-tool exclusion flags for the whole-tree (non-scoped)
+// invocation of each find-everything tool, built from kExclusions() so the
+// dir set stays single-source. Scoped invocations already narrow to an
+// explicit changed-file list and get NO exclusions (those files were chosen
+// on purpose).
+//
+// .gitignore: ruff and semgrep honour it by default (no flag needed); the
+// explicit set is what covers the gitignore-unaware tools (bandit, mypy,
+// trivy). A caller who really wants to audit a build tree can pass `paths`
+// (a scoped invocation), which bypasses these entirely.
+//
 // ANTS-3710 — `extra` is the caller's exclude_paths. They join the hardcoded
 // set for the tools that already had a branch, and drive a cppcheck branch
 // that deliberately does NOT exist for the hardcoded set: cppcheck scans
@@ -466,9 +467,9 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         if (!scoped.isEmpty()) args += scoped;
         return args;
     }
-    // ANTS-1512 — clang-tidy scoped invocation. Default argv when no
-    // paths given is a no-op (the tool needs explicit file args), so
-    // we surface a graceful failure via empty argv → "crashed" status.
+    // ANTS-1512 — clang-tidy scoped invocation. With no paths the tool
+    // prints its usage banner; ANTS-3846's banner check marks that parse
+    // aborted, which runAudit reports as "crashed".
     if (tool == QLatin1String("clang-tidy")) {
         // ANTS-2182 — clang-tidy -p takes the build DIR holding
         // compile_commands.json; resolve it via the shared probe rather than
@@ -730,9 +731,8 @@ QString allocSarifPath() {
         .arg(sessionIdToken(), QString::number(seq), rand);
 }
 
-// Heuristic finding count + sample extraction from raw tool output.
-// v1: line-based; v2 follow-up will parse per-tool JSON via
-// AuditEngine helpers.
+// Finding count + sample extraction from raw tool output: JSON tools parse
+// their document, plain-text tools go line by line.
 struct ParsedOutput {
     int        rawCount = 0;
     int        suppressedCount = 0;  // ANTS-1820 — learned-FP matches
@@ -893,7 +893,7 @@ ParsedOutput parseToolOutput(const QString &tool,
             ? QJsonDocument()
             : QJsonDocument::fromJson(jsonDoc.toUtf8(), &err);
         if (!jsonDoc.isEmpty() && err.error == QJsonParseError::NoError) {
-            // Recognise common shapes; fall through to line-count if unknown.
+            // Recognise common shapes; an unknown shape yields zero findings.
             QJsonArray arr;
             if (doc.isArray()) arr = doc.array();
             else if (doc.isObject()) {
@@ -2484,6 +2484,7 @@ RunResult runAudit(const RunRequest &req) {
                     finish(tool, QStringLiteral("output_too_large"), QString(), ms);
                     return;
                 }
+                // Stderr only, unlike the finished handler's merge (ANTS-6198).
                 const bool cut = timedOut.contains(tool);
                 finish(tool, AuditRunner::internal::toolExitStatus(cut, true),
                        cut ? QString() : QString::fromUtf8(errBuf.value(tool)),
@@ -2813,8 +2814,9 @@ RunResult runAudit(const RunRequest &req) {
         QJsonObject prior;
         // ANTS-1870 — persist the whole-tree merged findings as the next
         // sidecar baseline (current ∪ priorOnUntouched under since-last-run;
-        // the current set under auto/full). Always seeds a baseline so the
-        // next since-last-run can diff (§ 2.3).
+        // the current set under auto/full), so the next since-last-run can
+        // diff (§ 2.3). A run with no findings writes no sidecar, and the
+        // next since-last-run then reports no_prior_findings.
         AuditCache::recordRun(canonProject, lastRunJson, &prior,
                               mergedForRecord);
         r.priorRun = prior;

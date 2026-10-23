@@ -156,8 +156,8 @@ struct RunResult {
     // /tmp fallback). priorRun is the manifest's pre-existing
     // last_run snapshot before this run was recorded — empty on the
     // first sweep of a project. ANTS-1504 (`since-last-run`) reads
-    // priorRun.commit as the diff anchor (a precise findings delta is
-    // deferred to the v2 per-finding SARIF parser — see ANTS-1504 § 5).
+    // priorRun.commit as the diff anchor; the per-finding delta is
+    // ANTS-1870's findings sidecar.
     QString                    cachePath;
     QJsonObject                priorRun;
     // ANTS-1504 — narrowing-scope surface. `scopeResolved` is the
@@ -219,7 +219,7 @@ struct RunResult {
     bool                       findingsTruncated = false;
 };
 
-// Aggregate cap = min(tools.count * capPerToolSeconds * 1.5,
+// Aggregate cap = min((tools + in-process lanes) * capPerToolSeconds * 1.5,
 // kAggregateCapMs). SIGTERM at per-tool cap; SIGKILL 2 s later. On a
 // crash, a stderr excerpt capped at 256 B is emitted in
 // samples[0].message on a BEST-EFFORT basis (INV-4): a crash with no
@@ -268,7 +268,8 @@ QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
 
 // ANTS-3585 — per-tool incompleteness detail: one {tool, status, elapsed_ms,
 // truncated} object for every tool whose status is not "ok", sorted by tool
-// name (truncated == status=="timed_out"). Empty when the run is complete.
+// name (truncated == status is "timed_out" or "output_too_large"). Empty when
+// the run is complete.
 // Pure over byTool so the feature test can assert the derivation.
 QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool);
 
@@ -335,8 +336,8 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
 
 // ANTS-1446 — compile_commands.json include-path validation.
 //
-// Walks the JSON at <canonProject>/build/compile_commands.json (or
-// the project root as a fallback) for every entry's -I / -isystem /
+// Walks the compile_commands.json AuditEngine::resolveCompileCommands finds
+// (the same build-dir probe the tools' -p uses, ANTS-3624) for every entry's -I / -isystem /
 // -iquote / -include argument; refuses the call if any include path
 // escapes the project root AND isn't under a hardcoded system-include
 // prefix (/usr/include, /usr/lib, /opt, …). Returns true when the
