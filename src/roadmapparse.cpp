@@ -187,8 +187,8 @@ static int headLineEnd(const QString &body) {
 }
 
 // ANTS-1438 — split `head` on the first em-dash separator (` — `,
-// preferred; ` -- ` / ` - ` accepted as lenient fallbacks for
-// projects that haven't typographic-em-dashed). Returns the trimmed
+// preferred; ` -- ` accepted as the fallback for projects that
+// haven't typographic-em-dashed). Returns the trimmed
 // post-separator text on match, empty QString otherwise. Whitespace
 // brackets the separator so mid-word hits (e.g. `re-render`) don't
 // match.
@@ -212,12 +212,18 @@ QString splitOnEmDash(const QString &head) {
     return head.mid(idx + sepLen).trimmed();
 }
 
+// The caret-anchor grammar (`^vest-0042` at line end, with the whitespace
+// around it), stated once. Group 1 is the anchor body.
+const QRegularExpression &caretAnchorAtEnd() {
+    static const QRegularExpression rx(QStringLiteral(
+        "\\s*\\^([a-z0-9_-]+)\\s*$"));
+    return rx;
+}
+
 // Try to extract a caret anchor at line end (`^vest-0042`).
 // Returns the anchor body (without the caret) on match.
 QString extractCaretAnchor(const QString &line) {
-    static const QRegularExpression rx(QStringLiteral(
-        "\\^([a-z0-9_-]+)\\s*$"));
-    const auto m = rx.match(line);
+    const auto m = caretAnchorAtEnd().match(line);
     if (!m.hasMatch()) return QString();
     return m.captured(1);
 }
@@ -234,34 +240,25 @@ bool headingIsComplete(const QString &heading) {
 // Map a GFM checkbox char to the ants status emoji.
 QString gfmStatusFromCheckbox(QChar ch) {
     if (ch == QLatin1Char('x') || ch == QLatin1Char('X'))
-        return QStringLiteral("✅");
-    return QStringLiteral("📋");
+        return QString::fromUtf8(kEmojiDone);
+    return QString::fromUtf8(kEmojiPlanned);
 }
 
 // Try to strip an inline status emoji prefix from the head; on
 // match, updates `status` and returns true. The prefix wins over
 // the checkbox state per spec INV-4.
 bool stripInlineEmoji(QString &head, QString &status) {
-    if (head.startsWith(QString::fromUtf8(kEmojiDone))) {
-        status = QStringLiteral("✅");
-        head.remove(0, QString::fromUtf8(kEmojiDone).size());
-    } else if (head.startsWith(QString::fromUtf8(kEmojiPlanned))) {
-        status = QStringLiteral("📋");
-        head.remove(0, QString::fromUtf8(kEmojiPlanned).size());
-    } else if (head.startsWith(QString::fromUtf8(kEmojiInProgress))) {
-        status = QStringLiteral("🚧");
-        head.remove(0, QString::fromUtf8(kEmojiInProgress).size());
-    } else if (head.startsWith(QString::fromUtf8(kEmojiConsidered))) {
-        status = QStringLiteral("💭");
-        head.remove(0, QString::fromUtf8(kEmojiConsidered).size());
-    } else if (head.startsWith(QString::fromUtf8(kEmojiDropped))) {   // ANTS-4977
-        status = QString::fromUtf8(kEmojiDropped);
-        head.remove(0, QString::fromUtf8(kEmojiDropped).size());
-    } else {
-        return false;
+    for (const char *glyph : {kEmojiDone, kEmojiPlanned, kEmojiInProgress,
+                              kEmojiConsidered, kEmojiDropped}) {   // ANTS-4977
+        const QString g = QString::fromUtf8(glyph);
+        if (!head.startsWith(g))
+            continue;
+        status = g;
+        head.remove(0, g.size());
+        while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
+        return true;
     }
-    while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
-    return true;
+    return false;
 }
 
 
@@ -482,10 +479,13 @@ const QRegularExpression &rxTrailerKeyAfterLayman() {
 // ANTS-4597 — and again for `Lanes:`. The set names every key EXCEPT this one,
 // for the reason above: rxTrailerKey() names Lanes, so reusing it would end a
 // lane list at itself and let it run through the `Source:` that follows it on
-// the same line. Three near-identical sets now exist, differing only in the
-// key each omits. Left as three literals rather than folded into a builder:
-// the literal is greppable, and a generated pattern would move this grammar's
-// only spelling of the trailer keys behind a join.
+// the same line. Left as literals rather than folded into a builder: the
+// literal is greppable, and a generated pattern would move this grammar's
+// spelling of the trailer keys behind a join.
+//
+// A new trailer key goes in every place that spells them: rxTrailerKey(),
+// rxTrailerKeyAfterLayman(), this one (each omitting its own key),
+// rxTrailerLineLabel(), rxTrailerLabelAnywhere() and lineBeginsTrailerDecl().
 const QRegularExpression &rxTrailerKeyAfterLanes() {
     static const QRegularExpression rx(
         QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Layman|Source|Evidence):(?!:)"));
@@ -652,13 +652,17 @@ bool lineBeginsTrailerDecl(QStringView line) {
         line = line.mid(1);
     if (line.startsWith(QLatin1String("**")))
         line = line.mid(2);
-    // ANTS-4079 — the four link keys too: the render writes them directly
-    // below the trailers, so a wrapped value must not swallow one.
-    for (const QLatin1String key : {QLatin1String("Kind:"), QLatin1String("Source:"),
-                                    QLatin1String("Lanes:"), QLatin1String("Layman:"),
-                                    QLatin1String("Evidence:"), QLatin1String("Splits-from:"),
-                                    QLatin1String("Blocked-by:"), QLatin1String("Duplicate-of:"),
-                                    QLatin1String("Supersedes:")})
+    // ANTS-4079 — the link keys too: the render writes them directly below
+    // the trailers, so a wrapped value must not swallow one.
+    static const QStringList keys = [] {
+        QStringList k{QStringLiteral("Kind:"), QStringLiteral("Source:"),
+                      QStringLiteral("Lanes:"), QStringLiteral("Layman:"),
+                      QStringLiteral("Evidence:")};
+        for (const QString &t : authoredLinkTypes())
+            k << linkKeyForType(t) + QLatin1Char(':');
+        return k;
+    }();
+    for (const QString &key : keys)
         if (line.startsWith(key))
             return true;
     return false;
@@ -891,11 +895,11 @@ parsePassHeadingBullets(const QStringList &lines) {
                 // emoji→status branch below classifies it. Keyword wins
                 // when both are present (`✅ Done` → "done").
                 if (statusWord.isEmpty() && !emoji.isEmpty()) {
-                    if      (emoji == QString::fromUtf8("\xE2\x9C\x85"))     statusWord = QStringLiteral("done");        // ✅
-                    else if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) statusWord = QStringLiteral("in-progress"); // 🚧
-                    else if (emoji == QString::fromUtf8("\xF0\x9F\x92\xAD")) statusWord = QStringLiteral("deferred");    // 💭
-                    else if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) statusWord = QStringLiteral("todo");        // 📋
-                    else if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xAB")) statusWord = QStringLiteral("dropped");     // 🚫 ANTS-4977
+                    if      (emoji == QString::fromUtf8(kEmojiDone))       statusWord = QStringLiteral("done");
+                    else if (emoji == QString::fromUtf8(kEmojiInProgress)) statusWord = QStringLiteral("in-progress");
+                    else if (emoji == QString::fromUtf8(kEmojiConsidered)) statusWord = QStringLiteral("deferred");
+                    else if (emoji == QString::fromUtf8(kEmojiPlanned))    statusWord = QStringLiteral("todo");
+                    else if (emoji == QString::fromUtf8(kEmojiDropped))    statusWord = QStringLiteral("dropped");   // ANTS-4977
                 }
                 // A content-free `- **Status**:` line (both groups
                 // empty) is not a classification — keep scanning for a
@@ -1426,11 +1430,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         const QString afterSep =
             splitOnEmDash(boldClose >= 0 ? head.mid(boldClose + 2) : head);
         if (!afterSep.isEmpty()) {
-            QString h = afterSep;
-            static const QRegularExpression rxTrailAnchor(
-                QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
-            h.replace(rxTrailAnchor, QString());
-            h = h.trimmed();
+            const QString h = stripTrailingCaretAnchor(afterSep).trimmed();
             // ANTS-3808 — the bold-ID label and the post-separator
             // headline are both re-emitted by the render (as `[id]` and
             // `**headline**`), so the whole head line is consumed.
@@ -1556,10 +1556,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         QString h = body;
         const int nl = h.indexOf(QLatin1Char('\n'));
         if (nl >= 0) h = h.left(nl);
-        // Drop trailing caret anchor + surrounding whitespace.
-        static const QRegularExpression rxTrailAnchor(
-            QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
-        h.replace(rxTrailAnchor, QString());
+        h = stripTrailingCaretAnchor(h);
         h.remove(QStringLiteral("**"));  // ANTS-2046 — de-markup
         h = h.trimmed();
         // ANTS-3808 — the first line IS the headline here, so all of it is
@@ -1593,6 +1590,10 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     rec.body = body;
 }
 }  // namespace
+
+QString stripTrailingCaretAnchor(QString s) {
+    return s.remove(caretAnchorAtEnd());
+}
 
 // ANTS-2035 — the optional letter-led `.<SUB>` sub-pass suffix (`41.5.B`)
 // gives a parent and its sub-passes DISTINCT ids; without it `Pass 41.5` and
@@ -1758,7 +1759,11 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
     int  passHeadings     = 0;
     int  statusMarkers    = 0;
     static const QRegularExpression rxAntsV1Bullet(
-        QStringLiteral("^- (✅|📋|🚧|💭|🚫)"));
+        QStringLiteral("^- (") + QString::fromUtf8(kEmojiDone) + QLatin1Char('|')
+        + QString::fromUtf8(kEmojiPlanned) + QLatin1Char('|')
+        + QString::fromUtf8(kEmojiInProgress) + QLatin1Char('|')
+        + QString::fromUtf8(kEmojiConsidered) + QLatin1Char('|')
+        + QString::fromUtf8(kEmojiDropped) + QLatin1Char(')'));
     static const QRegularExpression rxPassHeading(
         QStringLiteral("^####\\s+Pass\\s+\\d"));
     static const QRegularExpression rxStatusMarker(
@@ -2098,10 +2103,16 @@ QString linkKeyForType(const QString &type) {
 namespace {
 // Group 1-3: the key in whichever of the three shapes matched; group 4: value.
 const QRegularExpression &rxLinkLine() {
-    static const QRegularExpression rx(QStringLiteral(
-        "^[ \\t]*(?:[-*][ \\t]+\\*\\*(Splits-from|Blocked-by|Duplicate-of|Supersedes)\\*\\*[ \\t]*:"
-        "|\\*\\*(Splits-from|Blocked-by|Duplicate-of|Supersedes):\\*\\*"
-        "|(Splits-from|Blocked-by|Duplicate-of|Supersedes):)[ \\t]*(.*)$"));
+    static const QRegularExpression rx = [] {
+        QStringList keys;
+        for (const QString &t : authoredLinkTypes())
+            keys << linkKeyForType(t);
+        const QString k = QLatin1Char('(') + keys.join(QLatin1Char('|')) + QLatin1Char(')');
+        return QRegularExpression(
+            QStringLiteral("^[ \\t]*(?:[-*][ \\t]+\\*\\*") + k
+            + QStringLiteral("\\*\\*[ \\t]*:|\\*\\*") + k
+            + QStringLiteral(":\\*\\*|") + k + QStringLiteral(":)[ \\t]*(.*)$"));
+    }();
     return rx;
 }
 

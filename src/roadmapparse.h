@@ -75,11 +75,6 @@ inline constexpr int kIdFormatPatternMaxBytes = 512;
 // pattern is cut short, and the cut reads as a non-match.
 inline constexpr char kIdFormatMatchLimit[] = "(*LIMIT_MATCH=100000)";
 
-// Bullet record surfaced via the `roadmap-query` IPC verb (ANTS-1117).
-// One entry per top-level status-emoji-prefixed bullet in document
-// order; plain narration bullets without an emoji are omitted (they
-// don't have stable IDs and so are out of contract). See
-// `docs/specs/ANTS-1117.md` § Acceptance criteria.
 // ANTS-4989 — does this `Kind:` / `Source:` pairing breach roadmap-format.md
 // v1.2 § 3.5.3's rule that a fix arising from a review takes `review-fix` (or
 // `audit-fix`) rather than a plain `fix`?
@@ -107,9 +102,14 @@ ReviewKindMismatch reviewKindMismatch(const QString &kind, const QString &source
 // a mistake. Returns the decision only; the caller builds the warning.
 QStringList literalEscapeFields(const QJsonObject &req);
 
+// Bullet record surfaced via the `roadmap-query` IPC verb (ANTS-1117).
+// One entry per top-level status-emoji-prefixed bullet in document
+// order; plain narration bullets without an emoji are omitted (they
+// don't have stable IDs and so are out of contract). See
+// `docs/specs/ANTS-1117.md` § Acceptance criteria.
 struct BulletRecord {
     QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
-    QString status;      // "✅" | "🚧" | "📋" | "💭" | "🚫"
+    QString status;      // one of the kEmoji* glyphs above
     QString headline;    // first **bold** chunk after the emoji (≤ 120 chars)
     QString headlineFull; // ANTS-2075 — untruncated headline for locator use
     QString kind;        // value from `Kind:` line; "" if absent
@@ -378,6 +378,10 @@ LinkLines extractLinkLines(const QString &body, bool keepFirstLine);
 bool declaresLinkLine(const QString &text);
 // The four link types in the order the render writes them, and each one's
 // line key (`blocked-by` -> `Blocked-by`).
+// `s` without a trailing caret anchor (`^vest-0042`) and the whitespace
+// around it. The parser's one statement of the anchor grammar.
+QString stripTrailingCaretAnchor(QString s);
+
 const QStringList &authoredLinkTypes();
 QString linkKeyForType(const QString &type);
 
@@ -421,34 +425,6 @@ QVector<BulletRecord> parseBullets(const QString &markdownText,
 QVector<BulletRecord> parseBulletLines(const QStringList &lines,
                                        const IdFormat &fmt = {});
 
-// ANTS-3793 § 2.1.1 — the record parseBullets() would build for ONE ants-v1
-// bullet, given exactly that bullet's text. The read seam's normative rule is
-// "fill each record with what parseBullets() would assign if it parsed
-// RoadmapRender::bulletText(item)", and this is the function that makes that
-// literally true instead of approximately so: the store reader runs the same
-// grammar rather than a second copy of it (ANTS-3808 INV-2).
-//
-// `bulletText` is one bullet: its `- <emoji> …` line plus any two-space-
-// indented continuation lines. Trailing lines beyond the bullet are ignored.
-//
-// nullopt when the text is not an ants-v1 bullet — no `- `/`* ` marker, or no
-// status emoji after it. The second case is load-bearing rather than defensive:
-// a `dropped` item renders with an EMPTY status marker (roadmap-format.md
-// § 3.11 makes a fifth glyph an anti-pattern), so it produces no record here,
-// exactly as it produces none in a document walk. ANTS-3793 § 2.1.2's `dropped`
-// exclusion is that behaviour, not a filter layered on top of it.
-//
-// Three groups of fields are NOT set, because a bullet in isolation cannot
-// decide them and the caller can: `sectionHeading` / `sectionLevel` /
-// `sectionSlug` (the document's, and the store walk's own — its slugger is
-// stateful across sections), and `firstLine` / `lastLine` (a store has no
-// lines, which is ANTS-3793 INV-2's one declared field difference).
-//
-// ANTS-3771 — takes the declaration for symmetry with parseBullets() and so
-// INV-6 is TESTABLE rather than asserted: the store path can be driven with a
-// declaration in hand and shown to produce the same records. It cannot change
-// them — this text is RoadmapRender::bulletText()'s output, which is ants-v1,
-// so `gfmHere` is false and the branch the declaration governs never runs.
 // ANTS-5087 — drop this thread's parse memo, returning whether it held
 // anything. parseBullets memoises the last document parsed on each thread, text
 // and records both; on the GUI thread that is re-hit on every keystroke, and on
@@ -477,6 +453,34 @@ bool isPassBlockEnd(const QString &line);
 // `PASS-<major>-<minor>[-<sub>]`, the id a pass heading synthesises.
 QString passId(int major, int minor, const QString &sub);
 
+// ANTS-3793 § 2.1.1 — the record parseBullets() would build for ONE ants-v1
+// bullet, given exactly that bullet's text. The read seam's normative rule is
+// "fill each record with what parseBullets() would assign if it parsed
+// RoadmapRender::bulletText(item)", and this is the function that makes that
+// literally true instead of approximately so: the store reader runs the same
+// grammar rather than a second copy of it (ANTS-3808 INV-2).
+//
+// `bulletText` is one bullet: its `- <emoji> …` line plus any two-space-
+// indented continuation lines. Trailing lines beyond the bullet are ignored.
+//
+// nullopt when the text is not an ants-v1 bullet — no `- `/`* ` marker, or no
+// status emoji after it. The second case is load-bearing rather than defensive:
+// a `dropped` item renders with an EMPTY status marker (roadmap-format.md
+// § 3.11 makes a fifth glyph an anti-pattern), so it produces no record here,
+// exactly as it produces none in a document walk. ANTS-3793 § 2.1.2's `dropped`
+// exclusion is that behaviour, not a filter layered on top of it.
+//
+// Three groups of fields are NOT set, because a bullet in isolation cannot
+// decide them and the caller can: `sectionHeading` / `sectionLevel` /
+// `sectionSlug` (the document's, and the store walk's own — its slugger is
+// stateful across sections), and `firstLine` / `lastLine` (a store has no
+// lines, which is ANTS-3793 INV-2's one declared field difference).
+//
+// ANTS-3771 — takes the declaration for symmetry with parseBullets() and so
+// INV-6 is TESTABLE rather than asserted: the store path can be driven with a
+// declaration in hand and shown to produce the same records. It cannot change
+// them — this text is RoadmapRender::bulletText()'s output, which is ants-v1,
+// so `gfmHere` is false and the branch the declaration governs never runs.
 std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
                                               const IdFormat &fmt = {});
 

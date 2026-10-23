@@ -16,6 +16,8 @@ namespace {
 // symmetric (a triangle of related items is an ordinary undirected cycle), and
 // specified-by addresses a document, so neither is walked. Types are never
 // folded: `A blocked-by B` with `B duplicate-of A` is not a cycle.
+// The same four as RoadmapParse::authoredLinkTypes(), named here for § 6's
+// own rule; a new authored type is not acyclic until § 6 says so.
 const QStringList &acyclicTypes() {
     static const QStringList kTypes = {
         QStringLiteral("splits-from"), QStringLiteral("blocked-by"),

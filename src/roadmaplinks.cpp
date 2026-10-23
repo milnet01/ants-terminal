@@ -1,6 +1,8 @@
 // ANTS-4079 — item links. See roadmaplinks.h.
 #include "roadmaplinks.h"
 
+#include "roadmapparse.h"
+
 #include <QHash>
 #include <QJsonArray>
 #include <QMultiHash>
@@ -9,8 +11,7 @@
 namespace RoadmapLinks {
 
 bool isAuthored(const QString &type) {
-    return type == QLatin1String("splits-from") || type == QLatin1String("blocked-by") ||
-           type == QLatin1String("duplicate-of") || type == QLatin1String("supersedes");
+    return RoadmapParse::authoredLinkTypes().contains(type);
 }
 
 QString keyFor(const QString &type, bool reverse) {

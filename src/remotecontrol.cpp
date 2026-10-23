@@ -1991,10 +1991,7 @@ QString rcGfmCanonicalHeadline(const QString &rawHead) {
     }
     if (idx >= 0) s = s.mid(idx + sepLen);  // post-em-dash prose
     s.remove(QStringLiteral("**"));          // de-markup
-    static const QRegularExpression rxTrailAnchor(
-        QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
-    s.replace(rxTrailAnchor, QString());
-    return s.trimmed();
+    return RoadmapParse::stripTrailingCaretAnchor(s).trimmed();
 }
 
 // ANTS-3378 — every distinct headline form the flip locator will accept
@@ -2006,11 +2003,8 @@ QString rcGfmCanonicalHeadline(const QString &rawHead) {
 QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
                                        const QString &boldId) {
     QSet<quint64> hashes;
-    auto add = [&](QString s) {
-        static const QRegularExpression rxTrailAnchor(
-            QStringLiteral("\\s*\\^[a-z0-9_-]+\\s*$"));
-        s.replace(rxTrailAnchor, QString());
-        const QString n = rcNormaliseHeadline(s);
+    auto add = [&](const QString &s) {
+        const QString n = rcNormaliseHeadline(RoadmapParse::stripTrailingCaretAnchor(s));
         if (!n.isEmpty()) hashes.insert(rcFnv1a64(n));
     };
     add(rawHead);                                  // legacy raw head

@@ -217,8 +217,8 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId,
 //   nullopt, *error empty → not migrated; parse markdown as today
 //   nullopt, *error set   → REFUSE; never fall back (INV-1)
 //
-// `markdown` is REQUIRED and is the project's live roadmap text: § 2.2's
-// ants-v1 gate runs detectRoadmapFormat() over it. ANTS-3815 § 2.4 added
+// `text` is REQUIRED and is the project's live roadmap text: § 2.2's
+// dialect gate runs detectRoadmapFormat() over it. ANTS-3815 § 2.4 added
 // project.source_format as a SECOND witness — the store's record of the dialect
 // the migration read — and the file's testimony is still needed to compare
 // against it. Four outcomes for a project that has a store row:
@@ -226,11 +226,11 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId,
 //   source_format   live detect          outcome
 //   ''              any                  exactly as version 1 (§ 2.2's table)
 //   set             sawSignal false      refuse, SourceUnrecognised
-//   set, == live    sawSignal set        § 2.2's table: store if ants-v1, else markdown
+//   set, == live    sawSignal set        store if isStoreServedDialect(), else markdown
 //   set, != live    sawSignal set        refuse, SourceUnrecognised — the drift case
 //
-// The last row is new at ANTS-3815 and is a BEHAVIOUR CHANGE at all three
-// callers on exactly one input class: a migrated project whose live file changed
+// The last row is new at ANTS-3815 and is a BEHAVIOUR CHANGE at every
+// caller on exactly one input class: a migrated project whose live file changed
 // dialect is now refused where it was previously served markdown. § 2.2 already
 // refuses "a file that no longer looks like what the store says it is"; with one
 // witness that could only reach the UNRECOGNISABLE case, because an
@@ -243,8 +243,8 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId,
 // a store-only dispatch is rejected rather than deferred. What it costs now is
 // the detector's window — at most kDetectorLineCap non-blank lines or
 // kDetectorByteCap bytes — instead of the whole file. This function must never
-// call `text.full()`, and neither may any of its four callers; that is the
-// whole of ANTS-3863's saving (its § 2.2 table binds all five).
+// call `text.full()`, and neither may any of its callers; that is the
+// whole of ANTS-3863's saving (its § 2.2 table binds them all).
 //
 // `why` is defaulted here and required on the two functions above, and the
 // asymmetry is deliberate rather than an oversight. This function's refusals
