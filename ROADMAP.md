@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6170 -->
+<!-- ants-roadmap-id-high-water: ANTS=6171 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79247,6 +79247,23 @@ in each bullet, not just the reporter's symptom.
   Kind: refactor.
   Source: user-request-2026-09-28.
   Lanes: ci.
+
+- 📋 [ANTS-6171] **A system Qt update leaves the build trees on a stale precompiled header, and nothing rebuilds it.**
+  2026-10-23: zypper moved Qt 6.11.2 -> 6.12.0 mid-session. The push
+  gate's build-asan job then failed in Qt's own qhttpheaders.h (no
+  qHash for std::optional): cmake_pch.hxx.gch, built 2026-10-19 from
+  Qt 6.11's QtCore, was mixed with 6.12's QtNetwork. Ninja never
+  rebuilt the .gch because RPM keeps upstream file dates: the new
+  qhashfunctions.h is dated 2026-06-04, older than the .gch. build/
+  had the same stale .gch; its suite still passed. Deleting every
+  cmake_pch.hxx.gch in build/ and build-asan/ fixed it.
+  Fix idea: make the PCH depend on the installed Qt (e.g. a configure-
+  time stamp of Qt6_VERSION or the qt6-base-devel install time that
+  the PCH target depends on), or have tools/safe-build.sh /
+  local-ci.sh drop .gch files older than that install time.
+  **Layman:** After a Qt update the build can break, or silently mix old and new Qt, until the cached header files are deleted by hand.
+  Kind: fix.
+  Source: push gate failure 2026-10-23.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
