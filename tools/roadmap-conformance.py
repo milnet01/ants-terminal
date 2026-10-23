@@ -27,6 +27,8 @@ import pathlib
 import re
 import sys
 
+from roadmap_paths import root_roadmap
+
 STATUS = "📋🚧✅💭"
 OPEN = "📋🚧💭"          # not-shipped; the render gate applies to these
 BULLET = re.compile(r"^- ([" + STATUS + r"]) (?:\[([A-Za-z0-9_-]+-?\d+)\] )?\*\*(.*)$")
@@ -93,8 +95,8 @@ def detect_dialect(text):
 
 def roadmap_files(root):
     """The project's roadmap plus any rotated archives."""
-    found = [p for p in sorted(root.glob("*.md"))
-             if p.name.lower() == "roadmap.md"]
+    live = root_roadmap(root)
+    found = [pathlib.Path(live)] if live else []
     found += sorted((root / "docs" / "roadmap").glob("*.md"))
     return found
 

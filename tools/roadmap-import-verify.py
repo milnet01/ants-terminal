@@ -22,6 +22,8 @@ which is the loud failure, not a silent pass.
 """
 import argparse, collections, pathlib, re, sqlite3, sys
 
+from roadmap_paths import root_roadmap
+
 TAXONOMY = {"implement", "fix", "audit-fix", "review-fix", "doc", "doc-fix",
             "refactor", "test", "chore", "release", "perf", "security",
             "feature", "enhancement", "investigate", "research",
@@ -57,7 +59,8 @@ def _flush_kind(cur, block, out):
 
 def declared_kinds(root):
     """id -> canonical kind, over ROADMAP.md and any rotated archives."""
-    srcs = [root / "ROADMAP.md"]
+    live = root_roadmap(root)
+    srcs = [pathlib.Path(live)] if live else []
     srcs += sorted((root / "docs/roadmap").glob("*.md"))
     out, seen_any = {}, False
     for src in srcs:

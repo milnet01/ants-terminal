@@ -17,10 +17,11 @@ this machine's corpus is made of.
 
 import argparse
 import collections
-import json
 import os
 import re
 import sys
+
+from roadmap_paths import layout_roadmap
 
 STATUS = "✅🚧📋💭"
 
@@ -98,59 +99,17 @@ def fenced(lines):
     return mask
 
 
-# ANTS-4409 — where project_layout looks when a project declares nothing
-# (kRoadmapCandidates in src/projectlayoutengine.cpp), in its order.
-ROADMAP_DIRS = ("", "docs/private", "docs/internal", "docs/fork")
-
-
-def roadmap_in(directory):
-    """The project's roadmap file, found the way the rest of the system finds it.
-
-    First `.ants/project.json`'s `roadmap` key (ANTS-2160), then the
-    project_layout candidates. RetroArch keeps its roadmap at
-    docs/private/ROADMAP.md, and a root-only probe left its items out of
-    every figure (ANTS-4409).
-
-    The basename matches case-INSENSITIVELY. RetroDB names its roadmap
-    `roadmap.md`. An uppercase-only glob silently excluded a 4,800-line
-    project from the first survey, which then reported a corpus figure and an
-    "no project uses pass headings" claim that were both wrong. Filename case
-    is not a reason to be invisible.
-    """
-    try:
-        with open(os.path.join(directory, ".ants", "project.json"),
-                  encoding="utf-8") as f:
-            declared = json.load(f).get("roadmap")
-    except (OSError, ValueError, AttributeError):
-        declared = None
-    if isinstance(declared, str) and declared:
-        path = os.path.join(directory, declared)
-        if os.path.isfile(path):
-            return path
-    for sub in ROADMAP_DIRS:
-        where = os.path.join(directory, sub) if sub else directory
-        try:
-            entries = os.listdir(where)
-        except OSError:
-            continue
-        for entry in sorted(entries):
-            if entry.lower() == "roadmap.md" and \
-                    os.path.isfile(os.path.join(where, entry)):
-                return os.path.join(where, entry)
-    return None
-
-
 def find_roadmaps(roots):
     found = []
     for root in roots:
-        own = roadmap_in(root)
+        own = layout_roadmap(root)
         if own:
             found.append((os.path.basename(os.path.abspath(root)), own))
             continue
         for entry in sorted(os.listdir(root)):
             path = os.path.join(root, entry)
             if os.path.isdir(path):
-                hit = roadmap_in(path)
+                hit = layout_roadmap(path)
                 if hit:
                     found.append((entry, hit))
     return found

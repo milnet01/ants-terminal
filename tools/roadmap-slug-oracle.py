@@ -19,6 +19,8 @@ import os
 import sys
 import unicodedata
 
+from roadmap_paths import root_roadmap
+
 
 def slugify(heading: str) -> str:
     out, prev_dash = [], True
@@ -81,13 +83,6 @@ def slugs_for(path: str):
     return out
 
 
-def live_roadmap(root: str):
-    for name in sorted(os.listdir(root)):
-        if name.lower() == "roadmap.md" and os.path.isfile(os.path.join(root, name)):
-            return os.path.join(root, name)
-    return None
-
-
 def main():
     base = sys.argv[1]
     result = {
@@ -102,7 +97,7 @@ def main():
         root = os.path.join(base, name)
         if not os.path.isdir(root) or name in ("discovery", "archives"):
             continue
-        live = live_roadmap(root)
+        live = root_roadmap(root)
         if live:
             result["roots"][name] = slugs_for(live)
     # The archive roots' LIVE files matter too — INV-3 compares baseline
@@ -111,7 +106,7 @@ def main():
     if os.path.isdir(arch):
         for name in sorted(os.listdir(arch)):
             root = os.path.join(arch, name)
-            live = live_roadmap(root) if os.path.isdir(root) else None
+            live = root_roadmap(root) if os.path.isdir(root) else None
             if live:
                 result["roots"]["archives/" + name] = slugs_for(live)
     json.dump(result, sys.stdout, indent=2, ensure_ascii=False)

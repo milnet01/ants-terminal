@@ -25,6 +25,8 @@ import re
 import sys
 from collections import Counter
 
+from roadmap_paths import root_roadmap
+
 # roadmap-format.md § 3.9 — case-sensitive, per-minor, no `v`, no zero-padding,
 # no patch suffix. The standard's PROSE says all of that; the regex it prints
 # (`^[0-9]+\.[0-9]+\.md$`) does not actually forbid zero-padding, so `00.07.md`
@@ -73,18 +75,6 @@ def emoji_bullets(path: str) -> int:
     return sum(1 for line in read_lines(path) if BULLET_RE.match(line))
 
 
-def live_roadmap(root: str) -> str | None:
-    """ANTS-3757 § 2.2 — the file directly in the root case-folding to
-    roadmap.md. Not recursive; a docs/ROADMAP.md is not a candidate."""
-    try:
-        for entry in sorted(os.listdir(root)):
-            if entry.lower() == "roadmap.md" and os.path.isfile(os.path.join(root, entry)):
-                return os.path.join(root, entry)
-    except OSError:
-        pass
-    return None
-
-
 def archives(root: str) -> list[str]:
     """Conforming archives, newest first — § 3.9's (major, minor) descending."""
     adir = os.path.join(root, "docs", "roadmap")
@@ -107,7 +97,7 @@ def main() -> int:
     root = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else here
     corpus = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else os.path.dirname(root)
 
-    live = live_roadmap(root)
+    live = root_roadmap(root)
     if live is None:
         print(f"no roadmap directly under {root}", file=sys.stderr)
         return 1
@@ -131,7 +121,7 @@ def main() -> int:
     roots_with_nonconforming = 0
     for name in sorted(os.listdir(corpus)):
         d = os.path.join(corpus, name)
-        if not os.path.isdir(d) or live_roadmap(d) is None:
+        if not os.path.isdir(d) or root_roadmap(d) is None:
             continue
         roots_with_roadmap += 1
         n = len(archives(d))
