@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6211 -->
+<!-- ants-roadmap-id-high-water: ANTS=6214 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95223,6 +95223,11 @@ worked after these.
   backfill use them. (3) the detector's 300-line budget is
   RoadmapParse::kDetectorLineBudget, and RoadmapSource::kDetectorLineCap
   is defined from it. Medium and low still open.
+  2026-10-23: MEDIUMs. Done: F4 glyph constants, F5 link keys from
+  authoredLinkTypes, F6 trailer-key comment, F7 one caret-anchor regex,
+  F9-F13 comments. Queued: F8 fillBulletRecord split ANTS-6212, and the
+  claudeintegration link enum ANTS-6214. Filed ANTS-6213, a pre-existing
+  -Wnull-dereference in indiereviewengine.cpp. LOWs remain.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96225,6 +96230,44 @@ worked after these.
   Kind: fix.
   Source: build-warning-2026-10-23.
   Lanes: mcp-content-verbs-a.
+
+- 📋 [ANTS-6212] **Split RoadmapParse's fillBulletRecord into a resolve-id step and a resolve-headline step that return values.**
+  From ANTS-6120 (L11 MEDIUM F8). fillBulletRecord carries five id
+  candidates (boldId, bracketId, boldCand, declaredId, declaredRest)
+  through one long body, and its headline chain opens with an empty
+  branch that relies on the em-dash block above having set the headline.
+  Not done in the lane pass: it is the core of every roadmap read, so the
+  split wants its own commit and the round-trip suites as its gate.
+  Hot reload: none needed; no new running state.
+  **Layman:** The routine that reads one roadmap line is very long and juggles five possible ids at once; splitting it into named steps makes it followable.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L11-F8).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6213] **Clear GCC's -Wnull-dereference warning inlined from IndieReviewEngine::deriveComputedPartition.**
+  Seen in the 2026-10-23 full build: qarraydatapointer.h warns of a
+  potential null pointer dereference, inlined from
+  indiereviewengine.cpp's single-directory split (`const Lane whole =
+  out.first();`). Not introduced by the lane-11 commit; that file was only
+  rebuilt because roadmapparse.h changed. Earlier items of this class
+  (ANTS-3358, ANTS-4544) were GCC false positives.
+  Hot reload: none needed; no new running state.
+  **Layman:** A compiler warning in the review partitioner says a list might be read through an empty pointer.
+  Kind: fix.
+  Source: build-warning-2026-10-23.
+  Lanes: review-engines.
+
+- 📋 [ANTS-6214] **Build roadmap_log's link-type schema enum from RoadmapParse::authoredLinkTypes().**
+  From ANTS-6120 (L11 MEDIUM F5). The lane pass folded the parser's
+  copies onto authoredLinkTypes(); claudeintegration.cpp's op:"link"
+  schema enum still spells the four types itself. Left out because that
+  file is another lane's.
+  Hot reload: a verb schema change reaches clients on their next
+  reconnect to a rebuilt ants-mcpd.
+  **Layman:** The list of roadmap link kinds is still typed out by hand in one more place; it should come from the shared list.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L11-F5).
+  Lanes: claude-integration.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
