@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6201 -->
+<!-- ants-roadmap-id-high-water: ANTS=6203 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88318,12 +88318,38 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6189] **session_cost accepts "self", so a subagent can measure its own transcript.**
+- 📋 [ANTS-6189] **session_cost reads subagent transcripts: session_id "self" for a subagent, "agent-<id>" for the main chat.**
   UT_Ants: an orchestrator subagent had no way to name its own
   transcript's session_id, so the review's orchestrator cost went
   unmeasured. Fix: accept session_id "self" (the caller's current
   transcript), or expose the subagent's id.
+  2026-10-23 (claude-config, CFG-0859, same root cause): the main
+  chat holds the subagent's id from the Agent result, but session_id
+  "agent-<id>" refuses not_found and "<session>/subagents/agent-<id>"
+  refuses bad_args. The transcript lives at
+  <project>/<session>/subagents/agent-<id>.jsonl. Resolve "agent-<id>"
+  (or an agent_id arg) to that file; optional include_subagents:true on
+  a main-session call totals the session and its subagents.
   **Layman:** A helper session could not look up its own token cost because it had no way to name itself.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6202] **workspace_search refuses or warns on a glob holding `|`, which today matches nothing silently.**
+  UT_Ants: glob `*.cmake|CMakeLists.txt` returned zero matches and no
+  warning. Fix: refuse or add a hint naming the `{a,b}` brace form,
+  or accept `|` as alternation.
+  **Layman:** A search pattern written with a bar between options finds nothing and gives no warning, so it looks like the text is not there.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6203] **roadmap_query hints at body_match_regex when a literal body_match holding regex metacharacters matches nothing.**
+  UT_Ants: body_match "created|Bundle.h" was matched literally and
+  returned no bodies with no hint. Fix: when body_match contains `|`,
+  `.*` or similar and matches nothing, add a hint naming
+  body_match_regex:true.
+  **Layman:** A roadmap search written like a pattern is read as plain text, finds nothing, and does not say why.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
