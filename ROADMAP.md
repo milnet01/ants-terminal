@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6174 -->
+<!-- ants-roadmap-id-high-water: ANTS=6176 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95028,6 +95028,8 @@ worked after these.
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F2 (report gloss) done. F1 (descriptor builders)
   open.
+  2026-10-23: HIGH F1 queued as ANTS-6175 (141 test files scrape
+  claudeintegration.cpp). No HIGH left here.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95130,6 +95132,8 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1, F2, F3 done. F4 (split append_batch) open.
+  2026-10-23: HIGH F4 queued as ANTS-6176 (19 test files name the
+  function, several scrape its body). No HIGH left here.
   **Layman:** Tidy the bulk roadmap tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95661,6 +95665,40 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 L07.
   Lanes: audit-dialog.
+
+- 📋 [ANTS-6175] **Move each MCP tool's descriptor out of the one tools/list branch into its own builder (L15-F1).**
+  L15-F1 (HIGH), queued from ANTS-6124 on 2026-10-23. Every tool
+  descriptor is built inline in ClaudeIntegration's tools/list branch;
+  roadmap_query's alone is over a thousand lines. Fix: one builder
+  function per tool, or a file per verb family. Not done in place:
+  141 test files read src/claudeintegration.cpp by source scrape, many
+  of them descriptor text. Hazard: moving text to new files, or out
+  of a scraped function body, fails scrapes silently tied to specs.
+  First step: run source_scrapes on the tools/list range and list
+  which anchors name the branch or a function body, then split one
+  family at a time. Hot-reload note: descriptors as data files
+  (design default) would also serve this.
+  **Layman:** Every tool's description is built in one huge block of code; give each tool its own small piece so a reader does not get lost.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L15.
+  Lanes: claude-integration-b.
+
+- 📋 [ANTS-6176] **Split cmdRoadmapLogAppendBatch into a store write and a file write after the shared checks (L21-F4).**
+  L21-F4 (HIGH), queued from ANTS-6130 on 2026-10-23.
+  cmdRoadmapLogAppendBatch threads writeTarget through about ten
+  branches; comments record fixes that reached one backend only
+  (ANTS-4493, 4634, 4635, 5095), and the ANTS-4989 review advisory
+  still exists on the file path only. Fix: after the shared
+  validation, one function for the store write and one for the file
+  write, with a shared advisory tail. Not done in place: 19 test files
+  name cmdRoadmapLogAppendBatch, several scraping its body
+  (mcp_roadmap_log_append_batch alone 34 times). Hazard: the roadmap
+  store is live and machine-global; work on a throwaway store and
+  check each scrape's spec before moving text out of the body.
+  **Layman:** One very long function writes new roadmap items two different ways; split it so each way can be read and fixed on its own.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L21.
+  Lanes: mcp-roadmap-batch.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
