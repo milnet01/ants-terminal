@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6214 -->
+<!-- ants-roadmap-id-high-water: ANTS=6215 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95256,6 +95256,10 @@ worked after these.
   kGeneratedNoticeWindow; generatedNotice() builds from the tag, and
   every search (including hasMarkerInHead, which read 5 lines) uses
   them. Medium and low still open.
+  2026-10-23: MEDIUMs F3-F12 all done. F3 one kPassStatuses table in
+  passheadingwrite.cpp (render/export copies queued as ANTS-6215), F4
+  DriftBreakdown extends Drift, F5 renderPreImage shared, F6 reportOutcome,
+  F7 step 3a and test-hook helper, F8-F12 comments. LOWs remain.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96277,6 +96281,20 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L11-F5).
   Lanes: claude-integration.
+
+- 📋 [ANTS-6215] **One shared roadmap status table (word, keyword, glyph, order, open) for the render, the export and the pass writer.**
+  From ANTS-6121 (L12 MEDIUM F3). The lane pass gave passheadingwrite.cpp
+  one kPassStatuses table. Still hand-kept: kStatusOrder in
+  roadmapexport.cpp and a second kStatusOrder in roadmaprender.cpp (whose
+  comment calls it "the export's"), emojiFor and isOpen in
+  roadmaprender.cpp. Not done in the lane pass: the order arrays drive
+  section ordering in published files, so the merge wants its own commit
+  and the render round-trip suites as its gate.
+  Hot reload: none needed; no new running state.
+  **Layman:** The five roadmap statuses are listed by hand in several files; one shared list would stop a new status being missed in one of them.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L12-F3).
+  Lanes: roadmap-parse-render.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
