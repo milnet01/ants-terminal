@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6179 -->
+<!-- ants-roadmap-id-high-water: ANTS=6183 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88244,6 +88244,52 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Sessions in other projects learn about the trace tool when they connect, instead of falling back to slow text searches.
   Kind: fix.
   Source: claude-config feedback 2026-10-23.
+
+### Ants MCP feedback from CC sessions — 2026-10-23 triage
+
+- 📋 [ANTS-6180] **source_scrapes reports test_files 0 with no warning when test_roots is set, and misses Python tests that read source.**
+  Pressless: paths over .githooks, scripts, src/pressless and more
+  returned scanned.test_files 0 and readers [] although .ants/project.json
+  declares test_roots ["tests"]. Its tests read source through
+  inspect.getsource(module) and Path(...)/"src"/... joins. Fix: a notice
+  when test_files is 0 under a non-empty test_roots; follow those two
+  Python read shapes. Zero read as "nothing pins this text" is a check
+  that cannot fail.
+  **Layman:** The tool that finds tests reading source code said none existed on a project full of them, without warning that it had looked at nothing.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6181] **comment_claims flags section, step and decision numbers, HTTP status codes and shell $N as census_number candidates.**
+  Pressless: all 15 census_number candidates were false: 9 section/step/
+  decision numbers (§2 expects, step 6 raises, decision 10 refuses), 3 HTTP
+  statuses (404 keeps), 1 shell $2, 2 true approximate figures (~60 KB,
+  ~1 s). Fix: skip a number right after §, step, decision or $, and a
+  3-digit HTTP status beside a status verb.
+  **Layman:** The checker that hunts for stale counts in comments mistook section numbers, web error codes and shell arguments for counts.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6182] **indie_review_partition splits a project with no module map into oversized alphabetical chunks, and hides code outside source_roots.**
+  Pressless: three alphabetical chunks of src/pressless, all oversized,
+  suggested_merges []. unassigned_* counted 2 yml files, while scripts/
+  and .githooks/ were invisible. fields:["too_coarse","source"] came back
+  under fields_unmatched though the descriptor names too_coarse. Related:
+  ANTS-5409 (tracked source outside every lane's roots).
+  **Layman:** The tool that divides a project into review lanes produced unusable, too-large lanes for a project without a module map, and silently skipped scripts outside the source folders.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
+
+- 📋 [ANTS-6183] **function_sizes counts unmeasured files without naming them.**
+  Pressless: the reply said unmeasured: 5 with no list (probably shell
+  scripts). Fix: list each unmeasured path and why. Related: ANTS-5800
+  (shell top-level code never measured, yet unmeasured reads 0).
+  **Layman:** The function-size tool said five files could not be measured but did not say which.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
