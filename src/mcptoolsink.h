@@ -42,9 +42,11 @@ enum class CallerCwdContract {
 // seconds, so the shared worker's other verbs do not queue behind it.
 enum class DispatchLane { Shared, Bulk };
 
-// ANTS-2132 — a handler whose body is known to touch no widget, so the
-// dispatcher may run it off the GUI thread. Produced by rcDelegate, whose
-// body is nothing but a forward to a RemoteControl cmd*(). Deliberately NOT
+// ANTS-2132 — a handler whose body is vetted to touch no widget, so the
+// dispatcher may run it off the GUI thread. Most come from rcDelegate, a
+// plain forward to a RemoteControl cmd*(); a few are written by hand in
+// mcptoolregistry.cpp (`RcHandler{`), and each of those bodies needs the
+// same vetting. Deliberately NOT
 // implicitly constructible from a ToolHandler: that would make every inline
 // registration ambiguous between the two overloads.
 struct RcHandler {

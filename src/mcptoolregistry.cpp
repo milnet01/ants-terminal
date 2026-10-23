@@ -993,9 +993,8 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
         rcDelegate(rc, &RemoteControl::cmdSimilarCode));
 
     // ANTS-1112 — the `indie_review_*` tools. Each handler resolves
-    // the active project via the focused TerminalWidget's shellCwd
-    // (matches the convention used by git_state / subsystem /
-    // last_audit_summary). Each delegates to RemoteControl's
+    // the project from caller_cwd (CallerCwdContract::Required). Each
+    // delegates to RemoteControl's
     // cmdIndieReview* methods, mirroring the ANTS-1253 registry shape.
     sink.registerToolProvider("indie_review_partition",
         ClaudeIntegration::CallerCwdContract::Required,

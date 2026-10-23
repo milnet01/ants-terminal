@@ -179,7 +179,7 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         }
         // ANTS-1168: m_changedFiles is per-tab/per-session; clearing it
         // on PID change keeps MCP `get_session_info` from returning the
-        // prior tab's edited-file list to the new tab's queries.
+        // prior tab's touched-file list to the new tab's queries.
         m_changedFiles.clear();
         emit stateChanged(ClaudeState::NotRunning, QString());
         emit contextUpdated(0);
@@ -1055,7 +1055,7 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // condensed history with `isCompactSummary:true`. While the former is the
     // most recent real user message and no matching summary has followed,
     // surface Compacting — otherwise the UI just says "thinking..." for the
-    // entire (often multi-second) summarization turn. Walks the same 32KB
+    // entire (often multi-second) summarization turn. Walks the same tail
     // window we already read; if an old /compact falls outside the window we
     // silently fall back to the generic state, which is acceptable.
     bool inCompact = false;
@@ -1127,7 +1127,7 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // read "mode" which never matched the real schema — see
     // tests/features/claude_plan_mode_detection/spec.md.
     //
-    // Important: the tail window we parse is ~32 KB, so a toggle that
+    // Important: we parse only a tail window, so a toggle that
     // happened many turns ago can scroll off. We must NOT silently reset
     // plan mode to false in that case — the user's last explicit toggle
     // still stands until they toggle again. Caller passes the latched
@@ -2386,12 +2386,7 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
         const qint64 outBytes  = reply.outBytes;
         const qint64 wrapBytes = reply.wrapBytes;
         const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
-        // ANTS-1356 + ANTS-1454 — dispatchResult is "ok"
-        // for normal success, "caller_cwd_required" for
-        // ANTS-1404 refusals, "rate_limited" for ANTS-1356
-        // refusals. recordDispatch derives `succeeded =
-        // (result == "ok")` so failed-call accounting in
-        // token_usage stays honest.
+        // dispatchResultIsSuccess decides which results count as success.
         // ANTS-4659 — the survey of what callers send undeclared. A call
         // ants-mcpd forwards and the terminal answers is finished only in the
         // terminal, so with both processes recording each call lands once.
@@ -2417,13 +2412,10 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
             error["code"] = -32602; // Invalid params
             error["message"] = QString("Unknown tool: %1").arg(toolName);
         }
-        // ANTS-1402-INV-4 — failure-branch hook now routes
-        // through recordDispatch with result="tool_not_found".
-        // m_tokenUsage.recordCall is skipped inside
-        // recordDispatch when result != "ok" (preserves
-        // pre-1402 behaviour). INV-12 of ANTS-1360 still
-        // applies: resp_bytes=0 and a non-negative
-        // duration_us reach the mcp_trace ring.
+        // ANTS-1402-INV-4 — failure-branch hook routes through
+        // recordDispatch with result="tool_not_found". INV-12 of
+        // ANTS-1360: resp_bytes=0 and a non-negative duration_us
+        // reach the mcp_trace ring.
         const qint64 argBytes = QJsonDocument(argsObj)
             .toJson(QJsonDocument::Compact).size();
         const qint64 durUs = mcpTraceTimer.nsecsElapsed() / 1000;
@@ -16981,6 +16973,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // (not zero). Stop right before recordMcpTrace below.
                 QElapsedTimer mcpTraceTimer;
                 mcpTraceTimer.start();
+                // The reply pipeline's context, from this call's locals as
+                // they stand when it is built.
+                const auto baseContext = [&] {
+                    McpCallContext c;
+                    c.socket         = guard;
+                    c.requestId      = reqId;
+                    c.toolName       = toolName;
+                    c.args           = argsObj;
+                    c.requestBytes   = buf.size();
+                    c.dispatchResult = dispatchResult;
+                    c.traceTimer     = mcpTraceTimer;
+                    return c;
+                };
                 // ANTS-1901 — master MCP gate. When the integration is
                 // toggled off at runtime the socket stays bound until the
                 // next launch, but observation must stop now: refuse every
@@ -17191,15 +17196,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // Never adds a caller_cwd: the request goes as it came (INV-8).
                 if (!toolHandled && m_forwarder &&
                     m_forwardedTools.contains(toolName)) {
-                    McpCallContext fctx;
-                    fctx.socket         = guard;
-                    fctx.requestId      = reqId;
-                    fctx.toolName       = toolName;
-                    fctx.args           = argsObj;
-                    fctx.requestBytes   = buf.size();
-                    fctx.toolHandled    = true;
-                    fctx.dispatchResult = dispatchResult;
-                    fctx.traceTimer     = mcpTraceTimer;
+                    McpCallContext fctx = baseContext();
+                    fctx.toolHandled = true;
                     const QPointer<ClaudeIntegration> self(this);
                     m_forwarder(buf,
                         [fctx](const QByteArray &replyLine) {
@@ -17255,6 +17253,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // Cleared on the dispatch_queue_full branch below.
                 bool cacheable =
                     !toolHandled && isIdempotentReadTool(toolName);
+                // baseContext plus the cache state; a handled call also
+                // carries its ignored-arg keys.
+                const auto dispatchContext = [&](bool handled) {
+                    McpCallContext c = baseContext();
+                    c.cachedHit   = cachedHit;
+                    c.cacheable   = cacheable;
+                    c.toolHandled = handled;
+                    if (handled)
+                        c.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
+                    return c;
+                };
                 if (cacheable) {
                     const QString hit = tryGetIdempotentReadCache(
                         toolName, argsObj);
@@ -17446,18 +17455,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         if (it->second.deferred) {
                             // ANTS-2132 § 2.8 — the verb replies later, on
                             // this thread, through the same pipeline.
-                            McpCallContext dctx;
-                            dctx.socket         = guard;
-                            dctx.requestId      = reqId;
-                            dctx.toolName       = toolName;
-                            dctx.args           = argsObj;
-                            dctx.requestBytes   = buf.size();
-                            dctx.cachedHit      = cachedHit;
-                            dctx.cacheable      = cacheable;
-                            dctx.toolHandled    = true;
-                            dctx.dispatchResult = dispatchResult;
-                            dctx.traceTimer     = mcpTraceTimer;
-                            dctx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
+                            const McpCallContext dctx = dispatchContext(true);
                             const QPointer<ClaudeIntegration> self(this);
                             const auto replied = std::make_shared<bool>(false);
                             it->second.deferred(argsObj,
@@ -17472,19 +17470,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             return;  // the reply follows from the verb
                         }
                         if (it->second.offThread) {
-                            McpCallContext octx;
-                            octx.socket         = guard;
-                            octx.requestId      = reqId;
-                            octx.toolName       = toolName;
-                            octx.args           = argsObj;
-                            octx.requestBytes   = buf.size();
-                            octx.cachedHit      = cachedHit;
-                            octx.cacheable      = cacheable;
-                            octx.toolHandled    = true;
-                            octx.dispatchResult = dispatchResult;
-                            octx.traceTimer     = mcpTraceTimer;
-                            octx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
-                            if (postToolDispatch(octx, it->second.handler,
+                            if (postToolDispatch(dispatchContext(true), it->second.handler,
                                                  it->second.lane))
                                 return;  // reply follows from the worker
                             // Queue full — refuse rather than drop it, so a
@@ -17512,19 +17498,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // ANTS-2132 — hand the rest of the reply to finishToolDispatch.
                 // It owns the transforms, the wrap, recordDispatch and the
                 // socket write for this path.
-                McpCallContext ctx;
-                ctx.socket         = guard;
-                ctx.requestId      = reqId;
-                ctx.toolName       = toolName;
-                ctx.args           = argsObj;
-                ctx.requestBytes   = buf.size();
-                ctx.cachedHit      = cachedHit;
-                ctx.cacheable      = cacheable;
-                ctx.toolHandled    = toolHandled;
-                ctx.dispatchResult = dispatchResult;
-                ctx.traceTimer     = mcpTraceTimer;
-                if (toolHandled)
-                    ctx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
+                const McpCallContext ctx = dispatchContext(toolHandled);
                 finishToolDispatch(ctx, transformReply(ctx, responseText));
                 return;
             } else if (method == QLatin1String(VerifyTrust::kPromptMethod)
@@ -17686,11 +17660,6 @@ QString ClaudeIntegration::wrapMcpDataRaw(const QString &toolName,
 
 // --- ANTS-1404 — per-tool caller_cwd contract ---
 
-// Static classification table. Adding a new tool without an entry
-// defaults to Optional (INV-4) — gracious degradation so a typo
-// doesn't refuse calls. Required-tier entries are the four whose
-// silent focused-fallback is the 2026-05-15 cross-session leak shape.
-// See docs/specs/ANTS-1404.md for the full classification rationale.
 // ANTS-1351 + ANTS-1397 § 2.4 — inline verb-in-flight gate
 // implementations. Single QMutex around a QHash keyed by
 // (verb, canonicalProjectRoot). Stale-slot reaper sweeps entries
@@ -18282,13 +18251,10 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("mcp_trace"))          return R::ControlPlane;
     if (toolName == QStringLiteral("caller_cwd_info"))    return R::ControlPlane;
     // ANTS-1629 + ANTS-1643 — BriefAssembly tier (30/min). Brief-
-    // generation verbs that fan out one-per-lane during a /cold-eyes,
-    // /indie-review, or /test-audit sweep. The canonical Phase-2 step
-    // dispatches 12-16 briefs in one parallel batch, which the 10/min
-    // Expensive cap was blocking. Cost shape is read-and-template-
-    // assembly, not shell-out — semantically between Cheap and
-    // Expensive. ANTS-1643 extended the tier to indie_review_brief +
-    // test_audit_brief before the sibling fan-out report landed.
+    // generation verbs that fan out one-per-lane during a review sweep,
+    // which the 10/min Expensive cap was blocking. Cost shape is
+    // read-and-template-assembly, not shell-out — between Cheap and
+    // Expensive. ANTS-1643 added test_audit_brief.
     if (toolName == QStringLiteral("cold_eyes_brief"))          return R::BriefAssembly;
     if (toolName == QStringLiteral("test_audit_brief"))         return R::BriefAssembly;
     // Expensive — 10/min. Heavy verbs (shell-out, subagent dispatch,

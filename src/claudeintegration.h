@@ -196,7 +196,8 @@ public:
     static qint64 processStartTimeMs(pid_t pid);
 
     // Most recent ISO 8601 `timestamp` field in the JSONL tail at
-    // `path`. Walks backwards from EOF over the last 32 KB, parsing
+    // `path`. Walks backwards from EOF over the last 32 KB (widening
+    // when that holds no timestamped record), parsing
     // each line as JSON, returning the first `timestamp` that parses
     // successfully (skipping metadata events like `last-prompt`,
     // `permission-mode`, `file-history-snapshot`, `ai-title` that
@@ -433,13 +434,9 @@ public:
 
     // ANTS-1356 — MCP per-tool rate-limit / quota.
     //
-    // Three tiers via rateLimitClassFor(toolName):
-    //   Cheap        — 60 calls / 60 s (default; most read verbs).
-    //   Expensive    — 10 calls / 60 s (audit_run, workspace_search,
-    //                  verify_changes, cold_eyes_*, indie_review_*,
-    //                  test_audit_*, debt_sweep_scan/apply_fix).
-    //   ControlPlane — uncapped (get_session_info, token_usage,
-    //                  tool_info, mcp_trace, caller_cwd_info).
+    // Four tiers: Cheap (the default), BriefAssembly, Expensive and
+    // ControlPlane (uncapped). rateLimitClassFor(toolName) holds which
+    // verb is in which; the caps are the kRateLimit*Cap constants.
     //
     // Sliding-window bucket per (toolName, callerCwd). Monotonic
     // clock in production via s_rateLimitClock; tests pass synthetic
@@ -674,7 +671,8 @@ public:
         m_transcriptPath = path;
     }
 
-    // Pure tail parser. Reads a ~32 KB (growing up to 4 MiB) suffix of the
+    // Pure tail parser. Reads a 32 KiB suffix, growing up to the per-record cap
+    // (kMaxTranscriptRecordBytes), of the
     // transcript file and derives the Claude Code state the tail implies.
     // latchedPlanMode is the caller's current plan-mode state: plan mode
     // persists across many turns, so if the tail window doesn't contain
@@ -689,6 +687,8 @@ signals:
     void toolFinished(const QString &toolName, bool success);
     void sessionStarted(const QString &sessionId);
     void sessionStopped(const QString &reason);
+    // Despite the name, fires for a file Claude read as well as one it
+    // edited or wrote (updateChangedFiles); m_changedFiles likewise.
     void fileChanged(const QString &filePath);
     // ANTS-5169 — Claude read a file isSecretFileName() matches. Fires on
     // every read, not once per path like fileChanged.
@@ -1057,9 +1057,8 @@ private:
     // m_tokenUsage.recordCall and recordMcpTrace see byte-
     // identical input. `result` is "ok" on the success path
     // and the failure code (e.g. "tool_not_found") on the
-    // failure path. m_tokenUsage only counts successful calls
-    // — failure-branch observer behaviour preserved from the
-    // pre-1402 wiring.
+    // failure path. Every call is recorded; dispatchResultIsSuccess
+    // decides which count as successful.
     void recordDispatch(
         const QString &toolName, const QJsonObject &argsObj,
         qint64 argBytes, qint64 rawBytes, qint64 outBytes,

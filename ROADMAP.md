@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6220 -->
+<!-- ants-roadmap-id-high-water: ANTS=6226 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88379,6 +88379,10 @@ measured Ants adding about 5,250 tokens to every request.
   returned the right definition but the callers of every other nameOf
   overload, tools/ included. Narrow callers and references by the same
   scope, or mark rows that resolve to a different definition.
+  2026-10-23 UT_Ants second instance: trace symbol:"Md5::update" listed
+  every `.update` reference tree-wide, camera code and Python
+  dict.update included. The scope must narrow references too, not only
+  callers; at least restrict to the definition's language.
   **Layman:** Asking for one Python function's callers by its module name returns no definition and every caller of every function with that name.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
@@ -95298,6 +95302,13 @@ worked after these.
   (ids L14-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23 MEDIUMs: F1-F6 and F8 fixed (stale comments on the
+  caller_cwd default, dispatch success, rate tiers, transcript window,
+  RcHandler and indie_review_* resolution; the four McpCallContext fills
+  now come from baseContext/dispatchContext). F12 documented at
+  fileChanged; its rename queued as ANTS-6224. Queued F7+F11 as
+  ANTS-6221, F9 as ANTS-6222, F10 as ANTS-6223, stale feature-spec text
+  as ANTS-6225 (all test- or wire-pinned). The sweep found replies and verb descriptions still naming the removed indie_review_brief: queued as ANTS-6226. LOWs F13-F21 remain.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96365,6 +96376,91 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F23).
   Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6221] **Build audit_run's done envelope in one function that the sync reply and the async poll both call, and move the audit_run handler out of its inline lambda.**
+  From ANTS-6123. mcptoolregistry.cpp's sync audit_run completion and
+  claudeintegration.cpp's auditJobPollEnvelope each build the done
+  envelope; AuditJob and its term.* mapping are a third copy. The async
+  poll lacks by_tool, paths_given_total, tools_with_no_files,
+  scanned_whole_project, delta, delta_unavailable_reason,
+  exclude_paths_*, scope_*, sarif_path and top_findings. Fix: keep the
+  RunResult in AuditJob, build the envelope from it in one named
+  function, and lift the ~370-line audit_run lambda into the anonymous
+  namespace. Queued, not fixed in the lane pass: it changes what the
+  async poll returns, and test_audit_run_incomplete_detail pins
+  `incomplete_tools_detail` in both files.
+  Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  **Layman:** The audit result is assembled in two places that have drifted apart, so a check started in the background reports fewer details than one that waits.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L14-F7, L14-F11).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6222] **Call mcpd::peerUidIs at the four inline SO_PEERCRED peer checks.**
+  From ANTS-6123; feeds ANTS-5796 (dup:3634cdb28375). Sites:
+  ClaudeIntegration::onHookConnection and onMcpConnection,
+  remotecontrol_terminal.cpp and remotecontrol_state.cpp (the last logs
+  to stderr). Queued because test_shared_socket_listener requires the
+  literal SO_PEERCRED inside each handler body before readyRead; that
+  test must change to accept peerUidIs in the same commit.
+  Hot reload: none needed.
+  **Layman:** The check that only your own user may talk to the terminal's sockets is written out four times; one shared copy means a fix lands everywhere.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L14-F9).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6223] **Split ClaudeIntegration::handleMcpRequest into one member function per MCP method.**
+  From ANTS-6123. The tools/call branch shares result, error and
+  haveResult with the final sendMcpResponse from far above, inside two
+  leftover bare blocks; its refusal gates each depend on every gate
+  above. Queued: test_mcp_verb_offthread_guard pins the signature, and
+  the comment above transformReply warns that source-scrape tests
+  depend on statement order in this function. Run source_scrapes on
+  claudeintegration.cpp first and move each anchor with its code.
+  Hot reload: none needed.
+  **Layman:** One function that answers every request to the terminal is about 15,000 lines long; splitting it lets a newcomer find and change one part safely.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L14-F10).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6224] **Name the touched-files list for what it holds: files Claude read as well as edited.**
+  From ANTS-6123. updateChangedFiles, m_changedFiles and fileChanged
+  record Read as well as Edit and Write. The lane pass documented this
+  at the signal. Rename the internal names (test_mcp_secret_redaction
+  pins `void ClaudeIntegration::updateChangedFiles(` and
+  `m_changedFiles.contains(`). Hazard: get_session_info's wire field
+  `changed_files` is read by clients (test_mcp_focused_test); keep it,
+  or add a new field before retiring it.
+  Hot reload: none needed.
+  **Layman:** The list called 'changed files' also includes files Claude only read, which misleads anyone using it to mean 'edited'.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L14-F12).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6225] **Correct two feature specs that still say token_usage success means result "ok" and that the rate limit has three tiers.**
+  Found in the ANTS-6123 sweep. tests/features/mcp_caller_cwd_contracts/spec.md
+  DISP-5 says recordCall derives `succeeded = (result == "ok")`; it is
+  dispatchResultIsSuccess, which also counts etag_unchanged.
+  tests/features/mcp_rate_limit/spec.md says three tiers; BriefAssembly
+  (30/min) is a fourth. dispatch_result_accounting/spec.md states the
+  old rule under Problem, as history; leave it.
+  Hot reload: none needed.
+  **Layman:** Two test descriptions still state old rules for counting calls and limiting their rate.
+  Kind: doc-fix.
+  Source: review-readability-2026-10-22 (L14 sweep).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6226] **indie_review_partition's replies tell callers to brief lanes with indie_review_brief, a verb that was removed.**
+  Found in the ANTS-6123 sweep. remotecontrol_review.cpp's partition
+  hints name `indie_review_brief(lane=..., source_paths=[...])`;
+  mcpdeprecation.cpp lists the verb as removed. Two verb descriptions in
+  claudeintegration.cpp and one in remotecontrol_feedback.cpp still
+  name it too. Point each at what replaced it (mcp::removedVerbError
+  holds the replacement). Schema text: run McpEagerLoad after.
+  Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  **Layman:** The review-planning tool points users at another tool that no longer exists.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L14 sweep, from L14-F3).
+  Lanes: claude-integration.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
