@@ -27,9 +27,14 @@
 
 namespace {
 
-// The 21 Kind values of roadmap-data-model.md § 7.4. Written as a CHECK, not a
+// The Kind values of roadmap-data-model.md § 7.4. Written as a CHECK, not a
 // comment: § 7.4 says "Writes accept canonical values only", and a TEXT NOT
 // NULL column accepts anything (INV-11).
+//
+// FROZEN SCHEMA TEXT: spliced into `CREATE TABLE item`, whose shipped text
+// may not change (createSchema() rule 2). A new kind needs a schema bump and
+// a table rebuild, and an existing store refuses it until then. Its twin is
+// RoadmapParse::canonicalKinds(); the two lists must name the same values.
 constexpr const char *kKindCheck =
     "'implement','fix','audit-fix','review-fix','doc','doc-fix','refactor',"
     "'test','chore','release','perf','security','feature','enhancement',"
@@ -96,6 +101,11 @@ QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 // at once with "database is locked", without honouring busy_timeout.
 // BEGIN IMMEDIATE waits under busy_timeout instead. Opened only when no
 // transaction is already open; any return before commit() rolls back.
+//
+// Every writer that opens its own transaction when the caller has none uses
+// this. begin()/commit() are the caller's explicit transaction: they also
+// set m_inTransaction and reset the written-items gate scope and the history
+// total, which a self-contained write does not need.
 class ImmediateTx {
 public:
     ImmediateTx(QSqlDatabase &db, bool alreadyOpen) : m_db(db), m_owns(!alreadyOpen) {}
@@ -141,6 +151,32 @@ bool isWritableItemField(const QString &field) {
         QStringLiteral("lanes"), QStringLiteral("evidence"), QStringLiteral("extras"),
     };
     return writable.contains(field);
+}
+
+// An item's stored provenance JSON with `key` set to `value`, canonicalised.
+// Merged, not replaced (ANTS-3765 § 2.6): every other key keeps the
+// provenance it had.
+QString provenanceWith(const QString &storedJson, const QString &key,
+                       const QString &value) {
+    QJsonObject prov = QJsonDocument::fromJson(storedJson.toUtf8()).object();
+    prov.insert(key, value);
+    return RoadmapStore::canonicalJson(prov);
+}
+
+// The same, read from item `itemPk`. nullopt with "no such item" when the row
+// is absent or the read fails.
+std::optional<QString> mergedItemProvenance(const QSqlDatabase &db, qint64 itemPk,
+                                            const QString &key, const QString &value,
+                                            QString *error) {
+    QSqlQuery cur(db);
+    cur.prepare(QStringLiteral("SELECT provenance FROM item WHERE item_pk = ?"));
+    cur.addBindValue(itemPk);
+    if (!cur.exec() || !cur.next()) {
+        if (error)
+            *error = QStringLiteral("no such item %1").arg(itemPk);
+        return std::nullopt;
+    }
+    return provenanceWith(cur.value(0).toString(), key, value);
 }
 
 // ANTS-5643 — the refusal a store too new for this build gives. It names the
@@ -974,13 +1010,9 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     // transaction, every later write would autocommit and PERSIST, and the
     // migration would report a clean partial load — INV-1 inverted with
     // nothing observing it.
-    const bool owns = !m_inTransaction;
-    if (owns && !exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error))
+    ImmediateTx tx(m_db, m_inTransaction);   // rolls back only what it owns
+    if (!tx.begin(error))
         return std::nullopt;
-    const auto unwind = [&] {
-        if (owns)
-            exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
-    };
 
     // Same-project rule (write-path, as above): the section an item is filed
     // in must belong to the item's own project — "Items are never global".
@@ -995,7 +1027,6 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
             if (error)
                 *error = QStringLiteral("section %1 is not in project %2")
                              .arg(w.sectionId).arg(w.projectId);
-            unwind();
             return std::nullopt;
         }
     }
@@ -1038,7 +1069,6 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);
-        unwind();
         return std::nullopt;
     }
     const qint64 itemPk = q.lastInsertId().toLongLong();
@@ -1056,11 +1086,10 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     if (!e.exec()) {
         if (error)
             *error = lastErr(e);
-        unwind();
         return std::nullopt;
     }
 
-    if (owns && !exec(m_db, QStringLiteral("COMMIT"), error))
+    if (!tx.commit(error))
         return std::nullopt;
     return itemPk;
 }
@@ -1127,28 +1156,19 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
         }
     }
 
-    QSqlQuery cur(m_db);
-    cur.prepare(QStringLiteral("SELECT provenance FROM item WHERE item_pk = ?"));
-    cur.addBindValue(itemPk);
-    if (!cur.exec() || !cur.next()) {
-        if (error)
-            *error = QStringLiteral("no such item %1").arg(itemPk);
-        return false;
-    }
-
     // INV-10 — per FIELD, both directions: this key takes the caller's
     // provenance and every other key is carried through untouched. That
     // carry-through is also ANTS-3765 § 2.6's "provenance is merged, not
     // replaced" — a field a re-run did not write keeps the provenance it had.
-    QJsonObject prov =
-        QJsonDocument::fromJson(cur.value(0).toString().toUtf8()).object();
-    prov.insert(field, provenance);
+    const auto prov = mergedItemProvenance(m_db, itemPk, field, provenance, error);
+    if (!prov)
+        return false;
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET %1 = ?, provenance = ? WHERE item_pk = ?")
                   .arg(field));
     q.addBindValue(stored);
-    q.addBindValue(canonicalJson(prov));
+    q.addBindValue(*prov);
     q.addBindValue(itemPk);
     if (!q.exec()) {
         if (error)
@@ -2141,17 +2161,17 @@ bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregister
         {QStringLiteral("DELETE FROM id_prefix WHERE project_id = ?"), &counts->idPrefixes},
     };
 
-    const bool ownTransaction = !m_inTransaction;
-    if (ownTransaction && !begin(error))
+    // ImmediateTx, not begin(): this writes no item, so begin()'s reset of
+    // the written-items gate scope has nothing to do here.
+    ImmediateTx tx(m_db, m_inTransaction);
+    if (!tx.begin(error))
         return false;
     // ANTS-5046 — the history DELETE below bypasses appendHistory().
     m_historyTotal.reset();
     // Connection-scoped and reset below, because a leaked deferral would turn
     // every later write's FK enforcement into a commit-time surprise.
-    if (!exec(m_db, QStringLiteral("PRAGMA defer_foreign_keys = ON"), error)) {
-        if (ownTransaction) rollback(nullptr);
+    if (!exec(m_db, QStringLiteral("PRAGMA defer_foreign_keys = ON"), error))
         return false;
-    }
     const auto restore = [&] {
         exec(m_db, QStringLiteral("PRAGMA defer_foreign_keys = OFF"), nullptr);
     };
@@ -2164,7 +2184,6 @@ bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregister
         if (!q.exec()) {
             if (error) *error = lastErr(q);
             restore();
-            if (ownTransaction) rollback(nullptr);
             return false;
         }
         if (step.second) *step.second = q.numRowsAffected();
@@ -2178,13 +2197,11 @@ bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregister
     if (!stamp.exec()) {
         if (error) *error = lastErr(stamp);
         restore();
-        if (ownTransaction) rollback(nullptr);
         return false;
     }
 
-    if (ownTransaction && !commit(error)) {
+    if (!tx.commit(error)) {
         restore();
-        rollback(nullptr);
         return false;
     }
     restore();
@@ -2254,27 +2271,24 @@ std::optional<qint64> RoadmapStore::projectIdContaining(const QString &path,
     return std::nullopt;
 }
 
-namespace {
-
-// Checked here as well as in the CHECK constraint, so the caller gets
-// `bad_args` with a reason rather than a raw SQL constraint failure. Empty
-// means the arguments are fine.
-QString mailArgsError(const QString &body, const QString &fromSession) {
+QString RoadmapStore::mailArgsError(const QString &body, const QString &fromSession) {
     const int bodyBytes = body.toUtf8().size();
     if (bodyBytes == 0)
         return QStringLiteral("message body is empty");
-    if (bodyBytes > RoadmapStore::kMailBodyMaxBytes)
+    if (bodyBytes > kMailBodyMaxBytes)
         return QStringLiteral("message body is %1 bytes; the cap is %2")
-            .arg(bodyBytes).arg(RoadmapStore::kMailBodyMaxBytes);
+            .arg(bodyBytes).arg(kMailBodyMaxBytes);
     const int sessionBytes = fromSession.toUtf8().size();
-    if (sessionBytes > RoadmapStore::kMailSessionMaxBytes)
+    if (sessionBytes > kMailSessionMaxBytes)
         return QStringLiteral("from_session is %1 bytes; the cap is %2")
-            .arg(sessionBytes).arg(RoadmapStore::kMailSessionMaxBytes);
+            .arg(sessionBytes).arg(kMailSessionMaxBytes);
     return QString();
 }
 
+namespace {
+
 // § 2.6 — the cap counts UNACKED rows, so acking frees a slot.
-std::optional<int> unackedCount(QSqlDatabase &db, qint64 toProjectId,
+std::optional<int> unackedCount(const QSqlDatabase &db, qint64 toProjectId,
                                 QString *error) {
     QSqlQuery c(db);
     c.prepare(QStringLiteral(
@@ -2477,20 +2491,15 @@ bool RoadmapStore::messageFor(qint64 projectId, qint64 messageId, Message *out,
 }
 
 bool RoadmapStore::inboxFor(qint64 projectId, bool includeAcked, int limit,
-                            int offset, QVector<Message> *out, int *unackedCount,
+                            int offset, QVector<Message> *out, int *unackedOut,
                             QString *error) const {
     if (out) out->clear();
 
-    if (unackedCount) {
-        QSqlQuery c(m_db);
-        c.prepare(QStringLiteral(
-            "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
-        c.addBindValue(projectId);
-        if (!c.exec() || !c.next()) {
-            if (error) *error = lastErr(c);
+    if (unackedOut) {
+        const auto unacked = unackedCount(m_db, projectId, error);
+        if (!unacked)
             return false;
-        }
-        *unackedCount = c.value(0).toInt();
+        *unackedOut = *unacked;
     }
     if (!out)
         return true;
@@ -2571,20 +2580,15 @@ bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
     return true;
 }
 
-bool RoadmapStore::mailSummaryFor(qint64 projectId, int *unackedCount,
+bool RoadmapStore::mailSummaryFor(qint64 projectId, int *unackedOut,
                                   QStringList *senders, QString *error) const {
-    if (unackedCount) *unackedCount = 0;
+    if (unackedOut) *unackedOut = 0;
     if (senders) senders->clear();
 
-    QSqlQuery c(m_db);
-    c.prepare(QStringLiteral(
-        "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
-    c.addBindValue(projectId);
-    if (!c.exec() || !c.next()) {
-        if (error) *error = lastErr(c);
+    const auto unacked = unackedCount(m_db, projectId, error);
+    if (!unacked)
         return false;
-    }
-    if (unackedCount) *unackedCount = c.value(0).toInt();
+    if (unackedOut) *unackedOut = *unacked;
     if (!senders)
         return true;
 
@@ -2866,15 +2870,11 @@ std::optional<bool> RoadmapStore::markIdParsed(qint64 itemPk, QString *error) {
     if (!cur.next())
         return false;   // not synthesised, or no such row: nothing to mark
 
-    // Merged, not replaced: every other key keeps its provenance (§ 2.6).
-    QJsonObject prov =
-        QJsonDocument::fromJson(cur.value(0).toString().toUtf8()).object();
-    prov.insert(QStringLiteral("id"), QStringLiteral("asserted"));
-
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET id_origin = 'parsed', provenance = ? "
                              "WHERE item_pk = ? AND id_origin = 'synthesised'"));
-    q.addBindValue(canonicalJson(prov));
+    q.addBindValue(provenanceWith(cur.value(0).toString(), QStringLiteral("id"),
+                                  QStringLiteral("asserted")));
     q.addBindValue(itemPk);
     if (!q.exec()) {
         if (error)
@@ -2917,17 +2917,9 @@ bool RoadmapStore::clearItemField(qint64 itemPk, const QString &field,
         return false;
     }
 
-    QSqlQuery cur(m_db);
-    cur.prepare(QStringLiteral("SELECT provenance FROM item WHERE item_pk = ?"));
-    cur.addBindValue(itemPk);
-    if (!cur.exec() || !cur.next()) {
-        if (error)
-            *error = QStringLiteral("no such item %1").arg(itemPk);
+    const auto prov = mergedItemProvenance(m_db, itemPk, field, provenance, error);
+    if (!prov)
         return false;
-    }
-    QJsonObject prov =
-        QJsonDocument::fromJson(cur.value(0).toString().toUtf8()).object();
-    prov.insert(field, provenance);
 
     // A NOT NULL column — status, headline, or one of the three JSON ones —
     // refuses this, and that refusal is the engine's rather than a second
@@ -2936,7 +2928,7 @@ bool RoadmapStore::clearItemField(qint64 itemPk, const QString &field,
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET %1 = NULL, provenance = ? WHERE item_pk = ?")
                   .arg(field));
-    q.addBindValue(canonicalJson(prov));
+    q.addBindValue(*prov);
     q.addBindValue(itemPk);
     if (!q.exec()) {
         if (error)

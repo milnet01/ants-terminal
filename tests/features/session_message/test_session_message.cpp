@@ -708,6 +708,23 @@ TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
            "destroys aged mail to measure itself";
 }
 
+// The single-slug preview checks its arguments with the store's own
+// mailArgsError(), so it refuses what the real send refuses. A hand copy in
+// the handler checked the body alone and passed an over-cap from_session.
+TEST(SessionMessage, DryRunSendSharesTheStoresArgumentCheck) {
+    const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
+    ASSERT_FALSE(h.isEmpty());
+    EXPECT_TRUE(h.contains(QStringLiteral("RoadmapStore::mailArgsError(")))
+        << "the preview must call the store's argument check";
+    EXPECT_FALSE(h.contains(QStringLiteral("kMailBodyMaxBytes")))
+        << "the handler keeps its own copy of the body cap check";
+
+    const QString longSession(RoadmapStore::kMailSessionMaxBytes + 1, QLatin1Char('s'));
+    EXPECT_FALSE(RoadmapStore::mailArgsError(QStringLiteral("hi"), longSession).isEmpty());
+    EXPECT_FALSE(RoadmapStore::mailArgsError(QString(), QString()).isEmpty());
+    EXPECT_TRUE(RoadmapStore::mailArgsError(QStringLiteral("hi"), QString()).isEmpty());
+}
+
 // ANTS-5594 — a caller_cwd inside a registered project (its src/, say) finds
 // that project's mailbox. The walk is status_bar_mail_chip INV-1's; this pins
 // that the handler uses it rather than the exact-root lookup. ANTS-5667 maps

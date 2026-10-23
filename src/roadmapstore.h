@@ -1043,8 +1043,16 @@ public:
     //
     // Caps — § 2.6 and § 2.2. Byte-valued, because SQLite's length() counts
     // CHARACTERS on a TEXT value and 4096 of those is up to 16 KiB of UTF-8.
+    // The message table's CHECK constraints (kMessageTableDdl) hold the same
+    // two byte caps as frozen schema text, so changing one here needs a schema
+    // bump and a table rebuild.
     static constexpr int kMailBodyMaxBytes    = 4096;
     static constexpr int kMailSessionMaxBytes = 128;
+    // The send arguments checked against those caps, so a caller gets
+    // `bad_args` with a reason rather than a raw constraint failure. Empty
+    // means the arguments are fine. The send, the broadcast and the
+    // session_message preview all call it.
+    static QString mailArgsError(const QString &body, const QString &fromSession);
     static constexpr int kMailInboxCap        = 500;
     static constexpr int kMailAckedTtlDays    = 30;
 
@@ -1086,7 +1094,7 @@ public:
 
     // `limit <= 0` returns every row. Ordered newest first.
     bool inboxFor(qint64 projectId, bool includeAcked, int limit, int offset,
-                  QVector<Message> *out, int *unackedCount,
+                  QVector<Message> *out, int *unackedOut,
                   QString *error = nullptr) const;
 
     // The verb's page ceiling (ANTS-5098: one call never reads the whole
@@ -1114,7 +1122,7 @@ public:
     // it. Reports the INBOX and never the outbox: mail this project has SENT
     // and nobody has acked contributes nothing, because a permanently non-zero
     // to-do that only somebody else can clear is ANTS-3631's measured failure.
-    bool mailSummaryFor(qint64 projectId, int *unackedCount,
+    bool mailSummaryFor(qint64 projectId, int *unackedOut,
                         QStringList *senders, QString *error = nullptr) const;
 
     // § 2.6 — deletes acked mail in THIS project's inbox whose `acked_at` is
@@ -1227,11 +1235,10 @@ public:
     std::optional<QVector<PlacementEvent>> placementHistory(
         qint64 projectId, QString *error = nullptr) const;
 
-    // Canonical JSON for the store's own column writes. ANTS-3761 owns the
-    // general RFC 8785 writer and INV-19 tests it against the RFC's vectors;
-    // this covers the shapes the store itself writes (flat objects and arrays
-    // of strings), where QJsonObject's sorted keys plus Compact output already
-    // agree with JCS byte for byte.
+    // Canonical JSON for the store's own column writes: delegates to
+    // JsonCanonical::serialise, the RFC 8785 writer ANTS-3761 owns and INV-19
+    // tests against the RFC's vectors, so any value — doubles included —
+    // serialises canonically.
     // Takes a QJsonValue, not a QJsonObject: `lanes` and `evidence` are JSON
     // ARRAYS and are held canonical by the same rule (ANTS-3767). Every
     // existing caller passes an object, which converts implicitly.

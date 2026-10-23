@@ -187,7 +187,7 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
             // read a preview as a completed write.
             //
             // It runs the same two validations the real call runs — resolve the
-            // recipient, then check the body against the byte cap — and stops
+            // recipient, then RoadmapStore::mailArgsError() — and stops
             // before the insert. Nothing here writes, and § 2.6's prune is
             // skipped for the same reason (see pruneIfWriting above), so a
             // preview cannot destroy aged mail to measure itself.
@@ -196,12 +196,9 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
                               QStringLiteral("no project is registered under "
                                              "export_slug \"%1\", so mail to it "
                                              "could never be delivered").arg(to));
-            const int bodyBytes = body.toUtf8().size();
-            if (bodyBytes == 0 || bodyBytes > RoadmapStore::kMailBodyMaxBytes)
-                return refuse("bad_args",
-                              QStringLiteral("message body is %1 bytes; the cap "
-                                             "is %2").arg(bodyBytes)
-                                  .arg(RoadmapStore::kMailBodyMaxBytes));
+            if (const QString bad = RoadmapStore::mailArgsError(body, from);
+                !bad.isEmpty())
+                return refuse("bad_args", bad);
             out[QStringLiteral("dry_run")]    = true;
             out[QStringLiteral("would_send")] = true;
             out[QStringLiteral("to")]         = to;
