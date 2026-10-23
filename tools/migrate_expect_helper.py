@@ -9,12 +9,14 @@ Patterns handled:
       if (g_failures > before) FAIL();`).
   E — single TEST + trailing
       `if (g_failures) { fprintf...; FAIL(); }` block.
+  G — a per-TEST `if (g_failures) FAIL();` check, with more than one
+      TEST, an explicit `g_failures = 0;` reset, or the stream form
+      `FAIL() << g_failures`.
 
 Patterns NOT auto-handled (refused, surfaced for hand-migration):
   F — multi-TEST that never checks g_failures (silently broken — fix
       requires per-TEST instrumentation).
-  Variants with macros, custom counter names, or stream-form FAIL —
-      surfaced as 'OTHER'.
+  Variants with macros or custom counter names — surfaced as 'OTHER'.
 
 Run with: python3 tools/migrate_expect_helper.py [--apply] [path...]
 Default: dry-run, prints classification + planned actions."""
