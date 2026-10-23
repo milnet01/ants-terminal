@@ -97,6 +97,7 @@ inline std::string slurpAuditDialog() { return slurpSourceList(ANTS_AUDITDIALOG_
 // ANTS-4932 § 2.3 — followed by src/mcptoolregistry.cpp, the project-scoped
 // half of the registration list setupClaudeMcpProviders() runs. It is not a
 // MainWindow source, so it is not in that list.
+// tools/split-motion-check.py's class_texts() copies these readers; change both.
 #if defined(ANTS_MAINWINDOW_SOURCES)
 inline std::string slurpMainWindow() {
     std::string text = slurpSourceList(ANTS_MAINWINDOW_SOURCES);

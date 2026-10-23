@@ -923,8 +923,13 @@ class Site:
 
 
 def class_texts(rev: str, stem: str) -> tuple[bytes, bytes]:
+    """The class text as the stem's slurp reader in tests/_support/srcgrep.h
+    builds it, and the stem's own .cpp. slurpMainWindow() appends
+    src/mcptoolregistry.cpp with no separator (ANTS-4932 § 2.3)."""
     files = source_list(rev, stem)
     whole = b"\n".join(show(rev, f) or b"" for f in files)
+    if stem == "mainwindow":
+        whole += show(rev, "src/mcptoolregistry.cpp") or b""
     return whole, show(rev, "src/%s.cpp" % stem) or b""
 
 
