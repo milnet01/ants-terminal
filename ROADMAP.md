@@ -72335,6 +72335,13 @@ class; the deferrals below cover the rest.
   Shape of the fix (as test_about_dialog_fits, e7542f97): check a
   plain pointer before use; brace the dangling else.
   Log: /mnt/Games/scratch-audit/gate2107-build.log (scratch).
+  2026-10-23: claudeintegration.cpp adds ten more -Wnull-dereference
+  (GCC, inlined QPointer/std::function): the handleMcpRequest forwarder
+  reply lambda (`if (fctx.socket && fctx.socket->isOpen())
+  fctx.socket->reply(...)`) and sendMcpResponse, via
+  McpReplyChannel::isOpen/reply/finish (claudeintegration.h). Confirmed
+  pre-existing by compiling the 948a383d file with the same flags: same
+  ten warnings. ANTS-1554 class.
   **Layman:** Clear the leftover compiler warnings so a new one stands out.
   Kind: fix.
   Source: in-session-2026-10-19 (full build during ANTS-2107).
@@ -95325,6 +95332,12 @@ worked after these.
   open.
   2026-10-23: HIGH F1 queued as ANTS-6175 (141 test files scrape
   claudeintegration.cpp). No HIGH left here.
+  2026-10-23 MEDIUMs, all fixed: F3 roadmap_query's wire one-liner and
+  mode description now name sources and ledger; F4 feedback_log's wire
+  one-liner and op description cover all ten ops; F5 the doc_symbols, spec_lint, spec_conformance, doc_dedup, doc_lint, session_orient and workflow_state caller_cwd copies and three generic etag copies use makeCallerCwdReadProp / makeEtagMatchProp (spec_conformance's and session_orient's etag text is verb-specific and stays); F6
+  get_scrollback, get_cwd, get_text, recent_errors and last_selection no
+  longer promise a focused-tab fallback (they refuse
+  tab_or_cwd_required). LOWs remain.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

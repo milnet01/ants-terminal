@@ -2859,8 +2859,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "a reply cut by the line cap starts with "
                     "`<capped at L of R requested lines>` (ANTS-5219). "
                     "Pass `caller_cwd` (your $PWD) to anchor to your "
-                    "tab; without it the result comes from whichever "
-                    "tab Ants happens to have focused (ANTS-1392). "
+                    "tab; without it the call refuses "
+                    "`tab_or_cwd_required` (ANTS-1415). "
                     "ANTS-1500: pass `since_cursor` (from a prior "
                     "response) for incremental-fetch mode — server "
                     "returns only the bytes appended since the cursor "
@@ -2889,7 +2889,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject props;
                     props["lines"] = linesParam;
                     // ANTS-1392 — caller_cwd anchor for the terminal-state
-                    // verbs. Optional; falls back to focused tab when absent.
+                    // verbs. Absent, the call refuses tab_or_cwd_required.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     // ANTS-1500 — since_cursor opt-in for incremental
                     // mode. Absent → legacy raw-text return. Present →
@@ -2923,12 +2923,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 QJsonObject cwdTool;
                 cwdTool["name"] = "get_cwd";
                 cwdTool["description"] = QStringLiteral(
-                    "Get a terminal cwd. If `caller_cwd` is passed "
-                    "(your $PWD), the server echoes it back canonical "
-                    "(ANTS-1391); otherwise returns the focused tab's "
-                    "shellCwd, which may NOT be your tab in a multi-"
-                    "Ants-tab setup. Pass caller_cwd to avoid the "
-                    "cross-tab leak.");
+                    "Echo `caller_cwd` (your $PWD) back canonical "
+                    "(ANTS-1391). Without it the call refuses "
+                    "`tab_or_cwd_required` (ANTS-1415).");
                 cwdTool["selection_hint"] = QStringLiteral(
                     "Use when you need the canonical form of your "
                     "$PWD (multi-tab disambiguation, symlink resolve). "
@@ -2940,9 +2937,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
-                        "Optional. Your $PWD. When present, echoed "
-                        "back canonical instead of returning the "
-                        "focused-tab cwd.");
+                        "Your $PWD, echoed back canonical. Absent, the "
+                        "call refuses `tab_or_cwd_required`.");
                     props["caller_cwd"] = callerProp;
                     schema["properties"] = props;
                     cwdTool["inputSchema"] = schema;
@@ -3044,9 +3040,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "status (all|active|shipped), section=<slug>, "
                     "query=<keyword>, id / "
                     "ids[]. mode: "
-                    "bullets (default) | section_index (slug discovery) | "
-                    "headline_only (~10x smaller) | bundles (thematic "
-                    "groups) | report. Opt-in: include_body, "
+                    "bullets (default) | section_index (slugs) | "
+                    "headline_only | bundles | report | sources | "
+                    "ledger. Opt-in: include_body, "
                     "compact, fields, etag_match. Refusals: bad_case, "
                     "bad_section, bad_mode_combo, no_roadmap_loaded. "
                     "caller_cwd Required. "
@@ -3925,7 +3921,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "figure computed over dated rows can never read as a "
                         "total — on an unbackfilled store that is most of them. "
                         "Refuses section / id / ids with bad_mode_combo, and "
-                        "writes nothing.");
+                        "writes nothing. \"sources\" lists the `Source:` "
+                        "values with their counts (see source_group). "
+                        "\"ledger\" lists stale in-progress items and commits "
+                        "naming no roadmap id (see stale_days and range).");
                     props["mode"] = modeProp;
                     // ANTS-1436 — offset/limit pagination args.
                     QJsonObject offsetProp;
@@ -4417,7 +4416,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["tab"]   = tabProp;
                     props["lines"] = linesProp;
                     // ANTS-1392 — caller_cwd anchor for the no-`tab`
-                    // path. Falls back to focused tab when absent.
+                    // path. Absent with no `tab`, the call refuses
+                    // tab_or_cwd_required.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     getTextTool["inputSchema"] = schema;
@@ -4459,7 +4459,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p; p["type"] = "integer";
                         p["description"] = QStringLiteral(
                             "Explicit tab index. Omit to use your own "
-                            "tab (via caller_cwd) or the focused tab.");
+                            "tab (via caller_cwd).");
                         props["tab"] = p;
                     }
                     {
@@ -4491,7 +4491,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject t;
                     t["name"] = "last_selection";
                     t["description"] = QStringLiteral(
-                        "Return the focused (or routed) terminal's "
+                        "Return your tab's (or `tab`'s) terminal's "
                         "current selection text — the text the user "
                         "highlighted with the mouse. Use this instead "
                         "of walking the scrollback to find the error / "
@@ -4520,7 +4520,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p; p["type"] = "integer";
                         p["description"] = QStringLiteral(
                             "Explicit tab index. Omit to use your own "
-                            "tab (via caller_cwd) or the focused tab.");
+                            "tab (via caller_cwd).");
                         props["tab"] = p;
                     }
                     {
@@ -7010,14 +7010,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         dsPath["description"] = QStringLiteral(
                             "Project-relative file or directory to scan (a directory walks "
                             "*.md recursively). Default: the project's docs dir, else docs/.");
-                    QJsonObject dsCwd; dsCwd["type"] = "string";
-                        dsCwd["description"] = QStringLiteral(
-                            "Your $PWD. Required — anchors the doc walk and the symbol "
-                            "resolution to your project.");
-                    QJsonObject dsEtag; dsEtag["type"] = "string";
-                        dsEtag["description"] = QStringLiteral(
-                            "Server-issued etag from a prior call; an unchanged corpus "
-                            "short-circuits to {ok:true, unchanged:true}.");
+                    const QJsonObject dsCwd = makeCallerCwdReadProp();
+                    const QJsonObject dsEtag = makeEtagMatchProp();
                     // ANTS-3689 — doc_citations' `only` shape, same rule:
                     // narrow the rows, leave counts whole-document.
                     QJsonObject dsOnly; dsOnly["type"] = "string";
@@ -7177,18 +7171,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         slPath["description"] = QStringLiteral(
                             "Project-relative spec file or directory (a directory walks *.md "
                             "recursively). Default: the project's specs dir, else docs/specs/.");
-                    QJsonObject slCwd; slCwd["type"] = "string";
-                        slCwd["description"] = QStringLiteral(
-                            "Your $PWD. Required — anchors the spec walk and the format-"
-                            "standard lookup to your project.");
+                    const QJsonObject slCwd = makeCallerCwdReadProp();
                     QJsonObject slMax; slMax["type"] = "integer";
                         slMax["description"] = QStringLiteral(
                             "Run-wide cap on findings[] (default 500, clamped to [1,5000]). "
                             "truncated:true accompanies a capped run.");
-                    QJsonObject slEtag; slEtag["type"] = "string";
-                        slEtag["description"] = QStringLiteral(
-                            "Server-issued etag from a prior call; an unchanged corpus "
-                            "short-circuits to {ok:true, unchanged:true}.");
+                    const QJsonObject slEtag = makeEtagMatchProp();
                     props["path"] = slPath;
                     props["caller_cwd"] = slCwd;
                     props["max_findings"] = slMax;
@@ -7281,9 +7269,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "Project-relative path to ONE markdown document. Required — "
                             "this verb executes a document, so there is no tree walk to "
                             "default to (unlike spec_lint).");
-                    QJsonObject scCwd; scCwd["type"] = "string";
-                        scCwd["description"] = QStringLiteral(
-                            "Your $PWD. Required — anchors the path under your project.");
+                    const QJsonObject scCwd = makeCallerCwdReadProp();
                     QJsonObject scMax; scMax["type"] = "integer";
                         scMax["description"] = QStringLiteral(
                             "Cap on executed cases (default 200, range [1,1000]). Out of "
@@ -7349,9 +7335,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         ddPath["description"] = QStringLiteral(
                             "Project-relative file or directory (a directory walks *.md "
                             "recursively). Default: the project's docs dir, else docs/.");
-                    QJsonObject ddCwd; ddCwd["type"] = "string";
-                        ddCwd["description"] = QStringLiteral(
-                            "Your $PWD. Required — anchors the doc walk to your project.");
+                    const QJsonObject ddCwd = makeCallerCwdReadProp();
                     QJsonObject ddSim; ddSim["type"] = "number";
                         ddSim["description"] = QStringLiteral(
                             "Jaccard threshold, at or above which a pair reports (default "
@@ -7368,10 +7352,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         ddShingle["description"] = QStringLiteral(
                             "Words per shingle (default 3, clamped to [2,10]). Larger is "
                             "stricter about word order, smaller pairs more freely.");
-                    QJsonObject ddEtag; ddEtag["type"] = "string";
-                        ddEtag["description"] = QStringLiteral(
-                            "Server-issued etag from a prior call; an unchanged corpus "
-                            "short-circuits to {ok:true, unchanged:true}.");
+                    const QJsonObject ddEtag = makeEtagMatchProp();
                     props["path"] = ddPath;
                     props["caller_cwd"] = ddCwd;
                     props["min_similarity"] = ddSim;
@@ -7439,9 +7420,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         dlPath["description"] = QStringLiteral(
                             "Project-relative file or directory (a directory walks *.md "
                             "recursively). Default: the project's docs dir, else docs/.");
-                    QJsonObject dlCwd; dlCwd["type"] = "string";
-                        dlCwd["description"] = QStringLiteral(
-                            "Your $PWD. Required — anchors the doc walk to your project.");
+                    const QJsonObject dlCwd = makeCallerCwdReadProp();
                     QJsonObject dlChecks; dlChecks["type"] = "array";
                         dlChecks["items"] = QJsonObject{{"type", "string"}};
                         dlChecks["description"] = QStringLiteral(
@@ -8193,8 +8172,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "Write to a cross-session *_Ants_MCP_Feedback.md file, always "
                         "at EOF. Contributor: op:\"append_finding\" (creates the file). "
                         "Maintainer: op:\"assign_id\" (fill a finding's Proposed ID), "
-                        "op:\"compact_resolved\", op:\"migrate_v2\", op:\"set_title\", and "
-                        "the v1 ops append_tracking and compact_shipped. `path` is "
+                        "assign_id_batch, compact_resolved, migrate_v2, set_title, "
+                        "set_format_version, and the v1 ops append_tracking, "
+                        "compact_shipped and prune_tracking. `path` is "
                         "optional and derived from caller_cwd's leaf. Atomic write. "
                         "Returns {ok, op, path, bytes_appended, date, created}. "
                         "Refusals: bad_mode, bad_args, bad_status, not_feedback_file, "
@@ -8386,7 +8366,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "idempotent (a re-assign of the same value is a "
                             "byte-identical no-op); `dry_run` previews. Refuses "
                             "`target_not_found` / `target_ambiguous` (+ "
-                            "`candidates`).");
+                            "`candidates`). \"assign_id_batch\" applies "
+                            "`assignments` (assign_id argument objects) in one "
+                            "write; failures land in skipped[]. \"set_title\" "
+                            "replaces the H1's project name with `title`. "
+                            "\"set_format_version\" stamps `version`, refusing "
+                            "where the content does not match it.");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");
@@ -9214,10 +9199,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject schema;
                     schema["type"] = "object";
                     schema["additionalProperties"] = false;
-                    QJsonObject cwdProp;
-                    cwdProp["type"] = "string";
-                    cwdProp["description"] = QStringLiteral(
-                        "Your $PWD (required).");
+                    const QJsonObject cwdProp = makeCallerCwdReadProp();
                     QJsonObject etagProp;
                     etagProp["type"] = "string";
                     etagProp["description"] = QStringLiteral(
@@ -9280,9 +9262,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     opEnum.append(QStringLiteral("clear"));
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral("get/set/clear.");
-                    QJsonObject cwdProp;
-                    cwdProp["type"] = "string";
-                    cwdProp["description"] = QStringLiteral("Your $PWD (required).");
+                    const QJsonObject cwdProp = makeCallerCwdReadProp();
                     QJsonObject skillProp;
                     skillProp["type"] = "string";
                     skillProp["description"] = QStringLiteral(
