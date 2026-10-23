@@ -431,14 +431,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             && ambiguousRematches > 0) {
             QJsonArray rows;
             for (const auto &pid : std::as_const(plannedIds)) {
-                if (!pid.ambiguous) continue;
+                if (!pid.match.ambiguous) continue;
                 if (rows.size() >= kMaxEchoedIds) break;   // ambiguous_shown
                 QJsonObject o;
                 o[QStringLiteral("line")]          = pid.firstLine;
-                o[QStringLiteral("matched_id")]    = pid.matchedId;
-                o[QStringLiteral("headline")]      = pid.matchedHeadline;
+                o[QStringLiteral("matched_id")]    = pid.match.matchedId;
+                o[QStringLiteral("headline")]      = pid.match.matchedHeadline;
                 o[QStringLiteral("candidate_ids")] =
-                    QJsonArray::fromStringList(pid.candidateIds);
+                    QJsonArray::fromStringList(pid.match.candidateIds);
                 rows.append(o);
             }
             QJsonObject e = refuseWith(QStringLiteral("ambiguous_rematch"),
@@ -568,7 +568,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     const bool needsDecisionOnly = plannedFilter == QLatin1String("needs_decision");
     for (const auto &pid : plannedIds) {
         if (needsDecisionOnly && pid.origin != QLatin1String("absent")
-            && !pid.inferred && !pid.ambiguous)
+            && !pid.inferred && !pid.match.ambiguous)
             continue;
         ++plannedMatching;
         if (planned.size() >= maxPlanned)
@@ -592,18 +592,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         // EXISTING id into the file and every prior citation of that id then
         // resolves to the wrong work. Gated to the true arm like the flags
         // above — `matched` absent means a fresh id.
-        if (pid.matched) {
+        if (pid.match.matched) {
             o[QStringLiteral("matched")]          = true;
-            o[QStringLiteral("matched_id")]       = pid.matchedId;
-            o[QStringLiteral("matched_headline")] = pid.matchedHeadline;
+            o[QStringLiteral("matched_id")]       = pid.match.matchedId;
+            o[QStringLiteral("matched_headline")] = pid.match.matchedHeadline;
         }
         // The pairing rested on ORDER alone — several stored rows satisfied
         // the key. Reproducible, and still the one arm a human should check.
-        if (pid.ambiguous) {
+        if (pid.match.ambiguous) {
             o[QStringLiteral("ambiguous_rematch")] = true;
             // ANTS-5329 — what the order chose from, the claimed id first.
             o[QStringLiteral("candidate_ids")] =
-                QJsonArray::fromStringList(pid.candidateIds);
+                QJsonArray::fromStringList(pid.match.candidateIds);
         }
         planned.append(o);
     }
@@ -612,7 +612,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     // true size of each arm. `ambiguous` is the one that should be zero.
     int matchedCount = 0;
     for (const auto &pid : plannedIds)
-        if (pid.matched) ++matchedCount;
+        if (pid.match.matched) ++matchedCount;
     // ANTS-5329 — the load's own count; plannedIds is capped at the echo
     // budget, so counting it undercounted past the cap.
     const int ambiguousCount = ambiguousRematches;

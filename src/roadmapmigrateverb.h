@@ -32,6 +32,7 @@
 #pragma once
 
 #include "roadmapmigrate.h"   // ANTS-5641 — planPassText() returns a MigrationPlan
+#include "roadmapmigrateload.h"   // PlannedId holds the load's ItemMatch
 
 #include <QJsonObject>
 #include <QString>
@@ -39,9 +40,6 @@
 #include <QVector>
 
 #include <functional>
-
-class RoadmapStore;   // ANTS-4491 — loadInOpenTransaction() takes the caller's
-                      // OPEN store by reference; the definition is not needed here.
 
 namespace RoadmapMigrateVerb {
 
@@ -163,13 +161,8 @@ struct PlannedId {
     // with nothing; a wrong match writes an EXISTING id into the file and
     // every prior citation of that id resolves to the wrong work — and the
     // output is well-formed either way, so it is not reviewable afterwards.
-    bool    matched = false;
-    QString matchedId;        // empty unless matched
-    QString matchedHeadline;  // the headline the match was made ON
-    // Several stored rows satisfied the key and were paired BY ORDER.
-    // Reproducible, but resting on order alone — check these by hand.
-    bool    ambiguous = false;
-    QStringList candidateIds;   // ANTS-5329 — see ItemMatch::candidateIds
+    // The load's own record, copied whole, so a new field needs no second copy.
+    RoadmapMigrateLoad::Outcome::ItemMatch match;
 };
 
 struct InTransactionLoad {

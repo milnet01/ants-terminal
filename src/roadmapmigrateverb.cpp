@@ -330,6 +330,239 @@ QString discoveryRefusalCode(const QString &findRoadmapsCode) {
     return findRoadmapsCode;   // case_ambiguous, not_utf8 — no canonical twin
 }
 
+// Step 9's parts of run()'s reply, each setting its own keys on `env`.
+
+// The roadmap files read, one entry each.
+void setSources(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan,
+                const QString &projectRoot) {
+    // `markdown` is deliberately dropped — it is the multi-megabyte input the
+    // caller already has — and the path is relative to the root the caller
+    // supplied, because echoing that root back on every entry is noise.
+    QJsonArray sources;
+    const QDir rootDir(projectRoot);
+    for (const RoadmapMigrate::Source &s : plan.sources) {
+        QJsonObject o;
+        o[QStringLiteral("path")]   = rootDir.relativeFilePath(s.path);
+        o[QStringLiteral("format")] = s.format;
+        // ANTS-4492 — a file carrying two dialects said so nowhere: `format` is
+        // one label, reached by precedence rather than majority, and the
+        // minority run is the part carrying the only real ids because it is the
+        // part roadmap_log itself wrote. A file the store's own writer is
+        // steadily converting is exactly the case worth naming.
+        //
+        // Emitted ONLY when the source actually carries both, so every uniform
+        // roadmap's envelope stays byte-identical. A key present on every
+        // project is one nobody reads.
+        //
+        // A top-level key on the source rather than a note: ANTS-4559 wants
+        // notes[] cut back and possibly made opt-in, and a signal a caller can
+        // switch off is not one this can rely on. `defaulted_fields` sits
+        // beside notes[] for the same reason.
+        const int nonGfm = s.bulletsTotal - s.gfmBullets;
+        if (s.gfmBullets > 0 && nonGfm > 0) {
+            o[QStringLiteral("mixed")]           = true;
+            o[QStringLiteral("gfm_bullets")]     = s.gfmBullets;
+            o[QStringLiteral("non_gfm_bullets")] = nonGfm;
+        }
+        sources.append(o);
+    }
+    env[QStringLiteral("sources")] = sources;
+}
+
+// Whether the store serves this project after the call, and what still
+// writes the roadmap file.
+void setStoreBacking(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan,
+                     bool dryRun, bool raiseIdMark) {
+    // ANTS-4490 — will roadmap_query and roadmap_log serve this project from
+    // the store after this call? RoadmapSource::migratedProject() returns
+    // nullopt for every dialect the store does not serve ("legitimately
+    // markdown-served"), so a github-task-list project migrates ok:true with
+    // faithful counts and is still answered from markdown. ANTS-5335 — asked
+    // through the same predicate, which this used to restate as ants-v1 only. Vestige could detect that only by
+    // noticing which fields a LATER roadmap_query response did not carry.
+    //
+    // Index 0 is the live roadmap and is what project.source_format records
+    // (ANTS-3815 INV-2). Unchanged by dry_run on purpose: this answers a
+    // question about the source DIALECT, which a rollback cannot change.
+    const bool storeBacked =
+        !plan.sources.isEmpty()
+        && RoadmapSource::isStoreServedDialect(plan.sources.first().format);
+    env[QStringLiteral("store_backed")] = storeBacked;
+
+    // ANTS-4802 — the bare flag was not enough. A reader sees ok:true, a
+    // project_id and a faithful item count, and concludes the store is now the
+    // source of truth; `store_backed:false` sits among a dozen other fields
+    // with nothing saying what it costs. RetroDB migrated twice on that
+    // reading, leaving two snapshots no read path consults, and diagnosed it
+    // only by going to sqlite3 directly.
+    //
+    // Say the consequence, not the fact. The rows ARE written and they are
+    // faithful; what does not follow is that anything reads them.
+    if (!storeBacked) {
+        env[QStringLiteral("store_backed_hint")] = QStringLiteral(
+            "Rows were written and are faithful, but NOTHING READS THEM: only "
+            "the ants-v1 and pass-headings dialects are served from the store, "
+            "and this roadmap is "
+            "%1. roadmap_query keeps answering from markdown, roadmap_log keeps "
+            "editing the file, and roadmap_log op:\"render\" has nothing to "
+            "publish. Re-running this verb will not change that — it writes the "
+            "same inert snapshot again. Those rows are summed by "
+            "roadmap_query mode:\"report\" scope:\"all\", so if the store was "
+            "not wanted here, remove them with roadmap_migrate "
+            "op:\"deregister\".")
+                .arg(plan.sources.isEmpty()
+                         ? QStringLiteral("in no recognised dialect")
+                         : QStringLiteral("'%1'").arg(plan.sources.first().format));
+    }
+
+    // ANTS-4482 — always false, and a field rather than a sentence because a
+    // caller cannot branch on prose. This verb reads the roadmap and never
+    // writes it: the file is byte-identical afterwards and `git status` is
+    // clean, which three sessions verified with checksums and read as a
+    // migration that had not run. The first re-render is the next roadmap_log
+    // write.
+    env[QStringLiteral("markdown_rewritten")] = false;
+    // ANTS-5638 — what the rebuild did with the header mark. § 3.5.1: a file
+    // with no mark gets no word on it; a broken one is ignored whole, and
+    // said so.
+    if (raiseIdMark && plan.idMark)
+        env[QStringLiteral("id_mark")] = plan.idMark->valid
+            ? QStringLiteral("applied") : QStringLiteral("ignored_unparseable");
+    // ANTS-5354 — and say what does write it. Until the first render the file
+    // lacks the "generated from the store" header, so it looks hand-editable,
+    // and a hand edit made in that window is discarded by the next write.
+    // ANTS-5584 — only where that is true. A file already rendered from the
+    // store carries the header, and telling its session to render sent it
+    // looking for a problem that was not there.
+    const auto liveFileHasNotice = [&plan]() {
+        QFile live(plan.sources.first().path);
+        return live.open(QIODevice::ReadOnly)
+            && RoadmapRender::hasGeneratedNotice(QString::fromUtf8(live.read(4096)));
+    };
+    if (storeBacked && !dryRun && !liveFileHasNotice())
+        env[QStringLiteral("next_call_hint")] = QStringLiteral(
+            "roadmap_log op:\"render\" publishes the canonical file now; until "
+            "then the roadmap file carries no generated-file header and looks "
+            "hand-editable, and the next roadmap_log write discards any hand "
+            "edit made to it.");
+}
+
+// The load's counts, renamed and never recomputed, with the hints that say
+// what they mean.
+void setCounts(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out,
+               const QJsonArray &deletedIds, bool deletedIdsTruncated) {
+    env[QStringLiteral("items_inserted")]   = out.itemsInserted;
+    env[QStringLiteral("items_updated")]    = out.itemsUpdated;
+    // ANTS-4065 § 2.6 — both figures, because INV-6 reads the governed one and
+    // the row-level one moves for reasons the contract excludes.
+    env[QStringLiteral("items_updated_governed")] = out.itemsUpdatedGoverned;
+    env[QStringLiteral("items_unchanged")]  = out.itemsUnchanged;
+    env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
+    env[QStringLiteral("items_deleted")]    = out.itemsDeleted;    // ANTS-5287
+    env[QStringLiteral("deleted_ids")]      = deletedIds;
+    env[QStringLiteral("deleted_ids_truncated")] = deletedIdsTruncated;
+    env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
+    // ANTS-5374 — ids are permanent, and once this prefix is in the store later
+    // appends treat it as chosen, so the migration is the one place to say it
+    // was only a guess. Same advice as roadmap_log's (ANTS-5353).
+    if (!out.idPrefixGuessed.isEmpty()) {
+        QJsonObject warn;
+        warn[QStringLiteral("code")]   = QStringLiteral("id_prefix_guessed");
+        warn[QStringLiteral("prefix")] = out.idPrefixGuessed;
+        warn[QStringLiteral("message")] = QStringLiteral(
+            "This roadmap declares no id prefix and its items carry no ids, so "
+            "the ids allocated here take \"%1\" from the folder name. Ids are "
+            "permanent. To give later ids a different prefix, run "
+            "project_settings op:\"set\" id_format:{prefix:\"…\"}; a declared "
+            "prefix wins over this one.").arg(out.idPrefixGuessed);
+        QJsonArray warns = env.value(QStringLiteral("warnings")).toArray();
+        warns.append(warn);
+        env[QStringLiteral("warnings")] = warns;
+    }
+    env[QStringLiteral("sections_written")] = out.sectionsWritten;
+    // ANTS-4490 — sections_written's partner. "0 written, 236 unchanged" says
+    // what happened; `0` alone reads as a broken counter, which is how Vestige
+    // reported it.
+    env[QStringLiteral("sections_unchanged")] = out.sectionsUnchanged;
+    // ANTS-5355 — the title/preamble is not a heading: counted here, not above,
+    // so the two figures match roadmap_query mode:"section_index".
+    env[QStringLiteral("preamble_written")] = out.preambleWritten;
+    env[QStringLiteral("elements_written")] = out.elementsWritten;
+    // ANTS-4694 — what those numbers MEAN, on the one shape where they mislead.
+    //
+    // A large milestone roadmap is mostly prose: a phase map, exit criteria,
+    // research logs, and bullets in an older dialect. Only the ants-v1 bullets
+    // become ITEMS; everything else is carried as `narration` / `table`
+    // elements. So the envelope can honestly say "3 items" about a 34-section
+    // document, and a caller reads that as three-of-N captured and declines to
+    // adopt the store. That is what happened, and stopping was the right call
+    // on the information available -- which is the defect.
+    //
+    // The document is NOT partly captured. INV-11 is a PARTITION and is tested
+    // as one: every non-blank source line falls inside exactly one item,
+    // element, section or legend span, and a stray line is narration precisely
+    // because the store has no other bucket and dropping it is forbidden.
+    //
+    // Rides the arm where the misreading is possible -- more non-item elements
+    // than items -- because a hint on every migration is one nobody reads.
+    {
+        const int itemRows = out.itemsInserted + out.itemsUpdated
+                           + out.itemsUnchanged;
+        if (out.elementsWritten > itemRows) {
+            env[QStringLiteral("coverage_hint")] = QStringLiteral(
+                "%1 item(s) and %2 non-item element(s). The item count is NOT "
+                "a coverage figure: only bullets in this project's own item "
+                "dialect become items, and every other non-blank line -- "
+                "prose, older-dialect bullets, tables, legends -- is carried "
+                "as a `narration` or `table` element under the section it sat "
+                "in. The line partition is total and is tested as one, so "
+                "nothing in the source is dropped by the migration.")
+                    .arg(itemRows).arg(out.elementsWritten);
+        }
+    }
+}
+
+void setRenderGate(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out,
+                   int maxNotes) {
+    // ANTS-4483 — which items the render's INV-5 Layman gate will refuse once
+    // this migration has landed. The condition is a property of the roadmap as
+    // a whole and is fully knowable now; without this it first fires at the
+    // next write, landing on whoever files the next item, who did not run the
+    // migration and has no reason to connect the two.
+    //
+    // ANTS-4628 narrowed the blast radius by scoping the gate to the items a
+    // write touches, so this is a per-item trap rather than a project-wide
+    // wall. The hint says so, because a warning that overstates what is broken
+    // gets waved through like any other.
+    //
+    // `render_gate_checked` false means the check DID NOT RUN — a dialect the
+    // store does not serve, or a render that could not complete — and is not
+    // the same answer as an empty failure list.
+    env[QStringLiteral("render_gate_checked")] = out.gateChecked;
+    if (!out.gateFailures.isEmpty()) {
+        QJsonArray gate;
+        for (const QString &id : out.gateFailures) {
+            if (gate.size() >= maxNotes)
+                break;
+            gate.append(id);
+        }
+        env[QStringLiteral("render_gate_failures")] = gate;
+        // The true total beside a capped list, so a capped one can never read
+        // as the complete one — the rule `items_updated` already follows.
+        env[QStringLiteral("render_gate_failures_total")] = out.gateFailures.size();
+        env[QStringLiteral("render_gate_hint")] = QStringLiteral(
+            "%1 open item(s) carry no `Layman:` line. Nothing is blocked right "
+            "now and the roadmap still renders: the gate is scoped to the items "
+            "a write TOUCHES, so a later roadmap_log write is refused "
+            "render_gate_unmet only when it edits one of these. Cure one with "
+            "roadmap_log op:\"amend_field\" field:\"layman\", which writes the "
+            "column directly; a `Layman:` line declared first on its own line "
+            "in an op:\"annotate\" or op:\"flip\" note sets it in a call that "
+            "was happening anyway.")
+                .arg(out.gateFailures.size());
+    }
+}
+
 }  // namespace
 
 QString RoadmapMigrateVerb::defaultExportSlug(const QString &leafDirName) {
@@ -350,15 +583,6 @@ QString RoadmapMigrateVerb::defaultExportSlug(const QString &leafDirName) {
     return out;
 }
 
-// ANTS-4600 — § 2.5 step 0b. registerProject()'s INV-8 refuses a root that does
-// not CANONICALISE, which is the deleted-path case and arrives too late: a
-// session scratchpad exists while it is being migrated and is removed after.
-// Registration is what makes it permanent, so the guard is at registration.
-//
-// The rule is deliberately the narrowest one that covers the measured case:
-// under the system temp dir. Anything cleverer — matching "scratchpad" or a
-// session-id shape in the path — is guessing at a naming convention no
-// component owns.
 // ANTS-4740 — see the header for why this lives on the link-testable seam.
 QString RoadmapMigrateVerb::initSkeleton(const QString &projectName) {
     // The marker is assembled rather than written whole so this source file can
@@ -397,6 +621,15 @@ QString RoadmapMigrateVerb::initNextStep() {
         "pin the id prefix, or it is derived from the directory name.");
 }
 
+// ANTS-4600 — § 2.5 step 0b. registerProject()'s INV-8 refuses a root that does
+// not CANONICALISE, which is the deleted-path case and arrives too late: a
+// session scratchpad exists while it is being migrated and is removed after.
+// Registration is what makes it permanent, so the guard is at registration.
+//
+// The rule is deliberately the narrowest one that covers the measured case:
+// under the system temp dir. Anything cleverer — matching "scratchpad" or a
+// session-id shape in the path — is guessing at a naming convention no
+// component owns.
 bool RoadmapMigrateVerb::isTransientRoot(const QString &canonicalRoot) {
     // The temp root is canonicalised too. `canonicalRoot` is canonical by
     // precondition, and on a system whose temp dir is itself a symlink the two
@@ -758,111 +991,9 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("store_path")]   = storePath;
     env[QStringLiteral("changed_at")]   = req.changedAt;
 
-    // `markdown` is deliberately dropped — it is the multi-megabyte input the
-    // caller already has — and the path is relative to the root the caller
-    // supplied, because echoing that root back on every entry is noise.
-    QJsonArray sources;
-    const QDir rootDir(req.projectRoot);
-    for (const RoadmapMigrate::Source &s : plan.sources) {
-        QJsonObject o;
-        o[QStringLiteral("path")]   = rootDir.relativeFilePath(s.path);
-        o[QStringLiteral("format")] = s.format;
-        // ANTS-4492 — a file carrying two dialects said so nowhere: `format` is
-        // one label, reached by precedence rather than majority, and the
-        // minority run is the part carrying the only real ids because it is the
-        // part roadmap_log itself wrote. A file the store's own writer is
-        // steadily converting is exactly the case worth naming.
-        //
-        // Emitted ONLY when the source actually carries both, so every uniform
-        // roadmap's envelope stays byte-identical. A key present on every
-        // project is one nobody reads.
-        //
-        // A top-level key on the source rather than a note: ANTS-4559 wants
-        // notes[] cut back and possibly made opt-in, and a signal a caller can
-        // switch off is not one this can rely on. `defaulted_fields` sits
-        // beside notes[] for the same reason.
-        const int nonGfm = s.bulletsTotal - s.gfmBullets;
-        if (s.gfmBullets > 0 && nonGfm > 0) {
-            o[QStringLiteral("mixed")]           = true;
-            o[QStringLiteral("gfm_bullets")]     = s.gfmBullets;
-            o[QStringLiteral("non_gfm_bullets")] = nonGfm;
-        }
-        sources.append(o);
-    }
-    env[QStringLiteral("sources")] = sources;
+    setSources(env, plan, req.projectRoot);
 
-    // ANTS-4490 — will roadmap_query and roadmap_log serve this project from
-    // the store after this call? RoadmapSource::migratedProject() returns
-    // nullopt for every dialect the store does not serve ("legitimately
-    // markdown-served"), so a github-task-list project migrates ok:true with
-    // faithful counts and is still answered from markdown. ANTS-5335 — asked
-    // through the same predicate, which this used to restate as ants-v1 only. Vestige could detect that only by
-    // noticing which fields a LATER roadmap_query response did not carry.
-    //
-    // Index 0 is the live roadmap and is what project.source_format records
-    // (ANTS-3815 INV-2). Unchanged by dry_run on purpose: this answers a
-    // question about the source DIALECT, which a rollback cannot change.
-    const bool storeBacked =
-        !plan.sources.isEmpty()
-        && RoadmapSource::isStoreServedDialect(plan.sources.first().format);
-    env[QStringLiteral("store_backed")] = storeBacked;
-
-    // ANTS-4802 — the bare flag was not enough. A reader sees ok:true, a
-    // project_id and a faithful item count, and concludes the store is now the
-    // source of truth; `store_backed:false` sits among a dozen other fields
-    // with nothing saying what it costs. RetroDB migrated twice on that
-    // reading, leaving two snapshots no read path consults, and diagnosed it
-    // only by going to sqlite3 directly.
-    //
-    // Say the consequence, not the fact. The rows ARE written and they are
-    // faithful; what does not follow is that anything reads them.
-    if (!storeBacked) {
-        env[QStringLiteral("store_backed_hint")] = QStringLiteral(
-            "Rows were written and are faithful, but NOTHING READS THEM: only "
-            "the ants-v1 and pass-headings dialects are served from the store, "
-            "and this roadmap is "
-            "%1. roadmap_query keeps answering from markdown, roadmap_log keeps "
-            "editing the file, and roadmap_log op:\"render\" has nothing to "
-            "publish. Re-running this verb will not change that — it writes the "
-            "same inert snapshot again. Those rows are summed by "
-            "roadmap_query mode:\"report\" scope:\"all\", so if the store was "
-            "not wanted here, remove them with roadmap_migrate "
-            "op:\"deregister\".")
-                .arg(plan.sources.isEmpty()
-                         ? QStringLiteral("in no recognised dialect")
-                         : QStringLiteral("'%1'").arg(plan.sources.first().format));
-    }
-
-    // ANTS-4482 — always false, and a field rather than a sentence because a
-    // caller cannot branch on prose. This verb reads the roadmap and never
-    // writes it: the file is byte-identical afterwards and `git status` is
-    // clean, which three sessions verified with checksums and read as a
-    // migration that had not run. The first re-render is the next roadmap_log
-    // write.
-    env[QStringLiteral("markdown_rewritten")] = false;
-    // ANTS-5638 — what the rebuild did with the header mark. § 3.5.1: a file
-    // with no mark gets no word on it; a broken one is ignored whole, and
-    // said so.
-    if (req.raiseIdMark && plan.idMark)
-        env[QStringLiteral("id_mark")] = plan.idMark->valid
-            ? QStringLiteral("applied") : QStringLiteral("ignored_unparseable");
-    // ANTS-5354 — and say what does write it. Until the first render the file
-    // lacks the "generated from the store" header, so it looks hand-editable,
-    // and a hand edit made in that window is discarded by the next write.
-    // ANTS-5584 — only where that is true. A file already rendered from the
-    // store carries the header, and telling its session to render sent it
-    // looking for a problem that was not there.
-    const auto liveFileHasNotice = [&plan]() {
-        QFile live(plan.sources.first().path);
-        return live.open(QIODevice::ReadOnly)
-            && RoadmapRender::hasGeneratedNotice(QString::fromUtf8(live.read(4096)));
-    };
-    if (storeBacked && !req.dryRun && !liveFileHasNotice())
-        env[QStringLiteral("next_call_hint")] = QStringLiteral(
-            "roadmap_log op:\"render\" publishes the canonical file now; until "
-            "then the roadmap file carries no generated-file header and looks "
-            "hand-editable, and the next roadmap_log write discards any hand "
-            "edit made to it.");
+    setStoreBacking(env, plan, req.dryRun, req.raiseIdMark);
 
     // ANTS-4499 — where the pre-migration snapshot went, so a caller that has
     // to roll back knows the path without reconstructing the default. False on
@@ -876,112 +1007,8 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     if (!backupFallback.isEmpty())
         env[QStringLiteral("backup_fallback")] = backupFallback;
 
-    env[QStringLiteral("items_inserted")]   = out.itemsInserted;
-    env[QStringLiteral("items_updated")]    = out.itemsUpdated;
-    // ANTS-4065 § 2.6 — both figures, because INV-6 reads the governed one and
-    // the row-level one moves for reasons the contract excludes.
-    env[QStringLiteral("items_updated_governed")] = out.itemsUpdatedGoverned;
-    env[QStringLiteral("items_unchanged")]  = out.itemsUnchanged;
-    env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
-    env[QStringLiteral("items_deleted")]    = out.itemsDeleted;    // ANTS-5287
-    env[QStringLiteral("deleted_ids")]      = deletedIds;
-    env[QStringLiteral("deleted_ids_truncated")] = deletedNotes > maxNotes;
-    env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
-    // ANTS-5374 — ids are permanent, and once this prefix is in the store later
-    // appends treat it as chosen, so the migration is the one place to say it
-    // was only a guess. Same advice as roadmap_log's (ANTS-5353).
-    if (!out.idPrefixGuessed.isEmpty()) {
-        QJsonObject warn;
-        warn[QStringLiteral("code")]   = QStringLiteral("id_prefix_guessed");
-        warn[QStringLiteral("prefix")] = out.idPrefixGuessed;
-        warn[QStringLiteral("message")] = QStringLiteral(
-            "This roadmap declares no id prefix and its items carry no ids, so "
-            "the ids allocated here take \"%1\" from the folder name. Ids are "
-            "permanent. To give later ids a different prefix, run "
-            "project_settings op:\"set\" id_format:{prefix:\"…\"}; a declared "
-            "prefix wins over this one.").arg(out.idPrefixGuessed);
-        QJsonArray warns = env.value(QStringLiteral("warnings")).toArray();
-        warns.append(warn);
-        env[QStringLiteral("warnings")] = warns;
-    }
-    env[QStringLiteral("sections_written")] = out.sectionsWritten;
-    // ANTS-4490 — sections_written's partner. "0 written, 236 unchanged" says
-    // what happened; `0` alone reads as a broken counter, which is how Vestige
-    // reported it.
-    env[QStringLiteral("sections_unchanged")] = out.sectionsUnchanged;
-    // ANTS-5355 — the title/preamble is not a heading: counted here, not above,
-    // so the two figures match roadmap_query mode:"section_index".
-    env[QStringLiteral("preamble_written")] = out.preambleWritten;
-    env[QStringLiteral("elements_written")] = out.elementsWritten;
-    // ANTS-4694 — what those numbers MEAN, on the one shape where they mislead.
-    //
-    // A large milestone roadmap is mostly prose: a phase map, exit criteria,
-    // research logs, and bullets in an older dialect. Only the ants-v1 bullets
-    // become ITEMS; everything else is carried as `narration` / `table`
-    // elements. So the envelope can honestly say "3 items" about a 34-section
-    // document, and a caller reads that as three-of-N captured and declines to
-    // adopt the store. That is what happened, and stopping was the right call
-    // on the information available -- which is the defect.
-    //
-    // The document is NOT partly captured. INV-11 is a PARTITION and is tested
-    // as one: every non-blank source line falls inside exactly one item,
-    // element, section or legend span, and a stray line is narration precisely
-    // because the store has no other bucket and dropping it is forbidden.
-    //
-    // Rides the arm where the misreading is possible -- more non-item elements
-    // than items -- because a hint on every migration is one nobody reads.
-    {
-        const int itemRows = out.itemsInserted + out.itemsUpdated
-                           + out.itemsUnchanged;
-        if (out.elementsWritten > itemRows) {
-            env[QStringLiteral("coverage_hint")] = QStringLiteral(
-                "%1 item(s) and %2 non-item element(s). The item count is NOT "
-                "a coverage figure: only bullets in this project's own item "
-                "dialect become items, and every other non-blank line -- "
-                "prose, older-dialect bullets, tables, legends -- is carried "
-                "as a `narration` or `table` element under the section it sat "
-                "in. The line partition is total and is tested as one, so "
-                "nothing in the source is dropped by the migration.")
-                    .arg(itemRows).arg(out.elementsWritten);
-        }
-    }
-    // ANTS-4483 — which items the render's INV-5 Layman gate will refuse once
-    // this migration has landed. The condition is a property of the roadmap as
-    // a whole and is fully knowable now; without this it first fires at the
-    // next write, landing on whoever files the next item, who did not run the
-    // migration and has no reason to connect the two.
-    //
-    // ANTS-4628 narrowed the blast radius by scoping the gate to the items a
-    // write touches, so this is a per-item trap rather than a project-wide
-    // wall. The hint says so, because a warning that overstates what is broken
-    // gets waved through like any other.
-    //
-    // `render_gate_checked` false means the check DID NOT RUN — a dialect the
-    // store does not serve, or a render that could not complete — and is not
-    // the same answer as an empty failure list.
-    env[QStringLiteral("render_gate_checked")] = out.gateChecked;
-    if (!out.gateFailures.isEmpty()) {
-        QJsonArray gate;
-        for (const QString &id : out.gateFailures) {
-            if (gate.size() >= maxNotes)
-                break;
-            gate.append(id);
-        }
-        env[QStringLiteral("render_gate_failures")] = gate;
-        // The true total beside a capped list, so a capped one can never read
-        // as the complete one — the rule `items_updated` already follows.
-        env[QStringLiteral("render_gate_failures_total")] = out.gateFailures.size();
-        env[QStringLiteral("render_gate_hint")] = QStringLiteral(
-            "%1 open item(s) carry no `Layman:` line. Nothing is blocked right "
-            "now and the roadmap still renders: the gate is scoped to the items "
-            "a write TOUCHES, so a later roadmap_log write is refused "
-            "render_gate_unmet only when it edits one of these. Cure one with "
-            "roadmap_log op:\"amend_field\" field:\"layman\", which writes the "
-            "column directly; a `Layman:` line declared first on its own line "
-            "in an op:\"annotate\" or op:\"flip\" note sets it in a call that "
-            "was happening anyway.")
-                .arg(out.gateFailures.size());
-    }
+    setCounts(env, out, deletedIds, deletedNotes > maxNotes);
+    setRenderGate(env, out, maxNotes);
 
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes, maxNotes);
@@ -1066,14 +1093,8 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
     // the join sound; guarded on size so a future change to either side fails
     // to report rather than reporting the wrong bullet's match.
     if (loaded.itemMatches.size() == plan.items.size()) {
-        for (qsizetype i = 0; i < out.plannedIds.size(); ++i) {
-            const auto &m = loaded.itemMatches.at(i);
-            out.plannedIds[i].matched         = m.matched;
-            out.plannedIds[i].matchedId       = m.matchedId;
-            out.plannedIds[i].matchedHeadline = m.matchedHeadline;
-            out.plannedIds[i].ambiguous       = m.ambiguous;
-            out.plannedIds[i].candidateIds    = m.candidateIds;   // ANTS-5329
-        }
+        for (qsizetype i = 0; i < out.plannedIds.size(); ++i)
+            out.plannedIds[i].match = loaded.itemMatches.at(i);
     }
     for (const auto &m : loaded.itemMatches)
         if (m.ambiguous) ++out.ambiguousRematches;   // ANTS-5329

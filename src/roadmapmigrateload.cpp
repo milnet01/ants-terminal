@@ -552,14 +552,14 @@ bool Loader::matchItems() {
         }
     }
 
-    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+    // § 2.6.1 — an id-less item cannot be matched by id, and ~40% of the
+    // corpus is id-less. Its natural key is the weakest thing that is still
+    // safe: same section, migration-allocated id, byte-identical headline.
+    // Both weak-key passes below call this one search, so the key and the
+    // ambiguity record cannot drift apart between them. The ambiguity is
+    // explained at the first pass.
+    const auto weakKeyCandidates = [&](qsizetype i) {
         const PlannedItem &it = plan.items.at(i);
-        if (!it.id.isEmpty())
-            continue;
-
-        // § 2.6.1 — an id-less item cannot be matched by id, and ~40% of the
-        // corpus is id-less. Its natural key is the weakest thing that is still
-        // safe: same section, migration-allocated id, byte-identical headline.
         const qint64 sectionId = sectionIds.value(it.sectionSlug, 0);
         QVector<qint64> candidates;
         for (const RoadmapStore::ItemRef &r : existing) {
@@ -567,6 +567,18 @@ bool Loader::matchItems() {
                 r.headline == it.headline && !consumed.contains(r.itemPk))
                 candidates.push_back(r.itemPk);
         }
+        if (candidates.size() > 1) {
+            note("ambiguous_rematch", it.headline);
+            out.itemMatches[i].ambiguous = true;                    // ANTS-5258
+            out.itemMatches[i].candidateIds = foldsOf(candidates);  // ANTS-5329
+        }
+        return candidates;
+    };
+
+    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+        if (!plan.items.at(i).id.isEmpty())
+            continue;
+        const QVector<qint64> candidates = weakKeyCandidates(i);
         if (!candidates.isEmpty()) {
             // An ambiguous group is paired BY ORDER rather than refused.
             //
@@ -595,11 +607,6 @@ bool Loader::matchItems() {
             // has always fired here, and a note carries no line and cannot be
             // correlated back to the bullet it belongs to, so a caller could
             // see that SOMETHING was paired by order and never which.
-            if (candidates.size() > 1) {
-                note("ambiguous_rematch", it.headline);
-                out.itemMatches[i].ambiguous = true;
-                out.itemMatches[i].candidateIds = foldsOf(candidates);  // ANTS-5329
-            }
             matchPk[i] = candidates.first();
             consumed.insert(candidates.first());
         }
@@ -618,20 +625,9 @@ bool Loader::matchItems() {
         const PlannedItem &it = plan.items.at(i);
         if (it.id.isEmpty() || matchPk.at(i))
             continue;
-        const qint64 sectionId = sectionIds.value(it.sectionSlug, 0);
-        QVector<qint64> candidates;
-        for (const RoadmapStore::ItemRef &r : existing) {
-            if (r.sectionId == sectionId && r.idFromMigration &&
-                r.headline == it.headline && !consumed.contains(r.itemPk))
-                candidates.push_back(r.itemPk);
-        }
+        const QVector<qint64> candidates = weakKeyCandidates(i);
         if (candidates.isEmpty())
             continue;
-        if (candidates.size() > 1) {
-            note("ambiguous_rematch", it.headline);
-            out.itemMatches[i].ambiguous = true;   // ANTS-5258
-            out.itemMatches[i].candidateIds = foldsOf(candidates);  // ANTS-5329
-        }
         const qint64 pk = candidates.first();
         matchPk[i] = pk;
         consumed.insert(pk);

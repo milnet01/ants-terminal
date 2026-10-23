@@ -474,6 +474,118 @@ struct SourceCtx {
     QString prefix;
 };
 
+// The legend block: the maximal run of legend-shaped, non-item records that
+// starts at `first` (line `ln`). Returns it with its line span set.
+PlannedLegend readLegendRun(const BulletRecord *first, int ln, int sourceIndex,
+                            const QHash<int, const BulletRecord *> &recordAt) {
+    PlannedLegend legend;
+    legend.firstLine   = ln;
+    legend.sourceIndex = sourceIndex;
+    int end = ln;
+    const BulletRecord *run = first;
+    for (;;) {
+        legend.entries.insert(statusFromMarker(run->status),
+                              run->body.section(QLatin1Char('\n'), 0, 0).trimmed());
+        end = qMax(run->lastLine, end);
+        const auto next = recordAt.constFind(end + 1);
+        if (next == recordAt.constEnd()) break;
+        const BulletRecord *cand = *next;
+        if (isItem(*cand)) break;
+        if (!looksLikeLegendLine(cand->body.section(QLatin1Char('\n'), 0, 0).trimmed()))
+            break;
+        run = cand;
+    }
+    legend.lastLine = end;
+    return legend;
+}
+
+// § 2.4 — a `- **Status**:` line belonging to no pass block is not an item.
+// Reported, not imported and not dropped: the line is still carried by the
+// section or element whose span it falls in. Pass-headings sources only.
+void noteOrphanStatusLines(const QStringList &lines, const QVector<bool> &inFence,
+                           MigrationPlan &plan, int sourceIndex) {
+    const int n = lines.size();
+    QVector<bool> insideItem(n + 2, false);
+    for (const PlannedItem &it : plan.items)
+        if (it.sourceIndex == sourceIndex)
+            for (int k = it.firstLine; k <= it.lastLine && k <= n; ++k)
+                insideItem[k] = true;
+    static const QRegularExpression rxStatus(
+        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    // ANTS-5394 — and the `####`-or-deeper heading above such a line is
+    // named once, as `unparsed_heading`: a block that reads as an item to
+    // a person (`#### FU.6`, `#### Pass 2 — ...`) but has no `Pass N.M`
+    // id. RetroDB lost an OPEN item that way with only the note above to
+    // say so; the migrate reply lifts these to the top level.
+    QSet<int> namedHeadings;
+    for (int k = 1; k <= n; ++k) {
+        if (insideItem[k] || inFence[k] ||
+            !rxStatus.match(lines.at(k - 1)).hasMatch())
+            continue;
+        addNote(plan.notes, "orphan_status_line",
+                lines.at(k - 1).trimmed(), k, sourceIndex);
+        for (int h = k - 1; h >= 1; --h) {
+            if (inFence[h]) continue;
+            const int lvl = RoadmapIndex::headingLevel(lines.at(h - 1));
+            if (lvl == 0) continue;
+            if (lvl >= 4 && !namedHeadings.contains(h)) {
+                namedHeadings.insert(h);
+                addNote(plan.notes, "unparsed_heading",
+                        lines.at(h - 1).trimmed(), h, sourceIndex);
+            }
+            break;   // the nearest heading owns the line, whatever its level
+        }
+    }
+}
+
+// ANTS-5361 — a top-level checkbox the task-list grammar does not define
+// (`- [~]`, `- [-]`) is not an item. It is carried as narration like any
+// other unparsed line; this note is what stops that being silent.
+void noteUnrecognisedCheckboxes(const QStringList &lines, const QVector<bool> &inFence,
+                                MigrationPlan &plan, int sourceIndex) {
+    static const QRegularExpression rxBox(QStringLiteral("^[-*] \\[([^\\]])\\]"));
+    for (int k = 1; k <= lines.size(); ++k) {
+        if (inFence[k]) continue;
+        const auto m = rxBox.match(lines.at(k - 1));
+        if (!m.hasMatch()) continue;
+        const QString box = m.captured(1);
+        if (box != QLatin1String(" ") && box != QLatin1String("x") &&
+            box != QLatin1String("X"))
+            addNote(plan.notes, "unrecognised_checkbox",
+                    lines.at(k - 1).trimmed(), k, sourceIndex);
+    }
+}
+
+// ANTS-5383 — § 2.10: a top-level bullet led by a pictograph that is not
+// one of the five status markers opens no reader record, so § 2.11's
+// position rule carries it as intro or narration without a word. A scan,
+// like the checkbox one above, so the note does not depend on where it
+// landed.
+void noteUnrecognisedStatusMarkers(const QStringList &lines, const QVector<bool> &inFence,
+                                   MigrationPlan &plan, int sourceIndex) {
+    const QStringList markers = {
+        QString::fromUtf8(RoadmapParse::kEmojiPlanned),
+        QString::fromUtf8(RoadmapParse::kEmojiInProgress),
+        QString::fromUtf8(RoadmapParse::kEmojiDone),
+        QString::fromUtf8(RoadmapParse::kEmojiConsidered),
+        QString::fromUtf8(RoadmapParse::kEmojiDropped)};
+    for (int k = 1; k <= lines.size(); ++k) {
+        if (inFence[k]) continue;
+        const QString &raw = lines.at(k - 1);
+        if (!raw.startsWith(QStringLiteral("- ")) && !raw.startsWith(QStringLiteral("* ")))
+            continue;
+        const QString head = raw.mid(2);
+        const QList<uint> cps = head.left(2).toUcs4();
+        if (cps.isEmpty() || QChar::category(char32_t(cps.first())) != QChar::Symbol_Other)
+            continue;
+        bool known = false;
+        for (const QString &m : markers) known = known || head.startsWith(m);
+        if (!known)
+            addNote(plan.notes, "unrecognised_status_marker", raw.trimmed(), k, sourceIndex);
+    }
+}
+
 // The structural walk of ONE source, appending into `plan`. This is
 // ANTS-3757 § 2.11's walk unchanged except where a comment names ANTS-3766.
 void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
@@ -670,34 +782,14 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
             // leave its lines in no carrier and make INV-5 unsatisfiable.
             const QString text = rec->body.section(QLatin1Char('\n'), 0, 0).trimmed();
             if (ctx.index == 0 && !plan.legend && looksLikeLegendLine(text)) {
-                PlannedLegend legend;
-                legend.firstLine   = ln;
-                legend.sourceIndex = ctx.index;
-                int end = ln;
-                const BulletRecord *run = rec;
-                for (;;) {
-                    legend.entries.insert(
-                        statusFromMarker(run->status),
-                        run->body.section(QLatin1Char('\n'), 0, 0).trimmed());
-                    end = qMax(run->lastLine, end);
-                    const auto next = recordAt.constFind(end + 1);
-                    if (next == recordAt.constEnd()) break;
-                    const BulletRecord *cand = *next;
-                    if (isItem(*cand)) break;
-                    const QString t =
-                        cand->body.section(QLatin1Char('\n'), 0, 0).trimmed();
-                    if (!looksLikeLegendLine(t)) break;
-                    run = cand;
-                }
-                legend.lastLine = end;
-                plan.legend = legend;
+                plan.legend = readLegendRun(rec, ln, ctx.index, recordAt);
                 // Not an element and it takes no `position` — the legend
                 // belongs to the project. It does close the intro, though:
                 // without that, prose after it would join an `intro` whose
                 // contiguous range then covers these lines and INV-11 would
                 // see an overlap rather than a partition.
                 builds[cur].hasElement = true;
-                ln = end + 1;
+                ln = plan.legend->lastLine + 1;
                 continue;
             }
             // ANTS-5383 — § 2.10: a status-marked bullet that is neither an
@@ -857,90 +949,14 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
     }
     closeSection();
 
-    // § 2.4 — a `- **Status**:` line belonging to no pass block is not an item.
-    // Reported, not imported and not dropped: the line is still carried by the
-    // section or element whose span it falls in. Per SOURCE, against that
-    // source's own detected format (§ 2.1.1).
-    if (src.format == QLatin1String("pass-headings")) {
-        QVector<bool> insideItem(n + 2, false);
-        for (const PlannedItem &it : plan.items)
-            if (it.sourceIndex == ctx.index)
-                for (int k = it.firstLine; k <= it.lastLine && k <= n; ++k)
-                    insideItem[k] = true;
-        static const QRegularExpression rxStatus(
-            QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
-            QRegularExpression::CaseInsensitiveOption);
-        // ANTS-5394 — and the `####`-or-deeper heading above such a line is
-        // named once, as `unparsed_heading`: a block that reads as an item to
-        // a person (`#### FU.6`, `#### Pass 2 — ...`) but has no `Pass N.M`
-        // id. RetroDB lost an OPEN item that way with only the note above to
-        // say so; the migrate reply lifts these to the top level.
-        QSet<int> namedHeadings;
-        for (int k = 1; k <= n; ++k) {
-            if (insideItem[k] || inFence[k] ||
-                !rxStatus.match(lines.at(k - 1)).hasMatch())
-                continue;
-            addNote(plan.notes, "orphan_status_line",
-                    lines.at(k - 1).trimmed(), k, ctx.index);
-            for (int h = k - 1; h >= 1; --h) {
-                if (inFence[h]) continue;
-                const int lvl = RoadmapIndex::headingLevel(lines.at(h - 1));
-                if (lvl == 0) continue;
-                if (lvl >= 4 && !namedHeadings.contains(h)) {
-                    namedHeadings.insert(h);
-                    addNote(plan.notes, "unparsed_heading",
-                            lines.at(h - 1).trimmed(), h, ctx.index);
-                }
-                break;   // the nearest heading owns the line, whatever its level
-            }
-        }
-    }
-
-    // ANTS-5361 — a top-level checkbox the task-list grammar does not define
-    // (`- [~]`, `- [-]`) is not an item. It is carried as narration like any
-    // other unparsed line; this note is what stops that being silent.
-    if (src.format == QLatin1String("github-task-list")) {
-        static const QRegularExpression rxBox(
-            QStringLiteral("^[-*] \\[([^\\]])\\]"));
-        for (int k = 1; k <= n; ++k) {
-            if (inFence[k]) continue;
-            const auto m = rxBox.match(lines.at(k - 1));
-            if (!m.hasMatch()) continue;
-            const QString box = m.captured(1);
-            if (box != QLatin1String(" ") && box != QLatin1String("x") &&
-                box != QLatin1String("X"))
-                addNote(plan.notes, "unrecognised_checkbox",
-                        lines.at(k - 1).trimmed(), k, ctx.index);
-        }
-    }
-
-    // ANTS-5383 — § 2.10: a top-level bullet led by a pictograph that is not
-    // one of the five status markers opens no reader record, so § 2.11's
-    // position rule carries it as intro or narration without a word. A scan,
-    // like the checkbox one above, so the note does not depend on where it
-    // landed. Not on a pass-headings source: its bullets belong to a block.
-    if (src.format != QLatin1String("pass-headings")) {
-        const QStringList markers = {
-            QString::fromUtf8(RoadmapParse::kEmojiPlanned),
-            QString::fromUtf8(RoadmapParse::kEmojiInProgress),
-            QString::fromUtf8(RoadmapParse::kEmojiDone),
-            QString::fromUtf8(RoadmapParse::kEmojiConsidered),
-            QString::fromUtf8(RoadmapParse::kEmojiDropped)};
-        for (int k = 1; k <= n; ++k) {
-            if (inFence[k]) continue;
-            const QString &raw = lines.at(k - 1);
-            if (!raw.startsWith(QStringLiteral("- ")) && !raw.startsWith(QStringLiteral("* ")))
-                continue;
-            const QString head = raw.mid(2);
-            const QList<uint> cps = head.left(2).toUcs4();
-            if (cps.isEmpty() || QChar::category(char32_t(cps.first())) != QChar::Symbol_Other)
-                continue;
-            bool known = false;
-            for (const QString &m : markers) known = known || head.startsWith(m);
-            if (!known)
-                addNote(plan.notes, "unrecognised_status_marker", raw.trimmed(), k, ctx.index);
-        }
-    }
+    // Per SOURCE, against that source's own detected format (§ 2.1.1). The
+    // marker scan skips pass-headings: its bullets belong to a block.
+    if (src.format == QLatin1String("pass-headings"))
+        noteOrphanStatusLines(lines, inFence, plan, ctx.index);
+    if (src.format == QLatin1String("github-task-list"))
+        noteUnrecognisedCheckboxes(lines, inFence, plan, ctx.index);
+    if (src.format != QLatin1String("pass-headings"))
+        noteUnrecognisedStatusMarkers(lines, inFence, plan, ctx.index);
 
     // The synthetic root is dropped when this source put nothing in it. Safe
     // to erase mid-vector: items and elements reference a section by SLUG, not
@@ -1245,28 +1261,6 @@ bool isRecognisedSourceForm(const QString &v) {
     return false;
 }
 
-// § 2.5's predicate, and the parentheses in it are load-bearing: unbracketed,
-// `A or B and C` also parses as `A or (B and C)`, under which any recognised
-// source form containing a slash would be treated as a path.
-//
-//   (contains `/` OR its final segment matches \.[A-Za-z0-9]{1,5}$)
-//   AND it is not one of § 3.5.3's recognised source forms.
-//
-// Applied to the WHOLE value, which is what "its final segment" means — the
-// segment after the last `/`. A path mentioned inside a prose value
-// (`in-session-2026-07-29 (rpmlint.log, first successful build)`) is therefore
-// NOT validated. That is the literal contract and the safe direction: a missed
-// note costs nothing, a note invented against a word that merely contains a dot
-// would be noise on real prose.
-// ANTS-4481 — the unit is the whitespace-delimited TOKEN, which is what § 2.5
-// says and what this returns. A `Source:` value is a SENTENCE far more often
-// than a bare path (`in-session-2026-08-14, found while drafting docs/x.md`),
-// so testing and then CITING the whole value reported every prose provenance
-// carrying a real path as unresolved. Measured 2026-08-19 against ~/.claude:
-// one note on a 2500-line roadmap, and it was false.
-//
-// Returns the qualifying tokens rather than a bool, because the caller needs
-// the path to resolve and to name, not merely to know one is in there.
 // Chop a token's trailing run of sentence punctuation. Hoisted above
 // pathTokensIn() by ANTS-4502, which classifies the chopped form: the
 // extension test anchors on `$`, so `docs/gone.md.` would otherwise read as
@@ -1286,8 +1280,16 @@ QString withoutTrailingPunctuation(const QString &token) {
     return t;
 }
 
-// ANTS-4065 § 2.5, amended by ANTS-4502 — the separator test and the extension
-// test are an AND, not an OR.
+// ANTS-4065 § 2.5, amended by ANTS-4502 — a `Source:` token is a path when it
+// contains `/` AND its final segment matches \.[A-Za-z0-9]{1,5}$, unless the
+// whole value is one of § 3.5.3's recognised source forms.
+//
+// ANTS-4481 — the unit is the whitespace-delimited TOKEN. A `Source:` value is
+// a SENTENCE far more often than a bare path (`in-session-2026-08-14, found
+// while drafting docs/x.md`), so testing and then CITING the whole value
+// reported every prose provenance carrying a real path as unresolved.
+// Returns the qualifying tokens rather than a bool, because the caller needs
+// the path to resolve and to name.
 //
 // Either half alone is a bad predicate. The extension half alone accepts every
 // bare filename (a MENTION, not a claim the file sits at the project root) and
@@ -1321,10 +1323,6 @@ QStringList pathTokensIn(const QString &value) {
     return out;
 }
 
-// ANTS-4481 — a token that ends a sentence keeps its punctuation. The trailer
-// parse drops ONE trailing period, so `…files-and-naming.md).` arrives here as
-// `…files-and-naming.md)` and resolves to nothing. Stripped as a FALLBACK, never
-// unconditionally: a path whose name really ends in one of these still resolves
 // Resolves under the project root only. A value escaping the root — absolute,
 // or climbing out with `..` — is reported unresolved rather than probed, which
 // keeps a roadmap from turning the importer into a filesystem oracle.
@@ -1364,6 +1362,10 @@ void validatePaths(MigrationPlan &plan, const QString &projectRoot) {
         for (const Candidate &c : std::as_const(cited)) {
             if (resolvesUnderRoot(projectRoot, c.path))
                 continue;
+            // ANTS-4481 — an `Evidence:` element that ends a sentence keeps its
+            // punctuation, so `…files-and-naming.md)` resolves to nothing.
+            // Stripped as a FALLBACK, never unconditionally: a path whose name
+            // really ends in one of these still resolves on the first try.
             const QString trimmed = withoutTrailingPunctuation(c.path);
             if (trimmed != c.path && !trimmed.isEmpty()
                 && resolvesUnderRoot(projectRoot, trimmed))
