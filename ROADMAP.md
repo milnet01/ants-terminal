@@ -86154,6 +86154,15 @@ parse, not that file.
   no hint. The tree holds a large git-ignored thirdparty SDK and
   generated C++. The session asked for a hint naming timeout_sec, and
   ideally which subtree used the budget.
+  2026-10-23: RetroArch (RetroArch_Ants_MCP_Feedback.md) hit it again:
+  files_only for one literal on the ra-fixes worktree (a git worktree of
+  an indexed RetroArch checkout plus build outputs) stopped at the 5 s
+  budget, truncated:true, 2 files. grep confirmed those 2 were the whole
+  answer, but the reply could not say so, so the absence question fell
+  back to grep. Extra ideas from the report: say whether the walk
+  finished (files walked vs total, or complete:false); serve a worktree
+  of an indexed repo from the index; or allow a longer timeout_sec with
+  files_only.
   **Layman:** A code search that runs out of time quietly returns only some results, and nothing says the rest were lost to the time limit.
   Kind: fix.
   Source: in-session-2026-09-25.
