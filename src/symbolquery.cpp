@@ -1012,9 +1012,17 @@ QHash<QString, DefResult> findDefinitions(const QString &rootCanonical,
     walkSt.byStem = &byStem;
     walk(walkSt, QDir::cleanPath(rootCanonical));
 
-    for (int i = 0; i < needles.size(); ++i)
-        out[needles.at(i)] =
-            finishDefs(batchSlots[i], walkSt.filesScanned, walkSt.walkCapped);
+    QString stoppedIn;
+    QStringList unreached;
+    if (walkSt.walkCapped)
+        describeCap(QDir::cleanPath(rootCanonical), walkSt.stoppedAt,
+                    &stoppedIn, &unreached);
+    for (int i = 0; i < needles.size(); ++i) {
+        DefResult &res = out[needles.at(i)];
+        res = finishDefs(batchSlots[i], walkSt.filesScanned, walkSt.walkCapped);
+        res.walkStoppedIn = stoppedIn;
+        res.walkUnreached = unreached;
+    }
     return out;
 }
 

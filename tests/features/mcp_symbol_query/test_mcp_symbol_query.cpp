@@ -1503,6 +1503,14 @@ TEST(McpSymbolQuery, Ants5478CappedWalkNamesWhatItDidNotReach) {
     EXPECT_EQ(r.walkUnreached,
               (QStringList{QStringLiteral("ccc"), QStringLiteral("zzz")}));
 
+    // ANTS-6001 — the batch form reports the same, for every needle.
+    const auto batch = SymbolQuery::findDefinitions(
+        root, {QStringLiteral("far_away"), QStringLiteral("filler0")}, o);
+    for (const SymbolQuery::DefResult &b : batch) {
+        EXPECT_EQ(b.walkStoppedIn, r.walkStoppedIn);
+        EXPECT_EQ(b.walkUnreached, r.walkUnreached);
+    }
+
     // An uncapped walk reports neither.
     const SymbolQuery::DefResult full =
         SymbolQuery::findDefinition(root, QStringLiteral("far_away"), {});

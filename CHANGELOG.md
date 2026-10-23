@@ -292,6 +292,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **trace's document rows follow the project's one Markdown fence rule** (ANTS-6002)
+  A line opening with a four-backtick inline span no longer hides the rest of the document, and a three-backtick line inside a four-backtick fence stays fenced.
+
+- **A batched definition lookup says where a capped walk stopped, as the single lookup does** (ANTS-6001)
+
 - **run_trace finds a session's transcript when the project folder's name has non-ASCII letters** (ANTS-5952)
   It now spells the transcript folder the way Claude Code, session_cost and the status bar do.
 

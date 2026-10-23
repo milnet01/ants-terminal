@@ -7,6 +7,7 @@
 #include "trace/trace.h"
 
 #include "focusedtest.h"
+#include "markdownscan.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"
 #include "specparse.h"
@@ -196,32 +197,25 @@ bool isMarkdown(const QString &name) {
 void scanMarkdown(const QString &rel, const QByteArray &text, bool pathMode,
                   const QByteArray &needle, const QByteArray &rel2, const QByteArray &base,
                   QVector<Row> &docs) {
-    static const QRegularExpression headingRe(QStringLiteral("^#{1,6}\\s+(.*?)\\s*#*\\s*$"));
-    bool inFence = false;
-    QByteArray fence;
-    QString heading;
-    int headingLine = 0;
     const QList<QByteArray> lines = text.split('\n');
+    QStringList textLines;
+    textLines.reserve(lines.size());
+    for (const QByteArray &line : lines) {
+        QString s = QString::fromUtf8(line);
+        if (s.endsWith(QLatin1Char('\r'))) s.chop(1);
+        textLines << s;
+    }
+    // The project's one fence and heading rules (MarkdownScan), so a fix there
+    // reaches docs[] too.
+    const QVector<bool> inFence = MarkdownScan::fenceMask(textLines);
+    const QVector<MarkdownScan::Heading> headings = MarkdownScan::headings(textLines);
+    int nextHeading = 0;
+    const MarkdownScan::Heading *heading = nullptr;
     for (int i = 0; i < lines.size(); ++i) {
+        while (nextHeading < headings.size() && headings.at(nextHeading).line <= i + 1)
+            heading = &headings.at(nextHeading++);
+        if (inFence.at(i)) continue;
         const QByteArray &line = lines.at(i);
-        const QByteArray t = line.trimmed();
-        if (t.startsWith("```") || t.startsWith("~~~")) {
-            const QByteArray marker = t.left(3);
-            if (!inFence) {
-                inFence = true;
-                fence = marker;
-            } else if (marker == fence) {
-                inFence = false;
-            }
-            continue;
-        }
-        if (inFence) continue;
-        const QString s = QString::fromUtf8(line);
-        const auto hm = headingRe.match(s);
-        if (hm.hasMatch()) {
-            heading = hm.captured(1);
-            headingLine = i + 1;
-        }
         bool hit = pathMode ? !pathHits(line, rel2, base).isEmpty()
                             : !wholeWordHits(line, needle).isEmpty();
         if (!hit) {
@@ -236,9 +230,9 @@ void scanMarkdown(const QString &rel, const QByteArray &text, bool pathMode,
         QJsonObject o{{QStringLiteral("file"), rel},
                       {QStringLiteral("line"), i + 1},
                       {QStringLiteral("heading"),
-                       headingLine ? QJsonValue(heading) : QJsonValue()},
+                       heading ? QJsonValue(heading->text) : QJsonValue()},
                       {QStringLiteral("heading_line"),
-                       headingLine ? QJsonValue(headingLine) : QJsonValue()}};
+                       heading ? QJsonValue(heading->line) : QJsonValue()}};
         docs.append({rel, i + 1, 0, QString(), o});
     }
 }

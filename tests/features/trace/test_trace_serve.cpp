@@ -203,6 +203,16 @@ TEST_F(TraceServe, Inv6DocRowCarriesNearestHeading) {
     EXPECT_EQ(d.value(QStringLiteral("line")).toInt(), 5);
 }
 
+// ANTS-6002 — docs[] follows MarkdownScan's fence rule: a ```` fence hides the
+// ``` line inside it, and a line opening with a ````span```` opens no fence.
+TEST_F(TraceServe, Ants6002DocsUseTheSharedFenceRule) {
+    const QJsonArray docs = arr(traceSymbol(QStringLiteral("fenceProbe")), "docs");
+    ASSERT_EQ(docs.size(), 1) << dump(docs);
+    const QJsonObject d = docs.at(0).toObject();
+    EXPECT_EQ(d.value(QStringLiteral("heading")).toString(), QStringLiteral("Inline span"));
+    EXPECT_EQ(d.value(QStringLiteral("line")).toInt(), 25);
+}
+
 // INV-7 — a spec invariant and a roadmap bullet naming the symbol, by id.
 TEST_F(TraceServe, Inv7SpecInvariantAndRoadmapItemById) {
     const QJsonObject r = traceSymbol(QStringLiteral("specProbe"));

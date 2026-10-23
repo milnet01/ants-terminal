@@ -95295,6 +95295,9 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F2, F3, F6 done. F1, F5 open.
+  2026-10-23: HIGH F1 done (trace's docs[] scan built on MarkdownScan
+  fenceMask + headings; closes ANTS-6002) and F5 done (findDefinitions
+  fills the walk-cap fields; closes ANTS-6001). No HIGH left here.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97923,25 +97926,32 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: code-index-search-b.
 
-- 📋 [ANTS-6001] **src/symbolquery.cpp:1013-1017: findDefinitions never fills walkStoppedIn/walkUnreached on a capped walk.**
+- ✅ [ANTS-6001] **src/symbolquery.cpp:1013-1017: findDefinitions never fills walkStoppedIn/walkUnreached on a capped walk.**
   Lead L31-C3 from the readability review of 2026-10-22, lane code-index-search-b.
   Location: src/symbolquery.cpp:1013-1017
   `findDefinitions` never fills `walkStoppedIn`/`walkUnreached` on a capped walk. — Searched: `walkStoppedIn|walkUnreached`.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-23: fixed with ANTS-6140 F5. findDefinitions calls describeCap
+  once and copies walkStoppedIn/walkUnreached into every needle's
+  result. McpSymbolQuery.Ants5478CappedWalkNamesWhatItDidNotReach checks
+  the batch form; it failed before the fix.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
   Lanes: code-index-search-b.
 
-- 📋 [ANTS-6002] **src/trace/trace.cpp:208-209: fence detection: a 4-backtick inline span opens a "fence", and every later doc line is hidden from docs[].**
+- ✅ [ANTS-6002] **src/trace/trace.cpp:208-209: fence detection: a 4-backtick inline span opens a "fence", and every later doc line is hidden from docs[].**
   Lead L31-C4 from the readability review of 2026-10-22, lane code-index-search-b.
   Location: src/trace/trace.cpp:208-209
   fence detection: a 4-backtick inline span opens a "fence", and every later doc line is hidden from `docs[]`. This is the ANTS-3674 failure. — Searched: `fenceMask|startsWith("```")`.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-23: fixed with ANTS-6140 F1. scanMarkdown now uses
+  MarkdownScan::fenceMask and MarkdownScan::headings.
+  TraceServe.Ants6002DocsUseTheSharedFenceRule traces fenceProbe inside a ```` fence holding a ``` line and after a ````span```` line; it failed before the fix.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
