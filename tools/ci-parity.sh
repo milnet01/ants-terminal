@@ -35,7 +35,7 @@
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.." || { echo "ci-parity: cannot cd to repo root" >&2; exit 1; }
 
-host_jobs=(build-test build-asan cppcheck)
+host_jobs=(build-test build-asan cppcheck)   # run in this order
 container_jobs=(qt62-baseline)
 
 stress=0 do_lints=0 do_asan=0 do_qt62=0 do_qt62_clean=0 do_ubuntu24=0
@@ -54,14 +54,18 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+# Which flag runs each job. A ci.yml job missing here stops the run below.
+declare -A wanted=([build-test]=1 [cppcheck]=$do_lints [build-asan]=$do_asan
+                   [qt62-baseline]=$do_qt62)
+
 # Every ci.yml job is claimed, or the run stops here.
 if ! ci_jobs="$(python3 tools/ci_workflow.py jobs)"; then
     echo "ci-parity: cannot read .github/workflows/ci.yml" >&2; exit 1
 fi
 for j in $ci_jobs; do
-    if [[ " ${host_jobs[*]} ${container_jobs[*]} " != *" $j "* ]]; then
+    if [[ " ${host_jobs[*]} ${container_jobs[*]} " != *" $j "* || -z "${wanted[$j]+set}" ]]; then
         echo "ci-parity: ci.yml has a job '$j' this script does not run." >&2
-        echo "           Add it to host_jobs or container_jobs in tools/ci-parity.sh." >&2
+        echo "           Add it to host_jobs or container_jobs, and to wanted, in tools/ci-parity.sh." >&2
         exit 1
     fi
 done
@@ -99,10 +103,8 @@ container_leg() {
     fi
 }
 
-host_job build-test
-[[ "$do_lints" == 1 ]] && host_job cppcheck
-[[ "$do_asan" == 1 ]] && host_job build-asan
-[[ "$do_qt62" == 1 ]] && container_leg "qt62-baseline: ubuntu:22.04 / Qt 6.2 build"
+for j in "${host_jobs[@]}"; do [[ "${wanted[$j]}" == 1 ]] && host_job "$j"; done
+[[ "${wanted[qt62-baseline]}" == 1 ]] && container_leg "qt62-baseline: ubuntu:22.04 / Qt 6.2 build"
 [[ "$do_ubuntu24" == 1 ]] && container_leg "build-test job in CI's image: ubuntu:24.04 (build, suite, lints)" --job build-test --run-job
 
 echo
