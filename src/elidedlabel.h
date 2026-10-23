@@ -108,9 +108,8 @@ protected:
 private:
     void updateElided() {
         int w = contentsRect().width();
-        // Subtract any stylesheet-applied padding that isn't reflected in
-        // contentsRect yet (pre-first-layout). A small fudge keeps "…" from
-        // sitting right against the right edge on narrow labels.
+        // Before the first layout contentsRect can be empty; fall back to
+        // the widget's own width then.
         if (w <= 0) w = width();
         QString displayed = m_fullText;
         if (w > 0 && !m_fullText.isEmpty()) {

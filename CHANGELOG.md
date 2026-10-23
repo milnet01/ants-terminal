@@ -292,6 +292,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The tab list names the "background work still running" Claude state in words, in its tooltip and screen-reader text.** (ANTS-6114)
+
 - **trace's document rows follow the project's one Markdown fence rule** (ANTS-6002)
   A line opening with a four-backtick inline span no longer hides the rest of the document, and a three-backtick line inside a four-backtick fence stays fenced.
 

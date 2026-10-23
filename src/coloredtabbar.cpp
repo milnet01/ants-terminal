@@ -396,6 +396,9 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
 
         const QColor surface = m_bg.isValid() ? m_bg : QWidget::palette().color(QPalette::Window);
         const QColor fallbackText = QWidget::palette().color(QPalette::WindowText);
+        // The × glyph colours are the theme's textSecondary / textPrimary,
+        // the same colours the tab name uses; re-tinting the × alone would
+        // change every wash's strength.
         const QColor resting = m_closeNormal.isValid() ? m_closeNormal : fallbackText;
         const QColor selected = m_closeHover.isValid() ? m_closeHover : fallbackText;
         const double nameBottom = r.height() / 2.0 + fontMetrics().height() / 2.0 + kNameMargin;

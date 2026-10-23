@@ -66,18 +66,18 @@ struct ClaudeTabIndicator {
     static double contrastRatio(const QColor &a, const QColor &b);
 };
 
-// QTabBar subclass that renders an optional per-tab colour strip along
-// the bottom edge of each tab. Used for visually tagging tabs into
-// groups (red = prod, green = dev, …) à la Chrome.
+// QTabBar subclass that renders an optional per-tab colour wash. Used for
+// visually tagging tabs into groups (red = prod, green = dev, …) à la
+// Chrome.
 //
-// Storage lives in Qt's per-tab user data (setTabData / tabData) keyed
-// as `tabColorRole()` — this survives tab reorder (drag-and-drop) and
-// close without manual bookkeeping, which a MainWindow-held
-// QHash<index, QColor> does not.
+// Storage lives in Qt's per-tab user data (setTabData / tabData) — this
+// survives tab reorder (drag-and-drop) and close without manual
+// bookkeeping, which a MainWindow-held QHash<index, QColor> does not.
 //
 // Painting is additive: the base class paints the themed tab (shape +
-// text + selection state) first, then paintEvent() overlays a 3-pixel
-// bottom strip in the stored colour for any tab that has one. This
+// text + selection state) first, then paintEvent() overlays a
+// full-height gradient wash in the stored colour for any tab that has
+// one, capped where the name sits so it stays readable. This
 // approach sidesteps the stylesheet-vs-setTabTextColor precedence
 // problem where QTabBar::tab { color: … } in the window stylesheet
 // wins over a call to setTabTextColor and a user's choice never
@@ -172,8 +172,6 @@ protected:
     void tabInserted(int index) override;
 
 private:
-    static constexpr int kTabDataColorRole = 0x100;  // QTabBar reserves low ints
-
     // Create (or re-tint, if already ours) the custom close button for
     // the tab at `index`. No-op for an out-of-range index.
     void installCloseButton(int index);
@@ -181,8 +179,11 @@ private:
     IndicatorProvider m_indicatorProvider;
     QColor m_bg;  // opaque fill, see setBackgroundFill comment
     QColor m_hoverFill;  // hovered tab background, see setHoverFill
-    QColor m_closeNormal;   // resting × glyph colour (theme textSecondary)
-    QColor m_closeHover;    // moused-over × glyph colour (theme textPrimary)
+    // resting / moused-over × glyph colour (theme textSecondary /
+    // textPrimary). paintEvent's wash cap also reads them as the tab
+    // name's resting and selected text colours.
+    QColor m_closeNormal;
+    QColor m_closeHover;
     QColor m_closeHoverBg;  // hover background (theme ansi-red), will-click cue
 };
 

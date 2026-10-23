@@ -70,10 +70,9 @@ signals:
     // triggered. shortcutId matches the id passed to bindShortcut().
     void activated(const QString &shortcutId);
 
-    // Fired once after the CreateSession + BindShortcuts handshake
-    // completes. MainWindow uses this to disable the in-app QShortcut
-    // fallback (or to keep it for defence-in-depth and debounce —
-    // current policy is the latter; see mainwindow.cpp).
+    // Emitted once the session exists and BindShortcuts has been SENT,
+    // before any reply, so it does not mean the binds succeeded. Nothing
+    // connects to it today.
     void sessionReady();
 
     // Fired if any step of the handshake fails. reason is the portal

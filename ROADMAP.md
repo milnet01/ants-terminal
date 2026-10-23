@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6189 -->
+<!-- ants-roadmap-id-high-water: ANTS=6190 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94974,6 +94974,13 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1 KWin chain done (1d833dce).
+  2026-10-23: MEDIUM done: F2 (stateLabel names Background; new test
+  TabListPanel.Inv4EveryStateHasALabel, red then green), F4 (header
+  describes the gradient wash; unused kTabDataColorRole removed), F7
+  (sessionReady means BindShortcuts was sent, not bound), F9 (ElidedLabel
+  fallback comment), the coloredtabbar.cpp wash-cap coupling noted at the
+  line. F3 queued as ANTS-6190 (portal_failure_paths pins it per handler).
+  LOWs still open.
   **Layman:** Tidy the tab bar, side panels and window parts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95913,6 +95920,21 @@ worked after these.
   Kind: fix.
   Source: review-readability-2026-10-22 (L04-F18).
   Lanes: mainwindow.
+
+- 📋 [ANTS-6190] **One failPermanently(reason) for the global-shortcuts portal's six failure paths, with one clean-up rule.**
+  From ANTS-6114 (L05 MEDIUM F3). globalshortcutsportal.cpp writes the
+  "fail permanently" sequence six times, and the copies differ: the two
+  BindShortcuts copies clear m_pending and m_sessionHandle, the timeout
+  and CreateSession-error copies clear only the request path, and the
+  rejected-response copies clear neither. Decide the one clean-up rule,
+  then fold. Not done in the lane pass: portal_failure_paths pins
+  `m_permanentlyFailed = true;` and `emit sessionFailed(` inside each
+  handler's own body, so its test contract moves with the fold.
+  Hot reload: none needed; no new running state.
+  **Layman:** When the desktop's global-shortcut service fails, six places each clean up slightly differently; one shared routine would make them agree.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L05-F3).
+  Lanes: chrome-widgets.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

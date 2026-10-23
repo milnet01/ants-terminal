@@ -291,6 +291,15 @@ const Glyph kAllGlyphs[] = {Glyph::None,     Glyph::Idle,      Glyph::Thinking,
                             Glyph::Auditing, Glyph::Compacting, Glyph::AwaitingInput,
                             Glyph::Background};
 
+// INV-4 — every Claude state has words, not only a colour.
+TEST(TabListPanel, Inv4EveryStateHasALabel) {
+    for (Glyph g : kAllGlyphs) {
+        if (g == Glyph::None) continue;
+        EXPECT_FALSE(TabListPanel::stateLabel(g).isEmpty())
+            << "glyph " << static_cast<int>(g) << " has no state label";
+    }
+}
+
 // Paints one row through the tree's own delegate, as the view would.
 QImage paintRow(TabListPanel &panel, QTreeWidgetItem *row, QStyle::State extra) {
     QTreeWidget *tree = panel.treeForTest();

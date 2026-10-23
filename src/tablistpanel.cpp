@@ -352,6 +352,7 @@ QString TabListPanel::stateLabel(ClaudeTabIndicator::Glyph glyph) {
         case G::Auditing:      return QStringLiteral("Claude auditing");
         case G::Compacting:    return QStringLiteral("Claude compacting");
         case G::AwaitingInput: return QStringLiteral("Claude waiting for you");
+        case G::Background:    return QStringLiteral("Claude idle, background work running");
     }
     return QString();
 }
