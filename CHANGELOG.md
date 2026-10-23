@@ -163,6 +163,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Claude Code session-start cheat-sheet points at trace for "who calls X / where is it defined", in most languages, ahead of the C/C++-only find_sources.** (ANTS-6169)
+  Sessions in other projects now learn of trace when they connect. The
+  cheat-sheet updates on the next terminal start, or by switching
+  Settings → "Show MCP cheat-sheet" off and on.
+
 - **The always-loaded workspace_search, file_outline and read_region schemas list only the arguments used in 5% or more of calls; the rest still work and tool_info lists them** (ANTS-5725)
   The four always-loaded schemas fall from 9,458 to 6,589 bytes on every request. find_definition is unchanged: every one of its arguments is used in at least 11% of calls.
 

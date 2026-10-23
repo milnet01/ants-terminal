@@ -59,14 +59,17 @@ constexpr const char *kOrientationScriptBody =
     // rest are one tool_info call away. INV-10 caps it at 500 bytes.
     "Ants MCP is connected. Its mcp__ants__* verbs cost less than\n"
     "Bash/grep/Read for the same job; start with session_orient.\n"
-    // ANTS-3619 — the C/C++ qualifier has to be HERE, pre-call: a zero
-    // result read as "nothing calls this" is the most dangerous wrong
-    // answer when checking a blast radius.
-    "find_sources (\"who calls?\") is C/C++ only; elsewhere use\n"
-    "codebase_index or workspace_search. read_log is the Ants debug\n"
+    // ANTS-6169 — trace first: it answers "who calls?" in every language
+    // src/trace/languages.cpp parses, and sessions outside this project
+    // hear of it nowhere else. ANTS-3619 — find_sources' C/C++ qualifier
+    // has to be HERE, pre-call: a zero result read as "nothing calls this"
+    // is the most dangerous wrong answer when checking a blast radius.
+    "\"Who calls X, where is it defined?\": trace, in most languages\n"
+    "(Python, JS/TS, Rust, Go, Shell, Lua, C/C++...). find_sources is\n"
+    "C/C++ only; codebase_index maps the project. read_log is the Ants\n"
     // ANTS-4422 — read_regions is a distinct batching win, not a plural
     // of read_region.
-    "log, not git log. read_regions reads N slices in one call.\n"
+    "debug log, not git log. read_regions reads N slices in one call.\n"
     "Full catalog: tool_info {\"catalog\":true}. ToolSearch \"mcp__ants\"\n"
     "loads a verb's schema.\n"
     "EOF\n"

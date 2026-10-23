@@ -440,6 +440,10 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     // the index instead of grep) so a session reaches for the verb.
     EXPECT_TRUE(out.contains("codebase_index"))
         << "ANTS-2140: prelude must advertise the codebase_index verb";
+    // ANTS-6169 — and trace, the "who calls / where is it defined" verb
+    // for every language, ahead of the C/C++-only find_sources.
+    EXPECT_TRUE(out.contains("trace") && out.indexOf("trace") < out.indexOf("find_sources"))
+        << "ANTS-6169: prelude must name trace before find_sources";
     EXPECT_GT(out.size(), 100) << "expected the prelude to print";
 
     QFile::remove(fakeSocket);  // best-effort cleanup

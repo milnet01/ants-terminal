@@ -79261,6 +79261,11 @@ in each bullet, not just the reporter's symptom.
   time stamp of Qt6_VERSION or the qt6-base-devel install time that
   the PCH target depends on), or have tools/safe-build.sh /
   local-ci.sh drop .gch files older than that install time.
+  Also 2026-10-23: build/'s CMake cache still named
+  /usr/lib64/libQt6Sql.so.6.11.2, so the next test_core link failed
+  ("missing and no known rule to make it") until `cmake -G Ninja -B
+  build` re-ran. The fix should cover the stale configure as well as
+  the stale .gch.
   **Layman:** After a Qt update the build can break, or silently mix old and new Qt, until the cached header files are deleted by hand.
   Kind: fix.
   Source: push gate failure 2026-10-23.
@@ -88216,7 +88221,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: finbreak-feedback-2026-10-22.
   Lanes: spec-engines.
 
-- 📋 [ANTS-6169] **The MCP connect message names trace for "who calls / where is it defined", ahead of find_sources.**
+- ✅ [ANTS-6169] **The MCP connect message names trace for "who calls / where is it defined", ahead of find_sources.**
   src/mcporientation.cpp's connect message is the only start-up text
   sessions outside Ants Terminal see (the preamble's trace line needs a
   .ants-project sentinel). It says find_sources is C/C++ only and sends
@@ -88230,6 +88235,12 @@ measured Ants adding about 5,250 tokens to every request.
   re-installs when "Show MCP cheat-sheet" is switched back on
   (settingsdialog.cpp). So a new build needs a terminal launch, or
   that toggle off and on; ants-mcpd does not carry it.
+  Shipped 2026-10-23: the prelude names trace first ("Who calls X,
+  where is it defined?": trace, in most languages), keeps find_sources'
+  C/C++-only warning and codebase_index (ANTS-2140's test). 467 B of
+  INV-10's 500. trace's languages read from src/trace/languages.cpp,
+  wider than the report's five. McpOrientation_Inv10 asserts trace
+  precedes find_sources: red before, green after.
   **Layman:** Sessions in other projects learn about the trace tool when they connect, instead of falling back to slow text searches.
   Kind: fix.
   Source: claude-config feedback 2026-10-23.
