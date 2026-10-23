@@ -19,5 +19,7 @@ override_dh_auto_configure:
 		-DANTS_TESTS=ON
 
 override_dh_auto_test:
-	# Audit-rule regression suite — shell + fixture tree, GUI-free.
+	# The full ctest suite, Qt widget tests included. Twin of %check in
+	# packaging/opensuse/ants-terminal.spec, which carries test settings this
+	# recipe lacks; a test-environment fix made there belongs here too.
 	dh_auto_test -- --output-on-failure

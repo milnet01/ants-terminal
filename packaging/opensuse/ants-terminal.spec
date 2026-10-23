@@ -283,6 +283,9 @@ export.
 /usr/bin/gtk-update-icon-cache -q %{_datadir}/icons/hicolor &>/dev/null || :
 
 %check
+# Twins: debian/rules override_dh_auto_test and archlinux/PKGBUILD check() run
+# this same suite. They carry settings this recipe has and they lack, so a
+# test-environment fix made here belongs in both.
 # The whole ctest suite, which includes Qt widget tests — not only the
 # shell-based audit-rule fixtures. CMakeLists.txt wires QT_QPA_PLATFORM=offscreen
 # for the opt-in `e2e` label only (CMakeLists.txt:991), so a build VM with no
