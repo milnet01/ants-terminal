@@ -146,7 +146,8 @@ lane_resize() {
 }
 
 # ── Lane: theme (restyle liveness / stress) ───────────────────────────────
-# Thrash the theme via config-reload across every built-in theme and assert the
+# Thrash the theme via config-reload across a fixed sample of the built-in
+# themes (the list below; a new theme is not added to it) and assert the
 # app survives the repeated qApp->setStyleSheet re-polish walk, then still
 # renders (non-zero PNG). NOTE: this drives the config-reload applyTheme path,
 # NOT the View-menu QAction path — the ANTS-3556 Wayland-menu race is guarded
