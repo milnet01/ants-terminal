@@ -153,6 +153,10 @@ public:
     // in split layouts, else the first pane). Used as the default
     // target for commands that don't specify a tab.
     TerminalWidget *currentTerminal() const;
+    // The focused pane of the current tab, else the current tab's active
+    // terminal. Null only when there is no current tab or it holds no
+    // terminal, when currentTerminal() is null too, so it needs no
+    // fallback.
     TerminalWidget *focusedTerminal() const;
 
     // ANTS-1284 — exposed to RemoteControl::cmdTokenUsage so the MCP
@@ -254,6 +258,10 @@ private:
     // Split helpers
     TerminalWidget *createTerminal();
     void connectTerminal(TerminalWidget *terminal);
+    // The scroll-scan path's "Add to allowlist" status-bar button, with
+    // every retraction path wired.
+    void showScrollScanPermissionButton(TerminalWidget *terminal,
+                                        const QString &rawRule);
     void splitCurrentPane(Qt::Orientation orientation);
     // ANTS-5079 — register a terminal's shell with the per-tab Claude
     // tracker and the background-task tracker, and release it again.
@@ -480,8 +488,7 @@ private:
     // Per-tab state tracker for the tab-bar activity glyph. Separate
     // from m_claudeIntegration (which tracks one active tab at a time
     // for the bottom status bar) — this maintains state for every tab
-    // with a Claude child simultaneously. Null when the config toggle
-    // claude_tab_status_indicator is off. See
+    // with a Claude child simultaneously. See
     // tests/features/claude_tab_status_indicator/spec.md.
     ClaudeTabTracker *m_claudeTabTracker = nullptr;
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
@@ -518,8 +525,9 @@ private:
     // case where the cached string is empty.
     bool m_lastBranchChipValid = false;
     QString m_lastBranchChipQss;
-    // 0.7.39 — status-bar Roadmap viewer button. Visible iff the
-    // active tab's cwd contains a ROADMAP.md (case-insensitive).
+    // 0.7.39 — status-bar Roadmap viewer button. Visible iff
+    // RemoteControl::roadmapFileFor finds a roadmap for the active
+    // tab's cwd.
     // Click → RoadmapDialog (live-watching, filterable, current-work
     // highlight from CHANGELOG [Unreleased] + recent commits).
     QPushButton *m_roadmapBtn = nullptr;
@@ -604,7 +612,7 @@ private:
     // (status timer connect, onTabChanged, showBgTasksDialog
     // post-dismissal) call m_claudeStatusBarController->
     // refreshBgTasksButton() directly.
-    // Probe the active tab's cwd for a ROADMAP.md (case-insensitive)
+    // Ask RemoteControl::roadmapFileFor for the active tab's roadmap
     // and show/hide the Roadmap button. Called from the central
     // refreshStatusBarForActiveTab tick.
     void refreshRoadmapButton();
@@ -642,7 +650,10 @@ private:
     QList<QShortcut *> m_pluginShortcuts; // shortcuts registered via manifest "keybindings"
 #endif
 
-    // Tab UUIDs for session persistence
+    // Tab UUIDs for session persistence, keyed on the tab's ROOT widget:
+    // the terminal of a single-pane tab, the top QSplitter of a split one.
+    // splitCurrentPane and cleanupEmptySplitters move the entry when the
+    // root changes, so m_tabSessionIds.value(tabRoot) is the whole lookup.
     QHash<QWidget *, QString> m_tabSessionIds;
 
     // ANTS-5030 — what was last written to each tab's session blob. The

@@ -83,9 +83,9 @@ void MainWindow::setupClaudeMcpProviders() {
             // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
             // inherits ANTS_MCP_SOCKET. The orientation prelude script
             // gates on this var being set + the socket file existing. The
-            // ordering is correct because setupStatusBarChrome() (which
-            // calls this) runs at L609 of the MainWindow ctor, BEFORE the
-            // first newTab() at L612 spawns a PTY. Verified via grep.
+            // ordering is correct because the MainWindow ctor calls
+            // setupStatusBarChrome() (which calls this) BEFORE the first
+            // newTab() spawns a PTY.
             qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit());
         }
     }
@@ -110,16 +110,13 @@ void MainWindow::setupClaudeMcpProviders() {
         // User opted out — make sure no stale Ants entry remains.
         ants::mcp_orientation::uninstall();
     }
-    // ANTS-1253: 12 tool handlers registered on the single-registry
+    // ANTS-1253: the tool handlers below register on the single-registry
     // ClaudeIntegration::registerToolProvider surface. Each handler
     // takes the JSON-RPC `arguments` object (extracts what it needs,
     // ignoring the rest) and returns the tool's response as a JSON
     // string. `get_session_info` is intentionally not registered —
     // it reads ClaudeIntegration's own state and is dispatched
     // inline (see claudeintegration.cpp processTools).
-    // Indie-review-2026-05-14 lane-5 HI-3: every other envelope in the
-    // codebase carries a `code` field so callers can dispatch on it
-    // programmatically. This was the one outlier.
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent
     // scrollback for structured errors (compiler/lint/lua/test/python).
     // TabSpecific like get_text/get_scrollback; delegates to

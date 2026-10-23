@@ -251,9 +251,7 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
 }
 
 void MainWindow::persistTabColor(QWidget *tabRoot, const QColor &color) {
-    // Resolve this tab's UUID. For split-pane tabs the root widget is a
-    // QSplitter which holds the UUID; for single-pane tabs it's the
-    // TerminalWidget itself. Both paths funnel through m_tabSessionIds.
+    // Resolve this tab's UUID (m_tabSessionIds is keyed on the tab root).
     const QString tabId = m_tabSessionIds.value(tabRoot);
     if (tabId.isEmpty()) return;
 

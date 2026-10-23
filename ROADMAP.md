@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6183 -->
+<!-- ants-roadmap-id-high-water: ANTS=6187 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94916,6 +94916,14 @@ worked after these.
   2026-10-22: HIGH F1, F2 (comments) done (1d833dce). F3, F4 open.
   2026-10-23: HIGH F3 queued as ANTS-6172, F4 as ANTS-6173 (both pinned
   by feature-spec scrapes). No HIGH left here.
+  2026-10-23: MEDIUM done: F5 (m_tabSessionIds keyed on the tab root,
+  stated at the declaration; the dead terminal-key fallbacks dropped),
+  F6 (stale line references named by function), F7-F13 (comments; the
+  dead qtKeySequenceToPortalTrigger declaration removed), F15
+  (showScrollScanPermissionButton with one retract lambda), F19 (the
+  dead currentTerminal() fallbacks after focusedTerminal() dropped).
+  Queued: F14 as ANTS-6184, F16 as ANTS-6185 and F17 as ANTS-6186
+  (test/spec-pinned), F18 as ANTS-6187 (behaviour). LOWs still open.
   **Layman:** Tidy the main window, its tabs and menus so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95812,6 +95820,62 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F9).
   Lanes: terminal-widget.
+
+- 📋 [ANTS-6184] **Split the MainWindow constructor: setupPlugins() and setupStatusWidgets(), called in a documented order.**
+  From ANTS-6113 (L04 MEDIUM F14). The ctor builds half the status bar
+  inline and setupStatusBarChrome builds the rest, with a ~160-line
+  plugin bootstrap and an inline permission dialog between them. A
+  stranger adding a status widget cannot tell where it goes or which
+  order matters. Not done in the lane pass: it reorders start-up code
+  whose ordering the ctor relies on (MCP socket env before the first
+  newTab; the comment near the plugin palette that gets the order
+  wrong), so it needs its own change and a full launch check.
+  Hot reload: none needed; a refactor with no new running state.
+  **Layman:** The window's start-up code is one very long function; splitting it shows a newcomer where each part goes and which order matters.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L04-F14).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6185] **Move the get_scrollback MCP provider lambda into a named MainWindow method.**
+  From ANTS-6113 (L04 MEDIUM F16). setupClaudeMcpProviders holds a
+  100-line inline lambda for get_scrollback's since_cursor protocol,
+  with two nested lambdas. Not done in the lane pass:
+  test_mcp_secret_redaction's scrollbackProvider() reads the text
+  between registerToolProvider("get_scrollback" and the next
+  registerToolProvider( and expects the redaction switch there, so the
+  test's slice must move with the code.
+  Hot reload: none needed; a refactor with no new running state.
+  **Layman:** One tool's code is a hundred-line block buried in a list of registrations; giving it its own function makes it findable.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L04-F16).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6186] **One theme-action builder for the View → Themes menu and its Reload User Themes rebuild.**
+  From ANTS-6113 (L04 MEDIUM F17). setupViewMenu builds the theme
+  actions twice; the copies compare the check mark against
+  m_config.theme() and m_currentTheme respectively. Not done in the lane
+  pass: tests/features/theme_switch_popup_defer (spec and test) require
+  applyTheme(name) inside setupViewMenu's own body, at "the two
+  theme-menu call-sites", so the spec needs amending (rule 14) before a
+  helper can hold them. Decide which current-theme source is right.
+  Hot reload: none needed; a refactor with no new running state.
+  **Layman:** The theme menu is built by two copies of the same code that have started to differ; one copy would keep them the same.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L04-F17).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6187] **One git repo-root finder for the branch chip and the repo-visibility badge.**
+  From ANTS-6113 (L04 MEDIUM F18). The branch chip (mainwindow.cpp,
+  reads <dir>/.git/HEAD) needs a .git directory; the visibility badge
+  (mainwindow_repo.cpp) accepts a .git file too, as a worktree has. Not
+  done in the lane pass: folding them changes what the branch chip shows
+  in a worktree (a .git file's gitdir: line points at the real HEAD), so
+  it is a behaviour fix with its own test.
+  Hot reload: none needed; no new running state.
+  **Layman:** Two parts of the status bar find the project's git folder by different rules, so one works in a git worktree and the other does not.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L04-F18).
+  Lanes: mainwindow.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

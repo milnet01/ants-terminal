@@ -32,11 +32,7 @@ void MainWindow::saveAllSessions(bool force) {
         auto *t = activeTerminalInTab(w);
         if (!t) continue;
 
-        QString tabId = m_tabSessionIds.value(w);
-        // For split tabs, the widget (w) is a QSplitter, not the TerminalWidget.
-        // Try looking up by the TerminalWidget itself if the tab widget lookup failed.
-        if (tabId.isEmpty() && t != w)
-            tabId = m_tabSessionIds.value(t);
+        const QString tabId = m_tabSessionIds.value(w);
         if (tabId.isEmpty()) continue;
 
         // Track active index as position within tabOrder, not the tab widget
@@ -128,9 +124,7 @@ QStringList MainWindow::sessionTabIds(int *activeIndex) const {
         auto *t = activeTerminalInTab(w);
         if (!t) continue;
 
-        QString tabId = m_tabSessionIds.value(w);
-        if (tabId.isEmpty() && t != w)
-            tabId = m_tabSessionIds.value(t);
+        const QString tabId = m_tabSessionIds.value(w);
         if (tabId.isEmpty()) continue;
 
         if (activeIndex && i == currentIdx)
@@ -296,8 +290,8 @@ void MainWindow::restoreSessions() {
             // services. newTab + newTabForRemote already do this; the
             // restoreSessions path forgot, so per-tab Claude state dots
             // stayed dark on every tab carried across an Ants restart
-            // (the bottom-bar status still works because tab-switch at
-            // mainwindow.cpp:4340 wires ClaudeIntegration on focus,
+            // (the bottom-bar status still works because onTabChanged
+            // wires ClaudeIntegration on focus,
             // but ClaudeTabTracker::m_shells is only ever populated by
             // trackShell — no other path reaches it).
             if (m_claudeTabTracker && tab.terminal->shellPid() > 0)

@@ -33,6 +33,7 @@ extern bool g_relaunchOnQuit;
 
 // Defined in mainwindow.cpp.
 QString firstNonShellDescendant(pid_t shellPid);
+// Defined in mainwindow_tabs.cpp.
 TerminalWidget *activeTerminalInTab(QWidget *root);
 QWidget *tabPageOf(const QTabWidget *tabs, QWidget *w);
 

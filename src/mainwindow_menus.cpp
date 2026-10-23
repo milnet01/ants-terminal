@@ -178,7 +178,6 @@ void MainWindow::setupEditMenu() {
     richCopyAction->setShortcut(QKeySequence(m_config.keybinding("rich_copy")));
     connect(richCopyAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (t) t->copySelectionRich();
     });
 
@@ -188,7 +187,6 @@ void MainWindow::setupEditMenu() {
     clearLineAction->setShortcut(QKeySequence(m_config.keybinding("clear_line")));
     connect(clearLineAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (t) t->sendToPty(QByteArray("\x01\x0B", 2)); // Ctrl+A + Ctrl+K
     });
 }
@@ -476,7 +474,6 @@ void MainWindow::setupToolsMenu() {
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         connect(dlg, &AuditDialog::reviewRequested, this, [this](const QString &resultsFile) {
             auto *t = focusedTerminal();
-            if (!t) t = currentTerminal();
             if (!t) return;
             // Send a Claude Code command that reads the audit file and fixes issues
             // ANTS-5079 — the whole prompt is shell-quoted, so a `"` or `$(`
@@ -808,7 +805,6 @@ void MainWindow::setupSettingsMenu() {
     recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session")));
     connect(recordAction, &QAction::toggled, this, [this, recordAction](bool checked) {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (!t) return;
         if (checked) {
             QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
@@ -850,7 +846,6 @@ void MainWindow::setupSettingsMenu() {
     bookmarkAction->setShortcut(QKeySequence(m_config.keybinding("toggle_bookmark")));
     connect(bookmarkAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (t) t->toggleBookmark();
     });
 
@@ -865,7 +860,6 @@ void MainWindow::setupSettingsMenu() {
     nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark")));
     connect(nextBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (t) t->nextBookmark();
     });
 
@@ -873,7 +867,6 @@ void MainWindow::setupSettingsMenu() {
     prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark")));
     connect(prevBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (t) t->prevBookmark();
     });
 
@@ -881,7 +874,6 @@ void MainWindow::setupSettingsMenu() {
     urlSelectAction->setShortcut(QKeySequence(m_config.keybinding("url_quick_select")));
     connect(urlSelectAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (t) t->enterUrlQuickSelect();
     });
 
@@ -926,7 +918,6 @@ void MainWindow::setupSettingsMenu() {
     QAction *exportAction = settingsMenu->addAction("Export Scro&llback...");
     connect(exportAction, &QAction::triggered, this, [this]() {
         auto *t = focusedTerminal();
-        if (!t) t = currentTerminal();
         if (!t) return;
         // Trigger the context menu export (reuses same code)
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(),

@@ -99,6 +99,103 @@ QList<TerminalWidget *> MainWindow::liveTerminals() const {
     return live;
 }
 
+// The scroll-scan path's "Add to allowlist" button, shown when `terminal`'s
+// own scrollback scan finds a Claude Code permission prompt. The hook path
+// builds its own (ClaudeStatusBarController::showPermissionPrompt).
+void MainWindow::showScrollScanPermissionButton(TerminalWidget *terminal,
+                                                const QString &rawRule) {
+    // Only show for the currently active tab
+    if (terminal != focusedTerminal() && terminal != currentTerminal()) return;
+
+    // Normalize and generalize the detected rule
+    QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
+    QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
+    if (!gen.isEmpty()) rule = gen;
+
+    // Remove any existing allowlist button to prevent accumulation.
+    // Must use QWidget* not QPushButton* — the hook path
+    // (ClaudeStatusBarController::showPermissionPrompt) builds a QWidget
+    // container named "claudeAllowBtn"; a QPushButton-typed findChildren
+    // would miss it and leave both buttons stacked when a scroll-scan
+    // detection fires while a hook-path container is already visible. The
+    // hook path's own dedup and clearPromptAnchorsForTabSwitch use QWidget*
+    // too.
+    auto existing = statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
+    for (auto *btn : existing) btn->deleteLater();
+
+    showStatusMessage(
+        QString("Claude Code permission: %1 — ").arg(rule), 0);
+    auto *addBtn = new QPushButton("Add to allowlist", statusBar());
+    addBtn->setObjectName("claudeAllowBtn");
+    // Fixed horizontal sizePolicy — the button must never be
+    // squeezed when the notification slot is full of text. Same
+    // layout principle as the branch chip / Claude status label
+    // introduced on 2026-04-18.
+    addBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    // ANTS-5753 — at the left end, so the pills do not shift.
+    statusBar()->insertPermanentWidget(0, addBtn);
+
+    // Scroll-scan permission detection always belongs to the terminal
+    // whose scrollback was scanned — `terminal` here is a direct
+    // pointer, so we capture its shell PID and flag that tab's
+    // tracker entry as awaiting input. No session_id routing needed
+    // (unlike the hook path); the terminal pointer IS the route.
+    pid_t scrollScanAwaitingPid =
+        (terminal && m_claudeTabTracker) ? terminal->shellPid() : pid_t(0);
+    if (scrollScanAwaitingPid > 0)
+        m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, true);
+
+    // Every way the prompt ends takes the button down the same way.
+    auto retract = [this, addBtn, scrollScanAwaitingPid]() {
+        addBtn->deleteLater();
+        clearStatusMessage();
+        if (m_claudeStatusBarController)
+            m_claudeStatusBarController->setPromptActive(false);
+        if (m_claudeTabTracker && scrollScanAwaitingPid > 0)
+            m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, false);
+    };
+
+    connect(addBtn, &QPushButton::clicked, this, [this, rule, retract]() {
+        openClaudeAllowlistDialog(rule);
+        retract();
+    });
+
+    // 0.6.27 — mark prompt active so the Claude status label switches
+    // to "Claude: prompting". Useful when the user is scrolled up in
+    // the terminal history and can't see the prompt directly.
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->setPromptActive(true);
+
+    // Primary retraction: terminal scrollback scanner notices the
+    // footer is gone. Now debounced against transient TUI repaints
+    // (see terminalwidget.cpp:checkForClaudePermissionPrompt).
+    // ANTS-1174: Qt::SingleShotConnection auto-disconnects on
+    // first emission so we no longer need a heap-allocated
+    // shared_ptr<Connection> just to capture-and-call-disconnect
+    // from inside the lambda.
+    connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn,
+            retract, Qt::SingleShotConnection);
+
+    // 0.6.33 — belt-and-suspenders retraction parity with the hook
+    // path's toolFinished / sessionStopped retraction. If the terminal
+    // scanner never notices the prompt clearing (unmatched footer format
+    // on a future Claude Code release; prompt scrolled off the 12-line
+    // lookback before the debounce settled), these give us a resolve
+    // signal so the button doesn't linger. Same reasoning as the hook
+    // path: errs on the side of closing the button too early rather than
+    // leaving a stale "Add to allowlist" stranded on the bar after the
+    // user already approved.
+    if (m_claudeIntegration) {
+        // ANTS-1174: same SingleShotConnection treatment.
+        connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
+                addBtn, [retract](const QString &, bool) { retract(); },
+                Qt::SingleShotConnection);
+        connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
+                addBtn, [retract](const QString &) { retract(); },
+                Qt::SingleShotConnection);
+    }
+}
+
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
     // ANTS-1182: register with the flat all-terminals list so
     // iterate-all sites don't each walk the QObject child tree.
@@ -307,107 +404,9 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     });
 
     // Claude Code permission detection → status bar notification
-    connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this, terminal](const QString &rawRule) {
-        // Only show for the currently active tab
-        if (terminal != focusedTerminal() && terminal != currentTerminal()) return;
-
-        // Normalize and generalize the detected rule
-        QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
-        QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
-        if (!gen.isEmpty()) rule = gen;
-
-        // Remove any existing allowlist button to prevent accumulation.
-        // Must use QWidget* not QPushButton* — the hook-path permissionRequested
-        // handler creates a QWidget container (line ~2537) with objectName
-        // "claudeAllowBtn"; a QPushButton-typed findChildren would miss it and
-        // leave both buttons stacked when a scroll-scan detection fires while
-        // a hook-path container is already visible. Mirrors the
-        // onTabChanged (line ~1716) and hook-path dedup (line ~2533) lookups
-        // which both already use QWidget*.
-        auto existing = statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
-        for (auto *btn : existing) btn->deleteLater();
-
-        showStatusMessage(
-            QString("Claude Code permission: %1 — ").arg(rule), 0);
-        auto *addBtn = new QPushButton("Add to allowlist", statusBar());
-        addBtn->setObjectName("claudeAllowBtn");
-        // Fixed horizontal sizePolicy — the button must never be
-        // squeezed when the notification slot is full of text. Same
-        // layout principle as the branch chip / Claude status label
-        // introduced on 2026-04-18.
-        addBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        // ANTS-5753 — at the left end, so the pills do not shift.
-        statusBar()->insertPermanentWidget(0, addBtn);
-
-        // Scroll-scan permission detection always belongs to the terminal
-        // whose scrollback was scanned — `terminal` here is a direct
-        // pointer, so we capture its shell PID and flag that tab's
-        // tracker entry as awaiting input. No session_id routing needed
-        // (unlike the hook path); the terminal pointer IS the route.
-        pid_t scrollScanAwaitingPid =
-            (terminal && m_claudeTabTracker) ? terminal->shellPid() : pid_t(0);
-        if (scrollScanAwaitingPid > 0)
-            m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, true);
-
-        auto clearPromptActive = [this, scrollScanAwaitingPid]() {
-            if (m_claudeStatusBarController)
-                m_claudeStatusBarController->setPromptActive(false);
-            if (m_claudeTabTracker && scrollScanAwaitingPid > 0)
-                m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, false);
-        };
-
-        connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn, clearPromptActive]() {
-            openClaudeAllowlistDialog(rule);
-            addBtn->deleteLater();
-            clearStatusMessage();
-            clearPromptActive();
-        });
-
-        // 0.6.27 — mark prompt active so the Claude status label switches
-        // to "Claude: prompting". Useful when the user is scrolled up in
-        // the terminal history and can't see the prompt directly.
-        if (m_claudeStatusBarController)
-            m_claudeStatusBarController->setPromptActive(true);
-
-        // Primary retraction: terminal scrollback scanner notices the
-        // footer is gone. Now debounced against transient TUI repaints
-        // (see terminalwidget.cpp:checkForClaudePermissionPrompt).
-        // ANTS-1174: Qt::SingleShotConnection auto-disconnects on
-        // first emission so we no longer need a heap-allocated
-        // shared_ptr<Connection> just to capture-and-call-disconnect
-        // from inside the lambda.
-        connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn,
-                [addBtn, clearPromptActive, this]() {
-            addBtn->deleteLater();
-            clearStatusMessage();
-            clearPromptActive();
-        }, Qt::SingleShotConnection);
-
-        // 0.6.33 — belt-and-suspenders retraction parity with the hook
-        // path (see line ~2676). If the terminal scanner never notices
-        // the prompt clearing (unmatched footer format on a future
-        // Claude Code release; prompt scrolled off the 12-line lookback
-        // before the debounce settled), toolFinished / sessionStopped
-        // give us a resolve signal so the button doesn't linger. Same
-        // reasoning as the hook path: errs on the side of closing the
-        // button too early rather than leaving a stale "Add to
-        // allowlist" stranded on the bar after the user already
-        // approved.
-        if (m_claudeIntegration) {
-            // ANTS-1174: same SingleShotConnection treatment.
-            connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
-                    addBtn, [addBtn, clearPromptActive, this](const QString &, bool) {
-                addBtn->deleteLater();
-                clearStatusMessage();
-                clearPromptActive();
-            }, Qt::SingleShotConnection);
-            connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
-                    addBtn, [addBtn, clearPromptActive, this](const QString &) {
-                addBtn->deleteLater();
-                clearStatusMessage();
-                clearPromptActive();
-            }, Qt::SingleShotConnection);
-        }
+    connect(terminal, &TerminalWidget::claudePermissionDetected, this,
+            [this, terminal](const QString &rawRule) {
+        showScrollScanPermissionButton(terminal, rawRule);
     });
 
     // ANTS-1858 — AskUserQuestion / selection-prompt detection. Unlike
@@ -438,7 +437,8 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     });
 
     // ANTS-1858 follow-up — reliable hook-driven clear for the question
-    // dot, mirroring the permission path's belt (see ~line 2302). The
+    // dot, mirroring the permission path's toolFinished / sessionStopped
+    // belt (ClaudeStatusBarController::showPermissionPrompt). The
     // footer-gone debounce in checkForClaudePermissionPrompt can't
     // complete while Claude streams output (the trailing-edge detect
     // timer rarely fires N=3 times), so the dot would stay red after
@@ -519,7 +519,6 @@ void MainWindow::onSshConnect(const QString &sshCommand, bool inNewTab) {
         newTab();
     }
     auto *t = focusedTerminal();
-    if (!t) t = currentTerminal();
     if (t) {
         // Small delay to let shell start
         // ANTS-5079 — guarded like newTabForRemote's settle timer: the tab
@@ -559,7 +558,6 @@ void MainWindow::showClaudeAutoModelNudge() {
 
 void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
     TerminalWidget *current = focusedTerminal();
-    if (!current) current = currentTerminal();
     if (!current) return;
 
     // Create new terminal
@@ -767,10 +765,6 @@ TerminalWidget *MainWindow::focusedTerminal() const {
     return activeTerminalInTab(currentTabRoot);
 }
 
-// For a given tab root (a TerminalWidget or a QSplitter of panes), return the
-// "active" terminal — the descendant that currently holds focus if any, else
-// the first one in the subtree. findChild() alone returns an arbitrary first
-// child, which gives the wrong pane in split layouts.
 // ANTS-5223 — the page of `tabs` holding `w`: `w` itself or the ancestor the
 // tab widget lists. Null when `w` is in no tab.
 QWidget *mainwindowdetail::tabPageOf(const QTabWidget *tabs, QWidget *w) {
@@ -781,6 +775,10 @@ QWidget *mainwindowdetail::tabPageOf(const QTabWidget *tabs, QWidget *w) {
     return nullptr;
 }
 
+// For a given tab root (a TerminalWidget or a QSplitter of panes), return the
+// "active" terminal — the descendant that currently holds focus if any, else
+// the first one in the subtree. findChild() alone returns an arbitrary first
+// child, which gives the wrong pane in split layouts.
 TerminalWidget *mainwindowdetail::activeTerminalInTab(QWidget *root) {
     if (!root) return nullptr;
     if (auto *t = qobject_cast<TerminalWidget *>(root)) return t;
@@ -835,7 +833,7 @@ void MainWindow::performTabClose(int index) {
     // otherwise the config would accumulate orphan entries for closed
     // tabs that no future tab will ever re-use (UUIDs are unique).
     {
-        QString tabId = m_tabSessionIds.value(w);
+        const QString tabId = m_tabSessionIds.value(w);
         if (!tabId.isEmpty()) {
             QJsonObject groups = m_config.tabGroups();
             if (groups.contains(tabId)) {
@@ -844,9 +842,7 @@ void MainWindow::performTabClose(int index) {
             }
         }
         // ANTS-5654 — and its session file, so no later restore can bring
-        // the closed tab back. A split tab's id is keyed on its terminal,
-        // as saveAllSessions reads it.
-        if (tabId.isEmpty() && term && term != w) tabId = m_tabSessionIds.value(term);
+        // the closed tab back.
         if (!tabId.isEmpty()) SessionManager::removeSession(tabId);
     }
 
@@ -1013,7 +1009,6 @@ void MainWindow::onTabChanged(int index) {
     // nothing bleeds from the previous tab. See
     // refreshStatusBarForActiveTab() for the lifecycle contract.
     auto *t = focusedTerminal();
-    if (!t) t = currentTerminal();
     if (t) {
         t->setFocus();
         onTitleChanged(t->shellTitle());

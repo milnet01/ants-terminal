@@ -73,10 +73,6 @@
 using namespace mainwindowdetail;
 
 namespace mainwindowdetail {
-// Forward declaration — definition lives next to setupQuakeMode() (its
-// only other caller) so the conversion table is one scroll away from
-// the portal binding.
-QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 
 // Defined below, after the Qt includes — sweeps stale
 // `/tmp/kwin_*_ants_*.js` orphans on startup.
@@ -170,16 +166,6 @@ bool g_relaunchOnQuit = false;
 }  // namespace mainwindowdetail
 
 namespace mainwindowdetail {
-// Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
-// written by kwinpositiontracker and the mainwindow move/center helpers
-// as `QTemporaryFile(autoRemove=false)` + chained-dbus removal on
-// script-unload. A crash, SIGKILL, or dbus-send hang between write and
-// unload orphans the file. No functional harm — KWin has already loaded
-// its copy — but the files accumulate in /tmp. Sweep anything older
-// than one hour on startup; that comfortably clears genuine orphans
-// without racing an in-flight script that another instance just wrote.
-// Runs once per process; a second MainWindow (File → New Window) does
-// not re-sweep.
 // Names of shells that don't warrant a confirm-on-close prompt.
 // If a tab's only descendants are these, the close is silent.
 const QSet<QString> &safeShellNames() {
@@ -231,6 +217,16 @@ QString firstNonShellDescendant(pid_t shellPid) {
     return {};
 }
 
+// Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
+// written by kwinpositiontracker and the mainwindow move/center helpers
+// as `QTemporaryFile(autoRemove=false)` + chained-dbus removal on
+// script-unload. A crash, SIGKILL, or dbus-send hang between write and
+// unload orphans the file. No functional harm — KWin has already loaded
+// its copy — but the files accumulate in /tmp. Sweep anything older
+// than one hour on startup; that comfortably clears genuine orphans
+// without racing an in-flight script that another instance just wrote.
+// Runs once per process; a second MainWindow (File → New Window) does
+// not re-sweep.
 void sweepKwinScriptOrphansOnce() {
     static bool swept = false;
     if (swept) return;
@@ -813,7 +809,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // Status update timer (every 2 seconds). updateStatusBar() walks the
     // terminal's cwd for .git/HEAD (for the branch label) and the
     // /proc/PID/comm (for the foreground-process label). refreshReviewButton()
-    // spawns a non-blocking `git diff --quiet HEAD` — both cheap, both
+    // spawns a non-blocking `git status --porcelain=v1 -b` — both cheap, both
     // async. Coupling both to the same tick ensures the Review Changes
     // button reflects git state changes the user made outside of Claude's
     // hooks (manual `git add`, edits from another editor, etc.) without
@@ -835,8 +831,8 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // BEFORE startShell() sets the PID, so shellCwd() returns empty
     // and the widget hides on the first tick. Wire to the 2-second
     // status timer so a stale-hidden state is recovered within 2 s
-    // of any cwd change. Same fix shape as refreshBgTasksButton
-    // (already correct via line 706 below). Spec: docs/specs/
+    // of any cwd change. Same fix shape as refreshBgTasksButton,
+    // which the same timer drives. Spec: docs/specs/
     // ANTS-1160.md §9. Test: tests/features/roadmap_status_bar_refresh/.
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRoadmapButton);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRepoVisibility);
@@ -1081,7 +1077,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
                 // parent — re-raise the main window over the freshly-
                 // shown dialog.
                 //
-                // The focusChanged queue-time check at line ~418 couldn't
+                // The focusChanged queue-time check above couldn't
                 // see this because the dialog didn't exist yet — the
                 // chain was `button → QStatusBar → QMainWindow`. Walking
                 // top-level widgets HERE at fire time catches dialogs
@@ -1874,12 +1870,12 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
     // function). The "Add to allowlist" button that invokes this dialog
     // lives on the status bar of a frameless QMainWindow. KWin's window
     // stacking on a frameless parent, combined with the focusChanged
-    // redirect lambda at line ~411 that queues a terminal->setFocus()
+    // redirect lambda in the ctor that queues a terminal->setFocus()
     // when the status-bar button briefly takes focus, places the dialog
     // BEHIND the main window unless we both raise() and activateWindow().
     // raise() fixes stacking order; activateWindow() makes the dialog the
     // input-focus target so the queued terminal-refocus becomes a no-op
-    // (the dialog-visible check at line ~464 sees it and bails). Without
+    // (that lambda's dialog-visible check sees it and bails). Without
     // activateWindow(), the user reports: "Add to allowlist click does
     // nothing — no dialog opens, no visible effect" — the dialog IS up,
     // just obscured by the main window.
@@ -2365,8 +2361,6 @@ void MainWindow::refreshStatusBarForActiveTab() {
     const bool haveStatus = (m_statusGitBranch && m_statusProcess);
 
     auto *t = focusedTerminal();
-    if (!t) t = currentTerminal();
-
     // Category B: always cancel transient notifications on tab switch.
     clearStatusMessage();
 
@@ -2474,7 +2468,6 @@ void MainWindow::updateStatusBar() {
         return;
 
     auto *t = focusedTerminal();
-    if (!t) t = currentTerminal();
     if (!t) {
         // No active terminal — clear every per-tab widget so nothing
         // bleeds from a previously-active tab after the last tab closes.
@@ -2663,7 +2656,6 @@ void MainWindow::refreshReviewButton() {
     if (!reviewBtn) return;
 
     auto *t = focusedTerminal();
-    if (!t) t = currentTerminal();
     if (!t) {
         // No active terminal — button has nothing to review against.
         reviewBtn->hide();
@@ -2729,7 +2721,6 @@ void MainWindow::refreshReviewButton() {
         bool stillCurrent = false;
         if (auto *p = self.data()) {
             TerminalWidget *now = p->focusedTerminal();
-            if (!now) now = p->currentTerminal();
             stillCurrent = now && now->shellCwd() == cwd;
         }
         if (btn && stillCurrent) {
@@ -2797,7 +2788,6 @@ void MainWindow::showTaskListDialog() {
 void MainWindow::refreshRoadmapButton() {
     if (!m_roadmapBtn) return;
     auto *t = focusedTerminal();
-    if (!t) t = currentTerminal();
     if (!t) {
         m_roadmapBtn->hide();
         m_roadmapPath.clear();
