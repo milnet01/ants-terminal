@@ -15,8 +15,10 @@ QTextBoundaryFinder::BoundaryType toFinderType(QAccessible::TextBoundaryType b) 
     case QAccessible::CharBoundary:     return QTextBoundaryFinder::Grapheme;
     case QAccessible::WordBoundary:     return QTextBoundaryFinder::Word;
     case QAccessible::SentenceBoundary: return QTextBoundaryFinder::Sentence;
-    case QAccessible::LineBoundary:                       // a terminal row is
-    case QAccessible::ParagraphBoundary: return QTextBoundaryFinder::Line;  // both
+    // Line finds wrap opportunities (roughly after each space), not
+    // terminal rows, so a "line" request gets a fragment (ANTS-5831).
+    case QAccessible::LineBoundary:
+    case QAccessible::ParagraphBoundary: return QTextBoundaryFinder::Line;
     case QAccessible::NoBoundary:       return QTextBoundaryFinder::Grapheme; // unused
     }
     return QTextBoundaryFinder::Grapheme;

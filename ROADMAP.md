@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6177 -->
+<!-- ants-roadmap-id-high-water: ANTS=6179 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94847,6 +94847,14 @@ worked after these.
   outputTextAt and the .cast exporter (a sixth copy) use it.
   commandTextAt keeps its own range (it reads the command, not the
   output). Still open: 15 medium, 9 low.
+  2026-10-23: MEDIUM done: F2 (flushBgRun), F3 (formatCommandDuration),
+  F4 (orderedSelection; unused isCellSelected removed), F5 (selectedText
+  composes through a11yComposeCols), F6 (publishSelection for the three
+  mouse paths; selectCommandOutput keeps its explicit clipboard copy),
+  F8 (ClaudePromptDetect::containsPermissionAnchor is the one list),
+  F10 (outputReceived emitted from the debounce timer, not the Claude
+  scan), F12-F16 and F19 (comments). F7 queued as ANTS-6178, F9 as
+  ANTS-6179 (source-scrape anchors). LOWs still open.
   **Layman:** Tidy the code that draws the terminal and handles typing and the mouse so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95725,6 +95733,39 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L02-F9).
   Lanes: terminal-grid.
+
+- 📋 [ANTS-6178] **One scrollToGlobalLine helper for prompt, bookmark and search-match navigation in TerminalWidget.**
+  From ANTS-6112 (L03 MEDIUM F7). "Scroll the view to global line N" is
+  written out four times in navigatePrompt, four in next/prevBookmark and
+  once in scrollToMatch; ANTS-5078 had to add updateScrollBar() to each
+  copy by hand. The one-line slack in viewTop - 1 / viewTop + 1 is
+  unexplained. Not done in the lane pass: INV-11
+  (test_terminalwidget_hotpath_perf, Inv11NavigationUpdatesScrollBar)
+  requires the literal updateScrollBar() inside the scrollToMatch,
+  nextBookmark and prevBookmark bodies, so the test's contract changes
+  with the fold.
+  Hot reload: none needed; a refactor with no new running state.
+  **Layman:** Jumping to a prompt, a bookmark or a search hit would all use one piece of code, so a fix to scrolling lands everywhere at once.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L03-F7).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6179] **Split TerminalWidget::paintEvent into a per-row painter and one helper per overlay.**
+  From ANTS-6112 (L03 MEDIUM F9). paintEvent's column loop does three
+  jobs (bg runs, text runs, underline/strike) with a `continue` on
+  wide-char continuation cells between the first two, so per-cell work
+  added below it silently skips the second half of wide characters; a
+  dozen overlay blocks follow. Not done in the lane pass:
+  test_terminalwidget_hotpath_perf, test_command_mark_gutter,
+  test_sync_output_snapshot and test_wide_char_bg_run_width read the
+  paintEvent body as text (const bool searchMatch, m_paintSearchSpans,
+  vr = firstRow, event->rect(), m_hlSpanCache.find(, the drawImage
+  calls), so those anchors move with the split.
+  Hot reload: none needed; a refactor with no new running state.
+  **Layman:** The function that draws the terminal is about a thousand lines long; splitting it lets a newcomer change one part without breaking another.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L03-F9).
+  Lanes: terminal-widget.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

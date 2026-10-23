@@ -36,6 +36,11 @@ namespace ClaudePromptDetect {
 // ("always allow", "allow access to") therefore never fire alone.
 bool isPermissionPromptStructure(const QStringList &recentLines);
 
+// True iff `line` holds one of the permission-prompt anchor phrases above.
+// The one list: the widget's footer scan and question-prompt exclusion
+// both use it.
+bool containsPermissionAnchor(const QString &line);
+
 }  // namespace ClaudePromptDetect
 
 #endif  // ANTS_CLAUDEPROMPTDETECT_H

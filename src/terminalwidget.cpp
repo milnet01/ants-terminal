@@ -178,10 +178,14 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_idleTimer.start();
     m_lastOutputTime.start();
 
-    // Claude Code permission detection (debounced)
+    // Debounced output scan: tells outputReceived listeners (MainWindow, the
+    // screen reader) that output arrived, then looks for Claude Code prompts.
     m_claudeDetectTimer.setSingleShot(true);
     m_claudeDetectTimer.setInterval(300);
-    connect(&m_claudeDetectTimer, &QTimer::timeout, this, &TerminalWidget::checkForClaudePermissionPrompt);
+    connect(&m_claudeDetectTimer, &QTimer::timeout, this, [this] {
+        emit outputReceived();
+        checkForClaudePermissionPrompt();
+    });
 
     // ANTS-1078 — drive screen-reader change events off the (throttled)
     // output signal. notifyAccessibilityChanged() no-ops when no AT runs.
@@ -873,6 +877,16 @@ bool TerminalWidget::event(QEvent *event) {
     return QWidget::event(event);
 }
 
+// A finished command's run time as the block chrome shows it: "850ms",
+// "4.2s" or "3m07s" style. ANTS-5077 — the stamps are wall-clock, so a
+// backwards clock step clamps to zero rather than showing a negative time.
+static QString formatCommandDuration(qint64 startMs, qint64 endMs) {
+    const qint64 ms = qMax<qint64>(0, endMs - startMs);
+    if (ms < 1000) return QString("%1ms").arg(ms);
+    if (ms < 60000) return QString("%1s").arg(ms / 1000.0, 0, 'f', 1);
+    return QString("%1m%2s").arg(ms / 60000).arg((ms % 60000) / 1000);
+}
+
 void TerminalWidget::paintEvent(QPaintEvent *event) {
     // ANTS-3461 — catch multi-second paint stalls (debug-gated, zero-cost off).
     StallGuard stallGuard("paintEvent");
@@ -965,35 +979,11 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     if (m_spanCacheDirty)
         invalidateSpanCaches();
 
-    // Pre-normalize selection bounds once per frame. isCellSelected previously
-    // ran std::swap + std::min/std::max per cell, producing identical output
-    // for every call in the frame — hoisting moves the O(rows·cols) overhead
-    // down to O(1).
+    // Order the selection bounds once per frame, not once per cell.
     const bool hasSel = m_hasSelection;
-    const bool rectSel = m_rectSelection;
-    int selLineStart = 0, selColStart = 0, selLineEnd = 0, selColEnd = 0;
-    int selRectColMin = 0, selRectColMax = 0;
-    if (hasSel) {
-        QPoint s = m_selStart, e = m_selEnd;
-        if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
-            std::swap(s, e);
-        selLineStart = s.x(); selColStart = s.y();
-        selLineEnd   = e.x(); selColEnd   = e.y();
-        selRectColMin = std::min(m_selStart.y(), m_selEnd.y());
-        selRectColMax = std::max(m_selStart.y(), m_selEnd.y());
-    }
+    const OrderedSelection sel = orderedSelection();
     auto cellInSelection = [&](int gl, int col) -> bool {
-        if (!hasSel) return false;
-        if (rectSel) {
-            return gl >= selLineStart && gl <= selLineEnd
-                && col >= selRectColMin && col <= selRectColMax;
-        }
-        if (gl < selLineStart || gl > selLineEnd) return false;
-        if (selLineStart == selLineEnd)
-            return col >= selColStart && col <= selColEnd;
-        if (gl == selLineStart) return col >= selColStart;
-        if (gl == selLineEnd)   return col <= selColEnd;
-        return true;
+        return hasSel && sel.contains(gl, col);
     };
 
     // ANTS-3454 — bound the per-row shape+draw to the rows the damage rect
@@ -1084,6 +1074,21 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         int bgRunStartX = 0;
         int bgRunWidth = 0;   // 0 == no run active
         QColor bgRunColor;
+        // Paint the pending bg run, if any. ANTS-1864 — Source mode so a
+        // semi-transparent cell bg REPLACES the destination alpha rather
+        // than compositing on top of the base fill (SourceOver would
+        // double-count alpha, making coloured cells visibly more opaque
+        // than the surrounding terminal area on translucent windows).
+        // alpha=255 cells (selection, searchMatch): Source and SourceOver
+        // are equivalent when src.a==1 so no regression.
+        auto flushBgRun = [&] {
+            if (bgRunWidth <= 0) return;
+            if (bgRunColor.alpha() < 255)
+                p.setCompositionMode(QPainter::CompositionMode_Source);
+            p.fillRect(bgRunStartX, px_y, bgRunWidth, m_cellHeight, bgRunColor);
+            if (bgRunColor.alpha() < 255)
+                p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        };
 
         for (int col = 0; col < cols; ++col) {
             int px_x = m_padding + col * m_cellWidth;
@@ -1171,21 +1176,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 if (!c.isWideCont)
                     bgRunWidth += cellDrawWidth;
             } else {
-                if (bgRunWidth > 0) {
-                    // ANTS-1864 — use Source mode so a semi-transparent cell
-                    // bg REPLACES the destination alpha rather than compositing
-                    // on top of the base fill (SourceOver would double-count
-                    // alpha, making coloured cells visibly more opaque than
-                    // the surrounding terminal area on translucent windows).
-                    // alpha=255 cells (selection, searchMatch): Source and
-                    // SourceOver are equivalent when src.a==1 so no regression.
-                    if (bgRunColor.alpha() < 255)
-                        p.setCompositionMode(QPainter::CompositionMode_Source);
-                    p.fillRect(bgRunStartX, px_y, bgRunWidth,
-                               m_cellHeight, bgRunColor);
-                    if (bgRunColor.alpha() < 255)
-                        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-                }
+                flushBgRun();
                 if (wantBgFill) {
                     bgRunStartX = px_x;
                     bgRunWidth = cellDrawWidth;
@@ -1339,15 +1330,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         }
 
         // ANTS-1180: flush trailing bg-fill run for this row.
-        // ANTS-1864: Source mode for same reason as mid-row flush above.
-        if (bgRunWidth > 0) {
-            if (bgRunColor.alpha() < 255)
-                p.setCompositionMode(QPainter::CompositionMode_Source);
-            p.fillRect(bgRunStartX, px_y, bgRunWidth,
-                       m_cellHeight, bgRunColor);
-            if (bgRunColor.alpha() < 255)
-                p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-        }
+        flushBgRun();
 
         // Draw all text runs using QTextLayout for proper ligature shaping.
         // Build the QString from accumulated codepoints once per run.
@@ -1443,18 +1426,8 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 p.setPen(dimColor);
 
                 QString info;
-                if (pr.commandEndMs > 0) {
-                    // ANTS-5077 — wall-clock stamps; a backwards clock step
-                    // must not show a negative duration.
-                    qint64 durationMs = qMax<qint64>(0, pr.commandEndMs - pr.commandStartMs);
-                    if (durationMs < 1000)
-                        info = QString("%1ms").arg(durationMs);
-                    else if (durationMs < 60000)
-                        info = QString("%1s").arg(durationMs / 1000.0, 0, 'f', 1);
-                    else
-                        info = QString("%1m%2s").arg(durationMs / 60000).arg((durationMs % 60000) / 1000);
-                    info += "  ";
-                }
+                if (pr.commandEndMs > 0)
+                    info = formatCommandDuration(pr.commandStartMs, pr.commandEndMs) + "  ";
 
                 QDateTime dt = QDateTime::fromMSecsSinceEpoch(pr.commandStartMs);
                 info += dt.toString("HH:mm:ss");
@@ -1760,11 +1733,8 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
 
                 // Duration (right side)
                 if (pr.commandStartMs > 0 && pr.commandEndMs > 0) {
-                    qint64 dur = qMax<qint64>(0, pr.commandEndMs - pr.commandStartMs);  // ANTS-5077
-                    QString durStr;
-                    if (dur < 1000) durStr = QString("%1ms").arg(dur);
-                    else if (dur < 60000) durStr = QString("%1s").arg(dur / 1000.0, 0, 'f', 1);
-                    else durStr = QString("%1m%2s").arg(dur / 60000).arg((dur % 60000) / 1000);
+                    const QString durStr =
+                        formatCommandDuration(pr.commandStartMs, pr.commandEndMs);
                     QColor dimColor = m_grid->defaultFg();
                     dimColor.setAlpha(130);
                     p.setPen(dimColor);
@@ -3130,6 +3100,8 @@ QByteArray TerminalWidget::encodeKittyKey(const QKeyEvent *event) const {
     case Qt::Key_F1:       legacyFinal = 'P'; useLegacyFormat = true; break;
     case Qt::Key_F2:       legacyFinal = 'Q'; useLegacyFormat = true; break;
     case Qt::Key_F4:       legacyFinal = 'S'; useLegacyFormat = true; break;
+    // F3 is CSI 13~, not CSI R: the Kitty spec avoids R because it
+    // collides with the cursor-position report.
     case Qt::Key_F3:       legacyNumber = 13; useLegacyFormat = true; break;
     case Qt::Key_F5:       legacyNumber = 15; useLegacyFormat = true; break;
     case Qt::Key_F6:       legacyNumber = 17; useLegacyFormat = true; break;
@@ -3225,15 +3197,12 @@ void TerminalWidget::copySelectionRich() {
     // Build both plain text and HTML
     QString plainText = selectedText();
 
-    // m_selStart/m_selEnd: x() = globalLine, y() = col. RC-44 (audit
-    // 2026-09-26) — ordered by (line, col) as selectedText() orders them;
-    // ordering by line alone left a right-to-left selection on one line with
-    // startCol > endCol, and the HTML half came out empty.
-    QPoint s = m_selStart, e = m_selEnd;
-    if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
-        std::swap(s, e);
-    const int startLine = s.x(), endLine = e.x();
-    const int startCol = s.y(), endCol = e.y();
+    // RC-44 (audit 2026-09-26) — ordered by (line, col) as selectedText()
+    // orders them; ordering by line alone left a right-to-left selection on
+    // one line with startCol > endCol, and the HTML half came out empty.
+    const OrderedSelection sel = orderedSelection();
+    const int startLine = sel.startLine, endLine = sel.endLine;
+    const int startCol = sel.startCol, endCol = sel.endCol;
 
     auto *mimeData = new QMimeData();
     mimeData->setText(plainText);
@@ -3402,11 +3371,10 @@ void TerminalWidget::recalcGridSize() {
     // when the main window finishes laying out), and recalcGridSize
     // will run again with real dimensions.
     //
-    // Threshold: if the computed rows/cols are the minimum floor
-    // (3, 10) AND the widget's raw width/height are smaller than a
-    // single cell worth of content (<10 px), we're pre-layout.
-    // Genuinely tiny-but-laid-out windows (rare) still fall through
-    // to the resize below.
+    // Threshold: the widget is under 20 px in both directions and the
+    // computed size differs from the grid's current one. Genuinely
+    // tiny-but-laid-out windows (rare) still fall through to the resize
+    // below.
     const bool preLayout = (width() < 20 && height() < 20);
     if (preLayout && (rows != m_grid->rows() || cols != m_grid->cols())) {
         // Skip — the real resize will come via resizeEvent later.
@@ -3772,15 +3740,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
             m_selecting = false;
             m_clickCount = 0;
 
-            QString text = selectedText();
-            if (!text.isEmpty()) {
-                clipboardguard::writeText(text,
-                    clipboardguard::Source::Trusted,
-                    QClipboard::Selection);
-                if (m_autoCopyOnSelect)
-                    clipboardguard::writeText(text,
-                        clipboardguard::Source::Trusted);
-            }
+            publishSelection();
             update();
             return;
         }
@@ -3869,18 +3829,7 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
         m_selEnd = pixelToCell(event->pos());
         m_hasSelection = (m_selStart != m_selEnd);
         if (m_hasSelection) {
-            QString text = selectedText();
-            if (!text.isEmpty()) {
-                // Always copy to X11 primary selection
-                clipboardguard::writeText(text,
-                    clipboardguard::Source::Trusted,
-                    QClipboard::Selection);
-                // Auto-copy to clipboard too if enabled
-                if (m_autoCopyOnSelect) {
-                    clipboardguard::writeText(text,
-                        clipboardguard::Source::Trusted);
-                }
-            }
+            publishSelection();
         } else {
             // Simple click (no drag) — click-to-move cursor in prompt
             QPoint cell = pixelToCell(event->pos());
@@ -3918,17 +3867,7 @@ void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event) {
         m_hasSelection = true;
         m_selecting = false;
 
-        QString text = selectedText();
-        if (!text.isEmpty()) {
-            clipboardguard::writeText(text,
-                clipboardguard::Source::Trusted,
-                QClipboard::Selection);
-            if (m_autoCopyOnSelect) {
-                clipboardguard::writeText(text,
-                    clipboardguard::Source::Trusted);
-            }
-        }
-
+        publishSelection();
         update();
     }
 }
@@ -3943,29 +3882,28 @@ void TerminalWidget::clearSelection() {
     m_selEnd = QPoint(-1, -1);
 }
 
-bool TerminalWidget::isCellSelected(int globalLine, int col) const {
-    if (!m_hasSelection) return false;
-
+TerminalWidget::OrderedSelection TerminalWidget::orderedSelection() const {
     QPoint s = m_selStart, e = m_selEnd;
     if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
         std::swap(s, e);
+    OrderedSelection sel;
+    sel.startLine = s.x();
+    sel.startCol = s.y();
+    sel.endLine = e.x();
+    sel.endCol = e.y();
+    sel.rectColMin = std::min(m_selStart.y(), m_selEnd.y());
+    sel.rectColMax = std::max(m_selStart.y(), m_selEnd.y());
+    sel.rect = m_rectSelection;
+    return sel;
+}
 
-    int sLine = s.x(), sCol = s.y();
-    int eLine = e.x(), eCol = e.y();
-
-    if (m_rectSelection) {
-        // Rectangular/column selection: same column range on every line
-        int minCol = std::min(m_selStart.y(), m_selEnd.y());
-        int maxCol = std::max(m_selStart.y(), m_selEnd.y());
-        return globalLine >= sLine && globalLine <= eLine &&
-               col >= minCol && col <= maxCol;
-    }
-
-    if (globalLine < sLine || globalLine > eLine) return false;
-    if (sLine == eLine) return col >= sCol && col <= eCol;
-    if (globalLine == sLine) return col >= sCol;
-    if (globalLine == eLine) return col <= eCol;
-    return true;
+void TerminalWidget::publishSelection() {
+    const QString text = selectedText();
+    if (text.isEmpty()) return;
+    clipboardguard::writeText(text, clipboardguard::Source::Trusted,
+                              QClipboard::Selection);
+    if (m_autoCopyOnSelect)
+        clipboardguard::writeText(text, clipboardguard::Source::Trusted);
 }
 
 QString TerminalWidget::selectedText() const {
@@ -3979,39 +3917,25 @@ QString TerminalWidget::selectedText(qsizetype maxChars, int *linesSkipped) cons
     if (linesSkipped) *linesSkipped = 0;
     if (!m_hasSelection) return {};
 
-    QPoint s = m_selStart, e = m_selEnd;
-    if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
-        std::swap(s, e);
-
+    const OrderedSelection sel = orderedSelection();
     const int cols = m_grid->cols();
-    // Rectangular selection: same column range on every line.
-    const int minCol = std::min(m_selStart.y(), m_selEnd.y());
-    const int maxCol = std::max(m_selStart.y(), m_selEnd.y());
 
     auto lineAt = [&](int gl) {
         int startCol, endCol;
-        if (m_rectSelection) {
-            startCol = minCol;
-            endCol = std::min(maxCol, cols - 1);
+        if (sel.rect) {
+            startCol = sel.rectColMin;
+            endCol = std::min(sel.rectColMax, cols - 1);
         } else {
-            startCol = (gl == s.x()) ? s.y() : 0;
-            endCol = (gl == e.x()) ? e.y() : cols - 1;
+            startCol = (gl == sel.startLine) ? sel.startCol : 0;
+            endCol = (gl == sel.endLine) ? sel.endCol : cols - 1;
         }
-        QString line;
-        for (int c = startCol; c <= endCol; ++c) {
-            uint32_t cp = cellAtGlobal(gl, c).codepoint;
-            if (cp == 0) cp = ' ';
-            line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
-            if (auto *comb = combiningAt(gl, c)) {
-                for (uint32_t combCp : *comb)
-                    line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
-            }
-        }
+        QString line = a11yComposeCols(gl, startCol, endCol + 1);
         while (line.endsWith(' ')) line.chop(1);
         return line;
     };
 
-    const SelectionTail tail = assembleSelectionTail(s.x(), e.x(), lineAt, maxChars);
+    const SelectionTail tail =
+        assembleSelectionTail(sel.startLine, sel.endLine, lineAt, maxChars);
     if (linesSkipped) *linesSkipped = tail.linesSkipped;
     return tail.text;
 }
@@ -4037,8 +3961,8 @@ int TerminalWidget::a11yLastNonBlankCol(int globalLine) const {
 }
 
 // Compose cols [beginCol, endCol) of globalLine into UTF-16 text
-// (codepoint 0 -> space, plus combining marks) — the same per-cell
-// composition selectedText() uses; no trimming.
+// (codepoint 0 -> space, plus combining marks); no trimming. selectedText()
+// builds its lines through this too.
 QString TerminalWidget::a11yComposeCols(int globalLine, int beginCol, int endCol) const {
     QString out;
     for (int c = beginCol; c < endCol; ++c) {
@@ -4802,17 +4726,11 @@ void TerminalWidget::searchPrev() {
 }
 
 bool TerminalWidget::isCellSearchMatch(int globalLine, int col) const {
-    // Indie-review 2026-05-13: early-return on the empty-matches case
-    // (no search active) — called twice per cell per frame; without
-    // the short-circuit the binary-search probe runs ~16,000 times per
-    // frame at 60 fps with nothing to find.
+    // A reference predicate with no runtime caller: paintEvent precomputes
+    // each row's matches into m_paintSearchSpans instead (ANTS-3457).
     if (m_searchMatches.empty()) return false;
-    // m_searchMatches is populated in ascending globalLine order (see
-    // updateSearchMatches), so lower_bound on globalLine finds the first
-    // match at or after this line. Previous impl scanned from index 0 on
-    // every call — O(cells × matches) per frame; binary search makes it
-    // O(cells × log matches) which is the measurable hot path when the
-    // search has matches in deep scrollback.
+    // performSearch fills m_searchMatches in ascending globalLine order, so
+    // lower_bound on globalLine finds the first match at or after this line.
     auto it = std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(), globalLine,
         [](const SearchMatch &m, int gl) { return m.globalLine < gl; });
     for (; it != m_searchMatches.end() && it->globalLine == globalLine; ++it) {
@@ -5325,9 +5243,6 @@ pid_t TerminalWidget::shellPid() const {
 // --- Claude Code permission detection ---
 
 void TerminalWidget::checkForClaudePermissionPrompt() {
-    // Notify listeners that the terminal has recent output (debounced)
-    emit outputReceived();
-
     // ANTS-1858 — AskUserQuestion / pure-selection prompt detection.
     // Claude blocks on the user just like a tool-permission prompt, but
     // it is auto-allowed (no PermissionRequest hook) and renders a
@@ -5346,12 +5261,8 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
         bool permFooter = false;
         for (int i = total - 1; i >= std::max(0, total - 12); --i) {
             const QString text = lineText(i);
-            if (text.contains(QLatin1String("Tab to accept")) ||
-                text.contains(QLatin1String("Do you want to proceed")) ||
-                text.contains(QLatin1String("allow access to")) ||
-                text.contains(QLatin1String("always allow"))) {
+            if (ClaudePromptDetect::containsPermissionAnchor(text))
                 permFooter = true;
-            }
             if (text.contains(QLatin1String("Enter to select"))) {
                 questionFooter = true;
             }
@@ -5409,11 +5320,7 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     int footerLine = -1;
     if (claudePromptStructure) {
         for (int i = totalLines - 1; i >= std::max(0, totalLines - 12); --i) {
-            QString text = lineText(i);
-            if (text.contains(QLatin1String("Tab to accept"))
-                || text.contains(QLatin1String("Do you want to proceed"))
-                || text.contains(QLatin1String("allow access to"))
-                || text.contains(QLatin1String("always allow"))) {
+            if (ClaudePromptDetect::containsPermissionAnchor(lineText(i))) {
                 footerLine = i;
                 break;
             }
@@ -5842,11 +5749,10 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
         if (!rule.pattern.isValid()) continue;
         rule.actionType = obj["action_type"].toString("notify");
         rule.actionValue = obj["action_value"].toString();
-        // 0.6.9 — instant flag (iTerm2 convention): when true, fire on every
-        // PTY chunk (useful for in-progress prompts like password prompts).
-        // When false (default), fires only on completed-line evaluation —
-        // which today still runs per chunk; non-instant rules become eligible
-        // only after a newline-terminated chunk to reduce mid-line spam.
+        // 0.6.9 — instant flag (iTerm2 convention): when true, checkTriggers
+        // fires it on every PTY chunk (useful for in-progress prompts like
+        // password prompts). When false (default), onGridLineCompleted fires
+        // it once per completed line (terminalwidget.h, TriggerRule).
         rule.instant = obj["instant"].toBool(false);
         m_triggerRules.push_back(rule);
     }
@@ -6426,8 +6332,9 @@ int TerminalWidget::copyLastCommandOutput() {
 
 // "Re-run last completed command" action: same tail-skip rule as
 // copyLastCommandOutput. Returns the re-run region index, or -1 if no
-// finished command exists. Bails when the shell is mid-command so we
-// don't splice text into whatever the user is typing.
+// finished command exists. It does not check what the shell is doing now,
+// and returns the index even when the re-run confirmation is then
+// cancelled (ANTS-5830).
 int TerminalWidget::rerunLastCommand() {
     const auto &regions = m_grid->promptRegions();
     for (int i = static_cast<int>(regions.size()) - 1; i >= 0; --i) {

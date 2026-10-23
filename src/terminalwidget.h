@@ -182,7 +182,7 @@ public:
         QRegularExpression pattern;
         // Dispatch types (emit via checkTriggers → triggerFired signal):
         //   "notify" | "sound" | "command" | "bell" | "inject" | "run_script"
-        // Grid-mutation types (run via onLineCompleted, mutate grid cells):
+        // Grid-mutation types (run via onGridLineCompleted, mutate grid cells):
         //   "highlight_line" | "highlight_text" | "make_hyperlink"  (0.6.13)
         QString actionType;
         QString actionValue;
@@ -305,8 +305,9 @@ public:
     // promptRegions() backwards for the most recent region with
     // commandEndMs > 0 (skipping the tail region if a command is still
     // running), then delegate to outputTextAt / rerunCommandAt.
-    // Return value is the number of characters copied / the index re-run
-    // (>=0 on success), or -1 when no completed command exists. Callers
+    // Return value is the number of characters copied / the index of the
+    // command offered for re-run (>=0; a cancelled confirmation still
+    // returns it, ANTS-5830), or -1 when no completed command exists. Callers
     // use the return to decide whether to toast "copied N chars" or
     // "no completed command" in the status bar.
     //
@@ -444,7 +445,27 @@ private:
     void copySelection();
     void clearSelection();
     bool hasSelection() const;
-    bool isCellSelected(int globalLine, int col) const;
+    // A finished mouse selection goes to the X11 primary selection, and to
+    // the clipboard too when auto-copy-on-select is on.
+    void publishSelection();
+
+    // m_selStart / m_selEnd with the two ends ordered by (line, col); x() is
+    // the global line, y() the column. A rectangular selection takes
+    // columns [rectColMin, rectColMax] on every line.
+    struct OrderedSelection {
+        int startLine = 0, startCol = 0, endLine = 0, endCol = 0;
+        int rectColMin = 0, rectColMax = 0;
+        bool rect = false;
+        bool contains(int globalLine, int col) const {
+            if (globalLine < startLine || globalLine > endLine) return false;
+            if (rect) return col >= rectColMin && col <= rectColMax;
+            if (startLine == endLine) return col >= startCol && col <= endCol;
+            if (globalLine == startLine) return col >= startCol;
+            if (globalLine == endLine) return col <= endCol;
+            return true;
+        }
+    };
+    OrderedSelection orderedSelection() const;
 
     // Cell access helper (consolidates scrollback/screen lookup)
     const Cell &cellAtGlobal(int globalLine, int col) const;

@@ -30,10 +30,7 @@ bool isPermissionPromptStructure(const QStringList &recentLines) {
         const bool tabAccept = t.contains(QLatin1String("Tab to accept"));
         if (tabAccept || t.contains(QLatin1String("Ctrl+e to explain")))
             hasStrong = true;
-        if (tabAccept ||
-            t.contains(QLatin1String("Do you want to proceed")) ||
-            t.contains(QLatin1String("allow access to")) ||
-            t.contains(QLatin1String("always allow")))
+        if (containsPermissionAnchor(t))
             hasAnchor = true;
         if (t.startsWith(QChar(0x276F)) /* ❯ */ ||
             t.contains(QLatin1String("Esc to cancel")) ||
@@ -43,6 +40,13 @@ bool isPermissionPromptStructure(const QStringList &recentLines) {
     }
 
     return hasAnchor && (hasStrong || hasSelection);
+}
+
+bool containsPermissionAnchor(const QString &line) {
+    return line.contains(QLatin1String("Tab to accept")) ||
+           line.contains(QLatin1String("Do you want to proceed")) ||
+           line.contains(QLatin1String("allow access to")) ||
+           line.contains(QLatin1String("always allow"));
 }
 
 }  // namespace ClaudePromptDetect
