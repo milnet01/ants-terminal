@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6215 -->
+<!-- ants-roadmap-id-high-water: ANTS=6220 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95282,6 +95282,10 @@ worked after these.
   statusMaskFromBoxes()) use it. The wantX flags in the card render read
   the mask, not the boxes, and stay. Both HIGH done; medium and low
   still open.
+  2026-10-23: MEDIUMs. Done: F3 rereadTabBullets, F8 presetFromName
+  from presetName, F9 named count columns and kind span, F10-F15 and
+  F23 comments. Queued: F4 ANTS-6216, F5 ANTS-6217, F6 ANTS-6218, F7
+  ANTS-6219, F23 rename ANTS-6220. LOWs remain.
   **Layman:** Tidy the roadmap window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96295,6 +96299,72 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L12-F3).
   Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6216] **Drop the roadmap dialog's and the shortcuts cheatsheet's own dialog-palette blocks, which repeat DialogChrome::applyTheme().**
+  From ANTS-6122 (L13 MEDIUM F4). DialogChrome::install already calls
+  applyTheme(), which sets the dialog palette and title-bar colours;
+  roadmapdialog.cpp and roadmapshortcutsdialog.cpp set the same palette
+  again (the cheatsheet's copy adds Highlight). Keep only the
+  widget-specific palettes (viewer, contents list, cheatsheet table).
+  Queued, not done in the lane pass: test_roadmap_dialog_cards pins
+  `dp.setColor(QPalette::Window, th.bgPrimary)` and
+  `dp.setColor(QPalette::Base, th.bgPrimary)`, so those assertions move
+  with the change. Feeds ANTS-5796 (dup:35e422da99c0).
+  Hot reload: none needed; no new running state.
+  **Layman:** Two roadmap windows set their own background colours on top of the shared theme code, so a theme change has three places to edit.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L13-F4).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6217] **Give the roadmap dialog's two background git processes one error policy.**
+  From ANTS-6122 (L13 MEDIUM F5). The recent-commits handler deletes its
+  QProcess only on FailedToStart; the blame handler deletes it and marks
+  the run answered on any error, including a timeout while the process
+  still runs. Decide which is right (or name why they differ), then
+  make the other match. Queued: choosing changes behaviour on an error
+  path, so it wants its own test.
+  Hot reload: none needed; no new running state.
+  **Layman:** Two background git jobs in the roadmap window handle errors differently, and nothing says whether that is on purpose.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L13-F5).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6218] **Pass renderCardsHtml's section state to its emitter lambdas as parameters instead of [&] captures.**
+  From ANTS-6122 (L13 MEDIUM F6). emitSectionHeader reads the outer
+  sectionExpanded, and openTable()/colHeadEmitted flip flags the main
+  loop also reads. Queued: renderCardsHtml is the dialog's whole
+  renderer and test_roadmap_dialog_cards pins many of its literals, so
+  the restructure wants its own commit.
+  Hot reload: none needed; no new running state.
+  **Layman:** The roadmap card renderer is very long and its helper pieces quietly change shared state, which makes it hard to follow.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L13-F6).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6219] **Build the roadmap card stylesheet with named substitutions instead of 24 positional %N placeholders.**
+  From ANTS-6122 (L13 MEDIUM F7). Adding a CSS value means renumbering
+  the chain; the duplicate-id banner already works around it with an
+  inline style. Queued: test_roadmap_dialog_cards pins
+  `.rm-id{font-family:monospace;font-size:%15px;`,
+  `.rm-state-label{font-size:%20px;color:%6;` and
+  `.rm-section-title{color:%2;`, so those assertions move with it.
+  Hot reload: none needed; no new running state.
+  **Layman:** The roadmap window's style sheet fills 24 numbered gaps in order, so adding one style means renumbering the rest by hand.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L13-F7).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6220] **Rename RoadmapDialog::collectCurrentBullets() and renderCardsHtml's currentBullets to name current-work signals.**
+  From ANTS-6122 (L13 MEDIUM F23). The lane pass documented the method;
+  the rename is queued because spec ANTS-3793 names
+  collectCurrentBullets(), tests/features/roadmap_viewer/spec.md INV-4
+  names `currentBullets`, and test_roadmap_dialog_cards' messages use
+  the name.
+  Hot reload: none needed; no new running state.
+  **Layman:** A roadmap window function is named as if it returns roadmap items, but it returns recent changelog lines and commits.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L13-F23).
+  Lanes: roadmap-dialog.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
