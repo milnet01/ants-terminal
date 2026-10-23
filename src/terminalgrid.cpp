@@ -262,13 +262,9 @@ void TerminalGrid::setResponseCallback(ResponseCallback cb) {
 // VOLUME only.
 void TerminalGrid::sendQueryResponse(const std::string &data) {
     if (!m_responseCallback) return;
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (now - m_queryRespWindowStartMs >= 1000) {
-        m_queryRespWindowStartMs = now;
-        m_queryRespCount = 0;
-    }
-    if (m_queryRespCount >= QUERY_RESP_MAX_PER_SEC) return;
-    m_queryRespCount += 1;
+    m_queryRespQuota.roll(QDateTime::currentMSecsSinceEpoch(), 1000);
+    if (m_queryRespQuota.count >= QUERY_RESP_MAX_PER_SEC) return;
+    m_queryRespQuota.count += 1;
     m_responseCallback(data);
 }
 
@@ -810,65 +806,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1049:
                 case 47:
                 case 1047:
-                    if (!m_altScreenActive) {
-                        m_altScreenActive = true;
-                        // ANTS-1130 — track the mode that entered so
-                        // exit can do the right DECSC handling. Only
-                        // 1049 saves+restores cursor/SGR/origin/wrap;
-                        // 47 and 1047 leave those alone on exit per
-                        // xterm ctlseqs.
-                        m_altScreenMode = v;
-                        // 0.6.22 — alt-screen doesn't touch scrollback; make sure
-                        // a stale redraw window doesn't leak across the boundary.
-                        m_csiClearRedrawActive = false;
-                        // Drop any half-staged Kitty `m=1` chunked
-                        // image transfer. Otherwise a subsequent
-                        // legitimate APC `m=0` from a different
-                        // sender prepends our stale bytes and
-                        // produces a poisoned image attributed to
-                        // the new sender.
-                        m_kittyChunkBuffer.clear();
-                        m_kittyChunkBuffer.shrink_to_fit();
-                        m_kittyChunkId = 0;
-                        m_kittyChunkParams.clear();
-                        markAllScreenDirty();
-                        m_altCursorRow = m_cursorRow;
-                        m_altCursorCol = m_cursorCol;
-                        m_altScrollTop = m_scrollTop;
-                        m_altScrollBottom = m_scrollBottom;
-                        m_altScreen = m_screenLines;
-                        m_altScreenHyperlinks = m_screenHyperlinks;
-                        m_altInlineImages = m_inlineImages;
-                        applyPromptRegionShift();  // ANTS-5029
-                        m_altPromptRegions = m_promptRegions;
-                        // DECSC-equivalent: save SGR + origin + wrap
-                        // alongside cursor — only meaningful for mode
-                        // 1049, but cheap to always snapshot.
-                        m_altSavedAttrs = m_currentAttrs;
-                        m_altSavedOriginMode = m_originMode;
-                        m_altSavedAutoWrap = m_autoWrap;
-                        for (auto &line : m_screenLines) {
-                            for (auto &c : line.cells) {
-                                c.codepoint = ' ';
-                                c.attrs = CellAttrs{};
-                                c.attrs.fg = m_defaultFg;
-                                c.attrs.bg = m_defaultBg;
-                            }
-                            line.combining.clear();
-                        }
-                        for (auto &hl : m_screenHyperlinks)
-                            hl.clear();
-                        m_inlineImages.clear();
-                        m_promptRegions.clear();
-                        // Bytes for the just-cleared images are still
-                        // referenced by m_altInlineImages (saved above) so
-                        // they remain allocated until alt-screen exit;
-                        // recompute keeps the budget counter in sync with
-                        // both containers.
-                        recomputeImageBudget();
-                        m_cursorRow = 0;
-                        m_cursorCol = 0;
-                    }
+                    enterAltScreen(v);
                     break;
                 case 1000: m_mouseButtonMode = true; break;
                 case 1002: m_mouseMotionMode = true; break;
@@ -893,46 +831,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1049:
                 case 47:
                 case 1047:
-                    if (m_altScreenActive) {
-                        m_altScreenActive = false;
-                        // ANTS-1130 — entry mode determines exit
-                        // semantics, NOT the exit code that arrived.
-                        // Programs sometimes enter with 1049 and exit
-                        // with a different code; xterm uses entry-mode
-                        // to decide DECSC restore.
-                        const int enteredMode = m_altScreenMode;
-                        m_altScreenMode = 0;
-                        markAllScreenDirty();
-                        m_screenLines = m_altScreen;
-                        m_screenHyperlinks = m_altScreenHyperlinks;
-                        m_inlineImages = m_altInlineImages;
-                        applyPromptRegionShift();  // ANTS-5029
-                        m_promptRegions = m_altPromptRegions;
-                        m_scrollTop = m_altScrollTop;
-                        m_scrollBottom = m_altScrollBottom;
-                        if (enteredMode == 1049) {
-                            // 1049: full DECSC restore — cursor + SGR
-                            // + origin + wrap.
-                            m_cursorRow = m_altCursorRow;
-                            m_cursorCol = m_altCursorCol;
-                            m_currentAttrs = m_altSavedAttrs;
-                            m_originMode = m_altSavedOriginMode;
-                            m_autoWrap = m_altSavedAutoWrap;
-                        }
-                        // 47 / 1047: per xterm ctlseqs, leave cursor /
-                        // SGR / origin / wrap as the alt-screen
-                        // application left them. The cells are restored
-                        // to main-screen content (above), so the cursor
-                        // may now point at a non-cleared cell — that's
-                        // intentional (matches xterm behaviour).
-                        m_altScreen.clear();
-                        m_altScreenHyperlinks.clear();
-                        m_altInlineImages.clear();
-                        m_altPromptRegions.clear();
-                        // Restored m_inlineImages above; recompute so the
-                        // budget reflects only the images still referenced.
-                        recomputeImageBudget();
-                    }
+                    exitAltScreen();
                     break;
                 case 1000: m_mouseButtonMode = false; break;
                 case 1002: m_mouseMotionMode = false; break;
@@ -1117,18 +1016,10 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             auto osc133ForgeryCb   = std::move(m_osc133ForgeryCallback);
             auto promptMarkerCb    = std::move(m_promptMarkerCallback);
             QByteArray osc133Key   = m_osc133Key;
-            // ANTS-5033 — the notification budget survives too, or a stream
-            // that resets before each notification would refill it every time.
-            // ANTS-5122 — so do the OSC 52 clipboard and OSC 1337 user-var
-            // budgets, window start included: a zeroed start reads as an
-            // expired window and would reset the count on the next write.
-            const qint64 notifyWindowStartMs = m_notifyWindowStartMs;
-            const int notifyCount  = m_notifyCount;
-            const qint64 osc52WindowStartMs = m_osc52WindowStartMs;
-            const int osc52WriteCount = m_osc52WriteCount;
-            const qint64 osc52WriteBytes = m_osc52WriteBytes;
-            const qint64 userVarWindowStartMs = m_userVarWindowStartMs;
-            const int userVarWriteCount = m_userVarWriteCount;
+            // ANTS-5033, ANTS-5122 — the per-minute quotas survive, window
+            // starts included: a zeroed start reads as an expired window and
+            // would reset the count on the next write.
+            const MinuteQuotas quotas = m_quotas;
             // ANTS-4456 — configuration pushed onto the grid from outside is
             // part of the INITIAL state RIS returns to, not something it
             // discards. xterm re-reads its resources on RIS rather than
@@ -1155,13 +1046,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             m_osc133ForgeryCallback   = std::move(osc133ForgeryCb);
             m_promptMarkerCallback    = std::move(promptMarkerCb);
             m_osc133Key               = std::move(osc133Key);
-            m_notifyWindowStartMs     = notifyWindowStartMs;
-            m_notifyCount             = notifyCount;
-            m_osc52WindowStartMs      = osc52WindowStartMs;
-            m_osc52WriteCount         = osc52WriteCount;
-            m_osc52WriteBytes         = osc52WriteBytes;
-            m_userVarWindowStartMs    = userVarWindowStartMs;
-            m_userVarWriteCount       = userVarWriteCount;
+            m_quotas                  = quotas;
             // Through the setters, not by assigning the members back: they
             // also re-point cells still carrying the constructor's default
             // colour, which a bare assignment would leave at the
@@ -1361,16 +1246,10 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                     // Silently drop oversized payload
                     return;
                 }
-                // Strict decode: reject malformed/garbage base64 rather than
-                // silently writing corrupt bytes to the clipboard (Qt6 idiom).
+                // Strict decode: malformed base64 decodes to nothing rather
+                // than writing corrupt bytes to the clipboard.
                 // indie-review-2026-05-21.
-                auto decRes = QByteArray::fromBase64Encoding(
-                    QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())),
-                    QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
-                if (decRes.decodingStatus != QByteArray::Base64DecodingStatus::Ok) {
-                    return;
-                }
-                QByteArray decoded = decRes.decoded;
+                QByteArray decoded = inlineimage::decodeBase64Strict(b64);
                 if (decoded.size() > kMaxClipboardBytes) {
                     return;
                 }
@@ -1379,16 +1258,12 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                     // per-string cap). Protects against drip-feed exfiltration
                     // and against runaway programs. Silently drop once the
                     // window's budget is exhausted.
-                    qint64 now = QDateTime::currentMSecsSinceEpoch();
-                    if (now - m_osc52WindowStartMs >= 60'000) {
-                        m_osc52WindowStartMs = now;
-                        m_osc52WriteCount = 0;
-                        m_osc52WriteBytes = 0;
-                    }
-                    if (m_osc52WriteCount >= OSC52_MAX_WRITES_PER_MIN) return;
-                    if (m_osc52WriteBytes + decoded.size() > OSC52_MAX_BYTES_PER_MIN) return;
-                    m_osc52WriteCount += 1;
-                    m_osc52WriteBytes += decoded.size();
+                    RateWindow &quota = m_quotas.osc52;
+                    quota.roll(QDateTime::currentMSecsSinceEpoch(), 60'000);
+                    if (quota.count >= OSC52_MAX_WRITES_PER_MIN) return;
+                    if (quota.bytes + decoded.size() > OSC52_MAX_BYTES_PER_MIN) return;
+                    quota.count += 1;
+                    quota.bytes += decoded.size();
 
                     // ANTS-1739 — emit clipboard set on the DEDICATED
                     // clipboard channel, never the PTY response callback.
@@ -1595,13 +1470,13 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                         b64.resize(kMaxUserVarB64);
                     // Per-terminal rolling 60s write quota mirroring OSC 52 —
                     // bounds drip-spam of the user-var surface. ANTS-1655.
-                    qint64 now = QDateTime::currentMSecsSinceEpoch();
-                    if (now - m_userVarWindowStartMs >= 60'000) {
-                        m_userVarWindowStartMs = now;
-                        m_userVarWriteCount = 0;
-                    }
-                    if (m_userVarWriteCount >= USERVAR_MAX_WRITES_PER_MIN) return;
-                    m_userVarWriteCount += 1;
+                    RateWindow &quota = m_quotas.userVar;
+                    quota.roll(QDateTime::currentMSecsSinceEpoch(), 60'000);
+                    if (quota.count >= USERVAR_MAX_WRITES_PER_MIN) return;
+                    quota.count += 1;
+                    // Lenient decode, unlike OSC 52 and the image paths: the
+                    // cut above can split the text mid-group, and invalid
+                    // bytes are skipped rather than refusing the value.
                     QByteArray decoded = QByteArray::fromBase64(
                         QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())));
                     // Cap decoded value at 4 KiB — this is a status payload, not
@@ -1690,13 +1565,10 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
 // ANTS-5033 — spend one desktop notification from the shared OSC 9 / OSC 777
 // budget. False once the minute's budget is gone; the caller drops it.
 bool TerminalGrid::takeNotifyQuota() {
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (now - m_notifyWindowStartMs >= 60'000) {
-        m_notifyWindowStartMs = now;
-        m_notifyCount = 0;
-    }
-    if (m_notifyCount >= NOTIFY_MAX_PER_MIN) return false;
-    ++m_notifyCount;
+    RateWindow &quota = m_quotas.notify;
+    quota.roll(QDateTime::currentMSecsSinceEpoch(), 60'000);
+    if (quota.count >= NOTIFY_MAX_PER_MIN) return false;
+    ++quota.count;
     return true;
 }
 
@@ -1707,7 +1579,7 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     if (!inlineimage::splitITerm2(payload, &params, &b64data)) return;
 
     // ANTS-1829 — bound the base64 BEFORE decoding and strict-decode, matching
-    // the OSC 52 / SetUserVar discipline. The 10 MiB OSC payload cap is the
+    // OSC 52 (SetUserVar bounds its input too, but decodes leniently). The 10 MiB OSC payload cap is the
     // only other backstop; an explicit local ceiling keeps this path bounded
     // even if that changes, and decodeBase64Strict (AbortOnBase64DecodingErrors)
     // rejects a corrupt payload outright rather than feeding a garbage prefix
@@ -1728,9 +1600,10 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     // params block — we only learn the true size from QImage.
     size_t imgBytes = imageByteCost(img);
     if (!m_imageBudget.canFit(imgBytes)) {
-        writeInlineError(QString("[ants: image %1×%2 (%3 MB) exceeds 256 MB image budget]")
+        writeInlineError(QString("[ants: image %1×%2 (%3 MB) exceeds %4 MB image budget]")
                              .arg(img.width()).arg(img.height())
-                             .arg(imgBytes / (1024 * 1024)));
+                             .arg(imgBytes / (1024 * 1024))
+                             .arg(ImageBudget::MAX_BYTES / (1024 * 1024)));
         return;
     }
 
@@ -1764,14 +1637,7 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     iimg.cellWidth = cellW;
     iimg.cellHeight = cellH;
     iimg.origin = InlineImage::Origin::ITerm2;
-    m_imageBudget.add(imageByteCost(iimg.image));
-    m_inlineImages.push_back(std::move(iimg));
-
-    // Cap inline images to prevent memory exhaustion
-    while (static_cast<int>(m_inlineImages.size()) > MAX_INLINE_IMAGES) {
-        m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
-        m_inlineImages.erase(m_inlineImages.begin());
-    }
+    placeInlineImage(std::move(iimg));
 
     // Advance cursor past image
     m_cursorRow += cellH;
@@ -2553,6 +2419,126 @@ void TerminalGrid::writeInlineError(const QString &text) {
     newLine();
 }
 
+void TerminalGrid::enterAltScreen(int mode) {
+    if (m_altScreenActive) return;
+    m_altScreenActive = true;
+    // ANTS-1130 — track the mode that entered so
+    // exit can do the right DECSC handling. Only
+    // 1049 saves+restores cursor/SGR/origin/wrap;
+    // 47 and 1047 leave those alone on exit per
+    // xterm ctlseqs.
+    m_altScreenMode = mode;
+    // 0.6.22 — alt-screen doesn't touch scrollback; make sure
+    // a stale redraw window doesn't leak across the boundary.
+    m_csiClearRedrawActive = false;
+    // Drop any half-staged Kitty `m=1` chunked
+    // image transfer. Otherwise a subsequent
+    // legitimate APC `m=0` from a different
+    // sender prepends our stale bytes and
+    // produces a poisoned image attributed to
+    // the new sender.
+    resetKittyChunk();
+    markAllScreenDirty();
+    m_altCursorRow = m_cursorRow;
+    m_altCursorCol = m_cursorCol;
+    m_altScrollTop = m_scrollTop;
+    m_altScrollBottom = m_scrollBottom;
+    m_altScreen = m_screenLines;
+    m_altScreenHyperlinks = m_screenHyperlinks;
+    m_altInlineImages = m_inlineImages;
+    applyPromptRegionShift();  // ANTS-5029
+    m_altPromptRegions = m_promptRegions;
+    // DECSC-equivalent: save SGR + origin + wrap
+    // alongside cursor — only meaningful for mode
+    // 1049, but cheap to always snapshot.
+    m_altSavedAttrs = m_currentAttrs;
+    m_altSavedOriginMode = m_originMode;
+    m_altSavedAutoWrap = m_autoWrap;
+    for (auto &line : m_screenLines) {
+        for (auto &c : line.cells) {
+            c.codepoint = ' ';
+            c.attrs = CellAttrs{};
+            c.attrs.fg = m_defaultFg;
+            c.attrs.bg = m_defaultBg;
+        }
+        line.combining.clear();
+    }
+    for (auto &hl : m_screenHyperlinks)
+        hl.clear();
+    m_inlineImages.clear();
+    m_promptRegions.clear();
+    // Bytes for the just-cleared images are still
+    // referenced by m_altInlineImages (saved above) so
+    // they remain allocated until alt-screen exit;
+    // recompute keeps the budget counter in sync with
+    // both containers.
+    recomputeImageBudget();
+    m_cursorRow = 0;
+    m_cursorCol = 0;
+}
+
+void TerminalGrid::exitAltScreen() {
+    if (!m_altScreenActive) return;
+    m_altScreenActive = false;
+    // ANTS-1130 — entry mode determines exit
+    // semantics, NOT the exit code that arrived.
+    // Programs sometimes enter with 1049 and exit
+    // with a different code; xterm uses entry-mode
+    // to decide DECSC restore.
+    const int enteredMode = m_altScreenMode;
+    m_altScreenMode = 0;
+    markAllScreenDirty();
+    m_screenLines = m_altScreen;
+    m_screenHyperlinks = m_altScreenHyperlinks;
+    m_inlineImages = m_altInlineImages;
+    applyPromptRegionShift();  // ANTS-5029
+    m_promptRegions = m_altPromptRegions;
+    m_scrollTop = m_altScrollTop;
+    m_scrollBottom = m_altScrollBottom;
+    if (enteredMode == 1049) {
+        // 1049: full DECSC restore — cursor + SGR
+        // + origin + wrap.
+        m_cursorRow = m_altCursorRow;
+        m_cursorCol = m_altCursorCol;
+        m_currentAttrs = m_altSavedAttrs;
+        m_originMode = m_altSavedOriginMode;
+        m_autoWrap = m_altSavedAutoWrap;
+    }
+    // 47 / 1047: per xterm ctlseqs, leave cursor /
+    // SGR / origin / wrap as the alt-screen
+    // application left them. The cells are restored
+    // to main-screen content (above), so the cursor
+    // may now point at a non-cleared cell — that's
+    // intentional (matches xterm behaviour).
+    m_altScreen.clear();
+    m_altScreenHyperlinks.clear();
+    m_altInlineImages.clear();
+    m_altPromptRegions.clear();
+    // Restored m_inlineImages above; recompute so the
+    // budget reflects only the images still referenced.
+    recomputeImageBudget();
+}
+
+// Every decoder (iTerm2, Sixel, Kitty) places an image here: the oldest
+// image goes first once MAX_INLINE_IMAGES are held, so memory stays bounded.
+void TerminalGrid::placeInlineImage(InlineImage &&img) {
+    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES) {
+        m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
+        m_inlineImages.erase(m_inlineImages.begin());
+    }
+    m_imageBudget.add(imageByteCost(img.image));
+    m_inlineImages.push_back(std::move(img));
+}
+
+// Drop a half-staged Kitty `m=1` chunked transfer and the keys its first
+// chunk carried.
+void TerminalGrid::resetKittyChunk() {
+    m_kittyChunkBuffer.clear();
+    m_kittyChunkBuffer.shrink_to_fit();
+    m_kittyChunkId = 0;
+    m_kittyChunkParams.clear();
+}
+
 void TerminalGrid::recomputeImageBudget() {
     // ANTS-1265 — m_inlineImages / m_altInlineImages / m_kittyImages can hold
     // COW copies of the SAME QImage: a Kitty `T` (transmit+display) stores the
@@ -2664,10 +2650,7 @@ void TerminalGrid::resize(int rows, int cols) {
     // sequence is keyed to the grid dimensions in the sender's
     // mental model; mixing pre/post-resize chunks risks producing
     // a poisoned image attributed to the new dimensions.
-    m_kittyChunkBuffer.clear();
-    m_kittyChunkBuffer.shrink_to_fit();
-    m_kittyChunkId = 0;
-    m_kittyChunkParams.clear();
+    resetKittyChunk();
 
     // ANTS-1194 — capture "scroll region was at full screen" before any
     // mutation. If yes, the resize must EXPAND/contract the region with
@@ -2889,19 +2872,21 @@ void TerminalGrid::resize(int rows, int cols) {
         trimScrollbackToCap();  // ANTS-1333 INV-5
     }
 
-    // Reflow screen lines when width changes
-    if (cols != m_cols && !m_altScreenActive) {
-        auto logicalScreen = joinLogical(m_screenLines);
+    // Reflow one screen (the live one, or the saved main one) to the new
+    // width and `rows`. Rows that no longer fit go to the main scrollback;
+    // the saved main screen and the main scrollback together are the
+    // primary screen's history.
+    auto reflowScreen = [&](std::vector<TermLine> &lines) {
+        auto logicals = joinLogical(lines);
         std::vector<TermLine> reflowed;
-        for (auto &logical : logicalScreen) {
+        for (auto &logical : logicals)
             rewrap(logical, reflowed);
-        }
 
-        // If we have more reflowed lines than fit on screen, push excess to scrollback.
-        // Skip entirely-blank lines — pushing them just pollutes scrollback
-        // with empty rows the user sees as "scrollable blank lines above the
-        // prompt" after a restore where the saved screen was blank (e.g.
-        // cleared tabs from the previous session). User report 2026-04-18.
+        // Skip entirely-blank overflow lines — pushing them just pollutes
+        // scrollback with empty rows the user sees as "scrollable blank lines
+        // above the prompt" after a restore where the saved screen was blank
+        // (e.g. cleared tabs from the previous session). User report
+        // 2026-04-18.
         auto isBlankLine = [](const TermLine &tl) {
             for (const Cell &c : tl.cells)
                 if (c.codepoint != ' ' && c.codepoint != 0) return false;
@@ -2916,22 +2901,24 @@ void TerminalGrid::resize(int rows, int cols) {
                 // scrollbackPushed() contract holds (get_scrollback's
                 // since_cursor diff must see these lines).
                 ++m_scrollbackPushed;
-                // ANTS-1333 INV-4 — reflowed rows came from joinLogical
-                // on m_screenLines; no usable mapping back to
-                // m_screenHyperlinks. Push an empty span vector to keep
-                // the deque length-locked.
+                // ANTS-1333 INV-4 — reflowed rows came from joinLogical;
+                // no usable mapping back to their hyperlink spans. Push an
+                // empty span vector to keep the deque length-locked.
                 m_scrollbackHyperlinks.emplace_back();
             }
         }
 
-        // Build final screen
-        std::vector<TermLine> newScreen(rows);
-        for (auto &line : newScreen)
+        std::vector<TermLine> newLines(rows);
+        for (auto &line : newLines)
             line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
         for (int r = 0; r < static_cast<int>(reflowed.size()) && r < rows; ++r)
-            newScreen[r] = std::move(reflowed[r]);
+            newLines[r] = std::move(reflowed[r]);
+        lines = std::move(newLines);
+    };
 
-        m_screenLines = std::move(newScreen);
+    // Reflow screen lines when width changes
+    if (cols != m_cols && !m_altScreenActive) {
+        reflowScreen(m_screenLines);
 
         // Reposition cursor on the last content line
         int lastContent = 0;
@@ -2981,33 +2968,8 @@ void TerminalGrid::resize(int rows, int cols) {
     if (!m_altScreen.empty()) {
         if (cols != oldCols) {
             // Width changed — reflow the saved main buffer, pushing overflow to
-            // the (already-reflowed) main scrollback exactly as the live
-            // main-screen path does. The saved main buffer + main scrollback
-            // together are the primary screen's history.
-            auto logicalAlt = joinLogical(m_altScreen);
-            std::vector<TermLine> reflowedAlt;
-            for (auto &logical : logicalAlt)
-                rewrap(logical, reflowedAlt);
-            auto isBlankLine = [](const TermLine &tl) {
-                for (const Cell &c : tl.cells)
-                    if (c.codepoint != ' ' && c.codepoint != 0) return false;
-                return tl.combining.empty();
-            };
-            while (static_cast<int>(reflowedAlt.size()) > rows) {
-                TermLine front = std::move(reflowedAlt.front());
-                reflowedAlt.erase(reflowedAlt.begin());
-                if (!isBlankLine(front)) {
-                    m_scrollback.push_back(std::move(front));
-                    ++m_scrollbackPushed;   // ANTS-2119 M1 — see main-screen path
-                    m_scrollbackHyperlinks.emplace_back();
-                }
-            }
-            std::vector<TermLine> newAlt(rows);
-            for (auto &line : newAlt)
-                line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-            for (int r = 0; r < static_cast<int>(reflowedAlt.size()) && r < rows; ++r)
-                newAlt[r] = std::move(reflowedAlt[r]);
-            m_altScreen = std::move(newAlt);
+            // the (already-reflowed) main scrollback.
+            reflowScreen(m_altScreen);
         } else {
             // Rows-only resize — no soft-wrap boundary change, simple copy.
             // Same combining-map preservation as the main-screen simple-copy
@@ -3233,9 +3195,10 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
                 static_cast<size_t>(declaredPh) * declaredPv * 4;
             if (!m_imageBudget.canFit(projected)) {
                 writeInlineError(
-                    QString("[ants: sixel %1×%2 (%3 MB) exceeds 256 MB image budget]")
+                    QString("[ants: sixel %1×%2 (%3 MB) exceeds %4 MB image budget]")
                         .arg(declaredPh).arg(declaredPv)
-                        .arg(projected / (1024 * 1024)));
+                        .arg(projected / (1024 * 1024))
+                        .arg(ImageBudget::MAX_BYTES / (1024 * 1024)));
                 return;
             }
         }
@@ -3310,9 +3273,10 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
     // the decode toward 256 MB before we notice.
     size_t projectedBytes = static_cast<size_t>(imgWidth) * imgHeight * 4;
     if (!m_imageBudget.canFit(projectedBytes)) {
-        writeInlineError(QString("[ants: sixel %1×%2 (%3 MB) exceeds 256 MB image budget]")
+        writeInlineError(QString("[ants: sixel %1×%2 (%3 MB) exceeds %4 MB image budget]")
                              .arg(imgWidth).arg(imgHeight)
-                             .arg(projectedBytes / (1024 * 1024)));
+                             .arg(projectedBytes / (1024 * 1024))
+                             .arg(ImageBudget::MAX_BYTES / (1024 * 1024)));
         return;
     }
 
@@ -3429,11 +3393,6 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
     }
 
     // Place image at cursor position
-    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES) {
-        m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
-        m_inlineImages.erase(m_inlineImages.begin());
-    }
-
     InlineImage img;
     img.image = image;
     img.row = m_cursorRow;
@@ -3442,8 +3401,7 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
     img.cellHeight = imgHeight;
     img.pixelSized = true;
     img.origin = InlineImage::Origin::Sixel;
-    m_imageBudget.add(imageByteCost(img.image));
-    m_inlineImages.push_back(img);
+    placeInlineImage(std::move(img));
 }
 
 // --- Kitty Graphics Protocol (APC G ... ST) ---
@@ -3512,10 +3470,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
             // follow-up `m=0` will see an empty buffer and fall through
             // the normal rejection paths (format/size) as if no prior
             // chunks existed.
-            m_kittyChunkBuffer.clear();
-            m_kittyChunkBuffer.shrink_to_fit();
-            m_kittyChunkId = 0;
-            m_kittyChunkParams.clear();
+            resetKittyChunk();
             return;
         }
         m_kittyChunkBuffer += data_str;
@@ -3526,18 +3481,12 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     // well-formed multi-chunk upload where the final frame pushes the
     // buffer over the cap must also be rejected.
     if (m_kittyChunkBuffer.size() + data_str.size() > MAX_KITTY_CHUNK_BYTES) {
-        m_kittyChunkBuffer.clear();
-        m_kittyChunkBuffer.shrink_to_fit();
-        m_kittyChunkId = 0;
-        m_kittyChunkParams.clear();
+        resetKittyChunk();
         return;
     }
     std::string fullData = m_kittyChunkBuffer + data_str;
-    m_kittyChunkBuffer.clear();
-    m_kittyChunkBuffer.shrink_to_fit();
     if (imageId == 0 && m_kittyChunkId != 0) imageId = m_kittyChunkId;
-    m_kittyChunkId = 0;
-    m_kittyChunkParams.clear();
+    resetKittyChunk();
 
     // Handle actions
     if (action == 'd') {
@@ -3594,8 +3543,8 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         // this text needs no base64 or PNG decode here.
         const bool predecodedPng = format == 100 && m_predecoded &&
                                    m_predecoded->matches(fullData);
-        // ANTS-2119 M2 — strict decode, matching the OSC 52 / OSC 1337 image
-        // paths (1568): decodeBase64Strict rejects a corrupt payload outright
+        // ANTS-2119 M2 — strict decode, matching the OSC 52 and OSC 1337
+        // image paths: decodeBase64Strict rejects a corrupt payload outright
         // instead of silently skipping invalid bytes and feeding a
         // garbage-prefixed byte stream to the image loader / raw-pixel .copy().
         // A failed decode leaves `decoded` empty, so the image stays null and
@@ -3694,11 +3643,6 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
             displayImg = m_kittyImages[imageId];
         }
         if (!displayImg.isNull()) {
-            if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES) {
-                m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
-                m_inlineImages.erase(m_inlineImages.begin());
-            }
-
             InlineImage img;
             img.image = displayImg;
             img.row = m_cursorRow;
@@ -3725,8 +3669,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
                 if (!params.count('c')) img.pixelSized = false;
             }
 
-            m_imageBudget.add(imageByteCost(img.image));
-            m_inlineImages.push_back(img);
+            placeInlineImage(std::move(img));
         }
     }
 

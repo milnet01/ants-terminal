@@ -394,10 +394,11 @@ public:
     // across frames with `m=1` accumulates into m_kittyChunkBuffer until
     // `m=0`. Without a cap an attacker can keep sending `m=1` chunks
     // forever and exhaust RAM before the image budget (which runs after
-    // the final chunk) gets a say. 32 MiB fits any legitimate chunked
-    // upload (Kitty transmits in ~4 KiB frames; a 24 MiB decoded image
-    // = ~32 MiB base64-encoded). Past the cap we drop the buffer and
-    // reset chunk state so a subsequent `m=0` is ignored.
+    // the final chunk) gets a say. The final decode refuses more than
+    // inlineimage::kMaxKittyB64Bytes of base64 anyway, so this cap only
+    // bounds staging. Past it we drop the buffer and reset chunk state; a
+    // later `m=0` frame is then processed on its own, as if no chunks
+    // came before it.
     static constexpr size_t MAX_KITTY_CHUNK_BYTES = 32ULL * 1024ULL * 1024ULL;
 
     // Shell integration (OSC 133). ANTS-5029 — both accessors apply any
@@ -674,35 +675,49 @@ private:
     CommandFinishedCallback m_commandFinishedCallback;
     UserVarCallback m_userVarCallback;
 
-    // OSC 52 per-terminal write quota — independent of the 1 MB per-string cap.
-    // 32 writes/min + 1 MB/min. Counters reset when the minute window advances.
-    qint64 m_osc52WindowStartMs = 0;
-    int m_osc52WriteCount = 0;
-    qint64 m_osc52WriteBytes = 0;
+    // One rolling rate-limit window. roll() starts a fresh window, counters
+    // zeroed, once windowMs has passed since startMs.
+    struct RateWindow {
+        qint64 startMs = 0;
+        int count = 0;
+        qint64 bytes = 0;  // only the OSC 52 quota counts bytes
+        void roll(qint64 now, qint64 windowMs) {
+            if (now - startMs >= windowMs) {
+                startMs = now;
+                count = 0;
+                bytes = 0;
+            }
+        }
+    };
+    // The per-minute quotas. RIS (ESC c) keeps this struct whole, window
+    // starts included, so a stream that resets before each write cannot
+    // refill a budget (ANTS-5033, ANTS-5122): a quota added here survives
+    // RIS with no further edit.
+    struct MinuteQuotas {
+        // OSC 52 clipboard writes: 32/min and 1 MB/min, independent of the
+        // 1 MB per-string cap.
+        RateWindow osc52;
+        // ANTS-5033 — desktop notifications, one budget shared by OSC 9 and
+        // OSC 777. Each can start a notify-send process.
+        RateWindow notify;
+        // OSC 1337 SetUserVar writes. Each value is already capped at 4 KiB;
+        // this bounds spam. ANTS-1655.
+        RateWindow userVar;
+    };
+    MinuteQuotas m_quotas;
     static constexpr int OSC52_MAX_WRITES_PER_MIN = 32;
     static constexpr qint64 OSC52_MAX_BYTES_PER_MIN = 1 * 1024 * 1024;
-
-    // ANTS-5033 — desktop-notification quota, one budget shared by OSC 9 and
-    // OSC 777. Each notification can start a notify-send process, so a flood
-    // is cut to a few per minute. Same minute window as the OSC 52 quota.
-    qint64 m_notifyWindowStartMs = 0;
-    int m_notifyCount = 0;
     static constexpr int NOTIFY_MAX_PER_MIN = 10;
+    static constexpr int USERVAR_MAX_WRITES_PER_MIN = 64;
     bool takeNotifyQuota();
 
-    // OSC 1337 SetUserVar per-terminal rolling write quota — mirrors OSC 52.
-    // Each value is already capped at 4 KiB; this bounds spam. ANTS-1655.
-    qint64 m_userVarWindowStartMs = 0;
-    int m_userVarWriteCount = 0;
-    static constexpr int USERVAR_MAX_WRITES_PER_MIN = 64;
-
     // ANTS-2192 — query-response amplification cap (see
-    // QUERY_RESP_MAX_PER_SEC). Rolling 1 s window; counters reset when the
-    // window advances. Every DA/CPR/DSR/DECRQSS/colour/Kitty reply funnels
-    // through sendQueryResponse(), which drops silently once the per-second
-    // budget is spent so a streamed query can't force unbounded PTY writes.
-    qint64 m_queryRespWindowStartMs = 0;
-    int m_queryRespCount = 0;
+    // QUERY_RESP_MAX_PER_SEC). Rolling 1 s window. Every DA/CPR/DSR/DECRQSS/
+    // colour/Kitty reply funnels through sendQueryResponse(), which drops
+    // silently once the per-second budget is spent so a streamed query can't
+    // force unbounded PTY writes. Not in m_quotas, so RIS resets it
+    // (ANTS-5817 asks whether it should).
+    RateWindow m_queryRespQuota;
     static constexpr int QUERY_RESP_MAX_PER_SEC = 256;
     void sendQueryResponse(const std::string &data);
 
@@ -754,7 +769,10 @@ private:
     static constexpr qint64 kCsiClearRedrawWindowMs = 250;
     static constexpr qint64 kMode2FollowupWindowMs = 50;
 
-    // Alt screen buffer
+    // Alt screen buffer. While the alt screen is active, the m_alt* fields
+    // hold the SAVED MAIN screen's state (lines, cursor, scroll region,
+    // links, images, prompts); the live fields hold the alt screen's.
+    // m_altScreen is empty otherwise.
     bool m_altScreenActive = false;
     std::vector<TermLine> m_altScreen;
     int m_altCursorRow = 0, m_altCursorCol = 0;
@@ -869,6 +887,16 @@ private:
     // a desktop notification (which would be more disruptive than the
     // failed image).
     void writeInlineError(const QString &text);
+    // Add a decoded image at its position, evicting the oldest past
+    // MAX_INLINE_IMAGES and charging the budget.
+    void placeInlineImage(InlineImage &&img);
+    // Drop the staged Kitty chunk transfer (buffer, id, first-chunk keys).
+    void resetKittyChunk();
+    // DEC private modes 47 / 1047 / 1049, set and reset. `mode` is the one
+    // that entered; only 1049 saves and restores the cursor, SGR, origin
+    // and wrap. Both are no-ops when already in the requested state.
+    void enterAltScreen(int mode);
+    void exitAltScreen();
     // Recompute the image-budget counter from scratch. Used on alt-screen
     // enter/exit where m_inlineImages is swapped/cleared in bulk and
     // tracking each individual move would be brittle. O(N) where N ≤

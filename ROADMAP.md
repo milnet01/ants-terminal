@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6176 -->
+<!-- ants-roadmap-id-high-water: ANTS=6177 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94821,6 +94821,14 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: all three HIGH done (ec83160b). Medium/low still open.
+  2026-10-23: MEDIUM done: F3 (resetKittyChunk), F4 (placeInlineImage),
+  F5 (budget text built from ImageBudget::MAX_BYTES), F6 (OSC 52 uses
+  decodeBase64Strict; comments name SetUserVar as the lenient one),
+  F7 (RateWindow; RIS keeps MinuteQuotas whole; the query-reply quota
+  stays outside it, ANTS-5817), F8 (one reflowScreen in resize), F10
+  (note at the m_alt* declarations; a spec quotes the names, so no
+  rename), F12 (Kitty staging-cap comment), F17 (enterAltScreen /
+  exitAltScreen). F9 queued as ANTS-6177. LOWs still open.
   **Layman:** Tidy the screen text and scrollback so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95702,6 +95710,21 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 L21.
   Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6177] **Keep each screen row's OSC 8 link spans on its TermLine, so links move with their row.**
+  From ANTS-6111 (L02 MEDIUM F9). m_screenHyperlinks is a per-row list
+  kept in step with m_screenLines by hand in insertLines, deleteLines,
+  scrollUp, scrollDown, resize and alt-screen entry and exit; ANTS-1668
+  records one site that was missed. Fix: hold the spans on TermLine,
+  beside `combining`. Not done in the lane pass: it reaches the
+  scrollback deque, reflow (ANTS-1333's length-lock INVs), session
+  persistence and every reader of screenHyperlinks(), so it needs its
+  own change and ANTS-1333's spec checked first.
+  Hot reload: none needed; a refactor with no new running state.
+  **Layman:** Store each line's web links with the line itself, so they can't drift onto the wrong line when the screen scrolls.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L02-F9).
+  Lanes: terminal-grid.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
