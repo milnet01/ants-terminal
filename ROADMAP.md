@@ -100711,6 +100711,10 @@ reports are asked for separately, each time.
 - 📋 [ANTS-5434] **clang-tidy performance-use-std-move: 87 sites in 39 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Fix or suppress as one class.
+  2026-10-23: re-measured in src/mcporientation.cpp after ANTS-6169
+  (which did not touch these): `w` in the two writeScriptFile failure
+  branches of the install path, and `settingsWarn` in the uninstall
+  path's ParseFail/WriteFail branch, could be moved into r.warning.
   **Layman:** Values copied where they could simply be handed over.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -100734,6 +100738,8 @@ reports are asked for separately, each time.
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   57 unique, 2059 raw (headers). Changing an enum's size can change a
   serialised or ABI layout: check QDataStream users first.
+  2026-10-23: re-measured in src/mcporientation.cpp: enum class
+  MergeOutcome (six values) could take std::uint8_t.
   **Layman:** Small lists of named options stored in a bigger number type than they need.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
