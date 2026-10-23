@@ -81,9 +81,9 @@ TEST(roadmap_log_flip_ants_v1, Inv4Inv5LocatorPredicates) {
     const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "v1bullets.at(i).id == locId"),
            "INV-4: id locator matches bracket-id directly");
-    expect(contains(cpp, "rcFnv1a64(rcNormaliseHeadline(locHeadline))"),
-           "INV-5: headline locator pre-hashes the needle via shared rcFnv1a64+rcNormaliseHeadline");
-    expect(contains(cpp, "rcNormaliseHeadline(v1bullets.at(i).headline)"),
+    expect(contains(cpp, "RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline))"),
+           "INV-5: headline locator pre-hashes the needle via shared RoadmapParse::fnv1a64+normaliseHeadline");
+    expect(contains(cpp, "RoadmapParse::normaliseHeadline(v1bullets.at(i).headline)"),
            "INV-5: headline locator hashes each bullet headline through the same helpers");
     EXPECT_EQ(0, expect_failures());
 }

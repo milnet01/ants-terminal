@@ -1292,10 +1292,10 @@ static QJsonArray rlStoreSuggestions(RoadmapStore &store, qint64 projectId,
         for (const int i : rcRankIdsBySharedPrefix(ids, locId, 3)) add(i);
         return out;
     }
-    const QString norm = rcNormaliseHeadline(locHeadline);
+    const QString norm = RoadmapParse::normaliseHeadline(locHeadline);
     QVector<QPair<int, int>> scored;
     for (int i = 0; i < heads.size(); ++i) {
-        const QString h = rcNormaliseHeadline(heads.at(i));
+        const QString h = RoadmapParse::normaliseHeadline(heads.at(i));
         int shared = 0;
         const int lim = std::min(h.size(), norm.size());
         while (shared < lim && h.at(shared) == norm.at(shared)) ++shared;
@@ -2207,10 +2207,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 }
             } else {
                 const quint64 needHash =
-                    rcFnv1a64(rcNormaliseHeadline(locHeadline));
+                    RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
                 for (int i = 0; i < v1bullets.size(); ++i) {
-                    if (rcFnv1a64(
-                            rcNormaliseHeadline(v1bullets.at(i).headline))
+                    if (RoadmapParse::fnv1a64(
+                            RoadmapParse::normaliseHeadline(v1bullets.at(i).headline))
                         == needHash) {
                         v1matches.append(i);
                     }
@@ -2242,10 +2242,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                         suggestions.append(s);
                     }
                 } else {
-                    const QString norm = rcNormaliseHeadline(locHeadline);
+                    const QString norm = RoadmapParse::normaliseHeadline(locHeadline);
                     QVector<QPair<int, int>> scored;
                     for (int i = 0; i < v1bullets.size(); ++i) {
-                        const QString h = rcNormaliseHeadline(
+                        const QString h = RoadmapParse::normaliseHeadline(
                             v1bullets.at(i).headline);
                         int sharedLen = 0;
                         const int lim = std::min(h.size(), norm.size());
@@ -2308,7 +2308,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
 
     // 7. Locator. id > anchor > headline.
     auto headlineHash = [](const QString &h) {
-        return rcFnv1a64(rcNormaliseHeadline(h));
+        return RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(h));
     };
     QVector<int> matchIndices;
     if (!locId.isEmpty()) {
@@ -2387,9 +2387,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     if (v1bullets.at(i).id == locId) v1matches.append(i);
             } else if (!locHeadline.isEmpty()) {
                 const quint64 needHash =
-                    rcFnv1a64(rcNormaliseHeadline(locHeadline));
+                    RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
                 for (int i = 0; i < v1bullets.size(); ++i)
-                    if (rcFnv1a64(rcNormaliseHeadline(
+                    if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(
                             v1bullets.at(i).headline)) == needHash)
                         v1matches.append(i);
             }
@@ -2437,7 +2437,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             // bullet line so the caller can re-target precisely.
             const QString needle = !locHeadline.isEmpty()
                 ? locHeadline : locAnchor;
-            const QString norm = rcNormaliseHeadline(needle);
+            const QString norm = RoadmapParse::normaliseHeadline(needle);
             const QStringList needleToks =
                 norm.split(QLatin1Char(' '), Qt::SkipEmptyParts);
             const QSet<QString> needleTokSet(needleToks.begin(),
@@ -2448,7 +2448,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             for (int i = 0; i < bullets.size(); ++i) {
                 const QString canon =
                     rcGfmCanonicalHeadline(bullets.at(i).headline);
-                const QString h = rcNormaliseHeadline(canon);
+                const QString h = RoadmapParse::normaliseHeadline(canon);
                 const QStringList hToks =
                     h.split(QLatin1Char(' '), Qt::SkipEmptyParts);
                 const QSet<QString> hTokSet(hToks.begin(), hToks.end());
@@ -3159,7 +3159,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
     if (!bullets.isEmpty()) {
         format = QStringLiteral("gfm");
-        const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
+        const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
         QVector<int> m;
         if (!locId.isEmpty()) {
             for (int i = 0; i < bullets.size(); ++i)
@@ -3209,7 +3209,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                         if (v1.at(i).id == locId) vm.append(i);
                 } else if (!locHeadline.isEmpty()) {
                     for (int i = 0; i < v1.size(); ++i)
-                        if (rcFnv1a64(rcNormaliseHeadline(v1.at(i).headline))
+                        if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(v1.at(i).headline))
                                 == need) vm.append(i);
                 }
             }
@@ -3257,9 +3257,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             for (int i = 0; i < v1.size(); ++i)
                 if (v1.at(i).id == locId) m.append(i);
         } else {
-            const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
+            const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
             for (int i = 0; i < v1.size(); ++i)
-                if (rcFnv1a64(rcNormaliseHeadline(v1.at(i).headline)) == need)
+                if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(v1.at(i).headline)) == need)
                     m.append(i);
         }
         if (m.size() != 1) {

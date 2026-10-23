@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6230 -->
+<!-- ants-roadmap-id-high-water: ANTS=6233 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95414,6 +95414,16 @@ worked after these.
   the GFM rewrite read it, and the kAdapterEmoji* copies are gone.
   remotecontrol_internal.h's struct comments point at the table. Medium
   and low still open.
+  2026-10-23 MEDIUMs. Fixed: F5 four docs moved onto their functions
+  (rcComputeDuplicateIds, rcFilterDuplicateIdsForSection,
+  rcSectionShape, rcScrubLeakedToolXml, rcComputePossibleDuplicates); F6
+  the three body caps described as they stand since ANTS-4630; F8 the
+  rcFnv1a64/rcNormaliseHeadline copies deleted, RoadmapParse::fnv1a64
+  and normaliseHeadline exported and called instead (feature specs and
+  two test anchors renamed with them); F9 the workspace_search comment
+  names its constants; F10 three remotecontrol.h docs moved onto their
+  declarations. F7's comment now says C0 and DEL; keeping C1 is queued
+  as ANTS-6233. Queued: F2 ANTS-6231, F3 ANTS-6232. LOWs remain.
   **Layman:** Tidy the connection Claude Code sessions use so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96548,6 +96558,43 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F24).
   Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6231] **Share one repo-boundary walk between findRoadmapUnder and findChangelogUnder, with the repo_root choice in one place.**
+  From ANTS-6127; feeds ANTS-5796 (dup:8c59f23dcd7a). ANTS-3350 and
+  ANTS-4447 patched both copies; ANTS-5667's repo_root redirect
+  (ProjectSettings::repoRootOf) went into the roadmap copy only, and
+  nothing says the changelog copy should differ. Decide that first.
+  Queued: McpLastAuditSummary.Ants1459FindRoadmapUnderWidens scrapes
+  findRoadmapUnder's body for each probe and the .git walk; move those
+  anchors with the code.
+  Hot reload: none needed.
+  **Layman:** Two pieces of code that find a project's roadmap and changelog walk the folders the same way, and a fix to one already missed the other.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L18-F2).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6232] **Build remotecontrol.cpp's six id-prefix regexes from one pattern.**
+  From ANTS-6127. kIdPrefixShape, rlStableIdShape, counterRe, idRe
+  (identical to counterRe), kCanonical and rxAntsV1IdBracket each
+  spell the prefix rule. RoadmapParse::idTokenPattern() may already be
+  the shared source. Queued: roadmap_id_format_guard.Inv1 and
+  roadmap_log_flip_ants_v1.Inv1 pin the literal regex text; those tests
+  must follow the fold.
+  Hot reload: none needed.
+  **Layman:** The rule for what a roadmap id looks like is copied six times in one file, so changing it means finding every copy.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L18-F3).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6233] **rcSanitizeBulletField keeps C1 control characters (U+0080-U+009F) in roadmap fields.**
+  From ANTS-6127. The function drops C0 and DEL only; its comment
+  claimed C0/C1 and now says C1 is kept. Decide whether C1 should go
+  too; if so add the range and a red-first test.
+  Hot reload: none needed.
+  **Layman:** A few invisible control characters can still reach the roadmap file through a bullet's text.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L18-F7).
+  Lanes: mcp-transport.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

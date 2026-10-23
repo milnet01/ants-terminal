@@ -169,7 +169,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv4bFallbackAnswersCheckSync) {
     const std::string emitter = boundedBetween(
         cpp,
         "QJsonObject buildHeaderInventoryEnvelope(",
-        "quint64 rcFnv1a64(");
+        "QString rcStructuralStem(");
     ASSERT_FALSE(emitter.empty())
         << "ANTS-4860: failed to bound buildHeaderInventoryEnvelope";
 

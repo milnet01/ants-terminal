@@ -9,7 +9,7 @@ ROADMAP.md by hand to avoid re-filing an existing item (done manually
 for ANTS-2037..2042).
 
 `roadmap_log op:append` / `op:append_batch` now run an append-time soft
-check, reusing the existing `rcNormaliseHeadline` + `rcFnv1a64`
+check, reusing the existing `RoadmapParse::normaliseHeadline` + `RoadmapParse::fnv1a64`
 machinery: an exact normalised-headline match scores 100; otherwise a
 token Jaccard overlap (shared tokens / union) gates at 60 % with a
 ≥2-shared-token floor. The result is **advisory** — the bullet is still

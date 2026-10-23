@@ -33,8 +33,8 @@ project's own roadmap.
   refusal naming `id` or `headline` as the alternatives.
 - **INV-4 / `id` locator matches `[<id>]` bracket directly.**
   No `**Bold-ID.**` token lookup needed; the bracket IS canonical.
-- **INV-5 / `headline` locator hashes via `rcFnv1a64 +
-  rcNormaliseHeadline`.** Same predicate as GFM (shared helpers).
+- **INV-5 / `headline` locator hashes via `RoadmapParse::fnv1a64 +
+  RoadmapParse::normaliseHeadline`.** Same predicate as GFM (shared helpers).
 - **INV-6 / no anchor injection, no counter consumption.** ants-v1
   bullets already carry the canonical ID; the flip is a pure
   status-emoji swap. `applyAntsV1Flip` replaces the emoji byte

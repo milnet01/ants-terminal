@@ -349,7 +349,7 @@ TEST(mcp_roadmap_bundles, Inv13MixedCaseLaneLabel) {
 }
 
 // INV-17 (ANTS-4088) — label tokens are denoised + punctuation-stripped.
-// rcNormaliseHeadline only chops trailing punctuation off the WHOLE headline
+// RoadmapParse::normaliseHeadline only chops trailing punctuation off the WHOLE headline
 // and isNoiseToken never ran on the label tokens, so a real roadmap produced
 // labels like `"most` / `- be bookmarked` / `57 blocks duplication:`.
 TEST(mcp_roadmap_bundles, Ants4088LabelTokensDenoised) {

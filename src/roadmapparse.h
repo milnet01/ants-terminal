@@ -225,6 +225,12 @@ bool idWasInferred(const BulletRecord &rec);
 // survive it.
 QString idTokenPattern();
 
+// ANTS-1428 — the synthetic-id hash and its headline normaliser: lowercase,
+// collapse whitespace, drop trailing punctuation. The roadmap_log flip
+// locator and the duplicate detector hash with the same pair.
+quint64 fnv1a64(const QString &normalised);
+QString normaliseHeadline(const QString &raw);
+
 // ANTS-5087 — the fold the roadmap store's id_fold column holds: SQLite's
 // lower(), which changes only ASCII A-Z. QString::toLower() also folds
 // non-ASCII letters, so a key built with it misses the row the column holds.

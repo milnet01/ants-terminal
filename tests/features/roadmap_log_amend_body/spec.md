@@ -23,7 +23,7 @@ under its own arg (`new_body`) if a real need appears.
 The handler is a standalone `cmdRoadmapLogAmendBody`, NOT a new mode
 threaded into the delicate `cmdRoadmapLogFlip` (ANTS-2059 history). It
 reuses the free helpers (`walkGfmBullets` / `walkAntsV1Bullets`,
-`rcScrubLeakedToolXml`, `rcFnv1a64` / `rcNormaliseHeadline`,
+`rcScrubLeakedToolXml`, `RoadmapParse::fnv1a64` / `RoadmapParse::normaliseHeadline`,
 `rcGfmHeadlineMatchHashes`, the `QSaveFile` write) so `flip`/`annotate`
 are untouched.
 

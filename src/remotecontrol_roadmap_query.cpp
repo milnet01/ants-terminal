@@ -2172,7 +2172,7 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
                                                  const QStringList &fileHeadlines) {
     LocateOutcome out;
     QString err;
-    const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
+    const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
     if (!locId.isEmpty()) {
         const auto pk = store.findItem(projectId, locId, &err);
         if (!pk && !err.isEmpty()) {
@@ -2190,7 +2190,7 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
         }
         int hits = 0;
         for (const auto &ref : *refs) {
-            if (rcFnv1a64(rcNormaliseHeadline(ref.headline)) != need)
+            if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(ref.headline)) != need)
                 continue;
             ++hits;
             out.itemPk = ref.itemPk;
@@ -2224,7 +2224,7 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
         out.inFileOnly = fileIds.contains(locId);
     } else {
         for (const QString &h : fileHeadlines)
-            if (rcFnv1a64(rcNormaliseHeadline(h)) == need) out.inFileOnly = true;
+            if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(h)) == need) out.inFileOnly = true;
     }
     out.code  = QStringLiteral("bullet_not_found");
     out.error = out.inFileOnly

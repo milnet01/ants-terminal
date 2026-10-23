@@ -57,7 +57,7 @@ bullet object carries the keys the builder reads: `id`, `status`
   distinguishes "grouped into singletons" from a real grouping.
 - **INV-17** — (ANTS-4088) `bundle_label` tokens are denoised the same way
   the cluster edge's tokens are, plus per-token punctuation stripping.
-  `rcNormaliseHeadline` only chops trailing punctuation off the WHOLE
+  `RoadmapParse::normaliseHeadline` only chops trailing punctuation off the WHOLE
   headline, so per-token punctuation survived into the label, and
   `isNoiseToken` was applied to the cluster tokens but never to the label
   ones. A label token is now stripped of leading/trailing punctuation

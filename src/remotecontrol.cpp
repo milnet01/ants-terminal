@@ -388,31 +388,15 @@ QJsonDocument rcPassHeadingsWriteRefusal(const QString &path,
 // under the response soft cap". Callers needing the verbatim full
 // body should follow up with a targeted Read.
 constexpr int kRoadmapQueryBodyCap = 2000;
-// ANTS-3402 — the cache stores each body up to this larger ceiling so a
-// TARGETED single-bullet / id-set fetch can opt into more than the 2000
-// list default via `max_body_bytes` (a multi-phase epic narrator bullet
-// holds its whole phase plan in one ~5 KiB body — the 2000 cap truncated
-// it, forcing an awk fallback; Album Builder feedback). Aggregate memory
-// stays bounded by the file size: only the rare oversized body stores
-// more than 2000, and Σ bodies ≤ the roadmap file. List/section emission
-// still re-truncates to kRoadmapQueryBodyCap (rcCapBodyFields), so only
-// the opt-in id/ids path sees the larger body.
+// The three body caps, as they stand since ANTS-4630:
+//   * kRoadmapQueryBodyCap (above) — list and section emission.
+//   * kRoadmapQueryBodyStoreCap — the most an id/ids fetch may raise
+//     max_body_bytes to (ANTS-3402); an ids[] fetch shares it across its ids.
+//   * kRoadmapQueryBodyCacheCap — the cache keeps each body whole. Eliding at
+//     cache-build put the middle of a long body out of reach of every
+//     argument. Memory stays bounded: Σ bodies ≤ the roadmap file.
+// A single-id fetch has its own ceiling, kRoadmapQueryBodySingleIdCap below.
 constexpr int kRoadmapQueryBodyStoreCap = 16384;
-
-// ANTS-4630 — the cache no longer elides at the store cap; it keeps each body
-// WHOLE. The cap above survives as the emission ceiling only.
-//
-// Eliding at cache-build put the middle of a long body out of reach of every
-// argument: `max_body_bytes` clamped to the same 16 KiB that produced the
-// elision, and the dispatch-site offload spills the SERIALISED response, so
-// read_spill paged text the cache had already thrown away (the marker itself
-// was measured sitting inside the spilled payload). The remedy the marker
-// named could not work at the size that triggered it.
-//
-// The memory bound is unchanged, which is what makes this safe: bodies come
-// from the roadmap file, so Σ bodies ≤ the file either way. The old per-body
-// cap never bound first — at 16 KiB × N items its ceiling sat far above the
-// file it was drawn from.
 constexpr int kRoadmapQueryBodyCacheCap = std::numeric_limits<int>::max();
 
 // ANTS-4630 — emission ceiling for a fetch naming exactly ONE id. The inline
@@ -479,8 +463,8 @@ QString rcElideBody(const QString &body, int cap, bool fromEnd = false) {
 // (regardless of the caller's include_body preference), so a later
 // call that DOES want include_body doesn't need to rebuild the cache.
 // rcStripBodyFields below removes them just before emission when
-// include_body is false. `cap` defaults to the 2000 list cap; the cache
-// builder passes kRoadmapQueryBodyStoreCap (ANTS-3402).
+// include_body is false. Cache builders pass kRoadmapQueryBodyCacheCap,
+// so the cached body is whole.
 void rcSetBodyFields(QJsonObject &o, const QString &body,
                      int cap) {
     if (body.size() > cap) {
@@ -496,13 +480,10 @@ void rcSetBodyFields(QJsonObject &o, const QString &body,
     }
 }
 
-// ANTS-3402 — re-truncate already-cached body fields to `cap` at emission.
-// The cache stores bodies up to kRoadmapQueryBodyStoreCap; every path that
-// emits from the cache (full-file list at 2000, id/ids at max_body_bytes)
-// runs this so the wire payload honours the effective cap. Preserves an
-// existing body_truncated:true (a body truncated at the store cap stays
-// flagged even if it now fits `cap` — it can't, since cap ≤ store cap,
-// but the OR keeps the flag monotonic).
+// ANTS-3402 — truncate cached (whole) body fields to `cap` at emission.
+// Every path that emits from the cache (list at kRoadmapQueryBodyCap, id/ids
+// at their max_body_bytes) runs this so the wire payload honours its cap. An
+// existing body_truncated:true is kept (the OR keeps the flag monotonic).
 void rcCapBodyFields(QJsonArray &arr, int cap, bool fromEnd) {
     for (int i = 0; i < arr.size(); ++i) {
         QJsonObject o = arr.at(i).toObject();
@@ -1095,9 +1076,9 @@ QString rcStatusEmoji(const QString &word) {
 // source) before splicing it into ROADMAP.md. rcHeadlineOneline folds
 // embedded \n/\r/\t + whitespace runs to single spaces so a stray
 // newline can't split the bullet and break the markdown; this then
-// drops any leftover C0/C1 control chars rcHeadlineOneline doesn't
-// treat as whitespace, and caps length so a pathological field can't
-// bloat the file. `body` is exempt — it is intentionally multi-line.
+// drops any leftover C0 control char or DEL rcHeadlineOneline doesn't
+// treat as whitespace (C1, U+0080-U+009F, is kept), and caps length so
+// a pathological field can't bloat the file. `body` is exempt — it is intentionally multi-line.
 QString rcSanitizeBulletField(const QString &in, int maxLen) {
     const QString folded = rcHeadlineOneline(in);
     QString out;
@@ -1115,50 +1096,9 @@ QString rcSanitizeBulletField(const QString &in, int maxLen) {
     return out;
 }
 
-// ANTS-1646 — walk a bullet-cache array and return an array of
-// duplicate-ID descriptors. Each descriptor names an ID that
-// appeared on more than one bullet (rollups + narrators with empty
-// IDs are excluded) and lists the occurrences (section_slug +
-// status) so a caller can decide whether the collision is a real
-// drift bug or an intentional cross-section tracking cite. Output
-// shape per duplicate:
-//   { "id": "ANTS-NNNN",
-//     "occurrences": [{ "section_slug": "...", "status": "..." }, ...] }
-// IDs in the result preserve first-seen order so the array is
-// stable across calls on the same cache. The whole array stays
-// empty on a clean roadmap; cmdRoadmapQuery's emission gate suppresses
-// the field entirely in that case so the envelope shape is unchanged
-// for the common path.
-//
-// ANTS-1688 — two refinements for large legacy-format roadmaps:
-//  (1) Correctness: key only on canonical allocated IDs
-//      (RoadmapIndex::isCanonicalId). The GFM adapter (ANTS-1428)
-//      synthesises 10-char content-hash nonces for bullets without a
-//      [PROJ-NNNN] token, and surfaces Obsidian `^anchor` tokens; both
-//      previously collided wholesale and surfaced as bogus duplicate
-//      IDs (a `35ra39wbn1` reported 7×).
-//  (2) Payload shrink: cap occurrences[] at kDuplicateOccurrencesCap
-//      and record the dropped tail in a per-ID `truncated_count` so a
-//      genuine large collision set can't blow the response-size budget.
+// ANTS-1688 — cap on each duplicate id's occurrences[]; see rcComputeDuplicateIds.
 constexpr int kDuplicateOccurrencesCap = 3;
 
-// ANTS-1882 — filter a duplicate-ids descriptor array (the shape
-// produced by `rcComputeDuplicateIds` above) to only entries whose
-// `occurrences[]` array contains at least one bullet inside the
-// named section. Used by the `roadmap_query` section path so the
-// duplicate_ids field is section-scoped (preserves per-section ETag
-// invariance — when section B's duplicates change but foo doesn't
-// have any duplicates, foo's response doesn't carry them). Returns
-// an empty array when no duplicates involve the section.
-// ANTS-1696 — classify a section slice (raw markdown) when
-// parseBullets returned zero entries. Counts non-blank,
-// non-heading, non-bullet content lines; declares the shape
-// "table" iff any such line begins with `|` (after a leading
-// whitespace strip), else "prose". Empty slice → "empty" with
-// non_bullet_lines:0; emit-time skips when shape == "empty"
-// (the existing back-compat envelope shape is preserved). The
-// list comprehension stays in one pass so the helper costs
-// O(slice size) on the rare emit-empty branch.
 // ANTS-1907 — per-section ETag. Hash of the section's sliced UTF-8
 // bytes (SHA-256, first 16 hex chars) — matches the "byte range + file
 // content" key proposed in the roadmap bullet without dragging in the
@@ -1174,6 +1114,15 @@ QString rcComputeSectionEtag(const QString &slice) {
             .toHex().left(16));
 }
 
+// ANTS-1696 — classify a section slice (raw markdown) when
+// parseBullets returned zero entries. Counts non-blank,
+// non-heading, non-bullet content lines; declares the shape
+// "table" iff any such line begins with `|` (after a leading
+// whitespace strip), else "prose". Empty slice → "empty" with
+// non_bullet_lines:0; emit-time skips when shape == "empty"
+// (the existing back-compat envelope shape is preserved). The
+// list comprehension stays in one pass so the helper costs
+// O(slice size) on the rare emit-empty branch.
 QJsonObject rcSectionShape(const QString &slice) {
     int nonBullet = 0;
     bool sawPipe = false;
@@ -1219,6 +1168,14 @@ QJsonObject rcSectionShape(const QString &slice) {
     return out;
 }
 
+// ANTS-1882 — filter a duplicate-ids descriptor array (the shape
+// produced by `rcComputeDuplicateIds` below) to only entries whose
+// `occurrences[]` array contains at least one bullet inside the
+// named section. Used by the `roadmap_query` section path so the
+// duplicate_ids field is section-scoped (preserves per-section ETag
+// invariance — when section B's duplicates change but foo doesn't
+// have any duplicates, foo's response doesn't carry them). Returns
+// an empty array when no duplicates involve the section.
 QJsonArray rcFilterDuplicateIdsForSection(const QJsonArray &dupes,
                                           const QString &sectionSlug) {
     if (dupes.isEmpty() || sectionSlug.isEmpty()) return QJsonArray();
@@ -1240,6 +1197,31 @@ QJsonArray rcFilterDuplicateIdsForSection(const QJsonArray &dupes,
     return out;
 }
 
+// ANTS-1646 — walk a bullet-cache array and return an array of
+// duplicate-ID descriptors. Each descriptor names an ID that
+// appeared on more than one bullet (rollups + narrators with empty
+// IDs are excluded) and lists the occurrences (section_slug +
+// status) so a caller can decide whether the collision is a real
+// drift bug or an intentional cross-section tracking cite. Output
+// shape per duplicate:
+//   { "id": "ANTS-NNNN",
+//     "occurrences": [{ "section_slug": "...", "status": "..." }, ...] }
+// IDs in the result preserve first-seen order so the array is
+// stable across calls on the same cache. The whole array stays
+// empty on a clean roadmap; cmdRoadmapQuery's emission gate suppresses
+// the field entirely in that case so the envelope shape is unchanged
+// for the common path.
+//
+// ANTS-1688 — two refinements for large legacy-format roadmaps:
+//  (1) Correctness: key only on canonical allocated IDs
+//      (RoadmapIndex::isCanonicalId). The GFM adapter (ANTS-1428)
+//      synthesises 10-char content-hash nonces for bullets without a
+//      [PROJ-NNNN] token, and surfaces Obsidian `^anchor` tokens; both
+//      previously collided wholesale and surfaced as bogus duplicate
+//      IDs (a `35ra39wbn1` reported 7×).
+//  (2) Payload shrink: cap occurrences[] at kDuplicateOccurrencesCap
+//      and record the dropped tail in a per-ID `truncated_count` so a
+//      genuine large collision set can't blow the response-size budget.
 QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     QJsonArray out;
     if (bullets.isEmpty()) return out;
@@ -1300,15 +1282,6 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     return out;
 }
 
-// ANTS-1424 / ANTS-1717 — strip leaked tool-call XML wrappers from a
-// body/note string before it lands in ROADMAP.md. Some harnesses
-// serialise sibling array/object params as literal
-// `<parameter name="X">…</parameter>` blocks inside the prose; this
-// removes those (and stray `</body>` / `</invoke>` closers), records
-// recognised sibling names in `scrubbedNames` so the caller can warn
-// that a typed argument was lost, collapses blank-line runs, and trims
-// trailing whitespace. Hoisted out of cmdRoadmapLogAppend's local
-// lambda (ANTS-1717) so the flip/annotate note path scrubs identically.
 // ANTS-1995 — cap on caller-supplied `note` length before it reaches
 // rcScrubLeakedToolXml's lazy [\s\S]*? backtracking regex. A note packed
 // with many unclosed <parameter …> openers makes the globalMatch O(n²),
@@ -1386,6 +1359,15 @@ QString rcFenceOpenerHint(int fenceOpenLine) {
         .arg(fenceOpenLine + 1);
 }
 
+// ANTS-1424 / ANTS-1717 — strip leaked tool-call XML wrappers from a
+// body/note string before it lands in ROADMAP.md. Some harnesses
+// serialise sibling array/object params as literal
+// `<parameter name="X">…</parameter>` blocks inside the prose; this
+// removes those (and stray `</body>` / `</invoke>` closers), records
+// recognised sibling names in `scrubbedNames` so the caller can warn
+// that a typed argument was lost, collapses blank-line runs, and trims
+// trailing whitespace. Hoisted out of cmdRoadmapLogAppend's local
+// lambda (ANTS-1717) so the flip/annotate note path scrubs identically.
 void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
                           int *unnamedRemovals, QStringList *removedFragments) {
     if (text.isEmpty()) return;
@@ -1746,53 +1728,6 @@ QJsonObject buildHeaderInventoryEnvelope(
     return env;
 }
 
-// ANTS-1428 Tier 2 — pure helpers for the op:"flip" locator. These
-// are intentional duplicates of roadmapdialog.cpp's anon-namespace
-// helpers (fnv1a64 / normaliseHeadline / extractBoldId /
-// extractCaretAnchor / base36Lower). The parser side has feature
-// tests pinning the byte-equal behaviour; the small duplication
-// avoids exporting them through the QWidget-shaped roadmapdialog
-// header just to feed this one verb. Spec § Status-flip locator.
-quint64 rcFnv1a64(const QString &normalised) {
-    constexpr quint64 kFnvOffsetBasis = 0xcbf29ce484222325ULL;
-    constexpr quint64 kFnvPrime       = 0x100000001b3ULL;
-    quint64 h = kFnvOffsetBasis;
-    const QByteArray bytes = normalised.toUtf8();
-    for (char c : bytes) {
-        h ^= static_cast<quint64>(static_cast<unsigned char>(c));
-        h *= kFnvPrime;
-    }
-    return h;
-}
-
-QString rcNormaliseHeadline(const QString &raw) {
-    QString s = raw.toLower();
-    QString out;
-    out.reserve(s.size());
-    bool prevSpace = false;
-    for (QChar c : s) {
-        if (c.isSpace()) {
-            if (!out.isEmpty() && !prevSpace) out.append(QLatin1Char(' '));
-            prevSpace = true;
-        } else {
-            out.append(c);
-            prevSpace = false;
-        }
-    }
-    while (!out.isEmpty()) {
-        const QChar c = out.back();
-        if (c == QLatin1Char('.') || c == QLatin1Char(',') ||
-            c == QLatin1Char(';') || c == QLatin1Char(':') ||
-            c == QLatin1Char('!') || c == QLatin1Char('?') ||
-            c == QLatin1Char(' ')) {
-            out.chop(1);
-        } else {
-            break;
-        }
-    }
-    return out;
-}
-
 // ANTS-3388 — structural signature for `<verb> <path>`-template bullets
 // (e.g. "Author src/mame_curator/<mod>/spec.md"), whose discriminating
 // tokens are all paths/filenames the clustering denoiser strips — leaving
@@ -1804,7 +1739,7 @@ QString rcNormaliseHeadline(const QString &raw) {
 // alphabetic leading verb, or no multi-segment path token). Cheap: one
 // normalise + split, computed once per bullet.
 QString rcStructuralStem(const QString &headline) {
-    const QStringList toks = rcNormaliseHeadline(headline)
+    const QStringList toks = RoadmapParse::normaliseHeadline(headline)
                                  .split(QLatin1Char(' '), Qt::SkipEmptyParts);
     if (toks.size() < 2) return {};
     const QString verb = toks.first();
@@ -1872,16 +1807,8 @@ double rcHeadlineJaccard(const QSet<QString> &tokA,
     return static_cast<double>(inter) / uni;
 }
 
-// ANTS-2043 — soft near-duplicate CONTENT detector for op:append /
-// append_batch. Ants already flags exact duplicate IDs
-// (rcComputeDuplicateIds, canonical-ID collisions); this catches two
-// bullets that *say* nearly the same thing so a caller doesn't re-file
-// an existing item. Reuses the existing normalise + hash machinery: an
-// exact normalised-headline match scores 100; otherwise a token Jaccard
-// overlap (shared tokens / union of tokens) gates at 60 % with a
-// ≥2-shared-token floor so two short headlines sharing a stop-word pair
-// don't false-fire. Non-blocking — the verb still appends; the result
-// is an advisory list returned in the success envelope. Top 5 by score.
+// ANTS-4487 § 4.5 — the exact-match refusal (contract in
+// remotecontrol_internal.h), unlike the advisory list below.
 QString rcExactDuplicateId(const QVector<RoadmapParse::BulletRecord> &existing,
                            const QString &newHeadline) {
     for (const QJsonValue &v : rcComputePossibleDuplicates(existing, newHeadline)) {
@@ -1892,12 +1819,22 @@ QString rcExactDuplicateId(const QVector<RoadmapParse::BulletRecord> &existing,
     return {};
 }
 
+// ANTS-2043 — soft near-duplicate CONTENT detector for op:append /
+// append_batch. Ants already flags exact duplicate IDs
+// (rcComputeDuplicateIds, canonical-ID collisions); this catches two
+// bullets that *say* nearly the same thing so a caller doesn't re-file
+// an existing item. Reuses the existing normalise + hash machinery: an
+// exact normalised-headline match scores 100; otherwise a token Jaccard
+// overlap (shared tokens / union of tokens) gates at 60 % with a
+// ≥2-shared-token floor so two short headlines sharing a stop-word pair
+// don't false-fire. Non-blocking — the verb still appends; the result
+// is an advisory list returned in the success envelope. Top 5 by score.
 QJsonArray rcComputePossibleDuplicates(
         const QVector<RoadmapParse::BulletRecord> &existing,
         const QString &newHeadline) {
-    const QString normNew = rcNormaliseHeadline(newHeadline);
+    const QString normNew = RoadmapParse::normaliseHeadline(newHeadline);
     if (normNew.isEmpty()) return {};
-    const quint64 hashNew = rcFnv1a64(normNew);
+    const quint64 hashNew = RoadmapParse::fnv1a64(normNew);
     const QStringList tokNewList =
         normNew.split(QLatin1Char(' '), Qt::SkipEmptyParts);
     const QSet<QString> tokNew(tokNewList.begin(), tokNewList.end());
@@ -1907,10 +1844,10 @@ QJsonArray rcComputePossibleDuplicates(
     QVector<Cand> cands;
     for (const auto &rec : existing) {
         if (rec.headline.isEmpty()) continue;
-        const QString normEx = rcNormaliseHeadline(rec.headline);
+        const QString normEx = RoadmapParse::normaliseHeadline(rec.headline);
         if (normEx.isEmpty()) continue;
         int score = 0;
-        if (rcFnv1a64(normEx) == hashNew) {
+        if (RoadmapParse::fnv1a64(normEx) == hashNew) {
             score = 100;  // exact normalised match
         } else {
             const QStringList exList =
@@ -2004,8 +1941,8 @@ QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
                                        const QString &boldId) {
     QSet<quint64> hashes;
     auto add = [&](const QString &s) {
-        const QString n = rcNormaliseHeadline(RoadmapParse::stripTrailingCaretAnchor(s));
-        if (!n.isEmpty()) hashes.insert(rcFnv1a64(n));
+        const QString n = RoadmapParse::normaliseHeadline(RoadmapParse::stripTrailingCaretAnchor(s));
+        if (!n.isEmpty()) hashes.insert(RoadmapParse::fnv1a64(n));
     };
     add(rawHead);                                  // legacy raw head
     QString deMark = rawHead;

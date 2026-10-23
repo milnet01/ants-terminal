@@ -36,6 +36,8 @@ namespace {
 // ANTS-1428 — GFM-task-list adapter helpers. All operate on
 // already-extracted line content (post-`- ` prefix strip).
 
+}  // namespace
+
 // 64-bit FNV-1a hash of the normalised headline. See
 // docs/specs/ANTS-1428.md § Synthetic-ID fallback.
 quint64 fnv1a64(const QString &normalised) {
@@ -81,6 +83,8 @@ QString normaliseHeadline(const QString &raw) {
     }
     return out;
 }
+
+namespace {
 
 // Encode the low N base36 chars of a 64-bit value. Returns 10
 // chars by default (sufficient distribution per spec collision

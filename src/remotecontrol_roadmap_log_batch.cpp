@@ -293,7 +293,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     }
 
     auto headlineHash = [](const QString &h) {
-        return rcFnv1a64(rcNormaliseHeadline(h));
+        return RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(h));
     };
 
     // 6. Phase 1 — resolve every locator against ONE walk. A target

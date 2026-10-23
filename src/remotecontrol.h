@@ -476,20 +476,20 @@ public:
     // in `req`. Zero-arg-equivalent (empty req) is back-compat with
     // ANTS-1244 callers — returns the full unfiltered array.
     QJsonDocument cmdRoadmapQuery(const QJsonObject &req = {});
-    // ANTS-1922 — pure work-bundle builder for roadmap_query
-    // mode:"bundles". Static + public so the feature test drives it
-    // directly with hand-authored fixtures (the bundles branch calls it
-    // on m_roadmapCacheBullets). softCapBytes bounds the emitted
-    // bundles[]; truncation drops whole trailing bundles. See
-    // docs/specs/ANTS-1922.md.
     // ANTS-4501 — roadmap_query mode:"report". Its own builder, on the
-    // buildRoadmapBundlesEnvelope precedent directly below: cmdRoadmapQuery is
+    // buildRoadmapBundlesEnvelope precedent below: cmdRoadmapQuery is
     // already past 2000 lines. Returns {} on a store error, with `error` set.
     // Reads only — INV-10.
     static QJsonObject buildRoadmapReportEnvelope(
         RoadmapStore &store, std::optional<qint64> projectId, const QDate &today,
         const QDate &since, const QDate &until, QString *error);
 
+    // ANTS-1922 — pure work-bundle builder for roadmap_query
+    // mode:"bundles". Static + public so the feature test drives it
+    // directly with hand-authored fixtures (the bundles branch calls it
+    // on m_roadmapCacheBullets). softCapBytes bounds the emitted
+    // bundles[]; truncation drops whole trailing bundles. See
+    // docs/specs/ANTS-1922.md.
     static QJsonObject buildRoadmapBundlesEnvelope(
         const QJsonArray &cacheBullets, int softCapBytes);
     // ANTS-1964 / ANTS-4896 — session_orient's cross-session feedback backlog
@@ -569,9 +569,9 @@ public:
     // ANTS-1248: ripgrep wrapper. Public for the same reason as the
     // ANTS-1244 trio — MCP server lambda in MainWindow delegates here
     // so the body is reused across IPC + MCP transports. Argv-only
-    // QProcess::start (no shell), 2 s hard-kill via constant
-    // kWorkspaceSearchHardKillMs + 200 ms grace, server-clamped to
-    // 500 results. See docs/specs/ANTS-1248.md.
+    // QProcess::start (no shell), hard-killed after
+    // kWorkspaceSearchHardKillMs + kWorkspaceSearchKillGraceMs, results
+    // clamped to kWorkspaceSearchMaxResultsCap. See docs/specs/ANTS-1248.md.
     QJsonDocument cmdWorkspaceSearch(const QJsonObject &req);
 
     // ANTS-3368 — co_change_family: every edit site of one settings field,
@@ -689,18 +689,6 @@ public:
     // invariants to check — but reuses docIntegrityEnumerate for the walk, for
     // the same reason doc_symbols does.
     QJsonDocument cmdSpecLint(const QJsonObject &req);
-    // Pure, for the same headless-test reason as the pairs above.
-    // `sectionsChecked` is ALWAYS emitted: it is the one field distinguishing
-    // "every required section is there" from "nobody checked", and those are
-    // the two states this verb ships between (spec § 2.1).
-    //
-    // ANTS-4127 — `surfacesResolved` / `surfacesChecked` are emitted under the
-    // same rule and are not defaulted here: a caller that forgets to pass them
-    // should fail to compile rather than ship a silent zero, which is exactly
-    // the "nobody checked, reported as clean" state the pair exists to prevent.
-    // ANTS-4623 — `testCoverageChecked` is the § Invariants <-> § Tests
-    // parity flag, reported for the reason its two siblings are: a check
-    // that could not run must not read as one that ran clean.
     // ANTS-4848 — how many of the headings FOLLOWING an `after_section` a new
     // section at `newLevel` must be placed past, so it does not adopt them.
     //
@@ -722,6 +710,18 @@ public:
     static int createSectionSkipCount(const QVector<int> &levelsAfter,
                                       int newLevel);
 
+    // Pure, for the same headless-test reason as the doc_* builders above.
+    // `sectionsChecked` is ALWAYS emitted: it is the one field distinguishing
+    // "every required section is there" from "nobody checked", and those are
+    // the two states this verb ships between (spec § 2.1).
+    //
+    // ANTS-4127 — `surfacesResolved` / `surfacesChecked` are emitted under the
+    // same rule and are not defaulted here: a caller that forgets to pass them
+    // should fail to compile rather than ship a silent zero, which is exactly
+    // the "nobody checked, reported as clean" state the pair exists to prevent.
+    // ANTS-4623 — `testCoverageChecked` is the § Invariants <-> § Tests
+    // parity flag, reported for the reason its two siblings are: a check
+    // that could not run must not read as one that ran clean.
     static QJsonObject specLintBuildResponse(
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
         bool testCoverageChecked,
@@ -1312,6 +1312,17 @@ private:
     // Dispatched from cmdRoadmapLog when req["op"] == "flip". See
     // docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLogFlip(const QJsonObject &req);
+    // ANTS-4667 — op:"amend_field": write one trailer column of one item.
+    QJsonDocument cmdRoadmapLogAmendField(const QJsonObject &req);
+    // ANTS-4669 — op:"amend_batch": amend_body's edit on N items, one commit.
+    QJsonDocument cmdRoadmapLogAmendBatch(const QJsonObject &req);
+    // ANTS-5760 — op:"replace_text": one literal string replaced in every
+    // stored body in scope, one commit.
+    QJsonDocument cmdRoadmapLogReplaceText(const QJsonObject &req);
+    // ANTS-5385 — op:"amend_field_batch": N column changes, one commit.
+    QJsonDocument cmdRoadmapLogAmendFieldBatch(const QJsonObject &req);
+    // ANTS-4948 — amend_field's field:"section": moves items to another section.
+    QJsonDocument cmdRoadmapLogAmendSection(const QJsonObject &req);
     // ANTS-3406 — amend_body: patch a bullet's continuation body prose
     // in place (exact single-line old_text→new_text). Dispatched from
     // cmdRoadmapLog when req["op"] == "amend_body". Standalone (not
@@ -1323,16 +1334,6 @@ private:
     // anchor > headline), the fenced-block refusal, the pass-headings gate,
     // the unique-match guard and the atomic write are identical, and a second
     // copy of ~400 lines is how the two drift.
-    QJsonDocument cmdRoadmapLogAmendField(const QJsonObject &req);
-    // ANTS-4669 — op:"amend_batch": amend_body's edit on N items, one commit.
-    QJsonDocument cmdRoadmapLogAmendBatch(const QJsonObject &req);
-    // ANTS-5760 — op:"replace_text": one literal string replaced in every
-    // stored body in scope, one commit.
-    QJsonDocument cmdRoadmapLogReplaceText(const QJsonObject &req);
-    // ANTS-5385 — op:"amend_field_batch": N column changes, one commit.
-    QJsonDocument cmdRoadmapLogAmendFieldBatch(const QJsonObject &req);
-    // ANTS-4948 — amend_field's field:"section": moves items to another section.
-    QJsonDocument cmdRoadmapLogAmendSection(const QJsonObject &req);
     // ANTS-4808 — `setBodyMode` is op:"set_body": the same locate, store
     // write, trailer re-derivation and history row, with the match step
     // removed. A third mode for the reason the second is a mode.

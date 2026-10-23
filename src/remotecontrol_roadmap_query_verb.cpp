@@ -116,7 +116,7 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         const QString id       = o.value(QStringLiteral("id")).toString();
         const QString status   = o.value(QStringLiteral("status")).toString();
         const QString headline = o.value(QStringLiteral("headline")).toString();
-        const QStringList toks = rcNormaliseHeadline(headline)
+        const QStringList toks = RoadmapParse::normaliseHeadline(headline)
                                      .split(QLatin1Char(' '), Qt::SkipEmptyParts);
         const QSet<QString> tokset(toks.begin(), toks.end());
         if (status == doneEmoji) {
@@ -169,7 +169,7 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         return t.contains(QLatin1Char('.')) || t.contains(QLatin1Char('/'));
     };
     // ANTS-4088 — a LABEL token gets the same denoiser plus per-token
-    // punctuation stripping. rcNormaliseHeadline only chops trailing
+    // punctuation stripping. RoadmapParse::normaliseHeadline only chops trailing
     // punctuation off the WHOLE headline, and isNoiseToken ran on the
     // cluster tokens but never on the label ones, so real labels read
     // `- be bookmarked` / `"most` / `57 blocks duplication:`. Returns an
@@ -1260,9 +1260,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     }
 
     // ANTS-3402 — opt-in higher body cap for a TARGETED id/ids fetch. The
-    // list default stays kRoadmapQueryBodyCap (2000); a caller after a
-    // single large epic body raises it up to kRoadmapQueryBodyStoreCap
-    // (16 KiB). Clamped to [2000, 16384]. The list and section paths read
+    // list default stays kRoadmapQueryBodyCap; an ids[] fetch may raise it
+    // up to kRoadmapQueryBodyStoreCap, a single-id fetch up to
+    // kRoadmapQueryBodySingleIdCap (ANTS-4630). The list and section paths read
     // the raw value instead (ANTS-5467, listBodyCap below).
     // ANTS-4091 — 0 ⟹ not supplied. The targeted default is DERIVED from the
     // id count once `ids` is parsed (below), so it is no longer the 2000 list

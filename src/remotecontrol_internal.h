@@ -644,8 +644,6 @@ int appendBodyNote(QStringList &lines, int headlineLine, const QString &note, bo
 // `lines` is untouched either way.
 int amendBodyExact(QStringList &lines, int headlineLine, const QString &oldText, const QString &newText, int *matchedLine, bool *wrapped = nullptr);
 QJsonObject buildHeaderInventoryEnvelope(const QVector<RoadmapIndex::Section> &index, const QString &path, qint64 bytes, bool syncRequested);
-quint64 rcFnv1a64(const QString &normalised);
-QString rcNormaliseHeadline(const QString &raw);
 QString rcStructuralStem(const QString &headline);
 bool rcIsNonconformingIdToken(const QString &tok);
 double rcHeadlineJaccard(const QSet<QString> &tokA, const QSet<QString> &tokB, int minShared = 2);
