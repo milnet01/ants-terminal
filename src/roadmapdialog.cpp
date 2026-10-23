@@ -208,7 +208,11 @@ struct DensityTier {
 // chevron, five status counts, a heading's label ("0.7.0", "Backlog"; a
 // card's kind spans the counts and this), summary or heading text, date
 // kind, date, and #id + toggle.
-constexpr int kColLabel = 6;
+constexpr int kColFirstCount = 1;
+constexpr int kCountColumns = 5;
+constexpr int kColLabel = kColFirstCount + kCountColumns;
+// A card's kind cell spans the count columns and the label column.
+constexpr int kKindSpan = kColLabel - kColFirstCount + 1;
 constexpr int kColSummary = 7;
 constexpr int kColDateKind = 8;
 constexpr int kColDate = 9;
@@ -667,6 +671,20 @@ QString RoadmapDialog::storeProjectRoot() const {
     return startDir;
 }
 
+// ANTS-3793 — through the owner wrapper, like the render. INV-2 keeps
+// sectionSlug — the scroll anchor's fallback key — identical either way.
+// ANTS-3863 — includeArchive is a runtime value, so this branches rather than
+// picks. false (the common case) is the live file alone, so the dispatch reads
+// only the detector's window; true genuinely needs every archive byte
+// concatenated before anything can parse them.
+QVector<RoadmapDialog::BulletRecord> RoadmapDialog::rereadTabBullets() {
+    const bool includeArchive = wantsHistoryLoad();
+    auto text = includeArchive
+        ? RoadmapSource::RoadmapText::fromMemory(loadRoadmapMarkdown(true))
+        : RoadmapSource::RoadmapText::fromFile(m_roadmapPath);
+    return roadmapBullets(text, includeArchive);
+}
+
 // ANTS-3793 § 2.1 — the dialog's owner wrapper. Same three outcomes as
 // RemoteControl's, presented differently: a refusal has no envelope to fill, so
 // it lands in m_sourceError for rebuild() to render.
@@ -858,10 +876,10 @@ RoadmapDialog::splitHeadingDate(const QString &heading) {
 //   3. Main walk emits headings (with count chips + collapse anchor)
 //      and, when a section is expanded, the bullets inside it as
 //      cards. Prose and section intros emit only on Preset::Full.
-//   4. Cards lay out as:
-//        row 1: state icon · kind chip · summary · expand toggle
-//        row 2: id chip · shipped date (muted)
-//        row 3+ (expanded only): body prose
+//   4. Each card is one row of the kGridColumns-column table (ANTS-5604):
+//        state icon · kind chip spanning the count and label columns ·
+//        summary · date kind · date · #id + expand toggle;
+//        then, expanded only, a body-prose row.
 QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                                        unsigned filter,
                                        const QStringList &currentBullets,
@@ -1045,8 +1063,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // Build the HTML.
     QString html;
     html.reserve(sourceText.size() * 2);
-    // ANTS-1238 — density-tier lookup. Cozy reproduces the
-    // pre-1238 px values byte-for-byte (INV-1); Compact /
+    // ANTS-1238 — density-tier lookup. Cozy is the default
+    // (INV-1); Compact /
     // Comfortable shift the body / heading / code / meta groups
     // and the vertical-padding scale. Inline-spacing constants
     // (e.g. `rm-state padding-right:6px`, `rm-id padding-left:8px`)
@@ -1216,7 +1234,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (!colHeadEmitted) {
             colHeadEmitted = true;
             html += QStringLiteral("<tr class=\"rm-colhead\"><td class=\"rm-hd\"></td>");
-            for (const char *e : {"✅", "🚧", "📋", "💭", kEmojiDropped})
+            // The same order as the per-section counts below.
+            for (const char *e : {kEmojiDone, kEmojiInProgress, kEmojiPlanned,
+                                  kEmojiConsidered, kEmojiDropped})
                 html += QStringLiteral("<td class=\"rm-hd rm-count\">%1</td>")
                             .arg(QString::fromUtf8(e));
             for (int col = kColLabel; col < kGridColumns; ++col)
@@ -1345,8 +1365,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         html += QStringLiteral("</td>");
 
         // Col 2 (kind) — Kind chip; empty cell when there's no Kind: line.
-        html += QStringLiteral("<td colspan=\"6\" class=\"rm-col-kind%1\">")
-                    .arg(curCell);
+        html += QStringLiteral("<td colspan=\"%1\" class=\"rm-col-kind%2\">")
+                    .arg(kKindSpan).arg(curCell);
         if (!rec.kind.isEmpty()) {
             const QString glyph = kindGlyph(rec.kind);
             // CWE-79: rec.kind is user-supplied ROADMAP.md text (rxKind
@@ -1424,8 +1444,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (expanded) {
             html += QStringLiteral(
                 "<tr class=\"rm-card-body\"><td class=\"rm-col-state%1%2\"></td>"
-                "<td colspan=\"6\" class=\"rm-col-kind%1\"></td>"
-                "<td class=\"rm-col-body%1\">").arg(curCell, stateAccent);
+                "<td colspan=\"%3\" class=\"rm-col-kind%1\"></td>"
+                "<td class=\"rm-col-body%1\">")
+                .arg(curCell, stateAccent, QString::number(kKindSpan));
             const QStringList bodyLines = rec.body.split('\n');
             bool firstP = true;
             for (int bi = 0; bi < bodyLines.size(); ++bi) {
@@ -1548,7 +1569,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             level > 0 ? tocAnchorAt(headingIdx++) : QString();
 
         if (level == 1) {
-            // File title — emit only on Full (large heading).
+            // File title (large heading), on every tab.
             emitFullRow(QStringLiteral("<a name=\"%1\"></a>").arg(anchor)
                         + QStringLiteral("<h1>") + applyInline(hText)
                         + QStringLiteral("</h1>"));
@@ -1844,7 +1865,7 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
     HostExec::start(git, QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
     if (!git.waitForStarted(2000)) return out;
     // ANTS-1661 capped this at 5 s (was 30 s) because it ran on the GUI thread.
-    // ANTS-4414 moved the DIALOG off this path entirely — startLastTouchRefresh()
+    // ANTS-4414 moved the DIALOG off this path entirely — refreshLastTouchDatesIfStale()
     // is what the dialog calls now, and it blocks on nothing. This synchronous
     // form survives for the tests that drive it directly and for any caller
     // that genuinely wants the answer before returning; the budget stays
@@ -2461,12 +2482,12 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // 2026-09-29, superseding ANTS-1150's single global set).
     Preset persisted = Preset::Full;
     if (m_config) {
+        // presetName()'s inverse, derived from it so a new preset needs no
+        // edit here. An unknown name reads as Full.
         const auto presetFromName = [](const QString &name) {
-            if (name == QLatin1String("history"))    return Preset::History;
-            if (name == QLatin1String("current"))    return Preset::Current;
-            if (name == QLatin1String("next"))       return Preset::Next;
-            if (name == QLatin1String("far_future")) return Preset::FarFuture;
-            if (name == QLatin1String("custom"))     return Preset::Custom;
+            for (int i = 0; i <= static_cast<int>(Preset::Custom); ++i)
+                if (presetName(static_cast<Preset>(i)) == name)
+                    return static_cast<Preset>(i);
             return Preset::Full;
         };
         const auto maskFrom = [](const QJsonObject &status, unsigned fallback) {
@@ -2667,18 +2688,7 @@ void RoadmapDialog::captureScrollAnchor() {
         // ID → section slug (the edit-stable fallback key) via the parsed
         // bullets. One parse on close is cheap relative to the user action.
         QString slug;
-        // ANTS-3793 — through the owner wrapper, like the render. INV-2 keeps
-        // sectionSlug — the anchor's fallback key — identical either way.
-        // ANTS-3863 — includeArchive is a runtime value, so this branches
-        // rather than picks. false (the common case) is the live file alone, so
-        // the dispatch reads only the detector's window; true genuinely needs
-        // every archive byte concatenated before anything can parse them, and
-        // keeps today's cost.
-        const bool includeArchive = wantsHistoryLoad();
-        auto text = includeArchive
-            ? RoadmapSource::RoadmapText::fromMemory(loadRoadmapMarkdown(true))
-            : RoadmapSource::RoadmapText::fromFile(m_roadmapPath);
-        const QVector<BulletRecord> recs = roadmapBullets(text, includeArchive);
+        const QVector<BulletRecord> recs = rereadTabBullets();
         for (const BulletRecord &r : recs) {
             if (r.id == topId) {
                 slug = r.sectionSlug;
@@ -2716,12 +2726,7 @@ void RoadmapDialog::restoreScrollAnchor() {
     }
     QHash<QString, QString> slugById;
     QSet<QString> presentSlugs;
-    // ANTS-3793 — same swap as captureScrollAnchor's, ANTS-3863 included.
-    const bool includeArchive = wantsHistoryLoad();
-    auto text = includeArchive
-        ? RoadmapSource::RoadmapText::fromMemory(loadRoadmapMarkdown(true))
-        : RoadmapSource::RoadmapText::fromFile(m_roadmapPath);
-    const QVector<BulletRecord> recs = roadmapBullets(text, includeArchive);
+    const QVector<BulletRecord> recs = rereadTabBullets();
     for (const BulletRecord &r : recs) {
         if (!presentIds.contains(r.id)) continue;
         slugById.insert(r.id, r.sectionSlug);
@@ -3414,7 +3419,7 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
     };
     QVector<QTextLength> cols(kGridColumns);
     cols[0] = share(0.12, t.metaPx * 9);
-    for (int col = 1; col <= 5; ++col)
+    for (int col = kColFirstCount; col < kColLabel; ++col)
         cols[col] = QTextLength(QTextLength::FixedLength, t.metaPx * 3);
     cols[kColLabel] = share(0.06, t.metaPx * 5);
     cols[kColSummary] = QTextLength(QTextLength::VariableLength, 0);

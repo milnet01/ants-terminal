@@ -159,7 +159,7 @@ public:
 
     // ANTS-1238: card-density tier. Selects the per-CSS-class px
     // values + vertical-padding scale that `renderCardsHtml` emits.
-    // Cozy preserves the pre-1238 byte-equal output. Spec:
+    // Cozy is the default (INV-1). Spec:
     // docs/specs/ANTS-1238.md § 2.f.
     enum class Density {
         // Per-tier px live in kDensityTable (roadmapdialog.cpp);
@@ -212,8 +212,7 @@ public:
 
         // ANTS-1238 — selects the per-CSS-class px values
         // emitted by renderCardsHtml. Default-constructed
-        // CardRenderOptions{} preserves the pre-1238 byte-equal
-        // cozy output (INV-1).
+        // CardRenderOptions{} renders Cozy (INV-1).
         Density density;
 
         // ANTS-3793 § 2.1 — the records, already resolved by the dialog's
@@ -267,8 +266,9 @@ public:
     // `kindFilter` (ANTS-1106): empty keeps every Kind; non-empty keeps
     // only bullets whose `Kind:` is in it, dropping bullets with none.
     // Each heading is preceded by `<a name="roadmap-toc-N"></a>`, N being
-    // its entry in `extractToc(markdownText)`, so the TOC sidebar can
-    // `scrollToAnchor` to it (ANTS-5597).
+    // its entry in extractToc() of the SORT-ORDERED text — under
+    // DescendingChronological that is reverseTopLevelSections(markdownText)
+    // — so the TOC sidebar can `scrollToAnchor` to it (ANTS-5597).
     static QString renderCardsHtml(const QString &markdownText,
                                    unsigned filter,
                                    const QStringList &currentBullets,
@@ -305,7 +305,7 @@ public:
     // ANTS-1237 — return ANTS-NNNN → MAX(author-time) over the
     // bullet's block (the `- 🚧 [ANTS-NNNN]` line + every
     // continuation line until blank/next-bullet/EOF). Spawns
-    // `git blame --line-porcelain` once in roadmapPath's dir;
+    // `git blame --porcelain` (ANTS-5047) once in roadmapPath's dir;
     // returns an empty hash on any failure (not a git repo, file
     // not tracked, git not on PATH, file does not exist, empty
     // blame output). See spec `docs/specs/ANTS-1237.md` § 3.b.2.
@@ -387,7 +387,8 @@ public:
 
     // Pure helper: walk `markdownText` and return its `# `..`#### `
     // headings in document order. renderCardsHtml numbers every heading
-    // the same way, shown or hidden, so the indices line up.
+    // the same way, shown or hidden, so the indices line up when both
+    // see the same sort-ordered text.
     static QVector<TocEntry> extractToc(const QString &markdownText);
 
     // ANTS-3764 — the record and the parser moved to RoadmapParse
@@ -516,6 +517,9 @@ private:
     // (so the next keystroke replaces it). Called from keyPressEvent
     // when `/` arrives without the search box already focused.
     void focusSearchBox();
+    // The current-WORK signals, not roadmap bullets: CHANGELOG
+    // `[Unreleased]` lines plus recent commit subjects, both cached.
+    // renderCardsHtml() takes them as `currentBullets` to mark rm-current.
     QStringList collectCurrentBullets();
     // ANTS-5088 — starts `git log` for the recent-commit signal and returns.
     // The subjects land in m_recentCommits and re-render through the debounce.
@@ -593,6 +597,12 @@ private:
     // wrapper deliberately does not read it.
     QVector<BulletRecord> roadmapBullets(RoadmapSource::RoadmapText &text,
                                          bool includeArchive) const;
+
+    // The bullets the current tab reads, re-read through roadmapBullets():
+    // the live file alone, or every archive on a tab that wants history.
+    // The scroll-anchor capture and restore share it; rebuild() keeps its
+    // own cached read in m_source.
+    QVector<BulletRecord> rereadTabBullets();
 
     // The project root ANTS-3756 INV-8 keys a project on, derived from
     // m_roadmapPath: the nearest ancestor directory holding a `.git`, which is
@@ -727,8 +737,8 @@ private:
     QPointer<class QProcess> m_commitsProc;
     QElapsedTimer m_commitsAge;          // invalid until the first run starts
     int m_shippedDateParses = 0;
-    // ANTS-1238 — selected card-density tier. Default Cozy preserves
-    // pre-1238 byte-equal rendering (INV-1). Loaded from
+    // ANTS-1238 — selected card-density tier, Cozy by default (INV-1).
+    // Loaded from
     // Config::roadmapDensity() in the ctor; written back on every
     // QComboBox::currentIndexChanged from the density combo.
     Density m_density = Density::Cozy;
