@@ -137,6 +137,12 @@ rcdetail::rlFlipLinks(RoadmapStore &store, qint64 itemPk, const QString &toWord,
     return out;
 }
 
+namespace {
+// Defined with the store-write helpers below; append refuses with it too.
+QJsonObject rlSectionNotFound(const RoadmapStore &store, qint64 projectId,
+                              const QString &slug);
+}  // namespace
+
 // ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
 // test can drive it without the m_main guard. op-dispatch + m_main
 // guard stay in cmdRoadmapLog; everything from field validation onward
@@ -163,8 +169,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         return QJsonDocument(env);
     };
 
-    // ANTS-1424-INV-6: validate every required field before any IO.
-    // Anchor for the source-scrape regression test.
+    // ANTS-1424-INV-6: caller_cwd and section are checked before any IO.
+    // status, headline, kind and source are checked after the
+    // pass-headings probe reads the roadmap. (The token is a test anchor.)
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     const QString section =
@@ -258,35 +265,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     }
 
     // ANTS-1424-INV-5: status → emoji map. Word form is the wire
-    // contract; the verb writes the emoji.
-    QString statusEmoji;
-    if      (status == QLatin1String("planned"))     statusEmoji = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-    else if (status == QLatin1String("in-progress")) statusEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-    else if (status == QLatin1String("shipped"))     statusEmoji = QString::fromUtf8("\xE2\x9C\x85");     // ✅
-    else if (status == QLatin1String("considered"))  statusEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
-    else if (status == QLatin1String("dropped"))     statusEmoji = QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫 ANTS-4977
-    else {
+    // contract; the verb writes the emoji. The map is kRcStatuses
+    // (remotecontrol.cpp); rcStatusEmoji returns an unknown word unchanged.
+    const QString statusEmoji = rcStatusEmoji(status);
+    if (statusEmoji == status) {
         return rlErr(QStringLiteral("bad_status"),
             QStringLiteral("roadmap_log: unknown status \"%1\" — "
                            "expected planned / in-progress / "
                            "shipped / considered / dropped").arg(status));
     }
 
-    // ANTS-1424 — kind enum check. Mirrors the schema's enum list.
-    static const QSet<QString> validKinds = {
-        QStringLiteral("implement"),    QStringLiteral("fix"),
-        QStringLiteral("audit-fix"),    QStringLiteral("review-fix"),
-        QStringLiteral("doc"),          QStringLiteral("doc-fix"),
-        QStringLiteral("refactor"),     QStringLiteral("test"),
-        QStringLiteral("chore"),        QStringLiteral("release"),
-        QStringLiteral("perf"),         QStringLiteral("security"),
-        QStringLiteral("feature"),      QStringLiteral("enhancement"),
-        QStringLiteral("investigate"),  QStringLiteral("research"),
-        QStringLiteral("accessibility"),QStringLiteral("optimize"),
-        QStringLiteral("package"),      QStringLiteral("marketing"),
-        QStringLiteral("ux"),
-    };
-    if (!validKinds.contains(kind)) {
+    // ANTS-1424 — kind enum check, against the one canonical list
+    // (RoadmapParse::canonicalKinds) that amend_field also uses.
+    if (!RoadmapParse::canonicalKinds().contains(kind)) {
         return rlErr(QStringLiteral("bad_kind"),
             QStringLiteral("roadmap_log: unknown kind \"%1\" — see "
                            "docs/standards/roadmap-format.md § 3.5.3 "
@@ -456,32 +447,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 // path almost nobody runs, which is the same shape ANTS-4634
                 // had to repair for `would_be_id`.
                 //
-                // Same shared ranker, never a second copy. A hint, never a
-                // resolution: the write still refuses, because guessing which
-                // section was meant is how a composed body lands in the wrong
-                // one.
-                QJsonObject env;
-                env["ok"]    = false;
-                env["code"]  = QStringLiteral("section_not_found");
-                env["error"] = QStringLiteral(
-                    "roadmap_log: section \"%1\" is not in the "
-                    "roadmap store").arg(section);
-                // listSectionsOrdered, not listSections: the ranker does not
-                // read document order, but ANTS-4620 deliberately un-exempted
-                // this half of the TU split so a new caller here is caught,
-                // and weakening that guard to skip a sort on a refusal path
-                // would be a bad trade.
-                if (const auto sections =
-                        store.listSectionsOrdered(projectId)) {
-                    QStringList slugs;
-                    slugs.reserve(sections->size());
-                    for (const RoadmapStore::SectionRow &sr : *sections)
-                        slugs << sr.slug;
-                    env["candidates"] = QJsonArray::fromStringList(
-                        ReadRegion::rankSectionCandidates(section, slugs));
-                    env["sections_total"] = int(slugs.size());
-                }
-                return QJsonDocument(env);
+                // A hint, never a resolution: the write still refuses,
+                // because guessing which section was meant is how a
+                // composed body lands in the wrong one.
+                return QJsonDocument(rlSectionNotFound(store, projectId, section));
             }
 
             // End-of-section position, pinned exactly as bundle_row's create
@@ -1310,13 +1279,7 @@ static QJsonArray rlStoreSuggestions(RoadmapStore &store, qint64 projectId,
     return out;
 }
 
-// ANTS-1428 — roadmap_log op:"flip". Adapter-mode write path for
-// GFM-format ROADMAP.md files. Locator: bold-ID → caret anchor →
-// headline-hash; on first touch of a bullet that has neither a
-// bold-ID nor an existing anchor, the same write injects a
-// `^prefix-NNNN` caret anchor on the last line of the headline
-// content. Counter consumes only on anchor injection. See
-// docs/specs/ANTS-1428.md § Tier 2.
+// The refusal for an op with no store route on a pass-headings roadmap.
 QJsonDocument rcdetail::rcPassStoreWriteUnsupported(const QString &op) {
     QJsonObject env;
     env[QStringLiteral("ok")]     = false;
@@ -1666,6 +1629,13 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
 
 }  // namespace
 
+// ANTS-1428 — roadmap_log op:"flip". Adapter-mode write path for
+// GFM-format ROADMAP.md files. Locator: bold-ID → caret anchor →
+// headline-hash; on first touch of a bullet that has neither a
+// bold-ID nor an existing anchor, the same write injects a
+// `^prefix-NNNN` caret anchor on the last line of the headline
+// content. Counter consumes only on anchor injection. See
+// docs/specs/ANTS-1428.md § Tier 2.
 QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -1991,6 +1961,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (!at.itemPk) {
                 if (at.code == QLatin1String("store_failed"))
                     return rlErr(at.code, at.error);
+                // `matched` 2 means "more than one": the store locate
+                // reports no count, unlike the file path.
                 return rlSugErr(at.code, at.error,
                     at.inFileOnly ? QJsonArray()
                                   : rlStoreSuggestions(*target->store,
@@ -2288,9 +2260,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // Neither GFM nor ants-v1 — genuinely unrecognised.
         // (Pass-headings is caught earlier; see the format_mismatch
         // gate just after the file read — ANTS-2031.)
-        // ANTS-1463 — refusal envelope gains shared hint +
-        // expected_format fields for shape parity with the other
-        // three unrecognised_format sites.
+        // ANTS-1463 — the same path, bytes, hint and expected_format fields
+        // as append's gate (rlUnrecognisedFormat). amend_body's two
+        // unrecognised_format refusals carry code and error only.
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = QStringLiteral("unrecognised_format");
@@ -3139,6 +3111,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             if (!at.itemPk) {
                 if (at.code == QLatin1String("store_failed"))
                     return rlErr(at.code, at.error);
+                // `matched` 2 means "more than one" (no count on the store path).
                 QJsonObject env = rlSugErr(at.code, at.error,
                     at.code == QLatin1String("bullet_ambiguous") ? 2 : 0).object();
                 if (!at.inFileOnly)
@@ -3854,6 +3827,8 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"amend_field\" needs `id` — the "
                            "store's own key, and the only locator it takes"));
+    // A new column here needs a branch in BOTH ternary chains below
+    // (`tm` and `oldValue`): each falls through to `evidence`.
     static const QStringList kEditable = {
         QStringLiteral("layman"), QStringLiteral("kind"),
         QStringLiteral("source"), QStringLiteral("lanes"),
@@ -4007,7 +3982,7 @@ QJsonObject rlLocateFieldChange(RoadmapStore &store, qint64 projectId,
       : field == QLatin1String("kind")     ? tv.kind
       : field == QLatin1String("source")   ? tv.source
       : field == QLatin1String("lanes")    ? tv.lanes
-                                           : tv.evidence;
+      /* evidence, the last kEditable entry */ : tv.evidence;
     if (tm.offset >= 0 && tm.anchored) {
         return rlErr(QStringLiteral("field_shadowed_by_body"),
             QStringLiteral("roadmap_log: this bullet's BODY declares `%1:` at a "
@@ -4023,7 +3998,7 @@ QJsonObject rlLocateFieldChange(RoadmapStore &store, qint64 projectId,
       : field == QLatin1String("kind")     ? before->kind
       : field == QLatin1String("source")   ? before->source
       : field == QLatin1String("lanes")    ? before->lanes.join(QStringLiteral(", "))
-                                           : before->evidence.join(QStringLiteral(", "));
+      /* evidence */                       : before->evidence.join(QStringLiteral(", "));
 
     *pkOut       = *pk;
     *oldValueOut = oldValue;
@@ -4364,8 +4339,11 @@ bool rlCommitBodyEdits(RoadmapStore &store, qint64 projectId, const QString &roo
     return true;
 }
 
-// ANTS-4591 — an unknown section slug, refused with the near-miss ranking
-// append's refusal carries.
+// ANTS-4591 — an unknown section slug, refused with near-miss candidates.
+// Every store-path write that takes a section (append included) uses it.
+// listSectionsOrdered, not listSections: the ranker does not read document
+// order, but ANTS-4620 un-exempted this TU half so a new caller is caught,
+// and weakening that guard to skip a sort on a refusal path is a bad trade.
 QJsonObject rlSectionNotFound(const RoadmapStore &store, qint64 projectId,
                               const QString &slug) {
     QJsonObject env;

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6233 -->
+<!-- ants-roadmap-id-high-water: ANTS=6239 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95437,6 +95437,16 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1, F2 done (08223997).
+  2026-10-23 MEDIUMs. Fixed: F3 append maps status through rcStatusEmoji
+  (kRcStatuses) instead of its own chain; F4 append checks kind against
+  RoadmapParse::canonicalKinds (same 21 kinds, no aliases); F5 append
+  refuses an unknown section through rlSectionNotFound; F7 flip's parity
+  comment says amend_body's refusals carry code and error only; F11
+  `matched` 2 documented as "more than one"; F12 the `evidence`
+  fall-throughs are named; F15 flip's doc sits on cmdRoadmapLogFlip; F17
+  the INV-6 comment says which fields are checked before IO. Queued: F6
+  ANTS-6234, F8 ANTS-6235, F9 ANTS-6236, F10 ANTS-6237, F13 ANTS-6238,
+  F14 ANTS-6239. LOWs remain.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96595,6 +96605,77 @@ worked after these.
   Kind: fix.
   Source: review-readability-2026-10-22 (L18-F7).
   Lanes: mcp-transport.
+
+- 📋 [ANTS-6234] **Rank roadmap_log's headline suggestions with one shared ranker and one sort.**
+  From ANTS-6128; feeds ANTS-5796 (dup:43bff4aca698, dup:94e3365bb3d1).
+  rlStoreSuggestions copies flip's ants-v1 headline ranking but uses
+  stable_sort where the file path uses std::sort; the GFM branch uses a
+  Jaccard ranking; the shared-prefix loop is written out four times.
+  Queued: picking one sort changes suggestion order on ties.
+  Hot reload: none needed.
+  **Layman:** When an edit cannot find its roadmap item, the suggested matches are worked out three different ways, so equal matches come back in a different order depending on the path.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L19-F6).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6235] **Read .roadmap-counter in one place, or say why append and flip treat an empty or missing counter differently.**
+  From ANTS-6128. Empty file: append refuses counter_missing, flip's
+  anchor injection reads it as 0. Missing file: append seeds from the
+  corpus, flip floors from the file's anchors. Decide whether the
+  difference is intended before folding; roadmap_log_stable_prefix_hint
+  pins counter_missing.
+  Hot reload: none needed.
+  **Layman:** Two roadmap tools read the same id-counter file but disagree about what an empty or missing file means.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L19-F8).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6236] **flip's prefix_hint refuses a digit-leading prefix that append's id_prefix accepts.**
+  From ANTS-6128. flip's rxPrefix is ^[A-Z][A-Z0-9_-]{0,15}$ and refuses
+  with bad_op_combo; append's kIdPrefixShape allows "3D_E". flip's
+  fallback leaf.left(4).toUpper() is never checked against either. Use
+  one shape for both (see ANTS-6232), refusing with bad_args, and lock
+  it with a red-first test.
+  Hot reload: none needed.
+  **Layman:** Two roadmap tools disagree about which id prefixes are valid, so a folder named like "3D_Engine" works for one and is refused by the other.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L19-F9).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6237] **Give roadmap_log one caller_cwd -> ROADMAP.md -> read prologue and one pass-headings check.**
+  From ANTS-6128; feeds ANTS-5796 (dup:01e24a0a9e7b, dup:1455ba3add17,
+  dup:fd04184f51da). append, flip and amend_body each resolve
+  caller_cwd, find ROADMAP.md and read it; append's copy also returns
+  projectRootDir. Pass-headings detection is done three ways, and append
+  and flip read the roadmap twice. Queued with ANTS-6238/6239: one
+  restructuring of remotecontrol_roadmap_log.cpp, many scrape anchors.
+  Hot reload: none needed.
+  **Layman:** Three roadmap edit tools each repeat the steps that find and read the roadmap, and one copy has drifted.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L19-F10).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6238] **Split cmdRoadmapLogAppend into a store branch and a markdown branch.**
+  From ANTS-6128. The bare block in cmdRoadmapLogAppend returns for
+  every store-backed project; everything after it is markdown-only, and
+  it redeclares idStr, prefixGuessed and scrubbedNames. Keep the
+  ANTS-1424-INV-6 and INV-8 comment tokens (test_mcp_roadmap_log_verb)
+  and the append/flip bounding that mcp_roadmap_unrecognised_format uses.
+  Hot reload: none needed.
+  **Layman:** The function that adds a roadmap item is over a thousand lines and is really two functions joined together.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L19-F13).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6239] **Move amend_body's file-locate step (the unindented !storeLocated block) into its own function.**
+  From ANTS-6128. The `if (!storeLocated) {` body runs about 135 lines
+  unindented and closes with `}   // !storeLocated`. Return the located
+  fields from a named function instead.
+  Hot reload: none needed.
+  **Layman:** A long block in the roadmap body editor is conditional but not indented, so a reader cannot see that it only sometimes runs.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L19-F14).
+  Lanes: mcp-roadmap-query-log.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
