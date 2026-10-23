@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6168 -->
+<!-- ants-roadmap-id-high-water: ANTS=6170 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88199,6 +88199,24 @@ measured Ants adding about 5,250 tokens to every request.
   Source: finbreak-feedback-2026-10-22.
   Lanes: spec-engines.
 
+- 📋 [ANTS-6169] **The MCP connect message names trace for "who calls / where is it defined", ahead of find_sources.**
+  src/mcporientation.cpp's connect message is the only start-up text
+  sessions outside Ants Terminal see (the preamble's trace line needs a
+  .ants-project sentinel). It says find_sources is C/C++ only and sends
+  other languages to codebase_index / workspace_search; it never names
+  trace, which covers C++, Python, Lua, Shell and GLSL. Measured
+  2026-10-23: OneUp (Python) mapped code with grep/Read until the user
+  pointed it at trace. Fix: name trace first in that line, keep
+  find_sources as C/C++ only, stay under INV-10's 500 B cap.
+  Reaching a running terminal: the text is the orientation script
+  MainWindow installs at launch (mainwindow_mcp.cpp) and Settings
+  re-installs when "Show MCP cheat-sheet" is switched back on
+  (settingsdialog.cpp). So a new build needs a terminal launch, or
+  that toggle off and on; ants-mcpd does not carry it.
+  **Layman:** Sessions in other projects learn about the trace tool when they connect, instead of falling back to slow text searches.
+  Kind: fix.
+  Source: claude-config feedback 2026-10-23.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -95368,6 +95386,11 @@ worked after these.
   (ids L01-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23, the HIGH fixed (d2db61ac): one table, wanted, says which
+  flag runs each job; host jobs run from host_jobs in a loop, and the
+  start-up check refuses a ci.yml job with no wanted entry, so a job
+  claimed but never run no longer passes silently. Mediums and lows
+  remain.
   **Layman:** Tidy the local CI scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95392,6 +95415,11 @@ worked after these.
   (ids L03-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23, the HIGH fixed (d60526ce): tools/roadmap_paths.py holds
+  the two discovery rules (root_roadmap, layout_roadmap); all five
+  scripts use it. Output identical before and after. The MEDIUM on the
+  three TAXONOMY / CANONICAL_KINDS copies is not done. Mediums and lows
+  remain.
   **Layman:** Tidy the roadmap helper scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95404,6 +95432,8 @@ worked after these.
   (ids L04-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23, the HIGH fixed (3de1a08e): the header lists Pattern G
+  and no longer calls the stream form refused. Mediums and lows remain.
   **Layman:** Tidy the migration and survey scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95416,6 +95446,11 @@ worked after these.
   (ids L05-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23, the HIGH fixed (1d5afd13): class_texts() appends
+  src/mcptoolregistry.cpp for mainwindow as slurpMainWindow() does, and
+  srcgrep.h points back. One scrape window it could not place before
+  is now evaluated. The stale spec sample it exposed is ANTS-6170.
+  Mediums and lows remain.
   **Layman:** Tidy the split-motion checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95440,6 +95475,9 @@ worked after these.
   (ids L07-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23, the HIGH fixed (00e85789): the theme lane's comment says
+  it cycles a fixed sample of themes, not every one. Mediums and lows
+  remain.
   **Layman:** Tidy the end-to-end and measuring scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95488,6 +95526,11 @@ worked after these.
   (ids L11-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-23, the HIGH fixed with MEDIUM F2 (629d80a9): the three test
+  recipes (RPM %check, debian/rules, PKGBUILD check()) name each other
+  as twins, and the false "GUI-free" comment is gone. A shared
+  test-environment script was not chosen: none of the three build
+  systems runs here. Other mediums and lows remain.
   **Layman:** Tidy the package recipes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95508,6 +95551,18 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6170] **ANTS-1677's srcgrep.h sample shows slurpMainWindow() without the registry tail ANTS-4932 added.**
+  docs/specs/ANTS-1677-large-file-decomposition.md shows
+  slurpMainWindow() as slurpSourceList(ANTS_MAINWINDOW_SOURCES) alone.
+  tests/_support/srcgrep.h now appends src/mcptoolregistry.cpp
+  (ANTS-4932 § 2.3), and tools/split-motion-check.py's class_texts()
+  matches it from the L05-F1 fix. Pre-existing; found by that fix's
+  sweep. Fix: amend the sample, or replace it with a pointer to
+  srcgrep.h. A spec edit: rule 14 decides whether it gates.
+  **Layman:** A design document shows an older version of a test helper; bring it up to date.
+  Kind: doc-fix.
+  Source: close-findings sweep 2026-10-23 (ANTS-6153 L05-F1).
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
