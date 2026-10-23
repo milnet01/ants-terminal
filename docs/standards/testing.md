@@ -486,22 +486,18 @@ repository, where such a skip had reported green since April.
 
 ## 8. Coverage
 
-- **Every fix carries a regression test**, except one proved by §1's
-  log-count red, where no harness can reproduce the failure. Test-first
-  makes this automatic — the failing test *is* the start of the fix.
+- **A fix carries a regression test wherever it changes behaviour a test
+  can observe** — a bug fix, or a fixed audit or review finding, refactor or
+  not. So removing duplication, or pinning a dependency past a patched
+  release (`security.md` § 9 points here), carries none. The one other
+  exception is a fix proved by §1's log-count red, where no harness can
+  reproduce the failure. Test-first makes this automatic — the failing
+  test *is* the start of the fix.
 - **Every new feature carries at least one conformance test** against
   its contract.
-- **Every audit or review finding about behaviour that gets fixed carries
-  one**, for the same reason: a finding fixed without a test is one that
-  can return unnoticed. A behaviour-neutral finding, such as duplication,
-  ships no behaviour, so no test can go red (§1).
-- **A fix that only pins a dependency at or above a patched release
-  carries no test.** Bumping past an upstream advisory locks down nothing you wrote, so
-  there is no behaviour to regress; `security.md` § 9 points here for it.
 - **Refactors get no new tests.** They must keep the existing ones
   passing; that is what makes them refactors. If a refactor reveals
-  untested behaviour, that is its own tracked item. **A refactor that fixes
-  a review finding about behaviour carries that finding's test**: the finding bullet wins.
+  untested behaviour, that is its own tracked item.
 
 **Coverage percentage is not a target.** It measures which lines ran, not
 whether anything was checked — a suite can execute every line and assert
