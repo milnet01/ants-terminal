@@ -100465,6 +100465,13 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   284b4c30) were green on the same read path.
   Two of the day's pushes now: still not "most pushes", so the
   fold into the 2026-10-29 performance review stands.
+  2026-10-23: six more Release-job failures, all Inv3Latency
+  alone (6bf7405f, f9057e8e, e97ef7e6, 949532f0, 90679ff6,
+  66034ad8; 66034ad8 measured p95 59.0 ms). 6 of 30 main runs
+  since 2026-10-23 failed; the other 24 passed, including the
+  four newest. Still not most pushes, but the rate is rising
+  (2 on 10-22, 6 on 10-23). User forwarded the failure emails
+  2026-10-24.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
