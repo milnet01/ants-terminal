@@ -163,6 +163,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log's schema says append_batch needs a call-level section even when every bullet names its own.** (ANTS-6274)
+
 - **workspace_search's count_only, files_only and matches_only replies now echo match_wrapped, as the row reply already did.** (ANTS-6131)
 
 - **The Claude Code session-start cheat-sheet points at trace for "who calls X / where is it defined", in most languages, ahead of the C/C++-only find_sources.** (ANTS-6169)

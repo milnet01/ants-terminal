@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6273 -->
+<!-- ants-roadmap-id-high-water: ANTS=6274 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88511,6 +88511,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-10-24.
   Lanes: mcp-workspace.
+
+- 📋 [ANTS-6274] **roadmap_log append_batch refuses "section is required" when every bullet names its own section.**
+  frameledger, 2026-10-24: a batch spanning two sections, each bullet
+  with its own `section` and no call-level one, refuses missing_field.
+  The schema calls the call-level section the fallback. Reproduced here
+  the same day with a one-bullet dry run. Fix: require the call-level
+  section only when some bullet has none.
+  2026-10-24: docs/specs/ANTS-1879.md INV-2 requires the call-level
+  section, so lifting it is a spec change and takes rule 14's gate
+  first. Shipped now: the bullets.section schema text says append_batch
+  still requires the call-level section. Open: amend INV-2, then
+  default the call-level section to the bullets' own when all carry one.
+  **Layman:** Adding several roadmap items at once fails unless you also name a section you don't need.
+  Kind: fix.
+  Source: frameledger session message 2026-10-24.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
