@@ -100750,6 +100750,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   four newest. Still not most pushes, but the rate is rising
   (2 on 10-22, 6 on 10-23). User forwarded the failure emails
   2026-10-24.
+  2026-10-24: CI run 40077091660 (a377f5fd) failed on Inv3Latency
+  alone, p95 65 ms against 50 ms: the highest seen (earlier 51-59 ms).
+  The next push (4c080641) passed.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
